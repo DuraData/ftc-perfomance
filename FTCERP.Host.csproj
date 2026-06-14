@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>FTCERP.Host</AssemblyName>
+    <RootNamespace>FTCERP.Host</RootNamespace>
+    <SpaRoot>ClientApp\</SpaRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Remove="ClientApp\dist\**" />
+    <None Remove="ClientApp\dist\**" />
+  </ItemGroup>
+
+  <Target Name="EnsureNodeEnvironment" BeforeTargets="Build" Condition=" '$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules') ">
+    <Message Importance="high" Text="ClientApp dependencies are not installed yet. Run 'npm install' inside ClientApp before building the frontend." />
+  </Target>
+</Project>
