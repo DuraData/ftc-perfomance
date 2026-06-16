@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { Target, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Target, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../ui';
 import { Input } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { mockUsers } from '../../data/mockData';
 
 export function Login() {
   const { login, setCurrentPath } = useApp();
-  const [email, setEmail] = useState('pms@municipality.gov');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('superadmin@example.com');
+  const [password, setPassword] = useState('P@ssw0rd123!');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,15 +17,18 @@ export function Login() {
     setError('');
     setLoading(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (login(email, password)) {
-      setCurrentPath('/dashboard');
-    } else {
-      setError('Invalid email or password');
+    try {
+      const success = await login(email, password);
+      if (success) {
+        setCurrentPath('/dashboard');
+      } else {
+        setError('Invalid email or password');
+      }
+    } catch (err) {
+      setError('Something went wrong. Please try again later.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -104,33 +106,6 @@ export function Login() {
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-
-          {/* Demo Users */}
-          <div className="mt-6 pt-6 border-t border-secondary-200 dark:border-secondary-700">
-            <p className="text-xs text-secondary-500 text-center mb-3">Demo accounts (click to login)</p>
-            <div className="grid grid-cols-2 gap-2">
-              {mockUsers.slice(0, 4).map(user => (
-                <button
-                  key={user.id}
-                  onClick={() => {
-                    setEmail(user.email);
-                    setPassword('password');
-                  }}
-                  className="flex items-center gap-2 p-2 text-left text-xs rounded-lg hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors"
-                >
-                  <div className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                    <span className="text-[10px] font-medium text-primary-700 dark:text-primary-300">
-                      {user.firstName[0]}{user.lastName[0]}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-secondary-700 dark:text-secondary-300 truncate">{user.displayName}</p>
-                    <p className="text-secondary-500 text-[10px] truncate">{user.role.replace('_', ' ')}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Footer */}

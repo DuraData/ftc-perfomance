@@ -33,7 +33,7 @@ interface DataTableProps<T> {
 
 type SortDirection = 'asc' | 'desc' | null;
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T>({
   data,
   columns,
   pageSize = 10,
@@ -141,7 +141,11 @@ export function DataTable<T extends Record<string, unknown>>({
                         {typeof column.accessor === 'function' ? column.accessor(row) : String(row[column.accessor as keyof T] ?? '')}
                       </td>
                     ))}
-                    {actions && <td className="px-3 py-2 text-right"><div className="flex items-center justify-end gap-1">{actions(row)}</div></td>}
+                    {actions && (
+                      <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">{actions(row)}</div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

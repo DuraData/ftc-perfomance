@@ -1,45 +1,277 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import type { User, UserRole } from '../types';
-import { mockUsers } from '../data/mockData';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import type { UserRole, UserProfile, LoginResponse, MenuItem } from '../types';
+import { login as apiLogin, isAuthenticated, logout as apiLogout } from '../api/api';
+
+type ToastType = 'success' | 'error' | 'info';
+interface ToastItem {
+  id: string;
+  type: ToastType;
+  message: string;
+}
+
+const buildFullMenu = (): MenuItem[] => [
+  { label: 'Dashboard', path: '/dashboard', icon: 'dashboard', isDivider: false },
+  {
+    label: 'Performance Management',
+    icon: 'target',
+    isDivider: false,
+    children: [
+      { label: 'OPMS Targets', path: '/opms/targets', icon: 'target', isDivider: false },
+      { label: 'OPMS Submissions', path: '/opms/submissions', icon: 'target', isDivider: false },
+      { label: 'Vote Numbers', path: '/opms/vote-numbers', icon: 'layers', isDivider: false },
+      { label: 'IPMS Targets', path: '/ipms/targets', icon: 'target', isDivider: false },
+      { label: 'IPMS Submissions', path: '/ipms/submissions', icon: 'target', isDivider: false },
+      { label: 'KPI Library', path: '/kpi-library', icon: 'target', isDivider: false },
+    ],
+  },
+  {
+    label: 'Workflow',
+    icon: 'workflow',
+    isDivider: false,
+    children: [
+      { label: 'My Queue', path: '/workflow/my-queue', icon: 'workflow', isDivider: false },
+      { label: 'Verification', path: '/workflow/verification', icon: 'workflow', isDivider: false },
+      { label: 'Approval', path: '/workflow/approval', icon: 'workflow', isDivider: false },
+      { label: 'PMS Review', path: '/workflow/pms-review', icon: 'workflow', isDivider: false },
+      { label: 'Auditor Review', path: '/workflow/auditor-review', icon: 'workflow', isDivider: false },
+    ],
+  },
+  {
+    label: 'HR',
+    icon: 'users',
+    isDivider: false,
+    children: [
+      { label: 'Employees', path: '/hr/employees', icon: 'users', isDivider: false },
+      { label: 'Departments', path: '/hr/departments', icon: 'users', isDivider: false },
+      { label: 'Units', path: '/hr/units', icon: 'users', isDivider: false },
+      { label: 'Positions', path: '/hr/positions', icon: 'users', isDivider: false },
+      { label: 'Contacts', path: '/hr/contacts', icon: 'users', isDivider: false },
+      { label: 'Resumes', path: '/hr/resumes', icon: 'users', isDivider: false },
+    ],
+  },
+  { label: 'Projects & Tasks', icon: 'layers', isDivider: false, children: [{ label: 'Tasks', path: '/tasks', icon: 'layers', isDivider: false }] },
+  {
+    label: 'Location',
+    icon: 'globe',
+    isDivider: false,
+    children: [
+      { label: 'Countries', path: '/location/countries', icon: 'globe', isDivider: false },
+      { label: 'Provinces', path: '/location/provinces', icon: 'globe', isDivider: false },
+      { label: 'Cities', path: '/location/cities', icon: 'globe', isDivider: false },
+      { label: 'Suburbs', path: '/location/suburbs', icon: 'globe', isDivider: false },
+      { label: 'Addresses', path: '/location/addresses', icon: 'globe', isDivider: false },
+    ],
+  },
+  { label: 'Reports', path: '/reports', icon: 'reports', isDivider: false },
+  { label: 'Divider', isDivider: true },
+  {
+    label: 'System Administration',
+    icon: 'settings',
+    isDivider: false,
+    children: [
+      { label: 'Users', path: '/system-administration/users', icon: 'users', isDivider: false },
+      { label: 'Roles', path: '/system-administration/roles', icon: 'users-group', isDivider: false },
+      { label: 'Permissions', path: '/system-administration/permissions', icon: 'key', isDivider: false },
+      { label: 'Audit Logs', path: '/system-administration/audit-logs', icon: 'history', isDivider: false },
+    ],
+  },
+  {
+    label: 'Configuration',
+    icon: 'settings',
+    isDivider: false,
+    children: [
+      { label: 'Periods', path: '/admin/periods', icon: 'settings', isDivider: false },
+      { label: 'Organisations', path: '/admin/organisations', icon: 'settings', isDivider: false },
+      { label: 'Approval Setup', path: '/admin/approval-setup', icon: 'settings', isDivider: false },
+      { label: 'Lookup Tables', path: '/admin/lookups', icon: 'settings', isDivider: false },
+      { label: 'Budget Types', path: '/admin/budget-types', icon: 'settings', isDivider: false },
+      { label: 'Strategic Goals', path: '/admin/strategic-goals', icon: 'settings', isDivider: false },
+      { label: 'Strategic Objectives', path: '/admin/strategic-objectives', icon: 'settings', isDivider: false },
+      { label: 'Units of Measure', path: '/admin/units-measure', icon: 'settings', isDivider: false },
+      { label: 'KPAs', path: '/admin/kpas', icon: 'settings', isDivider: false },
+      { label: 'Municipal KPAs', path: '/admin/municipal-kpas', icon: 'settings', isDivider: false },
+      { label: 'Departmental Objectives', path: '/admin/departmental-objectives', icon: 'settings', isDivider: false },
+      { label: 'Outputs', path: '/admin/outputs', icon: 'settings', isDivider: false },
+      { label: 'Performance Objectives', path: '/admin/performance-objectives', icon: 'settings', isDivider: false },
+      { label: 'Priority Issues', path: '/admin/priority-issues', icon: 'settings', isDivider: false },
+      { label: 'Occupations', path: '/admin/occupations', icon: 'settings', isDivider: false },
+      { label: 'Industries', path: '/admin/industries', icon: 'settings', isDivider: false },
+    ],
+  },
+  { label: 'Settings', path: '/settings', icon: 'settings', isDivider: false },
+];
 
 interface AppContextType {
-  user: User | null;
+  userProfile: UserProfile | null;
   isAuthenticated: boolean;
-  sidebarCollapsed: boolean;
-  darkMode: boolean;
-  login: (email: string, password: string) => boolean;
+  roles: string[];
+  isSuperAdmin: boolean;
+  permissions: string[];
+  menuItems: MenuItem[];
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  sidebarCollapsed: boolean;
+  expandedSidebarGroups: string[];
+  darkMode: boolean;
   toggleSidebar: () => void;
+  toggleSidebarGroup: (label: string) => void;
+  expandSidebarGroup: (label: string) => void;
   toggleDarkMode: () => void;
   switchRole: (role: UserRole) => void;
   currentPath: string;
   setCurrentPath: (path: string) => void;
+  toasts: ToastItem[];
+  pushToast: (type: ToastType, message: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(mockUsers[1]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [currentPath, setCurrentPath] = useState('/dashboard');
+  const safeSetItem = (key: string, value: string) => {
+    try { localStorage.setItem(key, value); } catch { /* ignore */ }
+  };
+  const safeRemoveItem = (key: string) => {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+  };
 
-  const login = (email: string, _password: string): boolean => {
-    const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (foundUser) {
-      setUser(foundUser);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [roles, setRoles] = useState<string[]>([]);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedSidebarGroups, setExpandedSidebarGroups] = useState<string[]>([]);
+  const [darkMode, setDarkMode] = useState(false);
+  const normalizePath = (path: string) => {
+    if (path.startsWith('/admin/users')) return '/system-administration/users';
+    if (path.startsWith('/admin/roles')) return '/system-administration/roles';
+    if (path.startsWith('/admin/permissions')) return '/system-administration/permissions';
+    if (path.startsWith('/admin/audit')) return '/system-administration/audit-logs';
+    return path;
+  };
+
+  const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizePath(window.location.pathname || '/dashboard') : '/login');
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const resolveMenuItems = (_roles: string[], incomingMenu: MenuItem[]) => {
+    if (!incomingMenu.length || !incomingMenu.some(item => item.label === 'Performance Management')) {
+      return buildFullMenu();
+    }
+    return incomingMenu;
+  };
+
+  useEffect(() => {
+    let storedUser: string | null = null;
+    let storedRoles: string | null = null;
+    let storedPermissions: string | null = null;
+    let storedMenu: string | null = null;
+    let storedExpanded: string | null = null;
+    let storedSidebarCollapsed: string | null = null;
+    try {
+      storedUser = localStorage.getItem('user_profile');
+      storedRoles = localStorage.getItem('roles');
+      storedPermissions = localStorage.getItem('permissions');
+      storedMenu = localStorage.getItem('menu_items');
+      storedExpanded = localStorage.getItem('sidebar_expanded_groups');
+      storedSidebarCollapsed = localStorage.getItem('sidebar_collapsed');
+    } catch {
+      // ignore
+    }
+
+    if (storedExpanded) {
+      try { setExpandedSidebarGroups(JSON.parse(storedExpanded)); } catch { setExpandedSidebarGroups([]); }
+    }
+    if (storedSidebarCollapsed) {
+      setSidebarCollapsed(storedSidebarCollapsed === 'true');
+    }
+
+    if (storedUser && storedPermissions && storedMenu) {
+      setUserProfile(JSON.parse(storedUser));
+      const parsedRoles = storedRoles ? JSON.parse(storedRoles) : [];
+      setRoles(parsedRoles);
+      setPermissions(JSON.parse(storedPermissions));
+      setMenuItems(resolveMenuItems(parsedRoles, JSON.parse(storedMenu)));
+      setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
+    } else if (isAuthenticated()) {
+      setMenuItems(buildFullMenu());
+    }
+  }, []);
+
+  useEffect(() => {
+    safeSetItem('sidebar_collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    safeSetItem('sidebar_expanded_groups', JSON.stringify(expandedSidebarGroups));
+  }, [expandedSidebarGroups]);
+
+  useEffect(() => {
+    const onPopState = () => setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const setCurrentPath = (path: string) => {
+    const nextPath = normalizePath(path);
+    if (nextPath === currentPath) return;
+    window.history.pushState({}, '', nextPath);
+    setCurrentPathState(nextPath);
+  };
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    const result = await apiLogin({ email, password });
+    if (result.success && result.data) {
+      const data = result.data as LoginResponse;
+      setUserProfile(data.user);
+      setRoles(data.roles ?? []);
+      setPermissions(data.permissions);
+      setMenuItems(resolveMenuItems(data.roles ?? [], data.menu));
+      safeSetItem('user_profile', JSON.stringify(data.user));
+      safeSetItem('roles', JSON.stringify(data.roles ?? []));
+      safeSetItem('permissions', JSON.stringify(data.permissions));
+      safeSetItem('menu_items', JSON.stringify(resolveMenuItems(data.roles ?? [], data.menu)));
+      setCurrentPath('/dashboard');
       return true;
     }
     return false;
   };
 
   const logout = () => {
-    setUser(null);
-    setCurrentPath('/login');
+    apiLogout();
+    setUserProfile(null);
+    setRoles([]);
+    setPermissions([]);
+    setMenuItems([]);
+    safeRemoveItem('user_profile');
+    safeRemoveItem('roles');
+    safeRemoveItem('permissions');
+    safeRemoveItem('menu_items');
+    window.history.pushState({}, '', '/login');
+    setCurrentPathState('/login');
   };
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => !prev);
+  };
+
+  const toggleSidebarGroup = (label: string) => {
+    setExpandedSidebarGroups(prev => {
+      return prev.includes(label) ? prev.filter(x => x !== label) : [...prev, label];
+    });
+  };
+
+  const expandSidebarGroup = (label: string) => {
+    setExpandedSidebarGroups(prev => {
+      if (prev.includes(label)) return prev;
+      return [...prev, label];
+    });
+  };
+
+  const pushToast = (type: ToastType, message: string) => {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const toast: ToastItem = { id, type, message };
+    setToasts(prev => [...prev, toast]);
+    window.setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
   };
 
   const toggleDarkMode = () => {
@@ -51,26 +283,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const switchRole = (role: UserRole) => {
-    if (user) {
-      setUser({ ...user, role });
-    }
+  const switchRole = (_role: UserRole) => {
+    // Role switching to be implemented later
   };
 
   return (
     <AppContext.Provider
       value={{
-        user,
-        isAuthenticated: !!user,
-        sidebarCollapsed,
-        darkMode,
+        userProfile,
+        isAuthenticated: isAuthenticated() && !!userProfile,
+        roles,
+        isSuperAdmin: roles.some(r => r.toLowerCase() === 'super admin'),
+        permissions,
+        menuItems,
         login,
         logout,
+        sidebarCollapsed,
+        expandedSidebarGroups,
+        darkMode,
         toggleSidebar,
+        toggleSidebarGroup,
+        expandSidebarGroup,
         toggleDarkMode,
         switchRole,
         currentPath,
         setCurrentPath,
+        toasts,
+        pushToast,
       }}
     >
       {children}

@@ -263,10 +263,29 @@ export interface IPMSSubmission {
   extendedDueDate?: string;
   actual: number;
   actualDescription?: string;
+  actualExpenditure?: number;
+  variance?: number;
+  varianceReason?: string;
+  correctiveMeasure?: string;
+  submitterScore?: number;
   status: SubmissionStatus;
   submitter?: Employee;
   submittedAt?: string;
+  verifier?: Employee;
+  verifiedAt?: string;
+  verifierComments?: string;
+  approver?: Employee;
+  approvedAt?: string;
+  approverComments?: string;
+  pmsOfficer?: Employee;
+  pmsReviewedAt?: string;
+  pmsComments?: string;
+  auditor?: Employee;
+  auditedAt?: string;
+  auditorComments?: string;
   attachments: Attachment[];
+  comments: SubmissionComment[];
+  history: SubmissionHistory[];
 }
 
 // Supporting Types
@@ -575,4 +594,130 @@ export interface ActivityItem {
   user: User;
   timestamp: string;
   targetType?: string;
+}
+
+// Auth Types
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  errors?: string[];
+}
+
+export interface UserProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phoneNumber?: string;
+  isActive: boolean;
+  mustChangePassword: boolean;
+}
+
+export interface MenuItem {
+  label: string;
+  path?: string;
+  icon?: string;
+  children?: MenuItem[];
+  isDivider: boolean;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  user: UserProfile;
+  roles: string[];
+  permissions: string[];
+  menu: MenuItem[];
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RefreshTokenRequest {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface RegisterRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  phoneNumber?: string;
+}
+
+export interface AdminRole {
+  id: string;
+  name: string;
+  description?: string;
+  isSystemRole: boolean;
+  isActive: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phoneNumber?: string;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt?: string | null;
+}
+
+export interface AdminUserDetail {
+  user: AdminUser;
+  roles: AdminRole[];
+}
+
+export interface AdminPermission {
+  id: number;
+  module: string;
+  feature: string;
+  action: string;
+  code: string;
+  description?: string;
+  isActive: boolean;
+}
+
+export interface AdminPermissionGroup {
+  module: string;
+  feature: string;
+  permissions: AdminPermission[];
+}
+
+export interface RolePermission {
+  permissionId: number;
+  code: string;
+  isAllowed: boolean;
+}
+
+export interface UserPermissionOverride {
+  permissionId: number;
+  code: string;
+  isAllowed: boolean;
+  reason?: string;
+}
+
+export interface UserPermissions {
+  fromRoles: string[];
+  overrides: UserPermissionOverride[];
+  effective: string[];
+}
+
+export interface LoginAuditLog {
+  id: number;
+  userId?: string | null;
+  email: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  success: boolean;
+  failureReason?: string | null;
+  loggedAt: string;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   ArrowLeft,
   Save,
@@ -6,45 +6,36 @@ import {
   FileText,
   Target,
   TrendingUp,
-  DollarSign,
-  Link2,
-  Users,
   Paperclip,
   History,
-  Layers,
-  CheckCircle,
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
-import { Button, Badge, Card, ProgressBar } from '../ui';
-import { Tabs, Accordion } from '../common/Tabs';
+import { Button, Badge, Card } from '../ui';
+import { Tabs } from '../common/Tabs';
 import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
 import { FileUpload } from '../common/FileUpload';
 import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import {
-  mockOPMSTargets,
+  mockIPMSTargets,
   mockDepartments,
   mockDepartmentUnits,
   mockPeriods,
   mockStrategicGoals,
   mockStrategicObjectives,
-  mockBudgetSources,
-  mockBudgetTypes,
   mockUnitsOfMeasure,
   mockEmployees,
   targetUnitTypes,
-  mockOPMSSubmissions,
-  mockVoteNumbers,
-  mockIPMSTargets,
+  mockIPMSSubmissions,
 } from '../../data/mockData';
-import type { OPMSTarget, IPMSTarget, OPMSSubmission, Employee } from '../../types';
+import type { IPMSTarget, IPMSSubmission } from '../../types';
 
 interface TargetDetailProps {
   targetId?: string;
 }
 
-function GeneralInfoTab({ target }: { target: OPMSTarget }) {
+function GeneralInfoTab({ target }: { target: IPMSTarget }) {
   const [isEditing, setIsEditing] = useState(false);
 
   return (
@@ -162,7 +153,7 @@ function GeneralInfoTab({ target }: { target: OPMSTarget }) {
   );
 }
 
-function StrategyTab({ target }: { target: OPMSTarget }) {
+function StrategyTab({ target }: { target: IPMSTarget }) {
   return (
     <div className="space-y-4">
       <FormSection title="Strategic Alignment">
@@ -186,27 +177,24 @@ function StrategyTab({ target }: { target: OPMSTarget }) {
           <Input label="Performance Objective" defaultValue={target.performanceObjective} />
           <Input label="Functional Area" defaultValue={target.functionalArea} />
         </FormRow>
-      </FormSection>
-
-      <FormSection title="References">
-        <FormRow cols={3}>
-          <Input label="IDP Reference" defaultValue={target.idpReference} />
-          <Input label="Internal Reference" defaultValue={target.internalReference} />
-          <Input label="FMS Link" defaultValue={target.fmsLink} />
-        </FormRow>
-        <Input label="Standard Classification" defaultValue={target.standardClassification} />
+        {target.relatedOPMSTarget && (
+          <div className="mt-3 p-3 border border-secondary-200 rounded-lg bg-secondary-50">
+            <p className="text-xs font-semibold text-secondary-600 mb-1">Linked OPMS Target</p>
+            <p className="text-sm font-medium">{target.relatedOPMSTarget.indicatorNumber} - {target.relatedOPMSTarget.targetName}</p>
+          </div>
+        )}
       </FormSection>
     </div>
   );
 }
 
-function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
+function QuarterlyTargetsTab({ target }: { target: IPMSTarget }) {
   const quarters = [
-    { id: 'q1', label: 'Q1 (Jul-Sep)', targetValue: target.q1Target, description: target.q1Description, budget: target.q1Budget },
-    { id: 'q2', label: 'Q2 (Oct-Dec)', targetValue: target.q2Target, description: target.q2Description, budget: target.q2Budget },
-    { id: 'mid', label: 'Mid-Year', targetValue: target.midTermTarget, description: target.midTermDescription, budget: target.midTermBudget },
-    { id: 'q3', label: 'Q3 (Jan-Mar)', targetValue: target.q3Target, description: target.q3Description, budget: target.q3Budget, revised: target.q3RevisedTarget },
-    { id: 'q4', label: 'Q4 (Apr-Jun)', targetValue: target.q4Target, description: target.q4Description, budget: target.q4Budget, revised: target.q4RevisedTarget },
+    { id: 'q1', label: 'Q1 (Jul-Sep)', targetValue: target.q1Target },
+    { id: 'q2', label: 'Q2 (Oct-Dec)', targetValue: target.q2Target },
+    { id: 'mid', label: 'Mid-Year', targetValue: target.midTermTarget },
+    { id: 'q3', label: 'Q3 (Jan-Mar)', targetValue: target.q3Target },
+    { id: 'q4', label: 'Q4 (Apr-Jun)', targetValue: target.q4Target },
   ];
 
   return (
@@ -217,13 +205,9 @@ function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
             <Card key={q.id} className="p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-secondary-900 dark:text-white">{q.label}</span>
-                {q.revised && <Badge variant="warning" size="sm">Revised</Badge>}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Input label="Target" type="number" defaultValue={q.targetValue ?? ''} />
-                {q.revised !== undefined && <Input label="Revised" type="number" defaultValue={q.revised ?? ''} />}
-                <Input label="Description" defaultValue={q.description ?? ''} />
-                <Input label="Budget" type="number" defaultValue={q.budget ?? ''} />
               </div>
             </Card>
           ))}
@@ -250,57 +234,16 @@ function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
   );
 }
 
-function BudgetTab({ target }: { target: OPMSTarget }) {
-  return (
-    <div className="space-y-4">
-      <FormSection title="Budget Information">
-        <FormRow cols={2}>
-          <Select
-            label="Budget Source"
-            options={mockBudgetSources.map(b => ({ value: b.id, label: b.name }))}
-            defaultValue={target.budgetSource.id}
-          />
-          <Select
-            label="Budget Type"
-            options={mockBudgetTypes.map(b => ({ value: b.id, label: b.name }))}
-            defaultValue={target.budgetType.id}
-          />
-        </FormRow>
-      </FormSection>
-
-      <FormSection title="Quarterly Budget Allocation">
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: 'Q1 Budget', value: target.q1Budget },
-            { label: 'Q2 Budget', value: target.q2Budget },
-            { label: 'Q3 Budget', value: target.q3Budget },
-            { label: 'Q4 Budget', value: target.q4Budget },
-          ].map((q, i) => (
-            <div key={i} className="text-center p-2 bg-secondary-50 dark:bg-secondary-800 rounded">
-              <p className="text-xs text-secondary-500 mb-0.5">{q.label}</p>
-              <p className="text-sm font-semibold text-secondary-900 dark:text-white">R {(q.value ?? 0).toLocaleString()}</p>
-            </div>
-          ))}
-        </div>
-        <div className="text-center p-3 bg-primary-50 dark:bg-primary-900/20 rounded mt-2">
-          <p className="text-xs text-secondary-500">Total Annual Budget</p>
-          <p className="text-xl font-bold text-primary-600">R {((target.q1Budget ?? 0) + (target.q2Budget ?? 0) + (target.q3Budget ?? 0) + (target.q4Budget ?? 0)).toLocaleString()}</p>
-        </div>
-      </FormSection>
-    </div>
-  );
-}
-
-function SubmissionsTab({ target }: { target: OPMSTarget }) {
-  const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
-  const submissions = mockOPMSSubmissions.filter(s => s.target.id === target.id);
+function SubmissionsTab({ target }: { target: IPMSTarget }) {
+  const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
+  const submissions = mockIPMSSubmissions.filter(s => s.target.id === target.id);
 
   const columns = [
-    { id: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
-    { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
-    { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
-    { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
-    { id: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'pending_verification' ? 'warning' : 'default'}>{row.status.replace('_', ' ')}</Badge> },
+    { id: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
+    { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
+    { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
+    { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
+    { id: 'status', header: 'Status', accessor: (row: IPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'pending_verification' ? 'warning' : 'default'}>{row.status.replace('_', ' ')}</Badge> },
   ];
 
   if (selectedSubmission) {
@@ -311,7 +254,7 @@ function SubmissionsTab({ target }: { target: OPMSTarget }) {
             Back to Submissions
           </Button>
         </div>
-        <SubmissionWorkspace submission={selectedSubmission} submissionType="OPMS" />
+        <SubmissionWorkspace submission={selectedSubmission} submissionType="IPMS" />
       </div>
     );
   }
@@ -327,77 +270,6 @@ function SubmissionsTab({ target }: { target: OPMSTarget }) {
   );
 }
 
-function VoteNumbersTab({ target }: { target: OPMSTarget }) {
-  const voteNumbers = mockVoteNumbers.filter(v => v.department.id === target.department.id);
-
-  const columns = [
-    { id: 'number', header: 'Vote #', accessor: (row: typeof voteNumbers[0]) => row.number },
-    { id: 'name', header: 'Name', accessor: (row: typeof voteNumbers[0]) => row.name },
-    { id: 'amount', header: 'Amount', accessor: (row: typeof voteNumbers[0]) => `R ${row.amount?.toLocaleString() ?? 'N/A'}` },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-secondary-600">Vote numbers for {target.department.name}</p>
-        <Button variant="outline" size="sm">Add</Button>
-      </div>
-      <DataTable data={voteNumbers} columns={columns} emptyMessage="No vote numbers" getRowId={(row) => row.id} />
-    </div>
-  );
-}
-
-function RelatedIPMSTab({ target }: { target: OPMSTarget }) {
-  const ipmsTargets = mockIPMSTargets;
-
-  const columns = [
-    { id: 'indicator', header: 'Indicator', accessor: (row: IPMSTarget) => row.indicatorNumber },
-    { id: 'name', header: 'Name', accessor: (row: IPMSTarget) => row.targetName },
-    { id: 'target', header: 'Target', accessor: (row: IPMSTarget) => `${row.annualTarget} ${row.unitOfMeasure.name}` },
-    { id: 'status', header: 'Status', accessor: () => <Badge size="sm" variant="success">Active</Badge> },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-secondary-600">Linked IPMS targets</p>
-        <Button variant="primary" size="sm" icon={<Link2 className="w-3.5 h-3.5" />}>Link</Button>
-      </div>
-      <DataTable data={ipmsTargets} columns={columns} emptyMessage="No linked IPMS" getRowId={(row) => row.id} />
-    </div>
-  );
-}
-
-function AssigneesTab({ target }: { target: OPMSTarget }) {
-  const assignees = mockEmployees.slice(0, 3);
-
-  const columns = [
-    { id: 'name', header: 'Name', accessor: (row: Employee) => (
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-          <span className="text-[10px] font-medium text-primary-700">{row.firstName[0]}{row.lastName[0]}</span>
-        </div>
-        <div>
-          <p className="text-sm font-medium">{row.displayName}</p>
-          <p className="text-[10px] text-secondary-500">{row.email}</p>
-        </div>
-      </div>
-    )},
-    { id: 'department', header: 'Department', accessor: (row: Employee) => row.department?.name ?? '-' },
-    { id: 'position', header: 'Position', accessor: (row: Employee) => row.position?.title ?? '-' },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-secondary-600">Additional assignees</p>
-        <Button variant="outline" size="sm">Add</Button>
-      </div>
-      <DataTable data={assignees} columns={columns} emptyMessage="No assignees" getRowId={(row) => row.id} />
-    </div>
-  );
-}
-
 function AttachmentsTab() {
   return <FileUpload documentTypes={[{ value: 'strategy', label: 'Strategy' }, { value: 'budget', label: 'Budget' }]} />;
 }
@@ -406,8 +278,6 @@ function HistoryTab() {
   const historyItems = [
     { action: 'Created', by: 'Sarah Ndlovu', date: '2024-07-15', details: 'Initial target creation' },
     { action: 'Updated', by: 'Sarah Ndlovu', date: '2024-08-20', details: 'Updated Q3 target value' },
-    { action: 'Approved', by: 'Thabo Mokoena', date: '2024-08-22', details: 'Target approved' },
-    { action: 'Submission', by: 'Nomsa Dlamini', date: '2024-09-28', details: 'Q1 submission completed' },
   ];
 
   return (
@@ -430,21 +300,17 @@ function HistoryTab() {
   );
 }
 
-export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
+export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const { setCurrentPath } = useApp();
   const [activeTab, setActiveTab] = useState('general');
 
-  const target = mockOPMSTargets.find(t => t.id === targetId) || mockOPMSTargets[0];
+  const target = mockIPMSTargets.find(t => t.id === targetId) || mockIPMSTargets[0];
 
   const tabs = [
     { id: 'general', label: 'General', icon: <FileText className="w-3.5 h-3.5" /> },
     { id: 'strategy', label: 'Strategy', icon: <Target className="w-3.5 h-3.5" /> },
     { id: 'quarterly', label: 'Quarterly', icon: <TrendingUp className="w-3.5 h-3.5" /> },
-    { id: 'budget', label: 'Budget', icon: <DollarSign className="w-3.5 h-3.5" /> },
-    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: 4 },
-    { id: 'votes', label: 'Votes', icon: <Layers className="w-3.5 h-3.5" /> },
-    { id: 'ipms', label: 'IPMS', icon: <Link2 className="w-3.5 h-3.5" />, badge: 2 },
-    { id: 'assignees', label: 'Assignees', icon: <Users className="w-3.5 h-3.5" /> },
+    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: 2 },
     { id: 'attachments', label: 'Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
     { id: 'history', label: 'Audit', icon: <History className="w-3.5 h-3.5" /> },
   ];
@@ -454,11 +320,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'general': return <GeneralInfoTab target={target} />;
       case 'strategy': return <StrategyTab target={target} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
-      case 'budget': return <BudgetTab target={target} />;
       case 'submissions': return <SubmissionsTab target={target} />;
-      case 'votes': return <VoteNumbersTab target={target} />;
-      case 'ipms': return <RelatedIPMSTab target={target} />;
-      case 'assignees': return <AssigneesTab target={target} />;
       case 'attachments': return <AttachmentsTab />;
       case 'history': return <HistoryTab />;
       default: return <GeneralInfoTab target={target} />;
@@ -466,18 +328,18 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   };
 
   return (
-    <AppShell title="OPMS Target Detail" subtitle={target.targetName}>
+    <AppShell title="IPMS Target Detail" subtitle={target.targetName}>
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setCurrentPath('/opms/targets')} className="p-1.5 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
+            <button onClick={() => setCurrentPath('/ipms/targets')} className="p-1.5 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
               <ArrowLeft className="w-4 h-4 text-secondary-500" />
             </button>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-secondary-900 dark:text-white">{target.indicatorNumber}</h2>
-                {target.isRevised ? <Badge size="sm" variant="warning">Revised</Badge> : target.isWithdrawn ? <Badge size="sm" variant="error">Withdrawn</Badge> : <Badge size="sm" variant="success">Active</Badge>}
+                {target.isRevised ? <Badge size="sm" variant="warning">Revised</Badge> : <Badge size="sm" variant="success">Active</Badge>}
               </div>
               <p className="text-xs text-secondary-500">{target.targetName}</p>
             </div>
