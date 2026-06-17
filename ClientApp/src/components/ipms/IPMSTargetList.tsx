@@ -1,59 +1,58 @@
-import React, { useState } from 'react';
-import { Plus, Download, Eye, Edit2, Link2, Trash2, CalendarRange, Building2, BarChart3, FileText, UserSquare2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Download, Eye, Edit2, Link2, Trash2, CalendarRange, Building2, BarChart3, FileText, UserSquare2, Library } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Input, Select, Textarea, FormRow } from '../common/Form';
+import { Input, Select, Textarea, FormRow, FormPanel } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { mockIPMSTargets, mockDepartments, mockOPMSTargets, mockUnitsOfMeasure, mockPeriods, mockEmployees } from '../../data/mockData';
-import type { IPMSTarget } from '../../types';
+import {
+  createIpmsTarget as createIpmsTargetApi,
+  deleteIpmsTarget as deleteIpmsTargetApi,
+  getIpmsTargetTemplate as getIpmsTargetTemplateApi,
+  getIpmsTargets as getIpmsTargetsApi,
+  updateIpmsTarget as updateIpmsTargetApi,
+} from '../../api/api';
+import { mockDepartments, mockOPMSTargets, mockUnitsOfMeasure, mockPeriods, mockEmployees } from '../../data/mockData';
+import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../../types';
+import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
 
-function FormPanel({
-  title,
-  description,
-  icon,
-  children,
-  className = '',
-}: {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Card className={`rounded-2xl border border-secondary-200/80 bg-white shadow-sm ${className}`} padding="lg">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="rounded-xl bg-primary-50 p-2 text-primary-600 dark:bg-primary-900/40 dark:text-primary-300">
-          {icon}
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h3>
-          <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{description}</p>
-        </div>
-      </div>
-      <div className="space-y-4">{children}</div>
-    </Card>
-  );
+function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
+  return {
+    indicatorNumber: target.indicatorNumber,
+    targetName: target.targetName,
+    kpiDescription: target.kpiDescription,
+    departmentId: target.department?.id ? Number(target.department.id) : null,
+    unitId: target.unit?.id ? Number(target.unit.id) : null,
+    assignedUserId: target.assignedTo?.id ?? null,
+    relatedOpmsTargetId: target.relatedOPMSTarget?.id ?? null,
+    kpiId: undefined,
+    sourceTemplateId: target.sourceTemplateId ?? null,
+    sourceTemplateVersion: target.sourceTemplateVersion ?? null,
+    annualTarget: target.annualTarget,
+    weight: target.weight,
+    isArchived: target.isRevised,
+  };
 }
 
 export function IPMSTargetList() {
   const {
     setCurrentPath,
-    ipmsTargets,
-    createIPMSTarget,
-    updateIPMSTarget,
-    deleteIPMSTarget,
-    duplicateIPMSTarget,
     pushToast,
   } = useApp();
+  const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [editingTarget, setEditingTarget] = useState<IPMSTarget | null>(null);
   const [form, setForm] = useState({
+    sourceTemplateId: '',
+    sourceTemplateVersion: '',
     relatedOPMSTargetId: '',
     periodId: '',
     departmentId: '',
+    assignedToId: '',
+    supervisorId: '',
     unitOfMeasureId: '',
     indicatorNumber: '',
     targetName: '',
@@ -63,24 +62,63 @@ export function IPMSTargetList() {
     kpiDescription: '',
   });
 
+  const loadTargets = async () => {
+    setIsLoading(true);
+    const result = await getIpmsTargetsApi();
+    if (result.success && result.data) {
+      setIpmsTargets(result.data);
+    } else {
+      pushToast('error', result.message ?? 'Failed to load IPMS targets');
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    void loadTargets();
+  }, []);
+
   const handleRowClick = (row: IPMSTarget) => {
     setCurrentPath(`/ipms/targets/${row.id}`);
   };
 
   const openCreateModal = () => {
     setEditingTarget(null);
-    const template = ipmsTargets[0] ?? mockIPMSTargets[0];
     setForm({
-      relatedOPMSTargetId: template.relatedOPMSTarget?.id ?? '',
-      periodId: template.period.id,
-      departmentId: template.department.id,
-      unitOfMeasureId: template.unitOfMeasure.id,
+      sourceTemplateId: '',
+      sourceTemplateVersion: '',
+      relatedOPMSTargetId: '',
+      periodId: mockPeriods[0]?.id ?? '',
+      departmentId: mockDepartments[0]?.id ?? '',
+      assignedToId: '',
+      supervisorId: '',
+      unitOfMeasureId: mockUnitsOfMeasure[0]?.id ?? '',
       indicatorNumber: '',
       targetName: '',
-      annualTarget: String(template.annualTarget),
-      baseline: String(template.baseline),
-      weight: String(template.weight),
+      annualTarget: '0',
+      baseline: '0',
+      weight: '0',
       kpiDescription: '',
+    });
+    setShowCreateModal(true);
+  };
+
+  const openCreateFromTemplate = (template: IpmsTargetTemplate) => {
+    setEditingTarget(null);
+    setForm({
+      sourceTemplateId: template.id,
+      sourceTemplateVersion: String(template.version),
+      relatedOPMSTargetId: '',
+      periodId: mockPeriods[0]?.id ?? '',
+      departmentId: template.department?.id ?? mockDepartments[0]?.id ?? '',
+      assignedToId: '',
+      supervisorId: '',
+      unitOfMeasureId: template.unitOfMeasure.id,
+      indicatorNumber: template.templateCode,
+      targetName: template.targetName,
+      annualTarget: String(template.annualTarget),
+      baseline: '0',
+      weight: String(template.weight),
+      kpiDescription: template.kpiDescription,
     });
     setShowCreateModal(true);
   };
@@ -88,9 +126,13 @@ export function IPMSTargetList() {
   const openEditModal = (target: IPMSTarget) => {
     setEditingTarget(target);
     setForm({
+      sourceTemplateId: target.sourceTemplateId ?? '',
+      sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
       relatedOPMSTargetId: target.relatedOPMSTarget?.id ?? '',
       periodId: target.period.id,
       departmentId: target.department.id,
+      assignedToId: target.assignedTo?.id ?? '',
+      supervisorId: target.assignedTo?.manager?.id ?? '',
       unitOfMeasureId: target.unitOfMeasure.id,
       indicatorNumber: target.indicatorNumber,
       targetName: target.targetName,
@@ -102,21 +144,66 @@ export function IPMSTargetList() {
     setShowCreateModal(true);
   };
 
-  const handleSaveTarget = () => {
-    const template = editingTarget ?? ipmsTargets[0] ?? mockIPMSTargets[0];
-    const department = mockDepartments.find(item => item.id === form.departmentId) ?? template.department;
-    const period = mockPeriods.find(item => item.id === form.periodId) ?? template.period;
-    const unitOfMeasure = mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId) ?? template.unitOfMeasure;
-    const assignedEmployee = mockEmployees.find(item => item.department?.id === department.id) ?? template.assignedTo ?? mockEmployees[0];
+  const createMultipleFromTemplates = async (templates: IpmsTargetTemplate[]) => {
+    const results = await Promise.all(
+      templates.map(template =>
+        createIpmsTargetApi({
+          indicatorNumber: template.templateCode,
+          targetName: template.targetName,
+          kpiDescription: template.kpiDescription,
+          departmentId: template.department?.id ? Number(template.department.id) : null,
+          unitId: null,
+          assignedUserId: null,
+          relatedOpmsTargetId: null,
+          kpiId: null,
+          sourceTemplateId: template.id,
+          sourceTemplateVersion: template.version,
+          annualTarget: template.annualTarget,
+          weight: template.weight,
+          isArchived: false,
+        }),
+      ),
+    );
+    const createdCount = results.filter(result => result.success).length;
+    if (createdCount > 0) {
+      pushToast('success', `${createdCount} IPMS target${createdCount === 1 ? '' : 's'} created from library`);
+      await loadTargets();
+    }
+  };
+
+  useEffect(() => {
+    const pendingTemplateId = localStorage.getItem('pending_ipms_template_id');
+    if (!pendingTemplateId) return;
+    localStorage.removeItem('pending_ipms_template_id');
+    const loadTemplate = async () => {
+      const result = await getIpmsTargetTemplateApi(pendingTemplateId);
+      if (result.success && result.data) {
+        openCreateFromTemplate(result.data);
+        return;
+      }
+      setShowLibraryModal(true);
+    };
+    void loadTemplate();
+  }, []);
+
+  const handleSaveTarget = async () => {
+    const template = editingTarget ?? ipmsTargets[0];
+    const department = mockDepartments.find(item => item.id === form.departmentId) ?? template?.department ?? mockDepartments[0];
+    const period = mockPeriods.find(item => item.id === form.periodId) ?? template?.period ?? mockPeriods[0];
+    const unitOfMeasure = mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId) ?? template?.unitOfMeasure ?? mockUnitsOfMeasure[0];
+    const assignedEmployee = mockEmployees.find(item => item.id === form.assignedToId) ?? mockEmployees.find(item => item.department?.id === department.id) ?? template?.assignedTo;
+    const supervisor = mockEmployees.find(item => item.id === form.supervisorId);
     const relatedOPMSTarget = mockOPMSTargets.find(item => item.id === form.relatedOPMSTargetId);
 
     const nextTarget: IPMSTarget = {
-      ...template,
+      ...(template ?? ipmsTargets[0]),
       id: editingTarget?.id ?? '',
+      sourceTemplateId: form.sourceTemplateId || undefined,
+      sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : undefined,
       department,
       period,
       unitOfMeasure,
-      assignedTo: assignedEmployee,
+      assignedTo: assignedEmployee ? { ...assignedEmployee, manager: supervisor } : assignedEmployee,
       relatedOPMSTarget,
       indicatorNumber: form.indicatorNumber,
       targetName: form.targetName,
@@ -127,11 +214,23 @@ export function IPMSTargetList() {
     };
 
     if (editingTarget) {
-      updateIPMSTarget(nextTarget);
-      pushToast('success', 'IPMS target updated');
+      const result = await updateIpmsTargetApi(editingTarget.id, buildPayloadFromTarget(nextTarget));
+      if (result.success) {
+        pushToast('success', 'IPMS target updated');
+        await loadTargets();
+      } else {
+        pushToast('error', result.message ?? 'Failed to update IPMS target');
+        return;
+      }
     } else {
-      createIPMSTarget(nextTarget);
-      pushToast('success', 'IPMS target created');
+      const result = await createIpmsTargetApi(buildPayloadFromTarget(nextTarget));
+      if (result.success) {
+        pushToast('success', 'IPMS target created');
+        await loadTargets();
+      } else {
+        pushToast('error', result.message ?? 'Failed to create IPMS target');
+        return;
+      }
     }
 
     setShowCreateModal(false);
@@ -162,6 +261,20 @@ export function IPMSTargetList() {
           <Badge variant="info">{row.relatedOPMSTarget.indicatorNumber}</Badge>
         ) : (
           <span className="text-secondary-400">Not linked</span>
+        )
+      ),
+    },
+    {
+      id: 'template',
+      header: 'Library Source',
+      accessor: (row: IPMSTarget) => (
+        row.sourceTemplateId ? (
+          <div>
+            <p className="text-sm text-secondary-700 dark:text-secondary-300">{row.sourceTemplateId}</p>
+            <p className="text-xs text-secondary-500 dark:text-secondary-400">v{row.sourceTemplateVersion ?? 1}</p>
+          </div>
+        ) : (
+          <span className="text-secondary-400">Manual</span>
         )
       ),
     },
@@ -214,8 +327,20 @@ export function IPMSTargetList() {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          duplicateIPMSTarget(row.id);
-          pushToast('success', 'IPMS target copied');
+          void (async () => {
+            const result = await createIpmsTargetApi(buildPayloadFromTarget({
+              ...row,
+              id: '',
+              indicatorNumber: `${row.indicatorNumber}-COPY`,
+              targetName: `${row.targetName} (Copy)`,
+            }));
+            if (result.success) {
+              pushToast('success', 'IPMS target copied');
+              await loadTargets();
+            } else {
+              pushToast('error', result.message ?? 'Failed to copy IPMS target');
+            }
+          })();
         }}
         className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700"
         title="Link to OPMS"
@@ -225,8 +350,15 @@ export function IPMSTargetList() {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          deleteIPMSTarget(row.id);
-          pushToast('success', 'IPMS target deleted');
+          void (async () => {
+            const result = await deleteIpmsTargetApi(row.id);
+            if (result.success) {
+              pushToast('success', 'IPMS target deleted');
+              await loadTargets();
+            } else {
+              pushToast('error', result.message ?? 'Failed to delete IPMS target');
+            }
+          })();
         }}
         className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20"
         title="Delete"
@@ -245,6 +377,9 @@ export function IPMSTargetList() {
             <Button variant="outline" icon={<Download className="w-4 h-4" />}>
               Export
             </Button>
+            <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
+              Create From IPMS Library
+            </Button>
             <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreateModal}>
               New IPMS Target
             </Button>
@@ -258,7 +393,7 @@ export function IPMSTargetList() {
             onRowClick={handleRowClick}
             actions={actions}
             searchPlaceholder="Search IPMS targets..."
-            emptyMessage="No IPMS targets found"
+          emptyMessage={isLoading ? 'Loading IPMS targets...' : 'No IPMS targets found'}
             getRowId={(row) => row.id}
           />
         </Card>
@@ -286,6 +421,7 @@ export function IPMSTargetList() {
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="info">{editingTarget ? 'Edit Mode' : 'New Record'}</Badge>
                   <Badge variant="default">IPMS</Badge>
+                  {form.sourceTemplateId && <Badge variant="primary">Linked To Template</Badge>}
                 </div>
               </div>
             </div>
@@ -296,6 +432,15 @@ export function IPMSTargetList() {
                 description="Select the planning period, organizational owner, and any related OPMS target."
                 icon={<CalendarRange className="h-5 w-5" />}
               >
+                <div className="rounded-xl border border-primary-100 bg-primary-50/80 px-4 py-3 dark:border-primary-900/40 dark:bg-primary-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-300">Template Source</p>
+                  <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">
+                    {form.sourceTemplateId ? `${form.sourceTemplateId} (v${form.sourceTemplateVersion || '1'})` : 'Manual target creation'}
+                  </p>
+                  <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">
+                    Templates provide reusable generic defaults. Live IPMS targets still require employee, supervisor, department, period, and related OPMS selection where needed.
+                  </p>
+                </div>
                 <Select
                   label="Link To OPMS Target"
                   options={[{ value: '', label: 'None' }, ...mockOPMSTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))]}
@@ -314,6 +459,30 @@ export function IPMSTargetList() {
                     options={mockDepartments.map(department => ({ value: department.id, label: department.name }))}
                     value={form.departmentId}
                     onChange={(e) => setForm(prev => ({ ...prev, departmentId: e.target.value }))}
+                  />
+                </FormRow>
+                <FormRow cols={2}>
+                  <Select
+                    label="Employee"
+                    options={[
+                      { value: '', label: 'Select employee' },
+                      ...mockEmployees
+                        .filter(employee => !form.departmentId || employee.department?.id === form.departmentId)
+                        .map(employee => ({ value: employee.id, label: employee.displayName })),
+                    ]}
+                    value={form.assignedToId}
+                    onChange={(e) => setForm(prev => ({ ...prev, assignedToId: e.target.value }))}
+                  />
+                  <Select
+                    label="Supervisor"
+                    options={[
+                      { value: '', label: 'Select supervisor' },
+                      ...mockEmployees
+                        .filter(employee => !form.departmentId || employee.department?.id === form.departmentId)
+                        .map(employee => ({ value: employee.id, label: employee.displayName })),
+                    ]}
+                    value={form.supervisorId}
+                    onChange={(e) => setForm(prev => ({ ...prev, supervisorId: e.target.value }))}
                   />
                 </FormRow>
                 <div className="rounded-xl border border-secondary-200 bg-secondary-50/70 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
@@ -430,9 +599,15 @@ export function IPMSTargetList() {
           </div>
           <div className="mt-6 flex justify-end gap-3 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="outline" onClick={() => { setShowCreateModal(false); setEditingTarget(null); }}>Cancel</Button>
-            <Button variant="primary" onClick={handleSaveTarget}>{editingTarget ? 'Save Changes' : 'Create Target'}</Button>
+            <Button variant="primary" onClick={() => { void handleSaveTarget(); }}>{editingTarget ? 'Save Changes' : 'Create Target'}</Button>
           </div>
         </Modal>
+        <IpmsTemplateSelectionModal
+          isOpen={showLibraryModal}
+          onClose={() => setShowLibraryModal(false)}
+          onSelect={openCreateFromTemplate}
+          onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
+        />
       </div>
     </AppShell>
   );

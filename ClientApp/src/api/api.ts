@@ -1,5 +1,6 @@
 import type {
   ApiResponse,
+  AuditTrailEntryDto,
   LoginRequest,
   LoginResponse,
   RefreshTokenRequest,
@@ -14,7 +15,52 @@ import type {
   MenuItem,
   LoginAuditLog,
   DemoUser,
+  RoleImplementationAuditRow,
+  AccessSimulationResult,
+  RoleAccessMatrixRow,
+  SystemCoverageAuditRow,
+  OPMSTarget,
+  IPMSTarget,
+  OPMSSubmission,
+  IPMSSubmission,
+  OpmsTargetTemplate,
+  IpmsTargetTemplate,
+  OpmsTargetTemplateDto,
+  IpmsTargetTemplateDto,
+  OpmsTargetDto,
+  IpmsTargetDto,
+  OpmsSubmissionDto,
+  IpmsSubmissionDto,
+  NotificationDto,
+  PoeFileDto,
+  SaveOpmsTargetTemplatePayload,
+  SaveIpmsTargetTemplatePayload,
+  SaveOpmsTargetPayload,
+  SaveIpmsTargetPayload,
+  SaveOpmsSubmissionPayload,
+  SaveIpmsSubmissionPayload,
+  SubmissionWorkflowActionPayload,
+  DueDateExtensionPayload,
+  TemplateQuarterlyTarget,
+  Quarter,
+  SubmissionStatus,
+  TargetUnitType,
 } from '../types';
+import {
+  mockBudgetSources,
+  mockBudgetTypes,
+  mockDepartments,
+  mockDepartmentUnits,
+  mockEmployees,
+  mockIPMSSubmissions,
+  mockIPMSTargets,
+  mockOPMSSubmissions,
+  mockOPMSTargets,
+  mockPeriods,
+  mockStrategicGoals,
+  mockStrategicObjectives,
+  mockUnitsOfMeasure,
+} from '../data/mockData';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -35,12 +81,341 @@ function clearTokens() {
   localStorage.removeItem('refresh_token');
 }
 
+function mapResponse<TIn, TOut>(
+  response: ApiResponse<TIn>,
+  mapper: (value: TIn) => TOut,
+): ApiResponse<TOut> {
+  if (!response.success || response.data === undefined) {
+    return response as unknown as ApiResponse<TOut>;
+  }
+
+  return {
+    ...response,
+    data: mapper(response.data),
+  };
+}
+
+function normalizeOptionalString(value?: string | null) {
+  return value?.trim() ? value : undefined;
+}
+
+function coerceTargetUnitType(value?: string | null): TargetUnitType {
+  const normalized = (value ?? '').trim() as TargetUnitType;
+  const knownTypes: TargetUnitType[] = [
+    'percentage',
+    'absolute_count',
+    'financial',
+    'area_based',
+    'volume_based',
+    'index_scores',
+    'ratios',
+    'time_based',
+    'binary',
+    'date',
+    'readiness_scale',
+    'qualitative',
+    'zero_based',
+    'reverse_cumulative',
+    'reverse_non_cumulative',
+    'binary_determination',
+  ];
+
+  return knownTypes.includes(normalized) ? normalized : 'absolute_count';
+}
+
+function coerceQuarter(value?: string | null): Quarter {
+  const normalized = (value ?? '').trim() as Quarter;
+  const knownQuarters: Quarter[] = ['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'];
+  return knownQuarters.includes(normalized) ? normalized : 'Q1';
+}
+
+function coerceSubmissionStatus(value?: string | null): SubmissionStatus {
+  const normalized = (value ?? '').trim() as SubmissionStatus;
+  const knownStatuses: SubmissionStatus[] = [
+    'draft',
+    'submitted',
+    'pending_verification',
+    'verified',
+    'verify_rejected',
+    'pending_approval',
+    'approved',
+    'rejected',
+    'reviewed',
+    'returned_for_info',
+    'audited',
+    'completed',
+  ];
+
+  return knownStatuses.includes(normalized) ? normalized : 'draft';
+}
+
+function parseJsonArray<T>(value?: string | null, fallback: T[] = []): T[] {
+  if (!value) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as T[] : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function pickUnitOfMeasure(name?: string | null) {
+  return mockUnitsOfMeasure.find(unit =>
+    unit.name.toLowerCase() === (name ?? '').toLowerCase() ||
+    unit.code.toLowerCase() === (name ?? '').toLowerCase(),
+  ) ?? mockUnitsOfMeasure[0];
+}
+
+function pickDepartment(id?: number | null, name?: string | null) {
+  return mockDepartments.find(department =>
+    (id !== null && id !== undefined && department.id === String(id)) ||
+    (!!name && department.name.toLowerCase() === name.toLowerCase()),
+  ) ?? {
+    ...mockDepartments[0],
+    id: id !== null && id !== undefined ? String(id) : mockDepartments[0]?.id ?? 'department-0',
+    name: name ?? mockDepartments[0]?.name ?? 'Unassigned Department',
+  };
+}
+
+function pickUnit(id?: number | null, name?: string | null, departmentId?: number | null) {
+  return mockDepartmentUnits.find(unit =>
+    (id !== null && id !== undefined && unit.id === String(id)) ||
+    (!!name && unit.name.toLowerCase() === name.toLowerCase()) ||
+    (departmentId !== null && departmentId !== undefined && unit.department.id === String(departmentId)),
+  );
+}
+
+function resolveQuarterlyTargets(value?: string | null): TemplateQuarterlyTarget[] {
+  return parseJsonArray<TemplateQuarterlyTarget>(value).map(item => ({
+    quarter: coerceQuarter(item.quarter),
+    target: item.target,
+    description: item.description,
+    budget: item.budget,
+  }));
+}
+
+function resolveTaskTemplates(value?: string | null) {
+  return parseJsonArray<string>(value).filter(Boolean);
+}
+
+function toOpmsTemplateModel(dto: OpmsTargetTemplateDto): OpmsTargetTemplate {
+  return {
+    id: String(dto.id),
+    templateCode: dto.templateCode,
+    templateName: dto.templateName,
+    indicatorNumber: dto.indicatorNumber,
+    targetName: dto.targetName,
+    kpiDescription: dto.kpiDescription,
+    baseline: dto.baseline,
+    annualTarget: dto.annualTarget,
+    annualTargetDescription: dto.annualTargetDescription ?? '',
+    targetUnitType: coerceTargetUnitType(dto.targetUnitType),
+    unitOfMeasure: pickUnitOfMeasure(dto.unitOfMeasure),
+    nationalKPA: dto.nationalKpa ?? '',
+    municipalKPA: dto.municipalKpa ?? '',
+    strategicGoal: mockStrategicGoals.find(goal => goal.name === dto.strategicGoal),
+    strategicObjective: mockStrategicObjectives.find(objective => objective.name === dto.strategicObjective),
+    performanceObjective: dto.performanceObjective ?? '',
+    outcome: normalizeOptionalString(dto.outcome),
+    output: normalizeOptionalString(dto.output),
+    priorityIssue: normalizeOptionalString(dto.priorityIssue),
+    budgetSource: mockBudgetSources.find(item => item.name === dto.budgetSource),
+    budgetType: mockBudgetTypes.find(item => item.name === dto.budgetType),
+    weight: dto.weight,
+    kpiType: dto.kpiType ?? '',
+    indicatorType: dto.indicatorType ?? '',
+    functionalArea: normalizeOptionalString(dto.functionalArea),
+    standardClassification: normalizeOptionalString(dto.standardClassification),
+    idpReference: normalizeOptionalString(dto.idpReference),
+    internalReference: normalizeOptionalString(dto.internalReference),
+    fmsLink: normalizeOptionalString(dto.fmsLink),
+    defaultQuarterlyTargets: resolveQuarterlyTargets(dto.defaultQuarterlyTargetsJson),
+    defaultBudgetInformation: normalizeOptionalString(dto.defaultBudgetInformation),
+    defaultPoeRequirements: normalizeOptionalString(dto.defaultPoeRequirements),
+    isActive: dto.isActive,
+    isArchived: dto.isArchived,
+    version: dto.version,
+    createdBy: dto.createdBy ?? 'System',
+    createdDate: dto.createdDate,
+  };
+}
+
+function toIpmsTemplateModel(dto: IpmsTargetTemplateDto): IpmsTargetTemplate {
+  return {
+    id: String(dto.id),
+    templateCode: dto.templateCode,
+    templateName: dto.templateName,
+    targetName: dto.targetName,
+    kpiDescription: dto.kpiDescription,
+    performanceArea: dto.performanceArea ?? '',
+    employeeLevel: dto.employeeLevel ?? '',
+    jobGrade: dto.jobGrade ?? '',
+    targetUnitType: coerceTargetUnitType(dto.targetUnitType),
+    unitOfMeasure: pickUnitOfMeasure(dto.unitOfMeasure),
+    annualTarget: dto.annualTarget,
+    annualTargetDescription: dto.annualTargetDescription ?? '',
+    weight: dto.weight,
+    defaultRatingMethod: normalizeOptionalString(dto.defaultRatingMethod),
+    defaultScoreScale: normalizeOptionalString(dto.defaultScoreScale),
+    defaultPoeRequirements: normalizeOptionalString(dto.defaultPoeRequirements),
+    defaultTaskTemplates: resolveTaskTemplates(dto.defaultTaskTemplatesJson),
+    linkedOpmsTargetRequired: dto.linkedOpmsTargetRequired,
+    functionalArea: normalizeOptionalString(dto.functionalArea),
+    isActive: dto.isActive,
+    isArchived: dto.isArchived,
+    version: dto.version,
+    createdBy: dto.createdBy ?? 'System',
+    createdDate: dto.createdDate,
+  };
+}
+
+function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
+  const baseTarget = mockOPMSTargets[0];
+  return {
+    ...baseTarget,
+    id: dto.id,
+    sourceTemplateId: dto.sourceTemplateId ?? undefined,
+    sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
+    department: pickDepartment(dto.departmentId, dto.departmentName),
+    unit: pickUnit(dto.unitId, dto.unitName, dto.departmentId),
+    indicatorNumber: dto.indicatorNumber,
+    targetName: dto.targetName,
+    kpiDescription: dto.kpiDescription,
+    baseline: dto.baseline,
+    annualTarget: dto.annualTarget,
+    weight: dto.weight,
+    isWithdrawn: dto.isArchived,
+    createdAt: dto.createdAt as never,
+  } as OPMSTarget;
+}
+
+function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
+  const baseTarget = mockIPMSTargets[0];
+  return {
+    ...baseTarget,
+    id: dto.id,
+    sourceTemplateId: dto.sourceTemplateId ?? undefined,
+    sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
+    department: pickDepartment(dto.departmentId, dto.departmentName),
+    unit: pickUnit(dto.unitId, dto.unitName, dto.departmentId),
+    relatedOPMSTarget: dto.relatedOpmsTargetId ? mockOPMSTargets.find(target => target.id === dto.relatedOpmsTargetId) : undefined,
+    indicatorNumber: dto.indicatorNumber,
+    targetName: dto.targetName,
+    kpiDescription: dto.kpiDescription,
+    annualTarget: dto.annualTarget,
+    weight: dto.weight,
+    isRevised: dto.isArchived,
+    createdAt: dto.createdAt as never,
+  } as IPMSTarget;
+}
+
+function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): OPMSSubmission {
+  const baseSubmission = mockOPMSSubmissions[0];
+  const target = targets.find(item => item.id === dto.opmsTargetId) ?? baseSubmission?.target ?? mockOPMSTargets[0];
+  return {
+    ...baseSubmission,
+    id: dto.id,
+    target,
+    quarter: coerceQuarter(dto.quarter),
+    dueDate: dto.dueDate ?? new Date().toISOString(),
+    actual: dto.actual ?? 0,
+    actualDescription: dto.actualDescription ?? undefined,
+    varianceReason: dto.varianceReason ?? undefined,
+    correctiveMeasure: dto.correctiveMeasure ?? undefined,
+    status: coerceSubmissionStatus(dto.status),
+    submittedAt: dto.submittedAt ?? undefined,
+  };
+}
+
+function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): IPMSSubmission {
+  const baseSubmission = mockIPMSSubmissions[0];
+  const target = targets.find(item => item.id === dto.ipmsTargetId) ?? baseSubmission?.target ?? mockIPMSTargets[0];
+  return {
+    ...baseSubmission,
+    id: dto.id,
+    target,
+    quarter: coerceQuarter(dto.quarter),
+    dueDate: dto.dueDate ?? new Date().toISOString(),
+    actual: dto.actual ?? 0,
+    actualDescription: dto.actualDescription ?? undefined,
+    varianceReason: dto.varianceReason ?? undefined,
+    correctiveMeasure: dto.correctiveMeasure ?? undefined,
+    status: coerceSubmissionStatus(dto.status),
+    submittedAt: dto.submittedAt ?? undefined,
+  };
+}
+
+function toAttachmentModel(dto: PoeFileDto) {
+  const uploadedBy = mockEmployees.find(employee => employee.id === dto.uploadedByUserId)
+    ?? mockEmployees.find(employee => employee.displayName === dto.uploadedByName)
+    ?? mockEmployees[0];
+
+  return {
+    id: dto.id,
+    fileName: dto.fileName,
+    fileSize: dto.sizeInBytes,
+    fileType: dto.contentType ?? 'application/octet-stream',
+    uploadedBy,
+    uploadedAt: dto.uploadedAt,
+    documentType: 'evidence',
+    url: dto.url,
+  };
+}
+
+function toOpmsTemplatePayload(template: SaveOpmsTargetTemplatePayload): SaveOpmsTargetTemplatePayload {
+  return {
+    ...template,
+    annualTargetDescription: template.annualTargetDescription ?? null,
+    unitOfMeasure: template.unitOfMeasure ?? null,
+    nationalKpa: template.nationalKpa ?? null,
+    municipalKpa: template.municipalKpa ?? null,
+    strategicGoal: template.strategicGoal ?? null,
+    strategicObjective: template.strategicObjective ?? null,
+    performanceObjective: template.performanceObjective ?? null,
+    outcome: template.outcome ?? null,
+    output: template.output ?? null,
+    priorityIssue: template.priorityIssue ?? null,
+    budgetSource: template.budgetSource ?? null,
+    budgetType: template.budgetType ?? null,
+    kpiType: template.kpiType ?? null,
+    indicatorType: template.indicatorType ?? null,
+    functionalArea: template.functionalArea ?? null,
+    standardClassification: template.standardClassification ?? null,
+    idpReference: template.idpReference ?? null,
+    internalReference: template.internalReference ?? null,
+    fmsLink: template.fmsLink ?? null,
+    defaultQuarterlyTargetsJson: template.defaultQuarterlyTargetsJson ?? null,
+    defaultBudgetInformation: template.defaultBudgetInformation ?? null,
+    defaultPoeRequirements: template.defaultPoeRequirements ?? null,
+  };
+}
+
+function toIpmsTemplatePayload(template: SaveIpmsTargetTemplatePayload): SaveIpmsTargetTemplatePayload {
+  return {
+    ...template,
+    performanceArea: template.performanceArea ?? null,
+    employeeLevel: template.employeeLevel ?? null,
+    jobGrade: template.jobGrade ?? null,
+    unitOfMeasure: template.unitOfMeasure ?? null,
+    annualTargetDescription: template.annualTargetDescription ?? null,
+    defaultRatingMethod: template.defaultRatingMethod ?? null,
+    defaultScoreScale: template.defaultScoreScale ?? null,
+    defaultPoeRequirements: template.defaultPoeRequirements ?? null,
+    defaultTaskTemplatesJson: template.defaultTaskTemplatesJson ?? null,
+    functionalArea: template.functionalArea ?? null,
+  };
+}
+
 async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
+  const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   };
 
@@ -59,7 +434,7 @@ async function fetchApi<T>(
       if (refreshResult.success) {
         // Retry the original request with new token
         const retryHeaders: Record<string, string> = {
-          'Content-Type': 'application/json',
+          ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
           ...(options.headers as Record<string, string>),
           'Authorization': `Bearer ${accessToken}`,
         };
@@ -96,6 +471,10 @@ async function patch<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T
 
 async function del<T>(endpoint: string): Promise<ApiResponse<T>> {
   return fetchApi<T>(endpoint, { method: 'DELETE' });
+}
+
+async function postForm<T>(endpoint: string, body: FormData): Promise<ApiResponse<T>> {
+  return fetchApi<T>(endpoint, { method: 'POST', body });
 }
 
 async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
@@ -243,4 +622,281 @@ export async function deletePermission(id: number): Promise<ApiResponse<boolean>
 
 export async function getLoginAuditLogs(take = 200): Promise<ApiResponse<LoginAuditLog[]>> {
   return get<LoginAuditLog[]>(`/audit/login-logs?take=${take}`);
+}
+
+export async function getRoleImplementationAudit(): Promise<ApiResponse<RoleImplementationAuditRow[]>> {
+  return get<RoleImplementationAuditRow[]>('/role-implementation-audit');
+}
+
+export async function getRoleAccessMatrix(): Promise<ApiResponse<RoleAccessMatrixRow[]>> {
+  return get<RoleAccessMatrixRow[]>('/access/role-access-matrix');
+}
+
+export async function getSystemCoverageAudit(): Promise<ApiResponse<SystemCoverageAuditRow[]>> {
+  return get<SystemCoverageAuditRow[]>('/access/system-coverage-audit');
+}
+
+export async function simulateAccess(payload: {
+  userId: string;
+  role?: string;
+  departmentId?: number | null;
+  unitId?: number | null;
+  targetId?: string | null;
+  kpiId?: string | null;
+  projectId?: string | null;
+  taskId?: string | null;
+  permissionCode: string;
+}): Promise<ApiResponse<AccessSimulationResult>> {
+  return post<AccessSimulationResult>('/access/simulate', payload);
+}
+
+export async function getOpmsTargetTemplates(): Promise<ApiResponse<OpmsTargetTemplate[]>> {
+  const response = await get<OpmsTargetTemplateDto[]>('/opms-target-library');
+  return mapResponse(response, items => items.map(toOpmsTemplateModel));
+}
+
+export async function getOpmsTargetTemplate(id: string | number): Promise<ApiResponse<OpmsTargetTemplate>> {
+  const response = await get<OpmsTargetTemplateDto>(`/opms-target-library/${id}`);
+  return mapResponse(response, toOpmsTemplateModel);
+}
+
+export async function createOpmsTargetTemplate(payload: SaveOpmsTargetTemplatePayload): Promise<ApiResponse<OpmsTargetTemplate>> {
+  const response = await post<OpmsTargetTemplateDto>('/opms-target-library', toOpmsTemplatePayload(payload));
+  return mapResponse(response, toOpmsTemplateModel);
+}
+
+export async function updateOpmsTargetTemplate(id: string | number, payload: SaveOpmsTargetTemplatePayload): Promise<ApiResponse<OpmsTargetTemplate>> {
+  const response = await put<OpmsTargetTemplateDto>(`/opms-target-library/${id}`, toOpmsTemplatePayload(payload));
+  return mapResponse(response, toOpmsTemplateModel);
+}
+
+export async function archiveOpmsTargetTemplate(id: string | number): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/opms-target-library/${id}`);
+}
+
+export async function duplicateOpmsTargetTemplate(id: string | number): Promise<ApiResponse<OpmsTargetTemplate>> {
+  const response = await post<OpmsTargetTemplateDto>(`/opms-target-library/${id}/duplicate`);
+  return mapResponse(response, toOpmsTemplateModel);
+}
+
+export async function getIpmsTargetTemplates(): Promise<ApiResponse<IpmsTargetTemplate[]>> {
+  const response = await get<IpmsTargetTemplateDto[]>('/ipms-target-library');
+  return mapResponse(response, items => items.map(toIpmsTemplateModel));
+}
+
+export async function getIpmsTargetTemplate(id: string | number): Promise<ApiResponse<IpmsTargetTemplate>> {
+  const response = await get<IpmsTargetTemplateDto>(`/ipms-target-library/${id}`);
+  return mapResponse(response, toIpmsTemplateModel);
+}
+
+export async function createIpmsTargetTemplate(payload: SaveIpmsTargetTemplatePayload): Promise<ApiResponse<IpmsTargetTemplate>> {
+  const response = await post<IpmsTargetTemplateDto>('/ipms-target-library', toIpmsTemplatePayload(payload));
+  return mapResponse(response, toIpmsTemplateModel);
+}
+
+export async function updateIpmsTargetTemplate(id: string | number, payload: SaveIpmsTargetTemplatePayload): Promise<ApiResponse<IpmsTargetTemplate>> {
+  const response = await put<IpmsTargetTemplateDto>(`/ipms-target-library/${id}`, toIpmsTemplatePayload(payload));
+  return mapResponse(response, toIpmsTemplateModel);
+}
+
+export async function archiveIpmsTargetTemplate(id: string | number): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/ipms-target-library/${id}`);
+}
+
+export async function duplicateIpmsTargetTemplate(id: string | number): Promise<ApiResponse<IpmsTargetTemplate>> {
+  const response = await post<IpmsTargetTemplateDto>(`/ipms-target-library/${id}/duplicate`);
+  return mapResponse(response, toIpmsTemplateModel);
+}
+
+export async function getOpmsTargets(): Promise<ApiResponse<OPMSTarget[]>> {
+  const response = await get<OpmsTargetDto[]>('/opms-targets');
+  return mapResponse(response, items => items.map(toOpmsTargetModel));
+}
+
+export async function getOpmsTarget(id: string): Promise<ApiResponse<OPMSTarget>> {
+  const response = await get<OpmsTargetDto>(`/opms-targets/${id}`);
+  return mapResponse(response, toOpmsTargetModel);
+}
+
+export async function createOpmsTarget(payload: SaveOpmsTargetPayload): Promise<ApiResponse<OPMSTarget>> {
+  const response = await post<OpmsTargetDto>('/opms-targets', payload);
+  return mapResponse(response, toOpmsTargetModel);
+}
+
+export async function updateOpmsTarget(id: string, payload: SaveOpmsTargetPayload): Promise<ApiResponse<OPMSTarget>> {
+  const response = await put<OpmsTargetDto>(`/opms-targets/${id}`, payload);
+  return mapResponse(response, toOpmsTargetModel);
+}
+
+export async function deleteOpmsTarget(id: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/opms-targets/${id}`);
+}
+
+export async function getIpmsTargets(): Promise<ApiResponse<IPMSTarget[]>> {
+  const response = await get<IpmsTargetDto[]>('/ipms-targets');
+  return mapResponse(response, items => items.map(toIpmsTargetModel));
+}
+
+export async function getIpmsTarget(id: string): Promise<ApiResponse<IPMSTarget>> {
+  const response = await get<IpmsTargetDto>(`/ipms-targets/${id}`);
+  return mapResponse(response, toIpmsTargetModel);
+}
+
+export async function createIpmsTarget(payload: SaveIpmsTargetPayload): Promise<ApiResponse<IPMSTarget>> {
+  const response = await post<IpmsTargetDto>('/ipms-targets', payload);
+  return mapResponse(response, toIpmsTargetModel);
+}
+
+export async function updateIpmsTarget(id: string, payload: SaveIpmsTargetPayload): Promise<ApiResponse<IPMSTarget>> {
+  const response = await put<IpmsTargetDto>(`/ipms-targets/${id}`, payload);
+  return mapResponse(response, toIpmsTargetModel);
+}
+
+export async function deleteIpmsTarget(id: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/ipms-targets/${id}`);
+}
+
+export async function getOpmsSubmissions(): Promise<ApiResponse<OPMSSubmission[]>> {
+  const targetsResult = await getOpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await get<OpmsSubmissionDto[]>('/opms-submissions');
+  return mapResponse(response, items => items.map(item => toOpmsSubmissionModel(item, targets)));
+}
+
+export async function getOpmsSubmission(id: string): Promise<ApiResponse<OPMSSubmission>> {
+  const targetsResult = await getOpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await get<OpmsSubmissionDto>(`/opms-submissions/${id}`);
+  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+}
+
+export async function createOpmsSubmission(payload: SaveOpmsSubmissionPayload): Promise<ApiResponse<OPMSSubmission>> {
+  const targetsResult = await getOpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await post<OpmsSubmissionDto>('/opms-submissions', payload);
+  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+}
+
+export async function updateOpmsSubmission(id: string, payload: SaveOpmsSubmissionPayload): Promise<ApiResponse<OPMSSubmission>> {
+  const targetsResult = await getOpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await put<OpmsSubmissionDto>(`/opms-submissions/${id}`, payload);
+  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+}
+
+export async function deleteOpmsSubmission(id: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/opms-submissions/${id}`);
+}
+
+export async function applyOpmsSubmissionWorkflowAction(
+  id: string,
+  action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
+  payload: SubmissionWorkflowActionPayload,
+): Promise<ApiResponse<OPMSSubmission>> {
+  const targetsResult = await getOpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await post<OpmsSubmissionDto>(`/opms-submissions/${id}/${action}`, payload);
+  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+}
+
+export async function extendOpmsSubmissionDueDate(id: string, payload: DueDateExtensionPayload): Promise<ApiResponse<OPMSSubmission>> {
+  const targetsResult = await getOpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await post<OpmsSubmissionDto>(`/opms-submissions/${id}/extend-due-date`, payload);
+  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+}
+
+export async function getOpmsSubmissionAttachments(id: string) {
+  const response = await get<PoeFileDto[]>(`/opms-submissions/${id}/attachments`);
+  return mapResponse(response, items => items.map(toAttachmentModel));
+}
+
+export async function uploadOpmsSubmissionAttachment(id: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await postForm<PoeFileDto>(`/opms-submissions/${id}/attachments`, formData);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function deleteOpmsSubmissionAttachment(id: string, attachmentId: string) {
+  return del<boolean>(`/opms-submissions/${id}/attachments/${attachmentId}`);
+}
+
+export async function getIpmsSubmissions(): Promise<ApiResponse<IPMSSubmission[]>> {
+  const targetsResult = await getIpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await get<IpmsSubmissionDto[]>('/ipms-submissions');
+  return mapResponse(response, items => items.map(item => toIpmsSubmissionModel(item, targets)));
+}
+
+export async function getIpmsSubmission(id: string): Promise<ApiResponse<IPMSSubmission>> {
+  const targetsResult = await getIpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await get<IpmsSubmissionDto>(`/ipms-submissions/${id}`);
+  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+}
+
+export async function createIpmsSubmission(payload: SaveIpmsSubmissionPayload): Promise<ApiResponse<IPMSSubmission>> {
+  const targetsResult = await getIpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await post<IpmsSubmissionDto>('/ipms-submissions', payload);
+  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+}
+
+export async function updateIpmsSubmission(id: string, payload: SaveIpmsSubmissionPayload): Promise<ApiResponse<IPMSSubmission>> {
+  const targetsResult = await getIpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await put<IpmsSubmissionDto>(`/ipms-submissions/${id}`, payload);
+  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+}
+
+export async function deleteIpmsSubmission(id: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/ipms-submissions/${id}`);
+}
+
+export async function applyIpmsSubmissionWorkflowAction(
+  id: string,
+  action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
+  payload: SubmissionWorkflowActionPayload,
+): Promise<ApiResponse<IPMSSubmission>> {
+  const targetsResult = await getIpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await post<IpmsSubmissionDto>(`/ipms-submissions/${id}/${action}`, payload);
+  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+}
+
+export async function extendIpmsSubmissionDueDate(id: string, payload: DueDateExtensionPayload): Promise<ApiResponse<IPMSSubmission>> {
+  const targetsResult = await getIpmsTargets();
+  const targets = targetsResult.data ?? [];
+  const response = await post<IpmsSubmissionDto>(`/ipms-submissions/${id}/extend-due-date`, payload);
+  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+}
+
+export async function getIpmsSubmissionAttachments(id: string) {
+  const response = await get<PoeFileDto[]>(`/ipms-submissions/${id}/attachments`);
+  return mapResponse(response, items => items.map(toAttachmentModel));
+}
+
+export async function uploadIpmsSubmissionAttachment(id: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await postForm<PoeFileDto>(`/ipms-submissions/${id}/attachments`, formData);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function deleteIpmsSubmissionAttachment(id: string, attachmentId: string) {
+  return del<boolean>(`/ipms-submissions/${id}/attachments/${attachmentId}`);
+}
+
+export async function getNotifications(includeAll = false): Promise<ApiResponse<NotificationDto[]>> {
+  const suffix = includeAll ? '?includeAll=true' : '';
+  return get<NotificationDto[]>(`/notifications${suffix}`);
+}
+
+export async function markNotificationRead(id: string): Promise<ApiResponse<boolean>> {
+  return patch<boolean>(`/notifications/${id}/read`);
+}
+
+export async function getAuditTrails(take = 200): Promise<ApiResponse<AuditTrailEntryDto[]>> {
+  return get<AuditTrailEntryDto[]>(`/audit/trails?take=${take}`);
 }

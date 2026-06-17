@@ -27,3 +27,210 @@ public record UserPermissionOverrideResponse(int PermissionId, string Code, bool
 public record UserPermissionsResponse(string[] FromRoles, UserPermissionOverrideResponse[] Overrides, string[] Effective);
 
 public record PermissionGroupResponse(string Module, string Feature, PermissionResponse[] Permissions);
+
+public record DepartmentResponse(int Id, string Code, string Name, string? Description);
+
+public record UnitResponse(int Id, int DepartmentId, string DepartmentName, string Code, string Name);
+
+public record UserScopeResponse(int Id, string ScopeType, int? DepartmentId, string? DepartmentName, int? UnitId, string? UnitName, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
+
+public record UserAssignmentResponse(int Id, string AssignmentType, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
+
+public record RoleImplementationAuditResponse(
+    string Role,
+    bool Dashboard,
+    bool Menus,
+    bool Crud,
+    bool ScopeFiltering,
+    bool Notifications,
+    bool Reports,
+    bool AuditTrail,
+    bool Complete);
+
+public record AccessSimulationResponse(
+    bool Allowed,
+    string Reason,
+    string[] EffectivePermissions,
+    string[] MatchedScopes,
+    string[] MatchedAssignments);
+
+public record RoleAccessMatrixResponse(
+    string Role,
+    string[] Permissions,
+    string[] Scope,
+    string[] Menus,
+    string[] AllowedActions,
+    string[] Reports,
+    string? TestUser);
+
+public record SystemCoverageAuditResponse(
+    string Role,
+    bool SeededUser,
+    bool Dashboard,
+    bool Menu,
+    bool Permissions,
+    bool ScopeFiltering,
+    bool Crud,
+    bool WorkflowActions,
+    bool Reports,
+    bool AuditTrail,
+    bool Notifications);
+
+public record OpmsTargetTemplateResponse(
+    int Id,
+    string TemplateCode,
+    string TemplateName,
+    string IndicatorNumber,
+    string TargetName,
+    string KpiDescription,
+    decimal Baseline,
+    decimal AnnualTarget,
+    string? AnnualTargetDescription,
+    string TargetUnitType,
+    string? UnitOfMeasure,
+    string? NationalKpa,
+    string? MunicipalKpa,
+    string? StrategicGoal,
+    string? StrategicObjective,
+    string? PerformanceObjective,
+    string? Outcome,
+    string? Output,
+    string? PriorityIssue,
+    string? BudgetSource,
+    string? BudgetType,
+    decimal Weight,
+    string? KpiType,
+    string? IndicatorType,
+    string? FunctionalArea,
+    string? StandardClassification,
+    string? IdpReference,
+    string? InternalReference,
+    string? FmsLink,
+    string? DefaultQuarterlyTargetsJson,
+    string? DefaultBudgetInformation,
+    string? DefaultPoeRequirements,
+    bool IsActive,
+    bool IsArchived,
+    int Version,
+    string? CreatedBy,
+    DateTime CreatedDate);
+
+public record IpmsTargetTemplateResponse(
+    int Id,
+    string TemplateCode,
+    string TemplateName,
+    string TargetName,
+    string KpiDescription,
+    string? PerformanceArea,
+    string? EmployeeLevel,
+    string? JobGrade,
+    string TargetUnitType,
+    string? UnitOfMeasure,
+    decimal AnnualTarget,
+    string? AnnualTargetDescription,
+    decimal Weight,
+    string? DefaultRatingMethod,
+    string? DefaultScoreScale,
+    string? DefaultPoeRequirements,
+    string? DefaultTaskTemplatesJson,
+    bool LinkedOpmsTargetRequired,
+    string? FunctionalArea,
+    bool IsActive,
+    bool IsArchived,
+    int Version,
+    string? CreatedBy,
+    DateTime CreatedDate);
+
+public record OpmsTargetResponse(
+    string Id,
+    string IndicatorNumber,
+    string TargetName,
+    string KpiDescription,
+    int? DepartmentId,
+    string? DepartmentName,
+    int? UnitId,
+    string? UnitName,
+    string? AssignedUserId,
+    string? AssignedUserName,
+    string? KpiId,
+    string? SourceTemplateId,
+    int? SourceTemplateVersion,
+    decimal Baseline,
+    decimal AnnualTarget,
+    decimal Weight,
+    bool IsArchived,
+    DateTime CreatedAt);
+
+public record IpmsTargetResponse(
+    string Id,
+    string IndicatorNumber,
+    string TargetName,
+    string KpiDescription,
+    int? DepartmentId,
+    string? DepartmentName,
+    int? UnitId,
+    string? UnitName,
+    string? AssignedUserId,
+    string? AssignedUserName,
+    string? RelatedOpmsTargetId,
+    string? KpiId,
+    string? SourceTemplateId,
+    int? SourceTemplateVersion,
+    decimal AnnualTarget,
+    decimal Weight,
+    bool IsArchived,
+    DateTime CreatedAt);
+
+public record OpmsSubmissionResponse(
+    string Id,
+    string OpmsTargetId,
+    string TargetName,
+    string Quarter,
+    string Status,
+    decimal? Actual,
+    string? ActualDescription,
+    string? VarianceReason,
+    string? CorrectiveMeasure,
+    DateTime? SubmittedAt,
+    string? SubmittedByUserId,
+    string? SubmittedByName,
+    DateTime? DueDate,
+    DateTime CreatedAt);
+
+public record IpmsSubmissionResponse(
+    string Id,
+    string IpmsTargetId,
+    string TargetName,
+    string Quarter,
+    string Status,
+    decimal? Actual,
+    string? ActualDescription,
+    string? VarianceReason,
+    string? CorrectiveMeasure,
+    DateTime? SubmittedAt,
+    string? SubmittedByUserId,
+    string? SubmittedByName,
+    DateTime? DueDate,
+    DateTime CreatedAt);
+
+public record NotificationResponse(
+    string Id,
+    string UserId,
+    string Type,
+    string Title,
+    string Message,
+    string? EntityName,
+    string? EntityId,
+    bool IsRead,
+    DateTime CreatedAt);
+
+public record AuditTrailEntryResponse(
+    long Id,
+    string EntityName,
+    string EntityId,
+    string Action,
+    string? OldValue,
+    string? NewValue,
+    string ChangedBy,
+    DateTime ChangedAt,
+    string? IpAddress);

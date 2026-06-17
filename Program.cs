@@ -2,13 +2,14 @@ using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Persistence.Seed;
+using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Security.Claims;
 using System.Text;
 
@@ -25,22 +26,13 @@ builder.Services.AddSwaggerGen(c =>
         In = ParameterLocation.Header,
         Description = "Please enter JWT with Bearer into field",
         Name = "Authorization",
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    c.AddSecurityRequirement(document => new OpenApiSecurityRequirement
     {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>()
     });
 });
 
@@ -87,6 +79,8 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IAccessControlService, AccessControlService>();
+builder.Services.AddScoped<IWorkflowGovernanceService, WorkflowGovernanceService>();
 
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -128,15 +122,10 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.MapControllers();
-
-var clientDist = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
-
-if (Directory.Exists(clientDist))
-{
-    app.UseDefaultFiles();
-    app.UseStaticFiles();
-}
 
 app.MapFallback(async context =>
 {
@@ -150,7 +139,7 @@ app.MapFallback(async context =>
     }
 
     context.Response.ContentType = "text/plain; charset=utf-8";
-    await context.Response.WriteAsync("FTCERP frontend has not been built yet. Run npm install and npm run build in ClientApp.");
+    await context.Response.WriteAsync("FTCERP frontend has not been built yet. Run 'dotnet build' or 'dotnet publish' to generate the integrated frontend inside wwwroot.");
 });
 
 app.Run();
@@ -174,7 +163,7 @@ public sealed class PermissionHandler : AuthorizationHandler<PermissionRequireme
             return Task.CompletedTask;
         }
 
-        if (IsSystemAdministrator(context.User))
+        if (IsSuperAdmin(context.User))
         {
             context.Succeed(requirement);
             return Task.CompletedTask;
@@ -192,20 +181,10 @@ public sealed class PermissionHandler : AuthorizationHandler<PermissionRequireme
         return Task.CompletedTask;
     }
 
-    private static bool IsSystemAdministrator(ClaimsPrincipal user)
+    private static bool IsSuperAdmin(ClaimsPrincipal user)
     {
         var roles = user.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value);
-        var systemAdminRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Super Admin",
-            "System Admin",
-            "System Administrator",
-            "EPMS Admin",
-            "ICT Admin",
-            "ICT Sub-Admin"
-        };
-
-        return roles.Any(systemAdminRoles.Contains);
+        return SecurityModel.IsSuperAdmin(roles);
     }
 }
 

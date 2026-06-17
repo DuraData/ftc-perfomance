@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User, Bell, Shield, Palette, Globe, Save } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card, Badge } from '../ui';
@@ -6,29 +6,53 @@ import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
 
+type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
+
+const SETTINGS_TAB_STORAGE_KEY = 'settings_active_tab';
+const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: JSX.Element }[] = [
+  { id: 'profile', label: 'Profile', icon: <User className="w-3.5 h-3.5" /> },
+  { id: 'notifications', label: 'Notifications', icon: <Bell className="w-3.5 h-3.5" /> },
+  { id: 'appearance', label: 'Appearance', icon: <Palette className="w-3.5 h-3.5" /> },
+  { id: 'security', label: 'Security', icon: <Shield className="w-3.5 h-3.5" /> },
+];
+
+function readStoredSettingsTab(): SettingsTabId {
+  try {
+    const storedTab = localStorage.getItem(SETTINGS_TAB_STORAGE_KEY);
+    if (storedTab && SETTINGS_TABS.some(tab => tab.id === storedTab)) {
+      return storedTab as SettingsTabId;
+    }
+  } catch {
+    // ignore storage issues and fall back to the default tab
+  }
+
+  return 'profile';
+}
+
 function ProfileSettings() {
-  const { user } = useApp();
+  const { userProfile } = useApp();
+  const initials = `${userProfile?.firstName?.[0] ?? ''}${userProfile?.lastName?.[0] ?? ''}`.toUpperCase();
+  const fullName = userProfile?.fullName
+    ?? [userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(' ');
 
   return (
     <div className="space-y-3">
       <FormSection title="Personal">
         <FormRow cols={2}>
-          <Input label="First Name" defaultValue={user?.firstName} />
-          <Input label="Last Name" defaultValue={user?.lastName} />
+          <Input label="First Name" defaultValue={userProfile?.firstName} />
+          <Input label="Last Name" defaultValue={userProfile?.lastName} />
         </FormRow>
         <FormRow cols={2}>
-          <Input label="Display Name" defaultValue={user?.displayName} />
-          <Input label="Email" type="email" defaultValue={user?.email} />
+          <Input label="Display Name" defaultValue={userProfile?.firstName && userProfile?.lastName ? `${userProfile.firstName} ${userProfile.lastName}` : ''} />
+          <Input label="Email" type="email" defaultValue={userProfile?.email} />
         </FormRow>
       </FormSection>
       <FormSection title="Avatar">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center overflow-hidden">
-            {user?.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.displayName} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-lg font-bold text-primary-600">{user?.firstName[0]}{user?.lastName[0]}</span>
-            )}
+            <span className="text-lg font-bold text-primary-600" aria-label={fullName || 'User avatar'}>
+              {initials || 'U'}
+            </span>
           </div>
           <Button variant="outline" size="sm">Change</Button>
         </div>
@@ -149,14 +173,15 @@ function SecuritySettings() {
 }
 
 export function Settings() {
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(() => readStoredSettingsTab());
 
-  const tabs = [
-    { id: 'profile', label: 'Profile', icon: <User className="w-3.5 h-3.5" /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell className="w-3.5 h-3.5" /> },
-    { id: 'appearance', label: 'Appearance', icon: <Palette className="w-3.5 h-3.5" /> },
-    { id: 'security', label: 'Security', icon: <Shield className="w-3.5 h-3.5" /> },
-  ];
+  useEffect(() => {
+    try {
+      localStorage.setItem(SETTINGS_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // ignore storage issues and keep the current in-memory tab
+    }
+  }, [activeTab]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -171,7 +196,7 @@ export function Settings() {
   return (
     <AppShell title="Settings" subtitle="Account preferences">
       <div className="max-w-3xl mx-auto space-y-4">
-        <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="underline" />
+        <Tabs tabs={SETTINGS_TABS} activeTab={activeTab} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
         <Card>
           {renderTabContent()}
         </Card>

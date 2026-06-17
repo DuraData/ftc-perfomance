@@ -188,6 +188,122 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
+    [HttpGet("{id}/scopes")]
+    public async Task<ActionResult<ApiResponse<UserScopeResponse[]>>> GetUserScopes(string id)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound(new ApiResponse<UserScopeResponse[]>(false, null, "User not found"));
+
+        var scopes = await _context.UserScopes
+            .AsNoTracking()
+            .Where(scope => scope.UserId == id)
+            .Include(scope => scope.Department)
+            .Include(scope => scope.Unit)
+            .OrderBy(scope => scope.ScopeType)
+            .Select(scope => new UserScopeResponse(
+                scope.Id,
+                scope.ScopeType.ToString(),
+                scope.DepartmentId,
+                scope.Department != null ? scope.Department.Name : null,
+                scope.UnitId,
+                scope.Unit != null ? scope.Unit.Name : null,
+                scope.TargetId,
+                scope.KpiId,
+                scope.ProjectId,
+                scope.TaskId))
+            .ToArrayAsync();
+
+        return Ok(new ApiResponse<UserScopeResponse[]>(true, scopes));
+    }
+
+    [HttpPut("{id}/scopes")]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserScopes(string id, [FromBody] UpdateUserScopesRequest request)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+
+        var invalidScope = request.Scopes.FirstOrDefault(scope => !Enum.TryParse<ScopeType>(scope.ScopeType, true, out _));
+        if (invalidScope != null)
+        {
+            return BadRequest(new ApiResponse<bool>(false, false, $"Invalid scope type '{invalidScope.ScopeType}'"));
+        }
+
+        var existing = await _context.UserScopes.Where(scope => scope.UserId == id).ToListAsync();
+        _context.UserScopes.RemoveRange(existing);
+
+        foreach (var scope in request.Scopes)
+        {
+            _context.UserScopes.Add(new UserScope
+            {
+                UserId = id,
+                ScopeType = Enum.Parse<ScopeType>(scope.ScopeType, true),
+                DepartmentId = scope.DepartmentId,
+                UnitId = scope.UnitId,
+                TargetId = scope.TargetId,
+                KpiId = scope.KpiId,
+                ProjectId = scope.ProjectId,
+                TaskId = scope.TaskId
+            });
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new ApiResponse<bool>(true, true));
+    }
+
+    [HttpGet("{id}/assignments")]
+    public async Task<ActionResult<ApiResponse<UserAssignmentResponse[]>>> GetUserAssignments(string id)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound(new ApiResponse<UserAssignmentResponse[]>(false, null, "User not found"));
+
+        var assignments = await _context.UserAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.UserId == id)
+            .OrderBy(assignment => assignment.AssignmentType)
+            .Select(assignment => new UserAssignmentResponse(
+                assignment.Id,
+                assignment.AssignmentType.ToString(),
+                assignment.TargetId,
+                assignment.KpiId,
+                assignment.ProjectId,
+                assignment.TaskId))
+            .ToArrayAsync();
+
+        return Ok(new ApiResponse<UserAssignmentResponse[]>(true, assignments));
+    }
+
+    [HttpPut("{id}/assignments")]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserAssignments(string id, [FromBody] UpdateUserAssignmentsRequest request)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+
+        var invalidAssignment = request.Assignments.FirstOrDefault(assignment => !Enum.TryParse<AssignmentType>(assignment.AssignmentType, true, out _));
+        if (invalidAssignment != null)
+        {
+            return BadRequest(new ApiResponse<bool>(false, false, $"Invalid assignment type '{invalidAssignment.AssignmentType}'"));
+        }
+
+        var existing = await _context.UserAssignments.Where(assignment => assignment.UserId == id).ToListAsync();
+        _context.UserAssignments.RemoveRange(existing);
+
+        foreach (var assignment in request.Assignments)
+        {
+            _context.UserAssignments.Add(new UserAssignment
+            {
+                UserId = id,
+                AssignmentType = Enum.Parse<AssignmentType>(assignment.AssignmentType, true),
+                TargetId = assignment.TargetId,
+                KpiId = assignment.KpiId,
+                ProjectId = assignment.ProjectId,
+                TaskId = assignment.TaskId
+            });
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new ApiResponse<bool>(true, true));
+    }
+
     [HttpGet("{id}/permissions")]
     public async Task<ActionResult<ApiResponse<UserPermissionsResponse>>> GetUserPermissions(string id)
     {

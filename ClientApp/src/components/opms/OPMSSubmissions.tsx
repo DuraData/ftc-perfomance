@@ -1,28 +1,47 @@
-import { useMemo, useState } from 'react';
-import { Plus, Download, Eye, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Download, Eye, Trash2, FileText, CalendarRange } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Input, Select, FormRow } from '../common/Form';
+import { Input, Select, FormRow, FormHero, FormPanel } from '../common/Form';
 import {
   statusLabels,
 } from '../../data/mockData';
-import type { IPMSSubmission, OPMSSubmission } from '../../types';
+import type { IPMSSubmission, OPMSSubmission, OPMSTarget, IPMSTarget } from '../../types';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import { useApp } from '../../context/AppContext';
+import {
+  applyIpmsSubmissionWorkflowAction,
+  applyOpmsSubmissionWorkflowAction,
+  createIpmsSubmission,
+  createOpmsSubmission,
+  deleteIpmsSubmissionAttachment,
+  deleteIpmsSubmission,
+  deleteOpmsSubmissionAttachment,
+  deleteOpmsSubmission,
+  extendIpmsSubmissionDueDate,
+  extendOpmsSubmissionDueDate,
+  getIpmsSubmissionAttachments,
+  getIpmsSubmissions,
+  getIpmsTargets,
+  getOpmsSubmissionAttachments,
+  getOpmsSubmissions,
+  getOpmsTargets,
+  uploadIpmsSubmissionAttachment,
+  uploadOpmsSubmissionAttachment,
+  updateIpmsSubmission,
+  updateOpmsSubmission,
+} from '../../api/api';
 
 export function OPMSSubmissionsList() {
-  const {
-    opmsSubmissions,
-    opmsTargets,
-    createOPMSSubmission,
-    updateOPMSSubmission,
-    deleteOPMSSubmission,
-    pushToast,
-  } = useApp();
+  const { pushToast } = useApp();
+  const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
+  const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
   const [form, setForm] = useState({
     targetId: '',
     quarter: 'Q1',
@@ -33,6 +52,42 @@ export function OPMSSubmissionsList() {
     actualDescription: '',
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    const [targetsResult, submissionsResult] = await Promise.all([
+      getOpmsTargets(),
+      getOpmsSubmissions(),
+    ]);
+
+    if (targetsResult.success && targetsResult.data) {
+      setOpmsTargets(targetsResult.data);
+    } else {
+      pushToast('error', targetsResult.message ?? 'Failed to load OPMS targets');
+    }
+
+    if (submissionsResult.success && submissionsResult.data) {
+      setOpmsSubmissions(submissionsResult.data);
+    } else {
+      pushToast('error', submissionsResult.message ?? 'Failed to load OPMS submissions');
+    }
+
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const openSubmission = async (submission: OPMSSubmission) => {
+    const attachmentsResult = await getOpmsSubmissionAttachments(submission.id);
+    const hydrated = {
+      ...submission,
+      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
+    };
+    setSelectedSubmission(hydrated);
+    setOpmsSubmissions(prev => prev.map(item => item.id === submission.id ? hydrated : item));
+  };
 
   const resetForm = () => {
     setForm({
@@ -57,13 +112,20 @@ export function OPMSSubmissionsList() {
 
   const actions = (row: OPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
-      <button onClick={(e) => { e.stopPropagation(); setSelectedSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
       <button
         onClick={(e) => {
           e.stopPropagation();
-          deleteOPMSSubmission(row.id);
-          if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
-          pushToast('success', 'Submission deleted');
+          void (async () => {
+            const result = await deleteOpmsSubmission(row.id);
+            if (result.success) {
+              setOpmsSubmissions(prev => prev.filter(item => item.id !== row.id));
+              if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
+              pushToast('success', 'Submission deleted');
+            } else {
+              pushToast('error', result.message ?? 'Failed to delete submission');
+            }
+          })();
         }}
         className="p-1 rounded hover:bg-error-50"
       >
@@ -72,33 +134,82 @@ export function OPMSSubmissionsList() {
     </div>
   );
 
-  const handleCreateSubmission = () => {
-    const target = opmsTargets.find(item => item.id === form.targetId) ?? opmsTargets[0];
-    const template = allSubmissions[0];
-    if (!target || !template) return;
-
-    const created = createOPMSSubmission({
-      ...template,
-      id: '',
-      target,
-      quarter: form.quarter as OPMSSubmission['quarter'],
-      dueDate: form.dueDate,
+  const handleCreateSubmission = async () => {
+    const result = await createOpmsSubmission({
+      opmsTargetId: form.targetId,
+      quarter: form.quarter,
       actual: Number(form.actual || 0),
-      variance: Number(form.variance || 0),
-      actualDescription: form.actualDescription,
-      status: form.status as OPMSSubmission['status'],
-      attachments: [],
-      comments: [],
-      history: [],
-      submittedAt: undefined,
-      verifiedAt: undefined,
-      approvedAt: undefined,
-      auditedAt: undefined,
-      pmsReviewedAt: undefined,
+      actualDescription: form.actualDescription || null,
+      varianceReason: null,
+      correctiveMeasure: null,
+      dueDate: form.dueDate,
     });
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to create submission');
+      return;
+    }
+
+    setOpmsSubmissions(prev => [result.data!, ...prev]);
     pushToast('success', 'Submission created');
     setShowCreateModal(false);
-    setSelectedSubmission(created);
+    await openSubmission(result.data);
+  };
+
+  const persistSubmission = async (submission: OPMSSubmission) => {
+    const result = await updateOpmsSubmission(submission.id, {
+      opmsTargetId: submission.target.id,
+      quarter: submission.quarter,
+      actual: submission.actual,
+      actualDescription: submission.actualDescription ?? null,
+      varianceReason: submission.varianceReason ?? null,
+      correctiveMeasure: submission.correctiveMeasure ?? null,
+      dueDate: submission.dueDate,
+    });
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to update submission');
+      return;
+    }
+
+    setOpmsSubmissions(prev => prev.map(item => item.id === submission.id ? { ...result.data!, attachments: item.attachments } : item));
+    setSelectedSubmission(prev => prev?.id === submission.id ? { ...result.data!, attachments: prev.attachments } : prev);
+    pushToast('success', 'Submission updated');
+  };
+
+  const runWorkflowAction = async (
+    action: Parameters<typeof applyOpmsSubmissionWorkflowAction>[1],
+    payload: { comment?: string; score?: number },
+  ) => {
+    if (!selectedSubmission) return;
+    setWorkflowBusy(true);
+    const result = await applyOpmsSubmissionWorkflowAction(selectedSubmission.id, action, payload);
+    setWorkflowBusy(false);
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? `Failed to ${action} submission`);
+      return;
+    }
+
+    setOpmsSubmissions(prev => prev.map(item => item.id === selectedSubmission.id ? { ...result.data!, attachments: item.attachments } : item));
+    setSelectedSubmission(prev => prev ? { ...result.data!, attachments: prev.attachments } : prev);
+    pushToast('success', `Submission ${action} completed`);
+  };
+
+  const extendDueDate = async (payload: { extendedDueDate: string; reason: string }) => {
+    if (!selectedSubmission) return;
+    setWorkflowBusy(true);
+    const result = await extendOpmsSubmissionDueDate(selectedSubmission.id, payload);
+    setWorkflowBusy(false);
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to extend due date');
+      return;
+    }
+
+    setOpmsSubmissions(prev => prev.map(item => item.id === selectedSubmission.id ? { ...result.data!, attachments: item.attachments } : item));
+    setSelectedSubmission(prev => prev ? { ...result.data!, attachments: prev.attachments } : prev);
+    pushToast('success', 'Due date extended');
   };
 
   return (
@@ -109,21 +220,52 @@ export function OPMSSubmissionsList() {
           submissionType="OPMS"
           titlePrefix="Workflow / Verification"
           onBack={() => setSelectedSubmission(null)}
-          onSave={(updated) => {
-            updateOPMSSubmission(updated as OPMSSubmission);
-            setSelectedSubmission(updated as OPMSSubmission);
-            pushToast('success', 'Submission updated');
-          }}
+          onSave={(updated) => { void persistSubmission(updated as OPMSSubmission); }}
           onDelete={() => {
-            deleteOPMSSubmission(selectedSubmission.id);
-            setSelectedSubmission(null);
-            pushToast('success', 'Submission deleted');
+            void (async () => {
+              const result = await deleteOpmsSubmission(selectedSubmission.id);
+              if (result.success) {
+                setOpmsSubmissions(prev => prev.filter(item => item.id !== selectedSubmission.id));
+                setSelectedSubmission(null);
+                pushToast('success', 'Submission deleted');
+              } else {
+                pushToast('error', result.message ?? 'Failed to delete submission');
+              }
+            })();
           }}
           onAttachmentsChange={(attachments) => {
             const updated = { ...selectedSubmission, attachments };
-            updateOPMSSubmission(updated);
+            setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
             setSelectedSubmission(updated);
           }}
+          onUploadAttachments={(files) => {
+            void (async () => {
+              const results = await Promise.all(files.map(file => uploadOpmsSubmissionAttachment(selectedSubmission.id, file)));
+              const uploaded = results.filter(result => result.success && result.data).map(result => result.data!);
+              if (uploaded.length > 0) {
+                const updated = { ...selectedSubmission, attachments: [...selectedSubmission.attachments, ...uploaded] };
+                setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
+                setSelectedSubmission(updated);
+                pushToast('success', `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} uploaded`);
+              }
+            })();
+          }}
+          onDeleteAttachment={(attachmentId) => {
+            void (async () => {
+              const result = await deleteOpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
+              if (result.success) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.filter(item => item.id !== attachmentId) };
+                setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
+                setSelectedSubmission(updated);
+                pushToast('success', 'Attachment deleted');
+              } else {
+                pushToast('error', result.message ?? 'Failed to delete attachment');
+              }
+            })();
+          }}
+          onWorkflowAction={(action, payload) => { void runWorkflowAction(action, payload); }}
+          onExtendDueDate={(payload) => { void extendDueDate(payload); }}
+          workflowBusy={workflowBusy}
         />
       ) : (
         <div className="space-y-4">
@@ -135,40 +277,62 @@ export function OPMSSubmissionsList() {
             </div>
           </div>
           <Card>
-            <DataTable data={allSubmissions} columns={columns} onRowClick={(row) => setSelectedSubmission(row)} actions={actions} getRowId={(row) => row.id} />
+            <DataTable
+              data={allSubmissions}
+              columns={columns}
+              onRowClick={(row) => { void openSubmission(row); }}
+              actions={actions}
+              getRowId={(row) => row.id}
+              emptyMessage={isLoading ? 'Loading OPMS submissions...' : 'No OPMS submissions found'}
+            />
           </Card>
           <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New OPMS Submission" size="lg">
-            <div className="space-y-3">
-              <FormRow cols={2}>
-                <Select
-                  label="Target"
-                  options={opmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
-                  value={form.targetId}
-                  onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
-                />
-                <Select
-                  label="Quarter"
-                  options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
-                  value={form.quarter}
-                  onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
-                />
-              </FormRow>
-              <FormRow cols={3}>
-                <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} />
-                <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} />
-                <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
-              </FormRow>
-              <Select
-                label="Status"
-                options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-                value={form.status}
-                onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
+            <div className="space-y-5">
+              <FormHero
+                eyebrow="Submission Management"
+                title="Create OPMS submission"
+                description="Capture the reporting period, target, and actual performance using the standardized add/edit form layout."
+                badges={<Badge variant="default">New Submission</Badge>}
               />
-              <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+              <div className="grid gap-4">
+                <FormPanel title="Submission Setup" description="Select the target and reporting period for this OPMS submission." icon={<CalendarRange className="h-5 w-5" />}>
+                  <FormRow cols={2}>
+                    <Select
+                      label="Target"
+                      options={opmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
+                      value={form.targetId}
+                      onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
+                      required
+                    />
+                    <Select
+                      label="Quarter"
+                      options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
+                      value={form.quarter}
+                      onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
+                      required
+                    />
+                  </FormRow>
+                  <FormRow cols={3}>
+                    <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} required />
+                    <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} required />
+                    <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
+                  </FormRow>
+                </FormPanel>
+                <FormPanel title="Submission Details" description="Provide workflow status and a concise performance narrative." icon={<FileText className="h-5 w-5" />}>
+                  <Select
+                    label="Status"
+                    options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
+                    value={form.status}
+                    onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
+                    required
+                  />
+                  <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+                </FormPanel>
+              </div>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
               <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={handleCreateSubmission}>Create</Button>
+              <Button variant="primary" size="sm" onClick={() => { void handleCreateSubmission(); }}>Create</Button>
             </div>
           </Modal>
         </div>
@@ -178,16 +342,13 @@ export function OPMSSubmissionsList() {
 }
 
 export function IPMSSubmissionsList() {
-  const {
-    ipmsSubmissions,
-    ipmsTargets,
-    createIPMSSubmission,
-    updateIPMSSubmission,
-    deleteIPMSSubmission,
-    pushToast,
-  } = useApp();
+  const { pushToast } = useApp();
+  const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
+  const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
   const [form, setForm] = useState({
     targetId: '',
     quarter: 'Q1',
@@ -198,6 +359,42 @@ export function IPMSSubmissionsList() {
     actualDescription: '',
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    const [targetsResult, submissionsResult] = await Promise.all([
+      getIpmsTargets(),
+      getIpmsSubmissions(),
+    ]);
+
+    if (targetsResult.success && targetsResult.data) {
+      setIpmsTargets(targetsResult.data);
+    } else {
+      pushToast('error', targetsResult.message ?? 'Failed to load IPMS targets');
+    }
+
+    if (submissionsResult.success && submissionsResult.data) {
+      setIpmsSubmissions(submissionsResult.data);
+    } else {
+      pushToast('error', submissionsResult.message ?? 'Failed to load IPMS submissions');
+    }
+
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const openSubmission = async (submission: IPMSSubmission) => {
+    const attachmentsResult = await getIpmsSubmissionAttachments(submission.id);
+    const hydrated = {
+      ...submission,
+      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
+    };
+    setSelectedSubmission(hydrated);
+    setIpmsSubmissions(prev => prev.map(item => item.id === submission.id ? hydrated : item));
+  };
 
   const resetForm = () => {
     setForm({
@@ -222,13 +419,20 @@ export function IPMSSubmissionsList() {
 
   const actions = (row: IPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
-      <button onClick={(e) => { e.stopPropagation(); setSelectedSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
       <button
         onClick={(e) => {
           e.stopPropagation();
-          deleteIPMSSubmission(row.id);
-          if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
-          pushToast('success', 'Submission deleted');
+          void (async () => {
+            const result = await deleteIpmsSubmission(row.id);
+            if (result.success) {
+              setIpmsSubmissions(prev => prev.filter(item => item.id !== row.id));
+              if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
+              pushToast('success', 'Submission deleted');
+            } else {
+              pushToast('error', result.message ?? 'Failed to delete submission');
+            }
+          })();
         }}
         className="p-1 rounded hover:bg-error-50"
       >
@@ -237,31 +441,82 @@ export function IPMSSubmissionsList() {
     </div>
   );
 
-  const handleCreateSubmission = () => {
-    const target = ipmsTargets.find(item => item.id === form.targetId) ?? ipmsTargets[0];
-    const template = allSubmissions[0];
-    if (!target || !template) return;
-
-    const created = createIPMSSubmission({
-      ...template,
-      id: '',
-      target,
-      quarter: form.quarter as IPMSSubmission['quarter'],
-      dueDate: form.dueDate,
+  const handleCreateSubmission = async () => {
+    const result = await createIpmsSubmission({
+      ipmsTargetId: form.targetId,
+      quarter: form.quarter,
       actual: Number(form.actual || 0),
-      variance: Number(form.variance || 0),
-      actualDescription: form.actualDescription,
-      status: form.status as IPMSSubmission['status'],
-      attachments: [],
-      history: [],
-      submittedAt: undefined,
-      verifiedAt: undefined,
-      approvedAt: undefined,
-      auditedAt: undefined,
+      actualDescription: form.actualDescription || null,
+      varianceReason: null,
+      correctiveMeasure: null,
+      dueDate: form.dueDate,
     });
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to create submission');
+      return;
+    }
+
+    setIpmsSubmissions(prev => [result.data!, ...prev]);
     pushToast('success', 'Submission created');
     setShowCreateModal(false);
-    setSelectedSubmission(created);
+    await openSubmission(result.data);
+  };
+
+  const persistSubmission = async (submission: IPMSSubmission) => {
+    const result = await updateIpmsSubmission(submission.id, {
+      ipmsTargetId: submission.target.id,
+      quarter: submission.quarter,
+      actual: submission.actual,
+      actualDescription: submission.actualDescription ?? null,
+      varianceReason: submission.varianceReason ?? null,
+      correctiveMeasure: submission.correctiveMeasure ?? null,
+      dueDate: submission.dueDate,
+    });
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to update submission');
+      return;
+    }
+
+    setIpmsSubmissions(prev => prev.map(item => item.id === submission.id ? { ...result.data!, attachments: item.attachments } : item));
+    setSelectedSubmission(prev => prev?.id === submission.id ? { ...result.data!, attachments: prev.attachments } : prev);
+    pushToast('success', 'Submission updated');
+  };
+
+  const runWorkflowAction = async (
+    action: Parameters<typeof applyIpmsSubmissionWorkflowAction>[1],
+    payload: { comment?: string; score?: number },
+  ) => {
+    if (!selectedSubmission) return;
+    setWorkflowBusy(true);
+    const result = await applyIpmsSubmissionWorkflowAction(selectedSubmission.id, action, payload);
+    setWorkflowBusy(false);
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? `Failed to ${action} submission`);
+      return;
+    }
+
+    setIpmsSubmissions(prev => prev.map(item => item.id === selectedSubmission.id ? { ...result.data!, attachments: item.attachments } : item));
+    setSelectedSubmission(prev => prev ? { ...result.data!, attachments: prev.attachments } : prev);
+    pushToast('success', `Submission ${action} completed`);
+  };
+
+  const extendDueDate = async (payload: { extendedDueDate: string; reason: string }) => {
+    if (!selectedSubmission) return;
+    setWorkflowBusy(true);
+    const result = await extendIpmsSubmissionDueDate(selectedSubmission.id, payload);
+    setWorkflowBusy(false);
+
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to extend due date');
+      return;
+    }
+
+    setIpmsSubmissions(prev => prev.map(item => item.id === selectedSubmission.id ? { ...result.data!, attachments: item.attachments } : item));
+    setSelectedSubmission(prev => prev ? { ...result.data!, attachments: prev.attachments } : prev);
+    pushToast('success', 'Due date extended');
   };
 
   return (
@@ -272,21 +527,52 @@ export function IPMSSubmissionsList() {
           submissionType="IPMS"
           titlePrefix="Workflow / Verification"
           onBack={() => setSelectedSubmission(null)}
-          onSave={(updated) => {
-            updateIPMSSubmission(updated as IPMSSubmission);
-            setSelectedSubmission(updated as IPMSSubmission);
-            pushToast('success', 'Submission updated');
-          }}
+          onSave={(updated) => { void persistSubmission(updated as IPMSSubmission); }}
           onDelete={() => {
-            deleteIPMSSubmission(selectedSubmission.id);
-            setSelectedSubmission(null);
-            pushToast('success', 'Submission deleted');
+            void (async () => {
+              const result = await deleteIpmsSubmission(selectedSubmission.id);
+              if (result.success) {
+                setIpmsSubmissions(prev => prev.filter(item => item.id !== selectedSubmission.id));
+                setSelectedSubmission(null);
+                pushToast('success', 'Submission deleted');
+              } else {
+                pushToast('error', result.message ?? 'Failed to delete submission');
+              }
+            })();
           }}
           onAttachmentsChange={(attachments) => {
             const updated = { ...selectedSubmission, attachments };
-            updateIPMSSubmission(updated);
+            setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
             setSelectedSubmission(updated);
           }}
+          onUploadAttachments={(files) => {
+            void (async () => {
+              const results = await Promise.all(files.map(file => uploadIpmsSubmissionAttachment(selectedSubmission.id, file)));
+              const uploaded = results.filter(result => result.success && result.data).map(result => result.data!);
+              if (uploaded.length > 0) {
+                const updated = { ...selectedSubmission, attachments: [...selectedSubmission.attachments, ...uploaded] };
+                setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
+                setSelectedSubmission(updated);
+                pushToast('success', `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} uploaded`);
+              }
+            })();
+          }}
+          onDeleteAttachment={(attachmentId) => {
+            void (async () => {
+              const result = await deleteIpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
+              if (result.success) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.filter(item => item.id !== attachmentId) };
+                setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
+                setSelectedSubmission(updated);
+                pushToast('success', 'Attachment deleted');
+              } else {
+                pushToast('error', result.message ?? 'Failed to delete attachment');
+              }
+            })();
+          }}
+          onWorkflowAction={(action, payload) => { void runWorkflowAction(action, payload); }}
+          onExtendDueDate={(payload) => { void extendDueDate(payload); }}
+          workflowBusy={workflowBusy}
         />
       ) : (
         <div className="space-y-4">
@@ -298,40 +584,62 @@ export function IPMSSubmissionsList() {
             </div>
           </div>
           <Card>
-            <DataTable data={allSubmissions} columns={columns} onRowClick={(row) => setSelectedSubmission(row)} actions={actions} getRowId={(row) => row.id} />
+            <DataTable
+              data={allSubmissions}
+              columns={columns}
+              onRowClick={(row) => { void openSubmission(row); }}
+              actions={actions}
+              getRowId={(row) => row.id}
+              emptyMessage={isLoading ? 'Loading IPMS submissions...' : 'No IPMS submissions found'}
+            />
           </Card>
           <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New IPMS Submission" size="lg">
-            <div className="space-y-3">
-              <FormRow cols={2}>
-                <Select
-                  label="Target"
-                  options={ipmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
-                  value={form.targetId}
-                  onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
-                />
-                <Select
-                  label="Quarter"
-                  options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
-                  value={form.quarter}
-                  onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
-                />
-              </FormRow>
-              <FormRow cols={3}>
-                <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} />
-                <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} />
-                <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
-              </FormRow>
-              <Select
-                label="Status"
-                options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-                value={form.status}
-                onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
+            <div className="space-y-5">
+              <FormHero
+                eyebrow="Submission Management"
+                title="Create IPMS submission"
+                description="Capture the employee performance reporting details using the same add/edit page design."
+                badges={<Badge variant="default">New Submission</Badge>}
               />
-              <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+              <div className="grid gap-4">
+                <FormPanel title="Submission Setup" description="Select the target and reporting period for this IPMS submission." icon={<CalendarRange className="h-5 w-5" />}>
+                  <FormRow cols={2}>
+                    <Select
+                      label="Target"
+                      options={ipmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
+                      value={form.targetId}
+                      onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
+                      required
+                    />
+                    <Select
+                      label="Quarter"
+                      options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
+                      value={form.quarter}
+                      onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
+                      required
+                    />
+                  </FormRow>
+                  <FormRow cols={3}>
+                    <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} required />
+                    <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} required />
+                    <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
+                  </FormRow>
+                </FormPanel>
+                <FormPanel title="Submission Details" description="Provide workflow status and a concise performance narrative." icon={<FileText className="h-5 w-5" />}>
+                  <Select
+                    label="Status"
+                    options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
+                    value={form.status}
+                    onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
+                    required
+                  />
+                  <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+                </FormPanel>
+              </div>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
               <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={handleCreateSubmission}>Create</Button>
+              <Button variant="primary" size="sm" onClick={() => { void handleCreateSubmission(); }}>Create</Button>
             </div>
           </Modal>
         </div>

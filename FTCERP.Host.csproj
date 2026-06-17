@@ -1,25 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>FTCERP.Host</AssemblyName>
     <RootNamespace>FTCERP.Host</RootNamespace>
     <SpaRoot>ClientApp\</SpaRoot>
+    <WebRootPath>wwwroot</WebRootPath>
+    <ClientBuildCommand>npm run build</ClientBuildCommand>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.2" />
-    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.0.2" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.15.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,7 +29,13 @@
     <None Remove="ClientApp\dist\**" />
   </ItemGroup>
 
-  <Target Name="EnsureNodeEnvironment" BeforeTargets="Build" Condition=" '$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules') ">
-    <Message Importance="high" Text="ClientApp dependencies are not installed yet. Run 'npm install' inside ClientApp before building the frontend." />
+  <Target Name="EnsureNodeEnvironment" BeforeTargets="Build;Publish">
+    <Message Importance="high" Text="Ensuring frontend dependencies are installed in $(SpaRoot)." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" Condition="!Exists('$(SpaRoot)node_modules')" />
+  </Target>
+
+  <Target Name="BuildClientApp" BeforeTargets="Build;Publish" DependsOnTargets="EnsureNodeEnvironment">
+    <Message Importance="high" Text="Building frontend into $(WebRootPath) as part of the ASP.NET app." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="$(ClientBuildCommand)" />
   </Target>
 </Project>

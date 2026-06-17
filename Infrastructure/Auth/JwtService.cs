@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -23,18 +24,20 @@ public class JwtService : IJwtService
     private readonly JwtSettings _jwtSettings;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly Infrastructure.Persistence.ApplicationDbContext _context;
+    private readonly IAccessControlService _accessControlService;
 
-    public JwtService(IOptions<JwtSettings> jwtSettings, UserManager<ApplicationUser> userManager, Infrastructure.Persistence.ApplicationDbContext context)
+    public JwtService(IOptions<JwtSettings> jwtSettings, UserManager<ApplicationUser> userManager, Infrastructure.Persistence.ApplicationDbContext context, IAccessControlService accessControlService)
     {
         _jwtSettings = jwtSettings.Value;
         _userManager = userManager;
         _context = context;
+        _accessControlService = accessControlService;
     }
 
     public async Task<(string AccessToken, string RefreshToken, DateTime ExpiresAt)> GenerateTokensAsync(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
-        var permissions = await GetUserPermissionCodesAsync(user);
+        var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions;
 
         var claims = new List<Claim>
         {
@@ -124,52 +127,5 @@ public class JwtService : IJwtService
             refreshToken.RevokedByIp = ipAddress;
             await _context.SaveChangesAsync();
         }
-    }
-
-    private async Task<string[]> GetUserPermissionCodesAsync(ApplicationUser user)
-    {
-        var roles = await _userManager.GetRolesAsync(user);
-        var systemAdminRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Super Admin",
-            "System Admin",
-            "System Administrator",
-            "EPMS Admin",
-            "ICT Admin",
-            "ICT Sub-Admin"
-        };
-
-        if (roles.Any(systemAdminRoles.Contains))
-        {
-            return await _context.Permissions
-                .Where(p => p.IsActive)
-                .Select(p => p.Code)
-                .Distinct()
-                .ToArrayAsync();
-        }
-        var roleIds = await _context.Roles.Where(r => roles.Contains(r.Name!)).Select(r => r.Id).ToListAsync();
-
-        // Get role permissions
-        var rolePermissions = await _context.RolePermissions
-            .Where(rp => roleIds.Contains(rp.RoleId) && rp.IsAllowed)
-            .Select(rp => rp.Permission.Code)
-            .ToListAsync();
-
-        // Get user overrides
-        var userOverrides = await _context.UserPermissionOverrides
-            .Where(upo => upo.UserId == user.Id)
-            .ToListAsync();
-
-        // Combine them
-        var finalPermissions = new HashSet<string>(rolePermissions);
-        foreach (var overrideItem in userOverrides)
-        {
-            if (overrideItem.IsAllowed)
-                finalPermissions.Add(overrideItem.Permission.Code);
-            else
-                finalPermissions.Remove(overrideItem.Permission.Code);
-        }
-
-        return finalPermissions.ToArray();
     }
 }

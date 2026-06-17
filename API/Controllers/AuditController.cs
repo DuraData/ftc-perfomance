@@ -38,5 +38,23 @@ public class AuditController : ControllerBase
     {
         return Ok(new ApiResponse<object[]>(true, Array.Empty<object>()));
     }
-}
 
+    [HttpGet("trails")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<AuditTrailEntryResponse[]>>> GetAuditTrails([FromQuery] string? entityName = null, [FromQuery] string? entityId = null, [FromQuery] int take = 500)
+    {
+        take = Math.Clamp(take, 1, 1000);
+        var query = _context.AuditTrails.AsNoTracking().OrderByDescending(item => item.ChangedAt).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(entityName))
+        {
+            query = query.Where(item => item.EntityName == entityName);
+        }
+        if (!string.IsNullOrWhiteSpace(entityId))
+        {
+            query = query.Where(item => item.EntityId == entityId);
+        }
+
+        var rows = await query.Take(take).ToArrayAsync();
+        return Ok(new ApiResponse<AuditTrailEntryResponse[]>(true, rows.Select(item => item.ToResponse()).ToArray()));
+    }
+}

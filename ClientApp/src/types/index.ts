@@ -16,9 +16,11 @@ export type SubmissionStatus =
   | 'submitted'
   | 'pending_verification'
   | 'verified'
+  | 'verify_rejected'
   | 'pending_approval'
   | 'approved'
   | 'rejected'
+  | 'reviewed'
   | 'returned_for_info'
   | 'audited'
   | 'completed';
@@ -118,6 +120,8 @@ export interface Employee {
 // OPMS Target
 export interface OPMSTarget {
   id: string;
+  sourceTemplateId?: string;
+  sourceTemplateVersion?: number;
   period: Period;
   department: Department;
   unit?: DepartmentUnit;
@@ -182,6 +186,8 @@ export interface OPMSTarget {
 // IPMS Target
 export interface IPMSTarget {
   id: string;
+  sourceTemplateId?: string;
+  sourceTemplateVersion?: number;
   relatedOPMSTarget?: OPMSTarget;
   period: Period;
   department: Department;
@@ -384,6 +390,100 @@ export interface SubmissionHistory {
   previousStatus?: SubmissionStatus;
   newStatus: SubmissionStatus;
   comments?: string;
+}
+
+export interface TemplateQuarterlyTarget {
+  quarter: Quarter;
+  target?: number;
+  description?: string;
+  budget?: number;
+}
+
+export interface OpmsTargetTemplate {
+  id: string;
+  templateCode: string;
+  templateName: string;
+  indicatorNumber: string;
+  department?: Department;
+  targetName: string;
+  kpiDescription: string;
+  baseline: number;
+  annualTarget: number;
+  annualTargetDescription: string;
+  targetUnitType: TargetUnitType;
+  unitOfMeasure: UnitOfMeasure;
+  nationalKPA: string;
+  municipalKPA: string;
+  strategicGoal?: StrategicGoal;
+  strategicObjective?: StrategicObjective;
+  performanceObjective: string;
+  outcome?: string;
+  output?: string;
+  priorityIssue?: string;
+  budgetSource?: BudgetSource;
+  budgetType?: BudgetType;
+  weight: number;
+  kpiType: string;
+  indicatorType: string;
+  functionalArea?: string;
+  standardClassification?: string;
+  idpReference?: string;
+  internalReference?: string;
+  fmsLink?: string;
+  defaultQuarterlyTargets: TemplateQuarterlyTarget[];
+  defaultBudgetInformation?: string;
+  defaultPoeRequirements?: string;
+  isActive: boolean;
+  isArchived?: boolean;
+  version: number;
+  createdBy: string;
+  createdDate: string;
+}
+
+export interface IpmsTargetTemplate {
+  id: string;
+  templateCode: string;
+  templateName: string;
+  department?: Department;
+  targetName: string;
+  kpiDescription: string;
+  performanceArea: string;
+  employeeLevel: string;
+  jobGrade: string;
+  targetUnitType: TargetUnitType;
+  unitOfMeasure: UnitOfMeasure;
+  annualTarget: number;
+  annualTargetDescription: string;
+  weight: number;
+  defaultRatingMethod?: string;
+  defaultScoreScale?: string;
+  defaultPoeRequirements?: string;
+  defaultTaskTemplates: string[];
+  linkedOpmsTargetRequired: boolean;
+  functionalArea?: string;
+  isActive: boolean;
+  isArchived?: boolean;
+  version: number;
+  createdBy: string;
+  createdDate: string;
+}
+
+export interface OpmsTargetTemplateVersion {
+  id: string;
+  templateId: string;
+  version: number;
+  snapshot: OpmsTargetTemplate;
+  createdBy: string;
+  createdDate: string;
+}
+
+export interface IpmsTargetTemplateVersion {
+  id: string;
+  templateId: string;
+  version: number;
+  snapshot: IpmsTargetTemplate;
+  createdBy: string;
+  createdDate: string;
 }
 
 // KPI Library
@@ -736,4 +836,347 @@ export interface LoginAuditLog {
   success: boolean;
   failureReason?: string | null;
   loggedAt: string;
+}
+
+export interface RoleImplementationAuditRow {
+  role: string;
+  dashboard: boolean;
+  menus: boolean;
+  crud: boolean;
+  scopeFiltering: boolean;
+  notifications: boolean;
+  reports: boolean;
+  auditTrail: boolean;
+  complete: boolean;
+}
+
+export interface AccessSimulationResult {
+  allowed: boolean;
+  reason: string;
+  effectivePermissions: string[];
+  matchedScopes: string[];
+  matchedAssignments: string[];
+}
+
+export interface RoleAccessMatrixRow {
+  role: string;
+  permissions: string[];
+  scope: string[];
+  menus: string[];
+  allowedActions: string[];
+  reports: string[];
+  testUser?: string | null;
+}
+
+export interface SystemCoverageAuditRow {
+  role: string;
+  seededUser: boolean;
+  dashboard: boolean;
+  menu: boolean;
+  permissions: boolean;
+  scopeFiltering: boolean;
+  crud: boolean;
+  workflowActions: boolean;
+  reports: boolean;
+  auditTrail: boolean;
+  notifications: boolean;
+}
+
+export interface OpmsTargetTemplateDto {
+  id: number;
+  templateCode: string;
+  templateName: string;
+  indicatorNumber: string;
+  targetName: string;
+  kpiDescription: string;
+  baseline: number;
+  annualTarget: number;
+  annualTargetDescription?: string | null;
+  targetUnitType: string;
+  unitOfMeasure?: string | null;
+  nationalKpa?: string | null;
+  municipalKpa?: string | null;
+  strategicGoal?: string | null;
+  strategicObjective?: string | null;
+  performanceObjective?: string | null;
+  outcome?: string | null;
+  output?: string | null;
+  priorityIssue?: string | null;
+  budgetSource?: string | null;
+  budgetType?: string | null;
+  weight: number;
+  kpiType?: string | null;
+  indicatorType?: string | null;
+  functionalArea?: string | null;
+  standardClassification?: string | null;
+  idpReference?: string | null;
+  internalReference?: string | null;
+  fmsLink?: string | null;
+  defaultQuarterlyTargetsJson?: string | null;
+  defaultBudgetInformation?: string | null;
+  defaultPoeRequirements?: string | null;
+  isActive: boolean;
+  isArchived: boolean;
+  version: number;
+  createdBy?: string | null;
+  createdDate: string;
+}
+
+export interface IpmsTargetTemplateDto {
+  id: number;
+  templateCode: string;
+  templateName: string;
+  targetName: string;
+  kpiDescription: string;
+  performanceArea?: string | null;
+  employeeLevel?: string | null;
+  jobGrade?: string | null;
+  targetUnitType: string;
+  unitOfMeasure?: string | null;
+  annualTarget: number;
+  annualTargetDescription?: string | null;
+  weight: number;
+  defaultRatingMethod?: string | null;
+  defaultScoreScale?: string | null;
+  defaultPoeRequirements?: string | null;
+  defaultTaskTemplatesJson?: string | null;
+  linkedOpmsTargetRequired: boolean;
+  functionalArea?: string | null;
+  isActive: boolean;
+  isArchived: boolean;
+  version: number;
+  createdBy?: string | null;
+  createdDate: string;
+}
+
+export interface OpmsTargetDto {
+  id: string;
+  indicatorNumber: string;
+  targetName: string;
+  kpiDescription: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  unitId?: number | null;
+  unitName?: string | null;
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+  kpiId?: string | null;
+  sourceTemplateId?: string | null;
+  sourceTemplateVersion?: number | null;
+  baseline: number;
+  annualTarget: number;
+  weight: number;
+  isArchived: boolean;
+  createdAt: string;
+}
+
+export interface IpmsTargetDto {
+  id: string;
+  indicatorNumber: string;
+  targetName: string;
+  kpiDescription: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  unitId?: number | null;
+  unitName?: string | null;
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+  relatedOpmsTargetId?: string | null;
+  kpiId?: string | null;
+  sourceTemplateId?: string | null;
+  sourceTemplateVersion?: number | null;
+  annualTarget: number;
+  weight: number;
+  isArchived: boolean;
+  createdAt: string;
+}
+
+export interface OpmsSubmissionDto {
+  id: string;
+  opmsTargetId: string;
+  targetName: string;
+  quarter: string;
+  status: string;
+  actual?: number | null;
+  actualDescription?: string | null;
+  varianceReason?: string | null;
+  correctiveMeasure?: string | null;
+  submittedAt?: string | null;
+  submittedByUserId?: string | null;
+  submittedByName?: string | null;
+  dueDate?: string | null;
+  createdAt: string;
+}
+
+export interface IpmsSubmissionDto {
+  id: string;
+  ipmsTargetId: string;
+  targetName: string;
+  quarter: string;
+  status: string;
+  actual?: number | null;
+  actualDescription?: string | null;
+  varianceReason?: string | null;
+  correctiveMeasure?: string | null;
+  submittedAt?: string | null;
+  submittedByUserId?: string | null;
+  submittedByName?: string | null;
+  dueDate?: string | null;
+  createdAt: string;
+}
+
+export interface NotificationDto {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  entityName?: string | null;
+  entityId?: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface AuditTrailEntryDto {
+  id: number;
+  entityName: string;
+  entityId: string;
+  action: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  changedBy: string;
+  changedAt: string;
+  ipAddress?: string | null;
+}
+
+export interface PoeFileDto {
+  id: string;
+  submissionKind: string;
+  submissionId: string;
+  fileName: string;
+  contentType?: string | null;
+  sizeInBytes: number;
+  uploadedByUserId: string;
+  uploadedByName?: string | null;
+  uploadedAt: string;
+  url: string;
+}
+
+export interface SaveOpmsTargetTemplatePayload {
+  templateCode: string;
+  templateName: string;
+  indicatorNumber: string;
+  targetName: string;
+  kpiDescription: string;
+  baseline: number;
+  annualTarget: number;
+  annualTargetDescription?: string | null;
+  targetUnitType: string;
+  unitOfMeasure?: string | null;
+  nationalKpa?: string | null;
+  municipalKpa?: string | null;
+  strategicGoal?: string | null;
+  strategicObjective?: string | null;
+  performanceObjective?: string | null;
+  outcome?: string | null;
+  output?: string | null;
+  priorityIssue?: string | null;
+  budgetSource?: string | null;
+  budgetType?: string | null;
+  weight: number;
+  kpiType?: string | null;
+  indicatorType?: string | null;
+  functionalArea?: string | null;
+  standardClassification?: string | null;
+  idpReference?: string | null;
+  internalReference?: string | null;
+  fmsLink?: string | null;
+  defaultQuarterlyTargetsJson?: string | null;
+  defaultBudgetInformation?: string | null;
+  defaultPoeRequirements?: string | null;
+  isActive: boolean;
+}
+
+export interface SaveIpmsTargetTemplatePayload {
+  templateCode: string;
+  templateName: string;
+  targetName: string;
+  kpiDescription: string;
+  performanceArea?: string | null;
+  employeeLevel?: string | null;
+  jobGrade?: string | null;
+  targetUnitType: string;
+  unitOfMeasure?: string | null;
+  annualTarget: number;
+  annualTargetDescription?: string | null;
+  weight: number;
+  defaultRatingMethod?: string | null;
+  defaultScoreScale?: string | null;
+  defaultPoeRequirements?: string | null;
+  defaultTaskTemplatesJson?: string | null;
+  linkedOpmsTargetRequired: boolean;
+  functionalArea?: string | null;
+  isActive: boolean;
+}
+
+export interface SaveOpmsTargetPayload {
+  indicatorNumber: string;
+  targetName: string;
+  kpiDescription: string;
+  departmentId?: number | null;
+  unitId?: number | null;
+  assignedUserId?: string | null;
+  kpiId?: string | null;
+  sourceTemplateId?: string | null;
+  sourceTemplateVersion?: number | null;
+  baseline: number;
+  annualTarget: number;
+  weight: number;
+  isArchived: boolean;
+}
+
+export interface SaveIpmsTargetPayload {
+  indicatorNumber: string;
+  targetName: string;
+  kpiDescription: string;
+  departmentId?: number | null;
+  unitId?: number | null;
+  assignedUserId?: string | null;
+  relatedOpmsTargetId?: string | null;
+  kpiId?: string | null;
+  sourceTemplateId?: string | null;
+  sourceTemplateVersion?: number | null;
+  annualTarget: number;
+  weight: number;
+  isArchived: boolean;
+}
+
+export interface SaveOpmsSubmissionPayload {
+  opmsTargetId: string;
+  quarter: string;
+  actual?: number | null;
+  actualDescription?: string | null;
+  varianceReason?: string | null;
+  correctiveMeasure?: string | null;
+  dueDate?: string | null;
+}
+
+export interface SaveIpmsSubmissionPayload {
+  ipmsTargetId: string;
+  quarter: string;
+  actual?: number | null;
+  actualDescription?: string | null;
+  varianceReason?: string | null;
+  correctiveMeasure?: string | null;
+  dueDate?: string | null;
+}
+
+export interface SubmissionWorkflowActionPayload {
+  comment?: string | null;
+  score?: number | null;
+}
+
+export interface DueDateExtensionPayload {
+  extendedDueDate: string;
+  reason: string;
 }

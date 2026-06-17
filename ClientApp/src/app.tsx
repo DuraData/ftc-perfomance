@@ -1,4 +1,3 @@
-import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { OPMSTargetList } from './components/opms/OPMSTargetList';
@@ -8,8 +7,10 @@ import { IPMSTargetList } from './components/ipms/IPMSTargetList';
 import { IPMSTargetDetail } from './components/ipms/IPMSTargetDetail';
 import { WorkflowQueues, MyWorkQueue } from './components/workflow/WorkflowQueues';
 import { EmployeeList, DepartmentList, DepartmentUnitList, PositionList } from './components/hr/HRManagement';
-import { PeriodList, BudgetSourceList, ApprovalSetupList, LookupTables } from './components/admin/AdminManagement';
+import { PeriodList, ApprovalSetupList, LookupTables } from './components/admin/AdminManagement';
 import { AdminAuditLogsPage, AdminPermissionsPage, AdminRolesPage, AdminUsersPage } from './components/admin/SystemAdmin';
+import { RoleImplementationAuditPage } from './components/admin/RoleImplementationAuditPage';
+import { PermissionSimulationPage, RoleAccessMatrixPage, SystemCoverageAuditPage } from './components/admin/AccessGovernancePages';
 import {
   CountriesPage, ProvincesPage, CitiesPage, SuburbsPage, AddressesPage,
   OrganisationsPage, IndustriesPage, ContactsPage, ResumesPage, OccupationsPage,
@@ -17,20 +18,56 @@ import {
   KPAsPage, MunicipalKPAsPage, DepartmentalObjectivesPage, OutputsPage,
   PerformanceObjectivesPage, PriorityIssuesPage
 } from './components/admin/GenericLookupPages';
+import {
+  IPMSTargetLibraryDetail,
+  IPMSTargetLibraryList,
+  IPMSTargetTemplateFormPage,
+  OPMSTargetLibraryDetail,
+  OPMSTargetLibraryList,
+  OPMSTargetTemplateFormPage,
+} from './components/library/TargetLibraries';
 import { TaskManagement } from './components/tasks/TaskManagement';
 import { KPILibrary } from './components/kpi/KPILibrary';
 import { Reports } from './components/reports/Reports';
 import { Settings } from './components/settings/Settings';
 import { Login } from './components/auth/Login';
+import { AccessDeniedPage, useCanAccessPath } from './components/security/AccessControl';
 
 function AppContent() {
   const { currentPath, isAuthenticated } = useApp();
+  const canAccessPath = useCanAccessPath(currentPath);
 
   if (!isAuthenticated) {
     return <Login />;
   }
 
+  if (!canAccessPath) {
+    return <AccessDeniedPage />;
+  }
+
   const renderPage = () => {
+    if (currentPath === '/opms/library/new') {
+      return <OPMSTargetTemplateFormPage />;
+    }
+    if (currentPath === '/ipms/library/new') {
+      return <IPMSTargetTemplateFormPage />;
+    }
+    if (currentPath.startsWith('/opms/library/') && currentPath.endsWith('/edit')) {
+      const id = currentPath.split('/')[3];
+      return <OPMSTargetTemplateFormPage templateId={id} />;
+    }
+    if (currentPath.startsWith('/ipms/library/') && currentPath.endsWith('/edit')) {
+      const id = currentPath.split('/')[3];
+      return <IPMSTargetTemplateFormPage templateId={id} />;
+    }
+    if (currentPath.startsWith('/opms/library/') && currentPath !== '/opms/library') {
+      const id = currentPath.split('/')[3];
+      return <OPMSTargetLibraryDetail templateId={id} />;
+    }
+    if (currentPath.startsWith('/ipms/library/') && currentPath !== '/ipms/library') {
+      const id = currentPath.split('/')[3];
+      return <IPMSTargetLibraryDetail templateId={id} />;
+    }
     if (currentPath.startsWith('/ipms/targets/') && currentPath !== '/ipms/targets') {
       const id = currentPath.split('/').pop();
       return <IPMSTargetDetail targetId={id} />;
@@ -43,18 +80,22 @@ function AppContent() {
     switch (currentPath) {
       case '/dashboard':
         return <Dashboard />;
+      case '/kpi-library':
+        return <KPILibrary />;
+      case '/opms/library':
+        return <OPMSTargetLibraryList />;
       case '/opms/targets':
         return <OPMSTargetList />;
       case '/opms/submissions':
         return <OPMSSubmissionsList />;
       case '/opms/vote-numbers':
         return <VoteNumbersPage />;
+      case '/ipms/library':
+        return <IPMSTargetLibraryList />;
       case '/ipms/targets':
         return <IPMSTargetList />;
       case '/ipms/submissions':
         return <IPMSSubmissionsList />;
-      case '/kpi-library':
-        return <KPILibrary />;
       case '/workflow/my-queue':
         return <MyWorkQueue />;
       case '/workflow/verification':
@@ -103,6 +144,14 @@ function AppContent() {
         return <AdminPermissionsPage />;
       case '/system-administration/audit-logs':
         return <AdminAuditLogsPage />;
+      case '/system-administration/role-implementation-audit':
+        return <RoleImplementationAuditPage />;
+      case '/system-administration/role-access-matrix':
+        return <RoleAccessMatrixPage />;
+      case '/system-administration/permission-simulation':
+        return <PermissionSimulationPage />;
+      case '/system-administration/system-coverage-audit':
+        return <SystemCoverageAuditPage />;
       case '/admin/budget-types':
         return <BudgetTypesPage />;
       case '/admin/strategic-goals':

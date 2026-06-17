@@ -5,7 +5,7 @@ import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { Tabs } from '../common/Tabs';
-import { Input, Select, FormSection, FormRow } from '../common/Form';
+import { Input, Select, FormSection, FormRow, FormHero, FormPanel } from '../common/Form';
 import { mockEmployees, mockDepartments, mockDepartmentUnits, mockPositions } from '../../data/mockData';
 import type { Employee, Department, DepartmentUnit, Position } from '../../types';
 
@@ -82,18 +82,30 @@ export function EmployeeList() {
         </Card>
         <EmployeeDetailModal employee={selectedEmployee} isOpen={!!selectedEmployee} onClose={() => setSelectedEmployee(null)} />
         <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Add Employee" size="md">
-          <div className="space-y-3">
-            <FormRow cols={2}>
-              <Input label="First Name" placeholder="First name" required />
-              <Input label="Last Name" placeholder="Last name" required />
-            </FormRow>
-            <Input label="Email" type="email" placeholder="Email" required />
-            <FormRow cols={2}>
-              <Select label="Department" options={mockDepartments.map(d => ({ value: d.id, label: d.name }))} placeholder="Select" />
-              <Select label="Position" options={mockPositions.map(p => ({ value: p.id, label: p.title }))} placeholder="Select" />
-            </FormRow>
+          <div className="space-y-5">
+            <FormHero
+              eyebrow="HR Management"
+              title="Create employee profile"
+              description="Capture the employee's identity and organizational assignment using the standardized add/edit layout."
+              badges={<Badge variant="default">New Employee</Badge>}
+            />
+            <div className="grid gap-4">
+              <FormPanel title="Personal Information" description="Enter the employee's core profile details." icon={<Plus className="h-5 w-5" />}>
+                <FormRow cols={2}>
+                  <Input label="First Name" placeholder="First name" required />
+                  <Input label="Last Name" placeholder="Last name" required />
+                </FormRow>
+                <Input label="Email" type="email" placeholder="Email" required />
+              </FormPanel>
+              <FormPanel title="Organization" description="Assign the employee to the correct department and position." icon={<Edit2 className="h-5 w-5" />}>
+                <FormRow cols={2}>
+                  <Select label="Department" options={mockDepartments.map(d => ({ value: d.id, label: d.name }))} placeholder="Select" required />
+                  <Select label="Position" options={mockPositions.map(p => ({ value: p.id, label: p.title }))} placeholder="Select" required />
+                </FormRow>
+              </FormPanel>
+            </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="outline" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
             <Button variant="primary" size="sm">Add</Button>
           </div>

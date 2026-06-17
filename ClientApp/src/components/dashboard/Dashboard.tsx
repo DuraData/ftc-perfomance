@@ -1,352 +1,312 @@
-import React from 'react';
-import {
-  Target,
-  TrendingUp,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  Users,
-  FileText,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend,
-  Area,
-  AreaChart,
-} from 'recharts';
+import { Bell, FileText, Shield, Target, Workflow } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
-import { Card, Badge, ProgressBar } from '../ui';
+import { Button, Card, Badge } from '../ui';
 import { useApp } from '../../context/AppContext';
-import { mockDashboardStats, mockDepartmentPerformances, mockOPMSTargets, mockOPMSSubmissions } from '../../data/mockData';
+import { mockDashboardStats } from '../../data/mockData';
 
-const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+type DashboardCard = { label: string; value: string; tone: 'primary' | 'success' | 'warning' | 'default' };
 
-const quarterlyData = [
-  { quarter: 'Q1', target: 85, actual: 82 },
-  { quarter: 'Q2', target: 88, actual: 86 },
-  { quarter: 'Mid', target: 90, actual: 87 },
-  { quarter: 'Q3', target: 92, actual: 89 },
-  { quarter: 'Q4', target: 95, actual: 92 },
-];
+const dashboardConfig: Record<string, {
+  subtitle: string;
+  stats: DashboardCard[];
+  queues: string[];
+  reports: string[];
+  quickActions: Array<{ label: string; path: string }>;
+}> = {
+  'Super Admin': {
+    subtitle: 'Full system visibility across users, permissions, modules, and workflow',
+    stats: [
+      { label: 'Active Users', value: '126', tone: 'primary' },
+      { label: 'Pending Workflows', value: '34', tone: 'warning' },
+      { label: 'Audit Events', value: '482', tone: 'success' },
+      { label: 'Open Notifications', value: '18', tone: 'default' },
+    ],
+    queues: ['Security approvals', 'Role changes', 'Permission overrides', 'Audit exceptions'],
+    reports: ['Platform audit summary', 'Institution performance overview', 'Security configuration delta'],
+    quickActions: [
+      { label: 'Manage Users', path: '/system-administration/users' },
+      { label: 'Open Role Matrix', path: '/system-administration/role-access-matrix' },
+      { label: 'Run Permission Simulation', path: '/system-administration/permission-simulation' },
+    ],
+  },
+  Admin: {
+    subtitle: 'Operational administration for users, departments, units, setup, notifications, and due dates',
+    stats: [
+      { label: 'Users Managed', value: '87', tone: 'primary' },
+      { label: 'Departments', value: '9', tone: 'default' },
+      { label: 'Due Date Requests', value: '6', tone: 'warning' },
+      { label: 'Notifications Queued', value: '12', tone: 'success' },
+    ],
+    queues: ['User provisioning', 'Department updates', 'Unit configuration', 'Due date extension approvals'],
+    reports: ['User activity summary', 'Department setup completeness', 'Notification delivery report'],
+    quickActions: [
+      { label: 'Departments', path: '/hr/departments' },
+      { label: 'Units', path: '/hr/units' },
+      { label: 'Coverage Audit', path: '/system-administration/system-coverage-audit' },
+    ],
+  },
+  'Client Admin': {
+    subtitle: 'Read-only user directory and audit reporting access',
+    stats: [
+      { label: 'Directory Entries', value: '126', tone: 'primary' },
+      { label: 'Audit Reports', value: '9', tone: 'success' },
+      { label: 'Read-Only Modules', value: '6', tone: 'default' },
+      { label: 'Exceptions', value: '0', tone: 'warning' },
+    ],
+    queues: ['User directory lookups', 'Audit report review', 'Compliance evidence checks'],
+    reports: ['User audit trail', 'Access history summary', 'External assurance extract'],
+    quickActions: [
+      { label: 'Employees', path: '/hr/employees' },
+      { label: 'Audit Logs', path: '/system-administration/audit-logs' },
+    ],
+  },
+  'Auditor General': {
+    subtitle: 'Institution-wide read-only oversight across OPMS, IPMS, POEs, and audit trails',
+    stats: [
+      { label: 'Audited Records', value: '241', tone: 'primary' },
+      { label: 'POEs Reviewed', value: '132', tone: 'success' },
+      { label: 'Open Findings', value: '14', tone: 'warning' },
+      { label: 'Version Logs', value: '58', tone: 'default' },
+    ],
+    queues: ['Read-only audit review', 'Evidence checks', 'Institution scorecard review'],
+    reports: ['Audit oversight dashboard', 'Institution performance report', 'Version trail summary'],
+    quickActions: [
+      { label: 'Reports', path: '/reports' },
+      { label: 'Audit Logs', path: '/system-administration/audit-logs' },
+    ],
+  },
+  'Municipal Manager': {
+    subtitle: 'Institution-wide monitoring, scoring, and approval for assigned OPMS work',
+    stats: [
+      { label: 'Institution Score', value: `${mockDashboardStats.averageScore.toFixed(1)}%`, tone: 'success' },
+      { label: 'Pending Approvals', value: '8', tone: 'warning' },
+      { label: 'Assigned KPIs', value: '12', tone: 'primary' },
+      { label: 'IA Reports', value: '4', tone: 'default' },
+    ],
+    queues: ['Institution approvals', 'Assigned KPI scoring', 'Department monitoring', 'Escalated performance items'],
+    reports: ['Institution scorecard', 'Department performance trend', 'Internal audit summary'],
+    quickActions: [
+      { label: 'OPMS Targets', path: '/opms/targets' },
+      { label: 'Approval Queue', path: '/workflow/approval' },
+    ],
+  },
+  'Internal Audit': {
+    subtitle: 'Institution-wide audit reviews, findings, recommendations, and assurance reporting',
+    stats: [
+      { label: 'Pending Audits', value: '11', tone: 'warning' },
+      { label: 'Findings Logged', value: '19', tone: 'primary' },
+      { label: 'Recommendations', value: '24', tone: 'success' },
+      { label: 'RFI Notifications', value: '5', tone: 'default' },
+    ],
+    queues: ['Submission audits', 'POE validation', 'Findings management', 'IA RFI follow-up'],
+    reports: ['Internal audit dashboard', 'Assurance findings report', 'POE compliance status'],
+    quickActions: [
+      { label: 'Auditor Queue', path: '/workflow/auditor-review' },
+      { label: 'Reports', path: '/reports' },
+    ],
+  },
+  Reviewer: {
+    subtitle: 'Review achievements, add comments, score items, and request more information',
+    stats: [
+      { label: 'Items To Review', value: '9', tone: 'warning' },
+      { label: 'Scored Reviews', value: '21', tone: 'success' },
+      { label: 'Open RFIs', value: '4', tone: 'primary' },
+      { label: 'Comments Added', value: '37', tone: 'default' },
+    ],
+    queues: ['Achievement review', 'Not-achieved RFI', 'Comment follow-up', 'Scoring backlog'],
+    reports: ['Review workload', 'Scoring summary', 'Returned item report'],
+    quickActions: [
+      { label: 'PMS Review', path: '/workflow/pms-review' },
+      { label: 'Reports', path: '/reports' },
+    ],
+  },
+  'KPI Approver': {
+    subtitle: 'Approve, reject, and score submissions within the assigned scope',
+    stats: [
+      { label: 'Approvals Pending', value: '7', tone: 'warning' },
+      { label: 'Approved This Period', value: '18', tone: 'success' },
+      { label: 'Scoped KPIs', value: '10', tone: 'primary' },
+      { label: 'Escalations', value: '2', tone: 'default' },
+    ],
+    queues: ['Approval queue', 'Rejected items', 'Scoring tasks', 'Scope exceptions'],
+    reports: ['Approval summary', 'KPI approval trend', 'Scope-based approval report'],
+    quickActions: [
+      { label: 'Approval Queue', path: '/workflow/approval' },
+      { label: 'OPMS Targets', path: '/opms/targets' },
+    ],
+  },
+  'Head of Department': {
+    subtitle: 'Department-scoped approvals, edits, additional POEs, and audit-trail accountable actions',
+    stats: [
+      { label: 'Department KPIs', value: '22', tone: 'primary' },
+      { label: 'Pending Department Reviews', value: '6', tone: 'warning' },
+      { label: 'POEs Added', value: '14', tone: 'success' },
+      { label: 'Audit Trail Entries', value: '29', tone: 'default' },
+    ],
+    queues: ['Department approvals', 'Submitted actual edits', 'Variance review', 'Corrective actions'],
+    reports: ['Department scorecard', 'Submission edit history', 'Department performance report'],
+    quickActions: [
+      { label: 'OPMS Submissions', path: '/opms/submissions' },
+      { label: 'Reports', path: '/reports' },
+    ],
+  },
+  'Deputy Head of Department': {
+    subtitle: 'Department-scoped delegated review, editing, and evidence support',
+    stats: [
+      { label: 'Delegated Reviews', value: '5', tone: 'warning' },
+      { label: 'Editable Submissions', value: '9', tone: 'primary' },
+      { label: 'POEs Added', value: '8', tone: 'success' },
+      { label: 'Department Alerts', value: '3', tone: 'default' },
+    ],
+    queues: ['Delegated department reviews', 'Evidence enhancement', 'Corrective measure updates'],
+    reports: ['Department readiness', 'Delegated workload', 'Submission history'],
+    quickActions: [
+      { label: 'OPMS Submissions', path: '/opms/submissions' },
+      { label: 'Workflow Approval', path: '/workflow/approval' },
+    ],
+  },
+  Verifier: {
+    subtitle: 'Verify, verify-reject, edit scoped submissions, and upload supporting evidence',
+    stats: [
+      { label: 'Verification Queue', value: '13', tone: 'warning' },
+      { label: 'Verified Items', value: '31', tone: 'success' },
+      { label: 'Scoped Units', value: '3', tone: 'primary' },
+      { label: 'Returned Items', value: '2', tone: 'default' },
+    ],
+    queues: ['Verification queue', 'Verify-reject items', 'Actual corrections', 'POE additions'],
+    reports: ['Verification summary', 'Returned submission trend', 'Scoped workload report'],
+    quickActions: [
+      { label: 'Verification Queue', path: '/workflow/verification' },
+      { label: 'OPMS Submissions', path: '/opms/submissions' },
+    ],
+  },
+  Submitter: {
+    subtitle: 'View assigned KPIs, submit actuals, upload POEs, and manage scoped work',
+    stats: [
+      { label: 'Assigned KPIs', value: '11', tone: 'primary' },
+      { label: 'Draft Submissions', value: '4', tone: 'warning' },
+      { label: 'Submitted POEs', value: '17', tone: 'success' },
+      { label: 'Notifications', value: '6', tone: 'default' },
+    ],
+    queues: ['My submissions', 'POE upload tasks', 'Returned items', 'Scoring tasks'],
+    reports: ['My KPI progress', 'Submission status report'],
+    quickActions: [
+      { label: 'My Queue', path: '/workflow/my-queue' },
+      { label: 'OPMS Submissions', path: '/opms/submissions' },
+    ],
+  },
+};
 
-const statusData = [
-  { name: 'On Track', value: 35, color: '#22c55e' },
-  { name: 'At Risk', value: 8, color: '#f59e0b' },
-  { name: 'Behind', value: 3, color: '#ef4444' },
-  { name: 'Completed', value: 39, color: '#3b82f6' },
-];
-
-const trendData = [
-  { month: 'Jul', score: 78 },
-  { month: 'Aug', score: 81 },
-  { month: 'Sep', score: 83 },
-  { month: 'Oct', score: 85 },
-  { month: 'Nov', score: 84 },
-  { month: 'Dec', score: 87 },
-  { month: 'Jan', score: 86 },
-  { month: 'Feb', score: 88 },
-  { month: 'Mar', score: 89 },
-];
-
-function ActivityFeed() {
-  const activities = mockDashboardStats.recentActivity;
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case 'approval':
-        return <CheckCircle className="w-4 h-4 text-success-500" />;
-      case 'submission':
-        return <FileText className="w-4 h-4 text-primary-500" />;
-      case 'verification':
-        return <Users className="w-4 h-4 text-amber-500" />;
-      case 'comment':
-        return <FileText className="w-4 h-4 text-secondary-500" />;
-      case 'target_created':
-        return <Target className="w-4 h-4 text-blue-500" />;
-      default:
-        return <FileText className="w-4 h-4 text-secondary-500" />;
-    }
-  };
-
-  return (
-    <Card>
-      <h3 className="text-base font-semibold text-secondary-900 dark:text-white mb-4">
-        Recent Activity
-      </h3>
-      <div className="space-y-4">
-        {activities.map(activity => (
-          <div key={activity.id} className="flex gap-3">
-            <div className="mt-1">{getActivityIcon(activity.type)}</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-secondary-700 dark:text-secondary-300">
-                {activity.description}
-              </p>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400 mt-0.5">
-                {activity.user.displayName} • {new Date(activity.timestamp).toLocaleString()}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function DepartmentPerformanceCards() {
-  return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-secondary-900 dark:text-white">
-        Department Performance
-      </h3>
-      {mockDepartmentPerformances.slice(0, 5).map((dept, index) => (
-        <Card key={dept.department.id} className="hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="font-medium text-secondary-900 dark:text-white">
-                {dept.department.name}
-              </h4>
-              <p className="text-sm text-secondary-500 dark:text-secondary-400">
-                {dept.completedCount} / {dept.targetCount} targets completed
-              </p>
-            </div>
-            <div className={`text-2xl font-bold ${dept.score >= 90 ? 'text-success-600' : dept.score >= 70 ? 'text-primary-600' : 'text-warning-600'}`}>
-              {dept.score.toFixed(1)}%
-            </div>
-          </div>
-          <ProgressBar
-            value={dept.completedCount}
-            max={dept.targetCount}
-            color={dept.score >= 90 ? 'success' : dept.score >= 70 ? 'primary' : 'warning'}
-          />
-          <div className="flex items-center gap-4 mt-3 text-xs text-secondary-500 dark:text-secondary-400">
-            <span className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {dept.pendingCount} pending
-            </span>
-            <span className="flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" />
-              {dept.overdueCount} overdue
-            </span>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-function QuickStats() {
-  const stats = mockDashboardStats;
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <Card className="text-center">
-        <Target className="w-8 h-8 text-primary-600 mx-auto mb-2" />
-        <p className="text-2xl font-bold text-secondary-900 dark:text-white">{stats.totalTargets}</p>
-        <p className="text-xs text-secondary-500 dark:text-secondary-400">Total Targets</p>
-      </Card>
-      <Card className="text-center">
-        <CheckCircle className="w-8 h-8 text-success-600 mx-auto mb-2" />
-        <p className="text-2xl font-bold text-secondary-900 dark:text-white">{stats.completedTargets}</p>
-        <p className="text-xs text-secondary-500 dark:text-secondary-400">Completed</p>
-      </Card>
-      <Card className="text-center">
-        <Clock className="w-8 h-8 text-warning-600 mx-auto mb-2" />
-        <p className="text-2xl font-bold text-secondary-900 dark:text-white">{stats.pendingSubmissions}</p>
-        <p className="text-xs text-secondary-500 dark:text-secondary-400">Pending</p>
-      </Card>
-      <Card className="text-center">
-        <AlertTriangle className="w-8 h-8 text-error-600 mx-auto mb-2" />
-        <p className="text-2xl font-bold text-secondary-900 dark:text-white">{stats.overdueSubmissions}</p>
-        <p className="text-xs text-secondary-500 dark:text-secondary-400">Overdue</p>
-      </Card>
-    </div>
-  );
-}
-
-function WorkflowQueues() {
-  const { user } = useApp();
-
-  const queues = [
-    { label: 'My Submissions', count: 3, color: 'bg-blue-500' },
-    { label: 'Pending Verification', count: mockOPMSSubmissions.filter(s => s.status === 'pending_verification').length, color: 'bg-amber-500' },
-    { label: 'Pending Approval', count: 8, color: 'bg-orange-500' },
-    { label: 'PMS Review', count: 4, color: 'bg-primary-500' },
-    { label: 'Auditor Queue', count: 2, color: 'bg-violet-500' },
-    { label: 'Returned Items', count: 1, color: 'bg-rose-500' },
-  ];
-
-  return (
-    <Card>
-      <h3 className="text-base font-semibold text-secondary-900 dark:text-white mb-4">
-        Work Queues
-      </h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {queues.map(queue => (
-          <button
-            key={queue.label}
-            className="flex items-center gap-3 p-3 rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors"
-          >
-            <div className={`w-2 h-8 ${queue.color} rounded-full`} />
-            <div className="text-left">
-              <p className="text-lg font-semibold text-secondary-900 dark:text-white">{queue.count}</p>
-              <p className="text-xs text-secondary-500 dark:text-secondary-400">{queue.label}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-    </Card>
-  );
+function toneClass(tone: DashboardCard['tone']) {
+  switch (tone) {
+    case 'primary':
+      return 'text-primary-600';
+    case 'success':
+      return 'text-success-600';
+    case 'warning':
+      return 'text-warning-600';
+    default:
+      return 'text-secondary-900 dark:text-white';
+  }
 }
 
 export function Dashboard() {
-  const { user } = useApp();
+  const { roles, userProfile, setCurrentPath } = useApp();
+  const primaryRole = roles[0] ?? 'Submitter';
+  const config = dashboardConfig[primaryRole] ?? dashboardConfig.Submitter;
 
   return (
-    <AppShell title="Dashboard" subtitle="Performance Management Overview">
+    <AppShell title={`${primaryRole} Dashboard`} subtitle={config.subtitle}>
       <div className="space-y-6">
-        {/* Welcome section */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-secondary-900 dark:text-white">
-              Welcome back, {user?.firstName}
+              Welcome back, {userProfile?.firstName}
             </h2>
             <p className="text-secondary-500 dark:text-secondary-400">
-              Here's your performance management overview for 2024/2025
+              {userProfile?.department ? `${userProfile.department} • ` : ''}{primaryRole}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="success">Q3 Active</Badge>
-            <Badge>2024/2025</Badge>
+            <Badge variant="success">Active Role</Badge>
+            <Badge>{primaryRole}</Badge>
           </div>
         </div>
-
-        {/* Quick stats */}
-        <QuickStats />
-
-        {/* Charts row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Quarterly Progress Chart */}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {config.stats.map(stat => (
+            <Card key={stat.label}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-secondary-500 dark:text-secondary-400">{stat.label}</p>
+              <p className={`mt-3 text-3xl font-bold ${toneClass(stat.tone)}`}>{stat.value}</p>
+            </Card>
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
           <Card>
-            <h3 className="text-base font-semibold text-secondary-900 dark:text-white mb-4">
-              Quarterly Target vs Actual
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={quarterlyData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-secondary-200 dark:stroke-secondary-700" />
-                  <XAxis dataKey="quarter" className="text-xs" />
-                  <YAxis className="text-xs" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'white',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="target" name="Target %" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="actual" name="Actual %" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="flex items-center gap-2">
+              <Workflow className="h-5 w-5 text-primary-600" />
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Work Queue</h3>
+            </div>
+            <div className="mt-4 space-y-3">
+              {config.queues.map(item => (
+                <div key={item} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:text-secondary-300">
+                  {item}
+                </div>
+              ))}
             </div>
           </Card>
-
-          {/* Status Distribution */}
           <Card>
-            <h3 className="text-base font-semibold text-secondary-900 dark:text-white mb-4">
-              Target Status Distribution
-            </h3>
-            <div className="h-64 flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={statusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {statusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary-600" />
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Reports</h3>
+            </div>
+            <div className="mt-4 space-y-3">
+              {config.reports.map(item => (
+                <div key={item} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:text-secondary-300">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-primary-600" />
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Quick Actions</h3>
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              {config.quickActions.map(action => (
+                <Button key={action.label} variant="outline" onClick={() => setCurrentPath(action.path)}>
+                  {action.label}
+                </Button>
+              ))}
             </div>
           </Card>
         </div>
-
-        {/* Trend and Summary */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Performance Trend */}
+        <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
-            <h3 className="text-base font-semibold text-secondary-900 dark:text-white mb-4">
-              Performance Score Trend
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData}>
-                  <defs>
-                    <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-secondary-200 dark:stroke-secondary-700" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis domain={[70, 100]} className="text-xs" />
-                  <Tooltip />
-                  <Area
-                    type="monotone"
-                    dataKey="score"
-                    name="Score"
-                    stroke="#3b82f6"
-                    fill="url(#scoreGradient)"
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary-600" />
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Role Summary</h3>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-secondary-600 dark:text-secondary-300">
+              This dashboard variant is driven by the authenticated role returned from the backend. It prioritizes the work queue, quick actions, reports, and governance visibility expected for <span className="font-semibold text-secondary-900 dark:text-white">{primaryRole}</span>.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {roles.map(role => (
+                <Badge key={role} variant={role === primaryRole ? 'primary' : 'default'}>{role}</Badge>
+              ))}
             </div>
           </Card>
-
-          {/* Average Score Card */}
-          <Card className="flex flex-col justify-center items-center text-center bg-gradient-to-br from-primary-600 to-primary-700 text-white">
-            <TrendingUp className="w-12 h-12 mb-4 opacity-80" />
-            <p className="text-5xl font-bold mb-2">{mockDashboardStats.averageScore.toFixed(1)}%</p>
-            <p className="text-primary-100">Average Score</p>
-            <div className="flex items-center gap-1 mt-4 text-success-300">
-              <ArrowUp className="w-4 h-4" />
-              <span className="text-sm">+3.2% vs last year</span>
+          <Card>
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary-600" />
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Security Context</h3>
+            </div>
+            <div className="mt-4 space-y-2 text-sm text-secondary-600 dark:text-secondary-300">
+              <p><span className="font-semibold text-secondary-900 dark:text-white">Department:</span> {userProfile?.department ?? '-'}</p>
+              <p><span className="font-semibold text-secondary-900 dark:text-white">Position:</span> {userProfile?.position ?? '-'}</p>
+              <p><span className="font-semibold text-secondary-900 dark:text-white">Average Score:</span> {mockDashboardStats.averageScore.toFixed(1)}%</p>
             </div>
           </Card>
-        </div>
-
-        {/* Work Queues */}
-        <WorkflowQueues />
-
-        {/* Activity and Department Performance */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ActivityFeed />
-          <div>
-            <DepartmentPerformanceCards />
-          </div>
         </div>
       </div>
     </AppShell>

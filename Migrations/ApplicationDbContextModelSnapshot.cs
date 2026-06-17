@@ -85,6 +85,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("Department")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("DepartmentId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -141,6 +144,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -153,6 +159,8 @@ namespace FTCERP.Host.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
 
@@ -161,7 +169,36 @@ namespace FTCERP.Host.Migrations
                         .HasDatabaseName("UserNameIndex")
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
+                    b.HasIndex("UnitId");
+
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Department", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Departments");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LoginAuditLog", b =>
@@ -292,6 +329,70 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("RolePermissions");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Unit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("Units");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssignmentType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("KpiId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ProjectId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TargetId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TaskId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserAssignments");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserPermissionOverride", b =>
                 {
                     b.Property<string>("UserId")
@@ -311,6 +412,53 @@ namespace FTCERP.Host.Migrations
                     b.HasIndex("PermissionId");
 
                     b.ToTable("UserPermissionOverrides");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserScope", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("KpiId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ProjectId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ScopeType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TaskId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserScopes");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -419,6 +567,23 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ApplicationUser", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Department", "DepartmentEntity")
+                        .WithMany("Users")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Unit", "UnitEntity")
+                        .WithMany("Users")
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("DepartmentEntity");
+
+                    b.Navigation("UnitEntity");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LoginAuditLog", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
@@ -458,6 +623,28 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Unit", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Department", "Department")
+                        .WithMany("Units")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserAssignment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
+                        .WithMany("Assignments")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserPermissionOverride", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.Permission", "Permission")
@@ -473,6 +660,31 @@ namespace FTCERP.Host.Migrations
                         .IsRequired();
 
                     b.Navigation("Permission");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserScope", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Department", "Department")
+                        .WithMany("UserScopes")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Unit", "Unit")
+                        .WithMany("UserScopes")
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
+                        .WithMany("Scopes")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Unit");
 
                     b.Navigation("User");
                 });
@@ -535,11 +747,24 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.ApplicationUser", b =>
                 {
+                    b.Navigation("Assignments");
+
                     b.Navigation("LoginAuditLogs");
 
                     b.Navigation("PermissionOverrides");
 
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("Scopes");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Department", b =>
+                {
+                    b.Navigation("Units");
+
+                    b.Navigation("UserScopes");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Permission", b =>
@@ -547,6 +772,13 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("RolePermissions");
 
                     b.Navigation("UserPermissionOverrides");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Unit", b =>
+                {
+                    b.Navigation("UserScopes");
+
+                    b.Navigation("Users");
                 });
 #pragma warning restore 612, 618
         }

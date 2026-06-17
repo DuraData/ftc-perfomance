@@ -14,6 +14,7 @@ import {
   deletePermission,
   deleteRole,
   deleteUser,
+  getAuditTrails,
   getLoginAuditLogs,
   getPermissions,
   getPermissionsGrouped,
@@ -28,7 +29,7 @@ import {
   updateRole,
   updateUser,
 } from '../../api/api';
-import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, LoginAuditLog, UserPermissionOverride, UserPermissions } from '../../types';
+import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, AuditTrailEntryDto, LoginAuditLog, UserPermissionOverride, UserPermissions } from '../../types';
 import { useApp } from '../../context/AppContext';
 
 function useHasPermission(code: string) {
@@ -1017,25 +1018,40 @@ export function AdminPermissionsPage() {
 }
 
 export function AdminAuditLogsPage() {
-  const canView = useHasPermission('Audit.LoginLogs.View');
+  const canViewLoginLogs = useHasPermission('Audit.LoginLogs.View');
+  const canViewAuditTrails = useHasPermission('Audit.Trails.View') || useHasPermission('Audit.Logs.View');
+  const [activeTab, setActiveTab] = useState<'login' | 'trail'>(canViewLoginLogs ? 'login' : 'trail');
   const [rows, setRows] = useState<LoginAuditLog[]>([]);
+  const [trailRows, setTrailRows] = useState<AuditTrailEntryDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showFailuresOnly, setShowFailuresOnly] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LoginAuditLog | null>(null);
+  const [selectedTrail, setSelectedTrail] = useState<AuditTrailEntryDto | null>(null);
 
   useEffect(() => {
     (async () => {
-      if (!canView) return;
+      if (!canViewLoginLogs && !canViewAuditTrails) return;
       setLoading(true);
-      const res = await getLoginAuditLogs(200);
-      setRows(res.data ?? []);
-      setError(res.success ? null : (res.message ?? 'Failed to load audit logs'));
+      const [loginRes, trailsRes] = await Promise.all([
+        canViewLoginLogs ? getLoginAuditLogs(200) : Promise.resolve({ success: true, data: [] as LoginAuditLog[] }),
+        canViewAuditTrails ? getAuditTrails(250) : Promise.resolve({ success: true, data: [] as AuditTrailEntryDto[] }),
+      ]);
+
+      setRows(loginRes.data ?? []);
+      setTrailRows(trailsRes.data ?? []);
+      setError(
+        !loginRes.success
+          ? (loginRes.message ?? 'Failed to load login audit logs')
+          : !trailsRes.success
+          ? (trailsRes.message ?? 'Failed to load audit trails')
+          : null,
+      );
       setLoading(false);
     })();
-  }, [canView]);
+  }, [canViewLoginLogs, canViewAuditTrails]);
 
-  const columns = [
+  const loginColumns = [
     { id: 'email', header: 'Email', accessor: (l: LoginAuditLog) => l.email },
     { id: 'ip', header: 'IP', accessor: (l: LoginAuditLog) => l.ipAddress ?? '-' },
     { id: 'ua', header: 'User Agent', accessor: (l: LoginAuditLog) => <span className="text-xs">{l.userAgent ?? '-'}</span> },
@@ -1043,7 +1059,16 @@ export function AdminAuditLogsPage() {
     { id: 'time', header: 'When', accessor: (l: LoginAuditLog) => new Date(l.loggedAt).toLocaleString() },
   ];
 
-  const actions = (l: LoginAuditLog) => (
+  const trailColumns = [
+    { id: 'entity', header: 'Entity', accessor: (row: AuditTrailEntryDto) => row.entityName },
+    { id: 'entityId', header: 'Entity ID', accessor: (row: AuditTrailEntryDto) => <span className="font-mono text-xs">{row.entityId}</span> },
+    { id: 'action', header: 'Action', accessor: (row: AuditTrailEntryDto) => <Badge variant="info" size="sm">{row.action}</Badge> },
+    { id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedBy },
+    { id: 'ip', header: 'IP', accessor: (row: AuditTrailEntryDto) => row.ipAddress ?? '-' },
+    { id: 'time', header: 'When', accessor: (row: AuditTrailEntryDto) => new Date(row.changedAt).toLocaleString() },
+  ];
+
+  const loginActions = (l: LoginAuditLog) => (
     <button
       className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800"
       onClick={() => setSelectedLog(l)}
@@ -1052,23 +1077,54 @@ export function AdminAuditLogsPage() {
     </button>
   );
 
+  const trailActions = (entry: AuditTrailEntryDto) => (
+    <button
+      className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800"
+      onClick={() => setSelectedTrail(entry)}
+    >
+      View
+    </button>
+  );
+
   const filteredRows = showFailuresOnly ? rows.filter(r => !r.success) : rows;
 
   return (
-    <AppShell title="Audit Logs" subtitle="System Administration: Login Audit Logs">
+    <AppShell title="Audit Logs" subtitle="System Administration: Login logs and workflow audit trails">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="primary">{filteredRows.length} logs</Badge>
+            <Badge variant="primary">
+              {activeTab === 'login' ? `${filteredRows.length} logs` : `${trailRows.length} entries`}
+            </Badge>
             <div className="flex items-center gap-2 text-secondary-500">
               <History className="w-4 h-4" />
             </div>
           </div>
-          <Checkbox
-            label="Failures only"
-            checked={showFailuresOnly}
-            onChange={(e) => setShowFailuresOnly(e.target.checked)}
-          />
+          <div className="flex items-center gap-3">
+            {canViewLoginLogs && canViewAuditTrails && (
+              <div className="inline-flex rounded-lg border border-secondary-200 p-1 dark:border-secondary-700">
+                <button
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium ${activeTab === 'login' ? 'bg-primary-600 text-white' : 'text-secondary-600 dark:text-secondary-300'}`}
+                  onClick={() => setActiveTab('login')}
+                >
+                  Login Logs
+                </button>
+                <button
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium ${activeTab === 'trail' ? 'bg-primary-600 text-white' : 'text-secondary-600 dark:text-secondary-300'}`}
+                  onClick={() => setActiveTab('trail')}
+                >
+                  Audit Trails
+                </button>
+              </div>
+            )}
+            {activeTab === 'login' && (
+              <Checkbox
+                label="Failures only"
+                checked={showFailuresOnly}
+                onChange={(e) => setShowFailuresOnly(e.target.checked)}
+              />
+            )}
+          </div>
         </div>
 
         {error && (
@@ -1078,10 +1134,14 @@ export function AdminAuditLogsPage() {
         )}
 
         <Card>
-          <DataTable data={filteredRows} columns={columns} actions={actions} searchable getRowId={(l) => String(l.id)} emptyMessage={loading ? 'Loading...' : 'No logs'} />
+          {activeTab === 'login' ? (
+            <DataTable data={filteredRows} columns={loginColumns} actions={loginActions} searchable getRowId={(l) => String(l.id)} emptyMessage={loading ? 'Loading...' : 'No logs'} />
+          ) : (
+            <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable getRowId={(entry) => String(entry.id)} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} />
+          )}
         </Card>
 
-        {!canView && (
+        {!canViewLoginLogs && !canViewAuditTrails && (
           <div className="p-3 rounded-lg border border-secondary-200 bg-secondary-50 text-sm text-secondary-700 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-300">
             Access denied.
           </div>
@@ -1120,6 +1180,54 @@ export function AdminAuditLogsPage() {
               )}
               <div className="flex justify-end">
                 <Button variant="ghost" size="sm" onClick={() => setSelectedLog(null)}>Close</Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal isOpen={!!selectedTrail} onClose={() => setSelectedTrail(null)} title="Audit Trail Entry" size="md">
+          {selectedTrail && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-secondary-500">Entity</p>
+                  <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedTrail.entityName}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-secondary-500">Action</p>
+                  <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedTrail.action}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-secondary-500">Entity ID</p>
+                  <p className="text-xs font-mono text-secondary-700 dark:text-secondary-300 break-all">{selectedTrail.entityId}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-secondary-500">Changed By</p>
+                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.changedBy}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] text-secondary-500">Changed At</p>
+                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{new Date(selectedTrail.changedAt).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-secondary-500">IP Address</p>
+                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.ipAddress ?? '-'}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] text-secondary-500">Old Value</p>
+                <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-secondary-50 p-3 text-[11px] text-secondary-700 dark:bg-secondary-900 dark:text-secondary-300 whitespace-pre-wrap break-words">{selectedTrail.oldValue ?? '-'}</pre>
+              </div>
+              <div>
+                <p className="text-[10px] text-secondary-500">New Value</p>
+                <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-secondary-50 p-3 text-[11px] text-secondary-700 dark:bg-secondary-900 dark:text-secondary-300 whitespace-pre-wrap break-words">{selectedTrail.newValue ?? '-'}</pre>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedTrail(null)}>Close</Button>
               </div>
             </div>
           )}

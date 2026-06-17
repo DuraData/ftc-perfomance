@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Save,
@@ -18,6 +18,16 @@ import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import {
+  deleteIpmsSubmissionAttachment,
+  getAuditTrails,
+  deleteIpmsSubmission as deleteIpmsSubmissionApi,
+  getIpmsSubmissionAttachments,
+  getIpmsSubmissions as getIpmsSubmissionsApi,
+  getIpmsTarget as getIpmsTargetApi,
+  uploadIpmsSubmissionAttachment,
+  updateIpmsSubmission as updateIpmsSubmissionApi,
+} from '../../api/api';
+import {
   mockIPMSTargets,
   mockDepartments,
   mockDepartmentUnits,
@@ -29,7 +39,7 @@ import {
   targetUnitTypes,
   mockIPMSSubmissions,
 } from '../../data/mockData';
-import type { IPMSTarget, IPMSSubmission } from '../../types';
+import type { IPMSTarget, IPMSSubmission, AuditTrailEntryDto } from '../../types';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -235,6 +245,14 @@ function SubmissionsTab({
 }) {
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
 
+  const openSubmission = async (submission: IPMSSubmission) => {
+    const attachmentsResult = await getIpmsSubmissionAttachments(submission.id);
+    setSelectedSubmission({
+      ...submission,
+      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
+    });
+  };
+
   const columns = [
     { id: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
@@ -267,6 +285,27 @@ function SubmissionsTab({
             onUpdateSubmission(updated);
             setSelectedSubmission(updated);
           }}
+          onUploadAttachments={(files) => {
+            void (async () => {
+              const results = await Promise.all(files.map(file => uploadIpmsSubmissionAttachment(selectedSubmission.id, file)));
+              const uploaded = results.filter(result => result.success && result.data).map(result => result.data!);
+              if (uploaded.length > 0) {
+                const updated = { ...selectedSubmission, attachments: [...selectedSubmission.attachments, ...uploaded] };
+                onUpdateSubmission(updated);
+                setSelectedSubmission(updated);
+              }
+            })();
+          }}
+          onDeleteAttachment={(attachmentId) => {
+            void (async () => {
+              const result = await deleteIpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
+              if (result.success) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.filter(item => item.id !== attachmentId) };
+                onUpdateSubmission(updated);
+                setSelectedSubmission(updated);
+              }
+            })();
+          }}
         />
       </div>
     );
@@ -278,7 +317,7 @@ function SubmissionsTab({
       columns={columns} 
       emptyMessage="No submissions yet" 
       getRowId={(row) => row.id}
-      onRowClick={(row) => setSelectedSubmission(row)}
+      onRowClick={(row) => { void openSubmission(row); }}
     />
   );
 }
@@ -327,25 +366,25 @@ function AttachmentsTab({
   );
 }
 
-function HistoryTab() {
-  const historyItems = [
-    { action: 'Created', by: 'Sarah Ndlovu', date: '2024-07-15', details: 'Initial target creation' },
-    { action: 'Updated', by: 'Sarah Ndlovu', date: '2024-08-20', details: 'Updated Q3 target value' },
-  ];
-
+function HistoryTab({ entries }: { entries: AuditTrailEntryDto[] }) {
   return (
     <div className="relative">
       <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-secondary-200 dark:bg-secondary-700" />
-      {historyItems.map((item, idx) => (
-        <div key={idx} className="relative pl-8 pb-3 last:pb-0">
+      {entries.length === 0 && (
+        <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
+          No audit trail entries recorded yet.
+        </div>
+      )}
+      {entries.map((item) => (
+        <div key={item.id} className="relative pl-8 pb-3 last:pb-0">
           <div className="absolute left-1.5 w-2.5 h-2.5 bg-primary-600 rounded-full border-2 border-white dark:border-secondary-900" />
           <div className="bg-secondary-50 dark:bg-secondary-800 rounded p-2">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-secondary-900 dark:text-white">{item.action}</span>
-              <span className="text-[10px] text-secondary-500">{new Date(item.date).toLocaleDateString()}</span>
+              <span className="text-[10px] text-secondary-500">{new Date(item.changedAt).toLocaleDateString()}</span>
             </div>
-            <p className="text-xs text-secondary-600">{item.details}</p>
-            <p className="text-[10px] text-secondary-500 mt-0.5">By: {item.by}</p>
+            <p className="text-xs text-secondary-600">{item.entityName} {item.entityId}</p>
+            <p className="text-[10px] text-secondary-500 mt-0.5">By: {item.changedBy}</p>
           </div>
         </div>
       ))}
@@ -354,23 +393,76 @@ function HistoryTab() {
 }
 
 export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
-  const {
-    setCurrentPath,
-    ipmsTargets,
-    ipmsSubmissions,
-    updateIPMSTargetAttachments,
-    updateIPMSSubmission,
-    deleteIPMSSubmission,
-  } = useApp();
+  const { setCurrentPath } = useApp();
   const [activeTab, setActiveTab] = useState('general');
+  const [target, setTarget] = useState<IPMSTarget | null>(null);
+  const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
+  const [auditEntries, setAuditEntries] = useState<AuditTrailEntryDto[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const target = ipmsTargets.find(t => t.id === targetId) || ipmsTargets[0] || mockIPMSTargets[0];
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      const [targetResult, submissionsResult] = await Promise.all([
+        getIpmsTargetApi(targetId),
+        getIpmsSubmissionsApi(),
+      ]);
+
+      if (targetResult.success && targetResult.data) {
+        setTarget(targetResult.data);
+      } else {
+        setTarget(null);
+      }
+
+      if (submissionsResult.success && submissionsResult.data) {
+        setIpmsSubmissions(submissionsResult.data);
+      }
+
+      setIsLoading(false);
+    };
+
+    void loadData();
+  }, [targetId]);
+
+  useEffect(() => {
+    const loadAudit = async () => {
+      const auditResult = await getAuditTrails(250);
+      if (auditResult.success && auditResult.data) {
+        setAuditEntries(auditResult.data.filter(entry =>
+          entry.entityId === targetId &&
+          entry.entityName.toLowerCase().includes('ipmstarget'),
+        ));
+      }
+    };
+
+    void loadAudit();
+  }, [targetId]);
+
+  if (isLoading) {
+    return (
+      <AppShell title="IPMS Target Detail" subtitle="Loading target">
+        <Card>
+          <p className="text-sm text-secondary-500">Loading target...</p>
+        </Card>
+      </AppShell>
+    );
+  }
+
+  if (!target) {
+    return (
+      <AppShell title="IPMS Target Detail" subtitle="Target not found">
+        <Card>
+          <p className="text-sm text-secondary-500">Target not found.</p>
+        </Card>
+      </AppShell>
+    );
+  }
 
   const tabs = [
     { id: 'general', label: 'General', icon: <FileText className="w-3.5 h-3.5" /> },
     { id: 'strategy', label: 'Strategy', icon: <Target className="w-3.5 h-3.5" /> },
     { id: 'quarterly', label: 'Quarterly', icon: <TrendingUp className="w-3.5 h-3.5" /> },
-    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: 2 },
+    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: ipmsSubmissions.filter(s => s.target.id === target.id).length },
     { id: 'attachments', label: 'Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
     { id: 'history', label: 'Audit', icon: <History className="w-3.5 h-3.5" /> },
   ];
@@ -380,9 +472,38 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'general': return <GeneralInfoTab target={target} />;
       case 'strategy': return <StrategyTab target={target} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
-      case 'submissions': return <SubmissionsTab target={target} submissions={ipmsSubmissions.filter(s => s.target.id === target.id)} onUpdateSubmission={updateIPMSSubmission} onDeleteSubmission={deleteIPMSSubmission} />;
-      case 'attachments': return <AttachmentsTab target={target} onAttachmentsChange={(attachments) => updateIPMSTargetAttachments(target.id, attachments)} />;
-      case 'history': return <HistoryTab />;
+      case 'submissions': return (
+        <SubmissionsTab
+          target={target}
+          submissions={ipmsSubmissions.filter(s => s.target.id === target.id)}
+          onUpdateSubmission={(submission) => {
+            void (async () => {
+              const result = await updateIpmsSubmissionApi(submission.id, {
+                ipmsTargetId: submission.target.id,
+                quarter: submission.quarter,
+                actual: submission.actual,
+                actualDescription: submission.actualDescription ?? null,
+                varianceReason: submission.varianceReason ?? null,
+                correctiveMeasure: submission.correctiveMeasure ?? null,
+                dueDate: submission.dueDate ?? null,
+              });
+              if (result.success && result.data) {
+                setIpmsSubmissions(prev => prev.map(item => item.id === submission.id ? result.data! : item));
+              }
+            })();
+          }}
+          onDeleteSubmission={(submissionId) => {
+            void (async () => {
+              const result = await deleteIpmsSubmissionApi(submissionId);
+              if (result.success) {
+                setIpmsSubmissions(prev => prev.filter(item => item.id !== submissionId));
+              }
+            })();
+          }}
+        />
+      );
+      case 'attachments': return <AttachmentsTab target={target} onAttachmentsChange={(attachments) => setTarget(prev => prev ? { ...prev, attachments } : prev)} />;
+      case 'history': return <HistoryTab entries={auditEntries} />;
       default: return <GeneralInfoTab target={target} />;
     }
   };

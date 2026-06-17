@@ -41,6 +41,14 @@ interface SubmissionWorkspaceProps {
   onSave?: (submission: SubmissionRecord) => void;
   onDelete?: () => void;
   onAttachmentsChange?: (attachments: Attachment[]) => void;
+  onUploadAttachments?: (files: File[]) => void;
+  onDeleteAttachment?: (attachmentId: string) => void;
+  onWorkflowAction?: (
+    action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
+    payload: { comment?: string; score?: number },
+  ) => void;
+  onExtendDueDate?: (payload: { extendedDueDate: string; reason: string }) => void;
+  workflowBusy?: boolean;
 }
 
 interface WorkflowStep {
@@ -296,13 +304,26 @@ export function SubmissionWorkspace({
   onSave,
   onDelete,
   onAttachmentsChange,
+  onUploadAttachments,
+  onDeleteAttachment,
+  onWorkflowAction,
+  onExtendDueDate,
+  workflowBusy = false,
 }: SubmissionWorkspaceProps) {
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [draftSubmission, setDraftSubmission] = useState<SubmissionRecord>(submission);
+  const [workflowComment, setWorkflowComment] = useState('');
+  const [workflowScore, setWorkflowScore] = useState('');
+  const [extendedDueDate, setExtendedDueDate] = useState('');
+  const [extensionReason, setExtensionReason] = useState('');
   useEffect(() => {
     setDraftSubmission(submission);
     setIsEditing(false);
+    setWorkflowComment('');
+    setWorkflowScore('');
+    setExtendedDueDate(submission.extendedDueDate?.slice(0, 10) ?? submission.dueDate?.slice(0, 10) ?? '');
+    setExtensionReason('');
   }, [submission]);
 
   const currentSubmission = draftSubmission;
@@ -366,6 +387,25 @@ export function SubmissionWorkspace({
     documentType: 'evidence',
     url: URL.createObjectURL(file),
   });
+
+  const triggerWorkflowAction = (action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score') => {
+    if (action === 'score') {
+      const parsedScore = Number(workflowScore);
+      if (Number.isNaN(parsedScore)) {
+        return;
+      }
+
+      onWorkflowAction?.(action, {
+        comment: workflowComment || undefined,
+        score: parsedScore,
+      });
+      return;
+    }
+
+    onWorkflowAction?.(action, {
+      comment: workflowComment || undefined,
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -526,8 +566,20 @@ export function SubmissionWorkspace({
           <FileUpload
             existingFiles={uploadedFileItems}
             maxFiles={undefined}
-            onUpload={(files) => syncAttachments([...attachments, ...files.map(buildAttachment)])}
-            onRemove={(fileId) => syncAttachments(attachments.filter(attachment => attachment.id !== fileId))}
+            onUpload={(files) => {
+              if (onUploadAttachments) {
+                onUploadAttachments(files);
+                return;
+              }
+              syncAttachments([...attachments, ...files.map(buildAttachment)]);
+            }}
+            onRemove={(fileId) => {
+              if (onDeleteAttachment) {
+                onDeleteAttachment(fileId);
+                return;
+              }
+              syncAttachments(attachments.filter(attachment => attachment.id !== fileId));
+            }}
           />
         </Section>
       )}
@@ -594,6 +646,74 @@ export function SubmissionWorkspace({
               ))}
             </div>
           )}
+        </Section>
+      )}
+
+      {(onWorkflowAction || onExtendDueDate) && (
+        <Section title="Workflow Actions" icon={<Check className="h-4 w-4" />}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              label="Workflow Comment"
+              value={workflowComment}
+              editable
+              onChange={setWorkflowComment}
+              wide
+            />
+            <Field
+              label="Score"
+              value={workflowScore}
+              editable
+              type="number"
+              onChange={setWorkflowScore}
+            />
+            <Field
+              label="Extended Due Date"
+              value={extendedDueDate}
+              editable
+              type="date"
+              onChange={setExtendedDueDate}
+            />
+            <Field
+              label="Extension Reason"
+              value={extensionReason}
+              editable
+              onChange={setExtensionReason}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('submit')}>
+              Submit
+            </Button>
+            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify')}>
+              Verify
+            </Button>
+            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify-reject')}>
+              Verify Reject
+            </Button>
+            <Button variant="success" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('approve')}>
+              Approve
+            </Button>
+            <Button variant="error" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('reject')}>
+              Reject
+            </Button>
+            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('review')}>
+              Review
+            </Button>
+            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('audit')}>
+              Audit
+            </Button>
+            <Button variant="outline" size="sm" disabled={workflowBusy || workflowScore.trim() === ''} onClick={() => triggerWorkflowAction('score')}>
+              Save Score
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={workflowBusy || !extendedDueDate || !extensionReason.trim()}
+              onClick={() => onExtendDueDate?.({ extendedDueDate, reason: extensionReason.trim() })}
+            >
+              Extend Due Date
+            </Button>
+          </div>
         </Section>
       )}
 

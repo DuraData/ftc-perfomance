@@ -2,6 +2,7 @@ using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
+using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +27,7 @@ public class RolesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<RoleResponse[]>>> GetRoles()
     {
-        var roles = await _context.Roles.AsNoTracking().OrderBy(r => r.Name).ToListAsync();
+        var roles = await _context.Roles.AsNoTracking().Where(r => r.IsActive).OrderBy(r => r.Name).ToListAsync();
         var result = roles.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
         return Ok(new ApiResponse<RoleResponse[]>(true, result));
     }
@@ -131,7 +132,7 @@ public class RolesController : ControllerBase
         if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
 
         var currentUserRoles = User.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).Select(c => c.Value);
-        var isSystemAdministrator = NavigationController.IsSystemAdministrator(currentUserRoles);
+        var isSystemAdministrator = SecurityModel.IsSuperAdmin(currentUserRoles);
 
         if (role.IsSystemRole && !isSystemAdministrator)
         {

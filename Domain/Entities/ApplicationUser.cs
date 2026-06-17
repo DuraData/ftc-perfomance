@@ -8,6 +8,8 @@ public class ApplicationUser : IdentityUser
     public string LastName { get; set; } = string.Empty;
     public string FullName => $"{FirstName} {LastName}";
     public string? Department { get; set; }
+    public int? DepartmentId { get; set; }
+    public int? UnitId { get; set; }
     public string? Position { get; set; }
     public bool IsActive { get; set; } = true;
     public bool MustChangePassword { get; set; }
@@ -21,4 +23,8 @@ public class ApplicationUser : IdentityUser
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<LoginAuditLog> LoginAuditLogs { get; set; } = new List<LoginAuditLog>();
     public ICollection<UserPermissionOverride> PermissionOverrides { get; set; } = new List<UserPermissionOverride>();
+    public ICollection<UserScope> Scopes { get; set; } = new List<UserScope>();
+    public ICollection<UserAssignment> Assignments { get; set; } = new List<UserAssignment>();
+    public Department? DepartmentEntity { get; set; }
+    public Unit? UnitEntity { get; set; }
 }

@@ -4,7 +4,7 @@ import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card, EmptyState } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Input, Select, FormSection, FormRow } from '../common/Form';
+import { Input, Select, FormSection, FormRow, FormHero, FormPanel, Checkbox } from '../common/Form';
 import {
   mockPeriods,
   mockBudgetSources,
@@ -167,25 +167,48 @@ export function ApprovalSetupList() {
           title="Add Approval Configuration"
           size="lg"
         >
-          <div className="space-y-4">
-            <Select
-              label="User"
-              options={mockEmployees.map(e => ({ value: e.id, label: `${e.displayName} (${e.email})` }))}
-              placeholder="Select user"
+          <div className="space-y-5">
+            <FormHero
+              eyebrow="Workflow Configuration"
+              title="Create approval setup"
+              description="Configure the responsible user, approver chain, and departmental scope using the standardized enterprise form layout."
+              badges={<Badge variant="default">New Configuration</Badge>}
             />
-            <Select
-              label="Approver"
-              options={mockEmployees.map(e => ({ value: e.id, label: `${e.displayName} (${e.email})` }))}
-              placeholder="Select approver"
-            />
-            <Select
-              label="Department"
-              options={mockDepartments.map(d => ({ value: d.id, label: d.name }))}
-              placeholder="Select department"
-            />
-            <Input label="Admin Approver" type="checkbox" />
+            <div className="grid gap-4">
+              <FormPanel
+                title="Assignment"
+                description="Select the user and approver relationship for this workflow configuration."
+                icon={<Plus className="h-5 w-5" />}
+              >
+                <Select
+                  label="User"
+                  options={mockEmployees.map(e => ({ value: e.id, label: `${e.displayName} (${e.email})` }))}
+                  placeholder="Select user"
+                  required
+                />
+                <Select
+                  label="Approver"
+                  options={mockEmployees.map(e => ({ value: e.id, label: `${e.displayName} (${e.email})` }))}
+                  placeholder="Select approver"
+                  required
+                />
+                <Select
+                  label="Department"
+                  options={mockDepartments.map(d => ({ value: d.id, label: d.name }))}
+                  placeholder="Select department"
+                  required
+                />
+              </FormPanel>
+              <FormPanel
+                title="Options"
+                description="Set special routing behavior for the approval setup."
+                icon={<Edit2 className="h-5 w-5" />}
+              >
+                <Checkbox label="Admin Approver" description="Enable this when the assigned approver acts as an administrative escalation approver." />
+              </FormPanel>
+            </div>
           </div>
-          <div className="flex justify-end gap-3 mt-6">
+          <div className="mt-6 flex justify-end gap-3 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button variant="primary">Save</Button>
           </div>

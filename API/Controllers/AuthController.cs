@@ -3,6 +3,7 @@ using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence.Seed;
+using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,7 @@ public class AuthController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IJwtService _jwtService;
+    private readonly IAccessControlService _accessControlService;
     private readonly Infrastructure.Persistence.ApplicationDbContext _context;
     private readonly IConfiguration _configuration;
 
@@ -25,12 +27,14 @@ public class AuthController : ControllerBase
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IJwtService jwtService,
+        IAccessControlService accessControlService,
         Infrastructure.Persistence.ApplicationDbContext context,
         IConfiguration configuration)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _jwtService = jwtService;
+        _accessControlService = accessControlService;
         _context = context;
         _configuration = configuration;
     }
@@ -64,7 +68,7 @@ public class AuthController : ControllerBase
 
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user);
         var roles = await _userManager.GetRolesAsync(user);
-        var permissions = await GetUserPermissionsAsync(user);
+        var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToList();
         var menu = GenerateMenu(permissions, roles);
 
         var userProfile = new UserProfileResponse(
@@ -94,7 +98,7 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(new ApiResponse<bool>(false, false, "Failed to register user", result.Errors.Select(e => e.Description).ToArray()));
 
-        await _userManager.AddToRoleAsync(user, "EPMS User");
+        await _userManager.AddToRoleAsync(user, SecurityModel.Submitter);
 
         return Ok(new ApiResponse<bool>(true, true, "User registered successfully"));
     }
@@ -120,7 +124,7 @@ public class AuthController : ControllerBase
 
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user);
         var roles = await _userManager.GetRolesAsync(user);
-        var permissions = await GetUserPermissionsAsync(user);
+        var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToList();
         var menu = GenerateMenu(permissions, roles);
 
         var userProfile = new UserProfileResponse(
@@ -153,45 +157,10 @@ public class AuthController : ControllerBase
         var demoUsers = DbInitializer.GetDemoUserResponses(_configuration).ToArray();
         return Ok(new ApiResponse<DemoUserResponse[]>(true, demoUsers));
     }
-
-    private async Task<List<string>> GetUserPermissionsAsync(ApplicationUser user)
-    {
-        var roles = await _userManager.GetRolesAsync(user);
-        if (NavigationController.IsSystemAdministrator(roles))
-        {
-            return await _context.Permissions
-                .Where(p => p.IsActive)
-                .Select(p => p.Code)
-                .Distinct()
-                .ToListAsync();
-        }
-        var roleIds = await _context.Roles.Where(r => roles.Contains(r.Name!)).Select(r => r.Id).ToListAsync();
-
-        var rolePermissions = await _context.RolePermissions
-            .Where(rp => roleIds.Contains(rp.RoleId) && rp.IsAllowed)
-            .Select(rp => rp.Permission.Code)
-            .ToListAsync();
-
-        var userOverrides = await _context.UserPermissionOverrides
-            .Where(upo => upo.UserId == user.Id)
-            .ToListAsync();
-
-        var finalPermissions = new HashSet<string>(rolePermissions);
-        foreach (var overrideItem in userOverrides)
-        {
-            if (overrideItem.IsAllowed)
-                finalPermissions.Add(overrideItem.Permission.Code);
-            else
-                finalPermissions.Remove(overrideItem.Permission.Code);
-        }
-
-        return finalPermissions.ToList();
-    }
-
     private MenuItemResponse[] GenerateMenu(List<string> permissions, IEnumerable<string> roles)
     {
         var set = permissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var fullAccess = NavigationController.IsSystemAdministrator(roles);
+        var fullAccess = SecurityModel.IsSuperAdmin(roles);
         return NavigationController.BuildMenu(set, fullAccess);
     }
 }

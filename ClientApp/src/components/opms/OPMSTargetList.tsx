@@ -1,13 +1,39 @@
-import React, { useMemo, useState } from 'react';
-import { Plus, Download, Eye, Edit2, Trash2, Copy, Building2, CalendarRange, BarChart3, FileText, Target } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Download, Eye, Edit2, Trash2, Copy, Building2, CalendarRange, BarChart3, FileText, Target, Library } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Input, Select, Textarea, FormRow } from '../common/Form';
+import { Input, Select, Textarea, FormRow, FormPanel } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { mockOPMSTargets, mockDepartments, mockPeriods, mockUnitsOfMeasure, mockEmployees } from '../../data/mockData';
-import type { OPMSTarget } from '../../types';
+import {
+  createOpmsTarget as createOpmsTargetApi,
+  deleteOpmsTarget as deleteOpmsTargetApi,
+  getOpmsTargetTemplate as getOpmsTargetTemplateApi,
+  getOpmsTargets as getOpmsTargetsApi,
+  updateOpmsTarget as updateOpmsTargetApi,
+} from '../../api/api';
+import { mockDepartments, mockPeriods, mockUnitsOfMeasure, mockEmployees, mockDepartmentUnits, mockWards } from '../../data/mockData';
+import type { OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
+import { OpmsTemplateSelectionModal } from '../library/TargetLibraries';
+
+function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
+  return {
+    indicatorNumber: target.indicatorNumber,
+    targetName: target.targetName,
+    kpiDescription: target.kpiDescription,
+    departmentId: target.department?.id ? Number(target.department.id) : null,
+    unitId: target.unit?.id ? Number(target.unit.id) : null,
+    assignedUserId: target.assignedTo?.id ?? null,
+    kpiId: undefined,
+    sourceTemplateId: target.sourceTemplateId ?? null,
+    sourceTemplateVersion: target.sourceTemplateVersion ?? null,
+    baseline: target.baseline,
+    annualTarget: target.annualTarget,
+    weight: target.weight,
+    isArchived: target.isWithdrawn,
+  };
+}
 
 function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Record<string, string>) => void }) {
   const [filters, setFilters] = useState({
@@ -92,51 +118,25 @@ function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Recor
   );
 }
 
-function FormPanel({
-  title,
-  description,
-  icon,
-  children,
-  className = '',
-}: {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Card className={`rounded-2xl border border-secondary-200/80 bg-white shadow-sm ${className}`} padding="lg">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="rounded-xl bg-primary-50 p-2 text-primary-600 dark:bg-primary-900/40 dark:text-primary-300">
-          {icon}
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h3>
-          <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{description}</p>
-        </div>
-      </div>
-      <div className="space-y-4">{children}</div>
-    </Card>
-  );
-}
-
 export function OPMSTargetList() {
   const {
     setCurrentPath,
-    opmsTargets,
-    createOPMSTarget,
-    updateOPMSTarget,
-    deleteOPMSTarget,
-    duplicateOPMSTarget,
     pushToast,
   } = useApp();
+  const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [editingTarget, setEditingTarget] = useState<OPMSTarget | null>(null);
   const [form, setForm] = useState({
+    sourceTemplateId: '',
+    sourceTemplateVersion: '',
     periodId: '',
     departmentId: '',
+    unitId: '',
+    assignedToId: '',
+    wardIds: '',
     indicatorNumber: '',
     targetName: '',
     annualTarget: '0',
@@ -146,23 +146,63 @@ export function OPMSTargetList() {
     kpiDescription: '',
   });
 
+  const loadTargets = async () => {
+    setIsLoading(true);
+    const result = await getOpmsTargetsApi();
+    if (result.success && result.data) {
+      setOpmsTargets(result.data);
+    } else {
+      pushToast('error', result.message ?? 'Failed to load OPMS targets');
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    void loadTargets();
+  }, []);
+
   const handleRowClick = (row: OPMSTarget) => {
     setCurrentPath(`/opms/targets/${row.id}`);
   };
 
   const openCreateModal = () => {
     setEditingTarget(null);
-    const template = opmsTargets[0] ?? mockOPMSTargets[0];
     setForm({
-      periodId: template.period.id,
-      departmentId: template.department.id,
+      sourceTemplateId: '',
+      sourceTemplateVersion: '',
+      periodId: mockPeriods[0]?.id ?? '',
+      departmentId: mockDepartments[0]?.id ?? '',
+      unitId: '',
+      assignedToId: '',
+      wardIds: '',
       indicatorNumber: '',
       targetName: '',
-      annualTarget: String(template.annualTarget ?? 0),
-      baseline: String(template.baseline ?? 0),
-      weight: String(template.weight ?? 0),
-      unitOfMeasureId: template.unitOfMeasure.id,
+      annualTarget: '0',
+      baseline: '0',
+      weight: '0',
+      unitOfMeasureId: mockUnitsOfMeasure[0]?.id ?? '',
       kpiDescription: '',
+    });
+    setShowCreateModal(true);
+  };
+
+  const openCreateFromTemplate = (template: OpmsTargetTemplate) => {
+    setEditingTarget(null);
+    setForm({
+      sourceTemplateId: template.id,
+      sourceTemplateVersion: String(template.version),
+      periodId: mockPeriods[0]?.id ?? '',
+      departmentId: template.department?.id ?? mockDepartments[0]?.id ?? '',
+      unitId: '',
+      assignedToId: '',
+      wardIds: '',
+      indicatorNumber: template.indicatorNumber,
+      targetName: template.targetName,
+      annualTarget: String(template.annualTarget),
+      baseline: String(template.baseline),
+      weight: String(template.weight),
+      unitOfMeasureId: template.unitOfMeasure.id,
+      kpiDescription: template.kpiDescription,
     });
     setShowCreateModal(true);
   };
@@ -170,8 +210,13 @@ export function OPMSTargetList() {
   const openEditModal = (target: OPMSTarget) => {
     setEditingTarget(target);
     setForm({
+      sourceTemplateId: target.sourceTemplateId ?? '',
+      sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
       periodId: target.period.id,
       departmentId: target.department.id,
+      unitId: target.unit?.id ?? '',
+      assignedToId: target.assignedTo?.id ?? '',
+      wardIds: target.wards?.map(ward => ward.id).join(',') ?? '',
       indicatorNumber: target.indicatorNumber,
       targetName: target.targetName,
       annualTarget: String(target.annualTarget),
@@ -182,6 +227,48 @@ export function OPMSTargetList() {
     });
     setShowCreateModal(true);
   };
+
+  const createMultipleFromTemplates = async (templates: OpmsTargetTemplate[]) => {
+    const results = await Promise.all(
+      templates.map(template =>
+        createOpmsTargetApi({
+          indicatorNumber: template.indicatorNumber,
+          targetName: template.targetName,
+          kpiDescription: template.kpiDescription,
+          departmentId: template.department?.id ? Number(template.department.id) : null,
+          unitId: null,
+          assignedUserId: null,
+          kpiId: null,
+          sourceTemplateId: template.id,
+          sourceTemplateVersion: template.version,
+          baseline: template.baseline,
+          annualTarget: template.annualTarget,
+          weight: template.weight,
+          isArchived: false,
+        }),
+      ),
+    );
+    const createdCount = results.filter(result => result.success).length;
+    if (createdCount > 0) {
+      pushToast('success', `${createdCount} OPMS target${createdCount === 1 ? '' : 's'} created from library`);
+      await loadTargets();
+    }
+  };
+
+  useEffect(() => {
+    const pendingTemplateId = localStorage.getItem('pending_opms_template_id');
+    if (!pendingTemplateId) return;
+    localStorage.removeItem('pending_opms_template_id');
+    const loadTemplate = async () => {
+      const result = await getOpmsTargetTemplateApi(pendingTemplateId);
+      if (result.success && result.data) {
+        openCreateFromTemplate(result.data);
+        return;
+      }
+      setShowLibraryModal(true);
+    };
+    void loadTemplate();
+  }, []);
 
   const filteredTargets = useMemo(
     () =>
@@ -204,18 +291,29 @@ export function OPMSTargetList() {
     [filters, opmsTargets],
   );
 
-  const handleSaveTarget = () => {
-    const template = editingTarget ?? opmsTargets[0] ?? mockOPMSTargets[0];
-    const department = mockDepartments.find(item => item.id === form.departmentId) ?? template.department;
-    const period = mockPeriods.find(item => item.id === form.periodId) ?? template.period;
-    const unitOfMeasure = mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId) ?? template.unitOfMeasure;
-    const assignedEmployee = mockEmployees.find(item => item.department?.id === department.id) ?? template.assignedTo ?? mockEmployees[0];
+  const handleSaveTarget = async () => {
+    const template = editingTarget ?? opmsTargets[0];
+    const department = mockDepartments.find(item => item.id === form.departmentId) ?? template?.department ?? mockDepartments[0];
+    const period = mockPeriods.find(item => item.id === form.periodId) ?? template?.period ?? mockPeriods[0];
+    const unitOfMeasure = mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId) ?? template?.unitOfMeasure ?? mockUnitsOfMeasure[0];
+    const assignedEmployee = mockEmployees.find(item => item.id === form.assignedToId) ?? mockEmployees.find(item => item.department?.id === department.id) ?? template?.assignedTo;
+    const unit = mockDepartmentUnits.find(item => item.id === form.unitId);
+    const wards = form.wardIds
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(value => mockWards.find(ward => ward.id === value || ward.name.toLowerCase() === value.toLowerCase()))
+      .filter((item): item is typeof mockWards[number] => !!item);
 
     const nextTarget: OPMSTarget = {
-      ...template,
+      ...(template ?? opmsTargets[0]),
       id: editingTarget?.id ?? '',
+      sourceTemplateId: form.sourceTemplateId || undefined,
+      sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : undefined,
       department,
       period,
+      unit,
+      wards,
       unitOfMeasure,
       assignedTo: assignedEmployee,
       indicatorNumber: form.indicatorNumber,
@@ -227,11 +325,23 @@ export function OPMSTargetList() {
     };
 
     if (editingTarget) {
-      updateOPMSTarget(nextTarget);
-      pushToast('success', 'OPMS target updated');
+      const result = await updateOpmsTargetApi(editingTarget.id, buildPayloadFromTarget(nextTarget));
+      if (result.success) {
+        pushToast('success', 'OPMS target updated');
+        await loadTargets();
+      } else {
+        pushToast('error', result.message ?? 'Failed to update OPMS target');
+        return;
+      }
     } else {
-      createOPMSTarget(nextTarget);
-      pushToast('success', 'OPMS target created');
+      const result = await createOpmsTargetApi(buildPayloadFromTarget(nextTarget));
+      if (result.success) {
+        pushToast('success', 'OPMS target created');
+        await loadTargets();
+      } else {
+        pushToast('error', result.message ?? 'Failed to create OPMS target');
+        return;
+      }
     }
 
     setShowCreateModal(false);
@@ -264,6 +374,20 @@ export function OPMSTargetList() {
           <p className="text-sm text-secondary-700 dark:text-secondary-300">{row.nationalKPA}</p>
           <p className="text-xs text-secondary-500 dark:text-secondary-400">{row.municipalKPA}</p>
         </div>
+      ),
+    },
+    {
+      id: 'template',
+      header: 'Library Source',
+      accessor: (row: OPMSTarget) => (
+        row.sourceTemplateId ? (
+          <div>
+            <p className="text-sm text-secondary-700 dark:text-secondary-300">{row.sourceTemplateId}</p>
+            <p className="text-xs text-secondary-500 dark:text-secondary-400">v{row.sourceTemplateVersion ?? 1}</p>
+          </div>
+        ) : (
+          <span className="text-xs text-secondary-400">Manual</span>
+        )
       ),
     },
     {
@@ -325,8 +449,20 @@ export function OPMSTargetList() {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          duplicateOPMSTarget(row.id);
-          pushToast('success', 'OPMS target copied');
+          void (async () => {
+            const result = await createOpmsTargetApi(buildPayloadFromTarget({
+              ...row,
+              id: '',
+              indicatorNumber: `${row.indicatorNumber}-COPY`,
+              targetName: `${row.targetName} (Copy)`,
+            }));
+            if (result.success) {
+              pushToast('success', 'OPMS target copied');
+              await loadTargets();
+            } else {
+              pushToast('error', result.message ?? 'Failed to copy OPMS target');
+            }
+          })();
         }}
         className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
         title="Copy"
@@ -336,8 +472,15 @@ export function OPMSTargetList() {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          deleteOPMSTarget(row.id);
-          pushToast('success', 'OPMS target deleted');
+          void (async () => {
+            const result = await deleteOpmsTargetApi(row.id);
+            if (result.success) {
+              pushToast('success', 'OPMS target deleted');
+              await loadTargets();
+            } else {
+              pushToast('error', result.message ?? 'Failed to delete OPMS target');
+            }
+          })();
         }}
         className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
         title="Delete"
@@ -359,6 +502,9 @@ export function OPMSTargetList() {
             <Button variant="outline" icon={<Download className="w-4 h-4" />}>
               Export
             </Button>
+            <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
+              Create From OPMS Library
+            </Button>
             <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreateModal}>
               New Target
             </Button>
@@ -375,7 +521,7 @@ export function OPMSTargetList() {
           onRowClick={handleRowClick}
           actions={actions}
           searchPlaceholder="Search targets..."
-          emptyMessage="No OPMS targets found"
+          emptyMessage={isLoading ? 'Loading OPMS targets...' : 'No OPMS targets found'}
           getRowId={(row) => row.id}
         />
 
@@ -403,6 +549,7 @@ export function OPMSTargetList() {
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="info">{editingTarget ? 'Edit Mode' : 'New Record'}</Badge>
                   <Badge variant="default">OPMS</Badge>
+                  {form.sourceTemplateId && <Badge variant="primary">Linked To Template</Badge>}
                 </div>
               </div>
             </div>
@@ -413,6 +560,15 @@ export function OPMSTargetList() {
                 description="Define the cycle and responsible municipal structure for the target."
                 icon={<CalendarRange className="h-5 w-5" />}
               >
+                <div className="rounded-xl border border-primary-100 bg-primary-50/80 px-4 py-3 dark:border-primary-900/40 dark:bg-primary-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-300">Template Source</p>
+                  <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">
+                    {form.sourceTemplateId ? `${form.sourceTemplateId} (v${form.sourceTemplateVersion || '1'})` : 'Manual target creation'}
+                  </p>
+                  <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">
+                    Templates provide reusable generic defaults. Live OPMS targets still require period, department, assignee, unit, wards, and workflow-specific setup.
+                  </p>
+                </div>
                 <FormRow cols={1}>
                   <Select
                     label="Period"
@@ -421,12 +577,42 @@ export function OPMSTargetList() {
                     onChange={(e) => setForm(prev => ({ ...prev, periodId: e.target.value }))}
                   />
                 </FormRow>
-                <FormRow cols={1}>
+                <FormRow cols={2}>
                   <Select
                     label="Department"
                     options={mockDepartments.map(department => ({ value: department.id, label: department.name }))}
                     value={form.departmentId}
                     onChange={(e) => setForm(prev => ({ ...prev, departmentId: e.target.value }))}
+                  />
+                  <Select
+                    label="Unit"
+                    options={[
+                      { value: '', label: 'No unit selected' },
+                      ...mockDepartmentUnits
+                        .filter(unit => !form.departmentId || unit.department.id === form.departmentId)
+                        .map(unit => ({ value: unit.id, label: unit.name })),
+                    ]}
+                    value={form.unitId}
+                    onChange={(e) => setForm(prev => ({ ...prev, unitId: e.target.value }))}
+                  />
+                </FormRow>
+                <FormRow cols={2}>
+                  <Select
+                    label="Assigned User"
+                    options={[
+                      { value: '', label: 'Select employee' },
+                      ...mockEmployees
+                        .filter(employee => !form.departmentId || employee.department?.id === form.departmentId)
+                        .map(employee => ({ value: employee.id, label: employee.displayName })),
+                    ]}
+                    value={form.assignedToId}
+                    onChange={(e) => setForm(prev => ({ ...prev, assignedToId: e.target.value }))}
+                  />
+                  <Input
+                    label="Wards"
+                    value={form.wardIds}
+                    onChange={(e) => setForm(prev => ({ ...prev, wardIds: e.target.value }))}
+                    helpText="Enter ward ids or names separated by commas, for example: 1,2 or Ward 1,Ward 2."
                   />
                 </FormRow>
                 <div className="rounded-xl border border-secondary-200 bg-secondary-50/70 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
@@ -545,9 +731,15 @@ export function OPMSTargetList() {
             <Button variant="outline" onClick={() => { setShowCreateModal(false); setEditingTarget(null); }}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSaveTarget}>{editingTarget ? 'Save Changes' : 'Create Target'}</Button>
+            <Button variant="primary" onClick={() => { void handleSaveTarget(); }}>{editingTarget ? 'Save Changes' : 'Create Target'}</Button>
           </div>
         </Modal>
+        <OpmsTemplateSelectionModal
+          isOpen={showLibraryModal}
+          onClose={() => setShowLibraryModal(false)}
+          onSelect={openCreateFromTemplate}
+          onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
+        />
       </div>
     </AppShell>
   );
