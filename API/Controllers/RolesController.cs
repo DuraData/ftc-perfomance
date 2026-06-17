@@ -117,8 +117,8 @@ public class RolesController : ControllerBase
 
         var permissions = await _context.RolePermissions
             .Where(rp => rp.RoleId == id)
+            .OrderBy(rp => rp.Permission.Code)
             .Select(rp => new RolePermissionResponse(rp.PermissionId, rp.Permission.Code, rp.IsAllowed))
-            .OrderBy(rp => rp.Code)
             .ToArrayAsync();
 
         return Ok(new ApiResponse<RolePermissionResponse[]>(true, permissions));
@@ -130,7 +130,10 @@ public class RolesController : ControllerBase
         var role = await _roleManager.FindByIdAsync(id);
         if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
 
-        if (role.IsSystemRole && !string.Equals(role.Name, "Super Admin", StringComparison.OrdinalIgnoreCase))
+        var currentUserRoles = User.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).Select(c => c.Value);
+        var isSystemAdministrator = NavigationController.IsSystemAdministrator(currentUserRoles);
+
+        if (role.IsSystemRole && !isSystemAdministrator)
         {
             return BadRequest(new ApiResponse<bool>(false, false, "System roles cannot be modified"));
         }
@@ -152,4 +155,3 @@ public class RolesController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 }
-

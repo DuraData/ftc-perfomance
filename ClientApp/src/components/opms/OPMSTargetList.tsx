@@ -1,40 +1,13 @@
-import React, { useState } from 'react';
-import {
-  Plus,
-  Filter,
-  Download,
-  MoreHorizontal,
-  Eye,
-  Edit2,
-  Trash2,
-  Copy,
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Plus, Download, Eye, Edit2, Trash2, Copy, Building2, CalendarRange, BarChart3, FileText, Target } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
-import { Button, Badge, Card, EmptyState } from '../ui';
+import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
+import { Input, Select, Textarea, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { mockOPMSTargets, mockDepartments, mockPeriods, statusLabels } from '../../data/mockData';
+import { mockOPMSTargets, mockDepartments, mockPeriods, mockUnitsOfMeasure, mockEmployees } from '../../data/mockData';
 import type { OPMSTarget } from '../../types';
-import { Target } from 'lucide-react';
-
-const statusBadgeVariant = (status: string): 'default' | 'primary' | 'success' | 'warning' | 'error' | 'info' => {
-  switch (status) {
-    case 'approved':
-    case 'completed':
-      return 'success';
-    case 'pending_verification':
-    case 'pending_approval':
-      return 'warning';
-    case 'rejected':
-      return 'error';
-    case 'submitted':
-    case 'verified':
-      return 'info';
-    default:
-      return 'default';
-  }
-};
 
 function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Record<string, string>) => void }) {
   const [filters, setFilters] = useState({
@@ -119,12 +92,150 @@ function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Recor
   );
 }
 
+function FormPanel({
+  title,
+  description,
+  icon,
+  children,
+  className = '',
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={`rounded-2xl border border-secondary-200/80 bg-white shadow-sm ${className}`} padding="lg">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="rounded-xl bg-primary-50 p-2 text-primary-600 dark:bg-primary-900/40 dark:text-primary-300">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{description}</p>
+        </div>
+      </div>
+      <div className="space-y-4">{children}</div>
+    </Card>
+  );
+}
+
 export function OPMSTargetList() {
-  const { setCurrentPath } = useApp();
+  const {
+    setCurrentPath,
+    opmsTargets,
+    createOPMSTarget,
+    updateOPMSTarget,
+    deleteOPMSTarget,
+    duplicateOPMSTarget,
+    pushToast,
+  } = useApp();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [editingTarget, setEditingTarget] = useState<OPMSTarget | null>(null);
+  const [form, setForm] = useState({
+    periodId: '',
+    departmentId: '',
+    indicatorNumber: '',
+    targetName: '',
+    annualTarget: '0',
+    baseline: '0',
+    weight: '0',
+    unitOfMeasureId: '',
+    kpiDescription: '',
+  });
 
   const handleRowClick = (row: OPMSTarget) => {
     setCurrentPath(`/opms/targets/${row.id}`);
+  };
+
+  const openCreateModal = () => {
+    setEditingTarget(null);
+    const template = opmsTargets[0] ?? mockOPMSTargets[0];
+    setForm({
+      periodId: template.period.id,
+      departmentId: template.department.id,
+      indicatorNumber: '',
+      targetName: '',
+      annualTarget: String(template.annualTarget ?? 0),
+      baseline: String(template.baseline ?? 0),
+      weight: String(template.weight ?? 0),
+      unitOfMeasureId: template.unitOfMeasure.id,
+      kpiDescription: '',
+    });
+    setShowCreateModal(true);
+  };
+
+  const openEditModal = (target: OPMSTarget) => {
+    setEditingTarget(target);
+    setForm({
+      periodId: target.period.id,
+      departmentId: target.department.id,
+      indicatorNumber: target.indicatorNumber,
+      targetName: target.targetName,
+      annualTarget: String(target.annualTarget),
+      baseline: String(target.baseline),
+      weight: String(target.weight),
+      unitOfMeasureId: target.unitOfMeasure.id,
+      kpiDescription: target.kpiDescription,
+    });
+    setShowCreateModal(true);
+  };
+
+  const filteredTargets = useMemo(
+    () =>
+      opmsTargets.filter(target => {
+        if (filters.department && target.department.id !== filters.department) return false;
+        if (filters.period && target.period.id !== filters.period) return false;
+        if (
+          filters.kpa &&
+          !target.nationalKPA.toLowerCase().includes(filters.kpa.toLowerCase()) &&
+          !target.municipalKPA.toLowerCase().includes(filters.kpa.toLowerCase())
+        ) {
+          return false;
+        }
+        if (filters.status) {
+          const status = target.isWithdrawn ? 'withdrawn' : target.isRevised ? 'revised' : 'active';
+          if (status !== filters.status) return false;
+        }
+        return true;
+      }),
+    [filters, opmsTargets],
+  );
+
+  const handleSaveTarget = () => {
+    const template = editingTarget ?? opmsTargets[0] ?? mockOPMSTargets[0];
+    const department = mockDepartments.find(item => item.id === form.departmentId) ?? template.department;
+    const period = mockPeriods.find(item => item.id === form.periodId) ?? template.period;
+    const unitOfMeasure = mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId) ?? template.unitOfMeasure;
+    const assignedEmployee = mockEmployees.find(item => item.department?.id === department.id) ?? template.assignedTo ?? mockEmployees[0];
+
+    const nextTarget: OPMSTarget = {
+      ...template,
+      id: editingTarget?.id ?? '',
+      department,
+      period,
+      unitOfMeasure,
+      assignedTo: assignedEmployee,
+      indicatorNumber: form.indicatorNumber,
+      targetName: form.targetName,
+      annualTarget: Number(form.annualTarget || 0),
+      baseline: Number(form.baseline || 0),
+      weight: Number(form.weight || 0),
+      kpiDescription: form.kpiDescription,
+    };
+
+    if (editingTarget) {
+      updateOPMSTarget(nextTarget);
+      pushToast('success', 'OPMS target updated');
+    } else {
+      createOPMSTarget(nextTarget);
+      pushToast('success', 'OPMS target created');
+    }
+
+    setShowCreateModal(false);
+    setEditingTarget(null);
   };
 
   const columns = [
@@ -202,18 +313,36 @@ export function OPMSTargetList() {
         <Eye className="w-4 h-4 text-secondary-400" />
       </button>
       <button
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openEditModal(row);
+        }}
         className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
         title="Edit"
       >
         <Edit2 className="w-4 h-4 text-secondary-400" />
       </button>
       <button
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          duplicateOPMSTarget(row.id);
+          pushToast('success', 'OPMS target copied');
+        }}
         className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
         title="Copy"
       >
         <Copy className="w-4 h-4 text-secondary-400" />
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          deleteOPMSTarget(row.id);
+          pushToast('success', 'OPMS target deleted');
+        }}
+        className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
+        title="Delete"
+      >
+        <Trash2 className="w-4 h-4 text-error-500" />
       </button>
     </div>
   );
@@ -224,24 +353,24 @@ export function OPMSTargetList() {
         {/* Header actions */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="primary">{mockOPMSTargets.length} targets</Badge>
+            <Badge variant="primary">{filteredTargets.length} targets</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" icon={<Download className="w-4 h-4" />}>
               Export
             </Button>
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setShowCreateModal(true)}>
+            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreateModal}>
               New Target
             </Button>
           </div>
         </div>
 
         {/* Filters */}
-        <OPMSTargetFilters onFilterChange={() => {}} />
+        <OPMSTargetFilters onFilterChange={setFilters} />
 
         {/* Data Table */}
         <DataTable
-          data={mockOPMSTargets}
+          data={filteredTargets}
           columns={columns}
           onRowClick={handleRowClick}
           actions={actions}
@@ -253,49 +382,170 @@ export function OPMSTargetList() {
         {/* Create Modal */}
         <Modal
           isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          title="Create New OPMS Target"
-          size="xl"
+          onClose={() => { setShowCreateModal(false); setEditingTarget(null); }}
+          title={editingTarget ? 'Edit OPMS Target' : 'Create New OPMS Target'}
+          size="full"
         >
-          <div className="space-y-4">
-            <p className="text-sm text-secondary-600 dark:text-secondary-400">
-              Choose how you want to create the new target:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button className="flex flex-col items-center gap-3 p-6 border border-secondary-200 dark:border-secondary-700 rounded-xl hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors">
-                <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-xl">
-                  <Plus className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-white px-5 py-4 dark:border-primary-900/40 dark:from-primary-950/30 dark:to-secondary-900">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700 dark:text-primary-300">
+                    Performance Target Setup
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-secondary-900 dark:text-white">
+                    {editingTarget ? 'Update OPMS target details' : 'Create a new OPMS target'}
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-sm text-secondary-600 dark:text-secondary-400">
+                    Capture planning, ownership, and measurement information in a structured layout similar to the enterprise form style.
+                  </p>
                 </div>
-                <div className="text-center">
-                  <p className="font-medium text-secondary-900 dark:text-white">Create New</p>
-                  <p className="text-xs text-secondary-500 dark:text-secondary-400">Start from scratch</p>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="info">{editingTarget ? 'Edit Mode' : 'New Record'}</Badge>
+                  <Badge variant="default">OPMS</Badge>
                 </div>
-              </button>
-              <button className="flex flex-col items-center gap-3 p-6 border border-secondary-200 dark:border-secondary-700 rounded-xl hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors">
-                <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-xl">
-                  <Copy className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[0.95fr_1.35fr]">
+              <FormPanel
+                title="Planning Setup"
+                description="Define the cycle and responsible municipal structure for the target."
+                icon={<CalendarRange className="h-5 w-5" />}
+              >
+                <FormRow cols={1}>
+                  <Select
+                    label="Period"
+                    options={mockPeriods.map(period => ({ value: period.id, label: period.name }))}
+                    value={form.periodId}
+                    onChange={(e) => setForm(prev => ({ ...prev, periodId: e.target.value }))}
+                  />
+                </FormRow>
+                <FormRow cols={1}>
+                  <Select
+                    label="Department"
+                    options={mockDepartments.map(department => ({ value: department.id, label: department.name }))}
+                    value={form.departmentId}
+                    onChange={(e) => setForm(prev => ({ ...prev, departmentId: e.target.value }))}
+                  />
+                </FormRow>
+                <div className="rounded-xl border border-secondary-200 bg-secondary-50/70 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-secondary-500">Assignment</p>
+                  <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">
+                    {mockDepartments.find(department => department.id === form.departmentId)?.name ?? 'Department not selected'}
+                  </p>
+                  <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">
+                    Targets created here are automatically aligned to the selected municipal business unit.
+                  </p>
                 </div>
-                <div className="text-center">
-                  <p className="font-medium text-secondary-900 dark:text-white">Copy Existing</p>
-                  <p className="text-xs text-secondary-500 dark:text-secondary-400">From another target</p>
+              </FormPanel>
+
+              <FormPanel
+                title="Target Definition"
+                description="Capture the indicator identity and the descriptive performance statement."
+                icon={<Target className="h-5 w-5" />}
+              >
+                <FormRow cols={2}>
+                  <Input
+                    label="Indicator Number"
+                    value={form.indicatorNumber}
+                    onChange={(e) => setForm(prev => ({ ...prev, indicatorNumber: e.target.value }))}
+                  />
+                  <Input
+                    label="Target Name"
+                    value={form.targetName}
+                    onChange={(e) => setForm(prev => ({ ...prev, targetName: e.target.value }))}
+                  />
+                </FormRow>
+                <Textarea
+                  label="KPI Description"
+                  rows={5}
+                  value={form.kpiDescription}
+                  onChange={(e) => setForm(prev => ({ ...prev, kpiDescription: e.target.value }))}
+                  helpText="Describe the measurable service delivery or governance result expected from this target."
+                />
+              </FormPanel>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.35fr_0.95fr]">
+              <FormPanel
+                title="Measurement Details"
+                description="Enter the baseline, annual expected result, and weighting used for evaluation."
+                icon={<BarChart3 className="h-5 w-5" />}
+              >
+                <FormRow cols={4}>
+                  <Input
+                    label="Annual Target"
+                    type="number"
+                    value={form.annualTarget}
+                    onChange={(e) => setForm(prev => ({ ...prev, annualTarget: e.target.value }))}
+                  />
+                  <Input
+                    label="Baseline"
+                    type="number"
+                    value={form.baseline}
+                    onChange={(e) => setForm(prev => ({ ...prev, baseline: e.target.value }))}
+                  />
+                  <Input
+                    label="Weight %"
+                    type="number"
+                    value={form.weight}
+                    onChange={(e) => setForm(prev => ({ ...prev, weight: e.target.value }))}
+                  />
+                  <Select
+                    label="Unit Of Measure"
+                    options={mockUnitsOfMeasure.map(unit => ({ value: unit.id, label: unit.name }))}
+                    value={form.unitOfMeasureId}
+                    onChange={(e) => setForm(prev => ({ ...prev, unitOfMeasureId: e.target.value }))}
+                  />
+                </FormRow>
+              </FormPanel>
+
+              <FormPanel
+                title="Reference Summary"
+                description="Preview the selected setup before saving the record."
+                icon={<Building2 className="h-5 w-5" />}
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Department</p>
+                    <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">
+                      {mockDepartments.find(department => department.id === form.departmentId)?.name ?? '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Period</p>
+                    <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">
+                      {mockPeriods.find(period => period.id === form.periodId)?.name ?? '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Measure</p>
+                    <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">
+                      {mockUnitsOfMeasure.find(unit => unit.id === form.unitOfMeasureId)?.name ?? '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Weight</p>
+                    <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{form.weight || '0'}%</p>
+                  </div>
                 </div>
-              </button>
-              <button className="flex flex-col items-center gap-3 p-6 border border-secondary-200 dark:border-secondary-700 rounded-xl hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors">
-                <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-xl">
-                  <Target className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                <div className="rounded-xl border border-dashed border-secondary-300 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/50">
+                  <div className="flex items-start gap-2">
+                    <FileText className="mt-0.5 h-4 w-4 text-secondary-400" />
+                    <p className="text-xs text-secondary-500 dark:text-secondary-400">
+                      Use a concise target name and a measurable description so reporting and submissions remain consistent throughout the performance cycle.
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="font-medium text-secondary-900 dark:text-white">From KPI Library</p>
-                  <p className="text-xs text-secondary-500 dark:text-secondary-400">Use a template</p>
-                </div>
-              </button>
+              </FormPanel>
             </div>
           </div>
-          <div className="flex items-center justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+          <div className="mt-6 flex items-center justify-end gap-3 border-t border-secondary-200 pt-4 dark:border-secondary-700">
+            <Button variant="outline" onClick={() => { setShowCreateModal(false); setEditingTarget(null); }}>
               Cancel
             </Button>
-            <Button variant="primary">Continue</Button>
+            <Button variant="primary" onClick={handleSaveTarget}>{editingTarget ? 'Save Changes' : 'Create Target'}</Button>
           </div>
         </Modal>
       </div>

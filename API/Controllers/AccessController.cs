@@ -2,6 +2,7 @@ using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace FTCERP.Host.API.Controllers;
 
@@ -27,11 +28,11 @@ public class AccessController : ControllerBase
     [HttpPost("check")]
     public ActionResult<ApiResponse<bool>> Check([FromBody] CheckPermissionRequest request)
     {
-        var has = User.IsInRole("Super Admin") || User.Claims.Any(c =>
+        var roles = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value);
+        var has = NavigationController.IsSystemAdministrator(roles) || User.Claims.Any(c =>
             c.Type == "Permission" &&
             string.Equals(c.Value, request.PermissionCode, StringComparison.OrdinalIgnoreCase));
 
         return Ok(new ApiResponse<bool>(true, has));
     }
 }
-

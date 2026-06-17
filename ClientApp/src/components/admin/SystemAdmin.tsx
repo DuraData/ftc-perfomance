@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Edit2, Plus, Trash2, Shield, Users, History } from 'lucide-react';
+import { Edit2, Plus, Trash2, Shield, Users, History, UserRound, KeyRound, ShieldCheck, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { ConfirmDialog, Modal } from '../common/Modal';
-import { Checkbox, FormRow, Input, Textarea } from '../common/Form';
+import { Checkbox, FormRow, Input, Textarea, FormHero, FormPanel } from '../common/Form';
 import {
   activateUser,
   createPermission,
@@ -308,34 +308,54 @@ export function AdminUsersPage() {
         </Card>
 
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit User' : 'New User'} size="lg">
-          <div className="space-y-3">
-            <FormRow cols={2}>
-              <Input label="First Name" value={form.firstName} error={formErrors.firstName} onChange={(e) => setForm(prev => ({ ...prev, firstName: e.target.value }))} required />
-              <Input label="Last Name" value={form.lastName} error={formErrors.lastName} onChange={(e) => setForm(prev => ({ ...prev, lastName: e.target.value }))} required />
-            </FormRow>
-            <FormRow cols={2}>
-              <Input label="Email" type="email" value={form.email} error={formErrors.email} onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))} required disabled={!!editing} />
-              <Input label="Phone" value={form.phoneNumber} onChange={(e) => setForm(prev => ({ ...prev, phoneNumber: e.target.value }))} />
-            </FormRow>
-            {!editing && (
-              <FormRow cols={2}>
-                <Input label="Password" type="password" value={form.password} error={formErrors.password} onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))} required />
-                <div className="pt-5">
-                  <Badge variant="default">Must change password on first login</Badge>
-                </div>
-              </FormRow>
-            )}
-            {editing && (
-              <div className="pt-1">
-                <Checkbox
-                  label="Active"
-                  checked={form.isActive}
-                  onChange={(e) => setForm(prev => ({ ...prev, isActive: e.target.checked }))}
-                />
-              </div>
-            )}
+          <div className="space-y-5">
+            <FormHero
+              eyebrow="User Administration"
+              title={editing ? 'Update user profile' : 'Create user profile'}
+              description="Manage account identity, contact details, and activation status in the same enterprise form layout used elsewhere."
+              badges={<Badge variant="default">{editing ? 'Edit Mode' : 'New User'}</Badge>}
+            />
+            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <FormPanel
+                title="Personal Information"
+                description="Capture the basic identity and contact information for the user account."
+                icon={<UserRound className="h-5 w-5" />}
+              >
+                <FormRow cols={2}>
+                  <Input label="First Name" value={form.firstName} error={formErrors.firstName} onChange={(e) => setForm(prev => ({ ...prev, firstName: e.target.value }))} required />
+                  <Input label="Last Name" value={form.lastName} error={formErrors.lastName} onChange={(e) => setForm(prev => ({ ...prev, lastName: e.target.value }))} required />
+                </FormRow>
+                <FormRow cols={2}>
+                  <Input label="Email" type="email" value={form.email} error={formErrors.email} onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))} required disabled={!!editing} />
+                  <Input label="Phone Number" value={form.phoneNumber} onChange={(e) => setForm(prev => ({ ...prev, phoneNumber: e.target.value }))} />
+                </FormRow>
+              </FormPanel>
+              <FormPanel
+                title="Account Controls"
+                description="Manage authentication and access status for the account."
+                icon={<KeyRound className="h-5 w-5" />}
+              >
+                {!editing ? (
+                  <>
+                    <Input label="Password" type="password" value={form.password} error={formErrors.password} onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))} required />
+                    <div className="rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
+                      <Badge variant="default">Must change password on first login</Badge>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
+                    <Checkbox
+                      label="Active Account"
+                      checked={form.isActive}
+                      onChange={(e) => setForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                      description="Disable this to prevent the user from signing in."
+                    />
+                  </div>
+                )}
+              </FormPanel>
+            </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={save} disabled={!canManage}>{editing ? 'Save' : 'Create'}</Button>
           </div>
@@ -628,11 +648,23 @@ export function AdminRolesPage() {
         </Card>
 
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Role' : 'New Role'} size="md">
-          <div className="space-y-3">
-            <Input label="Name" value={roleForm.name} error={formErrors.name} onChange={(e) => setRoleForm(prev => ({ ...prev, name: e.target.value }))} required />
-            <Textarea label="Description" rows={3} value={roleForm.description} onChange={(e) => setRoleForm(prev => ({ ...prev, description: e.target.value }))} />
+          <div className="space-y-5">
+            <FormHero
+              eyebrow="Role Administration"
+              title={editing ? 'Update role definition' : 'Create role definition'}
+              description="Define the role name and its purpose before assigning permissions."
+              badges={<Badge variant="default">{editing ? 'Edit Mode' : 'New Role'}</Badge>}
+            />
+            <FormPanel
+              title="Role Details"
+              description="Provide the core business identity for this role."
+              icon={<ShieldCheck className="h-5 w-5" />}
+            >
+              <Input label="Name" value={roleForm.name} error={formErrors.name} onChange={(e) => setRoleForm(prev => ({ ...prev, name: e.target.value }))} required />
+              <Textarea label="Description" rows={3} value={roleForm.description} onChange={(e) => setRoleForm(prev => ({ ...prev, description: e.target.value }))} />
+            </FormPanel>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={save} disabled={!canManage}>{editing ? 'Save' : 'Create'}</Button>
           </div>
@@ -930,21 +962,41 @@ export function AdminPermissionsPage() {
         )}
 
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Permission' : 'New Permission'} size="lg">
-          <div className="space-y-3">
-            <FormRow cols={2}>
-              <Input label="Module" value={form.module} error={formErrors.module} onChange={(e) => setForm(prev => ({ ...prev, module: e.target.value }))} required />
-              <Input label="Feature" value={form.feature} error={formErrors.feature} onChange={(e) => setForm(prev => ({ ...prev, feature: e.target.value }))} required />
-            </FormRow>
-            <FormRow cols={2}>
-              <Input label="Action" value={form.action} error={formErrors.action} onChange={(e) => setForm(prev => ({ ...prev, action: e.target.value }))} required />
-              <Input label="Code" value={form.code} error={formErrors.code} onChange={(e) => setForm(prev => ({ ...prev, code: e.target.value }))} required />
-            </FormRow>
-            <Textarea label="Description" rows={3} value={form.description ?? ''} onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))} />
-            <div className="pt-1">
-              <Checkbox label="Active" checked={form.isActive} onChange={(e) => setForm(prev => ({ ...prev, isActive: e.target.checked }))} />
+          <div className="space-y-5">
+            <FormHero
+              eyebrow="Permission Administration"
+              title={editing ? 'Update permission' : 'Create permission'}
+              description="Define a permission code and the related module, feature, and action for access control."
+              badges={<Badge variant="default">{editing ? 'Edit Mode' : 'New Permission'}</Badge>}
+            />
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <FormPanel
+                title="Permission Mapping"
+                description="Set the functional classification and code used by authorization checks."
+                icon={<ShieldCheck className="h-5 w-5" />}
+              >
+                <FormRow cols={2}>
+                  <Input label="Module" value={form.module} error={formErrors.module} onChange={(e) => setForm(prev => ({ ...prev, module: e.target.value }))} required />
+                  <Input label="Feature" value={form.feature} error={formErrors.feature} onChange={(e) => setForm(prev => ({ ...prev, feature: e.target.value }))} required />
+                </FormRow>
+                <FormRow cols={2}>
+                  <Input label="Action" value={form.action} error={formErrors.action} onChange={(e) => setForm(prev => ({ ...prev, action: e.target.value }))} required />
+                  <Input label="Code" value={form.code} error={formErrors.code} onChange={(e) => setForm(prev => ({ ...prev, code: e.target.value }))} required />
+                </FormRow>
+              </FormPanel>
+              <FormPanel
+                title="Additional Information"
+                description="Capture descriptive guidance and activation status."
+                icon={<FileText className="h-5 w-5" />}
+              >
+                <Textarea label="Description" rows={4} value={form.description ?? ''} onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))} />
+                <div className="rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
+                  <Checkbox label="Active Permission" checked={form.isActive} onChange={(e) => setForm(prev => ({ ...prev, isActive: e.target.checked }))} />
+                </div>
+              </FormPanel>
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={save} disabled={!canManage}>{editing ? 'Save' : 'Create'}</Button>
           </div>

@@ -26,7 +26,7 @@ export function Input({
   return (
     <div className="space-y-0.5">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium text-secondary-700 dark:text-secondary-300">
+        <label htmlFor={inputId} className="block text-xs font-semibold text-secondary-700 dark:text-secondary-200">
           {label}
           {props.required && <span className="text-error-500 ml-0.5">*</span>}
         </label>
@@ -92,7 +92,7 @@ export function Select({
   return (
     <div className="space-y-0.5">
       {label && (
-        <label htmlFor={selectId} className="block text-xs font-medium text-secondary-700 dark:text-secondary-300">
+        <label htmlFor={selectId} className="block text-xs font-semibold text-secondary-700 dark:text-secondary-200">
           {label}
           {props.required && <span className="text-error-500 ml-0.5">*</span>}
         </label>
@@ -137,7 +137,7 @@ export function Textarea({
   return (
     <div className="space-y-0.5">
       {label && (
-        <label htmlFor={textareaId} className="block text-xs font-medium text-secondary-700 dark:text-secondary-300">
+        <label htmlFor={textareaId} className="block text-xs font-semibold text-secondary-700 dark:text-secondary-200">
           {label}
           {props.required && <span className="text-error-500 ml-0.5">*</span>}
         </label>
@@ -174,9 +174,66 @@ export function Checkbox({ label, description, className = '', id, ...props }: C
         {...props}
       />
       <div>
-        <label htmlFor={checkboxId} className="text-xs font-medium text-secondary-700 dark:text-secondary-300 cursor-pointer">{label}</label>
+        <label htmlFor={checkboxId} className="text-xs font-semibold text-secondary-700 dark:text-secondary-200 cursor-pointer">{label}</label>
         {description && <p className="text-[10px] text-secondary-500 dark:text-secondary-400">{description}</p>}
       </div>
+    </div>
+  );
+}
+
+interface FormHeroProps {
+  eyebrow: string;
+  title: string;
+  description: string;
+  badges?: React.ReactNode;
+}
+
+export function FormHero({ eyebrow, title, description, badges }: FormHeroProps) {
+  return (
+    <div className="rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-white px-5 py-4 dark:border-primary-900/40 dark:from-primary-950/30 dark:to-secondary-900">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700 dark:text-primary-300">
+            {eyebrow}
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-secondary-900 dark:text-white">{title}</h3>
+          <p className="mt-1 max-w-2xl text-sm text-secondary-600 dark:text-secondary-400">{description}</p>
+        </div>
+        {badges && <div className="flex flex-wrap gap-2">{badges}</div>}
+      </div>
+    </div>
+  );
+}
+
+interface FormPanelProps {
+  title: string;
+  description: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function FormPanel({
+  title,
+  description,
+  icon,
+  children,
+  className = '',
+}: FormPanelProps) {
+  return (
+    <div className={`rounded-2xl border border-secondary-200/80 bg-white p-5 shadow-sm dark:border-secondary-700 dark:bg-secondary-900 ${className}`}>
+      <div className="mb-4 flex items-start gap-3">
+        {icon && (
+          <div className="rounded-xl bg-primary-50 p-2 text-primary-600 dark:bg-primary-900/40 dark:text-primary-300">
+            {icon}
+          </div>
+        )}
+        <div>
+          <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-xs text-secondary-500 dark:text-secondary-400">{description}</p>
+        </div>
+      </div>
+      <div className="space-y-4">{children}</div>
     </div>
   );
 }

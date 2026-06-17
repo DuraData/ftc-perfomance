@@ -40,7 +40,7 @@ public class UsersController : ControllerBase
                 .Select(r => new RoleResponse(r!.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive))
                 .ToArray();
 
-            var userResponse = new UserResponse(u.Id, u.FirstName, u.LastName, u.FullName, u.Email!, u.PhoneNumber, u.IsActive, u.MustChangePassword, u.LastLoginAt);
+            var userResponse = new UserResponse(u.Id, u.UserName ?? u.Email!, u.FirstName, u.LastName, u.FullName, u.Email!, u.PhoneNumber, u.Department, u.Position, u.IsActive, u.MustChangePassword, u.LastLoginAt);
             return new UserDetailResponse(userResponse, userRoles);
         }).ToArray();
 
@@ -57,7 +57,7 @@ public class UsersController : ControllerBase
         var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
 
         var roleResponses = roleEntities.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
-        var userResponse = new UserResponse(user.Id, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.IsActive, user.MustChangePassword, user.LastLoginAt);
+        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt);
 
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
     }
@@ -87,7 +87,7 @@ public class UsersController : ControllerBase
             return BadRequest(new ApiResponse<UserDetailResponse>(false, null, "Failed to create user", result.Errors.Select(e => e.Description).ToArray()));
         }
 
-        var userResponse = new UserResponse(user.Id, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.IsActive, user.MustChangePassword, user.LastLoginAt);
+        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt);
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, Array.Empty<RoleResponse>())));
     }
 
@@ -113,7 +113,7 @@ public class UsersController : ControllerBase
         var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
         var roleResponses = roleEntities.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
 
-        var userResponse = new UserResponse(user.Id, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.IsActive, user.MustChangePassword, user.LastLoginAt);
+        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt);
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
     }
 
@@ -246,4 +246,3 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 }
-

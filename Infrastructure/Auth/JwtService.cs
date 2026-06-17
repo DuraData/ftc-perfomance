@@ -129,7 +129,17 @@ public class JwtService : IJwtService
     private async Task<string[]> GetUserPermissionCodesAsync(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
-        if (roles.Any(r => string.Equals(r, "Super Admin", StringComparison.OrdinalIgnoreCase)))
+        var systemAdminRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Super Admin",
+            "System Admin",
+            "System Administrator",
+            "EPMS Admin",
+            "ICT Admin",
+            "ICT Sub-Admin"
+        };
+
+        if (roles.Any(systemAdminRoles.Contains))
         {
             return await _context.Permissions
                 .Where(p => p.IsActive)

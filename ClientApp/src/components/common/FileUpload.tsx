@@ -56,7 +56,7 @@ export function FileUpload({
   onUpload,
   onRemove,
   existingFiles = [],
-  maxFiles = 10,
+  maxFiles,
   maxSize = 10,
   acceptedTypes,
   showDocumentType = true,
@@ -68,6 +68,10 @@ export function FileUpload({
   const [files, setFiles] = useState<UploadedFile[]>(existingFiles);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setFiles(existingFiles);
+  }, [existingFiles]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -88,13 +92,14 @@ export function FileUpload({
 
   const processFiles = useCallback((newFiles: FileList | File[]) => {
     const fileArray = Array.from(newFiles);
+    const currentCount = files.length;
+
+    if (maxFiles !== undefined && currentCount + fileArray.length > maxFiles) {
+      alert(`Maximum ${maxFiles} files allowed`);
+      return;
+    }
 
     fileArray.forEach(file => {
-      if (files.length + fileArray.length > maxFiles) {
-        alert(`Maximum ${maxFiles} files allowed`);
-        return;
-      }
-
       if (file.size > maxSize * 1024 * 1024) {
         alert(`File ${file.name} exceeds maximum size of ${maxSize}MB`);
         return;
@@ -204,7 +209,7 @@ export function FileUpload({
               <span className="text-primary-600 dark:text-primary-400">browse</span>
             </p>
             <p className="text-xs text-secondary-500 dark:text-secondary-400 mt-1">
-              Max {maxFiles} files, up to {maxSize}MB each
+              {maxFiles === undefined ? 'Unlimited files' : `Max ${maxFiles} files`}, up to {maxSize}MB each
             </p>
           </div>
         </div>

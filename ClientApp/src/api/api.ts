@@ -13,6 +13,7 @@ import type {
   UserPermissionOverride,
   MenuItem,
   LoginAuditLog,
+  DemoUser,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -126,6 +127,10 @@ export async function register(data: RegisterRequest): Promise<ApiResponse<boole
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export async function getDemoUsers(): Promise<ApiResponse<DemoUser[]>> {
+  return get<DemoUser[]>('/auth/demo-users');
 }
 
 export async function logout() {

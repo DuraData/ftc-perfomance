@@ -1,21 +1,50 @@
 import { useMemo, useState } from 'react';
-import { Plus, Download, Eye } from 'lucide-react';
+import { Plus, Download, Eye, Trash2 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { Input, Select, FormRow } from '../common/Form';
 import {
-  mockIPMSSubmissions,
-  mockOPMSSubmissions,
   statusLabels,
 } from '../../data/mockData';
 import type { IPMSSubmission, OPMSSubmission } from '../../types';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
+import { useApp } from '../../context/AppContext';
 
 export function OPMSSubmissionsList() {
+  const {
+    opmsSubmissions,
+    opmsTargets,
+    createOPMSSubmission,
+    updateOPMSSubmission,
+    deleteOPMSSubmission,
+    pushToast,
+  } = useApp();
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
-  const allSubmissions = useMemo(() => mockOPMSSubmissions, []);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [form, setForm] = useState({
+    targetId: '',
+    quarter: 'Q1',
+    dueDate: new Date().toISOString().slice(0, 10),
+    actual: '0',
+    variance: '0',
+    status: 'draft',
+    actualDescription: '',
+  });
+  const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
+
+  const resetForm = () => {
+    setForm({
+      targetId: opmsTargets[0]?.id ?? '',
+      quarter: 'Q1',
+      dueDate: new Date().toISOString().slice(0, 10),
+      actual: '0',
+      variance: '0',
+      status: 'draft',
+      actualDescription: '',
+    });
+  };
 
   const columns = [
     { id: 'target', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
@@ -29,8 +58,48 @@ export function OPMSSubmissionsList() {
   const actions = (row: OPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
       <button onClick={(e) => { e.stopPropagation(); setSelectedSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          deleteOPMSSubmission(row.id);
+          if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
+          pushToast('success', 'Submission deleted');
+        }}
+        className="p-1 rounded hover:bg-error-50"
+      >
+        <Trash2 className="w-3.5 h-3.5 text-error-500" />
+      </button>
     </div>
   );
+
+  const handleCreateSubmission = () => {
+    const target = opmsTargets.find(item => item.id === form.targetId) ?? opmsTargets[0];
+    const template = allSubmissions[0];
+    if (!target || !template) return;
+
+    const created = createOPMSSubmission({
+      ...template,
+      id: '',
+      target,
+      quarter: form.quarter as OPMSSubmission['quarter'],
+      dueDate: form.dueDate,
+      actual: Number(form.actual || 0),
+      variance: Number(form.variance || 0),
+      actualDescription: form.actualDescription,
+      status: form.status as OPMSSubmission['status'],
+      attachments: [],
+      comments: [],
+      history: [],
+      submittedAt: undefined,
+      verifiedAt: undefined,
+      approvedAt: undefined,
+      auditedAt: undefined,
+      pmsReviewedAt: undefined,
+    });
+    pushToast('success', 'Submission created');
+    setShowCreateModal(false);
+    setSelectedSubmission(created);
+  };
 
   return (
     <AppShell title="OPMS Submissions" subtitle="All OPMS target submissions">
@@ -40,6 +109,21 @@ export function OPMSSubmissionsList() {
           submissionType="OPMS"
           titlePrefix="Workflow / Verification"
           onBack={() => setSelectedSubmission(null)}
+          onSave={(updated) => {
+            updateOPMSSubmission(updated as OPMSSubmission);
+            setSelectedSubmission(updated as OPMSSubmission);
+            pushToast('success', 'Submission updated');
+          }}
+          onDelete={() => {
+            deleteOPMSSubmission(selectedSubmission.id);
+            setSelectedSubmission(null);
+            pushToast('success', 'Submission deleted');
+          }}
+          onAttachmentsChange={(attachments) => {
+            const updated = { ...selectedSubmission, attachments };
+            updateOPMSSubmission(updated);
+            setSelectedSubmission(updated);
+          }}
         />
       ) : (
         <div className="space-y-4">
@@ -47,18 +131,46 @@ export function OPMSSubmissionsList() {
             <Badge variant="primary">{allSubmissions.length} submissions</Badge>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
-              <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => {
-                // For now, select the first draft submission or first submission
-                const firstSubmission = allSubmissions.find(s => s.status === 'draft') || allSubmissions[0];
-                if (firstSubmission) {
-                  setSelectedSubmission(firstSubmission);
-                }
-              }}>New Submission</Button>
+              <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
             </div>
           </div>
           <Card>
             <DataTable data={allSubmissions} columns={columns} onRowClick={(row) => setSelectedSubmission(row)} actions={actions} getRowId={(row) => row.id} />
           </Card>
+          <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New OPMS Submission" size="lg">
+            <div className="space-y-3">
+              <FormRow cols={2}>
+                <Select
+                  label="Target"
+                  options={opmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
+                  value={form.targetId}
+                  onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
+                />
+                <Select
+                  label="Quarter"
+                  options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
+                  value={form.quarter}
+                  onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
+                />
+              </FormRow>
+              <FormRow cols={3}>
+                <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} />
+                <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} />
+                <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
+              </FormRow>
+              <Select
+                label="Status"
+                options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
+                value={form.status}
+                onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
+              />
+              <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleCreateSubmission}>Create</Button>
+            </div>
+          </Modal>
         </div>
       )}
     </AppShell>
@@ -66,8 +178,38 @@ export function OPMSSubmissionsList() {
 }
 
 export function IPMSSubmissionsList() {
+  const {
+    ipmsSubmissions,
+    ipmsTargets,
+    createIPMSSubmission,
+    updateIPMSSubmission,
+    deleteIPMSSubmission,
+    pushToast,
+  } = useApp();
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
-  const allSubmissions = useMemo(() => mockIPMSSubmissions, []);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [form, setForm] = useState({
+    targetId: '',
+    quarter: 'Q1',
+    dueDate: new Date().toISOString().slice(0, 10),
+    actual: '0',
+    variance: '0',
+    status: 'draft',
+    actualDescription: '',
+  });
+  const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
+
+  const resetForm = () => {
+    setForm({
+      targetId: ipmsTargets[0]?.id ?? '',
+      quarter: 'Q1',
+      dueDate: new Date().toISOString().slice(0, 10),
+      actual: '0',
+      variance: '0',
+      status: 'draft',
+      actualDescription: '',
+    });
+  };
 
   const columns = [
     { id: 'target', header: 'Target', accessor: (row: IPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
@@ -81,8 +223,46 @@ export function IPMSSubmissionsList() {
   const actions = (row: IPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
       <button onClick={(e) => { e.stopPropagation(); setSelectedSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          deleteIPMSSubmission(row.id);
+          if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
+          pushToast('success', 'Submission deleted');
+        }}
+        className="p-1 rounded hover:bg-error-50"
+      >
+        <Trash2 className="w-3.5 h-3.5 text-error-500" />
+      </button>
     </div>
   );
+
+  const handleCreateSubmission = () => {
+    const target = ipmsTargets.find(item => item.id === form.targetId) ?? ipmsTargets[0];
+    const template = allSubmissions[0];
+    if (!target || !template) return;
+
+    const created = createIPMSSubmission({
+      ...template,
+      id: '',
+      target,
+      quarter: form.quarter as IPMSSubmission['quarter'],
+      dueDate: form.dueDate,
+      actual: Number(form.actual || 0),
+      variance: Number(form.variance || 0),
+      actualDescription: form.actualDescription,
+      status: form.status as IPMSSubmission['status'],
+      attachments: [],
+      history: [],
+      submittedAt: undefined,
+      verifiedAt: undefined,
+      approvedAt: undefined,
+      auditedAt: undefined,
+    });
+    pushToast('success', 'Submission created');
+    setShowCreateModal(false);
+    setSelectedSubmission(created);
+  };
 
   return (
     <AppShell title="IPMS Submissions" subtitle="All IPMS target submissions">
@@ -92,6 +272,21 @@ export function IPMSSubmissionsList() {
           submissionType="IPMS"
           titlePrefix="Workflow / Verification"
           onBack={() => setSelectedSubmission(null)}
+          onSave={(updated) => {
+            updateIPMSSubmission(updated as IPMSSubmission);
+            setSelectedSubmission(updated as IPMSSubmission);
+            pushToast('success', 'Submission updated');
+          }}
+          onDelete={() => {
+            deleteIPMSSubmission(selectedSubmission.id);
+            setSelectedSubmission(null);
+            pushToast('success', 'Submission deleted');
+          }}
+          onAttachmentsChange={(attachments) => {
+            const updated = { ...selectedSubmission, attachments };
+            updateIPMSSubmission(updated);
+            setSelectedSubmission(updated);
+          }}
         />
       ) : (
         <div className="space-y-4">
@@ -99,17 +294,46 @@ export function IPMSSubmissionsList() {
             <Badge variant="primary">{allSubmissions.length} submissions</Badge>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
-              <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => {
-                // Select the first submission for "New Submission" demo
-                if (allSubmissions.length > 0) {
-                  setSelectedSubmission(allSubmissions[0]);
-                }
-              }}>New Submission</Button>
+              <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
             </div>
           </div>
           <Card>
             <DataTable data={allSubmissions} columns={columns} onRowClick={(row) => setSelectedSubmission(row)} actions={actions} getRowId={(row) => row.id} />
           </Card>
+          <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New IPMS Submission" size="lg">
+            <div className="space-y-3">
+              <FormRow cols={2}>
+                <Select
+                  label="Target"
+                  options={ipmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
+                  value={form.targetId}
+                  onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
+                />
+                <Select
+                  label="Quarter"
+                  options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
+                  value={form.quarter}
+                  onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
+                />
+              </FormRow>
+              <FormRow cols={3}>
+                <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} />
+                <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} />
+                <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
+              </FormRow>
+              <Select
+                label="Status"
+                options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
+                value={form.status}
+                onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
+              />
+              <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleCreateSubmission}>Create</Button>
+            </div>
+          </Modal>
         </div>
       )}
     </AppShell>

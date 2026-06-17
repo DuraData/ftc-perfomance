@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -17,7 +17,9 @@ import {
 } from 'lucide-react';
 import { Button, Badge, Card } from '../ui';
 import { Tabs } from '../common/Tabs';
+import { FileUpload } from '../common/FileUpload';
 import { statusLabels } from '../../data/mockData';
+import { mockEmployees } from '../../data/mockData';
 import type {
   Attachment,
   IPMSSubmission,
@@ -36,6 +38,9 @@ interface SubmissionWorkspaceProps {
   subtitle?: string;
   onBack?: () => void;
   mode?: WorkspaceMode;
+  onSave?: (submission: SubmissionRecord) => void;
+  onDelete?: () => void;
+  onAttachmentsChange?: (attachments: Attachment[]) => void;
 }
 
 interface WorkflowStep {
@@ -288,9 +293,19 @@ export function SubmissionWorkspace({
   subtitle,
   onBack,
   mode = 'review',
+  onSave,
+  onDelete,
+  onAttachmentsChange,
 }: SubmissionWorkspaceProps) {
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
+  const [draftSubmission, setDraftSubmission] = useState<SubmissionRecord>(submission);
+  useEffect(() => {
+    setDraftSubmission(submission);
+    setIsEditing(false);
+  }, [submission]);
+
+  const currentSubmission = draftSubmission;
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Submission Details', icon: <FileText className="w-3.5 h-3.5" /> },
@@ -304,16 +319,53 @@ export function SubmissionWorkspace({
     [],
   );
 
-  const attachments = getAttachments(submission);
-  const comments = getComments(submission);
-  const score = getScore(submission);
-  const variance = getVariance(submission);
-  const actualExpenditure = getActualExpenditure(submission);
-  const targetUnit = submission.target.unitOfMeasure.symbol || submission.target.unitOfMeasure.name;
+  const attachments = getAttachments(currentSubmission);
+  const comments = getComments(currentSubmission);
+  const score = getScore(currentSubmission);
+  const variance = getVariance(currentSubmission);
+  const actualExpenditure = getActualExpenditure(currentSubmission);
+  const targetUnit = currentSubmission.target.unitOfMeasure.symbol || currentSubmission.target.unitOfMeasure.name;
 
   const smallTitle = `${titlePrefix}`;
-  const pageTitle = `Submission: ${submissionType}-${submission.quarter}-${submission.id.padStart(4, '0')}`;
-  const scoreDisplay = score !== undefined ? `${score} / 5` : submission.status === 'approved' ? '4 / 5' : '-';
+  const pageTitle = `Submission: ${submissionType}-${currentSubmission.quarter}-${currentSubmission.id.padStart(4, '0')}`;
+  const scoreDisplay = score !== undefined ? `${score} / 5` : currentSubmission.status === 'approved' ? '4 / 5' : '-';
+
+  const updateDraftSubmission = (updater: (current: SubmissionRecord) => SubmissionRecord) => {
+    setDraftSubmission(prev => updater(prev));
+  };
+
+  const handleSave = () => {
+    onSave?.(draftSubmission);
+    setIsEditing(false);
+  };
+
+  const syncAttachments = (nextAttachments: Attachment[]) => {
+    updateDraftSubmission(current => ({ ...current, attachments: nextAttachments }));
+    onAttachmentsChange?.(nextAttachments);
+  };
+
+  const uploadedFileItems = attachments.map(attachment => ({
+    id: attachment.id,
+    name: attachment.fileName,
+    size: attachment.fileSize,
+    type: attachment.fileType,
+    uploadedAt: attachment.uploadedAt,
+    uploadedBy: attachment.uploadedBy.displayName,
+    documentType: attachment.documentType,
+    url: attachment.url,
+    progress: 100,
+  }));
+
+  const buildAttachment = (file: File): Attachment => ({
+    id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+    uploadedBy: currentSubmission.submitter ?? getVerifier(currentSubmission) ?? getApprover(currentSubmission) ?? mockEmployees[0],
+    uploadedAt: new Date().toISOString(),
+    documentType: 'evidence',
+    url: URL.createObjectURL(file),
+  });
 
   return (
     <div className="space-y-4">
@@ -333,10 +385,15 @@ export function SubmissionWorkspace({
               <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" onClick={() => setIsEditing(false)}>
+              <Button variant="primary" size="sm" onClick={handleSave}>
                 Save
               </Button>
             </>
+          )}
+          {onDelete && (
+            <Button variant="error" size="sm" onClick={onDelete}>
+              Delete
+            </Button>
           )}
           {onBack && (
             <Button variant="outline" size="sm" icon={<ArrowLeft className="w-4 h-4" />} onClick={onBack}>
@@ -354,15 +411,15 @@ export function SubmissionWorkspace({
             </div>
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-xl font-semibold text-secondary-900 dark:text-white">{submission.target.targetName}</h3>
-                <Badge variant="info" size="md">{`${submissionType}-${submission.id.padStart(4, '0')}`}</Badge>
+                <h3 className="text-xl font-semibold text-secondary-900 dark:text-white">{currentSubmission.target.targetName}</h3>
+                <Badge variant="info" size="md">{`${submissionType}-${currentSubmission.id.padStart(4, '0')}`}</Badge>
               </div>
               <p className="text-sm text-secondary-500">
-                {submission.quarter} {submission.target.period.fiscalYear} · {submission.submitter?.displayName ?? 'Unassigned'} · {submission.target.department.name}
+                {currentSubmission.quarter} {currentSubmission.target.period.fiscalYear} · {currentSubmission.submitter?.displayName ?? 'Unassigned'} · {currentSubmission.target.department.name}
               </p>
               <div className="flex flex-wrap gap-2">
-                <Badge variant={getStatusBadgeVariant(submission.status)}>{statusLabels[submission.status]}</Badge>
-                <Badge variant="primary">{submission.quarter}</Badge>
+                <Badge variant={getStatusBadgeVariant(currentSubmission.status)}>{statusLabels[currentSubmission.status]}</Badge>
+                <Badge variant="primary">{currentSubmission.quarter}</Badge>
                 <Badge variant="default">{submissionType} Submission</Badge>
               </div>
             </div>
@@ -372,17 +429,17 @@ export function SubmissionWorkspace({
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Quarter</p>
               <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">
-                {submission.quarter} {submission.target.period.fiscalYear}
+                {currentSubmission.quarter} {currentSubmission.target.period.fiscalYear}
               </p>
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Due</p>
-              <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">{formatDate(submission.dueDate)}</p>
+              <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">{formatDate(currentSubmission.dueDate)}</p>
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Actual</p>
               <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">
-                {formatValue(submission.actual, targetUnit)}
+                {formatValue(currentSubmission.actual, targetUnit)}
               </p>
             </div>
             <div>
@@ -392,7 +449,7 @@ export function SubmissionWorkspace({
           </div>
         </div>
 
-        <WorkflowRail status={submission.status} />
+        <WorkflowRail status={currentSubmission.status} />
       </Card>
 
       <div className="flex items-center justify-between gap-2 rounded-xl border border-secondary-200 bg-white px-3 py-2 dark:border-secondary-700 dark:bg-secondary-900">
@@ -409,27 +466,56 @@ export function SubmissionWorkspace({
         <div className="space-y-4">
           <Section title="Reporting Period" icon={<TimerReset className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Quarter" value={`${submission.quarter} ${submission.target.period.fiscalYear}`} />
-              <Field label="Due Date" value={formatDate(submission.dueDate)} />
-              <Field label="Extended Due Date" value={formatDate(submission.extendedDueDate)} />
+              <Field label="Quarter" value={`${currentSubmission.quarter} ${currentSubmission.target.period.fiscalYear}`} />
+              <Field label="Due Date" value={formatDate(currentSubmission.dueDate)} />
+              <Field label="Extended Due Date" value={formatDate(currentSubmission.extendedDueDate)} />
             </div>
           </Section>
 
           <Section title="Actual Performance" icon={<CheckCircle2 className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Actual" value={formatValue(submission.actual, targetUnit)} />
-              <Field label="Actual Expenditure" value={actualExpenditure !== undefined ? `R ${actualExpenditure.toLocaleString()}` : '-'} />
+              <Field
+                label="Actual"
+                value={currentSubmission.actual ?? ''}
+                editable={isEditing}
+                type="number"
+                onChange={(value) => updateDraftSubmission(current => ({ ...current, actual: Number(value || 0) }))}
+              />
+              <Field
+                label="Actual Expenditure"
+                value={actualExpenditure !== undefined ? actualExpenditure : ''}
+                editable={isEditing}
+                type="number"
+                onChange={(value) => updateDraftSubmission(current => 'actualExpenditure' in current ? { ...current, actualExpenditure: Number(value || 0) } : current)}
+              />
               <Field label="Variance" value={formatVariance(variance)} />
-              <Field label="Actual Performance Description" value={submission.actualDescription || '-'} wide />
+              <Field
+                label="Actual Performance Description"
+                value={currentSubmission.actualDescription || ''}
+                wide
+                editable={isEditing}
+                onChange={(value) => updateDraftSubmission(current => ({ ...current, actualDescription: value }))}
+              />
             </div>
           </Section>
 
           <Section title="Variance & Corrective Action" icon={<AlertTriangle className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Variance Reason" value={getVarianceReason(submission) || '-'} />
-              <Field label="Corrective Measure" value={getCorrectiveMeasure(submission) || '-'} wide />
+              <Field
+                label="Variance Reason"
+                value={getVarianceReason(currentSubmission) || ''}
+                editable={isEditing}
+                onChange={(value) => updateDraftSubmission(current => 'varianceReason' in current ? { ...current, varianceReason: value } : current)}
+              />
+              <Field
+                label="Corrective Measure"
+                value={getCorrectiveMeasure(currentSubmission) || ''}
+                wide
+                editable={isEditing}
+                onChange={(value) => updateDraftSubmission(current => 'correctiveMeasure' in current ? { ...current, correctiveMeasure: value } : current)}
+              />
               <Field label="Submitter Score" value={scoreDisplay} />
-              <Field label="Submitter Status" value={<Badge variant={getStatusBadgeVariant(submission.status)}>{statusLabels[submission.status]}</Badge>} />
+              <Field label="Submitter Status" value={<Badge variant={getStatusBadgeVariant(currentSubmission.status)}>{statusLabels[currentSubmission.status]}</Badge>} />
             </div>
           </Section>
         </div>
@@ -437,37 +523,21 @@ export function SubmissionWorkspace({
 
       {activeTab === 'evidence' && (
         <Section title="Proof of Evidence" icon={<FileBadge className="h-4 w-4" />}>
-          {attachments.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
-              No evidence uploaded yet for this submission.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {attachments.map((attachment) => (
-                <div
-                  key={attachment.id}
-                  className="flex items-center justify-between rounded-lg border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-secondary-900 dark:text-white">{attachment.fileName}</p>
-                    <p className="text-xs text-secondary-500">
-                      {attachment.documentType} · {formatDateTime(attachment.uploadedAt)}
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm">Download</Button>
-                </div>
-              ))}
-            </div>
-          )}
+          <FileUpload
+            existingFiles={uploadedFileItems}
+            maxFiles={undefined}
+            onUpload={(files) => syncAttachments([...attachments, ...files.map(buildAttachment)])}
+            onRemove={(fileId) => syncAttachments(attachments.filter(attachment => attachment.id !== fileId))}
+          />
         </Section>
       )}
 
       {activeTab === 'verification' && (
         <Section title="Verification" icon={<ClipboardCheck className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Verified By" value={getVerifier(submission)?.displayName || 'Pending'} />
-            <Field label="Verified At" value={formatDateTime(getVerifiedAt(submission))} />
-            <Field label="Verification Notes" value={getVerifierComments(submission) || 'Moderate scores and clear the item for audit.'} wide />
+            <Field label="Verified By" value={getVerifier(currentSubmission)?.displayName || 'Pending'} />
+            <Field label="Verified At" value={formatDateTime(getVerifiedAt(currentSubmission))} />
+            <Field label="Verification Notes" value={getVerifierComments(currentSubmission) || 'Moderate scores and clear the item for audit.'} wide />
           </div>
         </Section>
       )}
@@ -475,9 +545,9 @@ export function SubmissionWorkspace({
       {activeTab === 'approval' && (
         <Section title="Approval" icon={<CheckCircle2 className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Approver" value={getApprover(submission)?.displayName || 'Pending'} />
-            <Field label="Approved At" value={formatDateTime(getApprovedAt(submission))} />
-            <Field label="Approval Comment" value={getApproverComments(submission) || '-'} wide />
+            <Field label="Approver" value={getApprover(currentSubmission)?.displayName || 'Pending'} />
+            <Field label="Approved At" value={formatDateTime(getApprovedAt(currentSubmission))} />
+            <Field label="Approval Comment" value={getApproverComments(currentSubmission) || '-'} wide />
           </div>
         </Section>
       )}
@@ -485,9 +555,9 @@ export function SubmissionWorkspace({
       {activeTab === 'pms' && (
         <Section title="PMS Section" icon={<Sparkles className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="PMS Officer" value={getPmsOfficer(submission)?.displayName || 'Pending'} />
-            <Field label="Reviewed At" value={formatDateTime(getPmsReviewedAt(submission))} />
-            <Field label="PMS Notes" value={getPmsComments(submission) || 'Ready for moderation and workflow closure.'} wide />
+            <Field label="PMS Officer" value={getPmsOfficer(currentSubmission)?.displayName || 'Pending'} />
+            <Field label="Reviewed At" value={formatDateTime(getPmsReviewedAt(currentSubmission))} />
+            <Field label="PMS Notes" value={getPmsComments(currentSubmission) || 'Ready for moderation and workflow closure.'} wide />
           </div>
         </Section>
       )}
@@ -495,9 +565,9 @@ export function SubmissionWorkspace({
       {activeTab === 'auditor' && (
         <Section title="Auditor Information" icon={<ShieldCheck className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Auditor" value={getAuditor(submission)?.displayName || 'Pending'} />
-            <Field label="Audited At" value={formatDateTime(getAuditedAt(submission))} />
-            <Field label="Findings" value={getAuditorComments(submission) || '-'} wide />
+            <Field label="Auditor" value={getAuditor(currentSubmission)?.displayName || 'Pending'} />
+            <Field label="Audited At" value={formatDateTime(getAuditedAt(currentSubmission))} />
+            <Field label="Findings" value={getAuditorComments(currentSubmission) || '-'} wide />
           </div>
         </Section>
       )}

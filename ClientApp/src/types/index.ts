@@ -606,11 +606,14 @@ export interface ApiResponse<T> {
 
 export interface UserProfile {
   id: string;
+  userName: string;
   firstName: string;
   lastName: string;
   fullName: string;
   email: string;
   phoneNumber?: string;
+  department?: string;
+  position?: string;
   isActive: boolean;
   mustChangePassword: boolean;
 }
@@ -661,11 +664,14 @@ export interface AdminRole {
 
 export interface AdminUser {
   id: string;
+  userName: string;
   firstName: string;
   lastName: string;
   fullName: string;
   email: string;
   phoneNumber?: string;
+  department?: string;
+  position?: string;
   isActive: boolean;
   mustChangePassword: boolean;
   lastLoginAt?: string | null;
@@ -674,6 +680,16 @@ export interface AdminUser {
 export interface AdminUserDetail {
   user: AdminUser;
   roles: AdminRole[];
+}
+
+export interface DemoUser {
+  role: string;
+  fullName: string;
+  department: string;
+  position: string;
+  email: string;
+  userName: string;
+  password: string;
 }
 
 export interface AdminPermission {

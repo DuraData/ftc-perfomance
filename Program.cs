@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -173,7 +174,7 @@ public sealed class PermissionHandler : AuthorizationHandler<PermissionRequireme
             return Task.CompletedTask;
         }
 
-        if (context.User.IsInRole("Super Admin"))
+        if (IsSystemAdministrator(context.User))
         {
             context.Succeed(requirement);
             return Task.CompletedTask;
@@ -189,6 +190,22 @@ public sealed class PermissionHandler : AuthorizationHandler<PermissionRequireme
         }
 
         return Task.CompletedTask;
+    }
+
+    private static bool IsSystemAdministrator(ClaimsPrincipal user)
+    {
+        var roles = user.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value);
+        var systemAdminRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Super Admin",
+            "System Admin",
+            "System Administrator",
+            "EPMS Admin",
+            "ICT Admin",
+            "ICT Sub-Admin"
+        };
+
+        return roles.Any(systemAdminRoles.Contains);
     }
 }
 

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Plus, Download, Edit2, Eye, Trash2 } from 'lucide-react';
+import { Plus, Download, Edit2, Eye, Trash2, FileText, Layers3 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/Modal';
-import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
+import { Input, Textarea, FormHero, FormPanel, FormRow } from '../common/Form';
 
 // Generic CRUD page for simple lookup tables
 interface LookupItem {
@@ -64,17 +64,45 @@ export function GenericLookupPage({ title, subtitle, entityName, mockData, field
         </Card>
 
         <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setSelectedItem(null); }} title={`${selectedItem ? 'Edit' : 'New'} ${entityName}`} size="md">
-          <div className="space-y-3">
-            <FormRow cols={2}>
-              {defaultFields.filter(f => f.type === 'text').slice(0, 2).map(field => (
-                <Input key={field.key} label={field.label} defaultValue={selectedItem?.[field.key as keyof LookupItem] as string || ''} placeholder={`Enter ${field.label.toLowerCase()}`} required={field.key === 'name'} />
-              ))}
-            </FormRow>
-            {defaultFields.filter(f => f.type === 'textarea').map(field => (
-              <Textarea key={field.key} label={field.label} defaultValue={selectedItem?.[field.key as keyof LookupItem] as string || ''} rows={2} />
-            ))}
+          <div className="space-y-5">
+            <FormHero
+              eyebrow={`${entityName} Management`}
+              title={selectedItem ? `Update ${entityName}` : `Create ${entityName}`}
+              description={`Maintain ${entityName.toLowerCase()} master data using the same structured add/edit layout across the system.`}
+              badges={<Badge variant="default">{selectedItem ? 'Edit Mode' : 'New Record'}</Badge>}
+            />
+            <div className="grid gap-4">
+              <FormPanel
+                title="Record Details"
+                description="Capture the primary identifying information for this lookup record."
+                icon={<Layers3 className="h-5 w-5" />}
+              >
+                <FormRow cols={2}>
+                  {defaultFields.filter(f => f.type === 'text').slice(0, 2).map(field => (
+                    <Input
+                      key={field.key}
+                      label={field.label}
+                      defaultValue={selectedItem?.[field.key as keyof LookupItem] as string || ''}
+                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                      required={field.key === 'name'}
+                    />
+                  ))}
+                </FormRow>
+              </FormPanel>
+              {defaultFields.filter(f => f.type === 'textarea').length > 0 && (
+                <FormPanel
+                  title="Additional Notes"
+                  description="Provide any supporting description or classification detail."
+                  icon={<FileText className="h-5 w-5" />}
+                >
+                  {defaultFields.filter(f => f.type === 'textarea').map(field => (
+                    <Textarea key={field.key} label={field.label} defaultValue={selectedItem?.[field.key as keyof LookupItem] as string || ''} rows={3} />
+                  ))}
+                </FormPanel>
+              )}
+            </div>
           </div>
-          <div className="flex justify-end gap-2 mt-4">
+          <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="ghost" size="sm" onClick={() => { setShowCreateModal(false); setSelectedItem(null); }}>Cancel</Button>
             <Button variant="primary" size="sm">{selectedItem ? 'Update' : 'Create'}</Button>
           </div>

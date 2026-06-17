@@ -36,49 +36,47 @@ interface TargetDetailProps {
 }
 
 function GeneralInfoTab({ target }: { target: IPMSTarget }) {
-  const [isEditing, setIsEditing] = useState(false);
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Basic Information">
         <FormRow cols={3}>
           <Select
             label="Period"
             options={mockPeriods.map(p => ({ value: p.id, label: p.name }))}
             defaultValue={target.period.id}
-            disabled={!isEditing}
+            disabled
           />
           <Select
             label="Department"
             options={mockDepartments.map(d => ({ value: d.id, label: d.name }))}
             defaultValue={target.department.id}
-            disabled={!isEditing}
+            disabled
           />
           <Select
             label="Unit"
             options={mockDepartmentUnits.map(u => ({ value: u.id, label: u.name }))}
             defaultValue={target.unit?.id}
             placeholder="Select unit"
-            disabled={!isEditing}
+            disabled
           />
         </FormRow>
         <FormRow cols={2}>
           <Input
             label="Indicator Number"
             defaultValue={target.indicatorNumber}
-            disabled={!isEditing}
+            disabled
           />
           <Input
             label="Target Name"
             defaultValue={target.targetName}
-            disabled={!isEditing}
+            disabled
           />
         </FormRow>
         <Textarea
           label="KPI Description"
           defaultValue={target.kpiDescription}
           rows={2}
-          disabled={!isEditing}
+          disabled
         />
       </FormSection>
 
@@ -88,13 +86,13 @@ function GeneralInfoTab({ target }: { target: IPMSTarget }) {
             label="Target Unit Type"
             options={targetUnitTypes}
             defaultValue={target.targetUnitType}
-            disabled={!isEditing}
+            disabled
           />
           <Select
             label="Unit of Measure"
             options={mockUnitsOfMeasure.map(u => ({ value: u.id, label: u.name }))}
             defaultValue={target.unitOfMeasure.id}
-            disabled={!isEditing}
+            disabled
           />
           <Select
             label="KPI Type"
@@ -104,7 +102,7 @@ function GeneralInfoTab({ target }: { target: IPMSTarget }) {
               { value: 'binary', label: 'Binary' },
             ]}
             defaultValue={target.kpiType.toLowerCase()}
-            disabled={!isEditing}
+            disabled
           />
           <Select
             label="Indicator Type"
@@ -116,7 +114,7 @@ function GeneralInfoTab({ target }: { target: IPMSTarget }) {
               { value: 'impact', label: 'Impact' },
             ]}
             defaultValue={target.indicatorType.toLowerCase()}
-            disabled={!isEditing}
+            disabled
           />
         </FormRow>
       </FormSection>
@@ -128,34 +126,24 @@ function GeneralInfoTab({ target }: { target: IPMSTarget }) {
             options={mockEmployees.map(e => ({ value: e.id, label: e.displayName }))}
             defaultValue={target.assignedTo?.id}
             placeholder="Select employee"
-            disabled={!isEditing}
+            disabled
           />
           <Input
             label="Weight (%)"
             type="number"
             defaultValue={target.weight}
-            disabled={!isEditing}
+            disabled
           />
         </FormRow>
       </FormSection>
 
-      <div className="flex items-center gap-2 pt-2">
-        <Button variant="outline" size="sm" icon={<Edit2 className="w-3.5 h-3.5" />} onClick={() => setIsEditing(!isEditing)}>
-          {isEditing ? 'Editing...' : 'Edit'}
-        </Button>
-        {isEditing && (
-          <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>
-            Cancel
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
 
 function StrategyTab({ target }: { target: IPMSTarget }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Strategic Alignment">
         <FormRow cols={2}>
           <Input label="National KPA" defaultValue={target.nationalKPA} />
@@ -198,7 +186,7 @@ function QuarterlyTargetsTab({ target }: { target: IPMSTarget }) {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Quarterly Breakdown">
         <div className="space-y-2">
           {quarters.map(q => (
@@ -234,9 +222,18 @@ function QuarterlyTargetsTab({ target }: { target: IPMSTarget }) {
   );
 }
 
-function SubmissionsTab({ target }: { target: IPMSTarget }) {
+function SubmissionsTab({
+  target,
+  submissions,
+  onUpdateSubmission,
+  onDeleteSubmission,
+}: {
+  target: IPMSTarget;
+  submissions: IPMSSubmission[];
+  onUpdateSubmission: (submission: IPMSSubmission) => void;
+  onDeleteSubmission: (submissionId: string) => void;
+}) {
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
-  const submissions = mockIPMSSubmissions.filter(s => s.target.id === target.id);
 
   const columns = [
     { id: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
@@ -254,7 +251,23 @@ function SubmissionsTab({ target }: { target: IPMSTarget }) {
             Back to Submissions
           </Button>
         </div>
-        <SubmissionWorkspace submission={selectedSubmission} submissionType="IPMS" />
+        <SubmissionWorkspace
+          submission={selectedSubmission}
+          submissionType="IPMS"
+          onSave={(updated) => {
+            onUpdateSubmission(updated as IPMSSubmission);
+            setSelectedSubmission(updated as IPMSSubmission);
+          }}
+          onDelete={() => {
+            onDeleteSubmission(selectedSubmission.id);
+            setSelectedSubmission(null);
+          }}
+          onAttachmentsChange={(attachments) => {
+            const updated = { ...selectedSubmission, attachments };
+            onUpdateSubmission(updated);
+            setSelectedSubmission(updated);
+          }}
+        />
       </div>
     );
   }
@@ -270,8 +283,48 @@ function SubmissionsTab({ target }: { target: IPMSTarget }) {
   );
 }
 
-function AttachmentsTab() {
-  return <FileUpload documentTypes={[{ value: 'strategy', label: 'Strategy' }, { value: 'budget', label: 'Budget' }]} />;
+function AttachmentsTab({
+  target,
+  onAttachmentsChange,
+}: {
+  target: IPMSTarget;
+  onAttachmentsChange: (attachments: IPMSTarget['attachments']) => void;
+}) {
+  const existingFiles = (target.attachments ?? []).map(file => ({
+    id: file.id,
+    name: file.fileName,
+    size: file.fileSize,
+    type: file.fileType,
+    progress: 100,
+    uploadedAt: file.uploadedAt,
+    uploadedBy: file.uploadedBy.displayName,
+    documentType: file.documentType,
+    url: file.url,
+  }));
+
+  return (
+    <FileUpload
+      existingFiles={existingFiles}
+      maxFiles={undefined}
+      documentTypes={[{ value: 'strategy', label: 'Strategy' }, { value: 'budget', label: 'Budget' }]}
+      onUpload={(files) =>
+        onAttachmentsChange([
+          ...(target.attachments ?? []),
+          ...files.map(file => ({
+            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            uploadedBy: target.assignedTo ?? mockEmployees[0],
+            uploadedAt: new Date().toISOString(),
+            documentType: 'strategy',
+            url: URL.createObjectURL(file),
+          })),
+        ])
+      }
+      onRemove={(fileId) => onAttachmentsChange((target.attachments ?? []).filter(file => file.id !== fileId))}
+    />
+  );
 }
 
 function HistoryTab() {
@@ -301,10 +354,17 @@ function HistoryTab() {
 }
 
 export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
-  const { setCurrentPath } = useApp();
+  const {
+    setCurrentPath,
+    ipmsTargets,
+    ipmsSubmissions,
+    updateIPMSTargetAttachments,
+    updateIPMSSubmission,
+    deleteIPMSSubmission,
+  } = useApp();
   const [activeTab, setActiveTab] = useState('general');
 
-  const target = mockIPMSTargets.find(t => t.id === targetId) || mockIPMSTargets[0];
+  const target = ipmsTargets.find(t => t.id === targetId) || ipmsTargets[0] || mockIPMSTargets[0];
 
   const tabs = [
     { id: 'general', label: 'General', icon: <FileText className="w-3.5 h-3.5" /> },
@@ -320,8 +380,8 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'general': return <GeneralInfoTab target={target} />;
       case 'strategy': return <StrategyTab target={target} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
-      case 'submissions': return <SubmissionsTab target={target} />;
-      case 'attachments': return <AttachmentsTab />;
+      case 'submissions': return <SubmissionsTab target={target} submissions={ipmsSubmissions.filter(s => s.target.id === target.id)} onUpdateSubmission={updateIPMSSubmission} onDeleteSubmission={deleteIPMSSubmission} />;
+      case 'attachments': return <AttachmentsTab target={target} onAttachmentsChange={(attachments) => updateIPMSTargetAttachments(target.id, attachments)} />;
       case 'history': return <HistoryTab />;
       default: return <GeneralInfoTab target={target} />;
     }
@@ -345,8 +405,8 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" icon={<Save className="w-3.5 h-3.5" />}>Save</Button>
-            <Button variant="primary" size="sm">Submit</Button>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPath('/ipms/targets')}>Back To Targets</Button>
+            <Button variant="primary" size="sm" onClick={() => setActiveTab('submissions')}>Manage Submissions</Button>
           </div>
         </div>
 

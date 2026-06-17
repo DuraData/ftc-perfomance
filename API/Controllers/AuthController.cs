@@ -2,6 +2,7 @@ using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
+using FTCERP.Host.Infrastructure.Persistence.Seed;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -18,23 +19,27 @@ public class AuthController : ControllerBase
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IJwtService _jwtService;
     private readonly Infrastructure.Persistence.ApplicationDbContext _context;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IJwtService jwtService,
-        Infrastructure.Persistence.ApplicationDbContext context)
+        Infrastructure.Persistence.ApplicationDbContext context,
+        IConfiguration configuration)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _jwtService = jwtService;
         _context = context;
+        _configuration = configuration;
     }
 
     [HttpPost("login")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login([FromBody] LoginRequest request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email);
+        user ??= await _userManager.FindByNameAsync(request.Email);
         if (user == null || !user.IsActive)
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid credentials"));
 
@@ -46,7 +51,7 @@ public class AuthController : ControllerBase
         _context.LoginAuditLogs.Add(new LoginAuditLog
         {
             UserId = user.Id,
-            Email = request.Email,
+            Email = user.Email ?? request.Email,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent = Request.Headers.UserAgent.ToString(),
             Success = true,
@@ -60,11 +65,11 @@ public class AuthController : ControllerBase
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = await GetUserPermissionsAsync(user);
-        var menu = GenerateMenu();
+        var menu = GenerateMenu(permissions, roles);
 
         var userProfile = new UserProfileResponse(
-            user.Id, user.FirstName, user.LastName, user.FullName, user.Email!,
-            user.PhoneNumber, user.IsActive, user.MustChangePassword);
+            user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
             accessToken, refreshToken, expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu)));
@@ -116,11 +121,11 @@ public class AuthController : ControllerBase
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = await GetUserPermissionsAsync(user);
-        var menu = GenerateMenu();
+        var menu = GenerateMenu(permissions, roles);
 
         var userProfile = new UserProfileResponse(
-            user.Id, user.FirstName, user.LastName, user.FullName, user.Email!,
-            user.PhoneNumber, user.IsActive, user.MustChangePassword);
+            user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
             accessToken, refreshToken, expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu)));
@@ -136,16 +141,23 @@ public class AuthController : ControllerBase
             return Unauthorized();
 
         var profile = new UserProfileResponse(
-            user.Id, user.FirstName, user.LastName, user.FullName, user.Email!,
-            user.PhoneNumber, user.IsActive, user.MustChangePassword);
+            user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
         return Ok(new ApiResponse<UserProfileResponse>(true, profile));
+    }
+
+    [HttpGet("demo-users")]
+    public ActionResult<ApiResponse<DemoUserResponse[]>> DemoUsers()
+    {
+        var demoUsers = DbInitializer.GetDemoUserResponses(_configuration).ToArray();
+        return Ok(new ApiResponse<DemoUserResponse[]>(true, demoUsers));
     }
 
     private async Task<List<string>> GetUserPermissionsAsync(ApplicationUser user)
     {
         var roles = await _userManager.GetRolesAsync(user);
-        if (roles.Any(r => string.Equals(r, "Super Admin", StringComparison.OrdinalIgnoreCase)))
+        if (NavigationController.IsSystemAdministrator(roles))
         {
             return await _context.Permissions
                 .Where(p => p.IsActive)
@@ -176,8 +188,10 @@ public class AuthController : ControllerBase
         return finalPermissions.ToList();
     }
 
-    private MenuItemResponse[] GenerateMenu()
+    private MenuItemResponse[] GenerateMenu(List<string> permissions, IEnumerable<string> roles)
     {
-        return NavigationController.BuildMenu();
+        var set = permissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fullAccess = NavigationController.IsSystemAdministrator(roles);
+        return NavigationController.BuildMenu(set, fullAccess);
     }
 }
