@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Plus, Download, Edit2, Eye, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Download, Edit2 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
-import { Button, Badge, Card, EmptyState } from '../ui';
+import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Input, Select, FormSection, FormRow, FormHero, FormPanel, Checkbox } from '../common/Form';
+import { Select, FormHero, FormPanel, Checkbox } from '../common/Form';
 import {
   mockPeriods,
   mockBudgetSources,
@@ -135,7 +135,7 @@ export function ApprovalSetupList() {
     },
   ];
 
-  const actions = (row: ApprovalSetup) => (
+  const actions = () => (
     <div className="flex items-center justify-end gap-1">
       <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700">
         <Edit2 className="w-4 h-4 text-secondary-400" />
@@ -266,18 +266,18 @@ export function LookupTables() {
               </div>
             </div>
             <div className="space-y-2">
-              {tables.find(t => t.id === activeTable)?.data.map((item: Record<string, unknown>) => (
+              {(tables.find(t => t.id === activeTable)?.data as Array<{ id: string; name: string; code?: string; isActive?: boolean }> | undefined)?.map((item) => (
                 <div
-                  key={item.id as string}
+                  key={item.id}
                   className="flex items-center justify-between p-3 bg-secondary-50 dark:bg-secondary-800 rounded-lg"
                 >
                   <div>
-                    <p className="font-medium text-secondary-900 dark:text-white">{item.name as string}</p>
-                    <p className="text-xs text-secondary-500">{item.code as string}</p>
+                    <p className="font-medium text-secondary-900 dark:text-white">{item.name}</p>
+                    <p className="text-xs text-secondary-500">{item.code ?? '-'}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={item.isActive as boolean ? 'success' : 'error'}>
-                      {(item.isActive as boolean) ? 'Active' : 'Inactive'}
+                    <Badge variant={item.isActive ? 'success' : 'error'}>
+                      {item.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                     <button className="p-1.5 rounded hover:bg-secondary-100 dark:hover:bg-secondary-700">
                       <Edit2 className="w-4 h-4 text-secondary-400" />

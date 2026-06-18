@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import type {
   UserRole,
   UserProfile,
@@ -288,14 +289,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const pushToast = (type: ToastType, message: string) => {
+  const pushToast = useCallback((type: ToastType, message: string) => {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const toast: ToastItem = { id, type, message };
     setToasts(prev => [...prev, toast]);
     window.setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 3000);
-  };
+  }, []);
 
   const toggleDarkMode = () => {
     setDarkMode(prev => !prev);
@@ -306,7 +307,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const switchRole = (_role: UserRole) => {
+  const switchRole = (role: UserRole) => {
+    void role;
     // Role switching to be implemented later
   };
 

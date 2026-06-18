@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useMemo } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';

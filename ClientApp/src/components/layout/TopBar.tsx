@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Bell,
@@ -29,7 +29,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const [notifications, setNotifications] = useState<NotificationDto[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     setLoadingNotifications(true);
     const result = await getNotifications();
     if (result.success && result.data) {
@@ -38,11 +38,11 @@ export function TopBar({ title, subtitle }: TopBarProps) {
       pushToast('error', result.message ?? 'Failed to load notifications');
     }
     setLoadingNotifications(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadNotifications();
-  }, []);
+  }, [loadNotifications]);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 

@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
-  Save,
-  Edit2,
   FileText,
   Target,
   TrendingUp,
@@ -28,7 +26,6 @@ import {
   updateIpmsSubmission as updateIpmsSubmissionApi,
 } from '../../api/api';
 import {
-  mockIPMSTargets,
   mockDepartments,
   mockDepartmentUnits,
   mockPeriods,
@@ -37,7 +34,6 @@ import {
   mockUnitsOfMeasure,
   mockEmployees,
   targetUnitTypes,
-  mockIPMSSubmissions,
 } from '../../data/mockData';
 import type { IPMSTarget, IPMSSubmission, AuditTrailEntryDto } from '../../types';
 
@@ -233,12 +229,10 @@ function QuarterlyTargetsTab({ target }: { target: IPMSTarget }) {
 }
 
 function SubmissionsTab({
-  target,
   submissions,
   onUpdateSubmission,
   onDeleteSubmission,
 }: {
-  target: IPMSTarget;
   submissions: IPMSSubmission[];
   onUpdateSubmission: (submission: IPMSSubmission) => void;
   onDeleteSubmission: (submissionId: string) => void;
@@ -474,7 +468,6 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
       case 'submissions': return (
         <SubmissionsTab
-          target={target}
           submissions={ipmsSubmissions.filter(s => s.target.id === target.id)}
           onUpdateSubmission={(submission) => {
             void (async () => {

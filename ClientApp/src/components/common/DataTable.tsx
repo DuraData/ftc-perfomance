@@ -161,7 +161,7 @@ export function DataTable<T>({
                 <ChevronLeft className="w-3.5 h-3.5 text-secondary-600" />
               </button>
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum = totalPages <= 5 ? i + 1 : currentPage <= 3 ? i + 1 : currentPage >= totalPages - 2 ? totalPages - 4 + i : currentPage - 2 + i;
+                const pageNum = totalPages <= 5 ? i + 1 : currentPage <= 3 ? i + 1 : currentPage >= totalPages - 2 ? totalPages - 4 + i : currentPage - 2 + i;
                 return (
                   <button key={pageNum} onClick={() => setCurrentPage(pageNum)} className={`w-6 h-6 rounded text-xs font-medium ${currentPage === pageNum ? 'bg-primary-600 text-white' : 'text-secondary-600 hover:bg-secondary-100'}`}>
                     {pageNum}

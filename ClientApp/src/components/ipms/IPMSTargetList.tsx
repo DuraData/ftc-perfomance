@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, Download, Eye, Edit2, Link2, Trash2, Library } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
@@ -9,7 +9,6 @@ import {
   deleteIpmsTarget as deleteIpmsTargetApi,
   getIpmsTargets as getIpmsTargetsApi,
 } from '../../api/api';
-import { mockDepartments, mockPeriods } from '../../data/mockData';
 import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../../types';
 import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
 
@@ -18,16 +17,29 @@ function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
     indicatorNumber: target.indicatorNumber,
     targetName: target.targetName,
     kpiDescription: target.kpiDescription,
+    nationalKpa: target.nationalKPA,
+    municipalKpa: target.municipalKPA,
+    performanceObjective: target.performanceObjective,
     departmentId: target.department?.id ? Number(target.department.id) : null,
     unitId: target.unit?.id ? Number(target.unit.id) : null,
     assignedUserId: target.assignedTo?.id ?? null,
     relatedOpmsTargetId: target.relatedOPMSTarget?.id ?? null,
-    kpiId: undefined,
     sourceTemplateId: target.sourceTemplateId ?? null,
     sourceTemplateVersion: target.sourceTemplateVersion ?? null,
+    baseline: target.baseline,
     annualTarget: target.annualTarget,
+    annualTargetDescription: target.annualTargetDescription,
+    budgetSourceId: target.budgetSource?.id ? Number(target.budgetSource.id) : null,
+    budgetTypeId: target.budgetType?.id ? Number(target.budgetType.id) : null,
+    unitOfMeasureId: target.unitOfMeasure?.id ? Number(target.unitOfMeasure.id) : null,
     weight: target.weight,
-    isArchived: target.isRevised,
+    kpiType: target.kpiType,
+    indicatorType: target.indicatorType,
+    functionalArea: target.functionalArea ?? null,
+    idpReference: target.idpReference ?? null,
+    internalReference: target.internalReference ?? null,
+    isRevised: target.isRevised,
+    targetUnitType: target.targetUnitType,
   };
 }
 
@@ -40,7 +52,7 @@ export function IPMSTargetList() {
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadTargets = async () => {
+  const loadTargets = useCallback(async () => {
     setIsLoading(true);
     const result = await getIpmsTargetsApi();
     if (result.success && result.data) {
@@ -49,11 +61,11 @@ export function IPMSTargetList() {
       pushToast('error', result.message ?? 'Failed to load IPMS targets');
     }
     setIsLoading(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadTargets();
-  }, []);
+  }, [loadTargets]);
 
   const handleRowClick = (row: IPMSTarget) => {
     setCurrentPath(`/ipms/targets/${row.id}`);
@@ -71,16 +83,29 @@ export function IPMSTargetList() {
           indicatorNumber: template.templateCode,
           targetName: template.targetName,
           kpiDescription: template.kpiDescription,
+          nationalKpa: '',
+          municipalKpa: '',
+          performanceObjective: '',
           departmentId: template.department?.id ? Number(template.department.id) : null,
           unitId: null,
           assignedUserId: null,
           relatedOpmsTargetId: null,
-          kpiId: null,
           sourceTemplateId: template.id,
           sourceTemplateVersion: template.version,
+          baseline: 0,
           annualTarget: template.annualTarget,
+          annualTargetDescription: template.annualTargetDescription,
+          budgetSourceId: null,
+          budgetTypeId: null,
+          unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
           weight: template.weight,
-          isArchived: false,
+          kpiType: 'quantitative',
+          indicatorType: 'output',
+          functionalArea: template.functionalArea ?? null,
+          idpReference: null,
+          internalReference: null,
+          isRevised: false,
+          targetUnitType: template.targetUnitType,
         }),
       ),
     );

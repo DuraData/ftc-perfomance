@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Plus,
   Clock,
@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   Pause,
   Calendar,
-  User,
   Edit2,
   Play,
 } from 'lucide-react';
@@ -111,28 +110,30 @@ export function TaskManagement() {
         {/* Task cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredTasks.map(task => (
-            <Card key={task.id} className="cursor-pointer hover:shadow transition-all p-3" onClick={() => setSelectedTask(task)}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <div className={`p-1 rounded ${priorityColors[task.priority]}`}>{statusIcons[task.status]}</div>
-                  <Badge size="sm" variant={task.priority === 'critical' ? 'error' : task.priority === 'high' ? 'warning' : 'default'}>{task.priority}</Badge>
+            <button key={task.id} type="button" className="text-left" onClick={() => setSelectedTask(task)}>
+              <Card className="cursor-pointer hover:shadow transition-all p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`p-1 rounded ${priorityColors[task.priority]}`}>{statusIcons[task.status]}</div>
+                    <Badge size="sm" variant={task.priority === 'critical' ? 'error' : task.priority === 'high' ? 'warning' : 'default'}>{task.priority}</Badge>
+                  </div>
+                  <Badge size="sm">{task.status.replace('_', ' ')}</Badge>
                 </div>
-                <Badge size="sm">{task.status.replace('_', ' ')}</Badge>
-              </div>
-              <h3 className="text-sm font-medium text-secondary-900 dark:text-white mb-1">{task.title}</h3>
-              <p className="text-xs text-secondary-500 line-clamp-1 mb-2">{task.description}</p>
-              <div className="flex items-center justify-between text-xs text-secondary-500">
-                <div className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(task.dueDate).toLocaleDateString()}</div>
-                <div className="flex -space-x-1.5">
-                  {task.assignedTo.slice(0, 2).map(user => (
-                    <div key={user.id} className="w-5 h-5 rounded-full bg-primary-100 border border-white flex items-center justify-center" title={user.displayName}>
-                      <span className="text-[8px] font-medium text-primary-700">{user.firstName[0]}{user.lastName[0]}</span>
-                    </div>
-                  ))}
-                  {task.assignedTo.length > 2 && <div className="w-5 h-5 rounded-full bg-secondary-200 border border-white flex items-center justify-center"><span className="text-[8px] text-secondary-600">+{task.assignedTo.length - 2}</span></div>}
+                <h3 className="text-sm font-medium text-secondary-900 dark:text-white mb-1">{task.title}</h3>
+                <p className="text-xs text-secondary-500 line-clamp-1 mb-2">{task.description}</p>
+                <div className="flex items-center justify-between text-xs text-secondary-500">
+                  <div className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(task.dueDate).toLocaleDateString()}</div>
+                  <div className="flex -space-x-1.5">
+                    {task.assignedTo.slice(0, 2).map(user => (
+                      <div key={user.id} className="w-5 h-5 rounded-full bg-primary-100 border border-white flex items-center justify-center" title={user.displayName}>
+                        <span className="text-[8px] font-medium text-primary-700">{user.firstName[0]}{user.lastName[0]}</span>
+                      </div>
+                    ))}
+                    {task.assignedTo.length > 2 && <div className="w-5 h-5 rounded-full bg-secondary-200 border border-white flex items-center justify-center"><span className="text-[8px] text-secondary-600">+{task.assignedTo.length - 2}</span></div>}
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            </button>
           ))}
         </div>
 

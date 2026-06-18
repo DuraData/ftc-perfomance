@@ -556,7 +556,7 @@ async function fetchApi<T>(
         });
         return await retryResponse.json();
       }
-    } catch (e) {
+    } catch {
       clearTokens();
       window.location.href = '/login';
     }

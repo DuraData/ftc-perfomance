@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Tab {
   id: string;
@@ -137,7 +137,6 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
   const containerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const checkScroll = useCallback(() => {
     if (containerRef.current) {

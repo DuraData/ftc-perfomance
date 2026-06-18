@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
-  Save,
-  Edit2,
   FileText,
   Target,
   TrendingUp,
@@ -12,11 +10,10 @@ import {
   Paperclip,
   History,
   Layers,
-  CheckCircle,
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
-import { Button, Badge, Card, ProgressBar } from '../ui';
-import { Tabs, Accordion } from '../common/Tabs';
+import { Button, Badge, Card } from '../ui';
+import { Tabs } from '../common/Tabs';
 import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
 import { FileUpload } from '../common/FileUpload';
 import { DataTable } from '../common/DataTable';
@@ -34,7 +31,6 @@ import {
   updateOpmsSubmission as updateOpmsSubmissionApi,
 } from '../../api/api';
 import {
-  mockOPMSTargets,
   mockDepartments,
   mockDepartmentUnits,
   mockPeriods,
@@ -45,9 +41,7 @@ import {
   mockUnitsOfMeasure,
   mockEmployees,
   targetUnitTypes,
-  mockOPMSSubmissions,
   mockVoteNumbers,
-  mockIPMSTargets,
 } from '../../data/mockData';
 import type { OPMSTarget, IPMSTarget, OPMSSubmission, Employee, AuditTrailEntryDto } from '../../types';
 
@@ -291,12 +285,10 @@ function BudgetTab({ target }: { target: OPMSTarget }) {
 }
 
 function SubmissionsTab({
-  target,
   submissions,
   onUpdateSubmission,
   onDeleteSubmission,
 }: {
-  target: OPMSTarget;
   submissions: OPMSSubmission[];
   onUpdateSubmission: (submission: OPMSSubmission) => void;
   onDeleteSubmission: (submissionId: string) => void;
@@ -419,7 +411,7 @@ function RelatedIPMSTab({ ipmsTargets }: { ipmsTargets: IPMSTarget[] }) {
   );
 }
 
-function AssigneesTab({ target }: { target: OPMSTarget }) {
+function AssigneesTab() {
   const assignees = mockEmployees.slice(0, 3);
 
   const columns = [
@@ -611,7 +603,6 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'budget': return <BudgetTab target={target} />;
       case 'submissions': return (
         <SubmissionsTab
-          target={target}
           submissions={opmsSubmissions.filter(s => s.target.id === target.id)}
           onUpdateSubmission={(submission) => {
             void (async () => {
@@ -641,7 +632,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       );
       case 'votes': return <VoteNumbersTab target={target} />;
       case 'ipms': return <RelatedIPMSTab ipmsTargets={ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id)} />;
-      case 'assignees': return <AssigneesTab target={target} />;
+      case 'assignees': return <AssigneesTab />;
       case 'attachments': return <AttachmentsTab target={target} onAttachmentsChange={(attachments) => setTarget(prev => prev ? { ...prev, attachments } : prev)} />;
       case 'history': return <HistoryTab entries={auditEntries} />;
       default: return <GeneralInfoTab target={target} />;

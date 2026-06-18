@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, File, X, Download, Eye, Image, FileText, FileSpreadsheet, Loader2 } from 'lucide-react';
-import { Button } from '../ui';
+import { Upload, File, X, Download, Eye, Image, FileText, FileSpreadsheet } from 'lucide-react';
 
 interface UploadedFile {
   id: string;

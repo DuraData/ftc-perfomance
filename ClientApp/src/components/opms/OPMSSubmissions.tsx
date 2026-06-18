@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Download, Eye, Trash2, FileText, CalendarRange } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
@@ -53,7 +53,7 @@ export function OPMSSubmissionsList() {
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     const [targetsResult, submissionsResult] = await Promise.all([
       getOpmsTargets(),
@@ -73,11 +73,11 @@ export function OPMSSubmissionsList() {
     }
 
     setIsLoading(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const openSubmission = async (submission: OPMSSubmission) => {
     const attachmentsResult = await getOpmsSubmissionAttachments(submission.id);
@@ -360,7 +360,7 @@ export function IPMSSubmissionsList() {
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     const [targetsResult, submissionsResult] = await Promise.all([
       getIpmsTargets(),
@@ -380,11 +380,11 @@ export function IPMSSubmissionsList() {
     }
 
     setIsLoading(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const openSubmission = async (submission: IPMSSubmission) => {
     const attachmentsResult = await getIpmsSubmissionAttachments(submission.id);
@@ -664,7 +664,7 @@ export function VoteNumbersPage() {
     { id: 'name', header: 'Name', accessor: (row: typeof voteNumbers[0]) => row.name },
     { id: 'department', header: 'Department', accessor: (row: typeof voteNumbers[0]) => row.department },
     { id: 'amount', header: 'Amount', accessor: (row: typeof voteNumbers[0]) => `R ${(row.amount / 1000000).toFixed(1)}M` },
-    { id: 'status', header: 'Status', accessor: (_row: typeof voteNumbers[0]) => <Badge size="sm" variant="success">Active</Badge> },
+    { id: 'status', header: 'Status', accessor: () => <Badge size="sm" variant="success">Active</Badge> },
   ];
 
   const handleDelete = (id: string) => {

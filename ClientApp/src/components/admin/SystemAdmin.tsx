@@ -1019,7 +1019,9 @@ export function AdminPermissionsPage() {
 
 export function AdminAuditLogsPage() {
   const canViewLoginLogs = useHasPermission('Audit.LoginLogs.View');
-  const canViewAuditTrails = useHasPermission('Audit.Trails.View') || useHasPermission('Audit.Logs.View');
+  const canViewAuditTrailsByPermission = useHasPermission('Audit.Trails.View');
+  const canViewAuditLogsByPermission = useHasPermission('Audit.Logs.View');
+  const canViewAuditTrails = canViewAuditTrailsByPermission || canViewAuditLogsByPermission;
   const [activeTab, setActiveTab] = useState<'login' | 'trail'>(canViewLoginLogs ? 'login' : 'trail');
   const [rows, setRows] = useState<LoginAuditLog[]>([]);
   const [trailRows, setTrailRows] = useState<AuditTrailEntryDto[]>([]);
@@ -1040,11 +1042,13 @@ export function AdminAuditLogsPage() {
 
       setRows(loginRes.data ?? []);
       setTrailRows(trailsRes.data ?? []);
+      const loginErrorMessage = 'message' in loginRes ? loginRes.message : undefined;
+      const trailsErrorMessage = 'message' in trailsRes ? trailsRes.message : undefined;
       setError(
         !loginRes.success
-          ? (loginRes.message ?? 'Failed to load login audit logs')
+          ? (loginErrorMessage ?? 'Failed to load login audit logs')
           : !trailsRes.success
-          ? (trailsRes.message ?? 'Failed to load audit trails')
+          ? (trailsErrorMessage ?? 'Failed to load audit trails')
           : null,
       );
       setLoading(false);

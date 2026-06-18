@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, XCircle } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Card, Badge, Button } from '../ui';

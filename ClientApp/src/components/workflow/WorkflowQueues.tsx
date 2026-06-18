@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Clock,
-  CheckCircle,
-  AlertTriangle,
   FileText,
   Users,
   Eye,
@@ -15,7 +13,6 @@ import { Button, Badge, Card, EmptyState } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { Tabs } from '../common/Tabs';
-import { useApp } from '../../context/AppContext';
 import { mockOPMSSubmissions, statusLabels, statusColors } from '../../data/mockData';
 import type { OPMSSubmission } from '../../types';
 

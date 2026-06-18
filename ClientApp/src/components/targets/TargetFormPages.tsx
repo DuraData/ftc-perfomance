@@ -26,8 +26,6 @@ import {
   mockStrategicGoals,
   mockStrategicObjectives,
   mockUnitsOfMeasure,
-  mockVoteNumbers,
-  mockWards,
 } from '../../data/mockData';
 import type {
   IPMSTarget,
@@ -583,10 +581,6 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
   };
 }
 
-function parseIdList(value: string) {
-  return value.split(',').map(item => item.trim()).filter(Boolean);
-}
-
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
   const [form, setForm] = useState<OpmsFormState>(createDefaultOpmsFormState());
@@ -954,7 +948,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <p className="text-xs text-secondary-600">Required fields marked • changes auto-save as draft</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setCurrentPath(targetId ? `/opms/targets/${targetId}` : '/opms/targets')}>Cancel</Button>
-              <Button variant="default" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>Save Draft</Button>
+              <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>Save Draft</Button>
               <Button variant="primary" onClick={() => { void handleSave(); }}>Submit for Approval</Button>
             </div>
           </div>
@@ -1336,7 +1330,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <p className="text-xs text-secondary-600">Required fields marked • changes auto-save as draft</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setCurrentPath(targetId ? `/ipms/targets/${targetId}` : '/ipms/targets')}>Cancel</Button>
-              <Button variant="default" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>Save Draft</Button>
+              <Button variant="outline" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>Save Draft</Button>
               <Button variant="primary" onClick={() => { void handleSave(); }}>Submit for Approval</Button>
             </div>
           </div>

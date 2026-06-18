@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { FileText, Download, BarChart3, TrendingUp, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { FileText, Download, BarChart3, TrendingUp, CheckCircle, Clock } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { Modal } from '../common/Modal';
 import { Select } from '../common/Form';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const reportCategories = [
   { id: 'performance', title: 'Performance', icon: <TrendingUp className="w-5 h-5" />, reports: [
@@ -33,13 +33,6 @@ const sampleChartData = [
   { department: 'Corporate', target: 88, actual: 86 },
 ];
 
-const statusDistribution = [
-  { name: 'On Track', value: 35, color: '#22c55e' },
-  { name: 'At Risk', value: 8, color: '#f59e0b' },
-  { name: 'Behind', value: 3, color: '#ef4444' },
-  { name: 'Done', value: 39, color: '#3b82f6' },
-];
-
 function ReportPreviewModal({ isOpen, onClose, report }: { isOpen: boolean; onClose: () => void; report: { id: string; title: string; description: string } | null }) {
   if (!report) return null;
 
@@ -48,8 +41,8 @@ function ReportPreviewModal({ isOpen, onClose, report }: { isOpen: boolean; onCl
       <div className="space-y-3">
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
-          <Select label="" size="sm" options={[{ value: 'q1', label: 'Q1' }, { value: 'q2', label: 'Q2' }, { value: 'q3', label: 'Q3' }, { value: 'q4', label: 'Q4' }]} defaultValue="q1" />
-          <Select label="" size="sm" options={[{ value: 'all', label: 'All Depts' }, { value: 'infra', label: 'Infrastructure' }]} defaultValue="all" />
+          <Select label="" options={[{ value: 'q1', label: 'Q1' }, { value: 'q2', label: 'Q2' }, { value: 'q3', label: 'Q3' }, { value: 'q4', label: 'Q4' }]} defaultValue="q1" />
+          <Select label="" options={[{ value: 'all', label: 'All Depts' }, { value: 'infra', label: 'Infrastructure' }]} defaultValue="all" />
         </div>
 
         {/* Content */}
@@ -131,15 +124,17 @@ export function Reports() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {category.reports.map(report => (
-                <Card key={report.id} className="hover:shadow cursor-pointer p-3" onClick={() => setSelectedReport(report)}>
-                  <div className="flex items-start justify-between mb-1.5">
-                    <div className="p-1.5 bg-secondary-50 rounded">
-                      <FileText className="w-4 h-4 text-secondary-400" />
+                <button key={report.id} type="button" className="text-left" onClick={() => setSelectedReport(report)}>
+                  <Card className="hover:shadow cursor-pointer p-3">
+                    <div className="flex items-start justify-between mb-1.5">
+                      <div className="p-1.5 bg-secondary-50 rounded">
+                        <FileText className="w-4 h-4 text-secondary-400" />
+                      </div>
                     </div>
-                  </div>
-                  <h3 className="text-sm font-medium text-secondary-900 dark:text-white">{report.title}</h3>
-                  <p className="text-xs text-secondary-500 mt-0.5">{report.description}</p>
-                </Card>
+                    <h3 className="text-sm font-medium text-secondary-900 dark:text-white">{report.title}</h3>
+                    <p className="text-xs text-secondary-500 mt-0.5">{report.description}</p>
+                  </Card>
+                </button>
               ))}
             </div>
           </div>

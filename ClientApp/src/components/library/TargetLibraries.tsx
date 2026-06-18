@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -592,16 +592,32 @@ function buildOpmsTargetPayloadFromTemplate(template: OpmsTargetTemplate): SaveO
     indicatorNumber: template.indicatorNumber,
     targetName: template.targetName,
     kpiDescription: template.kpiDescription,
+    nationalKpa: template.nationalKPA,
+    municipalKpa: template.municipalKPA,
+    performanceObjective: template.performanceObjective,
     departmentId: null,
     unitId: null,
     assignedUserId: null,
-    kpiId: null,
     sourceTemplateId: template.id,
     sourceTemplateVersion: template.version,
     baseline: template.baseline,
     annualTarget: template.annualTarget,
+    annualTargetDescription: template.annualTargetDescription,
+    budgetSourceId: template.budgetSource?.id ? Number(template.budgetSource.id) : null,
+    budgetTypeId: template.budgetType?.id ? Number(template.budgetType.id) : null,
+    unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
     weight: template.weight,
-    isArchived: false,
+    kpiType: template.kpiType,
+    indicatorType: template.indicatorType,
+    functionalArea: template.functionalArea ?? null,
+    standardClassification: template.standardClassification ?? null,
+    idpReference: template.idpReference ?? null,
+    internalReference: template.internalReference ?? null,
+    fmsLink: template.fmsLink ?? null,
+    isRevised: false,
+    isWithdrawn: false,
+    reasonForWithdrawal: null,
+    targetUnitType: template.targetUnitType,
   };
 }
 
@@ -610,16 +626,29 @@ function buildIpmsTargetPayloadFromTemplate(template: IpmsTargetTemplate): SaveI
     indicatorNumber: template.templateCode,
     targetName: template.targetName,
     kpiDescription: template.kpiDescription,
+    nationalKpa: '',
+    municipalKpa: '',
+    performanceObjective: '',
     departmentId: null,
     unitId: null,
     assignedUserId: null,
     relatedOpmsTargetId: null,
-    kpiId: null,
     sourceTemplateId: template.id,
     sourceTemplateVersion: template.version,
+    baseline: 0,
     annualTarget: template.annualTarget,
+    annualTargetDescription: template.annualTargetDescription,
+    budgetSourceId: null,
+    budgetTypeId: null,
+    unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
     weight: template.weight,
-    isArchived: false,
+    kpiType: 'quantitative',
+    indicatorType: 'output',
+    functionalArea: template.functionalArea ?? null,
+    idpReference: null,
+    internalReference: null,
+    isRevised: false,
+    targetUnitType: template.targetUnitType,
   };
 }
 
@@ -918,7 +947,7 @@ export function OPMSTargetLibraryList() {
   const [version, setVersion] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     setIsLoading(true);
     const result = await getOpmsTargetTemplatesApi();
     if (result.success && result.data) {
@@ -927,11 +956,11 @@ export function OPMSTargetLibraryList() {
       pushToast('error', result.message ?? 'Failed to load OPMS target library');
     }
     setIsLoading(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadTemplates();
-  }, []);
+  }, [loadTemplates]);
 
   const filteredTemplates = useMemo(
     () =>
@@ -1344,7 +1373,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     };
 
     void loadTemplate();
-  }, [templateId]);
+  }, [templateId, pushToast]);
 
   const handleSave = async () => {
     const payload = buildOpmsTemplatePayload(form);
@@ -1541,7 +1570,7 @@ export function IPMSTargetLibraryList() {
   const [version, setVersion] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     setIsLoading(true);
     const result = await getIpmsTargetTemplatesApi();
     if (result.success && result.data) {
@@ -1550,11 +1579,11 @@ export function IPMSTargetLibraryList() {
       pushToast('error', result.message ?? 'Failed to load IPMS target library');
     }
     setIsLoading(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadTemplates();
-  }, []);
+  }, [loadTemplates]);
 
   const filteredTemplates = useMemo(
     () =>
@@ -1935,7 +1964,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     };
 
     void loadTemplate();
-  }, [templateId]);
+  }, [templateId, pushToast]);
 
   const handleSave = async () => {
     const payload = buildIpmsTemplatePayload(form);

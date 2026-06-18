@@ -75,7 +75,7 @@ export function Login() {
       } else {
         setError('Invalid username, email, or password');
       }
-    } catch (err) {
+    } catch {
       setError('Something went wrong. Please try again later.');
     } finally {
       setLoading(false);

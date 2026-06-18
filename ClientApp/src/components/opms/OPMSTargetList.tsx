@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Download, Eye, Edit2, Trash2, Copy, Library } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
@@ -18,16 +18,32 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
     indicatorNumber: target.indicatorNumber,
     targetName: target.targetName,
     kpiDescription: target.kpiDescription,
+    nationalKpa: target.nationalKPA,
+    municipalKpa: target.municipalKPA,
+    performanceObjective: target.performanceObjective,
     departmentId: target.department?.id ? Number(target.department.id) : null,
     unitId: target.unit?.id ? Number(target.unit.id) : null,
     assignedUserId: target.assignedTo?.id ?? null,
-    kpiId: undefined,
     sourceTemplateId: target.sourceTemplateId ?? null,
     sourceTemplateVersion: target.sourceTemplateVersion ?? null,
     baseline: target.baseline,
     annualTarget: target.annualTarget,
+    annualTargetDescription: target.annualTargetDescription,
+    budgetSourceId: target.budgetSource?.id ? Number(target.budgetSource.id) : null,
+    budgetTypeId: target.budgetType?.id ? Number(target.budgetType.id) : null,
+    unitOfMeasureId: target.unitOfMeasure?.id ? Number(target.unitOfMeasure.id) : null,
     weight: target.weight,
-    isArchived: target.isWithdrawn,
+    kpiType: target.kpiType,
+    indicatorType: target.indicatorType,
+    functionalArea: target.functionalArea ?? null,
+    standardClassification: target.standardClassification ?? null,
+    idpReference: target.idpReference ?? null,
+    internalReference: target.internalReference ?? null,
+    fmsLink: target.fmsLink ?? null,
+    isRevised: target.isRevised,
+    isWithdrawn: target.isWithdrawn,
+    reasonForWithdrawal: target.reasonForWithdrawal ?? null,
+    targetUnitType: target.targetUnitType,
   };
 }
 
@@ -124,7 +140,7 @@ export function OPMSTargetList() {
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, string>>({});
 
-  const loadTargets = async () => {
+  const loadTargets = useCallback(async () => {
     setIsLoading(true);
     const result = await getOpmsTargetsApi();
     if (result.success && result.data) {
@@ -133,11 +149,11 @@ export function OPMSTargetList() {
       pushToast('error', result.message ?? 'Failed to load OPMS targets');
     }
     setIsLoading(false);
-  };
+  }, [pushToast]);
 
   useEffect(() => {
     void loadTargets();
-  }, []);
+  }, [loadTargets]);
 
   const handleRowClick = (row: OPMSTarget) => {
     setCurrentPath(`/opms/targets/${row.id}`);
@@ -155,16 +171,32 @@ export function OPMSTargetList() {
           indicatorNumber: template.indicatorNumber,
           targetName: template.targetName,
           kpiDescription: template.kpiDescription,
+          nationalKpa: template.nationalKPA,
+          municipalKpa: template.municipalKPA,
+          performanceObjective: template.performanceObjective,
           departmentId: template.department?.id ? Number(template.department.id) : null,
           unitId: null,
           assignedUserId: null,
-          kpiId: null,
           sourceTemplateId: template.id,
           sourceTemplateVersion: template.version,
           baseline: template.baseline,
           annualTarget: template.annualTarget,
+          annualTargetDescription: template.annualTargetDescription,
+          budgetSourceId: template.budgetSource?.id ? Number(template.budgetSource.id) : null,
+          budgetTypeId: template.budgetType?.id ? Number(template.budgetType.id) : null,
+          unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
           weight: template.weight,
-          isArchived: false,
+          kpiType: template.kpiType,
+          indicatorType: template.indicatorType,
+          functionalArea: template.functionalArea ?? null,
+          standardClassification: template.standardClassification ?? null,
+          idpReference: template.idpReference ?? null,
+          internalReference: template.internalReference ?? null,
+          fmsLink: template.fmsLink ?? null,
+          isRevised: false,
+          isWithdrawn: false,
+          reasonForWithdrawal: null,
+          targetUnitType: template.targetUnitType,
         }),
       ),
     );
