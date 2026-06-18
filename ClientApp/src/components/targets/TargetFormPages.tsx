@@ -148,10 +148,24 @@ type IpmsFormState = {
   isRevised: boolean;
   targetUnitType: TargetUnitType;
   q1Target: string;
+  q1Description: string;
+  q1Budget: string;
   q2Target: string;
+  q2Description: string;
+  q2Budget: string;
   midTermTarget: string;
+  midTermDescription: string;
+  midTermBudget: string;
   q3Target: string;
+  q3Description: string;
+  q3Budget: string;
+  q3RevisedTarget: string;
   q4Target: string;
+  q4Description: string;
+  q4Budget: string;
+  q4RevisedTarget: string;
+  revisedAnnualTarget: string;
+  revisedAnnualBudget: string;
 };
 
 function numberText(value?: number) {
@@ -253,10 +267,24 @@ function createDefaultIpmsFormState(): IpmsFormState {
     isRevised: false,
     targetUnitType: baseTarget.targetUnitType,
     q1Target: '',
+    q1Description: '',
+    q1Budget: '',
     q2Target: '',
+    q2Description: '',
+    q2Budget: '',
     midTermTarget: '',
+    midTermDescription: '',
+    midTermBudget: '',
     q3Target: '',
+    q3Description: '',
+    q3Budget: '',
+    q3RevisedTarget: '',
     q4Target: '',
+    q4Description: '',
+    q4Budget: '',
+    q4RevisedTarget: '',
+    revisedAnnualTarget: '',
+    revisedAnnualBudget: '',
   };
 }
 
@@ -353,10 +381,24 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     isRevised: target.isRevised,
     targetUnitType: target.targetUnitType,
     q1Target: numberText(target.q1Target),
+    q1Description: '',
+    q1Budget: '',
     q2Target: numberText(target.q2Target),
+    q2Description: '',
+    q2Budget: '',
     midTermTarget: numberText(target.midTermTarget),
+    midTermDescription: '',
+    midTermBudget: '',
     q3Target: numberText(target.q3Target),
+    q3Description: '',
+    q3Budget: '',
+    q3RevisedTarget: '',
     q4Target: numberText(target.q4Target),
+    q4Description: '',
+    q4Budget: '',
+    q4RevisedTarget: '',
+    revisedAnnualTarget: '',
+    revisedAnnualBudget: '',
   };
 }
 
@@ -429,37 +471,115 @@ function ipmsFormFromTemplate(template: IpmsTargetTemplate): IpmsFormState {
 
 function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
   return {
-    indicatorNumber: form.indicatorNumber,
-    targetName: form.targetName,
-    kpiDescription: form.kpiDescription,
+    sourceTemplateId: form.sourceTemplateId || null,
+    sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
+    periodId: form.periodId ? Number(form.periodId) : null,
     departmentId: form.departmentId ? Number(form.departmentId) : null,
     unitId: form.unitId ? Number(form.unitId) : null,
     assignedUserId: form.assignedToId || null,
-    kpiId: null,
-    sourceTemplateId: form.sourceTemplateId || null,
-    sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
+    wardIds: form.wardIds || null,
+    additionalAssigneeIds: form.additionalAssigneeIds || null,
+    voteNumberIds: form.voteNumberIds || null,
+    indicatorNumber: form.indicatorNumber,
+    nationalKpa: form.nationalKPA,
+    municipalKpa: form.municipalKPA,
+    strategicGoalId: form.strategicGoalId ? Number(form.strategicGoalId) : null,
+    strategicObjectiveId: form.strategicObjectiveId ? Number(form.strategicObjectiveId) : null,
+    performanceObjective: form.performanceObjective,
+    targetName: form.targetName,
+    kpiDescription: form.kpiDescription,
     baseline: Number(form.baseline || 0),
+    baselineDescription: form.baselineDescription || null,
     annualTarget: Number(form.annualTarget || 0),
+    annualTargetDescription: form.annualTargetDescription,
+    budgetSourceId: form.budgetSourceId ? Number(form.budgetSourceId) : null,
+    budgetTypeId: form.budgetTypeId ? Number(form.budgetTypeId) : null,
+    unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
     weight: Number(form.weight || 0),
-    isArchived: form.isWithdrawn,
+    kpiType: form.kpiType,
+    indicatorType: form.indicatorType,
+    functionalArea: form.functionalArea || null,
+    standardClassification: form.standardClassification || null,
+    idpReference: form.idpReference || null,
+    internalReference: form.internalReference || null,
+    fmsLink: form.fmsLink || null,
+    isRevised: form.isRevised,
+    isWithdrawn: form.isWithdrawn,
+    reasonForWithdrawal: form.reasonForWithdrawal || null,
+    targetUnitType: form.targetUnitType,
+    q1Target: form.q1Target ? Number(form.q1Target) : null,
+    q1Description: form.q1Description || null,
+    q1Budget: form.q1Budget ? Number(form.q1Budget) : null,
+    q2Target: form.q2Target ? Number(form.q2Target) : null,
+    q2Description: form.q2Description || null,
+    q2Budget: form.q2Budget ? Number(form.q2Budget) : null,
+    midTermTarget: form.midTermTarget ? Number(form.midTermTarget) : null,
+    midTermDescription: form.midTermDescription || null,
+    midTermBudget: form.midTermBudget ? Number(form.midTermBudget) : null,
+    q3Target: form.q3Target ? Number(form.q3Target) : null,
+    q3Description: form.q3Description || null,
+    q3Budget: form.q3Budget ? Number(form.q3Budget) : null,
+    q3RevisedTarget: form.q3RevisedTarget ? Number(form.q3RevisedTarget) : null,
+    q4Target: form.q4Target ? Number(form.q4Target) : null,
+    q4Description: form.q4Description || null,
+    q4Budget: form.q4Budget ? Number(form.q4Budget) : null,
+    q4RevisedTarget: form.q4RevisedTarget ? Number(form.q4RevisedTarget) : null,
+    revisedAnnualTarget: form.revisedAnnualTarget ? Number(form.revisedAnnualTarget) : null,
+    revisedAnnualBudget: form.revisedAnnualBudget ? Number(form.revisedAnnualBudget) : null,
   };
 }
 
 function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
   return {
-    indicatorNumber: form.indicatorNumber,
-    targetName: form.targetName,
-    kpiDescription: form.kpiDescription,
+    sourceTemplateId: form.sourceTemplateId || null,
+    sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
+    relatedOpmsTargetId: form.relatedOPMSTargetId || null,
+    periodId: form.periodId ? Number(form.periodId) : null,
     departmentId: form.departmentId ? Number(form.departmentId) : null,
     unitId: form.unitId ? Number(form.unitId) : null,
     assignedUserId: form.assignedToId || null,
-    relatedOpmsTargetId: form.relatedOPMSTargetId || null,
-    kpiId: null,
-    sourceTemplateId: form.sourceTemplateId || null,
-    sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
+    supervisorId: form.supervisorId || null,
+    indicatorNumber: form.indicatorNumber,
+    nationalKpa: form.nationalKPA,
+    municipalKpa: form.municipalKPA,
+    strategicGoalId: form.strategicGoalId ? Number(form.strategicGoalId) : null,
+    strategicObjectiveId: form.strategicObjectiveId ? Number(form.strategicObjectiveId) : null,
+    performanceObjective: form.performanceObjective,
+    targetName: form.targetName,
+    kpiDescription: form.kpiDescription,
+    baseline: Number(form.baseline || 0),
     annualTarget: Number(form.annualTarget || 0),
+    annualTargetDescription: form.annualTargetDescription,
+    budgetSourceId: form.budgetSourceId ? Number(form.budgetSourceId) : null,
+    budgetTypeId: form.budgetTypeId ? Number(form.budgetTypeId) : null,
+    unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
     weight: Number(form.weight || 0),
-    isArchived: form.isRevised,
+    kpiType: form.kpiType,
+    indicatorType: form.indicatorType,
+    functionalArea: form.functionalArea || null,
+    idpReference: form.idpReference || null,
+    internalReference: form.internalReference || null,
+    isRevised: form.isRevised,
+    targetUnitType: form.targetUnitType,
+    q1Target: form.q1Target ? Number(form.q1Target) : null,
+    q1Description: form.q1Description || null,
+    q1Budget: form.q1Budget ? Number(form.q1Budget) : null,
+    q2Target: form.q2Target ? Number(form.q2Target) : null,
+    q2Description: form.q2Description || null,
+    q2Budget: form.q2Budget ? Number(form.q2Budget) : null,
+    midTermTarget: form.midTermTarget ? Number(form.midTermTarget) : null,
+    midTermDescription: form.midTermDescription || null,
+    midTermBudget: form.midTermBudget ? Number(form.midTermBudget) : null,
+    q3Target: form.q3Target ? Number(form.q3Target) : null,
+    q3Description: form.q3Description || null,
+    q3Budget: form.q3Budget ? Number(form.q3Budget) : null,
+    q3RevisedTarget: form.q3RevisedTarget ? Number(form.q3RevisedTarget) : null,
+    q4Target: form.q4Target ? Number(form.q4Target) : null,
+    q4Description: form.q4Description || null,
+    q4Budget: form.q4Budget ? Number(form.q4Budget) : null,
+    q4RevisedTarget: form.q4RevisedTarget ? Number(form.q4RevisedTarget) : null,
+    revisedAnnualTarget: form.revisedAnnualTarget ? Number(form.revisedAnnualTarget) : null,
+    revisedAnnualBudget: form.revisedAnnualBudget ? Number(form.revisedAnnualBudget) : null,
   };
 }
 
@@ -652,49 +772,192 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
         </div>
 
         <FormPanel title="Quarterly Targets" description="Capture the full quarterly and revision structure on the same page." icon={<CalendarRange className="h-5 w-5" />}>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card className="border border-secondary-200 dark:border-secondary-700" padding="md">
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Q1</h4>
-                <Input label="Target" type="number" value={form.q1Target} onChange={(event) => setForm(prev => ({ ...prev, q1Target: event.target.value }))} />
-                <Input label="Budget" type="number" value={form.q1Budget} onChange={(event) => setForm(prev => ({ ...prev, q1Budget: event.target.value }))} />
-                <Textarea label="Description" rows={3} value={form.q1Description} onChange={(event) => setForm(prev => ({ ...prev, q1Description: event.target.value }))} />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {/* Q1 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 1</h4>
+                  <p className="text-xs text-secondary-500">Jul – Sep</p>
+                </div>
+                {form.q1Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q1Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
               </div>
             </Card>
-            <Card className="border border-secondary-200 dark:border-secondary-700" padding="md">
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Q2</h4>
-                <Input label="Target" type="number" value={form.q2Target} onChange={(event) => setForm(prev => ({ ...prev, q2Target: event.target.value }))} />
-                <Input label="Budget" type="number" value={form.q2Budget} onChange={(event) => setForm(prev => ({ ...prev, q2Budget: event.target.value }))} />
-                <Textarea label="Description" rows={3} value={form.q2Description} onChange={(event) => setForm(prev => ({ ...prev, q2Description: event.target.value }))} />
+
+            {/* Q2 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 2</h4>
+                  <p className="text-xs text-secondary-500">Oct – Dec</p>
+                </div>
+                {form.q2Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q2Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
               </div>
             </Card>
-            <Card className="border border-secondary-200 dark:border-secondary-700" padding="md">
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Mid-Year</h4>
-                <Input label="Target" type="number" value={form.midTermTarget} onChange={(event) => setForm(prev => ({ ...prev, midTermTarget: event.target.value }))} />
-                <Input label="Budget" type="number" value={form.midTermBudget} onChange={(event) => setForm(prev => ({ ...prev, midTermBudget: event.target.value }))} />
-                <Textarea label="Description" rows={3} value={form.midTermDescription} onChange={(event) => setForm(prev => ({ ...prev, midTermDescription: event.target.value }))} />
+
+            {/* Mid-Year */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden ring-2 ring-blue-500`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-blue-50 dark:bg-blue-900/20">
+                <div>
+                  <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Mid-Year</h4>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">Jan – Jun</p>
+                </div>
+                {form.midTermBudget && <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">BUDGET R {Number(form.midTermBudget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
               </div>
             </Card>
-            <Card className="border border-secondary-200 dark:border-secondary-700" padding="md">
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Q3 / Q4</h4>
-                <Input label="Q3 Target" type="number" value={form.q3Target} onChange={(event) => setForm(prev => ({ ...prev, q3Target: event.target.value }))} />
-                <Input label="Q3 Budget" type="number" value={form.q3Budget} onChange={(event) => setForm(prev => ({ ...prev, q3Budget: event.target.value }))} />
-                <Input label="Q3 Revised" type="number" value={form.q3RevisedTarget} onChange={(event) => setForm(prev => ({ ...prev, q3RevisedTarget: event.target.value }))} />
-                <Textarea label="Q3 Description" rows={2} value={form.q3Description} onChange={(event) => setForm(prev => ({ ...prev, q3Description: event.target.value }))} />
-                <Input label="Q4 Target" type="number" value={form.q4Target} onChange={(event) => setForm(prev => ({ ...prev, q4Target: event.target.value }))} />
-                <Input label="Q4 Budget" type="number" value={form.q4Budget} onChange={(event) => setForm(prev => ({ ...prev, q4Budget: event.target.value }))} />
-                <Input label="Q4 Revised" type="number" value={form.q4RevisedTarget} onChange={(event) => setForm(prev => ({ ...prev, q4RevisedTarget: event.target.value }))} />
-                <Textarea label="Q4 Description" rows={2} value={form.q4Description} onChange={(event) => setForm(prev => ({ ...prev, q4Description: event.target.value }))} />
+
+            {/* Q3 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 3</h4>
+                  <p className="text-xs text-secondary-500">Jan – Mar</p>
+                </div>
+                {form.q3Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q3Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+                {form.isRevised && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary-600">Revised Target</span>
+                      <Input type="number" value={form.q3RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q3RevisedTarget: e.target.value }))} className="text-right font-semibold" />
+                    </div>
+                    {form.q3Budget && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-secondary-600">Revised Budget</span>
+                        <span className="font-semibold">R {form.q3Budget}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Q4 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 4</h4>
+                  <p className="text-xs text-secondary-500">Apr – Jun</p>
+                </div>
+                {form.q4Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q4Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+                {form.isRevised && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary-600">Revised Target</span>
+                      <Input type="number" value={form.q4RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q4RevisedTarget: e.target.value }))} className="text-right font-semibold" />
+                    </div>
+                    {form.q4Budget && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-secondary-600">Revised Budget</span>
+                        <span className="font-semibold">R {form.q4Budget}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Annual */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Annual</h4>
+                  <p className="text-xs text-secondary-500">Full year</p>
+                </div>
+                {form.annualTarget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.annualTarget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <p className="text-2xl font-bold">{form.annualTarget || 0}%</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+                {form.isRevised && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary-600">Revised Target</span>
+                      <Input type="number" value={form.revisedAnnualTarget} onChange={(e) => setForm(prev => ({ ...prev, revisedAnnualTarget: e.target.value }))} className="text-right font-semibold" />
+                    </div>
+                    {form.revisedAnnualBudget && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-secondary-600">Revised Budget</span>
+                        <span className="font-semibold">R {Number(form.revisedAnnualBudget).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </Card>
           </div>
-          <FormRow cols={2}>
-            <Input label="Revised Annual Target" type="number" value={form.revisedAnnualTarget} onChange={(event) => setForm(prev => ({ ...prev, revisedAnnualTarget: event.target.value }))} />
-            <Input label="Revised Annual Budget" type="number" value={form.revisedAnnualBudget} onChange={(event) => setForm(prev => ({ ...prev, revisedAnnualBudget: event.target.value }))} />
-          </FormRow>
+
+          <div className="mt-4 bg-secondary-50 dark:bg-secondary-900/50 p-3 rounded-lg flex items-center justify-between">
+            <p className="text-xs text-secondary-600">Required fields marked • changes auto-save as draft</p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setCurrentPath(targetId ? `/opms/targets/${targetId}` : '/opms/targets')}>Cancel</Button>
+              <Button variant="default" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>Save Draft</Button>
+              <Button variant="primary" onClick={() => { void handleSave(); }}>Submit for Approval</Button>
+            </div>
+          </div>
         </FormPanel>
 
         <FormPanel title="Workflow Flags" description="Track revision and withdrawal attributes for the live target." icon={<Building2 className="h-5 w-5" />}>
@@ -705,14 +968,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
           <Textarea label="Reason For Withdrawal" rows={3} value={form.reasonForWithdrawal} onChange={(event) => setForm(prev => ({ ...prev, reasonForWithdrawal: event.target.value }))} />
         </FormPanel>
 
-        <div className="flex justify-end gap-3 border-t border-secondary-200 pt-4 dark:border-secondary-700">
-          <Button variant="outline" onClick={() => setCurrentPath(targetId ? `/opms/targets/${targetId}` : '/opms/targets')}>
-            Cancel
-          </Button>
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>
-            {targetId ? 'Save Target' : 'Create Target'}
-          </Button>
-        </div>
+
       </div>
     </AppShell>
   );
@@ -898,23 +1154,195 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
         </div>
 
         <FormPanel title="Quarterly Targets" description="Capture the live IPMS quarterly structure without using a modal." icon={<CalendarRange className="h-5 w-5" />}>
-          <FormRow cols={5}>
-            <Input label="Q1 Target" type="number" value={form.q1Target} onChange={(event) => setForm(prev => ({ ...prev, q1Target: event.target.value }))} />
-            <Input label="Q2 Target" type="number" value={form.q2Target} onChange={(event) => setForm(prev => ({ ...prev, q2Target: event.target.value }))} />
-            <Input label="Mid-Year Target" type="number" value={form.midTermTarget} onChange={(event) => setForm(prev => ({ ...prev, midTermTarget: event.target.value }))} />
-            <Input label="Q3 Target" type="number" value={form.q3Target} onChange={(event) => setForm(prev => ({ ...prev, q3Target: event.target.value }))} />
-            <Input label="Q4 Target" type="number" value={form.q4Target} onChange={(event) => setForm(prev => ({ ...prev, q4Target: event.target.value }))} />
-          </FormRow>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {/* Q1 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 1</h4>
+                  <p className="text-xs text-secondary-500">Jul – Sep</p>
+                </div>
+                {form.q1Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q1Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Q2 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 2</h4>
+                  <p className="text-xs text-secondary-500">Oct – Dec</p>
+                </div>
+                {form.q2Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q2Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Mid-Year */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden ring-2 ring-blue-500`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-blue-50 dark:bg-blue-900/20">
+                <div>
+                  <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100">Mid-Year</h4>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">Jan – Jun</p>
+                </div>
+                {form.midTermBudget && <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">BUDGET R {Number(form.midTermBudget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Q3 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 3</h4>
+                  <p className="text-xs text-secondary-500">Jan – Mar</p>
+                </div>
+                {form.q3Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q3Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+                {form.isRevised && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary-600">Revised Target</span>
+                      <Input type="number" value={form.q3RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q3RevisedTarget: e.target.value }))} className="text-right font-semibold" />
+                    </div>
+                    {form.q3Budget && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-secondary-600">Revised Budget</span>
+                        <span className="font-semibold">R {form.q3Budget}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Q4 */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Quarter 4</h4>
+                  <p className="text-xs text-secondary-500">Apr – Jun</p>
+                </div>
+                {form.q4Budget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.q4Budget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <Input type="number" value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                </div>
+                <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+                {form.isRevised && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary-600">Revised Target</span>
+                      <Input type="number" value={form.q4RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q4RevisedTarget: e.target.value }))} className="text-right font-semibold" />
+                    </div>
+                    {form.q4Budget && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-secondary-600">Revised Budget</span>
+                        <span className="font-semibold">R {form.q4Budget}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Annual */}
+            <Card className={`border ${form.isRevised ? 'border-blue-500' : 'border-secondary-200 dark:border-secondary-700'} rounded-lg overflow-hidden`} padding="none">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700 bg-secondary-50 dark:bg-secondary-900">
+                <div>
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Annual</h4>
+                  <p className="text-xs text-secondary-500">Full year</p>
+                </div>
+                {form.annualTarget && <span className="text-xs font-semibold text-secondary-600 dark:text-secondary-400">BUDGET R {Number(form.annualTarget).toLocaleString()}</span>}
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
+                  <p className="text-2xl font-bold">{form.annualTarget || 0}%</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-secondary-500">
+                  <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
+                  <span>Percentage</span>
+                </div>
+                {form.isRevised && (
+                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
+                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-secondary-600">Revised Target</span>
+                      <Input type="number" value={form.revisedAnnualTarget} onChange={(e) => setForm(prev => ({ ...prev, revisedAnnualTarget: e.target.value }))} className="text-right font-semibold" />
+                    </div>
+                    {form.revisedAnnualBudget && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-secondary-600">Revised Budget</span>
+                        <span className="font-semibold">R {Number(form.revisedAnnualBudget).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          <div className="mt-4 bg-secondary-50 dark:bg-secondary-900/50 p-3 rounded-lg flex items-center justify-between">
+            <p className="text-xs text-secondary-600">Required fields marked • changes auto-save as draft</p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setCurrentPath(targetId ? `/ipms/targets/${targetId}` : '/ipms/targets')}>Cancel</Button>
+              <Button variant="default" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>Save Draft</Button>
+              <Button variant="primary" onClick={() => { void handleSave(); }}>Submit for Approval</Button>
+            </div>
+          </div>
         </FormPanel>
 
-        <div className="flex justify-end gap-3 border-t border-secondary-200 pt-4 dark:border-secondary-700">
-          <Button variant="outline" onClick={() => setCurrentPath(targetId ? `/ipms/targets/${targetId}` : '/ipms/targets')}>
-            Cancel
-          </Button>
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={() => { void handleSave(); }}>
-            {targetId ? 'Save Target' : 'Create Target'}
-          </Button>
-        </div>
+
       </div>
     </AppShell>
   );

@@ -96,9 +96,13 @@ public class IpmsSubmissionsController : ControllerBase
             Status = "draft",
             Actual = request.Actual,
             ActualDescription = request.ActualDescription?.Trim(),
+            ActualExpenditure = request.ActualExpenditure,
+            Variance = request.Variance,
             VarianceReason = request.VarianceReason?.Trim(),
             CorrectiveMeasure = request.CorrectiveMeasure?.Trim(),
+            SubmitterScore = request.SubmitterScore,
             DueDate = request.DueDate,
+            ExtendedDueDate = request.ExtendedDueDate,
             SubmittedByUserId = user.Id,
             CreatedAt = DateTime.UtcNow
         };
@@ -126,9 +130,13 @@ public class IpmsSubmissionsController : ControllerBase
         entity.Quarter = request.Quarter.Trim();
         entity.Actual = request.Actual;
         entity.ActualDescription = request.ActualDescription?.Trim();
+        entity.ActualExpenditure = request.ActualExpenditure;
+        entity.Variance = request.Variance;
         entity.VarianceReason = request.VarianceReason?.Trim();
         entity.CorrectiveMeasure = request.CorrectiveMeasure?.Trim();
+        entity.SubmitterScore = request.SubmitterScore;
         entity.DueDate = request.DueDate;
+        entity.ExtendedDueDate = request.ExtendedDueDate;
         await _context.SaveChangesAsync();
 
         var after = await FindSubmissionAsync(id) ?? entity;
@@ -375,6 +383,30 @@ public class IpmsSubmissionsController : ControllerBase
             entity.SubmittedAt = DateTime.UtcNow;
             entity.SubmittedByUserId = user.Id;
         }
+        else if (string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "verify_rejected", StringComparison.OrdinalIgnoreCase))
+        {
+            entity.VerifierUserId = user.Id;
+            entity.VerifiedAt = DateTime.UtcNow;
+            entity.VerifierComments = request.Comment;
+        }
+        else if (string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "rejected", StringComparison.OrdinalIgnoreCase))
+        {
+            entity.ApproverUserId = user.Id;
+            entity.ApprovedAt = DateTime.UtcNow;
+            entity.ApproverComments = request.Comment;
+        }
+        else if (string.Equals(status, "audited", StringComparison.OrdinalIgnoreCase))
+        {
+            entity.AuditorUserId = user.Id;
+            entity.AuditedAt = DateTime.UtcNow;
+            entity.AuditorComments = request.Comment;
+        }
+        else if (string.Equals(status, "reviewed", StringComparison.OrdinalIgnoreCase))
+        {
+            entity.PmsOfficerUserId = user.Id;
+            entity.PmsReviewedAt = DateTime.UtcNow;
+            entity.PmsComments = request.Comment;
+        }
         await _context.SaveChangesAsync();
 
         if (!string.IsNullOrWhiteSpace(request.Comment))
@@ -414,11 +446,15 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Department)
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Unit)
             .Include(item => item.SubmittedByUser)
+            .Include(item => item.VerifierUser)
+            .Include(item => item.ApproverUser)
+            .Include(item => item.PmsOfficerUser)
+            .Include(item => item.AuditorUser)
             .FirstOrDefaultAsync(item => item.Id == id);
     }
 
     private static AccessScopeContext BuildScope(IpmsSubmission submission) => BuildScope(submission.IpmsTarget);
 
     private static AccessScopeContext BuildScope(IpmsTarget target) =>
-        new(target.DepartmentId, target.UnitId, target.Id, target.KpiId);
+        new(target.DepartmentId, target.UnitId, target.Id, null);
 }

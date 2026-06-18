@@ -41,50 +41,140 @@ public enum SubmissionKind
 public class OpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string IndicatorNumber { get; set; } = string.Empty;
-    public string TargetName { get; set; } = string.Empty;
-    public string KpiDescription { get; set; } = string.Empty;
+    public string? SourceTemplateId { get; set; }
+    public int? SourceTemplateVersion { get; set; }
+    public int? PeriodId { get; set; }
     public int? DepartmentId { get; set; }
     public int? UnitId { get; set; }
     public string? AssignedUserId { get; set; }
-    public string? KpiId { get; set; }
-    public string? SourceTemplateId { get; set; }
-    public int? SourceTemplateVersion { get; set; }
+    public string? WardIds { get; set; }
+    public string? AdditionalAssigneeIds { get; set; }
+    public string? VoteNumberIds { get; set; }
+    public string IndicatorNumber { get; set; } = string.Empty;
+    public string NationalKpa { get; set; } = string.Empty;
+    public string MunicipalKpa { get; set; } = string.Empty;
+    public int? StrategicGoalId { get; set; }
+    public int? StrategicObjectiveId { get; set; }
+    public string PerformanceObjective { get; set; } = string.Empty;
+    public string TargetName { get; set; } = string.Empty;
+    public string KpiDescription { get; set; } = string.Empty;
     public decimal Baseline { get; set; }
+    public string? BaselineDescription { get; set; }
     public decimal AnnualTarget { get; set; }
+    public string AnnualTargetDescription { get; set; } = string.Empty;
+    public int? BudgetSourceId { get; set; }
+    public int? BudgetTypeId { get; set; }
+    public int? UnitOfMeasureId { get; set; }
     public decimal Weight { get; set; }
-    public bool IsArchived { get; set; }
+    public string KpiType { get; set; } = string.Empty;
+    public string IndicatorType { get; set; } = string.Empty;
+    public string? FunctionalArea { get; set; }
+    public string? StandardClassification { get; set; }
+    public string? IdpReference { get; set; }
+    public string? InternalReference { get; set; }
+    public string? FmsLink { get; set; }
+    public bool IsRevised { get; set; }
+    public bool IsWithdrawn { get; set; }
+    public string? ReasonForWithdrawal { get; set; }
+    public string TargetUnitType { get; set; } = "absolute_count";
+    public decimal? Q1Target { get; set; }
+    public string? Q1Description { get; set; }
+    public decimal? Q1Budget { get; set; }
+    public decimal? Q2Target { get; set; }
+    public string? Q2Description { get; set; }
+    public decimal? Q2Budget { get; set; }
+    public decimal? MidTermTarget { get; set; }
+    public string? MidTermDescription { get; set; }
+    public decimal? MidTermBudget { get; set; }
+    public decimal? Q3Target { get; set; }
+    public string? Q3Description { get; set; }
+    public decimal? Q3Budget { get; set; }
+    public decimal? Q3RevisedTarget { get; set; }
+    public decimal? Q4Target { get; set; }
+    public string? Q4Description { get; set; }
+    public decimal? Q4Budget { get; set; }
+    public decimal? Q4RevisedTarget { get; set; }
+    public decimal? RevisedAnnualTarget { get; set; }
+    public decimal? RevisedAnnualBudget { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public Department? Department { get; set; }
-    public Unit? Unit { get; set; }
-    public ApplicationUser? AssignedUser { get; set; }
-    public ICollection<OpmsSubmission> Submissions { get; set; } = new List<OpmsSubmission>();
+    public Period? Period { get; set; }
+        public Department? Department { get; set; }
+        public Unit? Unit { get; set; }
+        public ApplicationUser? AssignedUser { get; set; }
+        public StrategicGoal? StrategicGoal { get; set; }
+        public StrategicObjective? StrategicObjective { get; set; }
+        public BudgetSource? BudgetSource { get; set; }
+        public BudgetType? BudgetType { get; set; }
+        public UnitOfMeasure? UnitOfMeasure { get; set; }
+        public ICollection<OpmsSubmission> Submissions { get; set; } = new List<OpmsSubmission>();
 }
 
 public class IpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string IndicatorNumber { get; set; } = string.Empty;
-    public string TargetName { get; set; } = string.Empty;
-    public string KpiDescription { get; set; } = string.Empty;
+    public string? SourceTemplateId { get; set; }
+    public int? SourceTemplateVersion { get; set; }
+    public string? RelatedOpmsTargetId { get; set; }
+    public int? PeriodId { get; set; }
     public int? DepartmentId { get; set; }
     public int? UnitId { get; set; }
     public string? AssignedUserId { get; set; }
-    public string? RelatedOpmsTargetId { get; set; }
-    public string? KpiId { get; set; }
-    public string? SourceTemplateId { get; set; }
-    public int? SourceTemplateVersion { get; set; }
+    public string? SupervisorId { get; set; }
+    public string IndicatorNumber { get; set; } = string.Empty;
+    public string NationalKpa { get; set; } = string.Empty;
+    public string MunicipalKpa { get; set; } = string.Empty;
+    public int? StrategicGoalId { get; set; }
+    public int? StrategicObjectiveId { get; set; }
+    public string PerformanceObjective { get; set; } = string.Empty;
+    public string TargetName { get; set; } = string.Empty;
+    public string KpiDescription { get; set; } = string.Empty;
+    public decimal Baseline { get; set; }
     public decimal AnnualTarget { get; set; }
+    public string AnnualTargetDescription { get; set; } = string.Empty;
+    public int? BudgetSourceId { get; set; }
+    public int? BudgetTypeId { get; set; }
+    public int? UnitOfMeasureId { get; set; }
     public decimal Weight { get; set; }
-    public bool IsArchived { get; set; }
+    public string KpiType { get; set; } = string.Empty;
+    public string IndicatorType { get; set; } = string.Empty;
+    public string? FunctionalArea { get; set; }
+    public string? IdpReference { get; set; }
+    public string? InternalReference { get; set; }
+    public bool IsRevised { get; set; }
+    public string TargetUnitType { get; set; } = "absolute_count";
+    public decimal? Q1Target { get; set; }
+    public string? Q1Description { get; set; }
+    public decimal? Q1Budget { get; set; }
+    public decimal? Q2Target { get; set; }
+    public string? Q2Description { get; set; }
+    public decimal? Q2Budget { get; set; }
+    public decimal? MidTermTarget { get; set; }
+    public string? MidTermDescription { get; set; }
+    public decimal? MidTermBudget { get; set; }
+    public decimal? Q3Target { get; set; }
+    public string? Q3Description { get; set; }
+    public decimal? Q3Budget { get; set; }
+    public decimal? Q3RevisedTarget { get; set; }
+    public decimal? Q4Target { get; set; }
+    public string? Q4Description { get; set; }
+    public decimal? Q4Budget { get; set; }
+    public decimal? Q4RevisedTarget { get; set; }
+    public decimal? RevisedAnnualTarget { get; set; }
+    public decimal? RevisedAnnualBudget { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public Department? Department { get; set; }
-    public Unit? Unit { get; set; }
-    public ApplicationUser? AssignedUser { get; set; }
-    public OpmsTarget? RelatedOpmsTarget { get; set; }
-    public ICollection<IpmsSubmission> Submissions { get; set; } = new List<IpmsSubmission>();
+    public Period? Period { get; set; }
+        public Department? Department { get; set; }
+        public Unit? Unit { get; set; }
+        public ApplicationUser? AssignedUser { get; set; }
+        public StrategicGoal? StrategicGoal { get; set; }
+        public StrategicObjective? StrategicObjective { get; set; }
+        public BudgetSource? BudgetSource { get; set; }
+        public BudgetType? BudgetType { get; set; }
+        public UnitOfMeasure? UnitOfMeasure { get; set; }
+        public OpmsTarget? RelatedOpmsTarget { get; set; }
+        public ICollection<IpmsSubmission> Submissions { get; set; } = new List<IpmsSubmission>();
 }
 
 public class OpmsSubmission
@@ -95,15 +185,35 @@ public class OpmsSubmission
     public string Status { get; set; } = string.Empty;
     public decimal? Actual { get; set; }
     public string? ActualDescription { get; set; }
+    public decimal? ActualExpenditure { get; set; }
+    public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
     public string? CorrectiveMeasure { get; set; }
+    public decimal? SubmitterScore { get; set; }
     public DateTime? SubmittedAt { get; set; }
     public string? SubmittedByUserId { get; set; }
+    public string? VerifierUserId { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public string? VerifierComments { get; set; }
+    public string? ApproverUserId { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public string? ApproverComments { get; set; }
+    public string? PmsOfficerUserId { get; set; }
+    public DateTime? PmsReviewedAt { get; set; }
+    public string? PmsComments { get; set; }
+    public string? AuditorUserId { get; set; }
+    public DateTime? AuditedAt { get; set; }
+    public string? AuditorComments { get; set; }
     public DateTime? DueDate { get; set; }
+    public DateTime? ExtendedDueDate { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public OpmsTarget OpmsTarget { get; set; } = null!;
     public ApplicationUser? SubmittedByUser { get; set; }
+    public ApplicationUser? VerifierUser { get; set; }
+    public ApplicationUser? ApproverUser { get; set; }
+    public ApplicationUser? PmsOfficerUser { get; set; }
+    public ApplicationUser? AuditorUser { get; set; }
     public ICollection<PoeFile> PoeFiles { get; set; } = new List<PoeFile>();
     public ICollection<ReviewComment> ReviewComments { get; set; } = new List<ReviewComment>();
     public ICollection<SubmissionScore> Scores { get; set; } = new List<SubmissionScore>();
@@ -117,15 +227,35 @@ public class IpmsSubmission
     public string Status { get; set; } = string.Empty;
     public decimal? Actual { get; set; }
     public string? ActualDescription { get; set; }
+    public decimal? ActualExpenditure { get; set; }
+    public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
     public string? CorrectiveMeasure { get; set; }
+    public decimal? SubmitterScore { get; set; }
     public DateTime? SubmittedAt { get; set; }
     public string? SubmittedByUserId { get; set; }
+    public string? VerifierUserId { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public string? VerifierComments { get; set; }
+    public string? ApproverUserId { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+    public string? ApproverComments { get; set; }
+    public string? PmsOfficerUserId { get; set; }
+    public DateTime? PmsReviewedAt { get; set; }
+    public string? PmsComments { get; set; }
+    public string? AuditorUserId { get; set; }
+    public DateTime? AuditedAt { get; set; }
+    public string? AuditorComments { get; set; }
     public DateTime? DueDate { get; set; }
+    public DateTime? ExtendedDueDate { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public IpmsTarget IpmsTarget { get; set; } = null!;
     public ApplicationUser? SubmittedByUser { get; set; }
+    public ApplicationUser? VerifierUser { get; set; }
+    public ApplicationUser? ApproverUser { get; set; }
+    public ApplicationUser? PmsOfficerUser { get; set; }
+    public ApplicationUser? AuditorUser { get; set; }
     public ICollection<PoeFile> PoeFiles { get; set; } = new List<PoeFile>();
     public ICollection<ReviewComment> ReviewComments { get; set; } = new List<ReviewComment>();
     public ICollection<SubmissionScore> Scores { get; set; } = new List<SubmissionScore>();

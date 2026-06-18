@@ -19,6 +19,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<Unit> Units { get; set; } = null!;
     public DbSet<UserScope> UserScopes { get; set; } = null!;
     public DbSet<UserAssignment> UserAssignments { get; set; } = null!;
+    public DbSet<Period> Periods { get; set; } = null!;
+    public DbSet<StrategicGoal> StrategicGoals { get; set; } = null!;
+    public DbSet<StrategicObjective> StrategicObjectives { get; set; } = null!;
+    public DbSet<BudgetSource> BudgetSources { get; set; } = null!;
+    public DbSet<BudgetType> BudgetTypes { get; set; } = null!;
+    public DbSet<UnitOfMeasure> UnitOfMeasures { get; set; } = null!;
+    public DbSet<Ward> Wards { get; set; } = null!;
+    public DbSet<VoteNumber> VoteNumbers { get; set; } = null!;
     public DbSet<OpmsTarget> OpmsTargets { get; set; } = null!;
     public DbSet<IpmsTarget> IpmsTargets { get; set; } = null!;
     public DbSet<OpmsTargetTemplate> OpmsTargetTemplates { get; set; } = null!;
@@ -161,6 +169,63 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .Property(target => target.Weight)
             .HasPrecision(18, 2);
 
+        // Add precision for new OpmsTarget decimal fields
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q1Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q1Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q2Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q2Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.MidTermTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.MidTermBudget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q3Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q3Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q3RevisedTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q4Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q4Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Q4RevisedTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.RevisedAnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.RevisedAnnualBudget)
+            .HasPrecision(18, 2);
+
         builder.Entity<IpmsTarget>()
             .HasOne(target => target.Department)
             .WithMany()
@@ -191,6 +256,67 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
 
         builder.Entity<IpmsTarget>()
             .Property(target => target.Weight)
+            .HasPrecision(18, 2);
+
+        // Add precision for new IpmsTarget decimal fields
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Baseline)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q1Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q1Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q2Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q2Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.MidTermTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.MidTermBudget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q3Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q3Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q3RevisedTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q4Target)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q4Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Q4RevisedTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.RevisedAnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.RevisedAnnualBudget)
             .HasPrecision(18, 2);
 
         builder.Entity<OpmsTargetTemplate>()
@@ -285,6 +411,126 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasOne(score => score.ScoredByUser)
             .WithMany()
             .HasForeignKey(score => score.ScoredByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<Period>()
+            .HasIndex(p => p.Code)
+            .IsUnique();
+
+        builder.Entity<StrategicGoal>()
+            .HasIndex(sg => sg.Code)
+            .IsUnique();
+
+        builder.Entity<StrategicObjective>()
+            .HasIndex(so => so.Code)
+            .IsUnique();
+
+        builder.Entity<StrategicObjective>()
+            .HasOne(so => so.StrategicGoal)
+            .WithMany()
+            .HasForeignKey(so => so.StrategicGoalId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<BudgetSource>()
+            .HasIndex(bs => bs.Code)
+            .IsUnique();
+
+        builder.Entity<BudgetType>()
+            .HasIndex(bt => bt.Code)
+            .IsUnique();
+
+        builder.Entity<UnitOfMeasure>()
+            .HasIndex(uom => uom.Code)
+            .IsUnique();
+
+        builder.Entity<Ward>()
+            .HasIndex(w => w.Code)
+            .IsUnique();
+
+        builder.Entity<VoteNumber>()
+            .HasIndex(vn => vn.Code)
+            .IsUnique();
+
+        builder.Entity<VoteNumber>()
+            .HasOne(vn => vn.Department)
+            .WithMany()
+            .HasForeignKey(vn => vn.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<VoteNumber>()
+            .Property(vn => vn.Amount)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .HasOne(ot => ot.Period)
+            .WithMany()
+            .HasForeignKey(ot => ot.PeriodId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<OpmsTarget>()
+            .HasOne(ot => ot.StrategicGoal)
+            .WithMany()
+            .HasForeignKey(ot => ot.StrategicGoalId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<OpmsTarget>()
+            .HasOne(ot => ot.StrategicObjective)
+            .WithMany()
+            .HasForeignKey(ot => ot.StrategicObjectiveId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<OpmsTarget>()
+            .HasOne(ot => ot.BudgetSource)
+            .WithMany()
+            .HasForeignKey(ot => ot.BudgetSourceId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<OpmsTarget>()
+            .HasOne(ot => ot.BudgetType)
+            .WithMany()
+            .HasForeignKey(ot => ot.BudgetTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<OpmsTarget>()
+            .HasOne(ot => ot.UnitOfMeasure)
+            .WithMany()
+            .HasForeignKey(ot => ot.UnitOfMeasureId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsTarget>()
+            .HasOne(it => it.Period)
+            .WithMany()
+            .HasForeignKey(it => it.PeriodId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsTarget>()
+            .HasOne(it => it.StrategicGoal)
+            .WithMany()
+            .HasForeignKey(it => it.StrategicGoalId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsTarget>()
+            .HasOne(it => it.StrategicObjective)
+            .WithMany()
+            .HasForeignKey(it => it.StrategicObjectiveId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsTarget>()
+            .HasOne(it => it.BudgetSource)
+            .WithMany()
+            .HasForeignKey(it => it.BudgetSourceId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsTarget>()
+            .HasOne(it => it.BudgetType)
+            .WithMany()
+            .HasForeignKey(it => it.BudgetTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsTarget>()
+            .HasOne(it => it.UnitOfMeasure)
+            .WithMany()
+            .HasForeignKey(it => it.UnitOfMeasureId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<SubmissionScore>()

@@ -18,6 +18,8 @@ public static class DbInitializer
         await SeedRolePermissionsAsync(context, roleManager);
         await SeedDefaultAdminUserAsync(context, userManager, configuration);
         await SeedDemoUsersAsync(context, userManager, configuration);
+        await SeedLookupTablesAsync(context);
+        await SeedTargetsAndSubmissionsAsync(context, userManager);
     }
 
     internal static DemoUserResponse[] GetDemoUserResponses(IConfiguration configuration)
@@ -781,4 +783,695 @@ public static class DbInitializer
         string Position,
         IReadOnlyList<DemoScopeSeed> Scopes,
         IReadOnlyList<DemoAssignmentSeed> Assignments);
+
+    private static async Task SeedLookupTablesAsync(ApplicationDbContext context)
+    {
+        // Seed Periods
+        var existingPeriods = await context.Periods.ToDictionaryAsync(p => p.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var periodSeed in GetPeriodSeeds())
+        {
+            if (!existingPeriods.TryGetValue(periodSeed.Code, out var period))
+            {
+                period = new Period
+                {
+                    Code = periodSeed.Code,
+                    Name = periodSeed.Name,
+                    StartDate = periodSeed.StartDate,
+                    EndDate = periodSeed.EndDate,
+                    FiscalYear = periodSeed.FiscalYear,
+                    IsActive = periodSeed.IsActive
+                };
+                context.Periods.Add(period);
+            }
+            else
+            {
+                period.Code = periodSeed.Code;
+                period.Name = periodSeed.Name;
+                period.StartDate = periodSeed.StartDate;
+                period.EndDate = periodSeed.EndDate;
+                period.FiscalYear = periodSeed.FiscalYear;
+                period.IsActive = periodSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Strategic Goals
+        var existingGoals = await context.StrategicGoals.ToDictionaryAsync(g => g.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var goalSeed in GetStrategicGoalSeeds())
+        {
+            if (!existingGoals.TryGetValue(goalSeed.Code, out var goal))
+            {
+                goal = new StrategicGoal
+                {
+                    Name = goalSeed.Name,
+                    Code = goalSeed.Code,
+                    Description = goalSeed.Description,
+                    IsActive = goalSeed.IsActive
+                };
+                context.StrategicGoals.Add(goal);
+            }
+            else
+            {
+                goal.Name = goalSeed.Name;
+                goal.Description = goalSeed.Description;
+                goal.IsActive = goalSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Strategic Objectives
+        var goals = await context.StrategicGoals.ToDictionaryAsync(g => g.Code, StringComparer.OrdinalIgnoreCase);
+        var existingObjectives = await context.StrategicObjectives.ToDictionaryAsync(o => o.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var objSeed in GetStrategicObjectiveSeeds())
+        {
+            if (!existingObjectives.TryGetValue(objSeed.Code, out var obj))
+            {
+                obj = new StrategicObjective
+                {
+                    Name = objSeed.Name,
+                    Code = objSeed.Code,
+                    StrategicGoalId = goals[objSeed.StrategicGoalCode].Id,
+                    IsActive = objSeed.IsActive
+                };
+                context.StrategicObjectives.Add(obj);
+            }
+            else
+            {
+                obj.Name = objSeed.Name;
+                obj.StrategicGoalId = goals[objSeed.StrategicGoalCode].Id;
+                obj.IsActive = objSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Budget Sources
+        var existingBudgetSources = await context.BudgetSources.ToDictionaryAsync(b => b.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var sourceSeed in GetBudgetSourceSeeds())
+        {
+            if (!existingBudgetSources.TryGetValue(sourceSeed.Code, out var source))
+            {
+                source = new BudgetSource
+                {
+                    Name = sourceSeed.Name,
+                    Code = sourceSeed.Code,
+                    IsActive = sourceSeed.IsActive
+                };
+                context.BudgetSources.Add(source);
+            }
+            else
+            {
+                source.Name = sourceSeed.Name;
+                source.IsActive = sourceSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Budget Types
+        var existingBudgetTypes = await context.BudgetTypes.ToDictionaryAsync(b => b.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var typeSeed in GetBudgetTypeSeeds())
+        {
+            if (!existingBudgetTypes.TryGetValue(typeSeed.Code, out var type))
+            {
+                type = new BudgetType
+                {
+                    Name = typeSeed.Name,
+                    Code = typeSeed.Code,
+                    IsActive = typeSeed.IsActive
+                };
+                context.BudgetTypes.Add(type);
+            }
+            else
+            {
+                type.Name = typeSeed.Name;
+                type.IsActive = typeSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Units of Measure
+        var existingUoms = await context.UnitOfMeasures.ToDictionaryAsync(u => u.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var uomSeed in GetUnitOfMeasureSeeds())
+        {
+            if (!existingUoms.TryGetValue(uomSeed.Code, out var uom))
+            {
+                uom = new UnitOfMeasure
+                {
+                    Name = uomSeed.Name,
+                    Code = uomSeed.Code,
+                    Symbol = uomSeed.Symbol,
+                    IsActive = uomSeed.IsActive
+                };
+                context.UnitOfMeasures.Add(uom);
+            }
+            else
+            {
+                uom.Name = uomSeed.Name;
+                uom.Symbol = uomSeed.Symbol;
+                uom.IsActive = uomSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Wards
+        var existingWards = await context.Wards.ToDictionaryAsync(w => w.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var wardSeed in GetWardSeeds())
+        {
+            if (!existingWards.TryGetValue(wardSeed.Code, out var ward))
+            {
+                ward = new Ward
+                {
+                    Name = wardSeed.Name,
+                    Code = wardSeed.Code,
+                    Municipality = wardSeed.Municipality,
+                    IsActive = wardSeed.IsActive
+                };
+                context.Wards.Add(ward);
+            }
+            else
+            {
+                ward.Name = wardSeed.Name;
+                ward.Municipality = wardSeed.Municipality;
+                ward.IsActive = wardSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed Vote Numbers
+        var departments = await context.Departments.ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
+        var existingVotes = await context.VoteNumbers.ToDictionaryAsync(v => v.Code, StringComparer.OrdinalIgnoreCase);
+        foreach (var voteSeed in GetVoteNumberSeeds())
+        {
+            if (!existingVotes.TryGetValue(voteSeed.Code, out var vote))
+            {
+                vote = new VoteNumber
+                {
+                    Code = voteSeed.Code,
+                    Number = voteSeed.Code,
+                    Name = voteSeed.Name,
+                    DepartmentId = voteSeed.DepartmentCode != null ? departments[voteSeed.DepartmentCode].Id : null,
+                    Amount = voteSeed.Amount,
+                    IsActive = voteSeed.IsActive
+                };
+                context.VoteNumbers.Add(vote);
+            }
+            else
+            {
+                vote.Number = voteSeed.Code;
+                vote.Name = voteSeed.Name;
+                vote.DepartmentId = voteSeed.DepartmentCode != null ? departments[voteSeed.DepartmentCode].Id : null;
+                vote.Amount = voteSeed.Amount;
+                vote.IsActive = voteSeed.IsActive;
+            }
+        }
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedTargetsAndSubmissionsAsync(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
+    {
+        // Get all lookup data
+        var periods = await context.Periods.ToDictionaryAsync(p => p.Code, StringComparer.OrdinalIgnoreCase);
+        var departments = await context.Departments.ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
+        var units = await context.Units.ToDictionaryAsync(u => $"{u.DepartmentId}-{u.Code}", StringComparer.OrdinalIgnoreCase);
+        var goals = await context.StrategicGoals.ToDictionaryAsync(g => g.Code, StringComparer.OrdinalIgnoreCase);
+        var objectives = await context.StrategicObjectives.ToDictionaryAsync(o => o.Code, StringComparer.OrdinalIgnoreCase);
+        var budgetSources = await context.BudgetSources.ToDictionaryAsync(b => b.Code, StringComparer.OrdinalIgnoreCase);
+        var budgetTypes = await context.BudgetTypes.ToDictionaryAsync(b => b.Code, StringComparer.OrdinalIgnoreCase);
+        var uoms = await context.UnitOfMeasures.ToDictionaryAsync(u => u.Code, StringComparer.OrdinalIgnoreCase);
+        var users = await userManager.Users.ToDictionaryAsync(u => u.UserName!, StringComparer.OrdinalIgnoreCase);
+
+        // Seed OPMS Targets
+        var existingOpmsTargets = await context.OpmsTargets.ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
+        foreach (var targetSeed in GetOpmsTargetSeeds())
+        {
+            if (!existingOpmsTargets.TryGetValue(targetSeed.IndicatorNumber, out var target))
+            {
+                target = new OpmsTarget
+                {
+                    IndicatorNumber = targetSeed.IndicatorNumber,
+                    PeriodId = periods[targetSeed.PeriodCode].Id,
+                    DepartmentId = targetSeed.DepartmentCode != null ? departments[targetSeed.DepartmentCode].Id : null,
+                    UnitId = targetSeed.UnitCode != null ? units[$"{departments[targetSeed.DepartmentCode!].Id}-{targetSeed.UnitCode}"].Id : null,
+                    NationalKpa = targetSeed.NationalKpa,
+                    MunicipalKpa = targetSeed.MunicipalKpa,
+                    StrategicGoalId = targetSeed.StrategicGoalCode != null ? goals[targetSeed.StrategicGoalCode].Id : null,
+                    StrategicObjectiveId = targetSeed.StrategicObjectiveCode != null ? objectives[targetSeed.StrategicObjectiveCode].Id : null,
+                    PerformanceObjective = targetSeed.PerformanceObjective,
+                    TargetName = targetSeed.TargetName,
+                    KpiDescription = targetSeed.KpiDescription,
+                    Baseline = targetSeed.Baseline,
+                    AnnualTarget = targetSeed.AnnualTarget,
+                    AnnualTargetDescription = targetSeed.AnnualTargetDescription,
+                    BudgetSourceId = targetSeed.BudgetSourceCode != null ? budgetSources[targetSeed.BudgetSourceCode].Id : null,
+                    BudgetTypeId = targetSeed.BudgetTypeCode != null ? budgetTypes[targetSeed.BudgetTypeCode].Id : null,
+                    UnitOfMeasureId = targetSeed.UnitOfMeasureCode != null ? uoms[targetSeed.UnitOfMeasureCode].Id : null,
+                    Weight = targetSeed.Weight,
+                    KpiType = targetSeed.KpiType,
+                    IndicatorType = targetSeed.IndicatorType,
+                    FunctionalArea = targetSeed.FunctionalArea,
+                    Q1Target = targetSeed.Q1Target,
+                    Q2Target = targetSeed.Q2Target,
+                    MidTermTarget = targetSeed.MidTermTarget,
+                    Q3Target = targetSeed.Q3Target,
+                    Q4Target = targetSeed.Q4Target,
+                    TargetUnitType = targetSeed.TargetUnitType,
+                    IsRevised = false,
+                    IsWithdrawn = false
+                };
+                context.OpmsTargets.Add(target);
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed IPMS Targets
+        var opmsTargets = await context.OpmsTargets.ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
+        var existingIpmsTargets = await context.IpmsTargets.ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
+        foreach (var targetSeed in GetIpmsTargetSeeds())
+        {
+            if (!existingIpmsTargets.TryGetValue(targetSeed.IndicatorNumber, out var target))
+            {
+                target = new IpmsTarget
+                {
+                    IndicatorNumber = targetSeed.IndicatorNumber,
+                    PeriodId = periods[targetSeed.PeriodCode].Id,
+                    DepartmentId = targetSeed.DepartmentCode != null ? departments[targetSeed.DepartmentCode].Id : null,
+                    UnitId = targetSeed.UnitCode != null ? units[$"{departments[targetSeed.DepartmentCode!].Id}-{targetSeed.UnitCode}"].Id : null,
+                    RelatedOpmsTargetId = targetSeed.RelatedOpmsIndicatorNumber != null ? opmsTargets[targetSeed.RelatedOpmsIndicatorNumber].Id : null,
+                    NationalKpa = targetSeed.NationalKpa,
+                    MunicipalKpa = targetSeed.MunicipalKpa,
+                    StrategicGoalId = targetSeed.StrategicGoalCode != null ? goals[targetSeed.StrategicGoalCode].Id : null,
+                    StrategicObjectiveId = targetSeed.StrategicObjectiveCode != null ? objectives[targetSeed.StrategicObjectiveCode].Id : null,
+                    PerformanceObjective = targetSeed.PerformanceObjective,
+                    TargetName = targetSeed.TargetName,
+                    KpiDescription = targetSeed.KpiDescription,
+                    Baseline = targetSeed.Baseline,
+                    AnnualTarget = targetSeed.AnnualTarget,
+                    AnnualTargetDescription = targetSeed.AnnualTargetDescription,
+                    BudgetSourceId = targetSeed.BudgetSourceCode != null ? budgetSources[targetSeed.BudgetSourceCode].Id : null,
+                    BudgetTypeId = targetSeed.BudgetTypeCode != null ? budgetTypes[targetSeed.BudgetTypeCode].Id : null,
+                    UnitOfMeasureId = targetSeed.UnitOfMeasureCode != null ? uoms[targetSeed.UnitOfMeasureCode].Id : null,
+                    Weight = targetSeed.Weight,
+                    KpiType = targetSeed.KpiType,
+                    IndicatorType = targetSeed.IndicatorType,
+                    FunctionalArea = targetSeed.FunctionalArea,
+                    Q1Target = targetSeed.Q1Target,
+                    Q2Target = targetSeed.Q2Target,
+                    MidTermTarget = targetSeed.MidTermTarget,
+                    Q3Target = targetSeed.Q3Target,
+                    Q4Target = targetSeed.Q4Target,
+                    TargetUnitType = targetSeed.TargetUnitType,
+                    IsRevised = false
+                };
+                context.IpmsTargets.Add(target);
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed OPMS Submissions
+        var opmsTargetsById = await context.OpmsTargets.ToDictionaryAsync(t => t.Id);
+        foreach (var submissionSeed in GetOpmsSubmissionSeeds())
+        {
+            var target = opmsTargetsById.Values.First(t => t.IndicatorNumber == submissionSeed.OpmsIndicatorNumber);
+            var existing = await context.OpmsSubmissions.FirstOrDefaultAsync(s => s.OpmsTargetId == target.Id && s.Quarter == submissionSeed.Quarter);
+            if (existing == null)
+            {
+                existing = new OpmsSubmission
+                {
+                    OpmsTargetId = target.Id,
+                    Quarter = submissionSeed.Quarter,
+                    Status = submissionSeed.Status,
+                    Actual = submissionSeed.Actual,
+                    ActualDescription = submissionSeed.ActualDescription,
+                    ActualExpenditure = submissionSeed.ActualExpenditure,
+                    Variance = submissionSeed.Variance,
+                    VarianceReason = submissionSeed.VarianceReason,
+                    CorrectiveMeasure = submissionSeed.CorrectiveMeasure,
+                    SubmitterScore = submissionSeed.SubmitterScore,
+                    SubmittedAt = submissionSeed.SubmittedAt,
+                    SubmittedByUserId = submissionSeed.SubmitterUserName != null ? users[submissionSeed.SubmitterUserName].Id : null,
+                    VerifierUserId = submissionSeed.VerifierUserName != null ? users[submissionSeed.VerifierUserName].Id : null,
+                    VerifiedAt = submissionSeed.VerifiedAt,
+                    VerifierComments = submissionSeed.VerifierComments,
+                    ApproverUserId = submissionSeed.ApproverUserName != null ? users[submissionSeed.ApproverUserName].Id : null,
+                    ApprovedAt = submissionSeed.ApprovedAt,
+                    ApproverComments = submissionSeed.ApproverComments,
+                    PmsOfficerUserId = submissionSeed.PmsOfficerUserName != null ? users[submissionSeed.PmsOfficerUserName].Id : null,
+                    PmsReviewedAt = submissionSeed.PmsReviewedAt,
+                    PmsComments = submissionSeed.PmsComments,
+                    AuditorUserId = submissionSeed.AuditorUserName != null ? users[submissionSeed.AuditorUserName].Id : null,
+                    AuditedAt = submissionSeed.AuditedAt,
+                    AuditorComments = submissionSeed.AuditorComments,
+                    DueDate = submissionSeed.DueDate,
+                    ExtendedDueDate = submissionSeed.ExtendedDueDate
+                };
+                context.OpmsSubmissions.Add(existing);
+            }
+        }
+        await context.SaveChangesAsync();
+
+        // Seed IPMS Submissions
+        var ipmsTargetsById = await context.IpmsTargets.ToDictionaryAsync(t => t.Id);
+        foreach (var submissionSeed in GetIpmsSubmissionSeeds())
+        {
+            var target = ipmsTargetsById.Values.First(t => t.IndicatorNumber == submissionSeed.IpmsIndicatorNumber);
+            var existing = await context.IpmsSubmissions.FirstOrDefaultAsync(s => s.IpmsTargetId == target.Id && s.Quarter == submissionSeed.Quarter);
+            if (existing == null)
+            {
+                existing = new IpmsSubmission
+                {
+                    IpmsTargetId = target.Id,
+                    Quarter = submissionSeed.Quarter,
+                    Status = submissionSeed.Status,
+                    Actual = submissionSeed.Actual,
+                    ActualDescription = submissionSeed.ActualDescription,
+                    ActualExpenditure = submissionSeed.ActualExpenditure,
+                    Variance = submissionSeed.Variance,
+                    VarianceReason = submissionSeed.VarianceReason,
+                    CorrectiveMeasure = submissionSeed.CorrectiveMeasure,
+                    SubmitterScore = submissionSeed.SubmitterScore,
+                    SubmittedAt = submissionSeed.SubmittedAt,
+                    SubmittedByUserId = submissionSeed.SubmitterUserName != null ? users[submissionSeed.SubmitterUserName].Id : null,
+                    VerifierUserId = submissionSeed.VerifierUserName != null ? users[submissionSeed.VerifierUserName].Id : null,
+                    VerifiedAt = submissionSeed.VerifiedAt,
+                    VerifierComments = submissionSeed.VerifierComments,
+                    ApproverUserId = submissionSeed.ApproverUserName != null ? users[submissionSeed.ApproverUserName].Id : null,
+                    ApprovedAt = submissionSeed.ApprovedAt,
+                    ApproverComments = submissionSeed.ApproverComments,
+                    PmsOfficerUserId = submissionSeed.PmsOfficerUserName != null ? users[submissionSeed.PmsOfficerUserName].Id : null,
+                    PmsReviewedAt = submissionSeed.PmsReviewedAt,
+                    PmsComments = submissionSeed.PmsComments,
+                    AuditorUserId = submissionSeed.AuditorUserName != null ? users[submissionSeed.AuditorUserName].Id : null,
+                    AuditedAt = submissionSeed.AuditedAt,
+                    AuditorComments = submissionSeed.AuditorComments,
+                    DueDate = submissionSeed.DueDate,
+                    ExtendedDueDate = submissionSeed.ExtendedDueDate
+                };
+                context.IpmsSubmissions.Add(existing);
+            }
+        }
+        await context.SaveChangesAsync();
+    }
+
+    private static IReadOnlyList<PeriodSeed> GetPeriodSeeds()
+    {
+        return
+        [
+            new("2024/25", "2024/2025 Financial Year", new DateTime(2024, 7, 1), new DateTime(2025, 6, 30), "2024/2025", true),
+            new("2023/24", "2023/2024 Financial Year", new DateTime(2023, 7, 1), new DateTime(2024, 6, 30), "2023/2024", false)
+        ];
+    }
+
+    private static IReadOnlyList<StrategicGoalSeed> GetStrategicGoalSeeds()
+    {
+        return
+        [
+            new("SG1", "Good Governance", "Enhance good governance and accountability", true),
+            new("SG2", "Service Delivery Excellence", "Deliver quality services to all communities", true),
+            new("SG3", "Economic Development", "Promote local economic development", true),
+            new("SG4", "Financial Sustainability", "Ensure long-term financial sustainability", true),
+            new("SG5", "Environmental Sustainability", "Protect and preserve the environment", true)
+        ];
+    }
+
+    private static IReadOnlyList<StrategicObjectiveSeed> GetStrategicObjectiveSeeds()
+    {
+        return
+        [
+            new("SO1.1", "Improve Road Infrastructure", "SG2", true),
+            new("SO1.2", "Enhance Water Service Delivery", "SG2", true),
+            new("SO2.1", "Increase Revenue Collection", "SG4", true),
+            new("SO1.3", "Maintain Clean Audit Status", "SG1", true)
+        ];
+    }
+
+    private static IReadOnlyList<BudgetSourceSeed> GetBudgetSourceSeeds()
+    {
+        return
+        [
+            new("EQS", "Equitable Share", true),
+            new("MIG", "Municipal Infrastructure Grant", true),
+            new("PR", "Property Rates", true),
+            new("SC", "Service Charges", true),
+            new("INT", "Internal Funds", true)
+        ];
+    }
+
+    private static IReadOnlyList<BudgetTypeSeed> GetBudgetTypeSeeds()
+    {
+        return
+        [
+            new("CAPEX", "Capital Expenditure", true),
+            new("OPEX", "Operating Expenditure", true),
+            new("MAINT", "Maintenance", true),
+            new("REP", "Repairs", true)
+        ];
+    }
+
+    private static IReadOnlyList<UnitOfMeasureSeed> GetUnitOfMeasureSeeds()
+    {
+        return
+        [
+            new("PCT", "Percentage", "%", true),
+            new("NUM", "Number", "#", true),
+            new("KM", "Kilometers", "km", true),
+            new("ZAR", "Rands", "R", true),
+            new("HA", "Hectares", "ha", true),
+            new("CONN", "Number of Connections", null, true),
+            new("DAYS", "Days", "days", true),
+            new("SCORE", "Score", null, true),
+            new("RATE", "Rating", null, true)
+        ];
+    }
+
+    private static IReadOnlyList<WardSeed> GetWardSeeds()
+    {
+        return
+        [
+            new("W1", "Ward 1", "Blue Hills Municipality", true),
+            new("W2", "Ward 2", "Blue Hills Municipality", true),
+            new("W3", "Ward 3", "Blue Hills Municipality", true),
+            new("W4", "Ward 4", "Blue Hills Municipality", true),
+            new("W5", "Ward 5", "Blue Hills Municipality", true)
+        ];
+    }
+
+    private static IReadOnlyList<VoteNumberSeed> GetVoteNumberSeeds()
+    {
+        return
+        [
+            new("V001", "Roads Infrastructure", "ITS", 25000000, true),
+            new("V002", "Water Infrastructure", "ITS", 35000000, true),
+            new("V003", "Electricity Infrastructure", "ITS", 45000000, true),
+            new("V004", "Community Facilities", "COM", 15000000, true),
+            new("V005", "Administrative Services", "CORP", 8000000, true)
+        ];
+    }
+
+    private static IReadOnlyList<OpmsTargetSeed> GetOpmsTargetSeeds()
+    {
+        return
+        [
+            new(
+                "INFRA-001", "2024/25", "ITS", "ITS-ROADS",
+                "Basic Service Delivery", "Infrastructure Development",
+                "SG2", "SO1.1",
+                "Maintain road network in good condition",
+                "Kilometers of roads maintained",
+                "Number of kilometers of roads maintained in good condition within the municipal area",
+                450, 520, "Maintain 520 km of roads in good condition",
+                "MIG", "MAINT", "KM", 15,
+                "Quantitative", "Output", "Roads Maintenance",
+                115, 125, 250, 135, 145, "absolute_count"),
+            new(
+                "INFRA-002", "2024/25", "ITS", "ITS-ELEC",
+                "Basic Service Delivery", "Water Services",
+                "SG2", "SO1.2",
+                "Provide reliable water supply",
+                "Number of new water connections",
+                "Number of new water connections installed in underserved areas",
+                0, 2500, "Install 2500 new water connections",
+                "MIG", "CAPEX", "CONN", 20,
+                "Quantitative", "Output", "Water & Sanitation",
+                600, 625, 1250, 650, 625, "absolute_count"),
+            new(
+                "FIN-001", "2024/25", "BTO", null,
+                "Financial Viability", "Revenue Management",
+                "SG4", "SO2.1",
+                "Maximize revenue collection",
+                "Revenue collection rate",
+                "Percentage of billed revenue collected within the financial year",
+                85, 95, "Achieve 95% revenue collection rate",
+                "PR", "OPEX", "PCT", 25,
+                "Quantitative", "Outcome", "Revenue Management",
+                90, 92, 93, 94, 95, "percentage")
+        ];
+    }
+
+    private static IReadOnlyList<IpmsTargetSeed> GetIpmsTargetSeeds()
+    {
+        return
+        [
+            new(
+                "IPMS-INFRA-001", "2024/25", "ITS", "ITS-ROADS",
+                "INFRA-001",
+                "Basic Service Delivery", "Infrastructure Development",
+                "SG2", "SO1.1",
+                "Complete road maintenance projects on time",
+                "Road maintenance project completion rate",
+                "Percentage of road maintenance projects completed within scheduled timeframes",
+                70, 90, "Achieve 90% project completion rate",
+                "MIG", "MAINT", "PCT", 15,
+                "Quantitative", "Output", "Roads Maintenance",
+                75, 80, 85, 88, 90, "percentage"),
+            new(
+                "IPMS-INFRA-002", "2024/25", "ITS", "ITS-ELEC",
+                "INFRA-002",
+                "Basic Service Delivery", "Water Services",
+                "SG2", "SO1.2",
+                "Reduce water losses",
+                "Water loss reduction",
+                "Percentage reduction in non-revenue water",
+                35, 20, "Reduce non-revenue water to 20%",
+                "MIG", "MAINT", "PCT", 20,
+                "Quantitative", "Outcome", "Water & Sanitation",
+                32, 28, 25, 22, 20, "reverse_non_cumulative")
+        ];
+    }
+
+    private static IReadOnlyList<OpmsSubmissionSeed> GetOpmsSubmissionSeeds()
+    {
+        return
+        [
+            new(
+                OpmsIndicatorNumber: "INFRA-001", Quarter: "Q1", Status: "approved",
+                Actual: 118, ActualDescription: "Maintained total of 118 km in Q1 through routine maintenance program", ActualExpenditure: 5500000,
+                Variance: 2.6m, VarianceReason: "Favorable weather conditions enabled additional maintenance", CorrectiveMeasure: null,
+                SubmitterScore: 85m,
+                SubmitterUserName: "mpho.madonsela", SubmittedAt: new DateTime(2024, 9, 28),
+                VerifierUserName: "ayabonga.cele", VerifiedAt: new DateTime(2024, 10, 2), VerifierComments: "Evidence aligns to project registers",
+                ApproverUserName: "thabo.mokoena", ApprovedAt: new DateTime(2024, 10, 5), ApproverComments: "Approved",
+                PmsOfficerUserName: "thandiwe.maseko", PmsReviewedAt: null, PmsComments: null,
+                AuditorUserName: null, AuditedAt: null, AuditorComments: null,
+                DueDate: new DateTime(2024, 9, 30), ExtendedDueDate: null
+            ),
+            new(
+                OpmsIndicatorNumber: "INFRA-001", Quarter: "Q2", Status: "pending_verification",
+                Actual: 120, ActualDescription: "Maintained 120 km including emergency repairs", ActualExpenditure: 5800000,
+                Variance: -4.0m, VarianceReason: "Heavy rainfall caused delays in scheduled maintenance", CorrectiveMeasure: "Additional crews deployed for acceleration",
+                SubmitterScore: 70m,
+                SubmitterUserName: "mpho.madonsela", SubmittedAt: new DateTime(2024, 12, 29),
+                VerifierUserName: null, VerifiedAt: null, VerifierComments: null,
+                ApproverUserName: null, ApprovedAt: null, ApproverComments: null,
+                PmsOfficerUserName: null, PmsReviewedAt: null, PmsComments: null,
+                AuditorUserName: null, AuditedAt: null, AuditorComments: null,
+                DueDate: new DateTime(2024, 12, 31), ExtendedDueDate: null
+            ),
+            new(
+                OpmsIndicatorNumber: "INFRA-002", Quarter: "Q1", Status: "verified",
+                Actual: 580, ActualDescription: "Installed 580 new connections in informal settlements", ActualExpenditure: 3200000,
+                Variance: -3.33m, VarianceReason: "Material supply delays", CorrectiveMeasure: "Alternative supplier sourced",
+                SubmitterScore: 75m,
+                SubmitterUserName: "helena.visagie", SubmittedAt: new DateTime(2024, 9, 28),
+                VerifierUserName: "reneilwe.mogale", VerifiedAt: new DateTime(2024, 10, 1), VerifierComments: "Verified",
+                ApproverUserName: null, ApprovedAt: null, ApproverComments: null,
+                PmsOfficerUserName: null, PmsReviewedAt: null, PmsComments: null,
+                AuditorUserName: null, AuditedAt: null, AuditorComments: null,
+                DueDate: new DateTime(2024, 9, 30), ExtendedDueDate: null
+            ),
+            new(
+                OpmsIndicatorNumber: "FIN-001", Quarter: "Q1", Status: "submitted",
+                Actual: 88, ActualDescription: "Revenue collection achieved through enhanced follow-up", ActualExpenditure: null,
+                Variance: -2.2m, VarianceReason: "Extended payment terms for drought-affected businesses", CorrectiveMeasure: null,
+                SubmitterScore: 80m,
+                SubmitterUserName: "lindiwe.mahlangu", SubmittedAt: new DateTime(2024, 9, 28),
+                VerifierUserName: null, VerifiedAt: null, VerifierComments: null,
+                ApproverUserName: null, ApprovedAt: null, ApproverComments: null,
+                PmsOfficerUserName: null, PmsReviewedAt: null, PmsComments: null,
+                AuditorUserName: null, AuditedAt: null, AuditorComments: null,
+                DueDate: new DateTime(2024, 9, 30), ExtendedDueDate: null
+            )
+        ];
+    }
+
+    private static IReadOnlyList<IpmsSubmissionSeed> GetIpmsSubmissionSeeds()
+    {
+        return
+        [
+            new(
+                IpmsIndicatorNumber: "IPMS-INFRA-002", Quarter: "Q3", Status: "pending_verification",
+                Actual: 19.4m, ActualDescription: "Non-revenue water reduced to 19.4% following completion of the leak-detection program across zones 3 and 4.", ActualExpenditure: 46200000,
+                Variance: 0.4m, VarianceReason: "Marginally above the 19% quarterly target due to a delayed valve replacement.", CorrectiveMeasure: "Expedite outstanding valve replacements in Q4 and intensify pressure management.",
+                SubmitterScore: 85m,
+                SubmitterUserName: "sizwe.nxumalo", SubmittedAt: new DateTime(2025, 4, 28),
+                VerifierUserName: "willem.nel", VerifiedAt: new DateTime(2025, 5, 1, 9, 20, 0), VerifierComments: "Evidence aligns to meter readings and engineering reports.",
+                ApproverUserName: null, ApprovedAt: null, ApproverComments: null,
+                PmsOfficerUserName: "lethabo.khumalo", PmsReviewedAt: null, PmsComments: "Awaiting verification closure before moderation.",
+                AuditorUserName: null, AuditedAt: null, AuditorComments: null,
+                DueDate: new DateTime(2025, 4, 30), ExtendedDueDate: new DateTime(2025, 5, 15)
+            ),
+            new(
+                IpmsIndicatorNumber: "IPMS-INFRA-001", Quarter: "Q2", Status: "verified",
+                Actual: 83, ActualDescription: "Road maintenance projects progressed slower than planned after storm damage reprioritisation.", ActualExpenditure: 12400000,
+                Variance: -5, VarianceReason: "Emergency reinstatement works reduced scheduled completion output.", CorrectiveMeasure: "Reallocate the contractor team and shift non-critical works into the next period.",
+                SubmitterScore: 75m,
+                SubmitterUserName: "nomsa.dlamini", SubmittedAt: new DateTime(2024, 12, 29),
+                VerifierUserName: "ayabonga.cele", VerifiedAt: new DateTime(2025, 1, 5, 8, 30, 0), VerifierComments: "Verified against project registers and site photos.",
+                ApproverUserName: null, ApprovedAt: null, ApproverComments: null,
+                PmsOfficerUserName: null, PmsReviewedAt: null, PmsComments: null,
+                AuditorUserName: null, AuditedAt: null, AuditorComments: null,
+                DueDate: new DateTime(2024, 12, 31), ExtendedDueDate: null
+            )
+        ];
+    }
+
+    private sealed record PeriodSeed(string Code, string Name, DateTime StartDate, DateTime EndDate, string FiscalYear, bool IsActive);
+    private sealed record StrategicGoalSeed(string Code, string Name, string Description, bool IsActive);
+    private sealed record StrategicObjectiveSeed(string Code, string Name, string StrategicGoalCode, bool IsActive);
+    private sealed record BudgetSourceSeed(string Code, string Name, bool IsActive);
+    private sealed record BudgetTypeSeed(string Code, string Name, bool IsActive);
+    private sealed record UnitOfMeasureSeed(string Code, string Name, string? Symbol, bool IsActive);
+    private sealed record WardSeed(string Code, string Name, string Municipality, bool IsActive);
+    private sealed record VoteNumberSeed(string Code, string Name, string? DepartmentCode, decimal Amount, bool IsActive);
+    private sealed record OpmsTargetSeed(
+        string IndicatorNumber, string PeriodCode, string? DepartmentCode, string? UnitCode,
+        string NationalKpa, string MunicipalKpa,
+        string? StrategicGoalCode, string? StrategicObjectiveCode,
+        string PerformanceObjective, string TargetName, string KpiDescription,
+        decimal Baseline, decimal AnnualTarget, string AnnualTargetDescription,
+        string? BudgetSourceCode, string? BudgetTypeCode, string? UnitOfMeasureCode,
+        decimal Weight, string KpiType, string IndicatorType, string? FunctionalArea,
+        decimal? Q1Target, decimal? Q2Target, decimal? MidTermTarget, decimal? Q3Target, decimal? Q4Target,
+        string TargetUnitType);
+    private sealed record IpmsTargetSeed(
+        string IndicatorNumber, string PeriodCode, string? DepartmentCode, string? UnitCode,
+        string? RelatedOpmsIndicatorNumber,
+        string NationalKpa, string MunicipalKpa,
+        string? StrategicGoalCode, string? StrategicObjectiveCode,
+        string PerformanceObjective, string TargetName, string KpiDescription,
+        decimal Baseline, decimal AnnualTarget, string AnnualTargetDescription,
+        string? BudgetSourceCode, string? BudgetTypeCode, string? UnitOfMeasureCode,
+        decimal Weight, string KpiType, string IndicatorType, string? FunctionalArea,
+        decimal? Q1Target, decimal? Q2Target, decimal? MidTermTarget, decimal? Q3Target, decimal? Q4Target,
+        string TargetUnitType);
+    private sealed record OpmsSubmissionSeed(
+        string OpmsIndicatorNumber, string Quarter, string Status,
+        decimal? Actual, string? ActualDescription, decimal? ActualExpenditure,
+        decimal? Variance, string? VarianceReason, string? CorrectiveMeasure,
+        decimal? SubmitterScore,
+        string? SubmitterUserName, DateTime? SubmittedAt,
+        string? VerifierUserName, DateTime? VerifiedAt, string? VerifierComments,
+        string? ApproverUserName, DateTime? ApprovedAt, string? ApproverComments,
+        string? PmsOfficerUserName, DateTime? PmsReviewedAt, string? PmsComments,
+        string? AuditorUserName, DateTime? AuditedAt, string? AuditorComments,
+        DateTime? DueDate, DateTime? ExtendedDueDate = null);
+    private sealed record IpmsSubmissionSeed(
+        string IpmsIndicatorNumber, string Quarter, string Status,
+        decimal? Actual, string? ActualDescription, decimal? ActualExpenditure,
+        decimal? Variance, string? VarianceReason, string? CorrectiveMeasure,
+        decimal? SubmitterScore,
+        string? SubmitterUserName, DateTime? SubmittedAt,
+        string? VerifierUserName, DateTime? VerifiedAt, string? VerifierComments,
+        string? ApproverUserName, DateTime? ApprovedAt, string? ApproverComments,
+        string? PmsOfficerUserName, DateTime? PmsReviewedAt, string? PmsComments,
+        string? AuditorUserName, DateTime? AuditedAt, string? AuditorComments,
+        DateTime? DueDate, DateTime? ExtendedDueDate = null);
 }

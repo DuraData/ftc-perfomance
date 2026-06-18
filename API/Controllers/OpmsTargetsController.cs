@@ -80,24 +80,66 @@ public class OpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.Create", new AccessScopeContext(request.DepartmentId, request.UnitId, null, request.KpiId));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.Create", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
 
         var entity = new OpmsTarget
         {
-            IndicatorNumber = request.IndicatorNumber.Trim(),
-            TargetName = request.TargetName.Trim(),
-            KpiDescription = request.KpiDescription.Trim(),
+            SourceTemplateId = request.SourceTemplateId,
+            SourceTemplateVersion = request.SourceTemplateVersion,
+            PeriodId = request.PeriodId,
             DepartmentId = request.DepartmentId,
             UnitId = request.UnitId,
             AssignedUserId = request.AssignedUserId,
-            KpiId = request.KpiId,
-            SourceTemplateId = request.SourceTemplateId,
-            SourceTemplateVersion = request.SourceTemplateVersion,
+            WardIds = request.WardIds,
+            AdditionalAssigneeIds = request.AdditionalAssigneeIds,
+            VoteNumberIds = request.VoteNumberIds,
+            IndicatorNumber = request.IndicatorNumber.Trim(),
+            NationalKpa = request.NationalKpa,
+            MunicipalKpa = request.MunicipalKpa,
+            StrategicGoalId = request.StrategicGoalId,
+            StrategicObjectiveId = request.StrategicObjectiveId,
+            PerformanceObjective = request.PerformanceObjective,
+            TargetName = request.TargetName.Trim(),
+            KpiDescription = request.KpiDescription.Trim(),
             Baseline = request.Baseline,
+            BaselineDescription = request.BaselineDescription,
             AnnualTarget = request.AnnualTarget,
+            AnnualTargetDescription = request.AnnualTargetDescription,
+            BudgetSourceId = request.BudgetSourceId,
+            BudgetTypeId = request.BudgetTypeId,
+            UnitOfMeasureId = request.UnitOfMeasureId,
             Weight = request.Weight,
-            IsArchived = request.IsArchived,
+            KpiType = request.KpiType,
+            IndicatorType = request.IndicatorType,
+            FunctionalArea = request.FunctionalArea,
+            StandardClassification = request.StandardClassification,
+            IdpReference = request.IdpReference,
+            InternalReference = request.InternalReference,
+            FmsLink = request.FmsLink,
+            IsRevised = request.IsRevised,
+            IsWithdrawn = request.IsWithdrawn,
+            ReasonForWithdrawal = request.ReasonForWithdrawal,
+            TargetUnitType = request.TargetUnitType,
+            Q1Target = request.Q1Target,
+            Q1Description = request.Q1Description,
+            Q1Budget = request.Q1Budget,
+            Q2Target = request.Q2Target,
+            Q2Description = request.Q2Description,
+            Q2Budget = request.Q2Budget,
+            MidTermTarget = request.MidTermTarget,
+            MidTermDescription = request.MidTermDescription,
+            MidTermBudget = request.MidTermBudget,
+            Q3Target = request.Q3Target,
+            Q3Description = request.Q3Description,
+            Q3Budget = request.Q3Budget,
+            Q3RevisedTarget = request.Q3RevisedTarget,
+            Q4Target = request.Q4Target,
+            Q4Description = request.Q4Description,
+            Q4Budget = request.Q4Budget,
+            Q4RevisedTarget = request.Q4RevisedTarget,
+            RevisedAnnualTarget = request.RevisedAnnualTarget,
+            RevisedAnnualBudget = request.RevisedAnnualBudget,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -126,19 +168,61 @@ public class OpmsTargetsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.Edit", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
 
-        entity.IndicatorNumber = request.IndicatorNumber.Trim();
-        entity.TargetName = request.TargetName.Trim();
-        entity.KpiDescription = request.KpiDescription.Trim();
+        entity.SourceTemplateId = request.SourceTemplateId;
+        entity.SourceTemplateVersion = request.SourceTemplateVersion;
+        entity.PeriodId = request.PeriodId;
         entity.DepartmentId = request.DepartmentId;
         entity.UnitId = request.UnitId;
         entity.AssignedUserId = request.AssignedUserId;
-        entity.KpiId = request.KpiId;
-        entity.SourceTemplateId = request.SourceTemplateId;
-        entity.SourceTemplateVersion = request.SourceTemplateVersion;
+        entity.WardIds = request.WardIds;
+        entity.AdditionalAssigneeIds = request.AdditionalAssigneeIds;
+        entity.VoteNumberIds = request.VoteNumberIds;
+        entity.IndicatorNumber = request.IndicatorNumber.Trim();
+        entity.NationalKpa = request.NationalKpa;
+        entity.MunicipalKpa = request.MunicipalKpa;
+        entity.StrategicGoalId = request.StrategicGoalId;
+        entity.StrategicObjectiveId = request.StrategicObjectiveId;
+        entity.PerformanceObjective = request.PerformanceObjective;
+        entity.TargetName = request.TargetName.Trim();
+        entity.KpiDescription = request.KpiDescription.Trim();
         entity.Baseline = request.Baseline;
+        entity.BaselineDescription = request.BaselineDescription;
         entity.AnnualTarget = request.AnnualTarget;
+        entity.AnnualTargetDescription = request.AnnualTargetDescription;
+        entity.BudgetSourceId = request.BudgetSourceId;
+        entity.BudgetTypeId = request.BudgetTypeId;
+        entity.UnitOfMeasureId = request.UnitOfMeasureId;
         entity.Weight = request.Weight;
-        entity.IsArchived = request.IsArchived;
+        entity.KpiType = request.KpiType;
+        entity.IndicatorType = request.IndicatorType;
+        entity.FunctionalArea = request.FunctionalArea;
+        entity.StandardClassification = request.StandardClassification;
+        entity.IdpReference = request.IdpReference;
+        entity.InternalReference = request.InternalReference;
+        entity.FmsLink = request.FmsLink;
+        entity.IsRevised = request.IsRevised;
+        entity.IsWithdrawn = request.IsWithdrawn;
+        entity.ReasonForWithdrawal = request.ReasonForWithdrawal;
+        entity.TargetUnitType = request.TargetUnitType;
+        entity.Q1Target = request.Q1Target;
+        entity.Q1Description = request.Q1Description;
+        entity.Q1Budget = request.Q1Budget;
+        entity.Q2Target = request.Q2Target;
+        entity.Q2Description = request.Q2Description;
+        entity.Q2Budget = request.Q2Budget;
+        entity.MidTermTarget = request.MidTermTarget;
+        entity.MidTermDescription = request.MidTermDescription;
+        entity.MidTermBudget = request.MidTermBudget;
+        entity.Q3Target = request.Q3Target;
+        entity.Q3Description = request.Q3Description;
+        entity.Q3Budget = request.Q3Budget;
+        entity.Q3RevisedTarget = request.Q3RevisedTarget;
+        entity.Q4Target = request.Q4Target;
+        entity.Q4Description = request.Q4Description;
+        entity.Q4Budget = request.Q4Budget;
+        entity.Q4RevisedTarget = request.Q4RevisedTarget;
+        entity.RevisedAnnualTarget = request.RevisedAnnualTarget;
+        entity.RevisedAnnualBudget = request.RevisedAnnualBudget;
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
@@ -181,5 +265,5 @@ public class OpmsTargetsController : ControllerBase
     }
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>
-        new(target.DepartmentId, target.UnitId, target.Id, target.KpiId);
+        new(target.DepartmentId, target.UnitId, target.Id, null);
 }
