@@ -1125,7 +1125,10 @@ export function OPMSTargetLibraryList() {
             {
               label: 'Create OPMS Target',
               variant: 'primary',
-              onClick: () => { void createSelectedTargets([template]); },
+              onClick: () => {
+                localStorage.setItem('pending_opms_template_id', template.id);
+                setCurrentPath('/opms/targets/new');
+              },
             },
           ]}
         />
@@ -1235,14 +1238,8 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               variant="primary"
               icon={<Target className="h-4 w-4" />}
               onClick={() => {
-                void (async () => {
-                  const result = await createOpmsTargetApi(buildOpmsTargetPayloadFromTemplate(template));
-                  if (result.success) {
-                    pushToast('success', 'OPMS target created from template');
-                  } else {
-                    pushToast('error', result.message ?? 'Failed to create OPMS target from template');
-                  }
-                })();
+                localStorage.setItem('pending_opms_template_id', template.id);
+                setCurrentPath('/opms/targets/new');
               }}
             >
               Create OPMS Target from Template
@@ -1741,7 +1738,10 @@ export function IPMSTargetLibraryList() {
             {
               label: 'Create IPMS Target',
               variant: 'primary',
-              onClick: () => { void createSelectedTargets([template]); },
+              onClick: () => {
+                localStorage.setItem('pending_ipms_template_id', template.id);
+                setCurrentPath('/ipms/targets/new');
+              },
             },
           ]}
         />
@@ -1851,14 +1851,8 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               variant="primary"
               icon={<UserSquare2 className="h-4 w-4" />}
               onClick={() => {
-                void (async () => {
-                  const result = await createIpmsTargetApi(buildIpmsTargetPayloadFromTemplate(template));
-                  if (result.success) {
-                    pushToast('success', 'IPMS target created from template');
-                  } else {
-                    pushToast('error', result.message ?? 'Failed to create IPMS target from template');
-                  }
-                })();
+                localStorage.setItem('pending_ipms_template_id', template.id);
+                setCurrentPath('/ipms/targets/new');
               }}
             >
               Create IPMS Target from Template

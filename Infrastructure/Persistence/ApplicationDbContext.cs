@@ -149,6 +149,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasForeignKey(target => target.AssignedUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Baseline)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.AnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTarget>()
+            .Property(target => target.Weight)
+            .HasPrecision(18, 2);
+
         builder.Entity<IpmsTarget>()
             .HasOne(target => target.Department)
             .WithMany()
@@ -173,6 +185,34 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasForeignKey(target => target.RelatedOpmsTargetId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.AnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTarget>()
+            .Property(target => target.Weight)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTargetTemplate>()
+            .Property(template => template.Baseline)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTargetTemplate>()
+            .Property(template => template.AnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsTargetTemplate>()
+            .Property(template => template.Weight)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTargetTemplate>()
+            .Property(template => template.AnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsTargetTemplate>()
+            .Property(template => template.Weight)
+            .HasPrecision(18, 2);
+
         builder.Entity<OpmsSubmission>()
             .HasOne(submission => submission.OpmsTarget)
             .WithMany(target => target.Submissions)
@@ -185,6 +225,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasForeignKey(submission => submission.SubmittedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.Actual)
+            .HasPrecision(18, 2);
+
         builder.Entity<IpmsSubmission>()
             .HasOne(submission => submission.IpmsTarget)
             .WithMany(target => target.Submissions)
@@ -196,6 +240,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .WithMany()
             .HasForeignKey(submission => submission.SubmittedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.Actual)
+            .HasPrecision(18, 2);
 
         builder.Entity<PoeFile>()
             .HasOne(file => file.UploadedByUser)
@@ -238,5 +286,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .WithMany()
             .HasForeignKey(score => score.ScoredByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<SubmissionScore>()
+            .Property(score => score.Score)
+            .HasPrecision(18, 2);
     }
 }

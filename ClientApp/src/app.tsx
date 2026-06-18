@@ -27,6 +27,7 @@ import {
   OPMSTargetTemplateFormPage,
 } from './components/library/TargetLibraries';
 import { TaskManagement } from './components/tasks/TaskManagement';
+import { IPMSTargetFormPage, OPMSTargetFormPage } from './components/targets/TargetFormPages';
 import { KPILibrary } from './components/kpi/KPILibrary';
 import { Reports } from './components/reports/Reports';
 import { Settings } from './components/settings/Settings';
@@ -46,6 +47,20 @@ function AppContent() {
   }
 
   const renderPage = () => {
+    if (currentPath === '/opms/targets/new') {
+      return <OPMSTargetFormPage />;
+    }
+    if (currentPath === '/ipms/targets/new') {
+      return <IPMSTargetFormPage />;
+    }
+    if (currentPath.startsWith('/opms/targets/') && currentPath.endsWith('/edit')) {
+      const id = currentPath.split('/')[3];
+      return <OPMSTargetFormPage targetId={id} />;
+    }
+    if (currentPath.startsWith('/ipms/targets/') && currentPath.endsWith('/edit')) {
+      const id = currentPath.split('/')[3];
+      return <IPMSTargetFormPage targetId={id} />;
+    }
     if (currentPath === '/opms/library/new') {
       return <OPMSTargetTemplateFormPage />;
     }
