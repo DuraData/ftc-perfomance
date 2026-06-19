@@ -1390,3 +1390,246 @@ export interface DueDateExtensionPayload {
   extendedDueDate: string;
   reason: string;
 }
+
+export interface IdpPlanSummary {
+  id: number;
+  municipalityName: string;
+  planTitle: string;
+  planCode: string;
+  startFinancialYear: number;
+  endFinancialYear: number;
+  status: string;
+  currentVersionNumber: number;
+  createdAt: string;
+  approvedAt?: string | null;
+}
+
+export interface IdpPlanVersion {
+  id: number;
+  idpPlanId: number;
+  versionNumber: number;
+  versionType: string;
+  versionLabel: string;
+  reviewYear?: string | null;
+  summaryOfChanges?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  createdByUserId: string;
+}
+
+export interface IdpStrategicOutcome {
+  id: number;
+  idpPlanId: number;
+  code: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+}
+
+export interface IdpStrategicObjective {
+  id: number;
+  idpStrategicOutcomeId: number;
+  code: string;
+  name: string;
+  description: string;
+  baselineValue: number;
+  targetValue: number;
+  responsibleDepartmentId?: number | null;
+  responsibleDepartmentName?: string | null;
+  strategicOwnerUserId?: string | null;
+  strategicOwnerName?: string | null;
+  startDate: string;
+  endDate: string;
+  budgetAllocation: number;
+  sortOrder: number;
+}
+
+export interface IdpDevelopmentPriority {
+  id: number;
+  idpStrategicObjectiveId: number;
+  name: string;
+  description: string;
+  sortOrder: number;
+}
+
+export interface IdpProgramme {
+  id: number;
+  idpDevelopmentPriorityId: number;
+  programmeCode: string;
+  name: string;
+  description: string;
+  responsibleDepartmentId?: number | null;
+  responsibleDepartmentName?: string | null;
+  plannedBudget: number;
+  approvedBudget: number;
+  actualExpenditure: number;
+}
+
+export interface IdpProject {
+  id: number;
+  idpProgrammeId: number;
+  projectCode: string;
+  projectName: string;
+  description: string;
+  category: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  budget: number;
+  fundingSource: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  communityNeedReference?: string | null;
+}
+
+export interface IdpKpi {
+  id: number;
+  idpProjectId: number;
+  kpiCode: string;
+  kpiName: string;
+  description: string;
+  formula: string;
+  baseline: number;
+  annualTarget: number;
+  fiveYearTarget: number;
+  responsibleDepartmentId?: number | null;
+  responsibleDepartmentName?: string | null;
+  dataSource: string;
+  reportingFrequency: string;
+  indicatorType: string;
+  circular88Linked: boolean;
+  treasuryTidLinked: boolean;
+}
+
+export interface IdpAnnualTarget {
+  id: number;
+  idpKpiId: number;
+  financialYear: number;
+  targetValue: number;
+  actualValue?: number | null;
+  progressComment?: string | null;
+}
+
+export interface IdpAlignmentMatrixItem {
+  strategicOutcomeCode: string;
+  strategicOutcomeName: string;
+  objectiveCode: string;
+  objectiveName: string;
+  frameworkType: string;
+  frameworkReferenceCode: string;
+  frameworkReferenceTitle: string;
+}
+
+export interface IdpAlignmentLink {
+  id: number;
+  idpStrategicObjectiveId: number;
+  frameworkType: string;
+  frameworkReferenceCode: string;
+  frameworkReferenceTitle: string;
+  notes?: string | null;
+}
+
+export interface IdpRiskLink {
+  id: number;
+  idpStrategicObjectiveId?: number | null;
+  idpProjectId?: number | null;
+  idpKpiId?: number | null;
+  riskReference: string;
+  riskTitle: string;
+  mitigationPlan?: string | null;
+  riskLevel: string;
+}
+
+export interface IdpBudgetSnapshot {
+  id: number;
+  idpStrategicObjectiveId?: number | null;
+  idpProjectId?: number | null;
+  financialYear: number;
+  plannedBudget: number;
+  approvedBudget: number;
+  actualExpenditure: number;
+  sourceSystem: string;
+  capturedAt: string;
+}
+
+export interface IdpWardParticipation {
+  wardId: number;
+  wardName: string;
+  meetingCount: number;
+  participantsCount: number;
+  needsCaptured: number;
+}
+
+export interface IdpDashboard {
+  planId: number;
+  planTitle: string;
+  outcomes: number;
+  objectives: number;
+  projects: number;
+  kpis: number;
+  communitySessions: number;
+  risks: number;
+  plannedBudget: number;
+  approvedBudget: number;
+  actualExpenditure: number;
+  kpiAchievementRate: number;
+  topRiskTitles: string[];
+  wardParticipation: IdpWardParticipation[];
+  alignmentMatrix: IdpAlignmentMatrixItem[];
+}
+
+export interface IdpHierarchy {
+  plan: IdpPlanSummary;
+  versions: IdpPlanVersion[];
+  outcomes: IdpStrategicOutcome[];
+  objectives: IdpStrategicObjective[];
+  priorities: IdpDevelopmentPriority[];
+  programmes: IdpProgramme[];
+  projects: IdpProject[];
+  kpis: IdpKpi[];
+  annualTargets: IdpAnnualTarget[];
+  alignmentLinks: IdpAlignmentLink[];
+  riskLinks: IdpRiskLink[];
+  budgetSnapshots: IdpBudgetSnapshot[];
+}
+
+export interface IdpReportDocument {
+  reportName: string;
+  contentType: string;
+  fileName: string;
+  content: number[];
+}
+
+export interface CreateIdpPlanPayload {
+  municipalityName: string;
+  planTitle: string;
+  planCode: string;
+  startFinancialYear: number;
+  endFinancialYear: number;
+}
+
+export interface CreateIdpPlanVersionPayload {
+  versionType: string;
+  versionLabel: string;
+  reviewYear?: string | null;
+  summaryOfChanges?: string | null;
+}
+
+export interface CreateIdpCommentPayload {
+  idpPlanId: number;
+  idpPlanVersionId?: number | null;
+  entityName: string;
+  entityId: string;
+  comment: string;
+}
+
+export interface CreateIdpCommunitySessionPayload {
+  idpPlanId: number;
+  participationType: string;
+  sessionDate: string;
+  venue: string;
+  wardId?: number | null;
+  participantsCount: number;
+  attendanceRegisterPath?: string | null;
+  minutesPath?: string | null;
+}

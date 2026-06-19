@@ -33,6 +33,14 @@ import { Reports } from './components/reports/Reports';
 import { Settings } from './components/settings/Settings';
 import { Login } from './components/auth/Login';
 import { AccessDeniedPage, useCanAccessPath } from './components/security/AccessControl';
+import {
+  IdpAlignmentMatrixPage,
+  IdpCommunityParticipationPage,
+  IdpHierarchyPage,
+  IdpPlanManagementPage,
+  IdpPlanningDashboardPage,
+  IdpReportsPage,
+} from './components/idp/IdpWorkspace';
 
 function AppContent() {
   const { currentPath, isAuthenticated } = useApp();
@@ -203,6 +211,18 @@ function AppContent() {
         return <AddressesPage />;
       case '/reports':
         return <Reports />;
+      case '/idp/dashboard':
+        return <IdpPlanningDashboardPage />;
+      case '/idp/plans':
+        return <IdpPlanManagementPage />;
+      case '/idp/hierarchy':
+        return <IdpHierarchyPage />;
+      case '/idp/community':
+        return <IdpCommunityParticipationPage />;
+      case '/idp/alignment':
+        return <IdpAlignmentMatrixPage />;
+      case '/idp/reports':
+        return <IdpReportsPage />;
       case '/settings':
         return <Settings />;
       default:

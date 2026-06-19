@@ -45,6 +45,19 @@ const buildFullMenu = (): MenuItem[] => [
     ],
   },
   {
+    label: 'IDP',
+    icon: 'map',
+    isDivider: false,
+    children: [
+      { label: 'IDP Dashboard', path: '/idp/dashboard', icon: 'dashboard', isDivider: false },
+      { label: 'IDP Plans', path: '/idp/plans', icon: 'map', isDivider: false },
+      { label: 'Planning Hierarchy', path: '/idp/hierarchy', icon: 'target', isDivider: false },
+      { label: 'Community Participation', path: '/idp/community', icon: 'users', isDivider: false },
+      { label: 'Alignment Matrix', path: '/idp/alignment', icon: 'layers', isDivider: false },
+      { label: 'IDP Reports', path: '/idp/reports', icon: 'reports', isDivider: false },
+    ],
+  },
+  {
     label: 'Workflow',
     icon: 'workflow',
     isDivider: false,

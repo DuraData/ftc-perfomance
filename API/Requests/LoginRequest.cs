@@ -253,3 +253,182 @@ public record SaveIpmsSubmissionRequest(
 public record SubmissionWorkflowActionRequest(string? Comment, decimal? Score = null);
 
 public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason);
+
+public record CreateIdpPlanRequest(
+    string MunicipalityName,
+    string PlanTitle,
+    string PlanCode,
+    int StartFinancialYear,
+    int EndFinancialYear);
+
+public record UpdateIdpPlanRequest(
+    string PlanTitle,
+    int StartFinancialYear,
+    int EndFinancialYear,
+    string Status);
+
+public record CreateIdpPlanVersionRequest(
+    string VersionType,
+    string VersionLabel,
+    string? ReviewYear,
+    string? SummaryOfChanges);
+
+public record CreateIdpStrategicOutcomeRequest(
+    int IdpPlanId,
+    string Code,
+    string Name,
+    string Description,
+    int SortOrder);
+
+public record CreateIdpStrategicObjectiveRequest(
+    int IdpStrategicOutcomeId,
+    string Code,
+    string Name,
+    string Description,
+    decimal BaselineValue,
+    decimal TargetValue,
+    int? ResponsibleDepartmentId,
+    string? StrategicOwnerUserId,
+    DateTime StartDate,
+    DateTime EndDate,
+    decimal BudgetAllocation,
+    int SortOrder);
+
+public record CreateIdpDevelopmentPriorityRequest(
+    int IdpStrategicObjectiveId,
+    string Name,
+    string Description,
+    int SortOrder);
+
+public record CreateIdpProgrammeRequest(
+    int IdpDevelopmentPriorityId,
+    string ProgrammeCode,
+    string Name,
+    string Description,
+    int? ResponsibleDepartmentId,
+    decimal PlannedBudget,
+    decimal ApprovedBudget,
+    decimal ActualExpenditure);
+
+public record CreateIdpProjectRequest(
+    int IdpProgrammeId,
+    string ProjectCode,
+    string ProjectName,
+    string Description,
+    string Category,
+    int? DepartmentId,
+    decimal Budget,
+    string FundingSource,
+    DateTime StartDate,
+    DateTime EndDate,
+    string Status,
+    string? CommunityNeedReference);
+
+public record CreateIdpKpiRequest(
+    int IdpProjectId,
+    string KpiCode,
+    string KpiName,
+    string Description,
+    string Formula,
+    decimal Baseline,
+    decimal AnnualTarget,
+    decimal FiveYearTarget,
+    int? ResponsibleDepartmentId,
+    string DataSource,
+    string ReportingFrequency,
+    string IndicatorType,
+    bool Circular88Linked,
+    bool TreasuryTidLinked);
+
+public record CreateIdpAnnualTargetRequest(
+    int IdpKpiId,
+    int FinancialYear,
+    decimal TargetValue,
+    decimal? ActualValue,
+    string? ProgressComment);
+
+public record CreateIdpAlignmentLinkRequest(
+    int IdpStrategicObjectiveId,
+    string FrameworkType,
+    string FrameworkReferenceCode,
+    string FrameworkReferenceTitle,
+    string? Notes);
+
+public record CreateIdpCommunitySessionRequest(
+    int IdpPlanId,
+    string ParticipationType,
+    DateTime SessionDate,
+    string Venue,
+    int? WardId,
+    int ParticipantsCount,
+    string? AttendanceRegisterPath,
+    string? MinutesPath);
+
+public record CreateIdpCommunityNeedRequest(
+    int IdpCommunitySessionId,
+    string IssueCategory,
+    string Description,
+    string PriorityLevel,
+    string? ProposedIntervention);
+
+public record CreateIdpWardInputRequest(
+    int IdpPlanId,
+    int WardId,
+    string WardPlanSummary,
+    string WardPriorities,
+    string WardProjects);
+
+public record CreateIdpStakeholderEngagementRequest(
+    int IdpCommunitySessionId,
+    string StakeholderType,
+    string StakeholderName,
+    string? ContactPerson,
+    string? ContactEmail,
+    string? KeyInput);
+
+public record CreateIdpRiskLinkRequest(
+    int? IdpStrategicObjectiveId,
+    int? IdpProjectId,
+    int? IdpKpiId,
+    string RiskReference,
+    string RiskTitle,
+    string? MitigationPlan,
+    string RiskLevel);
+
+public record CreateIdpBudgetSnapshotRequest(
+    int? IdpStrategicObjectiveId,
+    int? IdpProjectId,
+    int FinancialYear,
+    decimal PlannedBudget,
+    decimal ApprovedBudget,
+    decimal ActualExpenditure,
+    string SourceSystem);
+
+public record CreateIdpDocumentRequest(
+    int IdpPlanId,
+    int? IdpPlanVersionId,
+    string Category,
+    string Title,
+    string FileName,
+    string StoragePath,
+    string? ContentType,
+    long SizeInBytes,
+    int VersionNumber,
+    bool IsApproved);
+
+public record CreateIdpCommentRequest(
+    int IdpPlanId,
+    int? IdpPlanVersionId,
+    string EntityName,
+    string EntityId,
+    string Comment);
+
+public record CreateIdpTaskRequest(
+    int IdpPlanId,
+    int? IdpPlanVersionId,
+    string Title,
+    string Description,
+    string AssignedToUserId,
+    DateTime DueDate);
+
+public record CompleteIdpTaskRequest(bool IsCompleted);

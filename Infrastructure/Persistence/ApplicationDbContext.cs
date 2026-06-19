@@ -42,6 +42,26 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<ReviewComment> ReviewComments { get; set; } = null!;
     public DbSet<AuditFinding> AuditFindings { get; set; } = null!;
     public DbSet<SubmissionScore> SubmissionScores { get; set; } = null!;
+    public DbSet<IdpPlan> IdpPlans { get; set; } = null!;
+    public DbSet<IdpPlanVersion> IdpPlanVersions { get; set; } = null!;
+    public DbSet<IdpChangeLog> IdpChangeLogs { get; set; } = null!;
+    public DbSet<IdpStrategicOutcome> IdpStrategicOutcomes { get; set; } = null!;
+    public DbSet<IdpStrategicObjective> IdpStrategicObjectives { get; set; } = null!;
+    public DbSet<IdpDevelopmentPriority> IdpDevelopmentPriorities { get; set; } = null!;
+    public DbSet<IdpProgramme> IdpProgrammes { get; set; } = null!;
+    public DbSet<IdpProject> IdpProjects { get; set; } = null!;
+    public DbSet<IdpKpi> IdpKpis { get; set; } = null!;
+    public DbSet<IdpAnnualTarget> IdpAnnualTargets { get; set; } = null!;
+    public DbSet<IdpAlignmentLink> IdpAlignmentLinks { get; set; } = null!;
+    public DbSet<IdpCommunitySession> IdpCommunitySessions { get; set; } = null!;
+    public DbSet<IdpCommunityNeed> IdpCommunityNeeds { get; set; } = null!;
+    public DbSet<IdpWardInput> IdpWardInputs { get; set; } = null!;
+    public DbSet<IdpStakeholderEngagement> IdpStakeholderEngagements { get; set; } = null!;
+    public DbSet<IdpRiskLink> IdpRiskLinks { get; set; } = null!;
+    public DbSet<IdpBudgetSnapshot> IdpBudgetSnapshots { get; set; } = null!;
+    public DbSet<IdpDocument> IdpDocuments { get; set; } = null!;
+    public DbSet<IdpCollaborationComment> IdpCollaborationComments { get; set; } = null!;
+    public DbSet<IdpTaskAssignment> IdpTaskAssignments { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -536,5 +556,341 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<SubmissionScore>()
             .Property(score => score.Score)
             .HasPrecision(18, 2);
+
+        builder.Entity<IdpPlan>()
+            .HasIndex(plan => plan.PlanCode)
+            .IsUnique();
+
+        builder.Entity<IdpPlan>()
+            .HasOne(plan => plan.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(plan => plan.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpPlan>()
+            .HasOne(plan => plan.ApprovedByUser)
+            .WithMany()
+            .HasForeignKey(plan => plan.ApprovedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpPlanVersion>()
+            .HasIndex(version => new { version.IdpPlanId, version.VersionNumber })
+            .IsUnique();
+
+        builder.Entity<IdpPlanVersion>()
+            .HasOne(version => version.IdpPlan)
+            .WithMany(plan => plan.Versions)
+            .HasForeignKey(version => version.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpPlanVersion>()
+            .HasOne(version => version.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(version => version.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpChangeLog>()
+            .HasOne(changeLog => changeLog.IdpPlanVersion)
+            .WithMany(version => version.ChangeLogs)
+            .HasForeignKey(changeLog => changeLog.IdpPlanVersionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpChangeLog>()
+            .HasOne(changeLog => changeLog.ChangedByUser)
+            .WithMany()
+            .HasForeignKey(changeLog => changeLog.ChangedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpStrategicOutcome>()
+            .HasIndex(outcome => new { outcome.IdpPlanId, outcome.Code })
+            .IsUnique();
+
+        builder.Entity<IdpStrategicOutcome>()
+            .HasOne(outcome => outcome.IdpPlan)
+            .WithMany(plan => plan.StrategicOutcomes)
+            .HasForeignKey(outcome => outcome.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpStrategicObjective>()
+            .HasIndex(objective => new { objective.IdpStrategicOutcomeId, objective.Code })
+            .IsUnique();
+
+        builder.Entity<IdpStrategicObjective>()
+            .HasOne(objective => objective.IdpStrategicOutcome)
+            .WithMany(outcome => outcome.StrategicObjectives)
+            .HasForeignKey(objective => objective.IdpStrategicOutcomeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpStrategicObjective>()
+            .HasOne(objective => objective.ResponsibleDepartment)
+            .WithMany()
+            .HasForeignKey(objective => objective.ResponsibleDepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpStrategicObjective>()
+            .HasOne(objective => objective.StrategicOwnerUser)
+            .WithMany()
+            .HasForeignKey(objective => objective.StrategicOwnerUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpStrategicObjective>()
+            .Property(objective => objective.BaselineValue)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpStrategicObjective>()
+            .Property(objective => objective.TargetValue)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpStrategicObjective>()
+            .Property(objective => objective.BudgetAllocation)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpDevelopmentPriority>()
+            .HasOne(priority => priority.IdpStrategicObjective)
+            .WithMany(objective => objective.DevelopmentPriorities)
+            .HasForeignKey(priority => priority.IdpStrategicObjectiveId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpProgramme>()
+            .HasIndex(programme => new { programme.IdpDevelopmentPriorityId, programme.ProgrammeCode })
+            .IsUnique();
+
+        builder.Entity<IdpProgramme>()
+            .HasOne(programme => programme.IdpDevelopmentPriority)
+            .WithMany(priority => priority.Programmes)
+            .HasForeignKey(programme => programme.IdpDevelopmentPriorityId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpProgramme>()
+            .HasOne(programme => programme.ResponsibleDepartment)
+            .WithMany()
+            .HasForeignKey(programme => programme.ResponsibleDepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpProgramme>()
+            .Property(programme => programme.PlannedBudget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpProgramme>()
+            .Property(programme => programme.ApprovedBudget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpProgramme>()
+            .Property(programme => programme.ActualExpenditure)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpProject>()
+            .HasIndex(project => new { project.IdpProgrammeId, project.ProjectCode })
+            .IsUnique();
+
+        builder.Entity<IdpProject>()
+            .HasOne(project => project.IdpProgramme)
+            .WithMany(programme => programme.Projects)
+            .HasForeignKey(project => project.IdpProgrammeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpProject>()
+            .HasOne(project => project.Department)
+            .WithMany()
+            .HasForeignKey(project => project.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpProject>()
+            .Property(project => project.Budget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpKpi>()
+            .HasIndex(kpi => new { kpi.IdpProjectId, kpi.KpiCode })
+            .IsUnique();
+
+        builder.Entity<IdpKpi>()
+            .HasOne(kpi => kpi.IdpProject)
+            .WithMany(project => project.Kpis)
+            .HasForeignKey(kpi => kpi.IdpProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpKpi>()
+            .HasOne(kpi => kpi.ResponsibleDepartment)
+            .WithMany()
+            .HasForeignKey(kpi => kpi.ResponsibleDepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpKpi>()
+            .Property(kpi => kpi.Baseline)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpKpi>()
+            .Property(kpi => kpi.AnnualTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpKpi>()
+            .Property(kpi => kpi.FiveYearTarget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpAnnualTarget>()
+            .HasIndex(annualTarget => new { annualTarget.IdpKpiId, annualTarget.FinancialYear })
+            .IsUnique();
+
+        builder.Entity<IdpAnnualTarget>()
+            .HasOne(annualTarget => annualTarget.IdpKpi)
+            .WithMany(kpi => kpi.AnnualTargets)
+            .HasForeignKey(annualTarget => annualTarget.IdpKpiId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpAnnualTarget>()
+            .Property(annualTarget => annualTarget.TargetValue)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpAnnualTarget>()
+            .Property(annualTarget => annualTarget.ActualValue)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpAlignmentLink>()
+            .HasOne(link => link.IdpStrategicObjective)
+            .WithMany(objective => objective.AlignmentLinks)
+            .HasForeignKey(link => link.IdpStrategicObjectiveId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpCommunitySession>()
+            .HasOne(session => session.IdpPlan)
+            .WithMany(plan => plan.CommunitySessions)
+            .HasForeignKey(session => session.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpCommunitySession>()
+            .HasOne(session => session.Ward)
+            .WithMany()
+            .HasForeignKey(session => session.WardId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpCommunityNeed>()
+            .HasOne(need => need.IdpCommunitySession)
+            .WithMany(session => session.CommunityNeeds)
+            .HasForeignKey(need => need.IdpCommunitySessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpWardInput>()
+            .HasIndex(wardInput => new { wardInput.IdpPlanId, wardInput.WardId })
+            .IsUnique();
+
+        builder.Entity<IdpWardInput>()
+            .HasOne(wardInput => wardInput.IdpPlan)
+            .WithMany()
+            .HasForeignKey(wardInput => wardInput.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpWardInput>()
+            .HasOne(wardInput => wardInput.Ward)
+            .WithMany()
+            .HasForeignKey(wardInput => wardInput.WardId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpStakeholderEngagement>()
+            .HasOne(engagement => engagement.IdpCommunitySession)
+            .WithMany(session => session.StakeholderEngagements)
+            .HasForeignKey(engagement => engagement.IdpCommunitySessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpRiskLink>()
+            .HasOne(riskLink => riskLink.IdpStrategicObjective)
+            .WithMany(objective => objective.RiskLinks)
+            .HasForeignKey(riskLink => riskLink.IdpStrategicObjectiveId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpRiskLink>()
+            .HasOne(riskLink => riskLink.IdpProject)
+            .WithMany(project => project.RiskLinks)
+            .HasForeignKey(riskLink => riskLink.IdpProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpRiskLink>()
+            .HasOne(riskLink => riskLink.IdpKpi)
+            .WithMany(kpi => kpi.RiskLinks)
+            .HasForeignKey(riskLink => riskLink.IdpKpiId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpBudgetSnapshot>()
+            .HasOne(snapshot => snapshot.IdpStrategicObjective)
+            .WithMany(objective => objective.BudgetSnapshots)
+            .HasForeignKey(snapshot => snapshot.IdpStrategicObjectiveId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpBudgetSnapshot>()
+            .HasOne(snapshot => snapshot.IdpProject)
+            .WithMany(project => project.BudgetSnapshots)
+            .HasForeignKey(snapshot => snapshot.IdpProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpBudgetSnapshot>()
+            .Property(snapshot => snapshot.PlannedBudget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpBudgetSnapshot>()
+            .Property(snapshot => snapshot.ApprovedBudget)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpBudgetSnapshot>()
+            .Property(snapshot => snapshot.ActualExpenditure)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IdpDocument>()
+            .HasOne(document => document.IdpPlan)
+            .WithMany(plan => plan.Documents)
+            .HasForeignKey(document => document.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpDocument>()
+            .HasOne(document => document.IdpPlanVersion)
+            .WithMany()
+            .HasForeignKey(document => document.IdpPlanVersionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpDocument>()
+            .HasOne(document => document.UploadedByUser)
+            .WithMany()
+            .HasForeignKey(document => document.UploadedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpCollaborationComment>()
+            .HasOne(comment => comment.IdpPlan)
+            .WithMany()
+            .HasForeignKey(comment => comment.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpCollaborationComment>()
+            .HasOne(comment => comment.IdpPlanVersion)
+            .WithMany()
+            .HasForeignKey(comment => comment.IdpPlanVersionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpCollaborationComment>()
+            .HasOne(comment => comment.CommentedByUser)
+            .WithMany()
+            .HasForeignKey(comment => comment.CommentedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpTaskAssignment>()
+            .HasOne(task => task.IdpPlan)
+            .WithMany()
+            .HasForeignKey(task => task.IdpPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<IdpTaskAssignment>()
+            .HasOne(task => task.IdpPlanVersion)
+            .WithMany()
+            .HasForeignKey(task => task.IdpPlanVersionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpTaskAssignment>()
+            .HasOne(task => task.AssignedToUser)
+            .WithMany()
+            .HasForeignKey(task => task.AssignedToUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpTaskAssignment>()
+            .HasOne(task => task.AssignedByUser)
+            .WithMany()
+            .HasForeignKey(task => task.AssignedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

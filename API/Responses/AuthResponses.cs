@@ -352,3 +352,235 @@ public record AuditTrailEntryResponse(
     string ChangedBy,
     DateTime ChangedAt,
     string? IpAddress);
+
+public record IdpPlanSummaryResponse(
+    int Id,
+    string MunicipalityName,
+    string PlanTitle,
+    string PlanCode,
+    int StartFinancialYear,
+    int EndFinancialYear,
+    string Status,
+    int CurrentVersionNumber,
+    DateTime CreatedAt,
+    DateTime? ApprovedAt);
+
+public record IdpPlanVersionResponse(
+    int Id,
+    int IdpPlanId,
+    int VersionNumber,
+    string VersionType,
+    string VersionLabel,
+    string? ReviewYear,
+    string? SummaryOfChanges,
+    bool IsActive,
+    DateTime CreatedAt,
+    string CreatedByUserId);
+
+public record IdpStrategicOutcomeResponse(int Id, int IdpPlanId, string Code, string Name, string Description, int SortOrder);
+
+public record IdpStrategicObjectiveResponse(
+    int Id,
+    int IdpStrategicOutcomeId,
+    string Code,
+    string Name,
+    string Description,
+    decimal BaselineValue,
+    decimal TargetValue,
+    int? ResponsibleDepartmentId,
+    string? ResponsibleDepartmentName,
+    string? StrategicOwnerUserId,
+    string? StrategicOwnerName,
+    DateTime StartDate,
+    DateTime EndDate,
+    decimal BudgetAllocation,
+    int SortOrder);
+
+public record IdpDevelopmentPriorityResponse(int Id, int IdpStrategicObjectiveId, string Name, string Description, int SortOrder);
+
+public record IdpProgrammeResponse(
+    int Id,
+    int IdpDevelopmentPriorityId,
+    string ProgrammeCode,
+    string Name,
+    string Description,
+    int? ResponsibleDepartmentId,
+    string? ResponsibleDepartmentName,
+    decimal PlannedBudget,
+    decimal ApprovedBudget,
+    decimal ActualExpenditure);
+
+public record IdpProjectResponse(
+    int Id,
+    int IdpProgrammeId,
+    string ProjectCode,
+    string ProjectName,
+    string Description,
+    string Category,
+    int? DepartmentId,
+    string? DepartmentName,
+    decimal Budget,
+    string FundingSource,
+    DateTime StartDate,
+    DateTime EndDate,
+    string Status,
+    string? CommunityNeedReference);
+
+public record IdpKpiResponse(
+    int Id,
+    int IdpProjectId,
+    string KpiCode,
+    string KpiName,
+    string Description,
+    string Formula,
+    decimal Baseline,
+    decimal AnnualTarget,
+    decimal FiveYearTarget,
+    int? ResponsibleDepartmentId,
+    string? ResponsibleDepartmentName,
+    string DataSource,
+    string ReportingFrequency,
+    string IndicatorType,
+    bool Circular88Linked,
+    bool TreasuryTidLinked);
+
+public record IdpAnnualTargetResponse(int Id, int IdpKpiId, int FinancialYear, decimal TargetValue, decimal? ActualValue, string? ProgressComment);
+
+public record IdpAlignmentLinkResponse(
+    long Id,
+    int IdpStrategicObjectiveId,
+    string FrameworkType,
+    string FrameworkReferenceCode,
+    string FrameworkReferenceTitle,
+    string? Notes);
+
+public record IdpCommunitySessionResponse(
+    int Id,
+    int IdpPlanId,
+    string ParticipationType,
+    DateTime SessionDate,
+    string Venue,
+    int? WardId,
+    string? WardName,
+    int ParticipantsCount,
+    string? AttendanceRegisterPath,
+    string? MinutesPath);
+
+public record IdpCommunityNeedResponse(int Id, int IdpCommunitySessionId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention);
+
+public record IdpWardInputResponse(int Id, int IdpPlanId, int WardId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects);
+
+public record IdpStakeholderEngagementResponse(
+    int Id,
+    int IdpCommunitySessionId,
+    string StakeholderType,
+    string StakeholderName,
+    string? ContactPerson,
+    string? ContactEmail,
+    string? KeyInput);
+
+public record IdpRiskLinkResponse(
+    long Id,
+    int? IdpStrategicObjectiveId,
+    int? IdpProjectId,
+    int? IdpKpiId,
+    string RiskReference,
+    string RiskTitle,
+    string? MitigationPlan,
+    string RiskLevel);
+
+public record IdpBudgetSnapshotResponse(
+    long Id,
+    int? IdpStrategicObjectiveId,
+    int? IdpProjectId,
+    int FinancialYear,
+    decimal PlannedBudget,
+    decimal ApprovedBudget,
+    decimal ActualExpenditure,
+    string SourceSystem,
+    DateTime CapturedAt);
+
+public record IdpDocumentResponse(
+    int Id,
+    int IdpPlanId,
+    int? IdpPlanVersionId,
+    string Category,
+    string Title,
+    string FileName,
+    string StoragePath,
+    string? ContentType,
+    long SizeInBytes,
+    int VersionNumber,
+    bool IsApproved,
+    DateTime UploadedAt,
+    string UploadedByUserId,
+    string? UploadedByName);
+
+public record IdpCommentResponse(
+    long Id,
+    int IdpPlanId,
+    int? IdpPlanVersionId,
+    string EntityName,
+    string EntityId,
+    string Comment,
+    string CommentedByUserId,
+    string? CommentedByName,
+    DateTime CommentedAt);
+
+public record IdpTaskResponse(
+    long Id,
+    int IdpPlanId,
+    int? IdpPlanVersionId,
+    string Title,
+    string Description,
+    string AssignedToUserId,
+    string? AssignedToName,
+    string AssignedByUserId,
+    string? AssignedByName,
+    DateTime DueDate,
+    bool IsCompleted,
+    DateTime? CompletedAt);
+
+public record IdpHierarchyResponse(
+    IdpPlanSummaryResponse Plan,
+    IdpPlanVersionResponse[] Versions,
+    IdpStrategicOutcomeResponse[] Outcomes,
+    IdpStrategicObjectiveResponse[] Objectives,
+    IdpDevelopmentPriorityResponse[] Priorities,
+    IdpProgrammeResponse[] Programmes,
+    IdpProjectResponse[] Projects,
+    IdpKpiResponse[] Kpis,
+    IdpAnnualTargetResponse[] AnnualTargets,
+    IdpAlignmentLinkResponse[] AlignmentLinks,
+    IdpRiskLinkResponse[] RiskLinks,
+    IdpBudgetSnapshotResponse[] BudgetSnapshots);
+
+public record IdpDashboardResponse(
+    int PlanId,
+    string PlanTitle,
+    int Outcomes,
+    int Objectives,
+    int Projects,
+    int Kpis,
+    int CommunitySessions,
+    int Risks,
+    decimal PlannedBudget,
+    decimal ApprovedBudget,
+    decimal ActualExpenditure,
+    decimal KpiAchievementRate,
+    string[] TopRiskTitles,
+    IdpWardParticipationResponse[] WardParticipation,
+    IdpAlignmentMatrixItemResponse[] AlignmentMatrix);
+
+public record IdpWardParticipationResponse(int WardId, string WardName, int MeetingCount, int ParticipantsCount, int NeedsCaptured);
+
+public record IdpAlignmentMatrixItemResponse(
+    string StrategicOutcomeCode,
+    string StrategicOutcomeName,
+    string ObjectiveCode,
+    string ObjectiveName,
+    string FrameworkType,
+    string FrameworkReferenceCode,
+    string FrameworkReferenceTitle);
+
+public record IdpReportDocumentResponse(string ReportName, string ContentType, string FileName, byte[] Content);

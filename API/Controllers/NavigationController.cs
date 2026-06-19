@@ -62,6 +62,36 @@ public class NavigationController : ControllerBase
             items.Add(new MenuItemResponse("IPMS", null, "target", ipmsChildren.ToArray(), false));
         }
 
+        var idpChildren = new List<MenuItemResponse>();
+        if (fullAccess || HasPermission(permissions, "IDP.Dashboard.View"))
+        {
+            idpChildren.Add(new MenuItemResponse("IDP Dashboard", "/idp/dashboard", "dashboard", null, false));
+        }
+        if (fullAccess || HasPermission(permissions, "IDP.Plan.View", "IDP.Plan.Manage"))
+        {
+            idpChildren.Add(new MenuItemResponse("IDP Plans", "/idp/plans", "target", null, false));
+        }
+        if (fullAccess || HasPermission(permissions, "IDP.Hierarchy.Manage"))
+        {
+            idpChildren.Add(new MenuItemResponse("Planning Hierarchy", "/idp/hierarchy", "target", null, false));
+        }
+        if (fullAccess || HasPermission(permissions, "IDP.Participation.View", "IDP.Participation.Manage"))
+        {
+            idpChildren.Add(new MenuItemResponse("Community Participation", "/idp/community", "users", null, false));
+        }
+        if (fullAccess || HasPermission(permissions, "IDP.Alignment.View", "IDP.Alignment.Manage"))
+        {
+            idpChildren.Add(new MenuItemResponse("Alignment Matrix", "/idp/alignment", "layers", null, false));
+        }
+        if (fullAccess || HasPermission(permissions, "IDP.Reports.Generate"))
+        {
+            idpChildren.Add(new MenuItemResponse("IDP Reports", "/idp/reports", "reports", null, false));
+        }
+        if (idpChildren.Count > 0)
+        {
+            items.Add(new MenuItemResponse("IDP", null, "target", idpChildren.ToArray(), false));
+        }
+
         var workflowChildren = new List<MenuItemResponse>();
         if (fullAccess || HasPermission(permissions, "Workflow.Submit.View", "Workflow.Verify.View", "Workflow.Review.View", "Workflow.Approve.View", "Workflow.Audit.View"))
         {

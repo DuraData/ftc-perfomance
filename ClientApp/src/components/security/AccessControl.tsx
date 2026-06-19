@@ -8,6 +8,12 @@ import { useApp } from '../../context/AppContext';
 const routePermissionMap: Array<{ match: (path: string) => boolean; permissions: string[] }> = [
   { match: (path) => path.startsWith('/opms/library'), permissions: ['OPMS.Library.View', 'OPMS.Library.Create', 'OPMS.Library.Edit', 'OPMS.Library.UseTemplate'] },
   { match: (path) => path.startsWith('/ipms/library'), permissions: ['IPMS.Library.View', 'IPMS.Library.Create', 'IPMS.Library.Edit', 'IPMS.Library.UseTemplate'] },
+  { match: (path) => path.startsWith('/idp/dashboard'), permissions: ['IDP.Dashboard.View'] },
+  { match: (path) => path.startsWith('/idp/plans'), permissions: ['IDP.Plan.View', 'IDP.Plan.Manage'] },
+  { match: (path) => path.startsWith('/idp/hierarchy'), permissions: ['IDP.Hierarchy.Manage'] },
+  { match: (path) => path.startsWith('/idp/community'), permissions: ['IDP.Participation.View', 'IDP.Participation.Manage'] },
+  { match: (path) => path.startsWith('/idp/alignment'), permissions: ['IDP.Alignment.View', 'IDP.Alignment.Manage'] },
+  { match: (path) => path.startsWith('/idp/reports'), permissions: ['IDP.Reports.Generate'] },
   { match: (path) => path.startsWith('/opms/targets'), permissions: ['OPMS.View', 'Targets.View', 'Targets.Manage'] },
   { match: (path) => path.startsWith('/ipms/targets'), permissions: ['IPMS.View', 'Targets.View', 'Targets.Manage'] },
   { match: (path) => path === '/opms/submissions', permissions: ['OPMS.View', 'Workflow.Submit.View', 'Workflow.Verify.View', 'Workflow.Approve.View', 'Workflow.Review.View', 'Workflow.Audit.View'] },

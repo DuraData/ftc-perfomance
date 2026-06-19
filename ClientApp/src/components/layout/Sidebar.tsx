@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import {
   Briefcase,
   FolderKanban,
+  Map,
   Globe,
   LayoutDashboard,
   Library,
@@ -37,6 +38,7 @@ const iconMap: Record<string, React.ReactNode> = {
   'briefcase': <Briefcase className="w-5 h-5" />,
   'projects': <FolderKanban className="w-5 h-5" />,
   'library': <Library className="w-5 h-5" />,
+  'map': <Map className="w-5 h-5" />,
 };
 
 export function Sidebar({ className = '' }: SidebarProps) {

@@ -503,6 +503,22 @@ public static class DbInitializer
             Permission("Reports", "Verification", "View", "Reports.Verification.View", "View verification reports"),
             Permission("Reports", "InternalAudit", "View", "Reports.InternalAudit.View", "View internal audit reports"),
             Permission("Reports", "Institution", "Summary", "Reports.Institution.View", "View institutional performance reports"),
+            Permission("IDP", "Plan", "View", "IDP.Plan.View", "View IDP plans and versions"),
+            Permission("IDP", "Plan", "Manage", "IDP.Plan.Manage", "Create and update IDP plans"),
+            Permission("IDP", "Version", "Manage", "IDP.Version.Manage", "Create IDP annual review and revision versions"),
+            Permission("IDP", "Hierarchy", "Manage", "IDP.Hierarchy.Manage", "Manage strategic outcomes, objectives, programmes, projects, and KPIs"),
+            Permission("IDP", "Project", "Manage", "IDP.Project.Manage", "Manage IDP project planning and status"),
+            Permission("IDP", "KPI", "Manage", "IDP.Kpi.Manage", "Manage IDP KPI definitions and annual targets"),
+            Permission("IDP", "Alignment", "View", "IDP.Alignment.View", "View multi-level government alignment matrices"),
+            Permission("IDP", "Alignment", "Manage", "IDP.Alignment.Manage", "Manage NDP, PGDS, DDM, sector and municipal alignment links"),
+            Permission("IDP", "Participation", "View", "IDP.Participation.View", "View public participation records and ward inputs"),
+            Permission("IDP", "Participation", "Manage", "IDP.Participation.Manage", "Capture public meetings, needs, ward inputs and stakeholder engagements"),
+            Permission("IDP", "Risk", "Manage", "IDP.Risk.Manage", "Link strategic and operational risks to IDP hierarchy"),
+            Permission("IDP", "Budget", "View", "IDP.Budget.View", "View planned, approved and actual budget integration data"),
+            Permission("IDP", "Documents", "Manage", "IDP.Documents.Manage", "Manage signed IDPs, governance documents and POE evidence"),
+            Permission("IDP", "Collaboration", "Manage", "IDP.Collaboration.Manage", "Manage IDP collaboration comments, tasks and workflow assignments"),
+            Permission("IDP", "Reports", "Generate", "IDP.Reports.Generate", "Generate annual, five-year, ward, provincial and national IDP reports"),
+            Permission("IDP", "Dashboard", "View", "IDP.Dashboard.View", "View IDP executive and operational dashboards"),
             Permission("VersionLogs", "Audit", "View", "VersionLogs.View", "View version history logs")
         ];
     }
@@ -529,6 +545,12 @@ public static class DbInitializer
                 "IPMS.POE.Upload",
                 "OPMS.Library.View", "OPMS.Library.Create", "OPMS.Library.Edit", "OPMS.Library.Delete", "OPMS.Library.Duplicate", "OPMS.Library.UseTemplate",
                 "IPMS.Library.View", "IPMS.Library.Create", "IPMS.Library.Edit", "IPMS.Library.Delete", "IPMS.Library.Duplicate", "IPMS.Library.UseTemplate",
+                "IDP.Plan.View", "IDP.Plan.Manage", "IDP.Version.Manage",
+                "IDP.Hierarchy.Manage", "IDP.Project.Manage", "IDP.Kpi.Manage",
+                "IDP.Alignment.View", "IDP.Alignment.Manage",
+                "IDP.Participation.View", "IDP.Participation.Manage",
+                "IDP.Risk.Manage", "IDP.Budget.View", "IDP.Documents.Manage",
+                "IDP.Collaboration.Manage", "IDP.Reports.Generate", "IDP.Dashboard.View",
                 "Reports.View", "Reports.Generate",
                 "RoleImplementationAudit.View",
                 "SystemAdministration.RoleAccessMatrix.View",
@@ -539,39 +561,48 @@ public static class DbInitializer
             [SecurityModel.AuditorGeneral] = BaseAccess(
                 "Targets.View", "OPMS.View", "IPMS.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Library.View", "IPMS.Library.View",
                 "Actuals.View", "Scores.View", "POE.View",
+                "IDP.Plan.View", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Budget.View", "IDP.Dashboard.View",
                 "Workflow.Audit.View", "Reports.View", "Reports.Institution.View",
                 "Reports.InternalAudit.View", "Audit.Logs.View", "Audit.Reports.View", "Audit.Trails.View",
                 "VersionLogs.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.MunicipalManager] = BaseAccess(
                 "Targets.View", "OPMS.View", "IPMS.View", "OPMS.Targets.View", "OPMS.Submissions.View", "OPMS.Submissions.Submit", "OPMS.Submissions.Approve", "OPMS.Submissions.Reject", "OPMS.Submissions.Score", "Actuals.View", "Actuals.Submit",
+                "IDP.Plan.View", "IDP.Plan.Manage", "IDP.Version.Manage", "IDP.Hierarchy.Manage", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Alignment.Manage", "IDP.Participation.View", "IDP.Budget.View", "IDP.Documents.Manage", "IDP.Collaboration.Manage", "IDP.Reports.Generate", "IDP.Dashboard.View",
                 "Workflow.Submit.View", "Workflow.Approve.View", "Scores.Edit",
                 "POE.View", "POE.Upload", "OPMS.POE.Upload", "Notifications.View", "Notifications.TriggerNotification", "Reports.Institution.View", "Reports.Generate"),
             [SecurityModel.InternalAudit] = BaseAccess(
                 "Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Audit", "IPMS.Submissions.Audit", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "POE.View", "Workflow.Audit.View",
+                "IDP.Plan.View", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Risk.Manage", "IDP.Budget.View", "IDP.Dashboard.View",
                 "Findings.Manage", "Recommendations.Manage", "Scores.Edit",
                 "Reports.InternalAudit.View", "Audit.Reports.View", "Audit.Logs.View",
                 "VersionLogs.View", "Notifications.TriggerNotification", "Audit.Trails.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.Reviewer] = BaseAccess(
                 "Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Review", "IPMS.Submissions.Review", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "POE.View", "Workflow.Review.View",
+                "IDP.Plan.View", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Dashboard.View",
                 "Comments.Add", "Scores.Edit", "Reports.View", "Notifications.TriggerNotification"),
             [SecurityModel.KpiApprover] = BaseAccess(
                 "Targets.View", "OPMS.Library.View", "IPMS.Library.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Approve", "IPMS.Submissions.Approve", "OPMS.Submissions.Reject", "IPMS.Submissions.Reject", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "POE.View",
+                "IDP.Plan.View", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Budget.View", "IDP.Dashboard.View",
                 "Workflow.Approve.View", "Scores.Edit", "Notifications.View",
                 "Reports.Approval.View"),
             [SecurityModel.HeadOfDepartment] = BaseAccess(
                 "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Edit", "IPMS.Submissions.Edit", "OPMS.Submissions.Approve", "IPMS.Submissions.Approve", "OPMS.Submissions.Reject", "IPMS.Submissions.Reject", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "Actuals.Edit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
+                "IDP.Plan.View", "IDP.Hierarchy.Manage", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Budget.View", "IDP.Dashboard.View",
                 "Workflow.Approve.View", "Comments.Add", "Notifications.View",
                 "Reports.Department.View", "Audit.Trail.View", "Notifications.TriggerNotification", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.DeputyHeadOfDepartment] = BaseAccess(
                 "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Edit", "IPMS.Submissions.Edit", "OPMS.Submissions.Approve", "IPMS.Submissions.Approve", "OPMS.Submissions.Reject", "IPMS.Submissions.Reject", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "Actuals.Edit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
+                "IDP.Plan.View", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Dashboard.View",
                 "Workflow.Approve.View", "Comments.Add", "Notifications.View",
                 "Reports.Department.View", "Audit.Trail.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.Verifier] = BaseAccess(
                 "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Edit", "IPMS.Submissions.Edit", "OPMS.Submissions.Verify", "IPMS.Submissions.Verify", "OPMS.Submissions.VerifyReject", "IPMS.Submissions.VerifyReject", "Actuals.View", "Actuals.Edit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
+                "IDP.Plan.View", "IDP.Participation.View", "IDP.Dashboard.View",
                 "Workflow.Verify.View", "Comments.Add", "Notifications.View",
                 "Reports.Verification.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.Submitter] = BaseAccess(
                 "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Submit", "IPMS.Submissions.Submit", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "Actuals.Submit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
+                "IDP.Plan.View", "IDP.Participation.View", "IDP.Documents.Manage", "IDP.Dashboard.View",
                 "Workflow.Submit.View", "Scores.Edit", "Notifications.View")
         };
     }

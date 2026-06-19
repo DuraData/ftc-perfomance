@@ -45,6 +45,16 @@ import type {
   Quarter,
   SubmissionStatus,
   TargetUnitType,
+  IdpPlanSummary,
+  IdpPlanVersion,
+  IdpHierarchy,
+  IdpDashboard,
+  IdpAlignmentMatrixItem,
+  IdpReportDocument,
+  CreateIdpPlanPayload,
+  CreateIdpPlanVersionPayload,
+  CreateIdpCommentPayload,
+  CreateIdpCommunitySessionPayload,
 } from '../types';
 import {
   mockBudgetSources,
@@ -1011,4 +1021,48 @@ export async function markNotificationRead(id: string): Promise<ApiResponse<bool
 
 export async function getAuditTrails(take = 200): Promise<ApiResponse<AuditTrailEntryDto[]>> {
   return get<AuditTrailEntryDto[]>(`/audit/trails?take=${take}`);
+}
+
+export async function getIdpPlans(): Promise<ApiResponse<IdpPlanSummary[]>> {
+  return get<IdpPlanSummary[]>('/idp/plans');
+}
+
+export async function createIdpPlan(payload: CreateIdpPlanPayload): Promise<ApiResponse<IdpPlanSummary>> {
+  return post<IdpPlanSummary>('/idp/plans', payload);
+}
+
+export async function createIdpPlanVersion(planId: number, payload: CreateIdpPlanVersionPayload): Promise<ApiResponse<IdpPlanVersion>> {
+  return post<IdpPlanVersion>(`/idp/plans/${planId}/versions`, payload);
+}
+
+export async function getIdpPlanHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {
+  return get<IdpHierarchy>(`/idp/plans/${planId}/hierarchy`);
+}
+
+export async function getIdpHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {
+  return getIdpPlanHierarchy(planId);
+}
+
+export async function getIdpDashboard(planId: number): Promise<ApiResponse<IdpDashboard>> {
+  return get<IdpDashboard>(`/idp/plans/${planId}/dashboard`);
+}
+
+export async function getIdpAlignmentMatrix(planId: number): Promise<ApiResponse<IdpAlignmentMatrixItem[]>> {
+  return get<IdpAlignmentMatrixItem[]>(`/idp/plans/${planId}/alignment-matrix`);
+}
+
+export async function createIdpComment(payload: CreateIdpCommentPayload): Promise<ApiResponse<boolean>> {
+  return mapResponse(await post<{ id: number }>('/idp/comments', payload), () => true);
+}
+
+export async function createIdpCommunitySession(payload: CreateIdpCommunitySessionPayload): Promise<ApiResponse<boolean>> {
+  return mapResponse(await post<{ id: number }>('/idp/community-sessions', payload), () => true);
+}
+
+export async function getIdpReport(planId: number, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
+  return get<IdpReportDocument>(`/idp/plans/${planId}/reports/${reportType}?format=${format}`);
+}
+
+export async function requestIdpReport(planId: number, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
+  return getIdpReport(planId, reportType, format);
 }
