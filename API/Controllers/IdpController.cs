@@ -351,19 +351,36 @@ public class IdpController : ControllerBase
             .Take(5)
             .ToArrayAsync();
 
-        var wardParticipation = await _context.IdpCommunitySessions
-            .Include(item => item.Ward)
-            .Include(item => item.CommunityNeeds)
+        var sessions = await _context.IdpCommunitySessions
+            .AsNoTracking()
             .Where(item => item.IdpPlanId == id && item.WardId.HasValue)
-            .GroupBy(item => new { item.WardId, WardName = item.Ward != null ? item.Ward.Name : "Unknown Ward" })
+            .Select(item => new
+            {
+                item.Id,
+                item.WardId,
+                WardName = item.Ward != null ? item.Ward.Name : "Unknown Ward",
+                item.ParticipantsCount
+            })
+            .ToListAsync();
+
+        var sessionIds = sessions.Select(item => item.Id).ToArray();
+        var needsBySession = await _context.IdpCommunityNeeds
+            .AsNoTracking()
+            .Where(item => sessionIds.Contains(item.IdpCommunitySessionId))
+            .GroupBy(item => item.IdpCommunitySessionId)
+            .Select(group => new { SessionId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.SessionId, item => item.Count);
+
+        var wardParticipation = sessions
+            .GroupBy(item => new { item.WardId, item.WardName })
             .Select(group => new IdpWardParticipationResponse(
                 group.Key.WardId ?? 0,
                 group.Key.WardName,
                 group.Count(),
                 group.Sum(item => item.ParticipantsCount),
-                group.Sum(item => item.CommunityNeeds.Count)))
+                group.Sum(item => needsBySession.TryGetValue(item.Id, out var count) ? count : 0)))
             .OrderByDescending(item => item.ParticipantsCount)
-            .ToArrayAsync();
+            .ToArray();
 
         var matrix = await BuildAlignmentMatrixAsync(id);
 

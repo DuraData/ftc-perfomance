@@ -29,12 +29,19 @@
     <None Remove="ClientApp\dist\**" />
   </ItemGroup>
 
-  <Target Name="EnsureNodeEnvironment" BeforeTargets="Build;Publish">
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="tests\**" />
+    <Content Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+  </ItemGroup>
+
+  <Target Name="EnsureNodeEnvironment" BeforeTargets="Build;Publish" Condition="'$(SkipClientBuild)' != 'true'">
     <Message Importance="high" Text="Ensuring frontend dependencies are installed in $(SpaRoot)." />
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" Condition="!Exists('$(SpaRoot)node_modules')" />
   </Target>
 
-  <Target Name="BuildClientApp" BeforeTargets="Build;Publish" DependsOnTargets="EnsureNodeEnvironment">
+  <Target Name="BuildClientApp" BeforeTargets="Build;Publish" DependsOnTargets="EnsureNodeEnvironment" Condition="'$(SkipClientBuild)' != 'true'">
     <Message Importance="high" Text="Building frontend into $(WebRootPath) as part of the ASP.NET app." />
     <Exec WorkingDirectory="$(SpaRoot)" Command="$(ClientBuildCommand)" />
   </Target>

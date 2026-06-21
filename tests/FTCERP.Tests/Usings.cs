@@ -1,0 +1,15 @@
+global using FluentAssertions;
+global using Microsoft.Data.Sqlite;
+global using FTCERP.Host.API.Controllers;
+global using FTCERP.Host.API.Requests;
+global using FTCERP.Host.API.Responses;
+global using FTCERP.Host.Domain.Entities;
+global using FTCERP.Host.Infrastructure.Persistence;
+global using FTCERP.Host.Infrastructure.Security;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.AspNetCore.Identity;
+global using Microsoft.AspNetCore.Mvc;
+global using Microsoft.EntityFrameworkCore;
+global using Moq;
+global using System.Security.Claims;
+global using Xunit;
