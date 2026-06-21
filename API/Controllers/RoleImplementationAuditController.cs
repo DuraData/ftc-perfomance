@@ -92,17 +92,13 @@ public class RoleImplementationAuditController : ControllerBase
                 => new RoleImplementationAuditResponse(roleName, false, true, false, true, false, true, true, false),
             var value when string.Equals(value, SecurityModel.AuditorGeneral, StringComparison.OrdinalIgnoreCase)
                 => new RoleImplementationAuditResponse(roleName, true, true, false, true, false, true, true, false),
-            var value when string.Equals(value, SecurityModel.MunicipalManager, StringComparison.OrdinalIgnoreCase)
+            var value when string.Equals(value, SecurityModel.PmsPerformanceManager, StringComparison.OrdinalIgnoreCase)
                 => new RoleImplementationAuditResponse(roleName, true, true, true, true, true, true, true, false),
             var value when string.Equals(value, SecurityModel.InternalAudit, StringComparison.OrdinalIgnoreCase)
                 => new RoleImplementationAuditResponse(roleName, true, true, true, true, false, true, true, false),
             var value when string.Equals(value, SecurityModel.Reviewer, StringComparison.OrdinalIgnoreCase)
                 => new RoleImplementationAuditResponse(roleName, true, true, false, true, false, true, true, false),
-            var value when string.Equals(value, SecurityModel.KpiApprover, StringComparison.OrdinalIgnoreCase)
-                => new RoleImplementationAuditResponse(roleName, true, true, true, true, true, true, true, false),
-            var value when string.Equals(value, SecurityModel.HeadOfDepartment, StringComparison.OrdinalIgnoreCase)
-                => new RoleImplementationAuditResponse(roleName, true, true, true, true, true, true, true, false),
-            var value when string.Equals(value, SecurityModel.DeputyHeadOfDepartment, StringComparison.OrdinalIgnoreCase)
+            var value when string.Equals(value, SecurityModel.Approver, StringComparison.OrdinalIgnoreCase)
                 => new RoleImplementationAuditResponse(roleName, true, true, true, true, true, true, true, false),
             var value when string.Equals(value, SecurityModel.Verifier, StringComparison.OrdinalIgnoreCase)
                 => new RoleImplementationAuditResponse(roleName, true, true, true, true, true, true, true, false),

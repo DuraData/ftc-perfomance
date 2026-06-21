@@ -4,6 +4,7 @@ using FTCERP.Host.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FTCERP.Host.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260621184211_AddDelegationAndManagerHierarchySupport")]
+    partial class AddDelegationAndManagerHierarchySupport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1297,24 +1300,10 @@ namespace FTCERP.Host.Migrations
                     b.Property<decimal?>("ActualExpenditure")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<string>("ActualPerformanceDescription")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime?>("ApprovedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ApproverComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("ApproverComments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("ApproverScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("ApproverStatus")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ApproverUserId")
@@ -1323,24 +1312,7 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime?>("AuditedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("AuditorComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("AuditorComments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("AuditorRecommendation")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("AuditorResponseDueDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal?>("AuditorScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("AuditorStatus")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("AuditorUserId")
@@ -1352,17 +1324,8 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<int?>("DueDateExtendedDays")
-                        .HasColumnType("int");
 
                     b.Property<DateTime?>("ExtendedDueDate")
                         .HasColumnType("datetime2");
@@ -1371,43 +1334,14 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<bool>("IsDisabled")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("OrganisationId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PmsComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("PmsComments")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PmsOfficerUserId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("PmsRecommendation")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PmsResponseDueDate")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("PmsReviewedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("PmsRfiComment")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("PmsScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("PmsStatus")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PoeType")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Quarter")
                         .IsRequired()
@@ -1424,18 +1358,7 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<decimal?>("SubmitterScore")
-                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("SubmitterStatus")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdatedOn")
-                        .HasColumnType("datetime2");
 
                     b.Property<decimal?>("Variance")
                         .HasColumnType("decimal(18,2)");
@@ -1446,18 +1369,7 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("VerifierComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("VerifierComments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("VerifierScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("VerifierStatus")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("VerifierUserId")
@@ -1901,24 +1813,10 @@ namespace FTCERP.Host.Migrations
                     b.Property<decimal?>("ActualExpenditure")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<string>("ActualPerformanceDescription")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime?>("ApprovedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ApproverComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("ApproverComments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("ApproverScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("ApproverStatus")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ApproverUserId")
@@ -1927,24 +1825,7 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime?>("AuditedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("AuditorComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("AuditorComments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("AuditorRecommendation")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("AuditorResponseDueDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal?>("AuditorScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("AuditorStatus")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("AuditorUserId")
@@ -1956,33 +1837,15 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("CreatedOn")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<int?>("DueDateExtendedDays")
-                        .HasColumnType("int");
 
                     b.Property<DateTime?>("ExtendedDueDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool>("IsDisabled")
-                        .HasColumnType("bit");
-
                     b.Property<string>("OpmsTargetId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("OrganisationId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PmsComment")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PmsComments")
                         .HasColumnType("nvarchar(max)");
@@ -1990,28 +1853,8 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("PmsOfficerUserId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("PmsRecommendation")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PmsResponseDueDate")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("PmsReviewedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("PmsRfiComment")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("PmsScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("PmsStatus")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PoeType")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Quarter")
                         .IsRequired()
@@ -2028,18 +1871,7 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<decimal?>("SubmitterScore")
-                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("SubmitterStatus")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdatedOn")
-                        .HasColumnType("datetime2");
 
                     b.Property<decimal?>("Variance")
                         .HasColumnType("decimal(18,2)");
@@ -2050,18 +1882,7 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("VerifierComment")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("VerifierComments")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("VerifierScore")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("VerifierStatus")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("VerifierUserId")

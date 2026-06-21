@@ -41,9 +41,260 @@ export type TargetUnitType =
   | 'zero_based'
   | 'reverse_cumulative'
   | 'reverse_non_cumulative'
-  | 'binary_determination';
+  | 'binary_determination'
+  | 'None'
+  | 'PercentageBased'
+  | 'AbsoluteCount'
+  | 'Financial'
+  | 'TimeBased'
+  | 'AreaBased'
+  | 'VolumeBased'
+  | 'IndexScores'
+  | 'Ratios'
+  | 'Binary'
+  | 'Date'
+  | 'ReadinessScale'
+  | 'BinaryDetermination'
+  | 'QualitativeTargets'
+  | 'ZeroBased'
+  | 'ReverseCumulative'
+  | 'ReverseNonCumulative';
 
 export type Quarter = 'Q1' | 'Q2' | 'Mid-Year' | 'Q3' | 'Q4' | 'Annual';
+
+export type XafUnitValue =
+  | 'None'
+  | 'PercentageBased'
+  | 'AbsoluteCount'
+  | 'Financial'
+  | 'TimeBased'
+  | 'AreaBased'
+  | 'VolumeBased'
+  | 'IndexScores'
+  | 'Ratios'
+  | 'Binary'
+  | 'Date'
+  | 'ReadinessScale'
+  | 'BinaryDetermination'
+  | 'QualitativeTargets'
+  | 'ZeroBased'
+  | 'ReverseCumulative'
+  | 'ReverseNonCumulative';
+
+export interface TargetAuditMetaFields {
+  Oid?: string;
+  CreatedBy?: string;
+  CreatedOn?: string;
+  UpdatedBy?: string;
+  UpdatedOn?: string;
+  OrganisationId?: string;
+}
+
+export interface BaseKpiTargetXafFields {
+  Period?: string;
+  Department?: string;
+  Unit?: string;
+  Wards?: string[];
+  AssignedTo?: string;
+  IndicatorNo?: string;
+  NationalKPA?: string;
+  MunicipalKPA?: string;
+  BackToBasicPillar?: string;
+  StrategicRisk?: string;
+  StrategicIntervention?: string;
+  ProjectCode?: string;
+  StrategicGoal?: string;
+  StrategicObjective?: string;
+  PerformanceObjective?: string;
+  TargetName?: string;
+  Outcome?: string;
+  Output?: string;
+  PriorityIssue?: string;
+  KPIDescription?: string;
+  KpiRevised?: boolean;
+  KpiType?: string;
+  RevisedKpi?: string;
+  IndicatorType?: string;
+  FunctionalArea?: string;
+  Demand?: string;
+  PriorYearAnnualTarget?: number;
+  PriorYearAnnualTargetDescription?: string;
+  Backlog?: string;
+  Baseline?: number;
+  DepartmentalObjective?: string;
+  PriorityArea?: string;
+  KeyFocusArea?: string;
+  Strategies?: string;
+  UnitOfMeasure?: string;
+  CalculationTargetType?: XafUnitValue;
+  TargetQ1?: number;
+  TargetQ1Description?: string;
+  TargetUnitQ1?: XafUnitValue;
+  TotalBudgetQ1?: number;
+  TargetQ2?: number;
+  TargetQ2Description?: string;
+  TargetUnitQ2?: XafUnitValue;
+  TargetQ2Budget?: number;
+  TargetMidTerm?: number;
+  TargetMidTermDescription?: string;
+  MidTermTargetUnit?: XafUnitValue;
+  MidTermBudget?: number;
+  TargetQ3?: number;
+  TargetQ3Description?: string;
+  TargetUnitQ3?: XafUnitValue;
+  TargetQ3Budget?: number;
+  RevisedTargetQ3Unit?: XafUnitValue;
+  RevisedTargetQ3Budget?: number;
+  RevisedTargetQ3?: number;
+  RevisedTargetQ3Description?: string;
+  TargetQ4?: number;
+  TargetQ4Description?: string;
+  TargetUnitQ4?: XafUnitValue;
+  TargetQ4Budget?: number;
+  RevisedTargetQ4Unit?: XafUnitValue;
+  RevisedTargetQ4Budget?: number;
+  RevisedTargetQ4?: number;
+  RevisedTargetQ4Description?: string;
+  AnnualTarget?: number;
+  AnnualTargetDescription?: string;
+  AnnualTargetUnit?: XafUnitValue;
+  AnnualBudget?: number;
+  RevisedAnnualBudget?: number;
+  RevisedAnnualTargetUnit?: XafUnitValue;
+  RevisedAnnualTarget?: number;
+  RevisedAnnualTargetDescription?: string;
+  BudgetSource?: string;
+  BudgetType?: string;
+  StandardClassification?: string;
+  Weight?: number;
+  IDPRef?: string;
+  InternalRef?: string;
+  FMSLink?: string;
+  Layer?: string;
+  IsDisabled?: boolean;
+  OrderNumber?: number;
+  IsWithdrawn?: boolean;
+  ReasonForWithdrawal?: string;
+}
+
+export interface TypedTargetPeriodValues {
+  PercentageQ1?: string;
+  PercentageQ2?: string;
+  PercentageMidTerm?: string;
+  PercentageQ3?: string;
+  PercentageQ4?: string;
+  PercentageAnnual?: string;
+  AbsoluteCountQ1?: string;
+  AbsoluteCountQ2?: string;
+  AbsoluteCountMidTerm?: string;
+  AbsoluteCountQ3?: string;
+  AbsoluteCountQ4?: string;
+  AbsoluteCountAnnual?: string;
+  FinancialQ1?: string;
+  FinancialQ2?: string;
+  FinancialMidTerm?: string;
+  FinancialQ3?: string;
+  FinancialQ4?: string;
+  FinancialAnnual?: string;
+  AreaBasedQ1?: string;
+  AreaBasedQ2?: string;
+  AreaBasedMidTerm?: string;
+  AreaBasedQ3?: string;
+  AreaBasedQ4?: string;
+  AreaBasedAnnual?: string;
+  VolumeBasedQ1?: string;
+  VolumeBasedQ2?: string;
+  VolumeBasedMidTerm?: string;
+  VolumeBasedQ3?: string;
+  VolumeBasedQ4?: string;
+  VolumeBasedAnnual?: string;
+  IndexScoresQ1?: string;
+  IndexScoresQ2?: string;
+  IndexScoresMidTerm?: string;
+  IndexScoresQ3?: string;
+  IndexScoresQ4?: string;
+  IndexScoresAnnual?: string;
+  RatiosQ1?: string;
+  RatiosQ2?: string;
+  RatiosMidTerm?: string;
+  RatiosQ3?: string;
+  RatiosQ4?: string;
+  RatiosAnnual?: string;
+  TimeBasedQ1?: string;
+  TimeBasedQ2?: string;
+  TimeBasedMidTerm?: string;
+  TimeBasedQ3?: string;
+  TimeBasedQ4?: string;
+  TimeBasedAnnual?: string;
+  BinaryQ1?: string;
+  BinaryQ2?: string;
+  BinaryMidTerm?: string;
+  BinaryQ3?: string;
+  BinaryQ4?: string;
+  BinaryAnnual?: string;
+  DateQ1?: string;
+  DateQ2?: string;
+  DateMidTerm?: string;
+  DateQ3?: string;
+  DateQ4?: string;
+  DateAnnual?: string;
+  ReadinessQ1?: string;
+  ReadinessQ2?: string;
+  ReadinessMidTerm?: string;
+  ReadinessQ3?: string;
+  ReadinessQ4?: string;
+  ReadinessAnnual?: string;
+  QualitativeQ1?: string;
+  QualitativeQ2?: string;
+  QualitativeMidTerm?: string;
+  QualitativeQ3?: string;
+  QualitativeQ4?: string;
+  QualitativeAnnual?: string;
+  ZeroBasedQ1?: string;
+  ZeroBasedQ2?: string;
+  ZeroBasedMidTerm?: string;
+  ZeroBasedQ3?: string;
+  ZeroBasedQ4?: string;
+  ZeroBasedAnnual?: string;
+  ReverseCumulativeQ1?: string;
+  ReverseCumulativeQ2?: string;
+  ReverseCumulativeMidTerm?: string;
+  ReverseCumulativeQ3?: string;
+  ReverseCumulativeQ4?: string;
+  ReverseCumulativeAnnual?: string;
+  ReverseNonCumulativeQ1?: string;
+  ReverseNonCumulativeQ2?: string;
+  ReverseNonCumulativeMidTerm?: string;
+  ReverseNonCumulativeQ3?: string;
+  ReverseNonCumulativeQ4?: string;
+  ReverseNonCumulativeAnnual?: string;
+  BinaryDeterminationQ1?: string;
+  BinaryDeterminationQ2?: string;
+  BinaryDeterminationMidTerm?: string;
+  BinaryDeterminationQ3?: string;
+  BinaryDeterminationQ4?: string;
+  BinaryDeterminationAnnual?: string;
+}
+
+export interface OpmsVoteNumberChild {
+  Code: string;
+  Description: string;
+  Target?: string;
+}
+
+export interface AdditionalAssigneeChild {
+  TargetType?: string;
+  Role: string;
+  Employee: string;
+  Target?: string;
+}
+
+export interface UserSubmitChild {
+  Oid: string;
+  Employee?: string;
+  Status?: SubmissionStatus;
+  SubmittedOn?: string;
+}
 
 // User types
 export interface User {
@@ -118,8 +369,9 @@ export interface Employee {
 }
 
 // OPMS Target
-export interface OPMSTarget {
+export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodValues, TargetAuditMetaFields {
   id: string;
+  PriorYearOpmsId?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
   period: Period;
@@ -176,15 +428,19 @@ export interface OPMSTarget {
   revisedAnnualBudget?: number;
 
   targetUnitType: TargetUnitType;
+  UserSubmit?: UserSubmitChild[];
   submissions: OPMSSubmission[];
   voteNumbers: VoteNumber[];
+  VoteNumbers?: OpmsVoteNumberChild[];
   relatedIPMSTargets: IPMSTarget[];
+  RelatedIPMSTargets?: string[];
   additionalAssignees: Employee[];
+  AdditionalAssignees?: AdditionalAssigneeChild[];
   attachments: Attachment[];
 }
 
 // IPMS Target
-export interface IPMSTarget {
+export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodValues, TargetAuditMetaFields {
   id: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
@@ -237,6 +493,7 @@ export interface IPMSTarget {
   revisedAnnualBudget?: number;
 
   targetUnitType: TargetUnitType;
+  UserSubmit?: UserSubmitChild[];
   submissions: IPMSSubmission[];
   attachments: Attachment[];
 }
@@ -254,22 +511,50 @@ export interface OPMSSubmission {
   variance?: number;
   varianceReason?: string;
   correctiveMeasure?: string;
+  actualPerformanceDescription?: string;
   submitterScore?: number;
+  submitterStatus?: string;
+  verifierStatus?: string;
+  approverStatus?: string;
+  pmsStatus?: string;
+  auditorStatus?: string;
   status: SubmissionStatus;
   submitter?: Employee;
   submittedAt?: string;
+  submittedByUserId?: string;
   verifier?: Employee;
   verifiedAt?: string;
   verifierComments?: string;
+  verifierComment?: string;
+  verifierScore?: number;
   approver?: Employee;
   approvedAt?: string;
   approverComments?: string;
+  approverComment?: string;
+  approverScore?: number;
   pmsOfficer?: Employee;
   pmsReviewedAt?: string;
   pmsComments?: string;
+  pmsComment?: string;
+  pmsRecommendation?: string;
+  pmsScore?: number;
+  pmsResponseDueDate?: string;
+  pmsRfiComment?: string;
   auditor?: Employee;
   auditedAt?: string;
   auditorComments?: string;
+  auditorComment?: string;
+  auditorRecommendation?: string;
+  auditorScore?: number;
+  auditorResponseDueDate?: string;
+  dueDateExtendedDays?: number;
+  poeType?: string;
+  isDisabled?: boolean;
+  createdBy?: string;
+  createdOn?: string;
+  updatedBy?: string;
+  updatedOn?: string;
+  organisationId?: string;
   attachments: Attachment[];
   comments: SubmissionComment[];
   history: SubmissionHistory[];
@@ -283,26 +568,54 @@ export interface IPMSSubmission {
   extendedDueDate?: string;
   actual: number;
   actualDescription?: string;
+  actualPerformanceDescription?: string;
   actualExpenditure?: number;
   variance?: number;
   varianceReason?: string;
   correctiveMeasure?: string;
   submitterScore?: number;
+  submitterStatus?: string;
+  verifierStatus?: string;
+  approverStatus?: string;
+  pmsStatus?: string;
+  auditorStatus?: string;
   status: SubmissionStatus;
   submitter?: Employee;
   submittedAt?: string;
+  submittedByUserId?: string;
   verifier?: Employee;
   verifiedAt?: string;
   verifierComments?: string;
+  verifierComment?: string;
+  verifierScore?: number;
   approver?: Employee;
   approvedAt?: string;
   approverComments?: string;
+  approverComment?: string;
+  approverScore?: number;
   pmsOfficer?: Employee;
   pmsReviewedAt?: string;
   pmsComments?: string;
+  pmsComment?: string;
+  pmsRecommendation?: string;
+  pmsScore?: number;
+  pmsResponseDueDate?: string;
+  pmsRfiComment?: string;
   auditor?: Employee;
   auditedAt?: string;
   auditorComments?: string;
+  auditorComment?: string;
+  auditorRecommendation?: string;
+  auditorScore?: number;
+  auditorResponseDueDate?: string;
+  dueDateExtendedDays?: number;
+  poeType?: string;
+  isDisabled?: boolean;
+  createdBy?: string;
+  createdOn?: string;
+  updatedBy?: string;
+  updatedOn?: string;
+  organisationId?: string;
   attachments: Attachment[];
   comments: SubmissionComment[];
   history: SubmissionHistory[];
@@ -1089,8 +1402,14 @@ export interface OpmsSubmissionDto {
   targetName: string;
   quarter: string;
   status: string;
+  submitterStatus?: string | null;
+  verifierStatus?: string | null;
+  approverStatus?: string | null;
+  pmsStatus?: string | null;
+  auditorStatus?: string | null;
   actual?: number | null;
   actualDescription?: string | null;
+  actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
   variance?: number | null;
   varianceReason?: string | null;
@@ -1103,20 +1422,41 @@ export interface OpmsSubmissionDto {
   verifierName?: string | null;
   verifiedAt?: string | null;
   verifierComments?: string | null;
+  verifierComment?: string | null;
+  verifierScore?: number | null;
   approverUserId?: string | null;
   approverName?: string | null;
   approvedAt?: string | null;
   approverComments?: string | null;
+  approverComment?: string | null;
+  approverScore?: number | null;
   pmsOfficerUserId?: string | null;
   pmsOfficerName?: string | null;
   pmsReviewedAt?: string | null;
   pmsComments?: string | null;
+  pmsComment?: string | null;
+  pmsRecommendation?: string | null;
+  pmsScore?: number | null;
+  pmsResponseDueDate?: string | null;
+  pmsRfiComment?: string | null;
   auditorUserId?: string | null;
   auditorName?: string | null;
   auditedAt?: string | null;
   auditorComments?: string | null;
+  auditorComment?: string | null;
+  auditorRecommendation?: string | null;
+  auditorScore?: number | null;
+  auditorResponseDueDate?: string | null;
   dueDate?: string | null;
   extendedDueDate?: string | null;
+  dueDateExtendedDays?: number | null;
+  poeType?: string | null;
+  isDisabled?: boolean | null;
+  createdBy?: string | null;
+  createdOn?: string | null;
+  updatedBy?: string | null;
+  updatedOn?: string | null;
+  organisationId?: string | null;
   createdAt: string;
 }
 
@@ -1126,8 +1466,14 @@ export interface IpmsSubmissionDto {
   targetName: string;
   quarter: string;
   status: string;
+  submitterStatus?: string | null;
+  verifierStatus?: string | null;
+  approverStatus?: string | null;
+  pmsStatus?: string | null;
+  auditorStatus?: string | null;
   actual?: number | null;
   actualDescription?: string | null;
+  actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
   variance?: number | null;
   varianceReason?: string | null;
@@ -1140,20 +1486,41 @@ export interface IpmsSubmissionDto {
   verifierName?: string | null;
   verifiedAt?: string | null;
   verifierComments?: string | null;
+  verifierComment?: string | null;
+  verifierScore?: number | null;
   approverUserId?: string | null;
   approverName?: string | null;
   approvedAt?: string | null;
   approverComments?: string | null;
+  approverComment?: string | null;
+  approverScore?: number | null;
   pmsOfficerUserId?: string | null;
   pmsOfficerName?: string | null;
   pmsReviewedAt?: string | null;
   pmsComments?: string | null;
+  pmsComment?: string | null;
+  pmsRecommendation?: string | null;
+  pmsScore?: number | null;
+  pmsResponseDueDate?: string | null;
+  pmsRfiComment?: string | null;
   auditorUserId?: string | null;
   auditorName?: string | null;
   auditedAt?: string | null;
   auditorComments?: string | null;
+  auditorComment?: string | null;
+  auditorRecommendation?: string | null;
+  auditorScore?: number | null;
+  auditorResponseDueDate?: string | null;
   dueDate?: string | null;
   extendedDueDate?: string | null;
+  dueDateExtendedDays?: number | null;
+  poeType?: string | null;
+  isDisabled?: boolean | null;
+  createdBy?: string | null;
+  createdOn?: string | null;
+  updatedBy?: string | null;
+  updatedOn?: string | null;
+  organisationId?: string | null;
   createdAt: string;
 }
 
@@ -1366,9 +1733,15 @@ export interface SaveOpmsSubmissionPayload {
   quarter: string;
   actual?: number | null;
   actualDescription?: string | null;
+  actualPerformanceDescription?: string | null;
+  actualExpenditure?: number | null;
+  variance?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
+  submitterScore?: number | null;
+  poeType?: string | null;
   dueDate?: string | null;
+  extendedDueDate?: string | null;
 }
 
 export interface SaveIpmsSubmissionPayload {
@@ -1376,14 +1749,23 @@ export interface SaveIpmsSubmissionPayload {
   quarter: string;
   actual?: number | null;
   actualDescription?: string | null;
+  actualPerformanceDescription?: string | null;
+  actualExpenditure?: number | null;
+  variance?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
+  submitterScore?: number | null;
+  poeType?: string | null;
   dueDate?: string | null;
+  extendedDueDate?: string | null;
 }
 
 export interface SubmissionWorkflowActionPayload {
   comment?: string | null;
   score?: number | null;
+  recommendation?: string | null;
+  responseDueDate?: string | null;
+  rfiComment?: string | null;
 }
 
 export interface DueDateExtensionPayload {

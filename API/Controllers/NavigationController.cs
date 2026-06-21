@@ -17,8 +17,92 @@ public class NavigationController : ControllerBase
         var permissions = User.Claims.Where(c => c.Type == "Permission").Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var roles = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToArray();
         var fullAccess = SecurityModel.IsSuperAdmin(roles);
+
+        if (!fullAccess && roles.Any(role => string.Equals(role, SecurityModel.Submitter, StringComparison.OrdinalIgnoreCase)))
+        {
+            var submitterMenu = BuildSubmitterMenu(permissions);
+            return Ok(new ApiResponse<MenuItemResponse[]>(true, submitterMenu));
+        }
+
         var menu = BuildMenu(permissions, fullAccess);
         return Ok(new ApiResponse<MenuItemResponse[]>(true, menu));
+    }
+
+    private static MenuItemResponse[] BuildSubmitterMenu(ISet<string> permissions)
+    {
+        static bool HasPermission(ISet<string> currentPermissions, params string[] codes) =>
+            codes.Any(code => currentPermissions.Contains(code));
+
+        var items = new List<MenuItemResponse>
+        {
+            new("Dashboard", null, "dashboard", [
+                new MenuItemResponse("My Performance Dashboard", "/dashboard", "dashboard", null, false),
+                new MenuItemResponse("IDP Dashboard", "/idp/dashboard", "dashboard", null, false)
+            ], false)
+        };
+
+        if (HasPermission(permissions, "IDP.Plan.View", "IDP.Dashboard.View", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Reports.Generate"))
+        {
+            items.Add(new MenuItemResponse("IDP", null, "map", [
+                new MenuItemResponse("IDP Overview", "/idp/overview", "map", null, false),
+                new MenuItemResponse("Strategic Objectives", "/idp/strategic-objectives", "target", null, false),
+                new MenuItemResponse("IDP Projects", "/idp/projects", "layers", null, false),
+                new MenuItemResponse("IDP KPIs", "/idp/kpis", "bar-chart", null, false),
+                new MenuItemResponse("IDP Reports", "/idp/reports", "reports", null, false)
+            ], false));
+        }
+
+        if (HasPermission(permissions, "OPMS.Targets.View", "OPMS.Submissions.View", "OPMS.Submissions.Create"))
+        {
+            items.Add(new MenuItemResponse("OPMS", null, "target", [
+                new MenuItemResponse("My OPMS Targets", "/opms/targets", "target", null, false),
+                new MenuItemResponse("My OPMS Submissions", "/opms/submissions", "file-text", null, false)
+            ], false));
+        }
+
+        if (HasPermission(permissions, "IPMS.Targets.View", "IPMS.Submissions.View", "IPMS.Submissions.Create"))
+        {
+            items.Add(new MenuItemResponse("IPMS", null, "target", [
+                new MenuItemResponse("My IPMS Targets", "/ipms/targets", "target", null, false),
+                new MenuItemResponse("My IPMS Submissions", "/ipms/submissions", "file-text", null, false)
+            ], false));
+        }
+
+        if (HasPermission(permissions, "Workflow.Submit.View"))
+        {
+            items.Add(new MenuItemResponse("Workflow Queues", null, "workflow", [
+                new MenuItemResponse("My Drafts", "/workflow/my-drafts", "workflow", null, false),
+                new MenuItemResponse("Pending Submission", "/workflow/pending-submission", "workflow", null, false),
+                new MenuItemResponse("Returned Submissions", "/workflow/returned-submissions", "workflow", null, false),
+                new MenuItemResponse("Under Verification", "/workflow/under-verification", "workflow", null, false),
+                new MenuItemResponse("Under Review", "/workflow/under-review", "workflow", null, false),
+                new MenuItemResponse("Under Approval", "/workflow/under-approval", "workflow", null, false),
+                new MenuItemResponse("Internal Audit Returned", "/workflow/internal-audit-returned", "workflow", null, false),
+                new MenuItemResponse("Approved / Closed", "/workflow/approved-closed", "workflow", null, false)
+            ], false));
+        }
+
+        if (HasPermission(permissions, "Reports.View", "IDP.Reports.Generate"))
+        {
+            items.Add(new MenuItemResponse("Reports", null, "reports", [
+                new MenuItemResponse("My OPMS Performance Report", "/reports/opms-performance", "reports", null, false),
+                new MenuItemResponse("My IPMS Performance Report", "/reports/ipms-performance", "reports", null, false),
+                new MenuItemResponse("IDP Summary Report", "/reports/idp-summary", "reports", null, false),
+                new MenuItemResponse("My Submission Status Report", "/reports/submission-status", "reports", null, false),
+                new MenuItemResponse("My Evidence Register", "/reports/evidence-register", "reports", null, false),
+                new MenuItemResponse("My Returned Submissions Report", "/reports/returned-submissions", "reports", null, false),
+                new MenuItemResponse("My Overdue Submissions Report", "/reports/overdue-submissions", "reports", null, false)
+            ], false));
+        }
+
+        if (HasPermission(permissions, "Notifications.View"))
+        {
+            items.Add(new MenuItemResponse("Notifications", "/notifications", "bell", null, false));
+        }
+
+        items.Add(new MenuItemResponse("My Profile", "/my-profile", "user", null, false));
+
+        return items.ToArray();
     }
 
     internal static MenuItemResponse[] BuildMenu(ISet<string> permissions, bool fullAccess)

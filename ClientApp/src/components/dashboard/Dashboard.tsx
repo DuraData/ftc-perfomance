@@ -75,7 +75,7 @@ const dashboardConfig: Record<string, {
       { label: 'Audit Logs', path: '/system-administration/audit-logs' },
     ],
   },
-  'Municipal Manager': {
+  'PMS / Performance Manager': {
     subtitle: 'Institution-wide monitoring, scoring, and approval for assigned OPMS work',
     stats: [
       { label: 'Institution Score', value: `${mockDashboardStats.averageScore.toFixed(1)}%`, tone: 'success' },
@@ -120,7 +120,7 @@ const dashboardConfig: Record<string, {
       { label: 'Reports', path: '/reports' },
     ],
   },
-  'KPI Approver': {
+  Approver: {
     subtitle: 'Approve, reject, and score submissions within the assigned scope',
     stats: [
       { label: 'Approvals Pending', value: '7', tone: 'warning' },
@@ -133,36 +133,6 @@ const dashboardConfig: Record<string, {
     quickActions: [
       { label: 'Approval Queue', path: '/workflow/approval' },
       { label: 'OPMS Targets', path: '/opms/targets' },
-    ],
-  },
-  'Head of Department': {
-    subtitle: 'Department-scoped approvals, edits, additional POEs, and audit-trail accountable actions',
-    stats: [
-      { label: 'Department KPIs', value: '22', tone: 'primary' },
-      { label: 'Pending Department Reviews', value: '6', tone: 'warning' },
-      { label: 'POEs Added', value: '14', tone: 'success' },
-      { label: 'Audit Trail Entries', value: '29', tone: 'default' },
-    ],
-    queues: ['Department approvals', 'Submitted actual edits', 'Variance review', 'Corrective actions'],
-    reports: ['Department scorecard', 'Submission edit history', 'Department performance report'],
-    quickActions: [
-      { label: 'OPMS Submissions', path: '/opms/submissions' },
-      { label: 'Reports', path: '/reports' },
-    ],
-  },
-  'Deputy Head of Department': {
-    subtitle: 'Department-scoped delegated review, editing, and evidence support',
-    stats: [
-      { label: 'Delegated Reviews', value: '5', tone: 'warning' },
-      { label: 'Editable Submissions', value: '9', tone: 'primary' },
-      { label: 'POEs Added', value: '8', tone: 'success' },
-      { label: 'Department Alerts', value: '3', tone: 'default' },
-    ],
-    queues: ['Delegated department reviews', 'Evidence enhancement', 'Corrective measure updates'],
-    reports: ['Department readiness', 'Delegated workload', 'Submission history'],
-    quickActions: [
-      { label: 'OPMS Submissions', path: '/opms/submissions' },
-      { label: 'Workflow Approval', path: '/workflow/approval' },
     ],
   },
   Verifier: {

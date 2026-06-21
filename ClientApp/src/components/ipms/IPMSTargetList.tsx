@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Download, Eye, Edit2, Link2, Trash2, Library } from 'lucide-react';
+import { Plus, Download, Eye, Edit2, Link2, Trash2, Library, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
+import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createIpmsTarget as createIpmsTargetApi,
   deleteIpmsTarget as deleteIpmsTargetApi,
@@ -48,6 +49,7 @@ export function IPMSTargetList() {
     setCurrentPath,
     pushToast,
   } = useApp();
+  const canManageTargets = useHasAnyPermission(['IPMS.Targets.Create', 'IPMS.Targets.Edit', 'IPMS.Targets.Delete']);
   const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -193,57 +195,72 @@ export function IPMSTargetList() {
       >
         <Eye className="w-4 h-4 text-secondary-400" />
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setCurrentPath(`/ipms/targets/${row.id}/edit`);
-        }}
-        className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700"
-        title="Edit"
-      >
-        <Edit2 className="w-4 h-4 text-secondary-400" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void (async () => {
-            const result = await createIpmsTargetApi(buildPayloadFromTarget({
-              ...row,
-              id: '',
-              indicatorNumber: `${row.indicatorNumber}-COPY`,
-              targetName: `${row.targetName} (Copy)`,
-            }));
-            if (result.success) {
-              pushToast('success', 'IPMS target copied');
-              await loadTargets();
-            } else {
-              pushToast('error', result.message ?? 'Failed to copy IPMS target');
-            }
-          })();
-        }}
-        className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700"
-        title="Link to OPMS"
-      >
-        <Link2 className="w-4 h-4 text-secondary-400" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void (async () => {
-            const result = await deleteIpmsTargetApi(row.id);
-            if (result.success) {
-              pushToast('success', 'IPMS target deleted');
-              await loadTargets();
-            } else {
-              pushToast('error', result.message ?? 'Failed to delete IPMS target');
-            }
-          })();
-        }}
-        className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20"
-        title="Delete"
-      >
-        <Trash2 className="w-4 h-4 text-error-500" />
-      </button>
+      {canManageTargets ? (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentPath(`/ipms/targets/${row.id}/edit`);
+            }}
+            className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700"
+            title="Edit"
+          >
+            <Edit2 className="w-4 h-4 text-secondary-400" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void (async () => {
+                const result = await createIpmsTargetApi(buildPayloadFromTarget({
+                  ...row,
+                  id: '',
+                  indicatorNumber: `${row.indicatorNumber}-COPY`,
+                  targetName: `${row.targetName} (Copy)`,
+                }));
+                if (result.success) {
+                  pushToast('success', 'IPMS target copied');
+                  await loadTargets();
+                } else {
+                  pushToast('error', result.message ?? 'Failed to copy IPMS target');
+                }
+              })();
+            }}
+            className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700"
+            title="Link to OPMS"
+          >
+            <Link2 className="w-4 h-4 text-secondary-400" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void (async () => {
+                const result = await deleteIpmsTargetApi(row.id);
+                if (result.success) {
+                  pushToast('success', 'IPMS target deleted');
+                  await loadTargets();
+                } else {
+                  pushToast('error', result.message ?? 'Failed to delete IPMS target');
+                }
+              })();
+            }}
+            className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4 text-error-500" />
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setCurrentPath('/ipms/submissions');
+          }}
+          className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700"
+          title="Start Submission"
+        >
+          <FileText className="w-4 h-4 text-secondary-400" />
+        </button>
+      )}
     </div>
   );
 
@@ -251,18 +268,23 @@ export function IPMSTargetList() {
     <AppShell title="IPMS Targets" subtitle="Individual Performance Management System targets">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <Badge variant="primary">{ipmsTargets.length} targets</Badge>
           <div className="flex items-center gap-2">
-            <Button variant="outline" icon={<Download className="w-4 h-4" />}>
-              Export
-            </Button>
-            <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
-              Create From IPMS Library
-            </Button>
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCurrentPath('/ipms/targets/new')}>
-              New IPMS Target
-            </Button>
+            <Badge variant="primary">{ipmsTargets.length} targets</Badge>
+            {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
           </div>
+          {canManageTargets ? (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" icon={<Download className="w-4 h-4" />}>
+                Export
+              </Button>
+              <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
+                Create From IPMS Library
+              </Button>
+              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCurrentPath('/ipms/targets/new')}>
+                New IPMS Target
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <Card>
@@ -277,12 +299,14 @@ export function IPMSTargetList() {
           />
         </Card>
 
-        <IpmsTemplateSelectionModal
-          isOpen={showLibraryModal}
-          onClose={() => setShowLibraryModal(false)}
-          onSelect={openCreateFromTemplate}
-          onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
-        />
+        {canManageTargets ? (
+          <IpmsTemplateSelectionModal
+            isOpen={showLibraryModal}
+            onClose={() => setShowLibraryModal(false)}
+            onSelect={openCreateFromTemplate}
+            onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
+          />
+        ) : null}
       </div>
     </AppShell>
   );

@@ -6,12 +6,10 @@ public static class SecurityModel
     public const string Admin = "Admin";
     public const string ClientAdmin = "Client Admin";
     public const string AuditorGeneral = "Auditor General";
-    public const string MunicipalManager = "Municipal Manager";
+    public const string PmsPerformanceManager = "PMS / Performance Manager";
     public const string InternalAudit = "Internal Audit";
     public const string Reviewer = "Reviewer";
-    public const string KpiApprover = "KPI Approver";
-    public const string HeadOfDepartment = "Head of Department";
-    public const string DeputyHeadOfDepartment = "Deputy Head of Department";
+    public const string Approver = "Approver";
     public const string Verifier = "Verifier";
     public const string Submitter = "Submitter";
 
@@ -21,12 +19,10 @@ public static class SecurityModel
         Admin,
         ClientAdmin,
         AuditorGeneral,
-        MunicipalManager,
+        PmsPerformanceManager,
         InternalAudit,
         Reviewer,
-        KpiApprover,
-        HeadOfDepartment,
-        DeputyHeadOfDepartment,
+        Approver,
         Verifier,
         Submitter
     ];

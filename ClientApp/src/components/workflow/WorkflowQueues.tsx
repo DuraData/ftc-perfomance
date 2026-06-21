@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Clock,
   FileText,
@@ -13,6 +13,8 @@ import { Button, Badge, Card, EmptyState } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { Tabs } from '../common/Tabs';
+import { getIpmsSubmissions, getOpmsSubmissions } from '../../api/api';
+import { useApp } from '../../context/AppContext';
 import { mockOPMSSubmissions, statusLabels, statusColors } from '../../data/mockData';
 import type { OPMSSubmission } from '../../types';
 
@@ -161,20 +163,120 @@ export function WorkflowQueues() {
 }
 
 export function MyWorkQueue() {
+  const { currentPath, userProfile, pushToast } = useApp();
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
-  const mySubmissions = mockOPMSSubmissions.filter(s => s.submitter?.id === '2' || s.status === 'pending_verification' || s.status === 'submitted');
+  const [submissions, setSubmissions] = useState<OPMSSubmission[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const [opmsResult, ipmsResult] = await Promise.all([getOpmsSubmissions(), getIpmsSubmissions()]);
+
+      if (!opmsResult.success) {
+        pushToast('error', opmsResult.message ?? 'Failed to load OPMS workflow queue');
+      }
+
+      if (!ipmsResult.success) {
+        pushToast('error', ipmsResult.message ?? 'Failed to load IPMS workflow queue');
+      }
+
+      const ownOpms = (opmsResult.data ?? []).filter(item => item.submitter?.id === userProfile?.id);
+      const ownIpmsAsOpms = (ipmsResult.data ?? [])
+        .filter(item => item.submitter?.id === userProfile?.id)
+        .map(item => ({
+          id: `ipms-${item.id}`,
+          target: {
+            id: item.target.id,
+            targetName: `[IPMS] ${item.target.targetName}`,
+            indicatorNumber: item.target.indicatorNumber,
+          },
+          quarter: item.quarter,
+          dueDate: item.dueDate,
+          actual: item.actual,
+          variance: item.variance,
+          status: item.status,
+          submitter: item.submitter,
+          verifier: item.verifier,
+          approver: item.approver,
+          comments: item.comments,
+          attachments: item.attachments,
+        } as unknown as OPMSSubmission));
+
+      setSubmissions([...ownOpms, ...ownIpmsAsOpms]);
+    };
+
+    void load();
+  }, [pushToast, userProfile?.id]);
+
+  const mySubmissions = useMemo(() => {
+    const filterByPath: Record<string, OPMSSubmission['status'][]> = {
+      '/workflow/my-drafts': ['draft'],
+      '/workflow/pending-submission': ['submitted'],
+      '/workflow/returned-submissions': ['returned_for_info', 'verify_rejected', 'rejected'],
+      '/workflow/under-verification': ['pending_verification'],
+      '/workflow/under-review': ['reviewed'],
+      '/workflow/under-approval': ['pending_approval', 'verified'],
+      '/workflow/internal-audit-returned': ['audited'],
+      '/workflow/approved-closed': ['approved', 'completed'],
+    };
+
+    const expectedStatuses = filterByPath[currentPath];
+    if (!expectedStatuses) {
+      return submissions;
+    }
+
+    return submissions.filter(item => expectedStatuses.includes(item.status));
+  }, [currentPath, submissions]);
+
+  const queueSummary = useMemo(() => {
+    const count = (statuses: OPMSSubmission['status'][]) => submissions.filter(item => statuses.includes(item.status)).length;
+    return [
+      { label: 'My Drafts', value: count(['draft']) },
+      { label: 'Pending Submission', value: count(['submitted']) },
+      { label: 'Returned Submissions', value: count(['returned_for_info', 'verify_rejected', 'rejected']) },
+      { label: 'Under Verification', value: count(['pending_verification']) },
+      { label: 'Under Review', value: count(['reviewed']) },
+      { label: 'Under Approval', value: count(['pending_approval', 'verified']) },
+      { label: 'Internal Audit Returned', value: count(['audited']) },
+      { label: 'Approved / Closed', value: count(['approved', 'completed']) },
+    ];
+  }, [submissions]);
 
   const columns = [
     { id: 'target', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
     { id: 'quarter', header: 'Qtr', accessor: (row: OPMSSubmission) => row.quarter },
-    { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600 font-medium' : ''}>{new Date(row.dueDate).toLocaleDateString()}</span> },
+    { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
+    {
+      id: 'days',
+      header: 'Days Outstanding',
+      accessor: (row: OPMSSubmission) => {
+        const diffMs = Date.now() - new Date(row.dueDate).getTime();
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        return days > 0 ? `${days} overdue` : `${Math.abs(days)} remaining`;
+      }
+    },
+    { id: 'reviewer', header: 'Current Reviewer', accessor: (row: OPMSSubmission) => row.verifier?.displayName ?? row.approver?.displayName ?? 'Pending' },
+    { id: 'comment', header: 'Last Comment', accessor: (row: OPMSSubmission) => row.comments?.[0]?.content ?? '-' },
     { id: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'draft' ? 'default' : 'warning'}>{statusLabels[row.status]}</Badge> },
-    { id: 'actions', header: '', accessor: (row: OPMSSubmission) => row.status === 'draft' ? <Button variant="primary" size="sm">Complete</Button> : <Button variant="ghost" size="sm">View</Button> },
+    {
+      id: 'actions',
+      header: 'Actions',
+      accessor: (row: OPMSSubmission) => row.status === 'draft'
+        ? <Button variant="primary" size="sm">Edit Draft</Button>
+        : <Button variant="ghost" size="sm">View History</Button>
+    },
   ];
 
   return (
-    <AppShell title="My Work Queue" subtitle="Your pending tasks">
+    <AppShell title="My Work Queue" subtitle="Your submissions and workflow statuses">
       <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          {queueSummary.map(item => (
+            <Card key={item.label} className="p-3">
+              <p className="text-lg font-bold text-secondary-900 dark:text-white">{item.value}</p>
+              <p className="text-xs text-secondary-500">{item.label}</p>
+            </Card>
+          ))}
+        </div>
         <Card>
           <DataTable data={mySubmissions} columns={columns} onRowClick={(row) => setSelectedSubmission(row)} emptyMessage="No items" getRowId={(row) => row.id} />
         </Card>

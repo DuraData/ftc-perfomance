@@ -12,6 +12,7 @@ import {
   createIdpCommunitySession,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
+import { useHasAnyPermission } from '../security/AccessControl';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState } from '../ui';
 import type {
@@ -35,6 +36,7 @@ function metricCard(title: string, value: string | number, caption?: string) {
 
 export function IdpPlanningDashboardPage() {
   const { pushToast } = useApp();
+  const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
@@ -72,29 +74,32 @@ export function IdpPlanningDashboardPage() {
           <Button variant="outline" icon={<RefreshCcw className="h-4 w-4" />} onClick={() => void load()}>
             Refresh
           </Button>
-          <Button
-            variant="primary"
-            icon={<Plus className="h-4 w-4" />}
-            onClick={async () => {
-              const year = new Date().getFullYear();
-              const result = await createIdpPlan({
-                municipalityName: 'Blue Hills Municipality',
-                planTitle: `Integrated Development Plan ${year}-${year + 5}`,
-                planCode: `IDP-${year}`,
-                startFinancialYear: year,
-                endFinancialYear: year + 5,
-              });
+          {!canManagePlan ? <Badge variant="warning">Read Only</Badge> : null}
+          {canManagePlan ? (
+            <Button
+              variant="primary"
+              icon={<Plus className="h-4 w-4" />}
+              onClick={async () => {
+                const year = new Date().getFullYear();
+                const result = await createIdpPlan({
+                  municipalityName: 'Blue Hills Municipality',
+                  planTitle: `Integrated Development Plan ${year}-${year + 5}`,
+                  planCode: `IDP-${year}`,
+                  startFinancialYear: year,
+                  endFinancialYear: year + 5,
+                });
 
-              if (result.success) {
-                pushToast('success', 'IDP plan created successfully.');
-                await load();
-              } else {
-                pushToast('error', result.message ?? 'Failed to create IDP plan.');
-              }
-            }}
-          >
-            New IDP Plan
-          </Button>
+                if (result.success) {
+                  pushToast('success', 'IDP plan created successfully.');
+                  await load();
+                } else {
+                  pushToast('error', result.message ?? 'Failed to create IDP plan.');
+                }
+              }}
+            >
+              New IDP Plan
+            </Button>
+          ) : null}
           <select
             value={selectedPlanId ?? ''}
             onChange={(event) => {
@@ -107,27 +112,29 @@ export function IdpPlanningDashboardPage() {
               <option key={plan.id} value={plan.id}>{plan.planCode} - {plan.planTitle}</option>
             ))}
           </select>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              if (!selectedPlanId) return;
-              const year = new Date().getFullYear();
-              const result = await createIdpPlanVersion(selectedPlanId, {
-                versionType: 'AnnualReview',
-                versionLabel: `Annual Review ${year}`,
-                reviewYear: `${year}/${year + 1}`,
-                summaryOfChanges: 'Annual review generated from planning dashboard',
-              });
+          {canManagePlan ? (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!selectedPlanId) return;
+                const year = new Date().getFullYear();
+                const result = await createIdpPlanVersion(selectedPlanId, {
+                  versionType: 'AnnualReview',
+                  versionLabel: `Annual Review ${year}`,
+                  reviewYear: `${year}/${year + 1}`,
+                  summaryOfChanges: 'Annual review generated from planning dashboard',
+                });
 
-              if (result.success) {
-                pushToast('success', 'Annual review version created.');
-              } else {
-                pushToast('error', result.message ?? 'Unable to create annual review version.');
-              }
-            }}
-          >
-            Annual Review
-          </Button>
+                if (result.success) {
+                  pushToast('success', 'Annual review version created.');
+                } else {
+                  pushToast('error', result.message ?? 'Unable to create annual review version.');
+                }
+              }}
+            >
+              Annual Review
+            </Button>
+          ) : null}
         </div>
 
         {busy ? <Card><p className="text-sm text-secondary-500">Loading IDP dashboard...</p></Card> : null}
@@ -200,6 +207,7 @@ export function IdpPlanningDashboardPage() {
 
 export function IdpPlanManagementPage() {
   const { pushToast } = useApp();
+  const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [versions, setVersions] = useState<IdpPlanVersion[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
@@ -231,27 +239,30 @@ export function IdpPlanManagementPage() {
         <Card>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
-            <Button
-              variant="primary"
-              onClick={async () => {
-                const year = new Date().getFullYear();
-                const result = await createIdpPlan({
-                  municipalityName: 'Blue Hills Municipality',
-                  planTitle: `Integrated Development Plan ${year}-${year + 5}`,
-                  planCode: `IDP-${year}`,
-                  startFinancialYear: year,
-                  endFinancialYear: year + 5,
-                });
-                if (result.success) {
-                  pushToast('success', 'IDP plan created.');
-                  await load();
-                } else {
-                  pushToast('error', result.message ?? 'Failed to create plan.');
-                }
-              }}
-            >
-              Create Plan
-            </Button>
+            {!canManagePlan ? <Badge variant="warning">Read Only</Badge> : null}
+            {canManagePlan ? (
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  const year = new Date().getFullYear();
+                  const result = await createIdpPlan({
+                    municipalityName: 'Blue Hills Municipality',
+                    planTitle: `Integrated Development Plan ${year}-${year + 5}`,
+                    planCode: `IDP-${year}`,
+                    startFinancialYear: year,
+                    endFinancialYear: year + 5,
+                  });
+                  if (result.success) {
+                    pushToast('success', 'IDP plan created.');
+                    await load();
+                  } else {
+                    pushToast('error', result.message ?? 'Failed to create plan.');
+                  }
+                }}
+              >
+                Create Plan
+              </Button>
+            ) : null}
           </div>
         </Card>
 
@@ -275,28 +286,30 @@ export function IdpPlanManagementPage() {
           <Card>
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Version Control</h3>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  if (!selectedPlanId) return;
-                  const now = new Date();
-                  const result = await createIdpPlanVersion(selectedPlanId, {
-                    versionType: 'Revised',
-                    versionLabel: `Revised IDP ${now.getFullYear()}`,
-                    reviewYear: `${now.getFullYear()}/${now.getFullYear() + 1}`,
-                    summaryOfChanges: 'Revision initiated from IDP plan management workspace',
-                  });
+              {canManagePlan ? (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    if (!selectedPlanId) return;
+                    const now = new Date();
+                    const result = await createIdpPlanVersion(selectedPlanId, {
+                      versionType: 'Revised',
+                      versionLabel: `Revised IDP ${now.getFullYear()}`,
+                      reviewYear: `${now.getFullYear()}/${now.getFullYear() + 1}`,
+                      summaryOfChanges: 'Revision initiated from IDP plan management workspace',
+                    });
 
-                  if (result.success) {
-                    pushToast('success', 'New revised IDP version created.');
-                    await load();
-                  } else {
-                    pushToast('error', result.message ?? 'Failed to create version.');
-                  }
-                }}
-              >
-                Create Revision
-              </Button>
+                    if (result.success) {
+                      pushToast('success', 'New revised IDP version created.');
+                      await load();
+                    } else {
+                      pushToast('error', result.message ?? 'Failed to create version.');
+                    }
+                  }}
+                >
+                  Create Revision
+                </Button>
+              ) : null}
             </div>
             <div className="mt-3 space-y-2">
               {versions.map(version => (
@@ -316,6 +329,7 @@ export function IdpPlanManagementPage() {
 
 export function IdpHierarchyPage() {
   const { pushToast } = useApp();
+  const canManageHierarchy = useHasAnyPermission(['IDP.Hierarchy.Manage', 'IDP.Collaboration.Manage']);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [hierarchy, setHierarchy] = useState<IdpHierarchy | null>(null);
@@ -367,6 +381,7 @@ export function IdpHierarchyPage() {
         <Card>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
+            {!canManageHierarchy ? <Badge variant="warning">Read Only</Badge> : null}
             <select
               value={selectedPlanId ?? ''}
               onChange={event => setSelectedPlanId(Number(event.target.value))}
@@ -374,23 +389,25 @@ export function IdpHierarchyPage() {
             >
               {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.planCode}</option>)}
             </select>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                if (!selectedPlanId) return;
-                const result = await createIdpComment({
-                  idpPlanId: selectedPlanId,
-                  idpPlanVersionId: hierarchy?.versions.find(v => v.isActive)?.id ?? null,
-                  entityName: 'IdpHierarchy',
-                  entityId: selectedPlanId.toString(),
-                  comment: 'Hierarchy review checkpoint captured from planning workspace',
-                });
+            {canManageHierarchy ? (
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!selectedPlanId) return;
+                  const result = await createIdpComment({
+                    idpPlanId: selectedPlanId,
+                    idpPlanVersionId: hierarchy?.versions.find(v => v.isActive)?.id ?? null,
+                    entityName: 'IdpHierarchy',
+                    entityId: selectedPlanId.toString(),
+                    comment: 'Hierarchy review checkpoint captured from planning workspace',
+                  });
 
-                pushToast(result.success ? 'success' : 'error', result.success ? 'Hierarchy review comment added.' : (result.message ?? 'Failed to add comment.'));
-              }}
-            >
-              Add Review Comment
-            </Button>
+                  pushToast(result.success ? 'success' : 'error', result.success ? 'Hierarchy review comment added.' : (result.message ?? 'Failed to add comment.'));
+                }}
+              >
+                Add Review Comment
+              </Button>
+            ) : null}
           </div>
         </Card>
 
@@ -431,6 +448,7 @@ export function IdpHierarchyPage() {
 
 export function IdpCommunityParticipationPage() {
   const { pushToast } = useApp();
+  const canManageParticipation = useHasAnyPermission(['IDP.Participation.Manage']);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
@@ -461,6 +479,7 @@ export function IdpCommunityParticipationPage() {
         <Card>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
+            {!canManageParticipation ? <Badge variant="warning">Read Only</Badge> : null}
             <select
               value={selectedPlanId ?? ''}
               onChange={async event => {
@@ -474,36 +493,38 @@ export function IdpCommunityParticipationPage() {
             >
               {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.planCode}</option>)}
             </select>
-            <Button
-              variant="primary"
-              onClick={async () => {
-                if (!selectedPlanId) {
-                  pushToast('error', 'Select an IDP plan before logging participation.');
-                  return;
-                }
+            {canManageParticipation ? (
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  if (!selectedPlanId) {
+                    pushToast('error', 'Select an IDP plan before logging participation.');
+                    return;
+                  }
 
-                const now = new Date();
-                const result = await createIdpCommunitySession({
-                  idpPlanId: selectedPlanId,
-                  participationType: 'PublicMeeting',
-                  sessionDate: now.toISOString(),
-                  venue: 'Municipal Hall',
-                  wardId: null,
-                  participantsCount: 120,
-                  attendanceRegisterPath: '/documents/idp/public-meeting-attendance.pdf',
-                  minutesPath: '/documents/idp/public-meeting-minutes.pdf',
-                });
+                  const now = new Date();
+                  const result = await createIdpCommunitySession({
+                    idpPlanId: selectedPlanId,
+                    participationType: 'PublicMeeting',
+                    sessionDate: now.toISOString(),
+                    venue: 'Municipal Hall',
+                    wardId: null,
+                    participantsCount: 120,
+                    attendanceRegisterPath: '/documents/idp/public-meeting-attendance.pdf',
+                    minutesPath: '/documents/idp/public-meeting-minutes.pdf',
+                  });
 
-                if (result.success) {
-                  pushToast('success', 'Community participation session logged.');
-                  await load();
-                } else {
-                  pushToast('error', result.message ?? 'Failed to log participation session.');
-                }
-              }}
-            >
-              Log Public Meeting
-            </Button>
+                  if (result.success) {
+                    pushToast('success', 'Community participation session logged.');
+                    await load();
+                  } else {
+                    pushToast('error', result.message ?? 'Failed to log participation session.');
+                  }
+                }}
+              >
+                Log Public Meeting
+              </Button>
+            ) : null}
           </div>
         </Card>
 
@@ -525,6 +546,7 @@ export function IdpCommunityParticipationPage() {
 }
 
 export function IdpAlignmentMatrixPage() {
+  const canManageAlignment = useHasAnyPermission(['IDP.Alignment.Manage']);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [matrix, setMatrix] = useState<IdpAlignmentMatrixItem[]>([]);
@@ -555,6 +577,7 @@ export function IdpAlignmentMatrixPage() {
         <Card>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
+            {!canManageAlignment ? <Badge variant="warning">Read Only</Badge> : null}
             <select
               value={selectedPlanId ?? ''}
               onChange={event => setSelectedPlanId(Number(event.target.value))}

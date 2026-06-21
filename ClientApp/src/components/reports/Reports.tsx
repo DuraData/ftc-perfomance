@@ -5,6 +5,7 @@ import { Button, Badge, Card } from '../ui';
 import { Modal } from '../common/Modal';
 import { Select } from '../common/Form';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useApp } from '../../context/AppContext';
 
 const reportCategories = [
   { id: 'performance', title: 'Performance', icon: <TrendingUp className="w-5 h-5" />, reports: [
@@ -111,12 +112,33 @@ function ReportPreviewModal({ isOpen, onClose, report }: { isOpen: boolean; onCl
 }
 
 export function Reports() {
+  const { roles } = useApp();
+  const isSubmitter = roles.some(role => role.toLowerCase() === 'submitter');
   const [selectedReport, setSelectedReport] = useState<{ id: string; title: string; description: string } | null>(null);
+
+  const visibleCategories = isSubmitter
+    ? [
+        {
+          id: 'submitter-performance',
+          title: 'My Performance Reports',
+          icon: <TrendingUp className="w-5 h-5" />,
+          reports: [
+            { id: 'my-opms-performance', title: 'My OPMS Performance Report', description: 'My OPMS performance and KPI delivery' },
+            { id: 'my-ipms-performance', title: 'My IPMS Performance Report', description: 'My IPMS performance and KPI delivery' },
+            { id: 'idp-summary', title: 'IDP Summary Report', description: 'IDP alignment and strategic summary' },
+            { id: 'my-submission-status', title: 'My Submission Status Report', description: 'Statuses and turnaround for my submissions' },
+            { id: 'my-evidence-register', title: 'My Evidence Register', description: 'Evidence uploads linked to my submissions' },
+            { id: 'my-returned-submissions', title: 'My Returned Submissions Report', description: 'Returned submissions requiring action' },
+            { id: 'my-overdue-submissions', title: 'My Overdue Submissions Report', description: 'Overdue submissions and outstanding days' },
+          ],
+        },
+      ]
+    : reportCategories;
 
   return (
     <AppShell title="Reports" subtitle="Performance analytics">
       <div className="space-y-4">
-        {reportCategories.map(category => (
+        {visibleCategories.map(category => (
           <div key={category.id}>
             <div className="flex items-center gap-2 mb-2">
               <div className="p-1.5 bg-primary-50 dark:bg-primary-900/30 rounded text-primary-600">{category.icon}</div>

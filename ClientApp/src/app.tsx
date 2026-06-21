@@ -10,7 +10,7 @@ import { EmployeeList, DepartmentList, DepartmentUnitList, PositionList } from '
 import { PeriodList, ApprovalSetupList, LookupTables } from './components/admin/AdminManagement';
 import { AdminAuditLogsPage, AdminPermissionsPage, AdminRolesPage, AdminUsersPage } from './components/admin/SystemAdmin';
 import { RoleImplementationAuditPage } from './components/admin/RoleImplementationAuditPage';
-import { PermissionSimulationPage, RoleAccessMatrixPage, SystemCoverageAuditPage } from './components/admin/AccessGovernancePages';
+import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAuditPage, SystemCoverageAuditPage } from './components/admin/AccessGovernancePages';
 import {
   CountriesPage, ProvincesPage, CitiesPage, SuburbsPage, AddressesPage,
   OrganisationsPage, IndustriesPage, ContactsPage, ResumesPage, OccupationsPage,
@@ -121,6 +121,22 @@ function AppContent() {
         return <IPMSSubmissionsList />;
       case '/workflow/my-queue':
         return <MyWorkQueue />;
+      case '/workflow/my-drafts':
+        return <MyWorkQueue />;
+      case '/workflow/pending-submission':
+        return <MyWorkQueue />;
+      case '/workflow/returned-submissions':
+        return <MyWorkQueue />;
+      case '/workflow/under-verification':
+        return <MyWorkQueue />;
+      case '/workflow/under-review':
+        return <MyWorkQueue />;
+      case '/workflow/under-approval':
+        return <MyWorkQueue />;
+      case '/workflow/internal-audit-returned':
+        return <MyWorkQueue />;
+      case '/workflow/approved-closed':
+        return <MyWorkQueue />;
       case '/workflow/verification':
         return <WorkflowQueues />;
       case '/workflow/approval':
@@ -175,6 +191,8 @@ function AppContent() {
         return <PermissionSimulationPage />;
       case '/system-administration/system-coverage-audit':
         return <SystemCoverageAuditPage />;
+      case '/system-administration/role-permission-crud-audit':
+        return <RolePermissionCrudAuditPage />;
       case '/admin/budget-types':
         return <BudgetTypesPage />;
       case '/admin/strategic-goals':
@@ -211,8 +229,30 @@ function AppContent() {
         return <AddressesPage />;
       case '/reports':
         return <Reports />;
+      case '/reports/opms-performance':
+        return <Reports />;
+      case '/reports/ipms-performance':
+        return <Reports />;
+      case '/reports/idp-summary':
+        return <Reports />;
+      case '/reports/submission-status':
+        return <Reports />;
+      case '/reports/evidence-register':
+        return <Reports />;
+      case '/reports/returned-submissions':
+        return <Reports />;
+      case '/reports/overdue-submissions':
+        return <Reports />;
       case '/idp/dashboard':
         return <IdpPlanningDashboardPage />;
+      case '/idp/overview':
+        return <IdpPlanManagementPage />;
+      case '/idp/strategic-objectives':
+        return <IdpHierarchyPage />;
+      case '/idp/projects':
+        return <IdpHierarchyPage />;
+      case '/idp/kpis':
+        return <IdpHierarchyPage />;
       case '/idp/plans':
         return <IdpPlanManagementPage />;
       case '/idp/hierarchy':
@@ -224,6 +264,10 @@ function AppContent() {
       case '/idp/reports':
         return <IdpReportsPage />;
       case '/settings':
+        return <Settings />;
+      case '/notifications':
+        return <Settings />;
+      case '/my-profile':
         return <Settings />;
       default:
         return <Dashboard />;

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Eye, Edit2, Trash2, Copy, Library } from 'lucide-react';
+import { Plus, Download, Eye, Edit2, Trash2, Copy, Library, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
+import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createOpmsTarget as createOpmsTargetApi,
   deleteOpmsTarget as deleteOpmsTargetApi,
@@ -135,6 +136,7 @@ export function OPMSTargetList() {
     setCurrentPath,
     pushToast,
   } = useApp();
+  const canManageTargets = useHasAnyPermission(['OPMS.Targets.Create', 'OPMS.Targets.Edit', 'OPMS.Targets.Delete']);
   const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -316,57 +318,72 @@ export function OPMSTargetList() {
       >
         <Eye className="w-4 h-4 text-secondary-400" />
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setCurrentPath(`/opms/targets/${row.id}/edit`);
-        }}
-        className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
-        title="Edit"
-      >
-        <Edit2 className="w-4 h-4 text-secondary-400" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void (async () => {
-            const result = await createOpmsTargetApi(buildPayloadFromTarget({
-              ...row,
-              id: '',
-              indicatorNumber: `${row.indicatorNumber}-COPY`,
-              targetName: `${row.targetName} (Copy)`,
-            }));
-            if (result.success) {
-              pushToast('success', 'OPMS target copied');
-              await loadTargets();
-            } else {
-              pushToast('error', result.message ?? 'Failed to copy OPMS target');
-            }
-          })();
-        }}
-        className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
-        title="Copy"
-      >
-        <Copy className="w-4 h-4 text-secondary-400" />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void (async () => {
-            const result = await deleteOpmsTargetApi(row.id);
-            if (result.success) {
-              pushToast('success', 'OPMS target deleted');
-              await loadTargets();
-            } else {
-              pushToast('error', result.message ?? 'Failed to delete OPMS target');
-            }
-          })();
-        }}
-        className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
-        title="Delete"
-      >
-        <Trash2 className="w-4 h-4 text-error-500" />
-      </button>
+      {canManageTargets ? (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentPath(`/opms/targets/${row.id}/edit`);
+            }}
+            className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
+            title="Edit"
+          >
+            <Edit2 className="w-4 h-4 text-secondary-400" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void (async () => {
+                const result = await createOpmsTargetApi(buildPayloadFromTarget({
+                  ...row,
+                  id: '',
+                  indicatorNumber: `${row.indicatorNumber}-COPY`,
+                  targetName: `${row.targetName} (Copy)`,
+                }));
+                if (result.success) {
+                  pushToast('success', 'OPMS target copied');
+                  await loadTargets();
+                } else {
+                  pushToast('error', result.message ?? 'Failed to copy OPMS target');
+                }
+              })();
+            }}
+            className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
+            title="Copy"
+          >
+            <Copy className="w-4 h-4 text-secondary-400" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void (async () => {
+                const result = await deleteOpmsTargetApi(row.id);
+                if (result.success) {
+                  pushToast('success', 'OPMS target deleted');
+                  await loadTargets();
+                } else {
+                  pushToast('error', result.message ?? 'Failed to delete OPMS target');
+                }
+              })();
+            }}
+            className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4 text-error-500" />
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setCurrentPath('/opms/submissions');
+          }}
+          className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"
+          title="Start Submission"
+        >
+          <FileText className="w-4 h-4 text-secondary-400" />
+        </button>
+      )}
     </div>
   );
 
@@ -377,18 +394,21 @@ export function OPMSTargetList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="primary">{filteredTargets.length} targets</Badge>
+            {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" icon={<Download className="w-4 h-4" />}>
-              Export
-            </Button>
-            <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
-              Create From OPMS Library
-            </Button>
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCurrentPath('/opms/targets/new')}>
-              New Target
-            </Button>
-          </div>
+          {canManageTargets ? (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" icon={<Download className="w-4 h-4" />}>
+                Export
+              </Button>
+              <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
+                Create From OPMS Library
+              </Button>
+              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setCurrentPath('/opms/targets/new')}>
+                New Target
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         {/* Filters */}
@@ -405,12 +425,14 @@ export function OPMSTargetList() {
           getRowId={(row) => row.id}
         />
 
-        <OpmsTemplateSelectionModal
-          isOpen={showLibraryModal}
-          onClose={() => setShowLibraryModal(false)}
-          onSelect={openCreateFromTemplate}
-          onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
-        />
+        {canManageTargets ? (
+          <OpmsTemplateSelectionModal
+            isOpen={showLibraryModal}
+            onClose={() => setShowLibraryModal(false)}
+            onSelect={openCreateFromTemplate}
+            onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
+          />
+        ) : null}
       </div>
     </AppShell>
   );

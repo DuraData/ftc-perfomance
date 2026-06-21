@@ -263,6 +263,10 @@ public class UsersController : ControllerBase
             .Select(assignment => new UserAssignmentResponse(
                 assignment.Id,
                 assignment.AssignmentType.ToString(),
+                assignment.DelegatorUserId,
+                assignment.IsActive,
+                assignment.ValidFromUtc,
+                assignment.ValidToUtc,
                 assignment.TargetId,
                 assignment.KpiId,
                 assignment.ProjectId,
@@ -293,6 +297,10 @@ public class UsersController : ControllerBase
             {
                 UserId = id,
                 AssignmentType = Enum.Parse<AssignmentType>(assignment.AssignmentType, true),
+                DelegatorUserId = assignment.DelegatorUserId,
+                IsActive = assignment.IsActive,
+                ValidFromUtc = assignment.ValidFromUtc,
+                ValidToUtc = assignment.ValidToUtc,
                 TargetId = assignment.TargetId,
                 KpiId = assignment.KpiId,
                 ProjectId = assignment.ProjectId,

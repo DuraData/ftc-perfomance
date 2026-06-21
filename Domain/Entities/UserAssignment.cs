@@ -6,7 +6,8 @@ public enum AssignmentType
     AdditionalVerifierAssignment = 2,
     AdditionalSubmitterAssignment = 3,
     ProjectAssignee = 4,
-    TaskAssignee = 5
+    TaskAssignee = 5,
+    DelegatedAssignment = 6
 }
 
 public class UserAssignment
@@ -14,6 +15,10 @@ public class UserAssignment
     public int Id { get; set; }
     public string UserId { get; set; } = string.Empty;
     public AssignmentType AssignmentType { get; set; }
+    public string? DelegatorUserId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime? ValidFromUtc { get; set; }
+    public DateTime? ValidToUtc { get; set; }
     public string? TargetId { get; set; }
     public string? KpiId { get; set; }
     public string? ProjectId { get; set; }

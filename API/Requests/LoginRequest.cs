@@ -32,7 +32,16 @@ public record UserScopeItemRequest(string ScopeType, int? DepartmentId, int? Uni
 
 public record UpdateUserScopesRequest(UserScopeItemRequest[] Scopes);
 
-public record UserAssignmentItemRequest(string AssignmentType, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
+public record UserAssignmentItemRequest(
+    string AssignmentType,
+    string? DelegatorUserId,
+    bool IsActive,
+    DateTime? ValidFromUtc,
+    DateTime? ValidToUtc,
+    string? TargetId,
+    string? KpiId,
+    string? ProjectId,
+    string? TaskId);
 
 public record UpdateUserAssignmentsRequest(UserAssignmentItemRequest[] Assignments);
 
@@ -55,6 +64,8 @@ public record SimulateAccessRequest(
     string? Role,
     int? DepartmentId,
     int? UnitId,
+    string? OwnerUserId,
+    string? DelegatorUserId,
     string? TargetId,
     string? KpiId,
     string? ProjectId,
@@ -229,11 +240,13 @@ public record SaveOpmsSubmissionRequest(
     string Quarter,
     decimal? Actual,
     string? ActualDescription,
+    string? ActualPerformanceDescription,
     decimal? ActualExpenditure,
     decimal? Variance,
     string? VarianceReason,
     string? CorrectiveMeasure,
     decimal? SubmitterScore,
+    string? PoeType,
     DateTime? DueDate,
     DateTime? ExtendedDueDate);
 
@@ -242,17 +255,24 @@ public record SaveIpmsSubmissionRequest(
     string Quarter,
     decimal? Actual,
     string? ActualDescription,
+    string? ActualPerformanceDescription,
     decimal? ActualExpenditure,
     decimal? Variance,
     string? VarianceReason,
     string? CorrectiveMeasure,
     decimal? SubmitterScore,
+    string? PoeType,
     DateTime? DueDate,
     DateTime? ExtendedDueDate);
 
-public record SubmissionWorkflowActionRequest(string? Comment, decimal? Score = null);
+public record SubmissionWorkflowActionRequest(
+    string? Comment,
+    decimal? Score = null,
+    string? Recommendation = null,
+    DateTime? ResponseDueDate = null,
+    string? RfiComment = null);
 
-public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason);
+public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason, int? ExtendedByDays = null);
 
 public record CreateIdpPlanRequest(
     string MunicipalityName,

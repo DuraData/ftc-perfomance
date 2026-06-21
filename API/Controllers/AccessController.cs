@@ -77,6 +77,8 @@ public class AccessController : ControllerBase
             new AccessScopeContext(
                 request.DepartmentId,
                 request.UnitId,
+                request.OwnerUserId,
+                request.DelegatorUserId,
                 request.TargetId,
                 request.KpiId,
                 request.ProjectId,

@@ -110,6 +110,7 @@ const buildFullMenu = (): MenuItem[] => [
       { label: 'Role Access Matrix', path: '/system-administration/role-access-matrix', icon: 'history', isDivider: false },
       { label: 'Permission Simulation', path: '/system-administration/permission-simulation', icon: 'history', isDivider: false },
       { label: 'System Coverage Audit', path: '/system-administration/system-coverage-audit', icon: 'history', isDivider: false },
+      { label: 'Role Permission & CRUD Audit', path: '/system-administration/role-permission-crud-audit', icon: 'history', isDivider: false },
     ],
   },
   {
@@ -184,6 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (path.startsWith('/admin/permissions')) return '/system-administration/permissions';
     if (path.startsWith('/admin/audit')) return '/system-administration/audit-logs';
     if (path.startsWith('/system-administration/role-implementation-audit')) return '/system-administration/role-implementation-audit';
+    if (path.startsWith('/system-administration/role-permission-crud-audit')) return '/system-administration/role-permission-crud-audit';
     return path;
   };
 

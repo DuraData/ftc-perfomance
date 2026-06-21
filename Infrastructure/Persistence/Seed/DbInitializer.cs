@@ -565,7 +565,7 @@ public static class DbInitializer
                 "Workflow.Audit.View", "Reports.View", "Reports.Institution.View",
                 "Reports.InternalAudit.View", "Audit.Logs.View", "Audit.Reports.View", "Audit.Trails.View",
                 "VersionLogs.View", "SystemAdministration.AuditTrail.View"),
-            [SecurityModel.MunicipalManager] = BaseAccess(
+            [SecurityModel.PmsPerformanceManager] = BaseAccess(
                 "Targets.View", "OPMS.View", "IPMS.View", "OPMS.Targets.View", "OPMS.Submissions.View", "OPMS.Submissions.Submit", "OPMS.Submissions.Approve", "OPMS.Submissions.Reject", "OPMS.Submissions.Score", "Actuals.View", "Actuals.Submit",
                 "IDP.Plan.View", "IDP.Plan.Manage", "IDP.Version.Manage", "IDP.Hierarchy.Manage", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Alignment.Manage", "IDP.Participation.View", "IDP.Budget.View", "IDP.Documents.Manage", "IDP.Collaboration.Manage", "IDP.Reports.Generate", "IDP.Dashboard.View",
                 "Workflow.Submit.View", "Workflow.Approve.View", "Scores.Edit",
@@ -580,30 +580,23 @@ public static class DbInitializer
                 "Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Review", "IPMS.Submissions.Review", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "POE.View", "Workflow.Review.View",
                 "IDP.Plan.View", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Dashboard.View",
                 "Comments.Add", "Scores.Edit", "Reports.View", "Notifications.TriggerNotification"),
-            [SecurityModel.KpiApprover] = BaseAccess(
+            [SecurityModel.Approver] = BaseAccess(
                 "Targets.View", "OPMS.Library.View", "IPMS.Library.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Approve", "IPMS.Submissions.Approve", "OPMS.Submissions.Reject", "IPMS.Submissions.Reject", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "POE.View",
                 "IDP.Plan.View", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Budget.View", "IDP.Dashboard.View",
                 "Workflow.Approve.View", "Scores.Edit", "Notifications.View",
                 "Reports.Approval.View"),
-            [SecurityModel.HeadOfDepartment] = BaseAccess(
-                "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Edit", "IPMS.Submissions.Edit", "OPMS.Submissions.Approve", "IPMS.Submissions.Approve", "OPMS.Submissions.Reject", "IPMS.Submissions.Reject", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "Actuals.Edit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
-                "IDP.Plan.View", "IDP.Hierarchy.Manage", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Budget.View", "IDP.Dashboard.View",
-                "Workflow.Approve.View", "Comments.Add", "Notifications.View",
-                "Reports.Department.View", "Audit.Trail.View", "Notifications.TriggerNotification", "SystemAdministration.AuditTrail.View"),
-            [SecurityModel.DeputyHeadOfDepartment] = BaseAccess(
-                "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Edit", "IPMS.Submissions.Edit", "OPMS.Submissions.Approve", "IPMS.Submissions.Approve", "OPMS.Submissions.Reject", "IPMS.Submissions.Reject", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "Actuals.Edit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
-                "IDP.Plan.View", "IDP.Project.Manage", "IDP.Kpi.Manage", "IDP.Alignment.View", "IDP.Participation.View", "IDP.Dashboard.View",
-                "Workflow.Approve.View", "Comments.Add", "Notifications.View",
-                "Reports.Department.View", "Audit.Trail.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.Verifier] = BaseAccess(
                 "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Edit", "IPMS.Submissions.Edit", "OPMS.Submissions.Verify", "IPMS.Submissions.Verify", "OPMS.Submissions.VerifyReject", "IPMS.Submissions.VerifyReject", "Actuals.View", "Actuals.Edit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
                 "IDP.Plan.View", "IDP.Participation.View", "IDP.Dashboard.View",
                 "Workflow.Verify.View", "Comments.Add", "Notifications.View",
                 "Reports.Verification.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.Submitter] = BaseAccess(
-                "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View", "OPMS.Submissions.View", "IPMS.Submissions.View", "OPMS.Submissions.Submit", "IPMS.Submissions.Submit", "OPMS.Submissions.Score", "IPMS.Submissions.Score", "Actuals.View", "Actuals.Submit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
-                "IDP.Plan.View", "IDP.Participation.View", "IDP.Documents.Manage", "IDP.Dashboard.View",
-                "Workflow.Submit.View", "Scores.Edit", "Notifications.View")
+                "Targets.View", "OPMS.Targets.View", "IPMS.Targets.View",
+                "OPMS.Submissions.View", "OPMS.Submissions.Create", "OPMS.Submissions.Edit", "OPMS.Submissions.Delete", "OPMS.Submissions.Submit",
+                "IPMS.Submissions.View", "IPMS.Submissions.Create", "IPMS.Submissions.Edit", "IPMS.Submissions.Delete", "IPMS.Submissions.Submit",
+                "Actuals.View", "Actuals.Submit", "POE.View", "POE.Upload", "OPMS.POE.Upload", "IPMS.POE.Upload",
+                "IDP.Plan.View", "IDP.Dashboard.View", "IDP.Participation.View", "IDP.Alignment.View", "IDP.Budget.View", "IDP.Reports.Generate",
+                "Workflow.Submit.View", "Notifications.View", "Reports.View")
         };
     }
 
@@ -663,12 +656,10 @@ public static class DbInitializer
             new(SecurityModel.Admin, "Operational administration for users, departments, units, setup data, and plans.", true),
             new(SecurityModel.ClientAdmin, "Read-only client administration focused on user directory and audit reporting.", true),
             new(SecurityModel.AuditorGeneral, "Read-only oversight across the institution for external assurance.", true),
-            new(SecurityModel.MunicipalManager, "Institution-wide performance review and approval role.", false),
+            new(SecurityModel.PmsPerformanceManager, "Institution-wide performance management and oversight role.", false),
             new(SecurityModel.InternalAudit, "Institution-wide internal audit role.", false),
             new(SecurityModel.Reviewer, "Institution-wide performance review role.", false),
-            new(SecurityModel.KpiApprover, "Approver role scoped by institution, department, or assigned KPI.", false),
-            new(SecurityModel.HeadOfDepartment, "Department-level performance authority.", false),
-            new(SecurityModel.DeputyHeadOfDepartment, "Department-level delegated authority.", false),
+            new(SecurityModel.Approver, "Approval role scoped by institution, department, unit, or assigned KPI.", false),
             new(SecurityModel.Verifier, "Verification role scoped by department, unit, or assigned KPI.", false),
             new(SecurityModel.Submitter, "Submission role scoped by department, unit, or assigned KPI.", false)
         ];
@@ -746,9 +737,9 @@ public static class DbInitializer
             new(SecurityModel.AuditorGeneral, "Bongani", "Mabena", "bongani.mabena", "bongani.mabena@bluehills.gov.za", "0825550402", "IAR", "IAR-AUD", "Assurance Specialist", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
             new(SecurityModel.AuditorGeneral, "Tracey", "Adams", "tracey.adams", "tracey.adams@bluehills.gov.za", "0825550403", "CORP", "CORP-LEGAL", "Audit Oversight Analyst", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
 
-            new(SecurityModel.MunicipalManager, "Mandla", "Dube", "mandla.dube", "mandla.dube@bluehills.gov.za", "0825550501", "OMM", "OMM-EXEC", "Municipal Manager", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
-            new(SecurityModel.MunicipalManager, "Zanele", "Mokoena", "zanele.mokoena", "zanele.mokoena@bluehills.gov.za", "0825550502", "OMM", "OMM-PMO", "Acting Municipal Manager", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
-            new(SecurityModel.MunicipalManager, "Gerhard", "Swanepoel", "gerhard.swanepoel", "gerhard.swanepoel@bluehills.gov.za", "0825550503", "SPP", "SPP-PLAN", "Institutional Performance Sponsor", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
+            new(SecurityModel.PmsPerformanceManager, "Mandla", "Dube", "mandla.dube", "mandla.dube@bluehills.gov.za", "0825550501", "OMM", "OMM-EXEC", "Municipal Manager", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
+            new(SecurityModel.PmsPerformanceManager, "Zanele", "Mokoena", "zanele.mokoena", "zanele.mokoena@bluehills.gov.za", "0825550502", "OMM", "OMM-PMO", "Acting Municipal Manager", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
+            new(SecurityModel.PmsPerformanceManager, "Gerhard", "Swanepoel", "gerhard.swanepoel", "gerhard.swanepoel@bluehills.gov.za", "0825550503", "SPP", "SPP-PLAN", "Institutional Performance Sponsor", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
 
             new(SecurityModel.InternalAudit, "Azwi", "Netshifhefhe", "azwi.netshifhefhe", "azwi.netshifhefhe@bluehills.gov.za", "0825550601", "IAR", "IAR-AUD", "Internal Audit Manager", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
             new(SecurityModel.InternalAudit, "Riaan", "Pretorius", "riaan.pretorius", "riaan.pretorius@bluehills.gov.za", "0825550602", "IAR", "IAR-RISK", "Risk and Assurance Manager", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
@@ -758,17 +749,17 @@ public static class DbInitializer
             new(SecurityModel.Reviewer, "Francois", "du Plessis", "francois.duplessis", "francois.duplessis@bluehills.gov.za", "0825550702", "BTO", "BTO-FIN", "Financial Reviewer", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
             new(SecurityModel.Reviewer, "Boitumelo", "Radebe", "boitumelo.radebe", "boitumelo.radebe@bluehills.gov.za", "0825550703", "OMM", "OMM-PMO", "Institutional Review Officer", [new DemoScopeSeed(ScopeType.InstitutionScope)], []),
 
-            new(SecurityModel.KpiApprover, "Priya", "Naidoo", "priya.naidoo", "priya.naidoo@bluehills.gov.za", "0825550801", "SPP", "SPP-PLAN", "KPI Approval Lead", [new DemoScopeSeed(ScopeType.InstitutionScope)], [new DemoAssignmentSeed(AssignmentType.AdditionalApproverAssignment, KpiId: "KPI-INST-001")]),
-            new(SecurityModel.KpiApprover, "Themba", "Zulu", "themba.zulu", "themba.zulu@bluehills.gov.za", "0825550802", "ITS", "ITS-ROADS", "Technical KPI Approver", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "ITS"), new DemoScopeSeed(ScopeType.AssignedKpiScope, DepartmentCode: "ITS", KpiId: "KPI-ITS-014")], [new DemoAssignmentSeed(AssignmentType.AdditionalApproverAssignment, KpiId: "KPI-ITS-014")]),
-            new(SecurityModel.KpiApprover, "Megan", "van Wyk", "megan.vanwyk", "megan.vanwyk@bluehills.gov.za", "0825550803", "WAT", "WAT-DIST", "Water KPI Approver", [new DemoScopeSeed(ScopeType.AssignedKpiScope, DepartmentCode: "WAT", UnitCode: "WAT-DIST", KpiId: "KPI-WAT-021")], [new DemoAssignmentSeed(AssignmentType.AdditionalApproverAssignment, KpiId: "KPI-WAT-021")]),
+            new(SecurityModel.Approver, "Priya", "Naidoo", "priya.naidoo", "priya.naidoo@bluehills.gov.za", "0825550801", "SPP", "SPP-PLAN", "KPI Approval Lead", [new DemoScopeSeed(ScopeType.InstitutionScope)], [new DemoAssignmentSeed(AssignmentType.AdditionalApproverAssignment, KpiId: "KPI-INST-001")]),
+            new(SecurityModel.Approver, "Themba", "Zulu", "themba.zulu", "themba.zulu@bluehills.gov.za", "0825550802", "ITS", "ITS-ROADS", "Technical KPI Approver", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "ITS"), new DemoScopeSeed(ScopeType.AssignedKpiScope, DepartmentCode: "ITS", KpiId: "KPI-ITS-014")], [new DemoAssignmentSeed(AssignmentType.AdditionalApproverAssignment, KpiId: "KPI-ITS-014")]),
+            new(SecurityModel.Approver, "Megan", "van Wyk", "megan.vanwyk", "megan.vanwyk@bluehills.gov.za", "0825550803", "WAT", "WAT-DIST", "Water KPI Approver", [new DemoScopeSeed(ScopeType.AssignedKpiScope, DepartmentCode: "WAT", UnitCode: "WAT-DIST", KpiId: "KPI-WAT-021")], [new DemoAssignmentSeed(AssignmentType.AdditionalApproverAssignment, KpiId: "KPI-WAT-021")]),
 
-            new(SecurityModel.HeadOfDepartment, "Thabo", "Mokoena", "thabo.mokoena", "thabo.mokoena@bluehills.gov.za", "0825550901", "ITS", "ITS-ROADS", "Head of Infrastructure and Technical Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "ITS")], []),
-            new(SecurityModel.HeadOfDepartment, "Lindiwe", "Mahlangu", "lindiwe.mahlangu", "lindiwe.mahlangu@bluehills.gov.za", "0825550902", "COM", "COM-WASTE", "Head of Community Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "COM")], []),
-            new(SecurityModel.HeadOfDepartment, "Ahmed", "Hassan", "ahmed.hassan", "ahmed.hassan@bluehills.gov.za", "0825550903", "BTO", "BTO-FIN", "Chief Financial Officer", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "BTO")], []),
+            new(SecurityModel.Approver, "Thabo", "Mokoena", "thabo.mokoena", "thabo.mokoena@bluehills.gov.za", "0825550901", "ITS", "ITS-ROADS", "Head of Infrastructure and Technical Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "ITS")], []),
+            new(SecurityModel.Approver, "Lindiwe", "Mahlangu", "lindiwe.mahlangu", "lindiwe.mahlangu@bluehills.gov.za", "0825550902", "COM", "COM-WASTE", "Head of Community Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "COM")], []),
+            new(SecurityModel.Approver, "Ahmed", "Hassan", "ahmed.hassan", "ahmed.hassan@bluehills.gov.za", "0825550903", "BTO", "BTO-FIN", "Chief Financial Officer", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "BTO")], []),
 
-            new(SecurityModel.DeputyHeadOfDepartment, "Nomsa", "Dlamini", "nomsa.dlamini", "nomsa.dlamini@bluehills.gov.za", "0825551001", "ITS", "ITS-ELEC", "Deputy Director Technical Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "ITS")], []),
-            new(SecurityModel.DeputyHeadOfDepartment, "Keitumetse", "Mabaso", "keitumetse.mabaso", "keitumetse.mabaso@bluehills.gov.za", "0825551002", "COM", "COM-PARKS", "Deputy Director Community Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "COM")], []),
-            new(SecurityModel.DeputyHeadOfDepartment, "Bradley", "Peters", "bradley.peters", "bradley.peters@bluehills.gov.za", "0825551003", "WAT", "WAT-PROD", "Deputy Director Water Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "WAT")], []),
+            new(SecurityModel.Approver, "Nomsa", "Dlamini", "nomsa.dlamini", "nomsa.dlamini@bluehills.gov.za", "0825551001", "ITS", "ITS-ELEC", "Deputy Director Technical Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "ITS")], []),
+            new(SecurityModel.Approver, "Keitumetse", "Mabaso", "keitumetse.mabaso", "keitumetse.mabaso@bluehills.gov.za", "0825551002", "COM", "COM-PARKS", "Deputy Director Community Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "COM")], []),
+            new(SecurityModel.Approver, "Bradley", "Peters", "bradley.peters", "bradley.peters@bluehills.gov.za", "0825551003", "WAT", "WAT-PROD", "Deputy Director Water Services", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "WAT")], []),
 
             new(SecurityModel.Verifier, "Ayabonga", "Cele", "ayabonga.cele", "ayabonga.cele@bluehills.gov.za", "0825551101", "SPP", "SPP-ME", "Institutional Verifier", [new DemoScopeSeed(ScopeType.DepartmentScope, DepartmentCode: "SPP"), new DemoScopeSeed(ScopeType.AssignedKpiScope, DepartmentCode: "SPP", KpiId: "KPI-SPP-008")], [new DemoAssignmentSeed(AssignmentType.AdditionalVerifierAssignment, KpiId: "KPI-SPP-008")]),
             new(SecurityModel.Verifier, "Reneilwe", "Mogale", "reneilwe.mogale", "reneilwe.mogale@bluehills.gov.za", "0825551102", "BTO", "BTO-SCM", "Financial Data Verifier", [new DemoScopeSeed(ScopeType.UnitScope, DepartmentCode: "BTO", UnitCode: "BTO-SCM")], [new DemoAssignmentSeed(AssignmentType.AdditionalVerifierAssignment, TargetId: "TGT-BTO-003")]),

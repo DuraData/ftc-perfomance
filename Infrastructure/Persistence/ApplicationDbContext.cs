@@ -117,6 +117,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasForeignKey(u => u.UnitId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<ApplicationUser>()
+            .HasOne(u => u.ManagerUser)
+            .WithMany(u => u.DirectReports)
+            .HasForeignKey(u => u.ManagerUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Entity<UserScope>()
             .HasOne(us => us.User)
             .WithMany(u => u.Scopes)
@@ -138,6 +144,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasOne(ua => ua.User)
             .WithMany(u => u.Assignments)
             .HasForeignKey(ua => ua.UserId);
+
+        builder.Entity<UserAssignment>()
+            .HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(ua => ua.DelegatorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<OpmsTargetTemplate>()
             .HasIndex(template => template.TemplateCode)
@@ -375,6 +387,34 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .Property(submission => submission.Actual)
             .HasPrecision(18, 2);
 
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.ActualExpenditure)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.Variance)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.SubmitterScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.VerifierScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.ApproverScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.PmsScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<OpmsSubmission>()
+            .Property(submission => submission.AuditorScore)
+            .HasPrecision(18, 2);
+
         builder.Entity<IpmsSubmission>()
             .HasOne(submission => submission.IpmsTarget)
             .WithMany(target => target.Submissions)
@@ -389,6 +429,34 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
 
         builder.Entity<IpmsSubmission>()
             .Property(submission => submission.Actual)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.ActualExpenditure)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.Variance)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.SubmitterScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.VerifierScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.ApproverScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.PmsScore)
+            .HasPrecision(18, 2);
+
+        builder.Entity<IpmsSubmission>()
+            .Property(submission => submission.AuditorScore)
             .HasPrecision(18, 2);
 
         builder.Entity<PoeFile>()

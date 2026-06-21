@@ -183,8 +183,14 @@ public class OpmsSubmission
     public string OpmsTargetId { get; set; } = string.Empty;
     public string Quarter { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string SubmitterStatus { get; set; } = "Draft";
+    public string VerifierStatus { get; set; } = "Pending";
+    public string ApproverStatus { get; set; } = "Pending";
+    public string PmsStatus { get; set; } = "Pending";
+    public string AuditorStatus { get; set; } = "Pending";
     public decimal? Actual { get; set; }
     public string? ActualDescription { get; set; }
+    public string? ActualPerformanceDescription { get; set; }
     public decimal? ActualExpenditure { get; set; }
     public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
@@ -195,17 +201,38 @@ public class OpmsSubmission
     public string? VerifierUserId { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public string? VerifierComments { get; set; }
+    public string? VerifierComment { get; set; }
+    public decimal? VerifierScore { get; set; }
     public string? ApproverUserId { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public string? ApproverComments { get; set; }
+    public string? ApproverComment { get; set; }
+    public decimal? ApproverScore { get; set; }
     public string? PmsOfficerUserId { get; set; }
     public DateTime? PmsReviewedAt { get; set; }
     public string? PmsComments { get; set; }
+    public string? PmsComment { get; set; }
+    public string? PmsRecommendation { get; set; }
+    public decimal? PmsScore { get; set; }
+    public DateTime? PmsResponseDueDate { get; set; }
+    public string? PmsRfiComment { get; set; }
     public string? AuditorUserId { get; set; }
     public DateTime? AuditedAt { get; set; }
     public string? AuditorComments { get; set; }
+    public string? AuditorComment { get; set; }
+    public string? AuditorRecommendation { get; set; }
+    public decimal? AuditorScore { get; set; }
+    public DateTime? AuditorResponseDueDate { get; set; }
     public DateTime? DueDate { get; set; }
     public DateTime? ExtendedDueDate { get; set; }
+    public int? DueDateExtendedDays { get; set; }
+    public string? PoeType { get; set; }
+    public bool IsDisabled { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime CreatedOn { get; set; } = DateTime.UtcNow;
+    public string? UpdatedBy { get; set; }
+    public DateTime? UpdatedOn { get; set; }
+    public string? OrganisationId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public OpmsTarget OpmsTarget { get; set; } = null!;
@@ -225,8 +252,14 @@ public class IpmsSubmission
     public string IpmsTargetId { get; set; } = string.Empty;
     public string Quarter { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string SubmitterStatus { get; set; } = "Draft";
+    public string VerifierStatus { get; set; } = "Pending";
+    public string ApproverStatus { get; set; } = "Pending";
+    public string PmsStatus { get; set; } = "Pending";
+    public string AuditorStatus { get; set; } = "Pending";
     public decimal? Actual { get; set; }
     public string? ActualDescription { get; set; }
+    public string? ActualPerformanceDescription { get; set; }
     public decimal? ActualExpenditure { get; set; }
     public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
@@ -237,17 +270,38 @@ public class IpmsSubmission
     public string? VerifierUserId { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public string? VerifierComments { get; set; }
+    public string? VerifierComment { get; set; }
+    public decimal? VerifierScore { get; set; }
     public string? ApproverUserId { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public string? ApproverComments { get; set; }
+    public string? ApproverComment { get; set; }
+    public decimal? ApproverScore { get; set; }
     public string? PmsOfficerUserId { get; set; }
     public DateTime? PmsReviewedAt { get; set; }
     public string? PmsComments { get; set; }
+    public string? PmsComment { get; set; }
+    public string? PmsRecommendation { get; set; }
+    public decimal? PmsScore { get; set; }
+    public DateTime? PmsResponseDueDate { get; set; }
+    public string? PmsRfiComment { get; set; }
     public string? AuditorUserId { get; set; }
     public DateTime? AuditedAt { get; set; }
     public string? AuditorComments { get; set; }
+    public string? AuditorComment { get; set; }
+    public string? AuditorRecommendation { get; set; }
+    public decimal? AuditorScore { get; set; }
+    public DateTime? AuditorResponseDueDate { get; set; }
     public DateTime? DueDate { get; set; }
     public DateTime? ExtendedDueDate { get; set; }
+    public int? DueDateExtendedDays { get; set; }
+    public string? PoeType { get; set; }
+    public bool IsDisabled { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime CreatedOn { get; set; } = DateTime.UtcNow;
+    public string? UpdatedBy { get; set; }
+    public DateTime? UpdatedOn { get; set; }
+    public string? OrganisationId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public IpmsTarget IpmsTarget { get; set; } = null!;

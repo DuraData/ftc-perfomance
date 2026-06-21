@@ -18,6 +18,8 @@ public interface IAccessControlService
 public sealed record AccessScopeContext(
     int? DepartmentId = null,
     int? UnitId = null,
+    string? OwnerUserId = null,
+    string? DelegatorUserId = null,
     string? TargetId = null,
     string? KpiId = null,
     string? ProjectId = null,
@@ -135,13 +137,22 @@ public class AccessControlService : IAccessControlService
             .ToArray();
 
         var matchedAssignments = access.Assignments
-            .Where(current => AssignmentMatches(current, scope))
+            .Where(current => AssignmentMatches(current, scope, user.Id))
             .Select(current => current.AssignmentType.ToString())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var managerHierarchyMatch = await ManagerHierarchyMatchesAsync(user.Id, scope.OwnerUserId);
+        if (managerHierarchyMatch)
+        {
+            matchedAssignments = matchedAssignments
+                .Concat(["ManagerHierarchy"])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
         var allowWithoutScope = access.Scopes.Length == 0 && access.Assignments.Length == 0;
-        var allowed = allowWithoutScope || matchedScopes.Length > 0 || matchedAssignments.Length > 0;
+        var allowed = allowWithoutScope || matchedScopes.Length > 0 || matchedAssignments.Length > 0 || managerHierarchyMatch;
         var reason = allowed
             ? $"Permission '{permissionCode}' granted within current scope."
             : $"Permission '{permissionCode}' exists but the requested record is outside the user's scope or assignment.";
@@ -233,17 +244,94 @@ public class AccessControlService : IAccessControlService
         };
     }
 
-    private static bool AssignmentMatches(UserAssignment current, AccessScopeContext requested)
+    private static bool AssignmentMatches(UserAssignment current, AccessScopeContext requested, string currentUserId)
     {
+        if (!current.IsActive)
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        if (current.ValidFromUtc.HasValue && current.ValidFromUtc.Value > now)
+        {
+            return false;
+        }
+
+        if (current.ValidToUtc.HasValue && current.ValidToUtc.Value < now)
+        {
+            return false;
+        }
+
         return current.AssignmentType switch
         {
             AssignmentType.AdditionalApproverAssignment => IdMatches(current.TargetId, requested.TargetId) || IdMatches(current.KpiId, requested.KpiId),
             AssignmentType.AdditionalVerifierAssignment => IdMatches(current.TargetId, requested.TargetId) || IdMatches(current.KpiId, requested.KpiId),
             AssignmentType.AdditionalSubmitterAssignment => IdMatches(current.TargetId, requested.TargetId) || IdMatches(current.KpiId, requested.KpiId),
-            (AssignmentType)4 => IdMatches(current.ProjectId, requested.ProjectId),
-            (AssignmentType)5 => IdMatches(current.TaskId, requested.TaskId),
+            AssignmentType.ProjectAssignee => IdMatches(current.ProjectId, requested.ProjectId),
+            AssignmentType.TaskAssignee => IdMatches(current.TaskId, requested.TaskId),
+            AssignmentType.DelegatedAssignment => DelegationMatches(current, requested, currentUserId),
             _ => false
         };
+    }
+
+    private static bool DelegationMatches(UserAssignment current, AccessScopeContext requested, string currentUserId)
+    {
+        if (!string.Equals(current.UserId, currentUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(current.DelegatorUserId)
+            && !string.IsNullOrWhiteSpace(requested.DelegatorUserId)
+            && !string.Equals(current.DelegatorUserId, requested.DelegatorUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return IdMatches(current.TargetId, requested.TargetId)
+            || IdMatches(current.KpiId, requested.KpiId)
+            || IdMatches(current.ProjectId, requested.ProjectId)
+            || IdMatches(current.TaskId, requested.TaskId)
+            || (!string.IsNullOrWhiteSpace(requested.OwnerUserId) && string.Equals(requested.OwnerUserId, current.DelegatorUserId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<bool> ManagerHierarchyMatchesAsync(string currentUserId, string? ownerUserId)
+    {
+        if (string.IsNullOrWhiteSpace(ownerUserId))
+        {
+            return false;
+        }
+
+        if (string.Equals(currentUserId, ownerUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Traverse the manager chain from the target owner toward the root.
+        var traversed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cursor = ownerUserId;
+        while (!string.IsNullOrWhiteSpace(cursor) && traversed.Add(cursor))
+        {
+            var managerId = await _context.Users
+                .AsNoTracking()
+                .Where(item => item.Id == cursor)
+                .Select(item => item.ManagerUserId)
+                .FirstOrDefaultAsync();
+
+            if (string.IsNullOrWhiteSpace(managerId))
+            {
+                return false;
+            }
+
+            if (string.Equals(managerId, currentUserId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            cursor = managerId;
+        }
+
+        return false;
     }
 
     private static bool IdMatches(string? left, string? right) =>
