@@ -41,6 +41,17 @@ import {
   IdpPlanningDashboardPage,
   IdpReportsPage,
 } from './components/idp/IdpWorkspace';
+import { OPMSDashboardPage } from './components/opms/OPMSDashboard';
+import { IPMSDashboardPage } from './components/ipms/IPMSDashboard';
+import {
+  RiskDashboardPage,
+  RiskRegisterPage,
+  RiskAssessmentsPage,
+  RiskTreatmentPlansPage,
+  RiskReviewsPage,
+  RiskHeatmapPage,
+  RiskReportsPage,
+} from './components/risk/RiskWorkspace';
 
 function AppContent() {
   const { currentPath, isAuthenticated } = useApp();
@@ -105,6 +116,8 @@ function AppContent() {
         return <Dashboard />;
       case '/kpi-library':
         return <KPILibrary />;
+      case '/opms/dashboard':
+        return <OPMSDashboardPage />;
       case '/opms/library':
         return <OPMSTargetLibraryList />;
       case '/opms/targets':
@@ -113,6 +126,8 @@ function AppContent() {
         return <OPMSSubmissionsList />;
       case '/opms/vote-numbers':
         return <VoteNumbersPage />;
+      case '/ipms/dashboard':
+        return <IPMSDashboardPage />;
       case '/ipms/library':
         return <IPMSTargetLibraryList />;
       case '/ipms/targets':
@@ -263,6 +278,20 @@ function AppContent() {
         return <IdpAlignmentMatrixPage />;
       case '/idp/reports':
         return <IdpReportsPage />;
+      case '/risk/dashboard':
+        return <RiskDashboardPage />;
+      case '/risk/register':
+        return <RiskRegisterPage />;
+      case '/risk/assessments':
+        return <RiskAssessmentsPage />;
+      case '/risk/treatment-plans':
+        return <RiskTreatmentPlansPage />;
+      case '/risk/reviews':
+        return <RiskReviewsPage />;
+      case '/risk/heatmap':
+        return <RiskHeatmapPage />;
+      case '/risk/reports':
+        return <RiskReportsPage />;
       case '/settings':
         return <Settings />;
       case '/notifications':

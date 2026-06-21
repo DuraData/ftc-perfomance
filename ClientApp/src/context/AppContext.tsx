@@ -28,7 +28,7 @@ const buildFullMenu = (): MenuItem[] => [
     icon: 'target',
     isDivider: false,
     children: [
-      { label: 'OPMS Target Library', path: '/opms/library', icon: 'library', isDivider: false },
+      { label: 'OPMS Dashboard', path: '/opms/dashboard', icon: 'dashboard', isDivider: false },
       { label: 'OPMS Targets', path: '/opms/targets', icon: 'target', isDivider: false },
       { label: 'OPMS Submissions', path: '/opms/submissions', icon: 'target', isDivider: false },
       { label: 'Vote Numbers', path: '/opms/vote-numbers', icon: 'layers', isDivider: false },
@@ -39,7 +39,7 @@ const buildFullMenu = (): MenuItem[] => [
     icon: 'target',
     isDivider: false,
     children: [
-      { label: 'IPMS Target Library', path: '/ipms/library', icon: 'library', isDivider: false },
+      { label: 'IPMS Dashboard', path: '/ipms/dashboard', icon: 'dashboard', isDivider: false },
       { label: 'IPMS Targets', path: '/ipms/targets', icon: 'target', isDivider: false },
       { label: 'IPMS Submissions', path: '/ipms/submissions', icon: 'target', isDivider: false },
     ],
@@ -57,8 +57,20 @@ const buildFullMenu = (): MenuItem[] => [
       { label: 'IDP Reports', path: '/idp/reports', icon: 'reports', isDivider: false },
     ],
   },
-  {
-    label: 'Workflow',
+  {    label: 'Risk Management',
+    icon: 'shield-alert',
+    isDivider: false,
+    children: [
+      { label: 'Risk Dashboard', path: '/risk/dashboard', icon: 'shield-alert', isDivider: false },
+      { label: 'Risk Register', path: '/risk/register', icon: 'clipboard-list', isDivider: false },
+      { label: 'Assessments', path: '/risk/assessments', icon: 'file-search', isDivider: false },
+      { label: 'Treatment Plans', path: '/risk/treatment-plans', icon: 'heart-pulse', isDivider: false },
+      { label: 'Reviews', path: '/risk/reviews', icon: 'refresh-cw', isDivider: false },
+      { label: 'Heatmap', path: '/risk/heatmap', icon: 'thermometer', isDivider: false },
+      { label: 'Reports', path: '/risk/reports', icon: 'reports', isDivider: false },
+    ],
+  },
+  {    label: 'Workflow',
     icon: 'workflow',
     isDivider: false,
     children: [

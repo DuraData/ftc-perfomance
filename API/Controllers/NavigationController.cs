@@ -52,9 +52,23 @@ public class NavigationController : ControllerBase
             ], false));
         }
 
+        if (HasPermission(permissions, "IDP.Risk.Manage"))
+        {
+            items.Add(new MenuItemResponse("Risk Management", null, "shield-alert", [
+                new MenuItemResponse("Risk Dashboard", "/risk/dashboard", "shield-alert", null, false),
+                new MenuItemResponse("Risk Register", "/risk/register", "clipboard-list", null, false),
+                new MenuItemResponse("Assessments", "/risk/assessments", "file-search", null, false),
+                new MenuItemResponse("Treatment Plans", "/risk/treatment-plans", "heart-pulse", null, false),
+                new MenuItemResponse("Reviews", "/risk/reviews", "refresh-cw", null, false),
+                new MenuItemResponse("Heatmap", "/risk/heatmap", "thermometer", null, false),
+                new MenuItemResponse("Reports", "/risk/reports", "reports", null, false)
+            ], false));
+        }
+
         if (HasPermission(permissions, "OPMS.Targets.View", "OPMS.Submissions.View", "OPMS.Submissions.Create"))
         {
             items.Add(new MenuItemResponse("OPMS", null, "target", [
+                new MenuItemResponse("OPMS Dashboard", "/opms/dashboard", "dashboard", null, false),
                 new MenuItemResponse("My OPMS Targets", "/opms/targets", "target", null, false),
                 new MenuItemResponse("My OPMS Submissions", "/opms/submissions", "file-text", null, false)
             ], false));
@@ -63,6 +77,7 @@ public class NavigationController : ControllerBase
         if (HasPermission(permissions, "IPMS.Targets.View", "IPMS.Submissions.View", "IPMS.Submissions.Create"))
         {
             items.Add(new MenuItemResponse("IPMS", null, "target", [
+                new MenuItemResponse("IPMS Dashboard", "/ipms/dashboard", "dashboard", null, false),
                 new MenuItemResponse("My IPMS Targets", "/ipms/targets", "target", null, false),
                 new MenuItemResponse("My IPMS Submissions", "/ipms/submissions", "file-text", null, false)
             ], false));
@@ -174,6 +189,22 @@ public class NavigationController : ControllerBase
         if (idpChildren.Count > 0)
         {
             items.Add(new MenuItemResponse("IDP", null, "target", idpChildren.ToArray(), false));
+        }
+
+        var riskChildren = new List<MenuItemResponse>();
+        if (fullAccess || HasPermission(permissions, "IDP.Risk.Manage"))
+        {
+            riskChildren.Add(new MenuItemResponse("Risk Dashboard", "/risk/dashboard", "shield-alert", null, false));
+            riskChildren.Add(new MenuItemResponse("Risk Register", "/risk/register", "clipboard-list", null, false));
+            riskChildren.Add(new MenuItemResponse("Assessments", "/risk/assessments", "file-search", null, false));
+            riskChildren.Add(new MenuItemResponse("Treatment Plans", "/risk/treatment-plans", "heart-pulse", null, false));
+            riskChildren.Add(new MenuItemResponse("Reviews", "/risk/reviews", "refresh-cw", null, false));
+            riskChildren.Add(new MenuItemResponse("Heatmap", "/risk/heatmap", "thermometer", null, false));
+            riskChildren.Add(new MenuItemResponse("Reports", "/risk/reports", "reports", null, false));
+        }
+        if (riskChildren.Count > 0)
+        {
+            items.Add(new MenuItemResponse("Risk Management", null, "shield-alert", riskChildren.ToArray(), false));
         }
 
         var workflowChildren = new List<MenuItemResponse>();

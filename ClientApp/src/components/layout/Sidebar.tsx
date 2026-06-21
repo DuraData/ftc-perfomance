@@ -74,7 +74,11 @@ export function Sidebar({ className = '' }: SidebarProps) {
 
   const handleNavClick = (item: MenuItem) => {
     if (item.children && item.children.length > 0) {
+      const isExpanded = expandedSidebarGroups.includes(item.label);
       toggleSidebarGroup(item.label);
+      if (!isExpanded && item.children[0]?.path) {
+        setCurrentPath(item.children[0].path);
+      }
     } else if (item.path) {
       setCurrentPath(item.path);
     }
