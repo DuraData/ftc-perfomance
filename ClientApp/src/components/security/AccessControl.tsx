@@ -63,8 +63,15 @@ const routePermissionMap: Array<{ match: (path: string) => boolean; permissions:
   { match: (path) => path.startsWith('/location/'), permissions: ['Configuration.Manage', 'Configuration.View'] },
 ];
 
-function hasPermissionCode(permissionCodes: string[], granted: string[]) {
+export function hasPermissionCode(permissionCodes: string[], granted: string[]) {
   return permissionCodes.some(code => granted.some(grantedCode => grantedCode.toLowerCase() === code.toLowerCase()));
+}
+
+export function canAccessPath(path: string, permissions: string[], isSuperAdmin: boolean) {
+  if (isSuperAdmin || path === '/dashboard') return true;
+  const rule = routePermissionMap.find(item => item.match(path));
+  if (!rule) return true;
+  return hasPermissionCode(rule.permissions, permissions);
 }
 
 export function useHasPermission(code: string) {
@@ -79,12 +86,7 @@ export function useHasAnyPermission(codes: string[]) {
 
 export function useCanAccessPath(path: string) {
   const { permissions, isSuperAdmin } = useApp();
-  return useMemo(() => {
-    if (isSuperAdmin || path === '/dashboard') return true;
-    const rule = routePermissionMap.find(item => item.match(path));
-    if (!rule) return true;
-    return hasPermissionCode(rule.permissions, permissions);
-  }, [isSuperAdmin, path, permissions]);
+  return useMemo(() => canAccessPath(path, permissions, isSuperAdmin), [path, permissions, isSuperAdmin]);
 }
 
 export function AccessDeniedPage() {

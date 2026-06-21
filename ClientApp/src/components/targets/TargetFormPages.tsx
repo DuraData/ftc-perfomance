@@ -99,19 +99,19 @@ const xafToLegacyUnitMap: Record<XafUnitValue, TargetUnitType> = {
   ReverseNonCumulative: 'reverse_non_cumulative',
 };
 
-function toXafUnitType(value: TargetUnitType): TargetUnitType {
+export function toXafUnitType(value: TargetUnitType): TargetUnitType {
   return legacyToXafUnitMap[value] ?? value;
 }
 
-function toApiUnitType(value: TargetUnitType): TargetUnitType {
+export function toApiUnitType(value: TargetUnitType): TargetUnitType {
   return xafToLegacyUnitMap[value as XafUnitValue] ?? value;
 }
 
-function getTargetUnitLabel(value: TargetUnitType) {
+export function getTargetUnitLabel(value: TargetUnitType) {
   return targetUnitTypeOptions.find(item => item.value === value)?.label ?? 'Target Value';
 }
 
-function validateRequiredFields(values: Array<{ label: string; value: string | undefined }>) {
+export function validateRequiredFields(values: Array<{ label: string; value: string | undefined }>) {
   return values
     .filter(item => !item.value || !item.value.trim())
     .map(item => `${item.label} is required.`);
