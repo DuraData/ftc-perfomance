@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useState } from 'react';
-import { BarChart3, ClipboardList, FileText, Layers, LineChart, Map, Shield } from 'lucide-react';
+import { ClipboardList, FileText, Layers, LineChart, Map, Shield } from 'lucide-react';
 import { getOpmsTargets, getOpmsSubmissions } from '../../api/api';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card } from '../ui';
@@ -16,18 +16,15 @@ function tile(label: string, value: string, onClick: () => void) {
 }
 
 export function OPMSDashboardPage() {
-  const { setCurrentPath, roles, userProfile } = useApp();
+  const { setCurrentPath, userProfile } = useApp();
   const [targets, setTargets] = useState<OPMSTarget[]>([]);
   const [submissions, setSubmissions] = useState<OPMSSubmission[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
-      setLoading(true);
       const [targetsResult, submissionsResult] = await Promise.all([getOpmsTargets(), getOpmsSubmissions()]);
       setTargets(targetsResult.data ?? []);
       setSubmissions(submissionsResult.data ?? []);
-      setLoading(false);
     };
     void load();
   }, []);
@@ -35,12 +32,12 @@ export function OPMSDashboardPage() {
   const totals = useMemo(() => {
     const totalTargets = targets.length;
     const activeTargets = targets.filter(t => !t.isWithdrawn).length;
-    const completedTargets = targets.filter(t => t.submissions.some(s => s.status === 'Approved')).length;
-    const overdueTargets = targets.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && !t.submissions.some(s => s.status === 'Approved')).length;
-    const draft = submissions.filter(s => s.status === 'Draft').length;
-    const submitted = submissions.filter(s => s.status === 'Submitted').length;
-    const returned = submissions.filter(s => s.status === 'Returned').length;
-    const approved = submissions.filter(s => s.status === 'Approved').length;
+    const completedTargets = targets.filter(t => t.submissions.some(s => s.status === 'approved')).length;
+    const overdueTargets = targets.filter(t => t.submissions.some(s => s.dueDate && new Date(s.dueDate) < new Date() && s.status !== 'approved')).length;
+    const draft = submissions.filter(s => s.status === 'draft').length;
+    const submitted = submissions.filter(s => s.status === 'submitted').length;
+    const returned = submissions.filter(s => s.status === 'returned_for_info' || s.status === 'rejected' || s.status === 'verify_rejected').length;
+    const approved = submissions.filter(s => s.status === 'approved').length;
     return { totalTargets, activeTargets, completedTargets, overdueTargets, draft, submitted, returned, approved };
   }, [targets, submissions]);
 
@@ -84,7 +81,7 @@ export function OPMSDashboardPage() {
               <h3 className="text-base font-semibold text-secondary-900">Verification Queue</h3>
             </div>
             <div className="mt-4 space-y-2 text-sm text-secondary-700">
-              <p>{submissions.filter(s => s.status === 'Submitted').length} items awaiting verification.</p>
+              <p>{submissions.filter(s => s.status === 'submitted').length} items awaiting verification.</p>
             </div>
           </Card>
 
@@ -94,7 +91,7 @@ export function OPMSDashboardPage() {
               <h3 className="text-base font-semibold text-secondary-900">Approval Queue</h3>
             </div>
             <div className="mt-4 space-y-2 text-sm text-secondary-700">
-              <p>{submissions.filter(s => s.status === 'Submitted').length} items ready for approval review.</p>
+              <p>{submissions.filter(s => s.status === 'verified' || s.status === 'pending_approval').length} items ready for approval review.</p>
             </div>
           </Card>
         </div>

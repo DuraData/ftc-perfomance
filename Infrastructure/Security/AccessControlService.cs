@@ -11,6 +11,8 @@ public interface IAccessControlService
 {
     Task<EffectiveAccessResult> GetEffectiveAccessAsync(ApplicationUser user);
     Task<AccessDecisionResult> CheckPermissionAsync(ApplicationUser user, string permissionCode, AccessScopeContext? scope = null);
+    Task<AccessQueryScopeResult> GetQueryScopeAsync(ApplicationUser user, string permissionCode);
+    Task<MenuItemResponse[]> GetAuthorizedNavigationAsync(ApplicationUser user);
     Task<RoleAccessMatrixResponse[]> BuildRoleAccessMatrixAsync();
     Task<SystemCoverageAuditResponse[]> BuildSystemCoverageAuditAsync();
 }
@@ -23,13 +25,18 @@ public sealed record AccessScopeContext(
     string? TargetId = null,
     string? KpiId = null,
     string? ProjectId = null,
-    string? TaskId = null);
+    string? TaskId = null,
+    long? MunicipalityId = null);
+
+public sealed record EffectivePermissionRule(string Code, ScopeType? ScopeType);
 
 public sealed record EffectiveAccessResult(
     string[] Roles,
     string[] EffectivePermissions,
     UserScope[] Scopes,
-    UserAssignment[] Assignments);
+    UserAssignment[] Assignments,
+    EffectivePermissionRule[] PermissionRules,
+    SecurityUserRoleAssignment[] RoleAssignments);
 
 public sealed record AccessDecisionResult(
     bool Allowed,
@@ -38,44 +45,48 @@ public sealed record AccessDecisionResult(
     string[] MatchedScopes,
     string[] MatchedAssignments);
 
+public sealed record AccessQueryScopeResult(bool PermissionGranted, bool Unrestricted, int[] DepartmentIds, int[] UnitIds, string[] OwnerUserIds, string[] TargetIds, string[] KpiIds, long[] MunicipalityIds);
+
 public class AccessControlService : IAccessControlService
 {
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<ApplicationRole> _roleManager;
+    private readonly ITenantContext? _tenantContext;
 
     public AccessControlService(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
-        RoleManager<ApplicationRole> roleManager)
+        RoleManager<ApplicationRole> roleManager,
+        ITenantContext? tenantContext = null)
     {
         _context = context;
         _userManager = userManager;
         _roleManager = roleManager;
+        _tenantContext = tenantContext;
     }
 
     public async Task<EffectiveAccessResult> GetEffectiveAccessAsync(ApplicationUser user)
     {
-        var roles = (await _userManager.GetRolesAsync(user)).ToArray();
-        if (SecurityModel.IsSuperAdmin(roles))
-        {
-            return new EffectiveAccessResult(
-                roles,
-                await _context.Permissions.Where(p => p.IsActive).Select(p => p.Code).Distinct().OrderBy(code => code).ToArrayAsync(),
-                await _context.UserScopes.Where(scope => scope.UserId == user.Id).ToArrayAsync(),
-                await _context.UserAssignments.Where(assignment => assignment.UserId == user.Id).ToArrayAsync());
-        }
+        var now = DateTime.UtcNow;
+        var municipalityId = _tenantContext?.MunicipalityId;
+        var assignmentQuery = _context.SecurityUserRoleAssignments
+            .Where(link => link.UserId == user.Id && link.IsActive && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue)
+            .AsNoTracking();
+        if (municipalityId.HasValue) assignmentQuery = assignmentQuery.Where(link => link.MunicipalityId == municipalityId.Value);
+        var roleAssignments = await assignmentQuery.ToArrayAsync();
+        var roleIds = roleAssignments.Select(link => link.RoleId).Distinct().ToArray();
+        var roles = await _context.Roles.Where(role => roleIds.Contains(role.Id) && role.IsActive && role.EffectiveFrom <= now && (!role.EffectiveTo.HasValue || role.EffectiveTo > now)).Select(role => role.Name!).ToArrayAsync();
 
-        var roleIds = await _context.Roles
-            .Where(role => roles.Contains(role.Name!))
-            .Select(role => role.Id)
+        var roleRules = await _context.RolePermissions
+            .Where(link => roleIds.Contains(link.RoleId) && link.IsActive && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && link.Permission.IsActive)
+            .Select(link => new { link.Permission.Code, link.IsAllowed, link.ScopeType })
             .ToListAsync();
 
-        var effective = await _context.RolePermissions
-            .Where(link => roleIds.Contains(link.RoleId) && link.IsAllowed)
-            .Select(link => link.Permission.Code)
-            .Distinct()
-            .ToListAsync();
+        var denied = roleRules.Where(item => !item.IsAllowed).Select(item => item.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var effective = roleRules.Where(item => item.IsAllowed && !denied.Contains(item.Code)).Select(item => item.Code).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var effectiveRules = roleRules.Where(item => item.IsAllowed && !denied.Contains(item.Code))
+            .Select(item => new EffectivePermissionRule(item.Code, item.ScopeType)).ToList();
 
         var overrides = await _context.UserPermissionOverrides
             .Where(overrideItem => overrideItem.UserId == user.Id)
@@ -85,18 +96,17 @@ public class AccessControlService : IAccessControlService
         var permissionSet = new HashSet<string>(effective, StringComparer.OrdinalIgnoreCase);
         foreach (var item in overrides)
         {
-            if (item.IsAllowed)
-            {
-                permissionSet.Add(item.Code);
-            }
-            else
+            // Legacy user overrides are restriction-only. Grants belong to audited,
+            // tenant-scoped role assignments and may not bypass role DENY rules.
+            if (!item.IsAllowed)
             {
                 permissionSet.Remove(item.Code);
+                effectiveRules.RemoveAll(rule => string.Equals(rule.Code, item.Code, StringComparison.OrdinalIgnoreCase));
             }
         }
 
         var scopes = await _context.UserScopes
-            .Where(scope => scope.UserId == user.Id)
+            .Where(scope => scope.UserId == user.Id && scope.IsActive && scope.EffectiveFrom <= now && (!scope.EffectiveTo.HasValue || scope.EffectiveTo > now))
             .OrderBy(scope => scope.ScopeType)
             .ToArrayAsync();
 
@@ -109,17 +119,14 @@ public class AccessControlService : IAccessControlService
             roles,
             permissionSet.OrderBy(code => code).ToArray(),
             scopes,
-            assignments);
+            assignments,
+            effectiveRules.ToArray(),
+            roleAssignments);
     }
 
     public async Task<AccessDecisionResult> CheckPermissionAsync(ApplicationUser user, string permissionCode, AccessScopeContext? scope = null)
     {
         var access = await GetEffectiveAccessAsync(user);
-        if (SecurityModel.IsSuperAdmin(access.Roles))
-        {
-            return new AccessDecisionResult(true, "Super Admin has unrestricted access.", access.EffectivePermissions, ["InstitutionScope"], Array.Empty<string>());
-        }
-
         if (!access.EffectivePermissions.Contains(permissionCode, StringComparer.OrdinalIgnoreCase))
         {
             return new AccessDecisionResult(false, $"Missing permission '{permissionCode}'.", access.EffectivePermissions, Array.Empty<string>(), Array.Empty<string>());
@@ -130,11 +137,29 @@ public class AccessControlService : IAccessControlService
             return new AccessDecisionResult(true, $"Permission '{permissionCode}' granted.", access.EffectivePermissions, Array.Empty<string>(), Array.Empty<string>());
         }
 
+        var permissionRules = access.PermissionRules.Where(rule => string.Equals(rule.Code, permissionCode, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (permissionRules.Any(rule => rule.ScopeType == null))
+        {
+            return new AccessDecisionResult(true, $"Permission '{permissionCode}' granted without a record restriction.", access.EffectivePermissions, ["Unrestricted"], Array.Empty<string>());
+        }
+        var permittedScopeTypes = permissionRules.Where(rule => rule.ScopeType.HasValue).Select(rule => rule.ScopeType!.Value).ToHashSet();
+
         var matchedScopes = access.Scopes
-            .Where(current => ScopeMatches(current, scope))
+            .Where(current => permittedScopeTypes.Contains(current.ScopeType) && ScopeMatches(current, scope))
             .Select(current => current.ScopeType.ToString())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        var roleAssignmentScopeMatches = access.RoleAssignments.Any(assignment =>
+            (permittedScopeTypes.Contains(ScopeType.DepartmentScope) && assignment.DepartmentId.HasValue && assignment.DepartmentId == scope.DepartmentId)
+            || (permittedScopeTypes.Contains(ScopeType.UnitScope) && assignment.UnitId.HasValue && assignment.UnitId == scope.UnitId)
+            || (permittedScopeTypes.Contains(ScopeType.InstitutionScope) && assignment.MunicipalityId.HasValue && assignment.MunicipalityId == scope.MunicipalityId));
+        if (permittedScopeTypes.Contains(ScopeType.Self) && string.Equals(scope.OwnerUserId, user.Id, StringComparison.OrdinalIgnoreCase))
+            matchedScopes = matchedScopes.Append(nameof(ScopeType.Self)).ToArray();
+        if (permittedScopeTypes.Contains(ScopeType.System))
+            matchedScopes = matchedScopes.Append(nameof(ScopeType.System)).ToArray();
+        if (roleAssignmentScopeMatches)
+            matchedScopes = matchedScopes.Append("RoleAssignmentScope").Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
         var matchedAssignments = access.Assignments
             .Where(current => AssignmentMatches(current, scope, user.Id))
@@ -151,13 +176,75 @@ public class AccessControlService : IAccessControlService
                 .ToArray();
         }
 
-        var allowWithoutScope = access.Scopes.Length == 0 && access.Assignments.Length == 0;
-        var allowed = allowWithoutScope || matchedScopes.Length > 0 || matchedAssignments.Length > 0 || managerHierarchyMatch;
+        var assignmentScopePermitted = permittedScopeTypes.Any(type => type is ScopeType.AssignedTargetScope or ScopeType.AssignedKpiScope or ScopeType.AssignedProjectScope or ScopeType.AssignedTaskScope);
+        if (!assignmentScopePermitted) matchedAssignments = [];
+        var allowed = matchedScopes.Length > 0 || matchedAssignments.Length > 0 || (managerHierarchyMatch && permittedScopeTypes.Contains(ScopeType.Self));
         var reason = allowed
             ? $"Permission '{permissionCode}' granted within current scope."
             : $"Permission '{permissionCode}' exists but the requested record is outside the user's scope or assignment.";
 
         return new AccessDecisionResult(allowed, reason, access.EffectivePermissions, matchedScopes, matchedAssignments);
+    }
+
+    public async Task<AccessQueryScopeResult> GetQueryScopeAsync(ApplicationUser user, string permissionCode)
+    {
+        var access = await GetEffectiveAccessAsync(user);
+        if (!access.EffectivePermissions.Contains(permissionCode, StringComparer.OrdinalIgnoreCase))
+            return new(false, false, [], [], [], [], [], []);
+        var rules = access.PermissionRules.Where(rule => string.Equals(rule.Code, permissionCode, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (rules.Any(rule => rule.ScopeType == null || rule.ScopeType == ScopeType.System))
+            return new(true, true, [], [], [], [], [], []);
+
+        var allowedTypes = rules.Where(rule => rule.ScopeType.HasValue).Select(rule => rule.ScopeType!.Value).ToHashSet();
+        var departments = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.DepartmentScope) && scope.ScopeType == ScopeType.DepartmentScope && scope.DepartmentId.HasValue).Select(scope => scope.DepartmentId!.Value)
+            .Concat(access.RoleAssignments.Where(item => allowedTypes.Contains(ScopeType.DepartmentScope) && item.DepartmentId.HasValue).Select(item => item.DepartmentId!.Value)).Distinct().ToArray();
+        var units = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.UnitScope) && scope.ScopeType == ScopeType.UnitScope && scope.UnitId.HasValue).Select(scope => scope.UnitId!.Value)
+            .Concat(access.RoleAssignments.Where(item => allowedTypes.Contains(ScopeType.UnitScope) && item.UnitId.HasValue).Select(item => item.UnitId!.Value)).Distinct().ToArray();
+        var municipalities = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.InstitutionScope) && scope.ScopeType == ScopeType.InstitutionScope && scope.MunicipalityId.HasValue).Select(scope => scope.MunicipalityId!.Value)
+            .Concat(access.RoleAssignments.Where(item => allowedTypes.Contains(ScopeType.InstitutionScope) && item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value)).Distinct().ToArray();
+        var owners = allowedTypes.Contains(ScopeType.Self) ? new[] { user.Id } : [];
+        var targetIds = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.AssignedTargetScope) && scope.ScopeType == ScopeType.AssignedTargetScope && scope.TargetId != null).Select(scope => scope.TargetId!)
+            .Concat(access.Assignments.Where(item => allowedTypes.Contains(ScopeType.AssignedTargetScope) && item.IsActive && item.TargetId != null).Select(item => item.TargetId!)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var kpiIds = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.AssignedKpiScope) && scope.ScopeType == ScopeType.AssignedKpiScope && scope.KpiId != null).Select(scope => scope.KpiId!)
+            .Concat(access.Assignments.Where(item => allowedTypes.Contains(ScopeType.AssignedKpiScope) && item.IsActive && item.KpiId != null).Select(item => item.KpiId!)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return new(true, false, departments, units, owners, targetIds, kpiIds, municipalities);
+    }
+
+    public async Task<MenuItemResponse[]> GetAuthorizedNavigationAsync(ApplicationUser user)
+    {
+        var access = await GetEffectiveAccessAsync(user);
+        var permissionSet = access.EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var definitions = await _context.SecurityNavigationItems.AsNoTracking()
+            .Where(item => item.IsActive)
+            .OrderBy(item => item.DisplayOrder)
+            .ThenBy(item => item.Name)
+            .ToListAsync();
+        return BuildAuthorizedNavigation(definitions, permissionSet);
+    }
+
+    internal static MenuItemResponse[] BuildAuthorizedNavigation(IReadOnlyCollection<SecurityNavigationItem> definitions, ISet<string> permissionSet)
+    {
+        var byParent = definitions.Where(item => item.ParentId.HasValue).GroupBy(item => item.ParentId!.Value).ToDictionary(group => group.Key, group => group.ToArray());
+        var roots = definitions.Where(item => !item.ParentId.HasValue).ToArray();
+
+        MenuItemResponse? Build(SecurityNavigationItem item, HashSet<int> path)
+        {
+            if (!path.Add(item.Id)) return null;
+            var children = byParent.GetValueOrDefault(item.Id, [])
+                .Select(child => Build(child, new HashSet<int>(path)))
+                .Where(child => child != null)
+                .Cast<MenuItemResponse>()
+                .ToArray();
+            var directlyAllowed = !string.IsNullOrWhiteSpace(item.RequiredPermissionCode) && permissionSet.Contains(item.RequiredPermissionCode);
+            if (!directlyAllowed && children.Length == 0) return null;
+            return new MenuItemResponse(item.Name, directlyAllowed ? item.Route : null, item.IconKey, children.Length == 0 ? null : children, false, item.Code);
+        }
+
+        return roots
+            .Select(item => Build(item, []))
+            .Where(item => item != null)
+            .Cast<MenuItemResponse>()
+            .ToArray();
     }
 
     public async Task<RoleAccessMatrixResponse[]> BuildRoleAccessMatrixAsync()
@@ -177,12 +264,11 @@ public class AccessControlService : IAccessControlService
         var userRoles = await _context.UserRoles.AsNoTracking().ToListAsync();
         var users = await _context.Users.AsNoTracking().ToListAsync();
         var scopes = await _context.UserScopes.AsNoTracking().Include(scope => scope.Department).Include(scope => scope.Unit).ToListAsync();
+        var navigation = await _context.SecurityNavigationItems.AsNoTracking().Where(item => item.IsActive).OrderBy(item => item.DisplayOrder).ToArrayAsync();
 
         return roles.Select(role =>
         {
-            var permissionCodes = SecurityModel.IsSuperAdmin([role.Name!])
-                ? Array.Empty<string>()
-                : rolePermissions.GetValueOrDefault(role.Id, Array.Empty<string>());
+            var permissionCodes = rolePermissions.GetValueOrDefault(role.Id, Array.Empty<string>());
             var testUserId = userRoles.FirstOrDefault(link => link.RoleId == role.Id)?.UserId;
             var testUser = testUserId != null ? users.FirstOrDefault(user => user.Id == testUserId) : null;
             var testScopes = testUserId != null
@@ -191,11 +277,11 @@ public class AccessControlService : IAccessControlService
 
             return new RoleAccessMatrixResponse(
                 role.Name!,
-                SecurityModel.IsSuperAdmin([role.Name!]) ? ["*"] : permissionCodes,
+                permissionCodes,
                 testScopes,
-                NavigationController.BuildMenu(permissionCodes.ToHashSet(StringComparer.OrdinalIgnoreCase), SecurityModel.IsSuperAdmin([role.Name!])).Select(item => item.Label).ToArray(),
-                BuildAllowedActions(permissionCodes, SecurityModel.IsSuperAdmin([role.Name!])),
-                BuildAllowedReports(permissionCodes, SecurityModel.IsSuperAdmin([role.Name!])),
+                BuildAuthorizedNavigation(navigation, permissionCodes.ToHashSet(StringComparer.OrdinalIgnoreCase)).Select(item => item.Label).ToArray(),
+                BuildAllowedActions(permissionCodes, false),
+                BuildAllowedReports(permissionCodes, false),
                 testUser != null ? $"{testUser.FirstName} {testUser.LastName}" : null);
         }).ToArray();
     }
@@ -213,7 +299,7 @@ public class AccessControlService : IAccessControlService
             var links = role == null ? [] : userRoles.Where(link => link.RoleId == role.Id).ToArray();
             var row = matrix.FirstOrDefault(item => string.Equals(item.Role, roleName, StringComparison.OrdinalIgnoreCase));
             var hasPermissions = row != null && row.Permissions.Length > 0;
-            var hasScopeFiltering = SecurityModel.IsSuperAdmin([roleName]) || links.Any(link => userScopes.Any(scope => scope.UserId == link.UserId));
+            var hasScopeFiltering = links.Any(link => userScopes.Any(scope => scope.UserId == link.UserId));
             return new SystemCoverageAuditResponse(
                 roleName,
                 SeededUser: links.Length > 0,
@@ -233,7 +319,9 @@ public class AccessControlService : IAccessControlService
     {
         return current.ScopeType switch
         {
-            ScopeType.InstitutionScope => true,
+            ScopeType.Self => !string.IsNullOrWhiteSpace(requested.OwnerUserId) && string.Equals(requested.OwnerUserId, current.UserId, StringComparison.OrdinalIgnoreCase),
+            ScopeType.InstitutionScope => current.MunicipalityId.HasValue && requested.MunicipalityId == current.MunicipalityId,
+            ScopeType.System => true,
             ScopeType.DepartmentScope => current.DepartmentId.HasValue && requested.DepartmentId == current.DepartmentId,
             ScopeType.UnitScope => current.UnitId.HasValue && requested.UnitId == current.UnitId,
             ScopeType.AssignedTargetScope => !string.IsNullOrWhiteSpace(current.TargetId) && string.Equals(current.TargetId, requested.TargetId, StringComparison.OrdinalIgnoreCase),

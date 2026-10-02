@@ -12,7 +12,7 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/roles")]
-[Authorize(Policy = "Permission:Admin.Roles.Manage")]
+[Authorize(Policy = "Permission:SECURITY.MANAGE_ROLES")]
 public class RolesController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -51,6 +51,7 @@ public class RolesController : ControllerBase
             Name = request.Name,
             NormalizedName = request.Name.ToUpperInvariant(),
             Description = request.Description,
+            RoleCode = string.Concat(request.Name.Trim().ToUpperInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '_')),
             IsSystemRole = false,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
@@ -101,10 +102,13 @@ public class RolesController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "System roles cannot be deleted"));
         }
 
-        var result = await _roleManager.DeleteAsync(role);
+        role.IsActive = false;
+        role.EffectiveTo = DateTime.UtcNow;
+        role.UpdatedAt = DateTime.UtcNow;
+        var result = await _roleManager.UpdateAsync(role);
         if (!result.Succeeded)
         {
-            return BadRequest(new ApiResponse<bool>(false, false, "Failed to delete role", result.Errors.Select(e => e.Description).ToArray()));
+            return BadRequest(new ApiResponse<bool>(false, false, "Failed to disable role", result.Errors.Select(e => e.Description).ToArray()));
         }
 
         return Ok(new ApiResponse<bool>(true, true));
@@ -128,31 +132,7 @@ public class RolesController : ControllerBase
     [HttpPut("{id}/permissions")]
     public async Task<ActionResult<ApiResponse<bool>>> SetRolePermissions(string id, [FromBody] UpdateRolePermissionsRequest request)
     {
-        var role = await _roleManager.FindByIdAsync(id);
-        if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
-
-        var currentUserRoles = User.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).Select(c => c.Value);
-        var isSystemAdministrator = SecurityModel.IsSuperAdmin(currentUserRoles);
-
-        if (role.IsSystemRole && !isSystemAdministrator)
-        {
-            return BadRequest(new ApiResponse<bool>(false, false, "System roles cannot be modified"));
-        }
-
-        var existing = await _context.RolePermissions.Where(rp => rp.RoleId == id).ToListAsync();
-        _context.RolePermissions.RemoveRange(existing);
-
-        foreach (var permissionId in request.PermissionIds.Distinct())
-        {
-            _context.RolePermissions.Add(new RolePermission
-            {
-                RoleId = id,
-                PermissionId = permissionId,
-                IsAllowed = true
-            });
-        }
-
-        await _context.SaveChangesAsync();
-        return Ok(new ApiResponse<bool>(true, true));
+        await Task.CompletedTask;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Use PUT /api/v1/security/roles/{roleId}/permissions with RowVersion. The legacy mutation contract is disabled."));
     }
 }

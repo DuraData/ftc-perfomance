@@ -37,11 +37,20 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsSystemRole")
                         .HasColumnType("bit");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Name")
                         .HasMaxLength(256)
@@ -50,6 +59,19 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("NormalizedName")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RoleCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -60,6 +82,13 @@ namespace FTCERP.Host.Migrations
                         .IsUnique()
                         .HasDatabaseName("RoleNameIndex")
                         .HasFilter("[NormalizedName] IS NOT NULL");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "RoleCode")
+                        .IsUnique()
+                        .HasFilter("[MunicipalityId] IS NOT NULL");
 
                     b.ToTable("AspNetRoles", (string)null);
                 });
@@ -118,6 +147,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("ManagerUserId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("MustChangePassword")
                         .HasColumnType("bit");
 
@@ -140,6 +172,15 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<string>("Position")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
@@ -166,6 +207,8 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("ManagerUserId");
 
+                    b.HasIndex("MunicipalityId");
+
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
 
@@ -173,6 +216,9 @@ namespace FTCERP.Host.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex")
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
 
                     b.HasIndex("UnitId");
 
@@ -231,6 +277,10 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("EntityId")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -242,15 +292,33 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("IpAddress")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("NewValue")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("OldValue")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ChangedBy");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "ChangedAt");
 
                     b.ToTable("AuditTrails");
                 });
@@ -315,6 +383,76 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("BudgetTypes");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.BusinessEventOutbox", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AggregateId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ProcessedAt", "AvailableAt");
+
+                    b.ToTable("BusinessEventOutbox");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Department", b =>
                 {
                     b.Property<int>("Id")
@@ -330,14 +468,39 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("PublicId")
                         .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "Code")
+                        .IsUnique()
+                        .HasFilter("[MunicipalityId] IS NOT NULL");
 
                     b.ToTable("Departments");
                 });
@@ -376,6 +539,198 @@ namespace FTCERP.Host.Migrations
                     b.HasIndex("ApprovedByUserId");
 
                     b.ToTable("DueDateExtensions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.EmployeeAssignment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalEmployeeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PositionCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PositionName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("MunicipalEmployeeId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("MunicipalityId", "MunicipalEmployeeId", "EffectiveFrom");
+
+                    b.ToTable("EmployeeAssignments");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.EvidenceBlob", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ContentDeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ContentType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsContentDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsQuarantined")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("ScanDetail")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ScanStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime?>("ScannedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ScannerProvider")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("ScannerReference")
+                        .HasMaxLength(240)
+                        .HasColumnType("nvarchar(240)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("SignatureVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("SizeInBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "Sha256");
+
+                    b.ToTable("EvidenceBlobs");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.FinancialYear", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.ToTable("FinancialYears", t =>
+                        {
+                            t.HasCheckConstraint("CK_FinancialYears_DateRange", "[EndDate] >= [StartDate]");
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IdpAlignmentLink", b =>
@@ -692,8 +1047,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<int>("Category")
                         .HasColumnType("int");
 
-                    b.Property<string>("ContentType")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<string>("EvidenceBlobId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("FileName")
                         .IsRequired()
@@ -705,15 +1061,23 @@ namespace FTCERP.Host.Migrations
                     b.Property<int?>("IdpPlanVersionId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsApproved")
                         .HasColumnType("bit");
 
-                    b.Property<long>("SizeInBytes")
-                        .HasColumnType("bigint");
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("StoragePath")
+                    b.Property<DateTime?>("RetainUntil")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -731,11 +1095,16 @@ namespace FTCERP.Host.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IdpPlanId");
+                    b.HasIndex("EvidenceBlobId");
 
                     b.HasIndex("IdpPlanVersionId");
 
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
                     b.HasIndex("UploadedByUserId");
+
+                    b.HasIndex("IdpPlanId", "EvidenceBlobId");
 
                     b.ToTable("IdpDocuments");
                 });
@@ -836,6 +1205,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<int>("EndFinancialYear")
                         .HasColumnType("int");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("MunicipalityName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -847,6 +1219,15 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("PlanTitle")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<int>("StartFinancialYear")
                         .HasColumnType("int");
@@ -860,8 +1241,12 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
-                    b.HasIndex("PlanCode")
+                    b.HasIndex("PublicId")
                         .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "PlanCode")
+                        .IsUnique()
+                        .HasFilter("[MunicipalityId] IS NOT NULL");
 
                     b.ToTable("IdpPlans");
                 });
@@ -1287,6 +1672,10 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<decimal?>("AchievementPercent")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal?>("Actual")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -1295,7 +1684,12 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("ActualExpenditure")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ActualPerformance")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("ActualPerformanceDescription")
                         .HasColumnType("nvarchar(max)");
@@ -1374,6 +1768,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("IsDisabled")
                         .HasColumnType("bit");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("OrganisationId")
                         .HasColumnType("nvarchar(max)");
 
@@ -1409,9 +1806,21 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("PoeType")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Quarter")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("ReportingPeriodId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1431,6 +1840,9 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool?>("TargetAchieved")
+                        .HasColumnType("bit");
+
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
@@ -1438,6 +1850,7 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("Variance")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("VarianceReason")
@@ -1469,13 +1882,22 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("AuditorUserId");
 
-                    b.HasIndex("IpmsTargetId");
+                    b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PmsOfficerUserId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReportingPeriodId");
 
                     b.HasIndex("SubmittedByUserId");
 
                     b.HasIndex("VerifierUserId");
+
+                    b.HasIndex("IpmsTargetId", "ReportingPeriodId")
+                        .IsUnique()
+                        .HasFilter("[ReportingPeriodId] IS NOT NULL");
 
                     b.ToTable("IpmsSubmissions");
                 });
@@ -1532,6 +1954,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("IsRevised")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsWithdrawn")
+                        .HasColumnType("bit");
+
                     b.Property<string>("KpiDescription")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1555,6 +1980,9 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("NationalKpa")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1565,6 +1993,9 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<int?>("PeriodId")
                         .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal?>("Q1Budget")
                         .HasPrecision(18, 2)
@@ -1618,6 +2049,9 @@ namespace FTCERP.Host.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("ReasonForWithdrawal")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("RelatedOpmsTargetId")
                         .HasColumnType("nvarchar(450)");
 
@@ -1628,6 +2062,12 @@ namespace FTCERP.Host.Migrations
                     b.Property<decimal?>("RevisedAnnualTarget")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("SourceTemplateId")
                         .HasColumnType("nvarchar(max)");
@@ -1672,7 +2112,12 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("DepartmentId");
 
+                    b.HasIndex("MunicipalityId");
+
                     b.HasIndex("PeriodId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
 
                     b.HasIndex("RelatedOpmsTargetId");
 
@@ -1847,6 +2292,164 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("LoginAuditLogs");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.MunicipalEmployee", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EmailAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EmployeeNumber")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IdentityUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdentityUserId")
+                        .IsUnique()
+                        .HasFilter("[IdentityUserId] IS NOT NULL");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "EmployeeNumber")
+                        .IsUnique();
+
+                    b.ToTable("MunicipalEmployees");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Municipality", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AuthenticationMode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.ToTable("Municipalities");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.MunicipalityFinancialYear", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FinancialYearId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FinancialYearId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "FinancialYearId")
+                        .IsUnique();
+
+                    b.ToTable("MunicipalityFinancialYears");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Notification", b =>
                 {
                     b.Property<string>("Id")
@@ -1868,6 +2471,12 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1881,15 +2490,99 @@ namespace FTCERP.Host.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
                     b.HasIndex("UserId");
 
                     b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationDeliveryAttempt", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AttemptedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("BusinessEventOutboxId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(240)
+                        .HasColumnType("nvarchar(240)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RecipientUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResponseDetail")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessEventOutboxId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.ToTable("NotificationDeliveryAttempts");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsSubmission", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<decimal?>("AchievementPercent")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal?>("Actual")
                         .HasPrecision(18, 2)
@@ -1899,7 +2592,12 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("ActualExpenditure")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ActualPerformance")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("ActualPerformanceDescription")
                         .HasColumnType("nvarchar(max)");
@@ -1974,6 +2672,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("IsDisabled")
                         .HasColumnType("bit");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("OpmsTargetId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -2013,9 +2714,21 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("PoeType")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Quarter")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("ReportingPeriodId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2035,6 +2748,9 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool?>("TargetAchieved")
+                        .HasColumnType("bit");
+
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
@@ -2042,6 +2758,7 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("Variance")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("VarianceReason")
@@ -2073,13 +2790,22 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("AuditorUserId");
 
-                    b.HasIndex("OpmsTargetId");
+                    b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PmsOfficerUserId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReportingPeriodId");
 
                     b.HasIndex("SubmittedByUserId");
 
                     b.HasIndex("VerifierUserId");
+
+                    b.HasIndex("OpmsTargetId", "ReportingPeriodId")
+                        .IsUnique()
+                        .HasFilter("[ReportingPeriodId] IS NOT NULL");
 
                     b.ToTable("OpmsSubmissions");
                 });
@@ -2171,6 +2897,9 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("NationalKpa")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -2181,6 +2910,9 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<int?>("PeriodId")
                         .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal?>("Q1Budget")
                         .HasPrecision(18, 2)
@@ -2245,6 +2977,12 @@ namespace FTCERP.Host.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("SourceTemplateId")
                         .HasColumnType("nvarchar(max)");
 
@@ -2294,7 +3032,12 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("DepartmentId");
 
+                    b.HasIndex("MunicipalityId");
+
                     b.HasIndex("PeriodId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
 
                     b.HasIndex("StrategicGoalId");
 
@@ -2471,6 +3214,267 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("OpmsTargetTemplateVersions");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformancePeriodTarget", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal?>("BudgetValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Direction")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IpmsTargetId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OpmsTargetId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("ReportingPeriodId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("TargetValue")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<int>("UnitKind")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReportingPeriodId");
+
+                    b.HasIndex("IpmsTargetId", "ReportingPeriodId")
+                        .IsUnique()
+                        .HasFilter("[IpmsTargetId] IS NOT NULL");
+
+                    b.HasIndex("OpmsTargetId", "ReportingPeriodId")
+                        .IsUnique()
+                        .HasFilter("[OpmsTargetId] IS NOT NULL");
+
+                    b.ToTable("PerformancePeriodTargets", t =>
+                        {
+                            t.HasCheckConstraint("CK_PerformancePeriodTargets_OneKpi", "CASE WHEN [OpmsTargetId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsTargetId] IS NULL THEN 0 ELSE 1 END = 1");
+                        });
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfi", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ClosedByUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RaisedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RaisedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RespondedByUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Response")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ResponseDueAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<long>("SubmissionWorkflowInstanceId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("SubmissionWorkflowInstanceId");
+
+                    b.ToTable("PerformanceRfis");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfiEvidence", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LinkedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PerformanceRfiId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PoeFileId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LinkedByUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PoeFileId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("PerformanceRfiId", "PoeFileId", "Purpose")
+                        .IsUnique();
+
+                    b.ToTable("PerformanceRfiEvidenceLinks");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceTargetRevision", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ApprovalReference")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("EffectiveAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FieldName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OriginalValue")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<long>("PerformancePeriodTargetId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RevisedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("RevisedValue")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RevisedByUserId");
+
+                    b.HasIndex("PerformancePeriodTargetId", "RecordedAt");
+
+                    b.ToTable("PerformanceTargetRevisions");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Period", b =>
                 {
                     b.Property<int>("Id")
@@ -2523,9 +3527,12 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ActionCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
@@ -2537,13 +3544,204 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MemberCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Module")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("NavigationCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("Operation")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ResourceCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("Code")
+                        .IsUnique();
+
                     b.ToTable("Permissions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeDisposalEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ApprovalReference")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("DisposalId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PoeFileId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("PoeFileId", "DisposalId", "Action")
+                        .IsUnique();
+
+                    b.ToTable("PoeDisposalEvents");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeEvidenceAssessment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AssessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AssessedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PoeFileId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessedByUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("PoeFileId", "AssessedAt");
+
+                    b.ToTable("PoeEvidenceAssessments");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeEvidenceReplacement", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ReplacedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReplacedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ReplacementPoeFileId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SupersededPoeFileId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReplacedByUserId");
+
+                    b.HasIndex("ReplacementPoeFileId")
+                        .IsUnique();
+
+                    b.HasIndex("SupersededPoeFileId")
+                        .IsUnique();
+
+                    b.ToTable("PoeEvidenceReplacements");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeFile", b =>
@@ -2551,8 +3749,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("ContentType")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<string>("EvidenceBlobId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("FileName")
                         .IsRequired()
@@ -2561,15 +3760,26 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("IpmsSubmissionId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("OpmsSubmissionId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<long>("SizeInBytes")
-                        .HasColumnType("bigint");
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("StoragePath")
+                    b.Property<DateTime?>("RetainUntil")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("SubmissionId")
                         .IsRequired()
@@ -2577,6 +3787,9 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<int>("SubmissionKind")
                         .HasColumnType("int");
+
+                    b.Property<string>("SupersedesPoeFileId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("datetime2");
@@ -2587,13 +3800,172 @@ namespace FTCERP.Host.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EvidenceBlobId");
+
                     b.HasIndex("IpmsSubmissionId");
 
+                    b.HasIndex("MunicipalityId");
+
                     b.HasIndex("OpmsSubmissionId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
 
                     b.HasIndex("UploadedByUserId");
 
                     b.ToTable("PoeFiles");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeLegalHoldEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("HoldId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("HoldReference")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PoeFileId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("PoeFileId", "HoldId", "Action")
+                        .IsUnique();
+
+                    b.ToTable("PoeLegalHoldEvents");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.RatingScheme", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("RatingSchemes");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.RatingSchemeValue", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("MaximumAchievementPercent")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("MinimumAchievementPercent")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RatingSchemeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RatingSchemeId", "Value")
+                        .IsUnique();
+
+                    b.ToTable("RatingSchemeValues");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.RefreshToken", b =>
@@ -2632,6 +4004,172 @@ namespace FTCERP.Host.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReportingPeriod", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityFinancialYearId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PeriodType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityFinancialYearId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("ReportingPeriods", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReportingPeriods_DateRange", "[EndDate] >= [StartDate]");
+                        });
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReportingWindow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ClosesAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("OpensAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("ReportingPeriodId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SubmissionKind")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReportingPeriodId");
+
+                    b.HasIndex("MunicipalityId", "ReportingPeriodId", "SubmissionKind")
+                        .IsUnique();
+
+                    b.ToTable("ReportingWindows", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReportingWindows_Range", "[ClosesAt] > [OpensAt]");
+                        });
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReportingWindowException", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ApprovedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExtendedClosesAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("ReportingWindowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReportingWindowId");
+
+                    b.ToTable("ReportingWindowExceptions");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReviewComment", b =>
@@ -2682,14 +4220,299 @@ namespace FTCERP.Host.Migrations
                     b.Property<int>("PermissionId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsAllowed")
                         .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("ScopeType")
+                        .HasColumnType("int");
 
                     b.HasKey("RoleId", "PermissionId");
 
                     b.HasIndex("PermissionId");
 
                     b.ToTable("RolePermissions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityActionDefinition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResourceCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("SecurityActionDefinitions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityMemberDefinition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSensitive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSystemManaged")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MemberCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ResourceCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ResourceCode", "MemberCode")
+                        .IsUnique();
+
+                    b.ToTable("SecurityMemberDefinitions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityNavigationItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IconKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequiredPermissionCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Route")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.ToTable("SecurityNavigationItems");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityResource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApiResourceName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityTypeName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<bool>("SupportsCreate")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsExport")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsFieldSecurity")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsImport")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsRecordCriteria")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SupportsUpdate")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("SecurityResources");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityUserRoleAssignment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AssignedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RevokedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RoleId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("UserId", "RoleId", "MunicipalityId", "EffectiveFrom");
+
+                    b.ToTable("SecurityUserRoleAssignments");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicGoal", b =>
@@ -2804,6 +4627,215 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("SubmissionScores");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionStageRating", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal?>("AchievementPercent")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LabelSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("RatingSchemeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RatingSchemeValueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SubmissionWorkflowActionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SubmissionWorkflowInstanceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<long>("WorkflowStageDefinitionId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RatedByUserId");
+
+                    b.HasIndex("RatingSchemeId");
+
+                    b.HasIndex("RatingSchemeValueId");
+
+                    b.HasIndex("SubmissionWorkflowActionId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkflowStageDefinitionId");
+
+                    b.HasIndex("SubmissionWorkflowInstanceId", "RatedAt");
+
+                    b.ToTable("SubmissionStageRatings");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionWorkflowAction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ActionCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("FromStageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("RatingValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<long>("SubmissionWorkflowInstanceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ToStageId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("FromStageId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ToStageId");
+
+                    b.HasIndex("SubmissionWorkflowInstanceId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("SubmissionWorkflowActions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("CurrentStageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("NextSequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SubmissionId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("SubmissionKind")
+                        .HasColumnType("int");
+
+                    b.Property<long>("WorkflowDefinitionId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentStageId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("WorkflowDefinitionId");
+
+                    b.HasIndex("MunicipalityId", "SubmissionKind", "SubmissionId")
+                        .IsUnique();
+
+                    b.ToTable("SubmissionWorkflowInstances");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Unit", b =>
                 {
                     b.Property<int>("Id")
@@ -2819,14 +4851,41 @@ namespace FTCERP.Host.Migrations
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("DepartmentId", "Code")
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("PublicId")
                         .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "DepartmentId", "Code")
+                        .IsUnique()
+                        .HasFilter("[MunicipalityId] IS NOT NULL");
 
                     b.ToTable("Units");
                 });
@@ -2950,8 +5009,20 @@ namespace FTCERP.Host.Migrations
                     b.Property<int?>("DepartmentId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<string>("KpiId")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(max)");
@@ -2975,6 +5046,8 @@ namespace FTCERP.Host.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("MunicipalityId");
 
                     b.HasIndex("UnitId");
 
@@ -3058,6 +5131,152 @@ namespace FTCERP.Host.Migrations
                         .IsUnique();
 
                     b.ToTable("Wards");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("EffectiveFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveTo")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityFinancialYearId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SubmissionKind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityFinancialYearId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "MunicipalityFinancialYearId", "SubmissionKind", "Code", "Version")
+                        .IsUnique();
+
+                    b.ToTable("WorkflowDefinitions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("AllowBypass")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsOptional")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsTerminal")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("RatingSchemeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RejectionStageCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RequireDifferentActorFromPreviousStage")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireDifferentActorFromSubmitter")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RequiredActionCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RequiredPermissionCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RequiresRating")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<long>("WorkflowDefinitionId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RatingSchemeId");
+
+                    b.HasIndex("WorkflowDefinitionId", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("WorkflowDefinitionId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("WorkflowStageDefinitions");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -3166,6 +5385,16 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ApplicationRole", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Municipality");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.ApplicationUser", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "DepartmentEntity")
@@ -3178,6 +5407,11 @@ namespace FTCERP.Host.Migrations
                         .HasForeignKey("ManagerUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Unit", "UnitEntity")
                         .WithMany("Users")
                         .HasForeignKey("UnitId")
@@ -3186,6 +5420,8 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("DepartmentEntity");
 
                     b.Navigation("ManagerUser");
+
+                    b.Navigation("Municipality");
 
                     b.Navigation("UnitEntity");
                 });
@@ -3209,7 +5445,34 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("ChangedByUser");
+
+                    b.Navigation("Municipality");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.BusinessEventOutbox", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Municipality");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.Department", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.DueDateExtension", b =>
@@ -3221,6 +5484,50 @@ namespace FTCERP.Host.Migrations
                         .IsRequired();
 
                     b.Navigation("ApprovedByUser");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.EmployeeAssignment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.MunicipalEmployee", "MunicipalEmployee")
+                        .WithMany("Assignments")
+                        .HasForeignKey("MunicipalEmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Unit", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Department");
+
+                    b.Navigation("MunicipalEmployee");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("Unit");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.EvidenceBlob", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IdpAlignmentLink", b =>
@@ -3349,10 +5656,16 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IdpDocument", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.EvidenceBlob", "Blob")
+                        .WithMany("IdpDocumentAssociations")
+                        .HasForeignKey("EvidenceBlobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany("Documents")
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlanVersion", "IdpPlanVersion")
@@ -3365,6 +5678,8 @@ namespace FTCERP.Host.Migrations
                         .HasForeignKey("UploadedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Blob");
 
                     b.Navigation("IdpPlan");
 
@@ -3404,9 +5719,16 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("ApprovedByUser");
 
                     b.Navigation("CreatedByUser");
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IdpPlanVersion", b =>
@@ -3604,9 +5926,19 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "PmsOfficerUser")
                         .WithMany()
                         .HasForeignKey("PmsOfficerUserId");
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ReportingPeriod", "ReportingPeriod")
+                        .WithMany()
+                        .HasForeignKey("ReportingPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "SubmittedByUser")
                         .WithMany()
@@ -3623,7 +5955,11 @@ namespace FTCERP.Host.Migrations
 
                     b.Navigation("IpmsTarget");
 
+                    b.Navigation("Municipality");
+
                     b.Navigation("PmsOfficerUser");
+
+                    b.Navigation("ReportingPeriod");
 
                     b.Navigation("SubmittedByUser");
 
@@ -3650,6 +5986,11 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "Department")
                         .WithMany()
                         .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Period", "Period")
@@ -3690,6 +6031,8 @@ namespace FTCERP.Host.Migrations
 
                     b.Navigation("Department");
 
+                    b.Navigation("Municipality");
+
                     b.Navigation("Period");
 
                     b.Navigation("RelatedOpmsTarget");
@@ -3723,15 +6066,77 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.MunicipalEmployee", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "IdentityUser")
+                        .WithMany()
+                        .HasForeignKey("IdentityUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("IdentityUser");
+
+                    b.Navigation("Municipality");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.MunicipalityFinancialYear", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.FinancialYear", "FinancialYear")
+                        .WithMany()
+                        .HasForeignKey("FinancialYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FinancialYear");
+
+                    b.Navigation("Municipality");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Notification", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Municipality");
+
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationDeliveryAttempt", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.BusinessEventOutbox", "BusinessEventOutbox")
+                        .WithMany("DeliveryAttempts")
+                        .HasForeignKey("BusinessEventOutboxId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BusinessEventOutbox");
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsSubmission", b =>
@@ -3744,6 +6149,11 @@ namespace FTCERP.Host.Migrations
                         .WithMany()
                         .HasForeignKey("AuditorUserId");
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.OpmsTarget", "OpmsTarget")
                         .WithMany("Submissions")
                         .HasForeignKey("OpmsTargetId")
@@ -3753,6 +6163,11 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "PmsOfficerUser")
                         .WithMany()
                         .HasForeignKey("PmsOfficerUserId");
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ReportingPeriod", "ReportingPeriod")
+                        .WithMany()
+                        .HasForeignKey("ReportingPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "SubmittedByUser")
                         .WithMany()
@@ -3767,9 +6182,13 @@ namespace FTCERP.Host.Migrations
 
                     b.Navigation("AuditorUser");
 
+                    b.Navigation("Municipality");
+
                     b.Navigation("OpmsTarget");
 
                     b.Navigation("PmsOfficerUser");
+
+                    b.Navigation("ReportingPeriod");
 
                     b.Navigation("SubmittedByUser");
 
@@ -3796,6 +6215,11 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "Department")
                         .WithMany()
                         .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Period", "Period")
@@ -3831,6 +6255,8 @@ namespace FTCERP.Host.Migrations
 
                     b.Navigation("Department");
 
+                    b.Navigation("Municipality");
+
                     b.Navigation("Period");
 
                     b.Navigation("StrategicGoal");
@@ -3853,11 +6279,233 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("OpmsTargetTemplate");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformancePeriodTarget", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.IpmsTarget", "IpmsTarget")
+                        .WithMany()
+                        .HasForeignKey("IpmsTargetId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.OpmsTarget", "OpmsTarget")
+                        .WithMany()
+                        .HasForeignKey("OpmsTargetId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ReportingPeriod", "ReportingPeriod")
+                        .WithMany()
+                        .HasForeignKey("ReportingPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("IpmsTarget");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("OpmsTarget");
+
+                    b.Navigation("ReportingPeriod");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfi", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", "SubmissionWorkflowInstance")
+                        .WithMany()
+                        .HasForeignKey("SubmissionWorkflowInstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("SubmissionWorkflowInstance");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfiEvidence", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "LinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PerformanceRfi", "PerformanceRfi")
+                        .WithMany("EvidenceLinks")
+                        .HasForeignKey("PerformanceRfiId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PoeFile", "PoeFile")
+                        .WithMany()
+                        .HasForeignKey("PoeFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LinkedByUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("PerformanceRfi");
+
+                    b.Navigation("PoeFile");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceTargetRevision", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PerformancePeriodTarget", "PerformancePeriodTarget")
+                        .WithMany("Revisions")
+                        .HasForeignKey("PerformancePeriodTargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "RevisedByUser")
+                        .WithMany()
+                        .HasForeignKey("RevisedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("PerformancePeriodTarget");
+
+                    b.Navigation("RevisedByUser");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeDisposalEvent", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PoeFile", "PoeFile")
+                        .WithMany("DisposalEvents")
+                        .HasForeignKey("PoeFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("PoeFile");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeEvidenceAssessment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "AssessedByUser")
+                        .WithMany()
+                        .HasForeignKey("AssessedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PoeFile", "PoeFile")
+                        .WithMany("Assessments")
+                        .HasForeignKey("PoeFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssessedByUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("PoeFile");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeEvidenceReplacement", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ReplacedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReplacedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PoeFile", "ReplacementPoeFile")
+                        .WithOne("ReplacementAsNew")
+                        .HasForeignKey("FTCERP.Host.Domain.Entities.PoeEvidenceReplacement", "ReplacementPoeFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PoeFile", "SupersededPoeFile")
+                        .WithMany("ReplacementsAsOld")
+                        .HasForeignKey("SupersededPoeFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("ReplacedByUser");
+
+                    b.Navigation("ReplacementPoeFile");
+
+                    b.Navigation("SupersededPoeFile");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeFile", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.EvidenceBlob", "Blob")
+                        .WithMany("PoeAssociations")
+                        .HasForeignKey("EvidenceBlobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("FTCERP.Host.Domain.Entities.IpmsSubmission", null)
                         .WithMany("PoeFiles")
                         .HasForeignKey("IpmsSubmissionId");
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("FTCERP.Host.Domain.Entities.OpmsSubmission", null)
                         .WithMany("PoeFiles")
@@ -3869,7 +6517,68 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Blob");
+
+                    b.Navigation("Municipality");
+
                     b.Navigation("UploadedByUser");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeLegalHoldEvent", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PoeFile", "PoeFile")
+                        .WithMany("LegalHoldEvents")
+                        .HasForeignKey("PoeFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("PoeFile");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.RatingScheme", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.RatingSchemeValue", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatingScheme", "RatingScheme")
+                        .WithMany("Values")
+                        .HasForeignKey("RatingSchemeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("RatingScheme");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.RefreshToken", b =>
@@ -3881,6 +6590,55 @@ namespace FTCERP.Host.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReportingPeriod", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.MunicipalityFinancialYear", "MunicipalityFinancialYear")
+                        .WithMany("ReportingPeriods")
+                        .HasForeignKey("MunicipalityFinancialYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("MunicipalityFinancialYear");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReportingWindow", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ReportingPeriod", "ReportingPeriod")
+                        .WithMany()
+                        .HasForeignKey("ReportingPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("ReportingPeriod");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReportingWindowException", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ReportingWindow", "ReportingWindow")
+                        .WithMany()
+                        .HasForeignKey("ReportingWindowId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("ReportingWindow");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.ReviewComment", b =>
@@ -3921,6 +6679,42 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityNavigationItem", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.SecurityNavigationItem", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityUserRoleAssignment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationRole", "Role")
+                        .WithMany("UserAssignments")
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicObjective", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.StrategicGoal", "StrategicGoal")
@@ -3951,6 +6745,132 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("ScoredByUser");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionStageRating", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "RatedByUser")
+                        .WithMany()
+                        .HasForeignKey("RatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatingScheme", "RatingScheme")
+                        .WithMany()
+                        .HasForeignKey("RatingSchemeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatingSchemeValue", "RatingSchemeValue")
+                        .WithMany()
+                        .HasForeignKey("RatingSchemeValueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionWorkflowAction", "SubmissionWorkflowAction")
+                        .WithMany()
+                        .HasForeignKey("SubmissionWorkflowActionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", "SubmissionWorkflowInstance")
+                        .WithMany()
+                        .HasForeignKey("SubmissionWorkflowInstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", "WorkflowStageDefinition")
+                        .WithMany()
+                        .HasForeignKey("WorkflowStageDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("RatedByUser");
+
+                    b.Navigation("RatingScheme");
+
+                    b.Navigation("RatingSchemeValue");
+
+                    b.Navigation("SubmissionWorkflowAction");
+
+                    b.Navigation("SubmissionWorkflowInstance");
+
+                    b.Navigation("WorkflowStageDefinition");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionWorkflowAction", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", "FromStage")
+                        .WithMany()
+                        .HasForeignKey("FromStageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", "SubmissionWorkflowInstance")
+                        .WithMany("Actions")
+                        .HasForeignKey("SubmissionWorkflowInstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", "ToStage")
+                        .WithMany()
+                        .HasForeignKey("ToStageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("FromStage");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("SubmissionWorkflowInstance");
+
+                    b.Navigation("ToStage");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", "CurrentStage")
+                        .WithMany()
+                        .HasForeignKey("CurrentStageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowDefinition", "WorkflowDefinition")
+                        .WithMany()
+                        .HasForeignKey("WorkflowDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CurrentStage");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("WorkflowDefinition");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Unit", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "Department")
@@ -3959,7 +6879,14 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Department");
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.UserAssignment", b =>
@@ -4004,6 +6931,11 @@ namespace FTCERP.Host.Migrations
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Unit", "Unit")
                         .WithMany("UserScopes")
                         .HasForeignKey("UnitId")
@@ -4016,6 +6948,8 @@ namespace FTCERP.Host.Migrations
                         .IsRequired();
 
                     b.Navigation("Department");
+
+                    b.Navigation("Municipality");
 
                     b.Navigation("Unit");
 
@@ -4030,6 +6964,51 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.MunicipalityFinancialYear", "MunicipalityFinancialYear")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityFinancialYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("MunicipalityFinancialYear");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatingScheme", "RatingScheme")
+                        .WithMany()
+                        .HasForeignKey("RatingSchemeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowDefinition", "WorkflowDefinition")
+                        .WithMany("Stages")
+                        .HasForeignKey("WorkflowDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("RatingScheme");
+
+                    b.Navigation("WorkflowDefinition");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -4086,6 +7065,8 @@ namespace FTCERP.Host.Migrations
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.ApplicationRole", b =>
                 {
                     b.Navigation("RolePermissions");
+
+                    b.Navigation("UserAssignments");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.ApplicationUser", b =>
@@ -4103,6 +7084,11 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("Scopes");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.BusinessEventOutbox", b =>
+                {
+                    b.Navigation("DeliveryAttempts");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Department", b =>
                 {
                     b.Navigation("Units");
@@ -4110,6 +7096,13 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("UserScopes");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.EvidenceBlob", b =>
+                {
+                    b.Navigation("IdpDocumentAssociations");
+
+                    b.Navigation("PoeAssociations");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IdpCommunitySession", b =>
@@ -4196,6 +7189,16 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("Versions");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.MunicipalEmployee", b =>
+                {
+                    b.Navigation("Assignments");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.MunicipalityFinancialYear", b =>
+                {
+                    b.Navigation("ReportingPeriods");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsSubmission", b =>
                 {
                     b.Navigation("PoeFiles");
@@ -4215,6 +7218,16 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("Versions");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformancePeriodTarget", b =>
+                {
+                    b.Navigation("Revisions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfi", b =>
+                {
+                    b.Navigation("EvidenceLinks");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Permission", b =>
                 {
                     b.Navigation("RolePermissions");
@@ -4222,11 +7235,44 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("UserPermissionOverrides");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PoeFile", b =>
+                {
+                    b.Navigation("Assessments");
+
+                    b.Navigation("DisposalEvents");
+
+                    b.Navigation("LegalHoldEvents");
+
+                    b.Navigation("ReplacementAsNew");
+
+                    b.Navigation("ReplacementsAsOld");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.RatingScheme", b =>
+                {
+                    b.Navigation("Values");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SecurityNavigationItem", b =>
+                {
+                    b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", b =>
+                {
+                    b.Navigation("Actions");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.Unit", b =>
                 {
                     b.Navigation("UserScopes");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.Navigation("Stages");
                 });
 #pragma warning restore 612, 618
         }

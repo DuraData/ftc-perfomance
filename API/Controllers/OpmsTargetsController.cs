@@ -38,25 +38,18 @@ public class OpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse[]>(false, null, "User not found"));
 
-        var targets = await _context.OpmsTargets
+        var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
+        if (!scope.PermissionGranted) return Ok(new ApiResponse<OpmsTargetResponse[]>(true, []));
+        var query = _context.OpmsTargets
             .AsNoTracking()
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
-            .OrderByDescending(item => item.CreatedAt)
-            .ToListAsync();
-
-        var visible = new List<OpmsTargetResponse>();
-        foreach (var target in targets)
-        {
-            var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.View", BuildScope(target));
-            if (decision.Allowed)
-            {
-                visible.Add(target.ToResponse());
-            }
-        }
-
-        return Ok(new ApiResponse<OpmsTargetResponse[]>(true, visible.ToArray()));
+            .AsQueryable();
+        if (!scope.Unrestricted)
+            query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        var targets = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
+        return Ok(new ApiResponse<OpmsTargetResponse[]>(true, targets.Select(item => item.ToResponse()).ToArray()));
     }
 
     [HttpGet("{id}")]
@@ -68,7 +61,7 @@ public class OpmsTargetsController : ControllerBase
         var target = await FindTargetAsync(id);
         if (target == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.View", BuildScope(target));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", BuildScope(target));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
 
         return Ok(new ApiResponse<OpmsTargetResponse>(true, target.ToResponse()));
@@ -80,7 +73,7 @@ public class OpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.Create", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
 
         var entity = new OpmsTarget
@@ -165,7 +158,7 @@ public class OpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
 
         var before = await FindTargetAsync(id);
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.Edit", BuildScope(entity));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
 
         entity.SourceTemplateId = request.SourceTemplateId;
@@ -240,10 +233,11 @@ public class OpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<bool>(false, false, "OPMS target not found"));
 
         var before = await FindTargetAsync(id);
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Targets.Delete", BuildScope(entity));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.DELETE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
 
-        _context.OpmsTargets.Remove(entity);
+        entity.IsWithdrawn = true;
+        entity.ReasonForWithdrawal ??= "Withdrawn through the API by " + user.Id;
         await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Delete", before?.ToResponse(), null, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<bool>(true, true));
@@ -265,5 +259,5 @@ public class OpmsTargetsController : ControllerBase
     }
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>
-        new(target.DepartmentId, target.UnitId, target.Id, null);
+        new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
 }

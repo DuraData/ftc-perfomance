@@ -79,6 +79,8 @@ public enum IdpDocumentCategory
 public class IdpPlan
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
     public string MunicipalityName { get; set; } = string.Empty;
     public string PlanTitle { get; set; } = string.Empty;
     public string PlanCode { get; set; } = string.Empty;
@@ -90,7 +92,9 @@ public class IdpPlan
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTime? ApprovedAt { get; set; }
     public string? ApprovedByUserId { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser? CreatedByUser { get; set; }
     public ApplicationUser? ApprovedByUser { get; set; }
     public ICollection<IdpPlanVersion> Versions { get; set; } = new List<IdpPlanVersion>();
@@ -362,21 +366,24 @@ public class IdpBudgetSnapshot
 public class IdpDocument
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
     public int? IdpPlanVersionId { get; set; }
     public IdpDocumentCategory Category { get; set; } = IdpDocumentCategory.Governance;
     public string Title { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
-    public string StoragePath { get; set; } = string.Empty;
-    public string? ContentType { get; set; }
-    public long SizeInBytes { get; set; }
+    public string EvidenceBlobId { get; set; } = string.Empty;
+    public DateTime? RetainUntil { get; set; }
+    public bool IsActive { get; set; } = true;
     public int VersionNumber { get; set; } = 1;
     public bool IsApproved { get; set; }
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
     public string UploadedByUserId { get; set; } = string.Empty;
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpPlan IdpPlan { get; set; } = null!;
     public IdpPlanVersion? IdpPlanVersion { get; set; }
+    public EvidenceBlob Blob { get; set; } = null!;
     public ApplicationUser? UploadedByUser { get; set; }
 }
 

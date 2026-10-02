@@ -40,7 +40,7 @@ public class UsersController : ControllerBase
                 .Select(r => new RoleResponse(r!.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive))
                 .ToArray();
 
-            var userResponse = new UserResponse(u.Id, u.UserName ?? u.Email!, u.FirstName, u.LastName, u.FullName, u.Email!, u.PhoneNumber, u.Department, u.Position, u.IsActive, u.MustChangePassword, u.LastLoginAt);
+            var userResponse = new UserResponse(u.Id, u.UserName ?? u.Email!, u.FirstName, u.LastName, u.FullName, u.Email!, u.PhoneNumber, u.Department, u.Position, u.IsActive, u.MustChangePassword, u.LastLoginAt) { PublicId = u.PublicId };
             return new UserDetailResponse(userResponse, userRoles);
         }).ToArray();
 
@@ -57,7 +57,7 @@ public class UsersController : ControllerBase
         var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
 
         var roleResponses = roleEntities.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
-        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt);
+        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt) { PublicId = user.PublicId };
 
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
     }
@@ -87,7 +87,7 @@ public class UsersController : ControllerBase
             return BadRequest(new ApiResponse<UserDetailResponse>(false, null, "Failed to create user", result.Errors.Select(e => e.Description).ToArray()));
         }
 
-        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt);
+        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt) { PublicId = user.PublicId };
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, Array.Empty<RoleResponse>())));
     }
 
@@ -113,7 +113,7 @@ public class UsersController : ControllerBase
         var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
         var roleResponses = roleEntities.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
 
-        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt);
+        var userResponse = new UserResponse(user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!, user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt) { PublicId = user.PublicId };
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
     }
 
@@ -147,10 +147,12 @@ public class UsersController : ControllerBase
         var user = await _userManager.FindByIdAsync(id);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
 
-        var result = await _userManager.DeleteAsync(user);
+        user.IsActive = false;
+        user.UpdatedAt = DateTime.UtcNow;
+        var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded)
         {
-            return BadRequest(new ApiResponse<bool>(false, false, "Failed to delete user", result.Errors.Select(e => e.Description).ToArray()));
+            return BadRequest(new ApiResponse<bool>(false, false, "Failed to disable user", result.Errors.Select(e => e.Description).ToArray()));
         }
 
         return Ok(new ApiResponse<bool>(true, true));
@@ -172,6 +174,34 @@ public class UsersController : ControllerBase
         if (remove.Length > 0) await _userManager.RemoveFromRolesAsync(user, remove);
         if (add.Length > 0) await _userManager.AddToRolesAsync(user, add);
 
+        var now = DateTime.UtcNow;
+        var actorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "system";
+        var currentAssignments = await _context.SecurityUserRoleAssignments
+            .Where(item => item.UserId == id && item.IsActive && !item.RevokedAt.HasValue)
+            .ToListAsync();
+        foreach (var assignment in currentAssignments.Where(item => !request.RoleIds.Contains(item.RoleId)))
+        {
+            assignment.IsActive = false;
+            assignment.EffectiveTo = now;
+            assignment.RevokedAt = now;
+            assignment.RevokedBy = actorId;
+        }
+        var activeRoleIds = currentAssignments.Where(item => item.IsActive).Select(item => item.RoleId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var role in roles.Where(item => !activeRoleIds.Contains(item.Id)))
+        {
+            _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment
+            {
+                UserId = id,
+                RoleId = role.Id,
+                MunicipalityId = role.MunicipalityId,
+                EffectiveFrom = now,
+                AssignedAt = now,
+                AssignedBy = actorId,
+                IsActive = true
+            });
+        }
+        await _context.SaveChangesAsync();
+
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -185,6 +215,17 @@ public class UsersController : ControllerBase
         if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
 
         await _userManager.RemoveFromRoleAsync(user, role.Name!);
+        var now = DateTime.UtcNow;
+        var actorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "system";
+        var assignments = await _context.SecurityUserRoleAssignments.Where(item => item.UserId == id && item.RoleId == roleId && item.IsActive).ToListAsync();
+        foreach (var assignment in assignments)
+        {
+            assignment.IsActive = false;
+            assignment.EffectiveTo = now;
+            assignment.RevokedAt = now;
+            assignment.RevokedBy = actorId;
+        }
+        await _context.SaveChangesAsync();
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -228,8 +269,13 @@ public class UsersController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, $"Invalid scope type '{invalidScope.ScopeType}'"));
         }
 
-        var existing = await _context.UserScopes.Where(scope => scope.UserId == id).ToListAsync();
-        _context.UserScopes.RemoveRange(existing);
+        var now = DateTime.UtcNow;
+        var existing = await _context.UserScopes.Where(scope => scope.UserId == id && scope.IsActive).ToListAsync();
+        foreach (var item in existing)
+        {
+            item.IsActive = false;
+            item.EffectiveTo = now;
+        }
 
         foreach (var scope in request.Scopes)
         {
@@ -242,7 +288,9 @@ public class UsersController : ControllerBase
                 TargetId = scope.TargetId,
                 KpiId = scope.KpiId,
                 ProjectId = scope.ProjectId,
-                TaskId = scope.TaskId
+                TaskId = scope.TaskId,
+                EffectiveFrom = now,
+                IsActive = true
             });
         }
 
@@ -335,8 +383,7 @@ public class UsersController : ControllerBase
         var effective = new HashSet<string>(fromRoles, StringComparer.OrdinalIgnoreCase);
         foreach (var o in overrides)
         {
-            if (o.IsAllowed) effective.Add(o.Code);
-            else effective.Remove(o.Code);
+            if (!o.IsAllowed) effective.Remove(o.Code);
         }
 
         var overrideResponses = overrides
@@ -349,24 +396,7 @@ public class UsersController : ControllerBase
     [HttpPut("{id}/permission-overrides")]
     public async Task<ActionResult<ApiResponse<bool>>> SetUserPermissionOverrides(string id, [FromBody] UpdateUserPermissionOverridesRequest request)
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
-
-        var existing = await _context.UserPermissionOverrides.Where(o => o.UserId == id).ToListAsync();
-        _context.UserPermissionOverrides.RemoveRange(existing);
-
-        foreach (var o in request.Overrides)
-        {
-            _context.UserPermissionOverrides.Add(new UserPermissionOverride
-            {
-                UserId = id,
-                PermissionId = o.PermissionId,
-                IsAllowed = o.IsAllowed,
-                Reason = o.Reason
-            });
-        }
-
-        await _context.SaveChangesAsync();
-        return Ok(new ApiResponse<bool>(true, true));
+        await Task.CompletedTask;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Direct user permission grants are disabled. Use tenant-scoped role assignments in /api/v1/security."));
     }
 }

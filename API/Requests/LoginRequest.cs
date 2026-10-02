@@ -2,7 +2,7 @@ namespace FTCERP.Host.API.Requests;
 
 public record LoginRequest(string Email, string Password);
 
-public record RefreshTokenRequest(string AccessToken, string RefreshToken);
+public record RefreshTokenRequest(string AccessToken);
 
 public record RegisterRequest(string FirstName, string LastName, string Email, string Password, string? PhoneNumber);
 
@@ -248,7 +248,8 @@ public record SaveOpmsSubmissionRequest(
     decimal? SubmitterScore,
     string? PoeType,
     DateTime? DueDate,
-    DateTime? ExtendedDueDate);
+    DateTime? ExtendedDueDate,
+    string? ActualPerformance = null);
 
 public record SaveIpmsSubmissionRequest(
     string IpmsTargetId,
@@ -263,7 +264,8 @@ public record SaveIpmsSubmissionRequest(
     decimal? SubmitterScore,
     string? PoeType,
     DateTime? DueDate,
-    DateTime? ExtendedDueDate);
+    DateTime? ExtendedDueDate,
+    string? ActualPerformance = null);
 
 public record SubmissionWorkflowActionRequest(
     string? Comment,
@@ -285,7 +287,8 @@ public record UpdateIdpPlanRequest(
     string PlanTitle,
     int StartFinancialYear,
     int EndFinancialYear,
-    string Status);
+    string Status,
+    string? RowVersion = null);
 
 public record CreateIdpPlanVersionRequest(
     string VersionType,

@@ -5,7 +5,7 @@ describe('API type mapping and data transformation', () => {
     targetId: string;
     quarter: string;
     actual?: number;
-    actualDescription?: string;
+    actualDescription?: string | null;
     varianceReason?: string;
     actualExpenditure?: number;
     dueDate: string;
@@ -16,7 +16,7 @@ describe('API type mapping and data transformation', () => {
     targetId: string;
     quarter: string;
     actual?: number;
-    actualDescription?: string;
+    actualDescription?: string | null;
     varianceReason?: string;
     actualExpenditure?: number;
     dueDate: string;
@@ -125,7 +125,7 @@ describe('API type mapping and data transformation', () => {
       targetId: 'target-1',
       quarter: 'Q1',
       actual: undefined,
-      actualDescription: null as any,
+      actualDescription: null,
       dueDate: '2026-06-30',
       status: 'draft',
     };

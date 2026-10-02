@@ -16,6 +16,11 @@ import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import {
+  assessIpmsSubmissionAttachment,
+  replaceIpmsSubmissionAttachment,
+  placeIpmsEvidenceLegalHold,
+  releaseIpmsEvidenceLegalHold,
+  requestIpmsEvidenceDisposal,
   deleteIpmsSubmissionAttachment,
   getAuditTrails,
   deleteIpmsSubmission as deleteIpmsSubmissionApi,
@@ -23,6 +28,7 @@ import {
   getIpmsSubmissions as getIpmsSubmissionsApi,
   getIpmsTarget as getIpmsTargetApi,
   uploadIpmsSubmissionAttachment,
+  rescanIpmsSubmissionAttachment,
   updateIpmsSubmission as updateIpmsSubmissionApi,
 } from '../../api/api';
 import {
@@ -299,6 +305,43 @@ function SubmissionsTab({
                 setSelectedSubmission(updated);
               }
             })();
+          }}
+          onRescanAttachment={(attachmentId) => {
+            void (async () => {
+              const result = await rescanIpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
+              if (result.success && result.data) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) };
+                onUpdateSubmission(updated); setSelectedSubmission(updated);
+              }
+            })();
+          }}
+          onAssessAttachment={(attachmentId, outcome, comment) => {
+            void (async () => {
+              const result = await assessIpmsSubmissionAttachment(selectedSubmission.id, attachmentId, { outcome, comment });
+              if (result.success && result.data) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) };
+                onUpdateSubmission(updated); setSelectedSubmission(updated);
+              }
+            })();
+          }}
+          onReplaceAttachment={(attachmentId, replacementPublicId, reason, supersededRowVersion, replacementRowVersion) => {
+            void (async () => {
+              const result = await replaceIpmsSubmissionAttachment(selectedSubmission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion });
+              if (result.success && result.data) {
+                const attachments = selectedSubmission.attachments.filter(item => item.id !== attachmentId).map(item => item.publicId === replacementPublicId ? result.data! : item);
+                const updated = { ...selectedSubmission, attachments };
+                onUpdateSubmission(updated); setSelectedSubmission(updated);
+              }
+            })();
+          }}
+          onPlaceAttachmentHold={(attachmentId, holdReference, reason) => {
+            void (async () => { const result = await placeIpmsEvidenceLegalHold(selectedSubmission.id, attachmentId, { holdReference, reason }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; onUpdateSubmission(updated); setSelectedSubmission(updated); } })();
+          }}
+          onReleaseAttachmentHold={(attachmentId, holdId, reason) => {
+            void (async () => { const result = await releaseIpmsEvidenceLegalHold(selectedSubmission.id, attachmentId, holdId, { reason }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; onUpdateSubmission(updated); setSelectedSubmission(updated); } })();
+          }}
+          onDisposeAttachment={(attachmentId, approvalReference, reason, rowVersion) => {
+            void (async () => { const result = await requestIpmsEvidenceDisposal(selectedSubmission.id, attachmentId, { approvalReference, reason, rowVersion }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; onUpdateSubmission(updated); setSelectedSubmission(updated); } })();
           }}
         />
       </div>

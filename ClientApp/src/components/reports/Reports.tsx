@@ -1,167 +1,89 @@
-import { useState } from 'react';
-import { FileText, Download, BarChart3, TrendingUp, CheckCircle, Clock } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart3, Download, RefreshCw, Target, TrendingUp } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AppShell } from '../layout/AppShell';
-import { Button, Badge, Card } from '../ui';
-import { Modal } from '../common/Modal';
+import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { downloadPerformanceReportCsv, getPerformanceReportSummary, getReportingPeriodMasters } from '../../api/api';
+import type { PerformanceReportSummaryDto, ReportingPeriodMasterDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
-const reportCategories = [
-  { id: 'performance', title: 'Performance', icon: <TrendingUp className="w-5 h-5" />, reports: [
-    { id: 'kpi-summary', title: 'KPI Summary', description: 'All KPI performance across departments' },
-    { id: 'dept-performance', title: 'Department', description: 'Performance analysis by department' },
-    { id: 'opms-ipms-alignment', title: 'OPMS/IPMS Alignment', description: 'Target vs achievement comparison' },
-  ]},
-  { id: 'submission', title: 'Submissions', icon: <FileText className="w-5 h-5" />, reports: [
-    { id: 'quarterly-status', title: 'Quarterly Status', description: 'Submission status by quarter' },
-    { id: 'overdue', title: 'Overdue', description: 'Overdue submissions requiring action' },
-  ]},
-  { id: 'workflow', title: 'Workflow', icon: <Clock className="w-5 h-5" />, reports: [
-    { id: 'turnaround', title: 'Turnaround', description: 'Approval processing times' },
-    { id: 'variance', title: 'Variance Analysis', description: 'Target variance details' },
-  ]},
-  { id: 'audit', title: 'Audit', icon: <CheckCircle className="w-5 h-5" />, reports: [
-    { id: 'audit-findings', title: 'Audit Findings', description: 'Findings and recommendations' },
-    { id: 'annual-report', title: 'Annual Report', description: 'Comprehensive annual review' },
-  ]},
-];
-
-const sampleChartData = [
-  { department: 'Infra', target: 85, actual: 82 },
-  { department: 'Community', target: 90, actual: 91 },
-  { department: 'Finance', target: 95, actual: 88 },
-  { department: 'Corporate', target: 88, actual: 86 },
-];
-
-function ReportPreviewModal({ isOpen, onClose, report }: { isOpen: boolean; onClose: () => void; report: { id: string; title: string; description: string } | null }) {
-  if (!report) return null;
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title={report.title} size="lg">
-      <div className="space-y-3">
-        {/* Filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select label="" options={[{ value: 'q1', label: 'Q1' }, { value: 'q2', label: 'Q2' }, { value: 'q3', label: 'Q3' }, { value: 'q4', label: 'Q4' }]} defaultValue="q1" />
-          <Select label="" options={[{ value: 'all', label: 'All Depts' }, { value: 'infra', label: 'Infrastructure' }]} defaultValue="all" />
-        </div>
-
-        {/* Content */}
-        {report.id === 'kpi-summary' && (
-          <>
-            <div className="grid grid-cols-4 gap-2">
-              {[{ label: 'Targets', value: 48 }, { label: 'On Track', value: 39 }, { label: 'At Risk', value: 6 }, { label: 'Behind', value: 3 }].map((s, i) => (
-                <Card key={i} className="p-2 text-center">
-                  <p className="text-lg font-bold text-secondary-900 dark:text-white">{s.value}</p>
-                  <p className="text-[10px] text-secondary-500">{s.label}</p>
-                </Card>
-              ))}
-            </div>
-            <Card className="p-3">
-              <p className="text-xs font-medium mb-2">Department Performance</p>
-              <div className="h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sampleChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="department" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip />
-                    <Bar dataKey="target" fill="#94a3b8" radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="actual" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </>
-        )}
-
-        {report.id === 'overdue' && (
-          <div className="space-y-2">
-            {[1, 2, 3].map(i => (
-              <Card key={i} className="border-l-2 border-error-500 p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Roads Maintenance - Q{i}</p>
-                    <p className="text-[10px] text-secondary-500">Infrastructure Services • Due: 2025-06-{15 - i * 5}</p>
-                  </div>
-                  <Badge variant="error" size="sm">{i * 2}d overdue</Badge>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {report.id !== 'kpi-summary' && report.id !== 'overdue' && (
-          <div className="text-center py-8">
-            <BarChart3 className="w-8 h-8 mx-auto text-secondary-400 mb-2" />
-            <p className="text-xs text-secondary-500">Report preview</p>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex items-center justify-between pt-3 border-t text-[10px] text-secondary-500">
-          <span>Generated: {new Date().toLocaleDateString()}</span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>PDF</Button>
-            <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Excel</Button>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 export function Reports() {
-  const { roles } = useApp();
-  const isSubmitter = roles.some(role => role.toLowerCase() === 'submitter');
-  const [selectedReport, setSelectedReport] = useState<{ id: string; title: string; description: string } | null>(null);
+  const { permissions, pushToast } = useApp();
+  const [kind, setKind] = useState<1 | 2>(1);
+  const [periodId, setPeriodId] = useState('');
+  const [periods, setPeriods] = useState<ReportingPeriodMasterDto[]>([]);
+  const [summary, setSummary] = useState<PerformanceReportSummaryDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const permissionSet = useMemo(() => new Set(permissions.map(value => value.toUpperCase())), [permissions]);
+  const canExport = permissionSet.has(kind === 1 ? 'OPMS_REPORT.EXPORT' : 'IPMS_REPORT.EXPORT') || permissionSet.has('REPORTS.EXPORT');
 
-  const visibleCategories = isSubmitter
-    ? [
-        {
-          id: 'submitter-performance',
-          title: 'My Performance Reports',
-          icon: <TrendingUp className="w-5 h-5" />,
-          reports: [
-            { id: 'my-opms-performance', title: 'My OPMS Performance Report', description: 'My OPMS performance and KPI delivery' },
-            { id: 'my-ipms-performance', title: 'My IPMS Performance Report', description: 'My IPMS performance and KPI delivery' },
-            { id: 'idp-summary', title: 'IDP Summary Report', description: 'IDP alignment and strategic summary' },
-            { id: 'my-submission-status', title: 'My Submission Status Report', description: 'Statuses and turnaround for my submissions' },
-            { id: 'my-evidence-register', title: 'My Evidence Register', description: 'Evidence uploads linked to my submissions' },
-            { id: 'my-returned-submissions', title: 'My Returned Submissions Report', description: 'Returned submissions requiring action' },
-            { id: 'my-overdue-submissions', title: 'My Overdue Submissions Report', description: 'Overdue submissions and outstanding days' },
-          ],
-        },
-      ]
-    : reportCategories;
+  const load = useCallback(async () => {
+    setBusy(true); setError(null);
+    const [periodResult, summaryResult] = await Promise.all([getReportingPeriodMasters(), getPerformanceReportSummary(kind, periodId || undefined)]);
+    setPeriods(periodResult.data ?? []);
+    if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
+    else setSummary(summaryResult.data);
+    if (!periodResult.success) setError(periodResult.message ?? 'Reporting periods could not be loaded.');
+    setBusy(false);
+  }, [kind, periodId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const exportCsv = async () => {
+    setBusy(true); setError(null);
+    const result = await downloadPerformanceReportCsv(kind, periodId || undefined);
+    if (!result.success) setError(result.message ?? 'CSV export failed.');
+    else pushToast('success', 'Performance CSV downloaded');
+    setBusy(false);
+  };
+
+  const metrics = summary ? [
+    { label: 'Configured targets', value: summary.targetCount, tone: 'primary' as const },
+    { label: 'Submissions', value: summary.submissionCount, tone: 'default' as const },
+    { label: 'Achieved', value: summary.achievedCount, tone: 'success' as const },
+    { label: 'At risk', value: summary.atRiskCount, tone: 'error' as const },
+    { label: 'Pending result', value: summary.pendingCount, tone: 'warning' as const },
+    { label: 'Average achievement', value: summary.averageAchievementPercent == null ? '—' : `${summary.averageAchievementPercent.toFixed(1)}%`, tone: 'primary' as const },
+  ] : [];
 
   return (
-    <AppShell title="Reports" subtitle="Performance analytics">
-      <div className="space-y-4">
-        {visibleCategories.map(category => (
-          <div key={category.id}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-primary-50 dark:bg-primary-900/30 rounded text-primary-600">{category.icon}</div>
-              <h2 className="text-sm font-semibold text-secondary-900 dark:text-white">{category.title}</h2>
+    <AppShell title="Performance Reports" subtitle="Tenant-scoped server analytics">
+      <div className="space-y-5">
+        <Card className="p-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-2">
+              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); }} />
+              <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...periods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => setPeriodId(event.target.value)} />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {category.reports.map(report => (
-                <button key={report.id} type="button" className="text-left" onClick={() => setSelectedReport(report)}>
-                  <Card className="hover:shadow cursor-pointer p-3">
-                    <div className="flex items-start justify-between mb-1.5">
-                      <div className="p-1.5 bg-secondary-50 rounded">
-                        <FileText className="w-4 h-4 text-secondary-400" />
-                      </div>
-                    </div>
-                    <h3 className="text-sm font-medium text-secondary-900 dark:text-white">{report.title}</h3>
-                    <p className="text-xs text-secondary-500 mt-0.5">{report.description}</p>
-                  </Card>
-                </button>
-              ))}
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button>
+              <Button size="sm" variant="primary" icon={<Download className="h-4 w-4" />} onClick={() => void exportCsv()} disabled={busy || !canExport}>Export CSV</Button>
             </div>
           </div>
-        ))}
-        <ReportPreviewModal isOpen={!!selectedReport} onClose={() => setSelectedReport(null)} report={selectedReport} />
+        </Card>
+
+        {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-300">{error}</div>}
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          {metrics.map(metric => <Card key={metric.label} className="p-4"><Badge variant={metric.tone}>{metric.label}</Badge><p className="mt-3 text-2xl font-bold text-secondary-900 dark:text-white">{metric.value}</p></Card>)}
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+          <Card className="p-4">
+            <div className="mb-4 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary-600" /><h2 className="font-semibold text-secondary-900 dark:text-white">Achievement by department</h2></div>
+            <div className="h-80">
+              {summary?.departments.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={summary.departments}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="department" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar name="Average achievement %" dataKey="averageAchievementPercent" fill="#3b82f6" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-secondary-500">{busy ? 'Generating report…' : 'No scoped performance data for this selection.'}</div>}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="mb-4 flex items-center gap-2"><BarChart3 className="h-5 w-5 text-primary-600" /><h2 className="font-semibold text-secondary-900 dark:text-white">Department detail</h2></div>
+            <div className="space-y-2">{summary?.departments.map(row => <div key={row.department} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex items-center justify-between"><p className="font-medium text-secondary-900 dark:text-white">{row.department}</p><Badge variant="default">{row.submissionCount} submissions</Badge></div><div className="mt-2 flex items-center justify-between text-xs text-secondary-500"><span>{row.achievedCount} achieved</span><span>{row.averageAchievementPercent == null ? 'No score' : `${row.averageAchievementPercent.toFixed(1)}% average`}</span></div></div>)}</div>
+          </Card>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-secondary-500"><Target className="h-4 w-4" /><span>Generated from tenant-filtered canonical targets and submissions{summary ? ` at ${new Date(summary.generatedAt).toLocaleString()}` : ''}.</span></div>
       </div>
     </AppShell>
   );

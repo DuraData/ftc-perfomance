@@ -8,6 +8,12 @@ public class Permission
     public string Action { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public SecurityPermissionKind Kind { get; set; } = SecurityPermissionKind.Action;
+    public string? ResourceCode { get; set; }
+    public SecurityOperation? Operation { get; set; }
+    public string? MemberCode { get; set; }
+    public string? NavigationCode { get; set; }
+    public string? ActionCode { get; set; }
     public bool IsActive { get; set; } = true;
 
     // Navigation properties

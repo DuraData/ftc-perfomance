@@ -21,26 +21,26 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = "Permission:Departments.View")]
+    [Authorize(Policy = "Permission:DEPARTMENT.READ")]
     public async Task<ActionResult<ApiResponse<DepartmentResponse[]>>> GetDepartments()
     {
         var departments = await _context.Departments
             .AsNoTracking()
             .OrderBy(department => department.Name)
-            .Select(department => new DepartmentResponse(department.Id, department.Code, department.Name, department.Description))
+            .Select(department => new DepartmentResponse(department.Id, department.Code, department.Name, department.Description) { PublicId = department.PublicId })
             .ToArrayAsync();
 
         return Ok(new ApiResponse<DepartmentResponse[]>(true, departments));
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Policy = "Permission:Departments.View")]
+    [Authorize(Policy = "Permission:DEPARTMENT.READ")]
     public async Task<ActionResult<ApiResponse<DepartmentResponse>>> GetDepartment(int id)
     {
         var department = await _context.Departments
             .AsNoTracking()
             .Where(item => item.Id == id)
-            .Select(item => new DepartmentResponse(item.Id, item.Code, item.Name, item.Description))
+            .Select(item => new DepartmentResponse(item.Id, item.Code, item.Name, item.Description) { PublicId = item.PublicId })
             .FirstOrDefaultAsync();
 
         return department == null
@@ -49,7 +49,7 @@ public class DepartmentsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = "Permission:Departments.Manage")]
+    [Authorize(Policy = "Permission:DEPARTMENT.CREATE")]
     public async Task<ActionResult<ApiResponse<DepartmentResponse>>> CreateDepartment([FromBody] CreateDepartmentRequest request)
     {
         var exists = await _context.Departments.AnyAsync(department => department.Code == request.Code);
@@ -68,11 +68,11 @@ public class DepartmentsController : ControllerBase
         _context.Departments.Add(department);
         await _context.SaveChangesAsync();
 
-        return Ok(new ApiResponse<DepartmentResponse>(true, new DepartmentResponse(department.Id, department.Code, department.Name, department.Description)));
+        return Ok(new ApiResponse<DepartmentResponse>(true, new DepartmentResponse(department.Id, department.Code, department.Name, department.Description) { PublicId = department.PublicId }));
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Policy = "Permission:Departments.Manage")]
+    [Authorize(Policy = "Permission:DEPARTMENT.UPDATE")]
     public async Task<ActionResult<ApiResponse<DepartmentResponse>>> UpdateDepartment(int id, [FromBody] UpdateDepartmentRequest request)
     {
         var department = await _context.Departments.FindAsync(id);
@@ -92,11 +92,11 @@ public class DepartmentsController : ControllerBase
         department.Description = request.Description?.Trim();
         await _context.SaveChangesAsync();
 
-        return Ok(new ApiResponse<DepartmentResponse>(true, new DepartmentResponse(department.Id, department.Code, department.Name, department.Description)));
+        return Ok(new ApiResponse<DepartmentResponse>(true, new DepartmentResponse(department.Id, department.Code, department.Name, department.Description) { PublicId = department.PublicId }));
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Policy = "Permission:Departments.Manage")]
+    [Authorize(Policy = "Permission:DEPARTMENT.UPDATE")]
     public async Task<ActionResult<ApiResponse<bool>>> DeleteDepartment(int id)
     {
         var department = await _context.Departments.Include(item => item.Units).FirstOrDefaultAsync(item => item.Id == id);
@@ -110,7 +110,8 @@ public class DepartmentsController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "Delete units first before deleting the department"));
         }
 
-        _context.Departments.Remove(department);
+        department.IsActive = false;
+        department.EffectiveTo = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         return Ok(new ApiResponse<bool>(true, true));
     }

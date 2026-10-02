@@ -19,28 +19,25 @@ export function IPMSDashboardPage() {
   const { setCurrentPath, userProfile } = useApp();
   const [targets, setTargets] = useState<IPMSTarget[]>([]);
   const [submissions, setSubmissions] = useState<IPMSSubmission[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
-      setLoading(true);
       const [targetsResult, submissionsResult] = await Promise.all([getIpmsTargets(), getIpmsSubmissions()]);
       setTargets(targetsResult.data ?? []);
       setSubmissions(submissionsResult.data ?? []);
-      setLoading(false);
     };
     void load();
   }, []);
 
   const stats = useMemo(() => {
     const assigned = targets.length;
-    const achieved = targets.filter(t => t.submissions.some(s => s.status === 'Approved')).length;
-    const atRisk = targets.filter(t => t.submissions.some(s => s.status === 'Returned')).length;
-    const outstanding = targets.filter(t => t.submissions.every(s => s.status === 'Draft' || s.status === 'Submitted')).length;
-    const draft = submissions.filter(s => s.status === 'Draft').length;
-    const submitted = submissions.filter(s => s.status === 'Submitted').length;
-    const returned = submissions.filter(s => s.status === 'Returned').length;
-    const approved = submissions.filter(s => s.status === 'Approved').length;
+    const achieved = targets.filter(t => t.submissions.some(s => s.status === 'approved')).length;
+    const atRisk = targets.filter(t => t.submissions.some(s => s.status === 'returned_for_info' || s.status === 'rejected' || s.status === 'verify_rejected')).length;
+    const outstanding = targets.filter(t => t.submissions.every(s => s.status === 'draft' || s.status === 'submitted')).length;
+    const draft = submissions.filter(s => s.status === 'draft').length;
+    const submitted = submissions.filter(s => s.status === 'submitted').length;
+    const returned = submissions.filter(s => s.status === 'returned_for_info' || s.status === 'rejected' || s.status === 'verify_rejected').length;
+    const approved = submissions.filter(s => s.status === 'approved').length;
     return { assigned, achieved, atRisk, outstanding, draft, submitted, returned, approved };
   }, [targets, submissions]);
 
@@ -93,7 +90,7 @@ export function IPMSDashboardPage() {
               <ClipboardList className="h-5 w-5 text-primary-600" />
               <h3 className="text-base font-semibold text-secondary-900">Review Queue</h3>
             </div>
-            <div className="mt-4 text-sm text-secondary-700">{submissions.filter(s => s.status === 'Submitted').length} pending reviews.</div>
+            <div className="mt-4 text-sm text-secondary-700">{submissions.filter(s => s.status === 'submitted').length} pending reviews.</div>
           </Card>
         </div>
 

@@ -16,14 +16,10 @@ describe('AppContext state management', () => {
     'Dashboard.View',
   ];
 
-  it('identifies super admin role correctly', () => {
-    const isSuperAdmin = (roles: string[]) =>
-      roles.some(role => ['Super Admin'].some(r => r.toLowerCase() === role.toLowerCase()));
-
-    expect(isSuperAdmin(['Super Admin'])).toBe(true);
-    expect(isSuperAdmin(['super admin'])).toBe(true);
-    expect(isSuperAdmin(['Department Manager'])).toBe(false);
-    expect(isSuperAdmin([])).toBe(false);
+  it('keeps role labels separate from effective permission codes', () => {
+    expect(mockUserProfile.roles).toContain('Department Manager');
+    expect(mockPermissions).not.toContain('Department Manager');
+    expect(mockPermissions).toContain('OPMS.View');
   });
 
   it('normalizes legacy admin paths', () => {

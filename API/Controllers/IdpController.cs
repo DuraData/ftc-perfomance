@@ -15,18 +15,41 @@ namespace FTCERP.Host.API.Controllers;
 [Authorize]
 public class IdpController : ControllerBase
 {
+    private const long MaximumDocumentBytes = 25 * 1024 * 1024;
+    private static readonly IReadOnlyDictionary<string, string[]> AllowedDocumentTypes = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = ["application/pdf"],
+        [".png"] = ["image/png"],
+        [".jpg"] = ["image/jpeg"],
+        [".jpeg"] = ["image/jpeg"],
+        [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+        [".xlsx"] = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]
+    };
+
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IWorkflowGovernanceService _workflowGovernanceService;
+    private readonly ITenantContext? _tenantContext;
+    private readonly IEvidenceBlobStorage? _evidenceStorage;
+    private readonly IEvidenceInspectionService? _evidenceInspection;
+    private readonly IEvidenceMalwareScanner? _malwareScanner;
 
     public IdpController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
-        IWorkflowGovernanceService workflowGovernanceService)
+        IWorkflowGovernanceService workflowGovernanceService,
+        ITenantContext? tenantContext = null,
+        IEvidenceBlobStorage? evidenceStorage = null,
+        IEvidenceInspectionService? evidenceInspection = null,
+        IEvidenceMalwareScanner? malwareScanner = null)
     {
         _context = context;
         _userManager = userManager;
         _workflowGovernanceService = workflowGovernanceService;
+        _tenantContext = tenantContext;
+        _evidenceStorage = evidenceStorage;
+        _evidenceInspection = evidenceInspection;
+        _malwareScanner = malwareScanner;
     }
 
     [HttpGet("plans")]
@@ -52,9 +75,16 @@ public class IdpController : ControllerBase
             return Unauthorized(new ApiResponse<IdpPlanSummaryResponse>(false, null, "User not found"));
         }
 
+        var municipalityName = request.MunicipalityName.Trim();
+        if (_tenantContext?.MunicipalityId is > 0 and not long.MinValue)
+        {
+            municipalityName = await _context.Municipalities.Where(x => x.Id == _tenantContext.MunicipalityId.Value && x.IsActive).Select(x => x.Name).SingleOrDefaultAsync() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(municipalityName)) return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Selected municipality is not active."));
+        }
+
         var entity = new IdpPlan
         {
-            MunicipalityName = request.MunicipalityName.Trim(),
+            MunicipalityName = municipalityName,
             PlanTitle = request.PlanTitle.Trim(),
             PlanCode = request.PlanCode.Trim(),
             StartFinancialYear = request.StartFinancialYear,
@@ -65,12 +95,9 @@ public class IdpController : ControllerBase
             CreatedByUserId = user.Id
         };
 
-        _context.IdpPlans.Add(entity);
-        await _context.SaveChangesAsync();
-
         var version = new IdpPlanVersion
         {
-            IdpPlanId = entity.Id,
+            IdpPlan = entity,
             VersionNumber = 1,
             VersionType = IdpVersionType.Original,
             VersionLabel = "Original Approved IDP",
@@ -81,17 +108,17 @@ public class IdpController : ControllerBase
             IsActive = true
         };
 
+        _context.IdpPlans.Add(entity);
         _context.IdpPlanVersions.Add(version);
-        await _context.SaveChangesAsync();
-
-        await _workflowGovernanceService.WriteAuditTrailAsync(
+        _workflowGovernanceService.QueueAuditTrail(
             "IdpPlan",
-            entity.Id.ToString(),
+            entity.PublicId.ToString(),
             "Create",
             null,
             ToSummaryResponse(entity),
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<IdpPlanSummaryResponse>(true, ToSummaryResponse(entity)));
     }
@@ -113,6 +140,11 @@ public class IdpController : ControllerBase
         }
 
         var before = ToSummaryResponse(entity);
+        if (!string.IsNullOrWhiteSpace(request.RowVersion))
+        {
+            try { _context.Entry(entity).Property(x => x.RowVersion).OriginalValue = Convert.FromBase64String(request.RowVersion); }
+            catch (FormatException) { return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Invalid RowVersion.")); }
+        }
         entity.PlanTitle = request.PlanTitle.Trim();
         entity.StartFinancialYear = request.StartFinancialYear;
         entity.EndFinancialYear = request.EndFinancialYear;
@@ -126,15 +158,16 @@ public class IdpController : ControllerBase
             }
         }
 
-        await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync(
+        _workflowGovernanceService.QueueAuditTrail(
             "IdpPlan",
-            entity.Id.ToString(),
+            entity.PublicId.ToString(),
             "Update",
             before,
             ToSummaryResponse(entity),
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext));
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null, "IDP plan was changed by another user.")); }
 
         return Ok(new ApiResponse<IdpPlanSummaryResponse>(true, ToSummaryResponse(entity)));
     }
@@ -852,40 +885,162 @@ public class IdpController : ControllerBase
 
     [HttpPost("documents")]
     [Authorize(Policy = "Permission:IDP.Documents.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpDocumentResponse>>> CreateDocument([FromBody] CreateIdpDocumentRequest request)
+    public ActionResult<ApiResponse<IdpDocumentResponse>> CreateDocument([FromBody] CreateIdpDocumentRequest request)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<IdpDocumentResponse>(false, null, "User not found"));
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpDocumentResponse>(false, null,
+            "Client-supplied document metadata and storage paths are no longer accepted. Use the versioned multipart IDP document endpoint."));
+    }
 
-        if (!TryParseEnum(request.Category, out IdpDocumentCategory category))
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents")]
+    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    public async Task<ActionResult<ApiResponse<IdpDocumentResponse[]>>> GetDocuments(Guid planPublicId)
+    {
+        var documents = await _context.IdpDocuments
+            .AsNoTracking()
+            .Include(item => item.IdpPlan)
+            .Include(item => item.IdpPlanVersion)
+            .Include(item => item.UploadedByUser)
+            .Include(item => item.Blob)
+            .Where(item => item.IdpPlan.PublicId == planPublicId && item.IsActive)
+            .OrderByDescending(item => item.UploadedAt)
+            .ToListAsync();
+
+        return Ok(new ApiResponse<IdpDocumentResponse[]>(true, documents.Select(ToDocumentResponse).ToArray()));
+    }
+
+    [HttpPost("~/api/v1/idp/plans/{planPublicId:guid}/documents")]
+    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [RequestSizeLimit(MaximumDocumentBytes)]
+    public async Task<ActionResult<ApiResponse<IdpDocumentResponse>>> UploadDocument(
+        Guid planPublicId,
+        [FromForm] IFormFile file,
+        [FromForm] string category,
+        [FromForm] string title,
+        [FromForm] int? planVersionNumber = null)
+    {
+        if (_evidenceStorage == null || _evidenceInspection == null || _malwareScanner == null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<IdpDocumentResponse>(false, null, "Governed document storage is unavailable."));
+        if (file == null || file.Length == 0)
+            return BadRequest(new ApiResponse<IdpDocumentResponse>(false, null, "File is required."));
+        if (file.Length > MaximumDocumentBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new ApiResponse<IdpDocumentResponse>(false, null, "File exceeds the 25 MB document limit."));
+        if (!TryParseEnum(category, out IdpDocumentCategory parsedCategory))
+            return BadRequest(new ApiResponse<IdpDocumentResponse>(false, null, "Invalid document category."));
+        if (string.IsNullOrWhiteSpace(title))
+            return BadRequest(new ApiResponse<IdpDocumentResponse>(false, null, "Document title is required."));
+
+        var extension = Path.GetExtension(file.FileName);
+        if (!AllowedDocumentTypes.TryGetValue(extension, out var contentTypes) || !contentTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, new ApiResponse<IdpDocumentResponse>(false, null, "Unsupported document file type."));
+
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpDocumentResponse>(false, null, "User not found."));
+        var plan = await _context.IdpPlans.Include(item => item.Versions).FirstOrDefaultAsync(item => item.PublicId == planPublicId);
+        if (plan == null) return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP plan not found."));
+
+        IdpPlanVersion? planVersion = null;
+        if (planVersionNumber.HasValue)
         {
-            return BadRequest(new ApiResponse<IdpDocumentResponse>(false, null, "Invalid document category"));
+            planVersion = plan.Versions.SingleOrDefault(item => item.VersionNumber == planVersionNumber.Value);
+            if (planVersion == null) return BadRequest(new ApiResponse<IdpDocumentResponse>(false, null, "The selected version does not belong to this IDP plan."));
         }
 
-        var planExists = await _context.IdpPlans.AnyAsync(item => item.Id == request.IdpPlanId);
-        if (!planExists) return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP plan not found"));
+        await using var input = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await input.CopyToAsync(buffer, HttpContext.RequestAborted);
+        var content = buffer.ToArray();
+        var inspection = _evidenceInspection.Inspect(content, extension);
+        if (!inspection.SignatureValid)
+            return StatusCode(StatusCodes.Status415UnsupportedMediaType, new ApiResponse<IdpDocumentResponse>(false, null, inspection.Error));
+        var malwareScan = await _malwareScanner.ScanAsync(content, file.FileName, file.ContentType, HttpContext.RequestAborted);
 
+        var versionNumber = (await _context.IdpDocuments
+            .Where(item => item.IdpPlanId == plan.Id && item.Category == parsedCategory && item.Title == title.Trim())
+            .MaxAsync(item => (int?)item.VersionNumber) ?? 0) + 1;
+        var relativeDirectory = Path.Combine("idp", planPublicId.ToString("N"));
+        var relativePath = Path.Combine(relativeDirectory, $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}");
+        var stored = await _evidenceStorage.StoreAsync(relativePath, content, HttpContext.RequestAborted);
+        if (!stored.Succeeded)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<IdpDocumentResponse>(false, null, "Evidence storage is unavailable: " + stored.Detail));
+        var now = DateTime.UtcNow;
         var entity = new IdpDocument
         {
-            IdpPlanId = request.IdpPlanId,
-            IdpPlanVersionId = request.IdpPlanVersionId,
-            Category = category,
-            Title = request.Title.Trim(),
-            FileName = request.FileName.Trim(),
-            StoragePath = request.StoragePath.Trim(),
-            ContentType = request.ContentType,
-            SizeInBytes = request.SizeInBytes,
-            VersionNumber = request.VersionNumber,
-            IsApproved = request.IsApproved,
-            UploadedAt = DateTime.UtcNow,
-            UploadedByUserId = user.Id
+            IdpPlan = plan,
+            IdpPlanVersion = planVersion,
+            Category = parsedCategory,
+            Title = title.Trim(),
+            FileName = Path.GetFileName(file.FileName),
+            Blob = new EvidenceBlob { MunicipalityId = plan.MunicipalityId, StorageKey = relativePath, ContentType = file.ContentType, SizeInBytes = content.LongLength, Sha256 = inspection.Sha256, SignatureVerified = inspection.SignatureValid, ScanStatus = malwareScan.Status, IsQuarantined = !malwareScan.IsClean, ScannerProvider = malwareScan.Provider, ScannerReference = malwareScan.ProviderReference, ScanDetail = malwareScan.Detail, ScannedAt = now },
+            RetainUntil = now.AddYears(7),
+            VersionNumber = versionNumber,
+            IsApproved = false,
+            UploadedAt = now,
+            UploadedByUserId = user.Id,
+            UploadedByUser = user
         };
 
         _context.IdpDocuments.Add(entity);
-        await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpDocument", entity.Id.ToString(), "Create", null, ToDocumentResponse(entity, user.FullName));
+        try { await _context.SaveChangesAsync(); }
+        catch
+        {
+            await _evidenceStorage.DisposeAsync(relativePath, CancellationToken.None);
+            throw;
+        }
+        var response = ToDocumentResponse(entity);
+        await WriteIdpAudit(user.Id, "IdpDocument", entity.PublicId.ToString(), "Upload", null, response);
+        return Ok(new ApiResponse<IdpDocumentResponse>(true, response,
+            malwareScan.IsClean ? "Document uploaded and released after a clean scan." : "Document uploaded and quarantined pending a clean scan."));
+    }
 
-        return Ok(new ApiResponse<IdpDocumentResponse>(true, ToDocumentResponse(entity, user.FullName)));
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents/{documentPublicId:guid}/content")]
+    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    public async Task<IActionResult> DownloadDocument(Guid planPublicId, Guid documentPublicId)
+    {
+        if (_evidenceStorage == null) return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        var document = await _context.IdpDocuments.AsNoTracking().Include(item => item.Blob).FirstOrDefaultAsync(item =>
+            item.PublicId == documentPublicId && item.IdpPlan.PublicId == planPublicId && item.IsActive &&
+            !item.Blob.IsContentDeleted && !item.Blob.IsQuarantined && item.Blob.SignatureVerified && item.Blob.ScanStatus == "Clean");
+        if (document == null) return NotFound();
+        var stored = await _evidenceStorage.ReadAsync(document.Blob.StorageKey, HttpContext.RequestAborted);
+        if (!stored.Found) return stored.Available ? NotFound() : StatusCode(StatusCodes.Status503ServiceUnavailable);
+        return File(stored.Content, document.Blob.ContentType ?? "application/octet-stream", document.FileName, enableRangeProcessing: true);
+    }
+
+    [HttpPost("~/api/v1/idp/plans/{planPublicId:guid}/documents/{documentPublicId:guid}/rescan")]
+    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    public async Task<ActionResult<ApiResponse<IdpDocumentResponse>>> RescanDocument(Guid planPublicId, Guid documentPublicId)
+    {
+        if (_evidenceStorage == null || _malwareScanner == null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<IdpDocumentResponse>(false, null, "Governed document scanning is unavailable."));
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpDocumentResponse>(false, null, "User not found."));
+        var document = await _context.IdpDocuments
+            .Include(item => item.IdpPlan)
+            .Include(item => item.IdpPlanVersion)
+            .Include(item => item.UploadedByUser)
+            .Include(item => item.Blob)
+            .FirstOrDefaultAsync(item => item.PublicId == documentPublicId && item.IdpPlan.PublicId == planPublicId && item.IsActive);
+        if (document == null) return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP document not found."));
+        if (document.Blob.IsContentDeleted) return Conflict(new ApiResponse<IdpDocumentResponse>(false, null, "Disposed document content cannot be rescanned."));
+        var stored = await _evidenceStorage.ReadAsync(document.Blob.StorageKey, HttpContext.RequestAborted);
+        if (!stored.Found)
+            return stored.Available
+                ? NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "Stored document content not found."))
+                : StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<IdpDocumentResponse>(false, null, "Evidence storage is unavailable: " + stored.Detail));
+
+        var before = new { document.Blob.ScanStatus, document.Blob.IsQuarantined, document.Blob.ScannerReference };
+        var scan = await _malwareScanner.ScanAsync(stored.Content, document.FileName, document.Blob.ContentType ?? "application/octet-stream", HttpContext.RequestAborted);
+        document.Blob.ScanStatus = scan.Status;
+        document.Blob.IsQuarantined = !scan.IsClean;
+        document.Blob.ScannerProvider = scan.Provider;
+        document.Blob.ScannerReference = scan.ProviderReference;
+        document.Blob.ScanDetail = scan.Detail;
+        document.Blob.ScannedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        var response = ToDocumentResponse(document);
+        await WriteIdpAudit(user.Id, "IdpDocument", document.PublicId.ToString(), "MalwareRescan", before, response);
+        return Ok(new ApiResponse<IdpDocumentResponse>(true, response, scan.IsClean ? "Document released after a clean scan." : "Document remains quarantined."));
     }
 
     [HttpPost("comments")]
@@ -1046,7 +1201,7 @@ public class IdpController : ControllerBase
     }
 
     private static IdpPlanSummaryResponse ToSummaryResponse(IdpPlan plan) =>
-        new(plan.Id, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt);
+        new(plan.Id, plan.PublicId, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt, Convert.ToBase64String(plan.RowVersion));
 
     private static IdpPlanVersionResponse ToVersionResponse(IdpPlanVersion version) =>
         new(version.Id, version.IdpPlanId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear, version.SummaryOfChanges, version.IsActive, version.CreatedAt, version.CreatedByUserId);
@@ -1148,8 +1303,39 @@ public class IdpController : ControllerBase
     private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot) =>
         new(snapshot.Id, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear, snapshot.PlannedBudget, snapshot.ApprovedBudget, snapshot.ActualExpenditure, snapshot.SourceSystem, snapshot.CapturedAt);
 
-    private static IdpDocumentResponse ToDocumentResponse(IdpDocument document, string? uploadedByName) =>
-        new(document.Id, document.IdpPlanId, document.IdpPlanVersionId, document.Category.ToString(), document.Title, document.FileName, document.StoragePath, document.ContentType, document.SizeInBytes, document.VersionNumber, document.IsApproved, document.UploadedAt, document.UploadedByUserId, uploadedByName);
+    private IdpDocumentResponse ToDocumentResponse(IdpDocument document)
+    {
+        var downloadUrl = document.IsActive && !document.Blob.IsContentDeleted && !document.Blob.IsQuarantined && document.Blob.SignatureVerified && document.Blob.ScanStatus == "Clean"
+            ? $"{Request.Scheme}://{Request.Host}/api/v1/idp/plans/{document.IdpPlan.PublicId}/documents/{document.PublicId}/content"
+            : string.Empty;
+        return new(
+            document.PublicId,
+            document.IdpPlan.PublicId,
+            document.IdpPlanVersion?.VersionNumber,
+            document.Category.ToString(),
+            document.Title,
+            document.FileName,
+            downloadUrl,
+            document.Blob.ContentType,
+            document.Blob.SizeInBytes,
+            document.VersionNumber,
+            document.IsApproved,
+            document.UploadedAt,
+            document.UploadedByUserId,
+            document.UploadedByUser?.FullName,
+            document.Blob.Sha256,
+            document.Blob.SignatureVerified,
+            document.Blob.ScanStatus,
+            document.Blob.IsQuarantined,
+            document.Blob.ScannerProvider,
+            document.Blob.ScannerReference,
+            document.Blob.ScanDetail,
+            document.Blob.ScannedAt,
+            document.RetainUntil,
+            document.Blob.PublicId,
+            document.Blob.IsContentDeleted,
+            Convert.ToBase64String(document.RowVersion ?? []));
+    }
 
     private static IdpCommentResponse ToCommentResponse(IdpCollaborationComment comment, string? commentedByName) =>
         new(comment.Id, comment.IdpPlanId, comment.IdpPlanVersionId, comment.EntityName, comment.EntityId, comment.Comment, comment.CommentedByUserId, commentedByName, comment.CommentedAt);

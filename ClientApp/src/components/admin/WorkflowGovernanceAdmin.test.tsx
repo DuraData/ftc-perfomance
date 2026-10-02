@@ -1,0 +1,92 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { WorkflowGovernanceAdminPage } from './WorkflowGovernanceAdmin';
+
+const api = vi.hoisted(() => ({
+  getWorkflowDefinitions: vi.fn(),
+  getReportingWindows: vi.fn(),
+  getReportingPeriodMasters: vi.fn(),
+  getRatingSchemes: vi.fn(),
+  createWorkflowDefinition: vi.fn(),
+  compareWorkflowDefinitions: vi.fn(),
+  retireWorkflowDefinition: vi.fn(),
+  createReportingWindow: vi.fn(),
+  getReportingWindowExceptions: vi.fn(),
+  createReportingWindowException: vi.fn(),
+  getUsers: vi.fn(),
+  getDepartments: vi.fn(),
+  getUnits: vi.fn(),
+  createRatingScheme: vi.fn(),
+}));
+
+vi.mock('../../api/api', () => api);
+vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
+
+describe('WorkflowGovernanceAdminPage', () => {
+  beforeEach(() => {
+    api.getWorkflowDefinitions.mockResolvedValue({ success: true, data: [] });
+    api.getReportingWindows.mockResolvedValue({ success: true, data: [] });
+    api.getReportingPeriodMasters.mockResolvedValue({ success: true, data: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: '' }] });
+    api.getRatingSchemes.mockResolvedValue({ success: true, data: [{ publicId: 'scheme-1', code: 'FIVE_POINT', name: 'Five point scale', isActive: true, rowVersion: 'AQ==', values: [] }] });
+    api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
+    api.getUsers.mockResolvedValue({ success: true, data: [] });
+    api.getDepartments.mockResolvedValue({ success: true, data: [] });
+    api.getUnits.mockResolvedValue({ success: true, data: [] });
+    api.compareWorkflowDefinitions.mockResolvedValue({ success: false, message: 'not configured' });
+    api.retireWorkflowDefinition.mockResolvedValue({ success: true, data: null });
+  });
+
+  it('loads authoritative configuration and switches governance tabs', async () => {
+    render(<WorkflowGovernanceAdminPage />);
+
+    await waitFor(() => expect(api.getReportingPeriodMasters).toHaveBeenCalledOnce());
+    expect(screen.getByText('New workflow version')).toBeInTheDocument();
+    expect(screen.getAllByRole('option', { name: /FIVE_POINT · Five point scale/ })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Windows' }));
+    expect(screen.getByText('Open a reporting window')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Q1 · Quarter 1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ratings' }));
+    expect(screen.getByText('Create rating scheme')).toBeInTheDocument();
+  });
+
+  it('opens scoped reporting-window exception administration', async () => {
+    api.getReportingWindows.mockResolvedValue({ success: true, data: [{ publicId: 'window-1', reportingPeriodPublicId: 'period-1', periodCode: 'Q1', submissionKind: 1, opensAt: '2026-07-01T00:00:00Z', closesAt: '2026-07-31T00:00:00Z', isActive: true, rowVersion: 'AQ==' }] });
+    api.getDepartments.mockResolvedValue({ success: true, data: [{ id: 7, publicId: 'department-1', code: 'FIN', name: 'Finance' }] });
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Windows' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage exceptions' }));
+
+    await waitFor(() => expect(api.getReportingWindowExceptions).toHaveBeenCalledWith('window-1'));
+    expect(screen.getByText('Scoped exceptions · Q1 OPMS')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'FIN · Finance' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve exception' })).toBeInTheDocument();
+  });
+
+  it('compares versions and renders authoritative stage differences', async () => {
+    const stages = [{ publicId: 'stage-submit', code: 'SUBMIT', name: 'Submit', sequence: 1, requiredActionCode: 'OPMS_SUBMISSION.SUBMIT', requiredPermissionCode: 'OPMS_SUBMISSION.SUBMIT', isOptional: false, allowBypass: false, requireDifferentActorFromSubmitter: false, requireDifferentActorFromPreviousStage: false, isTerminal: true, requiresRating: false }];
+    const version1 = { publicId: 'workflow-v1', municipalityFinancialYearPublicId: 'year-1', submissionKind: 1, code: 'DEFAULT', name: 'Default', version: 1, isActive: false, effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: '2026-08-01T00:00:00Z', rowVersion: 'AQ==', stages };
+    const version2 = { ...version1, publicId: 'workflow-v2', version: 2, isActive: true, effectiveFrom: '2026-08-01T00:00:00Z', effectiveTo: null, rowVersion: 'Ag==', stages: [{ ...stages[0], publicId: 'stage-submit-v2', name: 'Capture and submit' }] };
+    api.getWorkflowDefinitions.mockResolvedValue({ success: true, data: [version2, version1] });
+    api.compareWorkflowDefinitions.mockResolvedValue({ success: true, data: { from: version1, to: version2, stageDifferences: [{ change: 'Modified', stageCode: 'SUBMIT', fromSequence: 1, toSequence: 1, changedFields: ['Name'] }] } });
+    render(<WorkflowGovernanceAdminPage />);
+
+    const compareButtons = await screen.findAllByRole('button', { name: 'Compare to previous' });
+    fireEvent.click(compareButtons[0]);
+    await waitFor(() => expect(api.compareWorkflowDefinitions).toHaveBeenCalledWith('workflow-v1', 'workflow-v2'));
+    expect(screen.getByText('Changed: Name')).toBeInTheDocument();
+  });
+
+  it('retires an active version with its reason and concurrency token', async () => {
+    const stages = [{ publicId: 'stage-submit', code: 'SUBMIT', name: 'Submit', sequence: 1, requiredActionCode: 'OPMS_SUBMISSION.SUBMIT', requiredPermissionCode: 'OPMS_SUBMISSION.SUBMIT', isOptional: false, allowBypass: false, requireDifferentActorFromSubmitter: false, requireDifferentActorFromPreviousStage: false, isTerminal: true, requiresRating: false }];
+    const version = { publicId: 'workflow-v2', municipalityFinancialYearPublicId: 'year-1', submissionKind: 1, code: 'DEFAULT', name: 'Default', version: 2, isActive: true, effectiveFrom: '2026-08-01T00:00:00Z', effectiveTo: null, rowVersion: 'Ag==', stages };
+    api.getWorkflowDefinitions.mockResolvedValue({ success: true, data: [version] });
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.change(await screen.findByLabelText(/Retirement reason for DEFAULT v2/), { target: { value: 'Replaced after annual governance review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retire version' }));
+    await waitFor(() => expect(api.retireWorkflowDefinition).toHaveBeenCalledWith('workflow-v2', expect.objectContaining({ reason: 'Replaced after annual governance review', rowVersion: 'Ag==' })));
+  });
+});

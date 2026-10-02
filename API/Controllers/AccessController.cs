@@ -25,14 +25,14 @@ public class AccessController : ControllerBase
 
     [HttpGet("my-permissions")]
     [Authorize(Policy = "Permission:Access.MyPermissions.View")]
-    public ActionResult<ApiResponse<string[]>> GetMyPermissions()
+    public async Task<ActionResult<ApiResponse<string[]>>> GetMyPermissions()
     {
-        var permissions = User.Claims
-            .Where(c => c.Type == "Permission")
-            .Select(c => c.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x)
-            .ToArray();
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new ApiResponse<string[]>(false, null, "Invalid user context"));
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null) return Unauthorized(new ApiResponse<string[]>(false, null, "User not found"));
+        var access = await _accessControlService.GetEffectiveAccessAsync(user);
+        var permissions = access.EffectivePermissions.OrderBy(code => code, StringComparer.OrdinalIgnoreCase).ToArray();
 
         return Ok(new ApiResponse<string[]>(true, permissions));
     }

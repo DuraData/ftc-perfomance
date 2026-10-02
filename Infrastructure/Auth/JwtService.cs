@@ -63,11 +63,11 @@ public class JwtService : IJwtService
         var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
         var refreshToken = GenerateRefreshToken();
 
-        // Save refresh token
+        // Persist only a one-way digest. The raw bearer value is returned once to the client.
         _context.RefreshTokens.Add(new RefreshToken
         {
             UserId = user.Id,
-            Token = refreshToken,
+            Token = HashRefreshToken(refreshToken),
             ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpiryDays),
             CreatedAt = DateTime.UtcNow
         });
@@ -115,17 +115,25 @@ public class JwtService : IJwtService
 
     public async Task<RefreshToken?> GetRefreshTokenAsync(string token)
     {
-        return await _context.RefreshTokens.FirstOrDefaultAsync(rt => rt.Token == token);
+        var digest = HashRefreshToken(token);
+        return await _context.RefreshTokens.FirstOrDefaultAsync(rt => rt.Token == digest);
     }
 
     public async Task RevokeRefreshTokenAsync(string token, string? ipAddress)
     {
-        var refreshToken = await _context.RefreshTokens.FirstOrDefaultAsync(rt => rt.Token == token);
+        var digest = HashRefreshToken(token);
+        var refreshToken = await _context.RefreshTokens.FirstOrDefaultAsync(rt => rt.Token == digest);
         if (refreshToken != null)
         {
             refreshToken.RevokedAt = DateTime.UtcNow;
             refreshToken.RevokedByIp = ipAddress;
             await _context.SaveChangesAsync();
         }
+    }
+
+    private static string HashRefreshToken(string token)
+    {
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        return Convert.ToHexString(digest);
     }
 }

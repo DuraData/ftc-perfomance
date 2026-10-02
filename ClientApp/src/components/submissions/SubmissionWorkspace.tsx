@@ -27,6 +27,9 @@ import type {
   SubmissionComment,
   SubmissionStatus,
 } from '../../types';
+import { PerformanceRfiWorkspace } from '../workflow/PerformanceRfiWorkspace';
+import { StageRatingHistory } from '../workflow/StageRatingHistory';
+import { useSecurity } from '../../context/SecurityContext';
 
 type SubmissionRecord = OPMSSubmission | IPMSSubmission;
 type WorkspaceMode = 'review' | 'list';
@@ -43,6 +46,12 @@ interface SubmissionWorkspaceProps {
   onAttachmentsChange?: (attachments: Attachment[]) => void;
   onUploadAttachments?: (files: File[]) => void;
   onDeleteAttachment?: (attachmentId: string) => void;
+  onRescanAttachment?: (attachmentId: string) => void;
+  onAssessAttachment?: (attachmentId: string, outcome: 1 | 2 | 3, comment?: string) => void;
+  onReplaceAttachment?: (attachmentId: string, replacementPublicId: string, reason: string, supersededRowVersion: string, replacementRowVersion: string) => void;
+  onPlaceAttachmentHold?: (attachmentId: string, holdReference: string, reason: string) => void;
+  onReleaseAttachmentHold?: (attachmentId: string, holdId: string, reason: string) => void;
+  onDisposeAttachment?: (attachmentId: string, approvalReference: string, reason: string, rowVersion: string) => void;
   onWorkflowAction?: (
     action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
     payload: { comment?: string; score?: number },
@@ -308,10 +317,17 @@ export function SubmissionWorkspace({
   onAttachmentsChange,
   onUploadAttachments,
   onDeleteAttachment,
+  onRescanAttachment,
+  onAssessAttachment,
+  onReplaceAttachment,
+  onPlaceAttachmentHold,
+  onReleaseAttachmentHold,
+  onDisposeAttachment,
   onWorkflowAction,
   onExtendDueDate,
   workflowBusy = false,
 }: SubmissionWorkspaceProps) {
+  const security = useSecurity();
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [draftSubmission, setDraftSubmission] = useState<SubmissionRecord>(submission);
@@ -369,6 +385,8 @@ export function SubmissionWorkspace({
 
   const uploadedFileItems = attachments.map(attachment => ({
     id: attachment.id,
+    publicId: attachment.publicId,
+    evidenceBlobPublicId: attachment.evidenceBlobPublicId,
     name: attachment.fileName,
     size: attachment.fileSize,
     type: attachment.fileType,
@@ -376,6 +394,17 @@ export function SubmissionWorkspace({
     uploadedBy: attachment.uploadedBy.displayName,
     documentType: attachment.documentType,
     url: attachment.url,
+    scanStatus: attachment.scanStatus,
+    isQuarantined: attachment.isQuarantined,
+    scanDetail: attachment.scanDetail,
+    assessments: attachment.assessments,
+    rowVersion: attachment.rowVersion,
+    replacementOf: attachment.replacementOf,
+    legalHolds: attachment.legalHolds,
+    isActive: attachment.isActive,
+    retainUntil: attachment.retainUntil,
+    disposals: attachment.disposals,
+    isContentDeleted: attachment.isContentDeleted,
     progress: 100,
   }));
 
@@ -582,6 +611,12 @@ export function SubmissionWorkspace({
               }
               syncAttachments(attachments.filter(attachment => attachment.id !== fileId));
             }}
+            onRescan={onRescanAttachment}
+            onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? onAssessAttachment : undefined}
+            onReplace={security.canExecute(`${submissionType}_POE.REPLACE`) ? onReplaceAttachment : undefined}
+            onPlaceHold={security.canExecute(`${submissionType}_POE.PLACE_HOLD`) ? onPlaceAttachmentHold : undefined}
+            onReleaseHold={security.canExecute(`${submissionType}_POE.RELEASE_HOLD`) ? onReleaseAttachmentHold : undefined}
+            onDispose={security.canExecute(`${submissionType}_POE.DISPOSE`) ? onDisposeAttachment : undefined}
           />
         </Section>
       )}
@@ -648,6 +683,8 @@ export function SubmissionWorkspace({
               ))}
             </div>
           )}
+          <PerformanceRfiWorkspace kind={submissionType === 'OPMS' ? 1 : 2} submissionId={currentSubmission.id} />
+          <StageRatingHistory kind={submissionType === 'OPMS' ? 1 : 2} submissionId={currentSubmission.id} />
         </Section>
       )}
 

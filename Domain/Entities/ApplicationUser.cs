@@ -4,6 +4,9 @@ namespace FTCERP.Host.Domain.Entities;
 
 public class ApplicationUser : IdentityUser
 {
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public Municipality? Municipality { get; set; }
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string FullName => $"{FirstName} {LastName}";
@@ -19,6 +22,7 @@ public class ApplicationUser : IdentityUser
     public DateTime? UpdatedAt { get; set; }
     public string? CreatedBy { get; set; }
     public string? UpdatedBy { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     // Navigation properties
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();

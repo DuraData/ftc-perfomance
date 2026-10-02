@@ -5,8 +5,18 @@ import type {
   UserProfile,
   LoginResponse,
   MenuItem,
+  TenantContextDto,
 } from '../types';
-import { login as apiLogin, isAuthenticated, logout as apiLogout } from '../api/api';
+import {
+  getCurrentMunicipalityId,
+  getMyMenu,
+  getMyPermissions,
+  getMyTenantContexts,
+  login as apiLogin,
+  isAuthenticated,
+  logout as apiLogout,
+  setCurrentMunicipalityId,
+} from '../api/api';
 
 type ToastType = 'success' | 'error' | 'info';
 interface ToastItem {
@@ -14,12 +24,6 @@ interface ToastItem {
   type: ToastType;
   message: string;
 }
-
-const isSuperAdminRole = (roles: string[]) =>
-  roles.some(role =>
-    ['Super Admin']
-      .some(r => r.toLowerCase() === role.toLowerCase()),
-  );
 
 const buildFullMenu = (): MenuItem[] => [
   { label: 'Dashboard', path: '/dashboard', icon: 'dashboard', isDivider: false },
@@ -155,9 +159,11 @@ interface AppContextType {
   userProfile: UserProfile | null;
   isAuthenticated: boolean;
   roles: string[];
-  isSuperAdmin: boolean;
   permissions: string[];
   menuItems: MenuItem[];
+  tenantContexts: TenantContextDto[];
+  currentMunicipalityId: number | null;
+  switchMunicipality: (municipalityId: number) => Promise<boolean>;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   sidebarCollapsed: boolean;
@@ -188,6 +194,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [tenantContexts, setTenantContexts] = useState<TenantContextDto[]>([]);
+  const [currentMunicipalityIdState, setCurrentMunicipalityIdState] = useState<number | null>(getCurrentMunicipalityId());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedSidebarGroups, setExpandedSidebarGroups] = useState<string[]>([]);
   const [darkMode, setDarkMode] = useState(false);
@@ -204,12 +212,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizePath(window.location.pathname || '/dashboard') : '/login');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const resolveMenuItems = (incomingRoles: string[], incomingMenu: MenuItem[]) => {
-    if (!isSuperAdminRole(incomingRoles)) return incomingMenu;
-    if (!incomingMenu.length || !incomingMenu.some(item => item.label === 'Performance Management')) {
-      return buildFullMenu();
-    }
+    // Role names never grant navigation. Keep the legacy builder referenced only until its
+    // remaining route definitions have been migrated to the database registry.
+    void incomingRoles;
+    void buildFullMenu;
     return incomingMenu;
   };
+
+  const refreshTenantAccess = useCallback(async (municipalityId: number) => {
+    setCurrentMunicipalityId(municipalityId);
+    setCurrentMunicipalityIdState(municipalityId);
+    const [permissionsResult, menuResult] = await Promise.all([getMyPermissions(), getMyMenu()]);
+    if (!permissionsResult.success || !permissionsResult.data || !menuResult.success || !menuResult.data) {
+      setPermissions([]);
+      setMenuItems([]);
+      safeRemoveItem('permissions');
+      safeRemoveItem('menu_items');
+      return false;
+    }
+    setPermissions(permissionsResult.data);
+    setMenuItems(menuResult.data);
+    safeSetItem('permissions', JSON.stringify(permissionsResult.data));
+    safeSetItem('menu_items', JSON.stringify(menuResult.data));
+    return true;
+  }, []);
+
+  const loadTenantContexts = useCallback(async () => {
+    const result = await getMyTenantContexts();
+    if (!result.success || !result.data) {
+      setTenantContexts([]);
+      setPermissions([]);
+      setMenuItems([]);
+      return false;
+    }
+    setTenantContexts(result.data);
+    const storedId = getCurrentMunicipalityId();
+    const selectedId = result.data.some(item => item.id === storedId)
+      ? storedId
+      : result.data.length === 1 ? result.data[0].id : null;
+    if (selectedId === null) {
+      setCurrentMunicipalityId(null);
+      setCurrentMunicipalityIdState(null);
+      setPermissions([]);
+      setMenuItems([]);
+      safeRemoveItem('permissions');
+      safeRemoveItem('menu_items');
+      return result.data.length === 0;
+    }
+    return refreshTenantAccess(selectedId);
+  }, [refreshTenantAccess]);
+
+  const switchMunicipality = useCallback(async (municipalityId: number) => {
+    if (!tenantContexts.some(item => item.id === municipalityId)) return false;
+    return refreshTenantAccess(municipalityId);
+  }, [refreshTenantAccess, tenantContexts]);
 
   useEffect(() => {
     let storedUser: string | null = null;
@@ -236,15 +292,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSidebarCollapsed(storedSidebarCollapsed === 'true');
     }
 
-    if (storedUser && storedPermissions && storedMenu) {
+    if (storedUser) {
       setUserProfile(JSON.parse(storedUser));
       const parsedRoles = storedRoles ? JSON.parse(storedRoles) : [];
       setRoles(parsedRoles);
-      setPermissions(JSON.parse(storedPermissions));
-      setMenuItems(resolveMenuItems(parsedRoles, JSON.parse(storedMenu)));
+      setPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
+      setMenuItems(storedMenu ? resolveMenuItems(parsedRoles, JSON.parse(storedMenu)) : []);
       setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
+      void loadTenantContexts();
     }
-  }, []);
+  }, [loadTenantContexts]);
 
   useEffect(() => {
     safeSetItem('sidebar_collapsed', String(sidebarCollapsed));
@@ -273,12 +330,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const data = result.data as LoginResponse;
       setUserProfile(data.user);
       setRoles(data.roles ?? []);
-      setPermissions(data.permissions);
-      setMenuItems(resolveMenuItems(data.roles ?? [], data.menu));
+      setCurrentMunicipalityId(null);
+      setCurrentMunicipalityIdState(null);
+      setPermissions([]);
+      setMenuItems([]);
       safeSetItem('user_profile', JSON.stringify(data.user));
       safeSetItem('roles', JSON.stringify(data.roles ?? []));
-      safeSetItem('permissions', JSON.stringify(data.permissions));
-      safeSetItem('menu_items', JSON.stringify(resolveMenuItems(data.roles ?? [], data.menu)));
+      safeRemoveItem('permissions');
+      safeRemoveItem('menu_items');
+      await loadTenantContexts();
       setCurrentPath('/dashboard');
       return true;
     }
@@ -291,6 +351,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRoles([]);
     setPermissions([]);
     setMenuItems([]);
+    setTenantContexts([]);
+    setCurrentMunicipalityIdState(null);
+    setCurrentMunicipalityId(null);
     safeRemoveItem('user_profile');
     safeRemoveItem('roles');
     safeRemoveItem('permissions');
@@ -345,9 +408,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         userProfile,
         isAuthenticated: isAuthenticated() && !!userProfile,
         roles,
-        isSuperAdmin: isSuperAdminRole(roles),
         permissions,
         menuItems,
+        tenantContexts,
+        currentMunicipalityId: currentMunicipalityIdState,
+        switchMunicipality,
         login,
         logout,
         sidebarCollapsed,

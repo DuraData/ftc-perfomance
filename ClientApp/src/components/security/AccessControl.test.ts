@@ -1,13 +1,18 @@
 import { canAccessPath, hasPermissionCode } from './AccessControl';
 
 describe('AccessControl helpers', () => {
-  it('returns true for super admin regardless of route', () => {
-    expect(canAccessPath('/opms/targets', ['anything'], true)).toBe(true);
-    expect(canAccessPath('/system-administration/users', [], true)).toBe(true);
+  it('does not allow a role-name flag to bypass permissions', () => {
+    expect(canAccessPath('/opms/targets', ['anything'], true)).toBe(false);
+    expect(canAccessPath('/system-administration/users', [], true)).toBe(false);
   });
 
-  it('returns true for dashboard without permissions', () => {
-    expect(canAccessPath('/dashboard', [], false)).toBe(true);
+  it('requires a registered dashboard permission', () => {
+    expect(canAccessPath('/dashboard', [], false)).toBe(false);
+    expect(canAccessPath('/dashboard', ['NAV.DASHBOARD'], false)).toBe(true);
+  });
+
+  it('denies unknown routes by default', () => {
+    expect(canAccessPath('/unregistered-feature', ['anything'], false)).toBe(false);
   });
 
   it('denies access when required permissions are missing', () => {
@@ -16,8 +21,19 @@ describe('AccessControl helpers', () => {
   });
 
   it('allows access when required permission is present', () => {
-    expect(canAccessPath('/opms/targets', ['OPMS.View'], false)).toBe(true);
+    expect(canAccessPath('/opms/targets', ['OPMS_KPI.READ'], false)).toBe(true);
     expect(canAccessPath('/workflow/verification', ['Workflow.Verify.View'], false)).toBe(true);
+  });
+
+  it('protects workflow governance with its stable action permission', () => {
+    expect(canAccessPath('/admin/approval-setup', [], false)).toBe(false);
+    expect(canAccessPath('/admin/approval-setup', ['WORKFLOW.CONFIGURE'], false)).toBe(true);
+  });
+
+  it('allows reporting routes through stable report permissions', () => {
+    expect(canAccessPath('/reports', [], false)).toBe(false);
+    expect(canAccessPath('/reports', ['OPMS_REPORT.READ'], false)).toBe(true);
+    expect(canAccessPath('/reports/performance', ['IPMS_REPORT.EXPORT'], false)).toBe(true);
   });
 
   it('allows access when permission matches case-insensitively', () => {

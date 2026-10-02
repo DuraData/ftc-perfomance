@@ -7,6 +7,7 @@ import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { ConfirmDialog } from '../common/Modal';
 import { Input, Textarea, FormHero, FormPanel, FormRow } from '../common/Form';
+import { useSecurity } from '../../context/SecurityContext';
 
 // Generic CRUD page for simple lookup tables
 interface LookupItem {
@@ -22,10 +23,18 @@ interface GenericLookupPageProps {
   subtitle: string;
   entityName: string;
   mockData: LookupItem[];
+  resourceCode?: string;
   fields?: { key: string; label: string; type: 'text' | 'select' | 'textarea' }[];
 }
 
-export function GenericLookupPage({ title, subtitle, entityName, mockData, fields }: GenericLookupPageProps) {
+export function GenericLookupPage({ title, subtitle, entityName, mockData, fields, resourceCode }: GenericLookupPageProps) {
+  const security = useSecurity();
+  const effectiveResource = resourceCode ?? entityName.replace(/[^A-Za-z0-9]+/g, '_').toUpperCase();
+  const canRead = security.canRead(effectiveResource);
+  const canCreate = security.canCreate(effectiveResource);
+  const canUpdate = security.canUpdate(effectiveResource);
+  const canDelete = security.canDelete(effectiveResource);
+  const canExport = security.canExport(effectiveResource);
   const [selectedItem, setSelectedItem] = useState<LookupItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -45,8 +54,8 @@ export function GenericLookupPage({ title, subtitle, entityName, mockData, field
   const actions = (row: LookupItem) => (
     <div className="flex items-center justify-end gap-0.5">
       <button onClick={(e) => { e.stopPropagation(); setSelectedItem(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
-      <button onClick={(e) => { e.stopPropagation(); setSelectedItem(row); setShowCreateModal(true); }} className="p-1 rounded hover:bg-secondary-100"><Edit2 className="w-3.5 h-3.5 text-secondary-400" /></button>
-      <button onClick={(e) => { e.stopPropagation(); setSelectedItem(row); setShowDeleteConfirm(true); }} className="p-1 rounded hover:bg-error-50"><Trash2 className="w-3.5 h-3.5 text-error-400" /></button>
+      {canUpdate && <button onClick={(e) => { e.stopPropagation(); setSelectedItem(row); setShowCreateModal(true); }} className="p-1 rounded hover:bg-secondary-100"><Edit2 className="w-3.5 h-3.5 text-secondary-400" /></button>}
+      {canDelete && <button onClick={(e) => { e.stopPropagation(); setSelectedItem(row); setShowDeleteConfirm(true); }} className="p-1 rounded hover:bg-error-50"><Trash2 className="w-3.5 h-3.5 text-error-400" /></button>}
     </div>
   );
 
@@ -56,12 +65,12 @@ export function GenericLookupPage({ title, subtitle, entityName, mockData, field
         <div className="flex items-center justify-between">
           <Badge variant="primary">{mockData.length} records</Badge>
           <div className="flex gap-1">
-            <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
-            <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { setSelectedItem(null); setShowCreateModal(true); }}>Add</Button>
+            {canExport && <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>}
+            {canCreate && <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { setSelectedItem(null); setShowCreateModal(true); }}>Add</Button>}
           </div>
         </div>
         <Card>
-          <DataTable data={mockData} columns={columns} onRowClick={(row) => setSelectedItem(row)} actions={actions} getRowId={(row) => row.id} />
+          <DataTable data={canRead ? mockData : []} columns={columns} onRowClick={canRead ? (row) => setSelectedItem(row) : undefined} actions={canRead ? actions : undefined} getRowId={(row) => row.id} emptyMessage={canRead ? 'No data available' : 'You do not have permission to read this resource'} />
         </Card>
 
         <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setSelectedItem(null); }} title={`${selectedItem ? 'Edit' : 'New'} ${entityName}`} size="md">

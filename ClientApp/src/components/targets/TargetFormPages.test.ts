@@ -10,7 +10,7 @@ describe('TargetFormPages helpers', () => {
   it('maps XAF unit type to API unit type', () => {
     expect(toApiUnitType('PercentageBased')).toBe('percentage');
     expect(toApiUnitType('AbsoluteCount')).toBe('absolute_count');
-    expect(toApiUnitType('UnknownValue' as any)).toBe('UnknownValue');
+    expect(toApiUnitType('UnknownValue')).toBe('UnknownValue');
   });
 
   it('returns label for a known target unit type', () => {
@@ -19,7 +19,7 @@ describe('TargetFormPages helpers', () => {
   });
 
   it('returns default label when unit type is unknown', () => {
-    expect(getTargetUnitLabel('Unknown' as any)).toBe('Target Value');
+    expect(getTargetUnitLabel('Unknown')).toBe('Target Value');
   });
 
   it('validates required fields and returns missing field messages', () => {

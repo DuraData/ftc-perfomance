@@ -136,7 +136,7 @@ export function OPMSTargetList() {
     setCurrentPath,
     pushToast,
   } = useApp();
-  const canManageTargets = useHasAnyPermission(['OPMS.Targets.Create', 'OPMS.Targets.Edit', 'OPMS.Targets.Delete']);
+  const canManageTargets = useHasAnyPermission(['OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE', 'OPMS_KPI.DELETE']);
   const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

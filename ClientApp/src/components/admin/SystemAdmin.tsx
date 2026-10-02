@@ -33,8 +33,8 @@ import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail,
 import { useApp } from '../../context/AppContext';
 
 function useHasPermission(code: string) {
-  const { permissions, isSuperAdmin } = useApp();
-  return useMemo(() => isSuperAdmin || permissions.some(p => p.toLowerCase() === code.toLowerCase()), [permissions, code, isSuperAdmin]);
+  const { permissions } = useApp();
+  return useMemo(() => permissions.some(p => p.toLowerCase() === code.toLowerCase()), [permissions, code]);
 }
 
 export function AdminUsersPage() {

@@ -21,7 +21,7 @@ public class UnitsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = "Permission:Units.View")]
+    [Authorize(Policy = "Permission:UNIT.READ")]
     public async Task<ActionResult<ApiResponse<UnitResponse[]>>> GetUnits()
     {
         var units = await _context.Units
@@ -29,21 +29,21 @@ public class UnitsController : ControllerBase
             .Include(unit => unit.Department)
             .OrderBy(unit => unit.Department.Name)
             .ThenBy(unit => unit.Name)
-            .Select(unit => new UnitResponse(unit.Id, unit.DepartmentId, unit.Department.Name, unit.Code, unit.Name))
+            .Select(unit => new UnitResponse(unit.Id, unit.DepartmentId, unit.Department.Name, unit.Code, unit.Name) { PublicId = unit.PublicId })
             .ToArrayAsync();
 
         return Ok(new ApiResponse<UnitResponse[]>(true, units));
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Policy = "Permission:Units.View")]
+    [Authorize(Policy = "Permission:UNIT.READ")]
     public async Task<ActionResult<ApiResponse<UnitResponse>>> GetUnit(int id)
     {
         var unit = await _context.Units
             .AsNoTracking()
             .Include(item => item.Department)
             .Where(item => item.Id == id)
-            .Select(item => new UnitResponse(item.Id, item.DepartmentId, item.Department.Name, item.Code, item.Name))
+            .Select(item => new UnitResponse(item.Id, item.DepartmentId, item.Department.Name, item.Code, item.Name) { PublicId = item.PublicId })
             .FirstOrDefaultAsync();
 
         return unit == null
@@ -52,7 +52,7 @@ public class UnitsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = "Permission:Units.Manage")]
+    [Authorize(Policy = "Permission:UNIT.CREATE")]
     public async Task<ActionResult<ApiResponse<UnitResponse>>> CreateUnit([FromBody] CreateUnitRequest request)
     {
         var department = await _context.Departments.FindAsync(request.DepartmentId);
@@ -77,11 +77,11 @@ public class UnitsController : ControllerBase
         _context.Units.Add(unit);
         await _context.SaveChangesAsync();
 
-        return Ok(new ApiResponse<UnitResponse>(true, new UnitResponse(unit.Id, unit.DepartmentId, department.Name, unit.Code, unit.Name)));
+        return Ok(new ApiResponse<UnitResponse>(true, new UnitResponse(unit.Id, unit.DepartmentId, department.Name, unit.Code, unit.Name) { PublicId = unit.PublicId }));
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Policy = "Permission:Units.Manage")]
+    [Authorize(Policy = "Permission:UNIT.UPDATE")]
     public async Task<ActionResult<ApiResponse<UnitResponse>>> UpdateUnit(int id, [FromBody] UpdateUnitRequest request)
     {
         var unit = await _context.Units.FindAsync(id);
@@ -107,11 +107,11 @@ public class UnitsController : ControllerBase
         unit.Name = request.Name.Trim();
         await _context.SaveChangesAsync();
 
-        return Ok(new ApiResponse<UnitResponse>(true, new UnitResponse(unit.Id, unit.DepartmentId, department.Name, unit.Code, unit.Name)));
+        return Ok(new ApiResponse<UnitResponse>(true, new UnitResponse(unit.Id, unit.DepartmentId, department.Name, unit.Code, unit.Name) { PublicId = unit.PublicId }));
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Policy = "Permission:Units.Manage")]
+    [Authorize(Policy = "Permission:UNIT.UPDATE")]
     public async Task<ActionResult<ApiResponse<bool>>> DeleteUnit(int id)
     {
         var unit = await _context.Units.FindAsync(id);
@@ -120,7 +120,8 @@ public class UnitsController : ControllerBase
             return NotFound(new ApiResponse<bool>(false, false, "Unit not found"));
         }
 
-        _context.Units.Remove(unit);
+        unit.IsActive = false;
+        unit.EffectiveTo = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         return Ok(new ApiResponse<bool>(true, true));
     }

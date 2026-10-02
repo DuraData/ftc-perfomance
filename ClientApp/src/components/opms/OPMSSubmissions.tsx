@@ -14,6 +14,8 @@ import { useApp } from '../../context/AppContext';
 import {
   applyIpmsSubmissionWorkflowAction,
   applyOpmsSubmissionWorkflowAction,
+  assessIpmsSubmissionAttachment,
+  assessOpmsSubmissionAttachment,
   createIpmsSubmission,
   createOpmsSubmission,
   deleteIpmsSubmissionAttachment,
@@ -30,6 +32,16 @@ import {
   getOpmsTargets,
   uploadIpmsSubmissionAttachment,
   uploadOpmsSubmissionAttachment,
+  rescanIpmsSubmissionAttachment,
+  rescanOpmsSubmissionAttachment,
+  replaceIpmsSubmissionAttachment,
+  replaceOpmsSubmissionAttachment,
+  placeIpmsEvidenceLegalHold,
+  placeOpmsEvidenceLegalHold,
+  releaseIpmsEvidenceLegalHold,
+  releaseOpmsEvidenceLegalHold,
+  requestIpmsEvidenceDisposal,
+  requestOpmsEvidenceDisposal,
   updateIpmsSubmission,
   updateOpmsSubmission,
 } from '../../api/api';
@@ -262,6 +274,46 @@ export function OPMSSubmissionsList() {
                 pushToast('error', result.message ?? 'Failed to delete attachment');
               }
             })();
+          }}
+          onRescanAttachment={(attachmentId) => {
+            void (async () => {
+              const result = await rescanOpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
+              if (result.success && result.data) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) };
+                setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated);
+                pushToast(result.data.isQuarantined ? 'error' : 'success', result.message ?? 'Evidence scan completed');
+              } else pushToast('error', result.message ?? 'Evidence rescan failed');
+            })();
+          }}
+          onAssessAttachment={(attachmentId, outcome, comment) => {
+            void (async () => {
+              const result = await assessOpmsSubmissionAttachment(selectedSubmission.id, attachmentId, { outcome, comment });
+              if (result.success && result.data) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) };
+                setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated);
+                pushToast('success', 'Evidence assessment recorded');
+              } else pushToast('error', result.message ?? 'Evidence assessment failed');
+            })();
+          }}
+          onReplaceAttachment={(attachmentId, replacementPublicId, reason, supersededRowVersion, replacementRowVersion) => {
+            void (async () => {
+              const result = await replaceOpmsSubmissionAttachment(selectedSubmission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion });
+              if (result.success && result.data) {
+                const attachments = selectedSubmission.attachments.filter(item => item.id !== attachmentId).map(item => item.publicId === replacementPublicId ? result.data! : item);
+                const updated = { ...selectedSubmission, attachments };
+                setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated);
+                pushToast('success', 'Evidence replacement recorded');
+              } else pushToast('error', result.message ?? 'Evidence replacement failed');
+            })();
+          }}
+          onPlaceAttachmentHold={(attachmentId, holdReference, reason) => {
+            void (async () => { const result = await placeOpmsEvidenceLegalHold(selectedSubmission.id, attachmentId, { holdReference, reason }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated); pushToast('success', 'Legal hold placed'); } else pushToast('error', result.message ?? 'Legal hold failed'); })();
+          }}
+          onReleaseAttachmentHold={(attachmentId, holdId, reason) => {
+            void (async () => { const result = await releaseOpmsEvidenceLegalHold(selectedSubmission.id, attachmentId, holdId, { reason }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated); pushToast('success', 'Legal hold released'); } else pushToast('error', result.message ?? 'Legal hold release failed'); })();
+          }}
+          onDisposeAttachment={(attachmentId, approvalReference, reason, rowVersion) => {
+            void (async () => { const result = await requestOpmsEvidenceDisposal(selectedSubmission.id, attachmentId, { approvalReference, reason, rowVersion }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated); pushToast('success', 'Evidence disposal queued'); } else pushToast('error', result.message ?? 'Evidence disposal request failed'); })();
           }}
           onWorkflowAction={(action, payload) => { void runWorkflowAction(action, payload); }}
           onExtendDueDate={(payload) => { void extendDueDate(payload); }}
@@ -569,6 +621,46 @@ export function IPMSSubmissionsList() {
                 pushToast('error', result.message ?? 'Failed to delete attachment');
               }
             })();
+          }}
+          onRescanAttachment={(attachmentId) => {
+            void (async () => {
+              const result = await rescanIpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
+              if (result.success && result.data) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) };
+                setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated);
+                pushToast(result.data.isQuarantined ? 'error' : 'success', result.message ?? 'Evidence scan completed');
+              } else pushToast('error', result.message ?? 'Evidence rescan failed');
+            })();
+          }}
+          onAssessAttachment={(attachmentId, outcome, comment) => {
+            void (async () => {
+              const result = await assessIpmsSubmissionAttachment(selectedSubmission.id, attachmentId, { outcome, comment });
+              if (result.success && result.data) {
+                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) };
+                setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated);
+                pushToast('success', 'Evidence assessment recorded');
+              } else pushToast('error', result.message ?? 'Evidence assessment failed');
+            })();
+          }}
+          onReplaceAttachment={(attachmentId, replacementPublicId, reason, supersededRowVersion, replacementRowVersion) => {
+            void (async () => {
+              const result = await replaceIpmsSubmissionAttachment(selectedSubmission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion });
+              if (result.success && result.data) {
+                const attachments = selectedSubmission.attachments.filter(item => item.id !== attachmentId).map(item => item.publicId === replacementPublicId ? result.data! : item);
+                const updated = { ...selectedSubmission, attachments };
+                setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated);
+                pushToast('success', 'Evidence replacement recorded');
+              } else pushToast('error', result.message ?? 'Evidence replacement failed');
+            })();
+          }}
+          onPlaceAttachmentHold={(attachmentId, holdReference, reason) => {
+            void (async () => { const result = await placeIpmsEvidenceLegalHold(selectedSubmission.id, attachmentId, { holdReference, reason }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated); pushToast('success', 'Legal hold placed'); } else pushToast('error', result.message ?? 'Legal hold failed'); })();
+          }}
+          onReleaseAttachmentHold={(attachmentId, holdId, reason) => {
+            void (async () => { const result = await releaseIpmsEvidenceLegalHold(selectedSubmission.id, attachmentId, holdId, { reason }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated); pushToast('success', 'Legal hold released'); } else pushToast('error', result.message ?? 'Legal hold release failed'); })();
+          }}
+          onDisposeAttachment={(attachmentId, approvalReference, reason, rowVersion) => {
+            void (async () => { const result = await requestIpmsEvidenceDisposal(selectedSubmission.id, attachmentId, { approvalReference, reason, rowVersion }); if (result.success && result.data) { const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.map(item => item.id === attachmentId ? result.data! : item) }; setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item)); setSelectedSubmission(updated); pushToast('success', 'Evidence disposal queued'); } else pushToast('error', result.message ?? 'Evidence disposal request failed'); })();
           }}
           onWorkflowAction={(action, payload) => { void runWorkflowAction(action, payload); }}
           onExtendDueDate={(payload) => { void extendDueDate(payload); }}

@@ -41,6 +41,8 @@ public enum SubmissionKind
 public class OpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
     public string? SourceTemplateId { get; set; }
     public int? SourceTemplateVersion { get; set; }
     public int? PeriodId { get; set; }
@@ -97,7 +99,9 @@ public class OpmsTarget
     public decimal? RevisedAnnualTarget { get; set; }
     public decimal? RevisedAnnualBudget { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
+    public Municipality? Municipality { get; set; }
     public Period? Period { get; set; }
         public Department? Department { get; set; }
         public Unit? Unit { get; set; }
@@ -113,6 +117,8 @@ public class OpmsTarget
 public class IpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
     public string? SourceTemplateId { get; set; }
     public int? SourceTemplateVersion { get; set; }
     public string? RelatedOpmsTargetId { get; set; }
@@ -142,6 +148,8 @@ public class IpmsTarget
     public string? IdpReference { get; set; }
     public string? InternalReference { get; set; }
     public bool IsRevised { get; set; }
+    public bool IsWithdrawn { get; set; }
+    public string? ReasonForWithdrawal { get; set; }
     public string TargetUnitType { get; set; } = "absolute_count";
     public decimal? Q1Target { get; set; }
     public string? Q1Description { get; set; }
@@ -163,7 +171,9 @@ public class IpmsTarget
     public decimal? RevisedAnnualTarget { get; set; }
     public decimal? RevisedAnnualBudget { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
+    public Municipality? Municipality { get; set; }
     public Period? Period { get; set; }
         public Department? Department { get; set; }
         public Unit? Unit { get; set; }
@@ -180,6 +190,9 @@ public class IpmsTarget
 public class OpmsSubmission
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public long? ReportingPeriodId { get; set; }
     public string OpmsTargetId { get; set; } = string.Empty;
     public string Quarter { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
@@ -189,6 +202,9 @@ public class OpmsSubmission
     public string PmsStatus { get; set; } = "Pending";
     public string AuditorStatus { get; set; } = "Pending";
     public decimal? Actual { get; set; }
+    public string? ActualPerformance { get; set; }
+    public decimal? AchievementPercent { get; set; }
+    public bool? TargetAchieved { get; set; }
     public string? ActualDescription { get; set; }
     public string? ActualPerformanceDescription { get; set; }
     public decimal? ActualExpenditure { get; set; }
@@ -234,7 +250,10 @@ public class OpmsSubmission
     public DateTime? UpdatedOn { get; set; }
     public string? OrganisationId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
+    public Municipality? Municipality { get; set; }
+    public ReportingPeriod? ReportingPeriod { get; set; }
     public OpmsTarget OpmsTarget { get; set; } = null!;
     public ApplicationUser? SubmittedByUser { get; set; }
     public ApplicationUser? VerifierUser { get; set; }
@@ -249,6 +268,9 @@ public class OpmsSubmission
 public class IpmsSubmission
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public long? ReportingPeriodId { get; set; }
     public string IpmsTargetId { get; set; } = string.Empty;
     public string Quarter { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
@@ -258,6 +280,9 @@ public class IpmsSubmission
     public string PmsStatus { get; set; } = "Pending";
     public string AuditorStatus { get; set; } = "Pending";
     public decimal? Actual { get; set; }
+    public string? ActualPerformance { get; set; }
+    public decimal? AchievementPercent { get; set; }
+    public bool? TargetAchieved { get; set; }
     public string? ActualDescription { get; set; }
     public string? ActualPerformanceDescription { get; set; }
     public decimal? ActualExpenditure { get; set; }
@@ -303,7 +328,10 @@ public class IpmsSubmission
     public DateTime? UpdatedOn { get; set; }
     public string? OrganisationId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
+    public Municipality? Municipality { get; set; }
+    public ReportingPeriod? ReportingPeriod { get; set; }
     public IpmsTarget IpmsTarget { get; set; } = null!;
     public ApplicationUser? SubmittedByUser { get; set; }
     public ApplicationUser? VerifierUser { get; set; }
@@ -318,21 +346,114 @@ public class IpmsSubmission
 public class PoeFile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
     public SubmissionKind SubmissionKind { get; set; }
     public string SubmissionId { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
-    public string StoragePath { get; set; } = string.Empty;
-    public string? ContentType { get; set; }
-    public long SizeInBytes { get; set; }
+    public string EvidenceBlobId { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+    public DateTime? RetainUntil { get; set; }
+    public string? SupersedesPoeFileId { get; set; }
     public string UploadedByUserId { get; set; } = string.Empty;
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
+    public Municipality? Municipality { get; set; }
+    public EvidenceBlob Blob { get; set; } = null!;
     public ApplicationUser UploadedByUser { get; set; } = null!;
+    public ICollection<PoeEvidenceAssessment> Assessments { get; set; } = new List<PoeEvidenceAssessment>();
+    public PoeEvidenceReplacement? ReplacementAsNew { get; set; }
+    public ICollection<PoeEvidenceReplacement> ReplacementsAsOld { get; set; } = new List<PoeEvidenceReplacement>();
+    public ICollection<PoeLegalHoldEvent> LegalHoldEvents { get; set; } = new List<PoeLegalHoldEvent>();
+    public ICollection<PoeDisposalEvent> DisposalEvents { get; set; } = new List<PoeDisposalEvent>();
+}
+
+public enum PoeAssessmentOutcome { Accepted = 1, Rejected = 2, NeedsClarification = 3 }
+
+public class PoeEvidenceAssessment
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public string PoeFileId { get; set; } = string.Empty;
+    public PoeAssessmentOutcome Outcome { get; set; }
+    public string? Comment { get; set; }
+    public string AssessedByUserId { get; set; } = string.Empty;
+    public DateTime AssessedAt { get; set; } = DateTime.UtcNow;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public PoeFile PoeFile { get; set; } = null!;
+    public ApplicationUser AssessedByUser { get; set; } = null!;
+}
+
+public class PoeEvidenceReplacement
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public string SupersededPoeFileId { get; set; } = string.Empty;
+    public string ReplacementPoeFileId { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string ReplacedByUserId { get; set; } = string.Empty;
+    public DateTime ReplacedAt { get; set; } = DateTime.UtcNow;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public PoeFile SupersededPoeFile { get; set; } = null!;
+    public PoeFile ReplacementPoeFile { get; set; } = null!;
+    public ApplicationUser ReplacedByUser { get; set; } = null!;
+}
+
+public enum PoeLegalHoldAction { Placed = 1, Released = 2 }
+
+public class PoeLegalHoldEvent
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public Guid HoldId { get; set; }
+    public long MunicipalityId { get; set; }
+    public string PoeFileId { get; set; } = string.Empty;
+    public PoeLegalHoldAction Action { get; set; }
+    public string HoldReference { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string ActorUserId { get; set; } = string.Empty;
+    public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public PoeFile PoeFile { get; set; } = null!;
+    public ApplicationUser ActorUser { get; set; } = null!;
+}
+
+public enum PoeDisposalAction { Requested = 1, Completed = 2, Failed = 3 }
+
+public class PoeDisposalEvent
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public Guid DisposalId { get; set; }
+    public long MunicipalityId { get; set; }
+    public string PoeFileId { get; set; } = string.Empty;
+    public PoeDisposalAction Action { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string ApprovalReference { get; set; } = string.Empty;
+    public string ActorUserId { get; set; } = string.Empty;
+    public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
+    public string CorrelationId { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+
+    public Municipality Municipality { get; set; } = null!;
+    public PoeFile PoeFile { get; set; } = null!;
+    public ApplicationUser ActorUser { get; set; } = null!;
 }
 
 public class Notification
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
     public string UserId { get; set; } = string.Empty;
     public NotificationType Type { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -342,12 +463,15 @@ public class Notification
     public bool IsRead { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser User { get; set; } = null!;
 }
 
 public class AuditTrail
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
     public string EntityName { get; set; } = string.Empty;
     public string EntityId { get; set; } = string.Empty;
     public string Action { get; set; } = string.Empty;
@@ -356,8 +480,55 @@ public class AuditTrail
     public string ChangedBy { get; set; } = string.Empty;
     public DateTime ChangedAt { get; set; } = DateTime.UtcNow;
     public string? IpAddress { get; set; }
+    public string? CorrelationId { get; set; }
+    public string? Reason { get; set; }
+    public string? UserAgent { get; set; }
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser? ChangedByUser { get; set; }
+}
+
+public class BusinessEventOutbox
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public string AggregateType { get; set; } = string.Empty;
+    public string AggregateId { get; set; } = string.Empty;
+    public string Payload { get; set; } = "{}";
+    public string? CorrelationId { get; set; }
+    public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
+    public DateTime AvailableAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ProcessedAt { get; set; }
+    public int AttemptCount { get; set; }
+    public string? LastError { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+
+    public Municipality? Municipality { get; set; }
+    public ICollection<NotificationDeliveryAttempt> DeliveryAttempts { get; set; } = new List<NotificationDeliveryAttempt>();
+}
+
+public class NotificationDeliveryAttempt
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public long BusinessEventOutboxId { get; set; }
+    public string RecipientUserId { get; set; } = string.Empty;
+    public string Channel { get; set; } = "IN_APP";
+    public string Status { get; set; } = "Pending";
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public int AttemptCount { get; set; }
+    public DateTime AttemptedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? DeliveredAt { get; set; }
+    public string? Error { get; set; }
+    public string? Provider { get; set; }
+    public string? ProviderReference { get; set; }
+    public string? ResponseDetail { get; set; }
+
+    public Municipality? Municipality { get; set; }
+    public BusinessEventOutbox BusinessEventOutbox { get; set; } = null!;
 }
 
 public class DueDateExtension

@@ -33,6 +33,7 @@ public class RoleImplementationAuditController : ControllerBase
 
         var userRoles = await _context.UserRoles.AsNoTracking().ToListAsync();
         var userScopes = await _context.UserScopes.AsNoTracking().ToListAsync();
+        var navigation = await _context.SecurityNavigationItems.AsNoTracking().Where(item => item.IsActive).OrderBy(item => item.DisplayOrder).ToArrayAsync();
 
         var results = new List<RoleImplementationAuditResponse>();
 
@@ -48,7 +49,7 @@ public class RoleImplementationAuditController : ControllerBase
                 ? codes
                 : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var menus = NavigationController.BuildMenu(permissions, SecurityModel.IsSuperAdmin([roleName]));
+            var menus = AccessControlService.BuildAuthorizedNavigation(navigation, permissions);
             var roleUserIds = userRoles.Where(link => link.RoleId == role.Id).Select(link => link.UserId).ToHashSet();
             var hasScopeRows = userScopes.Any(scope => roleUserIds.Contains(scope.UserId));
 
@@ -57,7 +58,7 @@ public class RoleImplementationAuditController : ControllerBase
                 Dashboard: permissions.Contains("Dashboard.View"),
                 Menus: menus.Length > 0,
                 Crud: permissions.Any(code => code.EndsWith(".Manage", StringComparison.OrdinalIgnoreCase) || code.EndsWith(".Create", StringComparison.OrdinalIgnoreCase) || code.EndsWith(".Edit", StringComparison.OrdinalIgnoreCase) || code.EndsWith(".Delete", StringComparison.OrdinalIgnoreCase)),
-                ScopeFiltering: SecurityModel.IsSuperAdmin([roleName]) || hasScopeRows,
+                ScopeFiltering: hasScopeRows,
                 Notifications: permissions.Any(code => code.StartsWith("Notifications.", StringComparison.OrdinalIgnoreCase)),
                 Reports: permissions.Any(code => code.StartsWith("Reports.", StringComparison.OrdinalIgnoreCase) || code.StartsWith("Audit.Reports.", StringComparison.OrdinalIgnoreCase)),
                 AuditTrail: permissions.Any(code => code.StartsWith("Audit.", StringComparison.OrdinalIgnoreCase) || code.Equals("VersionLogs.View", StringComparison.OrdinalIgnoreCase)),

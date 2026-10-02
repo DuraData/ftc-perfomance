@@ -27,7 +27,7 @@ public class IdpControllerFunctionalityTests
         (await context.IdpPlans.CountAsync()).Should().Be(1);
         (await context.IdpPlanVersions.CountAsync()).Should().Be(1);
 
-        workflow.Verify(w => w.WriteAuditTrailAsync(
+        workflow.Verify(w => w.QueueAuditTrail(
             "IdpPlan",
             It.IsAny<string>(),
             "Create",
@@ -470,5 +470,83 @@ public class IdpControllerFunctionalityTests
 
         projectResult.Result.Should().BeOfType<NotFoundObjectResult>();
         kpiResult.Result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void LegacyDocumentMetadataEndpoint_ShouldRejectClientSuppliedStoragePath()
+    {
+        using var context = IdpTestFixture.CreateContext();
+        var user = IdpTestFixture.CreateUser();
+        var controller = IdpTestFixture.CreateController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            Mock.Of<IWorkflowGovernanceService>(),
+            user.Id);
+
+        var result = controller.CreateDocument(new CreateIdpDocumentRequest(
+            1, null, "Governance", "Unsafe metadata", "proof.pdf", "../../outside.pdf",
+            "application/pdf", 42, 1, true));
+
+        var objectResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        context.IdpDocuments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetDocuments_ShouldExposePublicIdsAndReleaseOnlyCleanDocuments()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var user = IdpTestFixture.CreateUser();
+        var plan = new IdpPlan
+        {
+            MunicipalityName = "Blue Hills",
+            PlanTitle = "IDP",
+            PlanCode = "IDP-DOC",
+            StartFinancialYear = 2026,
+            EndFinancialYear = 2031,
+            CreatedByUserId = user.Id
+        };
+        var clean = new IdpDocument
+        {
+            IdpPlan = plan,
+            Category = IdpDocumentCategory.Governance,
+            Title = "Approved plan",
+            FileName = "approved.pdf",
+            Blob = new EvidenceBlob { StorageKey = "idp/private-clean.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean", IsQuarantined = false },
+            UploadedByUserId = user.Id,
+            UploadedByUser = user
+        };
+        var quarantined = new IdpDocument
+        {
+            IdpPlan = plan,
+            Category = IdpDocumentCategory.Governance,
+            Title = "Pending plan",
+            FileName = "pending.pdf",
+            Blob = new EvidenceBlob { StorageKey = "idp/private-pending.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('b', 64), SignatureVerified = true, ScanStatus = "ScannerUnavailable", IsQuarantined = true },
+            UploadedByUserId = user.Id,
+            UploadedByUser = user
+        };
+        context.AddRange(user, plan, clean, quarantined);
+        await context.SaveChangesAsync();
+
+        var controller = IdpTestFixture.CreateController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            Mock.Of<IWorkflowGovernanceService>(),
+            user.Id);
+        controller.HttpContext.Request.Scheme = "https";
+        controller.HttpContext.Request.Host = new HostString("opms.test");
+
+        var result = await controller.GetDocuments(plan.PublicId);
+        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = ok.Value.Should().BeOfType<ApiResponse<IdpDocumentResponse[]>>().Subject;
+        var documents = payload.Data.Should().NotBeNull().And.Subject;
+        documents.Should().HaveCount(2);
+        documents.Single(item => item.PublicId == clean.PublicId).DownloadUrl.Should().Contain(clean.PublicId.ToString());
+        documents.Single(item => item.PublicId == quarantined.PublicId).DownloadUrl.Should().BeEmpty();
+        documents.Should().OnlyContain(item => item.IdpPlanPublicId == plan.PublicId);
+        documents.Select(item => item.EvidenceBlobPublicId).Should().OnlyHaveUniqueItems();
+        documents.Single(item => item.PublicId == clean.PublicId).EvidenceBlobPublicId.Should().Be(clean.Blob.PublicId);
+        documents.Should().OnlyContain(item => !item.IsContentDeleted);
     }
 }

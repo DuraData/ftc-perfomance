@@ -22,7 +22,17 @@ interface TopBarProps {
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
 export function TopBar({ title, subtitle }: TopBarProps) {
-  const { userProfile, darkMode, toggleDarkMode, logout, setCurrentPath, pushToast } = useApp();
+  const {
+    userProfile,
+    darkMode,
+    toggleDarkMode,
+    logout,
+    setCurrentPath,
+    pushToast,
+    tenantContexts,
+    currentMunicipalityId,
+    switchMunicipality,
+  } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,6 +111,29 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
       {/* Right section */}
       <div className="flex items-center gap-4">
+        {tenantContexts.length > 0 && (
+          <label className="hidden lg:flex items-center gap-2 text-xs text-secondary-500 dark:text-secondary-400">
+            Municipality
+            <select
+              aria-label="Municipality context"
+              value={currentMunicipalityId ?? ''}
+              onChange={(event) => {
+                const municipalityId = Number(event.target.value);
+                if (!municipalityId) return;
+                void switchMunicipality(municipalityId).then(success => {
+                  if (success) pushToast('success', 'Municipality context changed');
+                  else pushToast('error', 'Unable to change municipality context');
+                });
+              }}
+              className="max-w-56 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100"
+            >
+              {tenantContexts.length > 1 && <option value="">Select municipality</option>}
+              {tenantContexts.map(context => (
+                <option key={context.id} value={context.id}>{context.code} — {context.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />

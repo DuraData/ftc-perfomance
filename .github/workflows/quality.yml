@@ -1,0 +1,57 @@
+name: Quality and security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ClientApp/package-lock.json
+      - name: Restore backend
+        run: dotnet restore FTCERP.Host.csproj --configfile NuGet.Config
+      - name: Build backend
+        run: dotnet build FTCERP.Host.csproj --no-restore -p:SkipClientBuild=true --configuration Release
+      - name: Test backend
+        run: dotnet test tests/FTCERP.Tests/FTCERP.Tests.csproj --no-restore -p:SkipClientBuild=true --configuration Release
+      - name: Validate migrations
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.0
+          dotnet ef migrations script --project FTCERP.Host.csproj --no-build --configuration Release --idempotent --output "$RUNNER_TEMP/migrations.sql"
+          test -s "$RUNNER_TEMP/migrations.sql"
+      - name: Audit backend dependencies
+        run: dotnet list FTCERP.Host.csproj package --vulnerable --include-transitive
+      - name: Install frontend
+        working-directory: ClientApp
+        run: npm ci
+      - name: Type-check frontend
+        working-directory: ClientApp
+        run: npm run typecheck
+      - name: Lint frontend
+        working-directory: ClientApp
+        run: npm run lint
+      - name: Test frontend
+        working-directory: ClientApp
+        run: npm run test:run
+      - name: Audit frontend dependencies
+        working-directory: ClientApp
+        run: npm audit --audit-level=high
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

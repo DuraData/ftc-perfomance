@@ -6,10 +6,11 @@ import { Button, Card } from '../ui';
 import { useApp } from '../../context/AppContext';
 
 const routePermissionMap: Array<{ match: (path: string) => boolean; permissions: string[] }> = [
+  { match: (path) => path === '/dashboard', permissions: ['NAV.DASHBOARD', 'Dashboard.View'] },
   { match: (path) => path.startsWith('/opms/library'), permissions: ['OPMS.Library.View', 'OPMS.Library.Create', 'OPMS.Library.Edit', 'OPMS.Library.UseTemplate'] },
   { match: (path) => path.startsWith('/ipms/library'), permissions: ['IPMS.Library.View', 'IPMS.Library.Create', 'IPMS.Library.Edit', 'IPMS.Library.UseTemplate'] },
-  { match: (path) => path === '/opms/targets/new', permissions: ['OPMS.Targets.Create'] },
-  { match: (path) => /^\/opms\/targets\/[^/]+\/edit$/i.test(path), permissions: ['OPMS.Targets.Edit'] },
+  { match: (path) => path === '/opms/targets/new', permissions: ['OPMS_KPI.CREATE'] },
+  { match: (path) => /^\/opms\/targets\/[^/]+\/edit$/i.test(path), permissions: ['OPMS_KPI.UPDATE'] },
   { match: (path) => path === '/ipms/targets/new', permissions: ['IPMS.Targets.Create'] },
   { match: (path) => /^\/ipms\/targets\/[^/]+\/edit$/i.test(path), permissions: ['IPMS.Targets.Edit'] },
   { match: (path) => path.startsWith('/idp/dashboard'), permissions: ['IDP.Dashboard.View'] },
@@ -21,15 +22,15 @@ const routePermissionMap: Array<{ match: (path: string) => boolean; permissions:
   { match: (path) => path.startsWith('/idp/hierarchy'), permissions: ['IDP.Hierarchy.Manage'] },
   { match: (path) => path.startsWith('/idp/community'), permissions: ['IDP.Participation.View', 'IDP.Participation.Manage'] },
   { match: (path) => path.startsWith('/idp/alignment'), permissions: ['IDP.Alignment.View', 'IDP.Alignment.Manage'] },
-  { match: (path) => path.startsWith('/opms/dashboard'), permissions: ['OPMS.View', 'OPMS.Targets.View'] },
+  { match: (path) => path.startsWith('/opms/dashboard'), permissions: ['OPMS_KPI.READ'] },
   { match: (path) => path.startsWith('/ipms/dashboard'), permissions: ['IPMS.View', 'IPMS.Targets.View'] },
   { match: (path) => path.startsWith('/risk'), permissions: ['IDP.Risk.Manage'] },
   { match: (path) => path.startsWith('/idp/reports'), permissions: ['IDP.Reports.Generate'] },
   { match: (path) => /\/idp\/.+\/create/i.test(path), permissions: ['IDP.Plan.Manage', 'IDP.Hierarchy.Manage', 'IDP.Project.Manage', 'IDP.Kpi.Manage'] },
   { match: (path) => /\/idp\/.+\/[^/]+\/edit/i.test(path), permissions: ['IDP.Plan.Manage', 'IDP.Hierarchy.Manage', 'IDP.Project.Manage', 'IDP.Kpi.Manage'] },
-  { match: (path) => path.startsWith('/opms/targets'), permissions: ['OPMS.View', 'Targets.View', 'Targets.Manage'] },
+  { match: (path) => path.startsWith('/opms/targets'), permissions: ['OPMS_KPI.READ', 'OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE'] },
   { match: (path) => path.startsWith('/ipms/targets'), permissions: ['IPMS.View', 'Targets.View', 'Targets.Manage'] },
-  { match: (path) => path === '/opms/submissions', permissions: ['OPMS.View', 'Workflow.Submit.View', 'Workflow.Verify.View', 'Workflow.Approve.View', 'Workflow.Review.View', 'Workflow.Audit.View'] },
+  { match: (path) => path === '/opms/submissions', permissions: ['OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.CREATE', 'OPMS_SUBMISSION.UPDATE'] },
   { match: (path) => path === '/ipms/submissions', permissions: ['IPMS.View', 'Workflow.Submit.View', 'Workflow.Verify.View', 'Workflow.Approve.View', 'Workflow.Review.View', 'Workflow.Audit.View'] },
   { match: (path) => path.startsWith('/workflow/my-drafts'), permissions: ['Workflow.Submit.View'] },
   { match: (path) => path.startsWith('/workflow/pending-submission'), permissions: ['Workflow.Submit.View'] },
@@ -43,6 +44,7 @@ const routePermissionMap: Array<{ match: (path: string) => boolean; permissions:
   { match: (path) => path.startsWith('/workflow/approval'), permissions: ['Workflow.Approve.View'] },
   { match: (path) => path.startsWith('/workflow/pms-review'), permissions: ['Workflow.Review.View'] },
   { match: (path) => path.startsWith('/workflow/auditor-review'), permissions: ['Workflow.Audit.View'] },
+  { match: (path) => path.startsWith('/admin/approval-setup'), permissions: ['WORKFLOW.CONFIGURE', 'Configuration.Manage'] },
   { match: (path) => path.startsWith('/admin/'), permissions: ['Configuration.Manage', 'Admin.Users.Manage', 'Admin.Roles.Manage', 'Admin.Permissions.Manage'] },
   { match: (path) => path.startsWith('/hr/departments'), permissions: ['Departments.View', 'Departments.Manage'] },
   { match: (path) => path.startsWith('/hr/units'), permissions: ['Units.View', 'Units.Manage'] },
@@ -53,13 +55,14 @@ const routePermissionMap: Array<{ match: (path: string) => boolean; permissions:
   { match: (path) => path.startsWith('/system-administration/users'), permissions: ['Admin.Users.Manage'] },
   { match: (path) => path.startsWith('/system-administration/roles'), permissions: ['Admin.Roles.Manage'] },
   { match: (path) => path.startsWith('/system-administration/permissions'), permissions: ['Admin.Permissions.Manage'] },
+  { match: (path) => path.startsWith('/system-administration/security'), permissions: ['SECURITY.VIEW'] },
   { match: (path) => path.startsWith('/system-administration/audit-logs'), permissions: ['Audit.LoginLogs.View', 'Audit.Logs.View'] },
   { match: (path) => path.startsWith('/system-administration/role-implementation-audit'), permissions: ['RoleImplementationAudit.View'] },
   { match: (path) => path.startsWith('/system-administration/role-access-matrix'), permissions: ['SystemAdministration.RoleAccessMatrix.View'] },
   { match: (path) => path.startsWith('/system-administration/permission-simulation'), permissions: ['SystemAdministration.PermissionSimulation.View', 'Admin.Users.Manage'] },
   { match: (path) => path.startsWith('/system-administration/system-coverage-audit'), permissions: ['SystemAdministration.SystemCoverageAudit.View'] },
   { match: (path) => path.startsWith('/system-administration/role-permission-crud-audit'), permissions: ['SystemAdministration.RoleAccessMatrix.View', 'SystemAdministration.SystemCoverageAudit.View'] },
-  { match: (path) => path.startsWith('/reports'), permissions: ['Reports.View', 'Reports.Department.View', 'Reports.Approval.View', 'Reports.Verification.View', 'Reports.InternalAudit.View', 'Audit.Reports.View'] },
+  { match: (path) => path.startsWith('/reports'), permissions: ['OPMS_REPORT.READ', 'IPMS_REPORT.READ', 'OPMS_REPORT.GENERATE', 'IPMS_REPORT.GENERATE', 'OPMS_REPORT.EXPORT', 'IPMS_REPORT.EXPORT', 'Reports.View', 'Reports.Department.View', 'Reports.Approval.View', 'Reports.Verification.View', 'Reports.InternalAudit.View', 'Audit.Reports.View'] },
   { match: (path) => path.startsWith('/notifications'), permissions: ['Notifications.View', 'Notifications.Manage'] },
   { match: (path) => path.startsWith('/my-profile'), permissions: ['Dashboard.View'] },
   { match: (path) => path.startsWith('/settings'), permissions: ['Notifications.View', 'Notifications.Manage'] },
@@ -70,26 +73,26 @@ export function hasPermissionCode(permissionCodes: string[], granted: string[]) 
   return permissionCodes.some(code => granted.some(grantedCode => grantedCode.toLowerCase() === code.toLowerCase()));
 }
 
-export function canAccessPath(path: string, permissions: string[], isSuperAdmin: boolean) {
-  if (isSuperAdmin || path === '/dashboard') return true;
+export function canAccessPath(path: string, permissions: string[], _legacySuperAdminFlag = false) {
+  void _legacySuperAdminFlag;
   const rule = routePermissionMap.find(item => item.match(path));
-  if (!rule) return true;
+  if (!rule) return false;
   return hasPermissionCode(rule.permissions, permissions);
 }
 
 export function useHasPermission(code: string) {
-  const { permissions, isSuperAdmin } = useApp();
-  return useMemo(() => isSuperAdmin || hasPermissionCode([code], permissions), [code, isSuperAdmin, permissions]);
+  const { permissions } = useApp();
+  return useMemo(() => hasPermissionCode([code], permissions), [code, permissions]);
 }
 
 export function useHasAnyPermission(codes: string[]) {
-  const { permissions, isSuperAdmin } = useApp();
-  return useMemo(() => isSuperAdmin || hasPermissionCode(codes, permissions), [codes, isSuperAdmin, permissions]);
+  const { permissions } = useApp();
+  return useMemo(() => hasPermissionCode(codes, permissions), [codes, permissions]);
 }
 
 export function useCanAccessPath(path: string) {
-  const { permissions, isSuperAdmin } = useApp();
-  return useMemo(() => canAccessPath(path, permissions, isSuperAdmin), [path, permissions, isSuperAdmin]);
+  const { permissions } = useApp();
+  return useMemo(() => canAccessPath(path, permissions), [path, permissions]);
 }
 
 export function AccessDeniedPage() {
@@ -106,7 +109,7 @@ export function AccessDeniedPage() {
             <div>
               <h2 className="text-lg font-semibold text-secondary-900 dark:text-white">You do not have access to this route</h2>
               <p className="mt-1 text-sm text-secondary-500 dark:text-secondary-400">
-                The page is protected by backend-driven permissions. If you believe this is incorrect, ask a Super Admin or Admin to review your role, scope, and assignments.
+                The page is protected by backend-driven permissions. If you believe this is incorrect, ask an authorised security administrator to review your role, scope, and assignments.
               </p>
             </div>
             <div className="flex gap-2">

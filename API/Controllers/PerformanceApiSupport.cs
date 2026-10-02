@@ -1,19 +1,33 @@
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace FTCERP.Host.API.Controllers;
 
-internal static class PerformanceApiSupport
+public static class PerformanceApiSupport
 {
+    public static IQueryable<PoeFile> IncludePoeGovernance(this IQueryable<PoeFile> query) => query
+        .Include(item => item.Blob)
+        .Include(item => item.UploadedByUser)
+        .Include(item => item.Assessments).ThenInclude(item => item.AssessedByUser)
+        .Include(item => item.ReplacementAsNew).ThenInclude(item => item!.SupersededPoeFile)
+        .Include(item => item.ReplacementAsNew).ThenInclude(item => item!.ReplacementPoeFile)
+        .Include(item => item.ReplacementAsNew).ThenInclude(item => item!.ReplacedByUser)
+        .Include(item => item.ReplacementsAsOld).ThenInclude(item => item.ReplacementPoeFile)
+        .Include(item => item.ReplacementsAsOld).ThenInclude(item => item.SupersededPoeFile)
+        .Include(item => item.ReplacementsAsOld).ThenInclude(item => item.ReplacedByUser)
+        .Include(item => item.LegalHoldEvents).ThenInclude(item => item.ActorUser)
+        .Include(item => item.DisposalEvents).ThenInclude(item => item.ActorUser);
+
     public static string? GetCurrentUserId(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier);
 
     public static string? GetIpAddress(HttpContext context) => context.Connection.RemoteIpAddress?.ToString();
 
-    public static string BuildPublicFileUrl(HttpContext context, string storagePath)
+    public static string BuildProtectedFileUrl(HttpContext context, PoeFile file)
     {
-        var normalized = storagePath.Replace("\\", "/").TrimStart('/');
-        return $"{context.Request.Scheme}://{context.Request.Host}/{normalized}";
+        var kind = file.SubmissionKind == SubmissionKind.Opms ? "opms-submissions" : "ipms-submissions";
+        return $"{context.Request.Scheme}://{context.Request.Host}/api/{kind}/{file.SubmissionId}/attachments/{file.Id}/content";
     }
 
     public static OpmsTargetTemplateResponse ToResponse(this OpmsTargetTemplate template) =>
@@ -144,7 +158,8 @@ internal static class PerformanceApiSupport
             target.Q4RevisedTarget,
             target.RevisedAnnualTarget,
             target.RevisedAnnualBudget,
-            target.CreatedAt);
+            target.CreatedAt)
+        { PublicId = target.PublicId };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target) =>
         new(
@@ -201,7 +216,8 @@ internal static class PerformanceApiSupport
             target.Q4RevisedTarget,
             target.RevisedAnnualTarget,
             target.RevisedAnnualBudget,
-            target.CreatedAt);
+            target.CreatedAt)
+        { PublicId = target.PublicId };
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>
         new(
@@ -265,7 +281,13 @@ internal static class PerformanceApiSupport
             submission.UpdatedBy,
             submission.UpdatedOn,
             submission.OrganisationId,
-            submission.CreatedAt);
+            submission.CreatedAt)
+        {
+            ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
+            ActualPerformance = submission.ActualPerformance,
+            AchievementPercent = submission.AchievementPercent,
+            TargetAchieved = submission.TargetAchieved
+        };
 
     public static IpmsSubmissionResponse ToResponse(this IpmsSubmission submission) =>
         new(
@@ -329,7 +351,13 @@ internal static class PerformanceApiSupport
             submission.UpdatedBy,
             submission.UpdatedOn,
             submission.OrganisationId,
-            submission.CreatedAt);
+            submission.CreatedAt)
+        {
+            ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
+            ActualPerformance = submission.ActualPerformance,
+            AchievementPercent = submission.AchievementPercent,
+            TargetAchieved = submission.TargetAchieved
+        };
 
     public static NotificationResponse ToResponse(this Notification notification) =>
         new(
@@ -361,10 +389,47 @@ internal static class PerformanceApiSupport
             file.SubmissionKind.ToString(),
             file.SubmissionId,
             file.FileName,
-            file.ContentType,
-            file.SizeInBytes,
+            file.Blob.ContentType,
+            file.Blob.SizeInBytes,
             file.UploadedByUserId,
             file.UploadedByUser?.FullName,
             file.UploadedAt,
-            BuildPublicFileUrl(context, file.StoragePath));
+            file.IsActive && !file.Blob.IsContentDeleted && file.Blob.ScanStatus == "Clean" && !file.Blob.IsQuarantined ? BuildProtectedFileUrl(context, file) : string.Empty)
+        {
+            PublicId = file.PublicId,
+            EvidenceBlobPublicId = file.Blob.PublicId,
+            Sha256 = file.Blob.Sha256,
+            SignatureVerified = file.Blob.SignatureVerified,
+            ScanStatus = file.Blob.ScanStatus,
+            IsQuarantined = file.Blob.IsQuarantined,
+            ScannerProvider = file.Blob.ScannerProvider,
+            ScannerReference = file.Blob.ScannerReference,
+            ScanDetail = file.Blob.ScanDetail,
+            ScannedAt = file.Blob.ScannedAt,
+            RetainUntil = file.RetainUntil,
+            Assessments = file.Assessments.OrderBy(item => item.AssessedAt).Select(item => new PoeEvidenceAssessmentResponse(item.PublicId, item.Outcome.ToString(), item.Comment, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.CorrelationId)).ToArray(),
+            RowVersion = Convert.ToBase64String(file.RowVersion),
+            ReplacementOf = file.ReplacementAsNew == null ? null : ToReplacementResponse(file.ReplacementAsNew),
+            ReplacedBy = file.ReplacementsAsOld.OrderByDescending(item => item.ReplacedAt).Select(ToReplacementResponse).FirstOrDefault()
+            , LegalHolds = file.LegalHoldEvents.GroupBy(item => item.HoldId).Select(group => ToLegalHoldResponse(group.OrderBy(item => item.OccurredAt).ToArray())).OrderByDescending(item => item.PlacedAt).ToArray(),
+            IsActive = file.IsActive,
+            Disposals = file.DisposalEvents.GroupBy(item => item.DisposalId).Select(group => ToDisposalResponse(group.OrderBy(item => item.OccurredAt).ToArray())).OrderByDescending(item => item.RequestedAt).ToArray()
+            , IsContentDeleted = file.Blob.IsContentDeleted
+        };
+
+    private static PoeEvidenceReplacementResponse ToReplacementResponse(PoeEvidenceReplacement item) => new(item.PublicId, item.SupersededPoeFile.PublicId, item.SupersededPoeFile.FileName, item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName, item.Reason, item.ReplacedByUserId, item.ReplacedByUser?.FullName, item.ReplacedAt, item.CorrelationId);
+    private static PoeLegalHoldResponse ToLegalHoldResponse(PoeLegalHoldEvent[] events)
+    {
+        var placed = events.First(item => item.Action == PoeLegalHoldAction.Placed);
+        var released = events.LastOrDefault(item => item.Action == PoeLegalHoldAction.Released);
+        return new(placed.HoldId, placed.HoldReference, released == null, placed.Reason, placed.ActorUserId, placed.ActorUser?.FullName, placed.OccurredAt, released?.Reason, released?.ActorUserId, released?.ActorUser?.FullName, released?.OccurredAt);
+    }
+    private static PoeDisposalResponse ToDisposalResponse(PoeDisposalEvent[] events)
+    {
+        var requested = events.First(item => item.Action == PoeDisposalAction.Requested);
+        var completed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Completed);
+        var failed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Failed);
+        var status = completed != null ? "Completed" : failed != null ? "Failed" : "Pending";
+        return new(requested.DisposalId, status, requested.ApprovalReference, requested.Reason, requested.ActorUserId, requested.ActorUser?.FullName, requested.OccurredAt, completed?.OccurredAt, failed?.OccurredAt, completed?.Detail ?? failed?.Detail);
+    }
 }

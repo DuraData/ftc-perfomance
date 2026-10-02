@@ -10,11 +10,14 @@ public record RoleResponse(string Id, string Name, string? Description, bool IsS
 
 public record PermissionResponse(int Id, string Module, string Feature, string Action, string Code, string? Description, bool IsActive);
 
-public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider);
+public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider, string? Code = null);
 
 public record LoginAuditLogResponse(int Id, string? UserId, string Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
 
-public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt);
+public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
+{
+    public Guid PublicId { get; init; }
+}
 
 public record UserDetailResponse(UserResponse User, RoleResponse[] Roles);
 
@@ -28,9 +31,15 @@ public record UserPermissionsResponse(string[] FromRoles, UserPermissionOverride
 
 public record PermissionGroupResponse(string Module, string Feature, PermissionResponse[] Permissions);
 
-public record DepartmentResponse(int Id, string Code, string Name, string? Description);
+public record DepartmentResponse(int Id, string Code, string Name, string? Description)
+{
+    public Guid PublicId { get; init; }
+}
 
-public record UnitResponse(int Id, int DepartmentId, string DepartmentName, string Code, string Name);
+public record UnitResponse(int Id, int DepartmentId, string DepartmentName, string Code, string Name)
+{
+    public Guid PublicId { get; init; }
+}
 
 public record UserScopeResponse(int Id, string ScopeType, int? DepartmentId, string? DepartmentName, int? UnitId, string? UnitName, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
 
@@ -211,7 +220,10 @@ public record OpmsTargetResponse(
     decimal? Q4RevisedTarget,
     decimal? RevisedAnnualTarget,
     decimal? RevisedAnnualBudget,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public Guid PublicId { get; init; }
+}
 
 public record IpmsTargetResponse(
     string Id,
@@ -267,7 +279,10 @@ public record IpmsTargetResponse(
     decimal? Q4RevisedTarget,
     decimal? RevisedAnnualTarget,
     decimal? RevisedAnnualBudget,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public Guid PublicId { get; init; }
+}
 
 public record OpmsSubmissionResponse(
     string Id,
@@ -330,7 +345,13 @@ public record OpmsSubmissionResponse(
     string? UpdatedBy,
     DateTime? UpdatedOn,
     string? OrganisationId,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public Guid? ReportingPeriodPublicId { get; init; }
+    public string? ActualPerformance { get; init; }
+    public decimal? AchievementPercent { get; init; }
+    public bool? TargetAchieved { get; init; }
+}
 
 public record IpmsSubmissionResponse(
     string Id,
@@ -393,7 +414,13 @@ public record IpmsSubmissionResponse(
     string? UpdatedBy,
     DateTime? UpdatedOn,
     string? OrganisationId,
-    DateTime CreatedAt);
+    DateTime CreatedAt)
+{
+    public Guid? ReportingPeriodPublicId { get; init; }
+    public string? ActualPerformance { get; init; }
+    public decimal? AchievementPercent { get; init; }
+    public bool? TargetAchieved { get; init; }
+}
 
 public record NotificationResponse(
     string Id,
@@ -419,6 +446,7 @@ public record AuditTrailEntryResponse(
 
 public record IdpPlanSummaryResponse(
     int Id,
+    Guid PublicId,
     string MunicipalityName,
     string PlanTitle,
     string PlanCode,
@@ -427,7 +455,8 @@ public record IdpPlanSummaryResponse(
     string Status,
     int CurrentVersionNumber,
     DateTime CreatedAt,
-    DateTime? ApprovedAt);
+    DateTime? ApprovedAt,
+    string RowVersion);
 
 public record IdpPlanVersionResponse(
     int Id,
@@ -565,20 +594,32 @@ public record IdpBudgetSnapshotResponse(
     DateTime CapturedAt);
 
 public record IdpDocumentResponse(
-    int Id,
-    int IdpPlanId,
-    int? IdpPlanVersionId,
+    Guid PublicId,
+    Guid IdpPlanPublicId,
+    int? PlanVersionNumber,
     string Category,
     string Title,
     string FileName,
-    string StoragePath,
+    string DownloadUrl,
     string? ContentType,
     long SizeInBytes,
     int VersionNumber,
     bool IsApproved,
     DateTime UploadedAt,
     string UploadedByUserId,
-    string? UploadedByName);
+    string? UploadedByName,
+    string Sha256,
+    bool SignatureVerified,
+    string ScanStatus,
+    bool IsQuarantined,
+    string? ScannerProvider,
+    string? ScannerReference,
+    string? ScanDetail,
+    DateTime? ScannedAt,
+    DateTime? RetainUntil,
+    Guid EvidenceBlobPublicId,
+    bool IsContentDeleted,
+    string RowVersion);
 
 public record IdpCommentResponse(
     long Id,

@@ -371,6 +371,7 @@ export interface Employee {
 // OPMS Target
 export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodValues, TargetAuditMetaFields {
   id: string;
+  publicId?: string;
   PriorYearOpmsId?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
@@ -442,6 +443,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
 // IPMS Target
 export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodValues, TargetAuditMetaFields {
   id: string;
+  publicId?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
   relatedOPMSTarget?: OPMSTarget;
@@ -506,6 +508,10 @@ export interface OPMSSubmission {
   dueDate: string;
   extendedDueDate?: string;
   actual: number;
+  actualPerformance?: string;
+  achievementPercent?: number;
+  targetAchieved?: boolean;
+  reportingPeriodPublicId?: string;
   actualDescription?: string;
   actualExpenditure?: number;
   variance?: number;
@@ -567,6 +573,10 @@ export interface IPMSSubmission {
   dueDate: string;
   extendedDueDate?: string;
   actual: number;
+  actualPerformance?: string;
+  achievementPercent?: number;
+  targetAchieved?: boolean;
+  reportingPeriodPublicId?: string;
   actualDescription?: string;
   actualPerformanceDescription?: string;
   actualExpenditure?: number;
@@ -693,6 +703,8 @@ export interface VoteNumber {
 
 export interface Attachment {
   id: string;
+  publicId?: string;
+  evidenceBlobPublicId?: string;
   fileName: string;
   fileSize: number;
   fileType: string;
@@ -700,6 +712,68 @@ export interface Attachment {
   uploadedAt: string;
   documentType: string;
   url: string;
+  scanStatus?: string;
+  isQuarantined?: boolean;
+  scanDetail?: string;
+  assessments?: PoeEvidenceAssessmentDto[];
+  rowVersion?: string;
+  replacementOf?: PoeEvidenceReplacementDto | null;
+  replacedBy?: PoeEvidenceReplacementDto | null;
+  legalHolds?: PoeLegalHoldDto[];
+  isActive?: boolean;
+  retainUntil?: string | null;
+  disposals?: PoeDisposalDto[];
+  isContentDeleted?: boolean;
+}
+
+export interface PoeEvidenceAssessmentDto {
+  publicId: string;
+  outcome: 'Accepted' | 'Rejected' | 'NeedsClarification';
+  comment?: string | null;
+  assessedByUserId: string;
+  assessedByName?: string | null;
+  assessedAt: string;
+  correlationId: string;
+}
+
+export interface PoeEvidenceReplacementDto {
+  publicId: string;
+  supersededEvidencePublicId: string;
+  supersededFileName: string;
+  replacementEvidencePublicId: string;
+  replacementFileName: string;
+  reason: string;
+  replacedByUserId: string;
+  replacedByName?: string | null;
+  replacedAt: string;
+  correlationId: string;
+}
+
+export interface PoeLegalHoldDto {
+  holdId: string;
+  holdReference: string;
+  isActive: boolean;
+  placedReason: string;
+  placedByUserId: string;
+  placedByName?: string | null;
+  placedAt: string;
+  releasedReason?: string | null;
+  releasedByUserId?: string | null;
+  releasedByName?: string | null;
+  releasedAt?: string | null;
+}
+
+export interface PoeDisposalDto {
+  disposalId: string;
+  status: 'Pending' | 'Completed' | 'Failed';
+  approvalReference: string;
+  reason: string;
+  requestedByUserId: string;
+  requestedByName?: string | null;
+  requestedAt: string;
+  completedAt?: string | null;
+  failedAt?: string | null;
+  detail?: string | null;
 }
 
 export interface SubmissionComment {
@@ -1091,6 +1165,7 @@ export interface AdminRole {
 
 export interface AdminUser {
   id: string;
+  publicId: string;
   userName: string;
   firstName: string;
   lastName: string;
@@ -1139,6 +1214,386 @@ export interface RolePermission {
   permissionId: number;
   code: string;
   isAllowed: boolean;
+}
+
+export interface TenantContextDto {
+  id: number;
+  publicId: string;
+  code: string;
+  name: string;
+  isCurrent: boolean;
+}
+
+export interface ReportingPeriodMasterDto {
+  publicId: string;
+  municipalityFinancialYearPublicId: string;
+  code: string;
+  name: string;
+  periodType: number;
+  sequence: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface FinancialYearMasterDto {
+  publicId: string;
+  code: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface MunicipalityFinancialYearMasterDto {
+  publicId: string;
+  financialYearPublicId: string;
+  code: string;
+  name: string;
+  isCurrent: boolean;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+}
+
+export interface MunicipalEmployeeDto {
+  publicId: string;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  emailAddress?: string | null;
+  identityUserId?: string | null;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+}
+
+export interface EmployeeAssignmentMasterDto {
+  publicId: string;
+  employeePublicId: string;
+  departmentPublicId: string;
+  departmentName: string;
+  unitPublicId?: string | null;
+  unitName?: string | null;
+  positionCode: string;
+  positionName: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface PerformancePeriodTargetDto {
+  publicId: string;
+  reportingPeriodPublicId: string;
+  periodCode: string;
+  unitKind: number;
+  direction: number;
+  targetValue: string;
+  budgetValue?: number | null;
+  description?: string | null;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface PerformanceTargetRevisionDto {
+  publicId: string;
+  fieldName: string;
+  originalValue?: string | null;
+  revisedValue?: string | null;
+  reason: string;
+  approvalReference: string;
+  effectiveAt: string;
+  revisedByUserId: string;
+  recordedAt: string;
+}
+
+export interface WorkflowStageDefinitionDto {
+  publicId: string;
+  code: string;
+  name: string;
+  sequence: number;
+  requiredActionCode: string;
+  requiredPermissionCode: string;
+  isOptional: boolean;
+  allowBypass: boolean;
+  requireDifferentActorFromSubmitter: boolean;
+  requireDifferentActorFromPreviousStage: boolean;
+  isTerminal: boolean;
+  rejectionStageCode?: string | null;
+  requiresRating: boolean;
+  ratingSchemePublicId?: string | null;
+  ratingSchemeCode?: string | null;
+}
+
+export interface StageRatingDto {
+  publicId: string;
+  workflowActionPublicId: string;
+  stageCode: string;
+  ratingSchemePublicId: string;
+  ratingSchemeCode: string;
+  ratingValuePublicId: string;
+  value: number;
+  label: string;
+  achievementPercent?: number | null;
+  comment?: string | null;
+  ratedByUserId: string;
+  ratedByName?: string | null;
+  ratedAt: string;
+}
+
+export interface NotificationDeliveryAttemptDto {
+  publicId: string;
+  recipientUserId: string;
+  channel: string;
+  status: string;
+  attemptCount: number;
+  attemptedAt: string;
+  deliveredAt?: string | null;
+  provider?: string | null;
+  providerReference?: string | null;
+  error?: string | null;
+  responseDetail?: string | null;
+}
+
+export interface NotificationOutboxItemDto {
+  publicId: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  occurredAt: string;
+  availableAt: string;
+  attemptCount: number;
+  lastError?: string | null;
+  isDeadLetter: boolean;
+  rowVersion: string;
+  deliveries: NotificationDeliveryAttemptDto[];
+}
+
+export interface WorkflowDefinitionDto {
+  publicId: string;
+  municipalityFinancialYearPublicId: string;
+  submissionKind: number;
+  code: string;
+  name: string;
+  version: number;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+  stages: WorkflowStageDefinitionDto[];
+}
+
+export interface WorkflowStageDifferenceDto {
+  change: 'Added' | 'Removed' | 'Modified' | 'Unchanged';
+  stageCode: string;
+  fromSequence?: number | null;
+  toSequence?: number | null;
+  changedFields: string[];
+}
+
+export interface WorkflowDefinitionComparisonDto {
+  from: WorkflowDefinitionDto;
+  to: WorkflowDefinitionDto;
+  stageDifferences: WorkflowStageDifferenceDto[];
+}
+
+export interface ReportingWindowDto {
+  publicId: string;
+  reportingPeriodPublicId: string;
+  periodCode: string;
+  submissionKind: number;
+  opensAt: string;
+  closesAt: string;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface ReportingWindowExceptionDto {
+  publicId: string;
+  userId?: string | null;
+  departmentId?: number | null;
+  unitId?: number | null;
+  extendedClosesAt: string;
+  reason: string;
+  approvedByUserId: string;
+  approvedAt: string;
+  rowVersion: string;
+}
+
+export interface PerformanceRfiDto {
+  publicId: string;
+  question: string;
+  raisedByUserId: string;
+  raisedAt: string;
+  responseDueAt: string;
+  response?: string | null;
+  respondedByUserId?: string | null;
+  respondedAt?: string | null;
+  closedByUserId?: string | null;
+  closedAt?: string | null;
+  rowVersion: string;
+  evidence: RfiEvidenceDto[];
+}
+
+export interface RfiEvidenceDto {
+  publicId: string;
+  evidencePublicId: string;
+  purpose: 1 | 2 | 3;
+  fileName: string;
+  contentType?: string | null;
+  sizeInBytes: number;
+  sha256: string;
+  linkedByUserId: string;
+  linkedAt: string;
+  url: string;
+}
+
+export interface DepartmentLookupDto {
+  id: number;
+  publicId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface UnitLookupDto {
+  id: number;
+  publicId: string;
+  departmentId: number;
+  departmentName: string;
+  code: string;
+  name: string;
+}
+
+export interface RatingValueDto {
+  publicId: string;
+  value: number;
+  label: string;
+  minimumAchievementPercent?: number | null;
+  maximumAchievementPercent?: number | null;
+  sortOrder: number;
+}
+
+export interface RatingSchemeDto {
+  publicId: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  rowVersion: string;
+  values: RatingValueDto[];
+}
+
+export interface DepartmentPerformanceReportDto {
+  department: string;
+  submissionCount: number;
+  achievedCount: number;
+  averageAchievementPercent?: number | null;
+}
+
+export interface PerformanceReportSummaryDto {
+  submissionKind: number;
+  reportingPeriodPublicId?: string | null;
+  generatedAt: string;
+  targetCount: number;
+  submissionCount: number;
+  achievedCount: number;
+  atRiskCount: number;
+  pendingCount: number;
+  averageAchievementPercent?: number | null;
+  departments: DepartmentPerformanceReportDto[];
+}
+
+export type SecurityPermissionState = 'ALLOW' | 'DENY';
+
+export interface SecurityPermissionDefinition {
+  code: string;
+  description?: string;
+  kind: 'Resource' | 'Navigation' | 'Member' | 'Action' | 'Report';
+  resourceCode?: string;
+  operation?: string;
+  memberCode?: string;
+  navigationCode?: string;
+  actionCode?: string;
+}
+
+export interface SecurityNavigationItemDto {
+  publicId: string;
+  code: string;
+  parentPublicId?: string | null;
+  name: string;
+  route?: string | null;
+  iconKey?: string | null;
+  displayOrder: number;
+  requiredPermissionCode?: string | null;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface RoleSecurityPermission {
+  permissionCode: string;
+  kind: string;
+  resourceCode?: string;
+  memberCode?: string;
+  navigationCode?: string;
+  actionCode?: string;
+  state: SecurityPermissionState;
+  scopeType?: string;
+  rowVersion: string;
+}
+
+export interface RoleSecurityConfiguration {
+  roleId: string;
+  publicId: string;
+  name: string;
+  roleRowVersion: string;
+  permissions: RoleSecurityPermission[];
+}
+
+export interface EffectiveSecurityPreview {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  scopes: string[];
+  assignments: string[];
+}
+
+export interface SecurityRoleSummary extends AdminRole {
+  publicId: string;
+  roleCode: string;
+  municipalityId?: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  rowVersion: string;
+}
+
+export interface SecurityUserSummary {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+export interface SecurityUserRoleAssignment {
+  id: number;
+  roleId: string;
+  roleName: string;
+  municipalityId?: number;
+  departmentId?: number;
+  unitId?: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  rowVersion: string;
+}
+
+export interface SecurityUserRoleConfiguration {
+  userId: string;
+  userName: string;
+  assignments: SecurityUserRoleAssignment[];
 }
 
 export interface UserPermissionOverride {
@@ -1278,6 +1733,7 @@ export interface IpmsTargetTemplateDto {
 
 export interface OpmsTargetDto {
   id: string;
+  publicId: string;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   periodId?: number | null;
@@ -1341,6 +1797,7 @@ export interface OpmsTargetDto {
 
 export interface IpmsTargetDto {
   id: string;
+  publicId: string;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetId?: string | null;
@@ -1408,6 +1865,10 @@ export interface OpmsSubmissionDto {
   pmsStatus?: string | null;
   auditorStatus?: string | null;
   actual?: number | null;
+  actualPerformance?: string | null;
+  achievementPercent?: number | null;
+  targetAchieved?: boolean | null;
+  reportingPeriodPublicId?: string | null;
   actualDescription?: string | null;
   actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
@@ -1472,6 +1933,10 @@ export interface IpmsSubmissionDto {
   pmsStatus?: string | null;
   auditorStatus?: string | null;
   actual?: number | null;
+  actualPerformance?: string | null;
+  achievementPercent?: number | null;
+  targetAchieved?: boolean | null;
+  reportingPeriodPublicId?: string | null;
   actualDescription?: string | null;
   actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
@@ -1550,6 +2015,8 @@ export interface AuditTrailEntryDto {
 
 export interface PoeFileDto {
   id: string;
+  publicId?: string;
+  evidenceBlobPublicId?: string;
   submissionKind: string;
   submissionId: string;
   fileName: string;
@@ -1559,6 +2026,23 @@ export interface PoeFileDto {
   uploadedByName?: string | null;
   uploadedAt: string;
   url: string;
+  sha256?: string;
+  signatureVerified?: boolean;
+  scanStatus?: string;
+  isQuarantined?: boolean;
+  assessments?: PoeEvidenceAssessmentDto[];
+  rowVersion?: string;
+  replacementOf?: PoeEvidenceReplacementDto | null;
+  replacedBy?: PoeEvidenceReplacementDto | null;
+  legalHolds?: PoeLegalHoldDto[];
+  isActive?: boolean;
+  disposals?: PoeDisposalDto[];
+  isContentDeleted?: boolean;
+  scannerProvider?: string | null;
+  scannerReference?: string | null;
+  scanDetail?: string | null;
+  scannedAt?: string | null;
+  retainUntil?: string | null;
 }
 
 export interface SaveOpmsTargetTemplatePayload {
@@ -1732,6 +2216,7 @@ export interface SaveOpmsSubmissionPayload {
   opmsTargetId: string;
   quarter: string;
   actual?: number | null;
+  actualPerformance?: string | null;
   actualDescription?: string | null;
   actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
@@ -1748,6 +2233,7 @@ export interface SaveIpmsSubmissionPayload {
   ipmsTargetId: string;
   quarter: string;
   actual?: number | null;
+  actualPerformance?: string | null;
   actualDescription?: string | null;
   actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;

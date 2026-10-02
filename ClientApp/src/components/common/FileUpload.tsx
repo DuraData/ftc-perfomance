@@ -1,8 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, File, X, Download, Eye, Image, FileText, FileSpreadsheet } from 'lucide-react';
+import { Upload, File, X, Download, Eye, Image, FileText, FileSpreadsheet, RefreshCw } from 'lucide-react';
 
 interface UploadedFile {
   id: string;
+  publicId?: string;
+  evidenceBlobPublicId?: string;
   name: string;
   size: number;
   type: string;
@@ -11,11 +13,28 @@ interface UploadedFile {
   uploadedBy?: string;
   documentType?: string;
   url?: string;
+  scanStatus?: string;
+  isQuarantined?: boolean;
+  scanDetail?: string;
+  assessments?: { publicId: string; outcome: 'Accepted' | 'Rejected' | 'NeedsClarification'; comment?: string | null; assessedByName?: string | null; assessedByUserId: string; assessedAt: string; correlationId: string }[];
+  rowVersion?: string;
+  replacementOf?: { publicId: string; supersededEvidencePublicId: string; supersededFileName: string; replacementEvidencePublicId: string; replacementFileName: string; reason: string; replacedByUserId: string; replacedByName?: string | null; replacedAt: string; correlationId: string } | null;
+  legalHolds?: { holdId: string; holdReference: string; isActive: boolean; placedReason: string; placedByUserId: string; placedByName?: string | null; placedAt: string; releasedReason?: string | null; releasedByName?: string | null; releasedAt?: string | null }[];
+  isActive?: boolean;
+  retainUntil?: string | null;
+  disposals?: { disposalId: string; status: 'Pending' | 'Completed' | 'Failed'; approvalReference: string; reason: string; requestedByUserId: string; requestedByName?: string | null; requestedAt: string; completedAt?: string | null; failedAt?: string | null; detail?: string | null }[];
+  isContentDeleted?: boolean;
 }
 
 interface FileUploadProps {
   onUpload?: (files: File[]) => void;
   onRemove?: (fileId: string) => void;
+  onRescan?: (fileId: string) => void;
+  onAssess?: (fileId: string, outcome: 1 | 2 | 3, comment?: string) => void;
+  onReplace?: (fileId: string, replacementPublicId: string, reason: string, supersededRowVersion: string, replacementRowVersion: string) => void;
+  onPlaceHold?: (fileId: string, holdReference: string, reason: string) => void;
+  onReleaseHold?: (fileId: string, holdId: string, reason: string) => void;
+  onDispose?: (fileId: string, approvalReference: string, reason: string, rowVersion: string) => void;
   existingFiles?: UploadedFile[];
   maxFiles?: number;
   maxSize?: number; // in MB
@@ -54,6 +73,12 @@ function formatFileSize(bytes: number) {
 export function FileUpload({
   onUpload,
   onRemove,
+  onRescan,
+  onAssess,
+  onReplace,
+  onPlaceHold,
+  onReleaseHold,
+  onDispose,
   existingFiles = [],
   maxFiles,
   maxSize = 10,
@@ -66,6 +91,15 @@ export function FileUpload({
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>(existingFiles);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [assessmentOutcomes, setAssessmentOutcomes] = useState<Record<string, 1 | 2 | 3>>({});
+  const [assessmentComments, setAssessmentComments] = useState<Record<string, string>>({});
+  const [replacementIds, setReplacementIds] = useState<Record<string, string>>({});
+  const [replacementReasons, setReplacementReasons] = useState<Record<string, string>>({});
+  const [holdReferences, setHoldReferences] = useState<Record<string, string>>({});
+  const [holdReasons, setHoldReasons] = useState<Record<string, string>>({});
+  const [releaseReasons, setReleaseReasons] = useState<Record<string, string>>({});
+  const [disposalApprovals, setDisposalApprovals] = useState<Record<string, string>>({});
+  const [disposalReasons, setDisposalReasons] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -236,6 +270,21 @@ export function FileUpload({
                   {formatFileSize(file.size)}
                   {file.uploadedAt && ` • Uploaded ${new Date(file.uploadedAt).toLocaleString()}`}
                 </p>
+                {file.scanStatus && <p className={`mt-1 text-xs font-medium ${file.isQuarantined ? 'text-warning-700 dark:text-warning-300' : 'text-success-700 dark:text-success-300'}`}>Malware scan: {file.scanStatus}{file.scanDetail ? ` · ${file.scanDetail}` : ''}</p>}
+                {file.isActive === false && <p className="mt-1 text-xs font-medium text-secondary-600 dark:text-secondary-300">Retired evidence · retained until {file.retainUntil ? new Date(file.retainUntil).toLocaleDateString() : 'policy date unavailable'}</p>}
+                {file.isContentDeleted && <p className="mt-1 text-xs font-medium text-error-700 dark:text-error-300">Physical content disposed; metadata and provenance retained.</p>}
+                {file.assessments?.map(assessment => <p key={assessment.publicId} className="mt-1 text-xs text-secondary-600 dark:text-secondary-300"><strong>{assessment.outcome}</strong> by {assessment.assessedByName ?? assessment.assessedByUserId} · {new Date(assessment.assessedAt).toLocaleString()}{assessment.comment ? ` · ${assessment.comment}` : ''}</p>)}
+                {file.replacementOf && <p className="mt-1 text-xs text-primary-700 dark:text-primary-300">Replaces {file.replacementOf.supersededFileName} · {file.replacementOf.reason} · {new Date(file.replacementOf.replacedAt).toLocaleString()}</p>}
+                {file.legalHolds?.map(hold => <div key={hold.holdId} className={`mt-1 rounded border p-2 text-xs ${hold.isActive ? 'border-warning-300 bg-warning-50 text-warning-800' : 'border-secondary-200 text-secondary-600'}`}><strong>{hold.isActive ? 'Active legal hold' : 'Released legal hold'} · {hold.holdReference}</strong><span> · {hold.placedReason} · {hold.placedByName ?? hold.placedByUserId} · {new Date(hold.placedAt).toLocaleString()}</span>{hold.releasedAt && <span> · released {new Date(hold.releasedAt).toLocaleString()}{hold.releasedReason ? ` · ${hold.releasedReason}` : ''}</span>}{hold.isActive && onReleaseHold && <div className="mt-2 flex gap-2"><input aria-label={`Legal hold release reason for ${file.name} ${hold.holdReference}`} value={releaseReasons[hold.holdId] ?? ''} onChange={event => setReleaseReasons(current => ({ ...current, [hold.holdId]: event.target.value }))} placeholder="Release reason" className="min-w-48 rounded border border-secondary-300 px-2 py-1 text-xs" /><button type="button" disabled={(releaseReasons[hold.holdId]?.trim().length ?? 0) < 5} onClick={() => onReleaseHold(file.id, hold.holdId, releaseReasons[hold.holdId].trim())} className="rounded bg-secondary-700 px-2 py-1 text-white disabled:opacity-50">Release hold</button></div>}</div>)}
+                {file.disposals?.map(disposal => <p key={disposal.disposalId} className={`mt-1 text-xs ${disposal.status === 'Failed' ? 'text-error-700' : 'text-secondary-600 dark:text-secondary-300'}`}><strong>Disposal {disposal.status.toLowerCase()}</strong> · {disposal.approvalReference} · {disposal.reason} · {disposal.requestedByName ?? disposal.requestedByUserId} · {new Date(disposal.requestedAt).toLocaleString()}{disposal.detail ? ` · ${disposal.detail}` : ''}</p>)}
+                {onDispose && file.isActive === false && file.rowVersion && file.retainUntil && new Date(file.retainUntil) <= new Date() && !file.legalHolds?.some(hold => hold.isActive) && !file.disposals?.some(disposal => disposal.status !== 'Failed') && <div className="mt-2 flex flex-wrap gap-2"><input aria-label={`Disposal approval reference for ${file.name}`} value={disposalApprovals[file.id] ?? ''} onChange={event => setDisposalApprovals(current => ({ ...current, [file.id]: event.target.value }))} placeholder="Approval reference" className="min-w-40 rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700" /><input aria-label={`Disposal reason for ${file.name}`} value={disposalReasons[file.id] ?? ''} onChange={event => setDisposalReasons(current => ({ ...current, [file.id]: event.target.value }))} placeholder="Disposal reason" className="min-w-48 rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700" /><button type="button" aria-label={`Request disposal for ${file.name}`} disabled={(disposalApprovals[file.id]?.trim().length ?? 0) < 3 || (disposalReasons[file.id]?.trim().length ?? 0) < 5} onClick={() => onDispose(file.id, disposalApprovals[file.id].trim(), disposalReasons[file.id].trim(), file.rowVersion!)} className="rounded bg-error-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50">Request disposal</button></div>}
+                {onPlaceHold && !file.disposals?.some(disposal => disposal.status === 'Completed') && <div className="mt-2 flex flex-wrap gap-2"><input aria-label={`Legal hold reference for ${file.name}`} value={holdReferences[file.id] ?? ''} onChange={event => setHoldReferences(current => ({ ...current, [file.id]: event.target.value }))} placeholder="Hold reference" className="min-w-40 rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700" /><input aria-label={`Legal hold reason for ${file.name}`} value={holdReasons[file.id] ?? ''} onChange={event => setHoldReasons(current => ({ ...current, [file.id]: event.target.value }))} placeholder="Hold reason" className="min-w-48 rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700" /><button type="button" aria-label={`Place legal hold on ${file.name}`} disabled={(holdReferences[file.id]?.trim().length ?? 0) < 3 || (holdReasons[file.id]?.trim().length ?? 0) < 5} onClick={() => onPlaceHold(file.id, holdReferences[file.id].trim(), holdReasons[file.id].trim())} className="rounded bg-warning-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50">Place legal hold</button></div>}
+                {onAssess && file.isActive !== false && file.scanStatus === 'Clean' && !file.isQuarantined && <div className="mt-2 flex flex-wrap gap-2"><select aria-label={`Assessment outcome for ${file.name}`} value={assessmentOutcomes[file.id] ?? 1} onChange={event => setAssessmentOutcomes(current => ({ ...current, [file.id]: Number(event.target.value) as 1 | 2 | 3 }))} className="rounded border border-secondary-300 bg-white px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700"><option value={1}>Accepted</option><option value={2}>Rejected</option><option value={3}>Needs clarification</option></select><input aria-label={`Assessment comment for ${file.name}`} value={assessmentComments[file.id] ?? ''} onChange={event => setAssessmentComments(current => ({ ...current, [file.id]: event.target.value }))} placeholder="Assessment comment" className="min-w-48 rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700" /><button type="button" onClick={() => onAssess(file.id, assessmentOutcomes[file.id] ?? 1, assessmentComments[file.id]?.trim() || undefined)} className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">Record assessment</button></div>}
+                {onReplace && file.isActive !== false && file.rowVersion && files.some(candidate => candidate.id !== file.id && candidate.isActive !== false && candidate.publicId && candidate.rowVersion && candidate.scanStatus === 'Clean' && !candidate.isQuarantined && !candidate.replacementOf) && <div className="mt-2 flex flex-wrap gap-2">
+                  <select aria-label={`Replacement evidence for ${file.name}`} value={replacementIds[file.id] ?? ''} onChange={event => setReplacementIds(current => ({ ...current, [file.id]: event.target.value }))} className="rounded border border-secondary-300 bg-white px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700"><option value="">Select uploaded replacement…</option>{files.filter(candidate => candidate.id !== file.id && candidate.isActive !== false && candidate.publicId && candidate.rowVersion && candidate.scanStatus === 'Clean' && !candidate.isQuarantined && !candidate.replacementOf).map(candidate => <option key={candidate.publicId} value={candidate.publicId}>{candidate.name}</option>)}</select>
+                  <input aria-label={`Replacement reason for ${file.name}`} value={replacementReasons[file.id] ?? ''} onChange={event => setReplacementReasons(current => ({ ...current, [file.id]: event.target.value }))} placeholder="Replacement reason" className="min-w-48 rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-600 dark:bg-secondary-700" />
+                  <button type="button" aria-label={`Record replacement for ${file.name}`} disabled={!replacementIds[file.id] || (replacementReasons[file.id]?.trim().length ?? 0) < 5} onClick={() => { const candidate = files.find(item => item.publicId === replacementIds[file.id]); if (candidate?.publicId && candidate.rowVersion) onReplace(file.id, candidate.publicId, replacementReasons[file.id].trim(), file.rowVersion!, candidate.rowVersion); }} className="rounded bg-warning-600 px-2 py-1 text-xs font-medium text-white hover:bg-warning-700 disabled:opacity-50">Record replacement</button>
+                </div>}
 
                 {/* Progress bar */}
                 {(file.progress ?? uploadProgress[file.id]) !== undefined &&
@@ -286,14 +335,15 @@ export function FileUpload({
                         <Download className="w-4 h-4 text-secondary-400" />
                       </button>
                     )}
+                    {file.isActive !== false && file.isQuarantined && onRescan && <button type="button" title="Rescan quarantined evidence" onClick={() => onRescan(file.id)} className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"><RefreshCw className="w-4 h-4 text-warning-600" /></button>}
                   </>
                 )}
-                <button
+                {file.isActive !== false && <button
                   onClick={() => handleRemove(file.id)}
                   className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
                 >
                   <X className="w-4 h-4 text-error-500" />
-                </button>
+                </button>}
               </div>
             </div>
           ))}

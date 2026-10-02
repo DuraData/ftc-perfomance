@@ -1,5 +1,4 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { AppShell } from '../layout/AppShell';
 import { WorkflowQueues } from './WorkflowQueues';
 
 vi.mock('../layout/AppShell', () => ({

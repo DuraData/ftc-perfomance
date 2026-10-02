@@ -1,4 +1,5 @@
 import { AppProvider, useApp } from './context/AppContext';
+import { SecurityProvider } from './context/SecurityContext';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { OPMSTargetList } from './components/opms/OPMSTargetList';
 import { OPMSTargetDetail } from './components/opms/OPMSTargetDetail';
@@ -6,8 +7,8 @@ import { OPMSSubmissionsList, IPMSSubmissionsList, VoteNumbersPage } from './com
 import { IPMSTargetList } from './components/ipms/IPMSTargetList';
 import { IPMSTargetDetail } from './components/ipms/IPMSTargetDetail';
 import { WorkflowQueues, MyWorkQueue } from './components/workflow/WorkflowQueues';
-import { EmployeeList, DepartmentList, DepartmentUnitList, PositionList } from './components/hr/HRManagement';
-import { PeriodList, ApprovalSetupList, LookupTables } from './components/admin/AdminManagement';
+import { DepartmentList, DepartmentUnitList, PositionList } from './components/hr/HRManagement';
+import { LookupTables } from './components/admin/AdminManagement';
 import { AdminAuditLogsPage, AdminPermissionsPage, AdminRolesPage, AdminUsersPage } from './components/admin/SystemAdmin';
 import { RoleImplementationAuditPage } from './components/admin/RoleImplementationAuditPage';
 import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAuditPage, SystemCoverageAuditPage } from './components/admin/AccessGovernancePages';
@@ -33,6 +34,10 @@ import { Reports } from './components/reports/Reports';
 import { Settings } from './components/settings/Settings';
 import { Login } from './components/auth/Login';
 import { AccessDeniedPage, useCanAccessPath } from './components/security/AccessControl';
+import { SecurityAdministrationPage } from './components/security/SecurityAdministration';
+import { WorkflowGovernanceAdminPage } from './components/admin/WorkflowGovernanceAdmin';
+import { TenantCalendarAdministration } from './components/admin/TenantCalendarAdministration';
+import { TenantEmployeeAdministration } from './components/admin/TenantEmployeeAdministration';
 import {
   IdpAlignmentMatrixPage,
   IdpCommunityParticipationPage,
@@ -161,7 +166,7 @@ function AppContent() {
       case '/workflow/auditor-review':
         return <WorkflowQueues />;
       case '/hr/employees':
-        return <EmployeeList />;
+        return <TenantEmployeeAdministration />;
       case '/hr/departments':
         return <DepartmentList />;
       case '/hr/units':
@@ -175,11 +180,11 @@ function AppContent() {
       case '/tasks':
         return <TaskManagement />;
       case '/admin/periods':
-        return <PeriodList />;
+        return <TenantCalendarAdministration />;
       case '/admin/organisations':
         return <OrganisationsPage />;
       case '/admin/approval-setup':
-        return <ApprovalSetupList />;
+        return <WorkflowGovernanceAdminPage />;
       case '/admin/lookups':
         return <LookupTables />;
       case '/admin/users':
@@ -196,6 +201,8 @@ function AppContent() {
         return <AdminRolesPage />;
       case '/system-administration/permissions':
         return <AdminPermissionsPage />;
+      case '/system-administration/security':
+        return <SecurityAdministrationPage />;
       case '/system-administration/audit-logs':
         return <AdminAuditLogsPage />;
       case '/system-administration/role-implementation-audit':
@@ -309,7 +316,9 @@ function AppContent() {
 function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <SecurityProvider>
+        <AppContent />
+      </SecurityProvider>
     </AppProvider>
   );
 }

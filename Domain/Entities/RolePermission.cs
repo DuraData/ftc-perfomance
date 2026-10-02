@@ -7,4 +7,9 @@ public class RolePermission
     public int PermissionId { get; set; }
     public Permission Permission { get; set; } = null!;
     public bool IsAllowed { get; set; } = true;
+    public ScopeType? ScopeType { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
+    public DateTime? EffectiveTo { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 }

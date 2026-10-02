@@ -1,9 +1,11 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from 'react';
 import { ArrowLeft, BarChart3, Building2, CalendarRange, Save, Target, UserSquare2 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from '../common/Form';
 import { useApp } from '../../context/AppContext';
+import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
   createIpmsTarget,
   createOpmsTarget,
@@ -99,15 +101,19 @@ const xafToLegacyUnitMap: Record<XafUnitValue, TargetUnitType> = {
   ReverseNonCumulative: 'reverse_non_cumulative',
 };
 
-export function toXafUnitType(value: TargetUnitType): TargetUnitType {
+export function toXafUnitType(value: TargetUnitType): TargetUnitType;
+export function toXafUnitType(value: string): string;
+export function toXafUnitType(value: string): TargetUnitType | string {
   return legacyToXafUnitMap[value] ?? value;
 }
 
-export function toApiUnitType(value: TargetUnitType): TargetUnitType {
+export function toApiUnitType(value: TargetUnitType): TargetUnitType;
+export function toApiUnitType(value: string): string;
+export function toApiUnitType(value: string): TargetUnitType | string {
   return xafToLegacyUnitMap[value as XafUnitValue] ?? value;
 }
 
-export function getTargetUnitLabel(value: TargetUnitType) {
+export function getTargetUnitLabel(value: string) {
   return targetUnitTypeOptions.find(item => item.value === value)?.label ?? 'Target Value';
 }
 
@@ -1125,7 +1131,9 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
           </FormPanel>
         </div>
 
-        <FormPanel title="Quarterly Targets" description="Capture the full quarterly and revision structure on the same page." icon={<CalendarRange className="h-5 w-5" />}>
+        {targetId && existingTarget?.publicId && <PerformancePeriodTargetEditor kind={1} targetPublicId={existingTarget.publicId} />}
+        <div className={targetId ? 'hidden' : ''} aria-hidden={targetId ? true : undefined}>
+        <FormPanel title="Initial legacy quarterly values" description="Used only while creating the KPI. After creation, authoritative values are maintained by reporting period." icon={<CalendarRange className="h-5 w-5" />}>
           <FormRow cols={3}>
             <Select label="Q1 Unit" value={form.q1UnitType} onChange={(event) => setForm(prev => ({ ...prev, q1UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
             <Select label="Q2 Unit" value={form.q2UnitType} onChange={(event) => setForm(prev => ({ ...prev, q2UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
@@ -1323,6 +1331,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </div>
           </div>
         </FormPanel>
+        </div>
 
         <FormPanel title="Workflow Flags" description="Track revision and withdrawal attributes for the live target." icon={<Building2 className="h-5 w-5" />}>
           <div className="grid gap-4 md:grid-cols-2">
@@ -1597,7 +1606,9 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
           </FormPanel>
         </div>
 
-        <FormPanel title="Quarterly Targets" description="Capture the live IPMS quarterly structure without using a modal." icon={<CalendarRange className="h-5 w-5" />}>
+        {targetId && existingTarget?.publicId && <PerformancePeriodTargetEditor kind={2} targetPublicId={existingTarget.publicId} />}
+        <div className={targetId ? 'hidden' : ''} aria-hidden={targetId ? true : undefined}>
+        <FormPanel title="Initial legacy quarterly values" description="Used only while creating the KPI. After creation, authoritative values are maintained by reporting period." icon={<CalendarRange className="h-5 w-5" />}>
           <FormRow cols={3}>
             <Select label="Q1 Unit" value={form.q1UnitType} onChange={(event) => setForm(prev => ({ ...prev, q1UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
             <Select label="Q2 Unit" value={form.q2UnitType} onChange={(event) => setForm(prev => ({ ...prev, q2UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
@@ -1795,6 +1806,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </div>
           </div>
         </FormPanel>
+        </div>
 
         <FormPanel title="Audit Metadata" description="Read-only audit fields mirrored from target history." icon={<Building2 className="h-5 w-5" />}>
           <FormRow cols={2}>

@@ -3,7 +3,6 @@ import type {
   AuditTrailEntryDto,
   LoginRequest,
   LoginResponse,
-  RefreshTokenRequest,
   RegisterRequest,
   AdminUserDetail,
   AdminRole,
@@ -14,7 +13,6 @@ import type {
   UserPermissionOverride,
   MenuItem,
   LoginAuditLog,
-  DemoUser,
   RoleImplementationAuditRow,
   AccessSimulationResult,
   RoleAccessMatrixRow,
@@ -55,6 +53,33 @@ import type {
   CreateIdpPlanVersionPayload,
   CreateIdpCommentPayload,
   CreateIdpCommunitySessionPayload,
+  SecurityPermissionDefinition,
+  RoleSecurityConfiguration,
+  RoleSecurityPermission,
+  EffectiveSecurityPreview,
+  SecurityRoleSummary,
+  SecurityUserSummary,
+  SecurityUserRoleConfiguration,
+  TenantContextDto,
+  ReportingPeriodMasterDto,
+  FinancialYearMasterDto,
+  MunicipalityFinancialYearMasterDto,
+  MunicipalEmployeeDto,
+  EmployeeAssignmentMasterDto,
+  WorkflowDefinitionDto,
+  WorkflowDefinitionComparisonDto,
+  ReportingWindowDto,
+  RatingSchemeDto,
+  PerformanceReportSummaryDto,
+  PerformancePeriodTargetDto,
+  PerformanceTargetRevisionDto,
+  ReportingWindowExceptionDto,
+  DepartmentLookupDto,
+  UnitLookupDto,
+  PerformanceRfiDto,
+  StageRatingDto,
+  SecurityNavigationItemDto,
+  NotificationOutboxItemDto,
 } from '../types';
 import {
   mockBudgetSources,
@@ -74,21 +99,35 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-let accessToken: string | null = localStorage.getItem('auth_token');
-let refreshToken: string | null = localStorage.getItem('refresh_token');
+let accessToken: string | null = sessionStorage.getItem('auth_token');
+const TENANT_STORAGE_KEY = 'municipality_context_id';
 
-function setTokens(access: string, refresh: string) {
+export function getCurrentMunicipalityId(): number | null {
+  const value = sessionStorage.getItem(TENANT_STORAGE_KEY);
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function setCurrentMunicipalityId(municipalityId: number | null) {
+  if (municipalityId === null) sessionStorage.removeItem(TENANT_STORAGE_KEY);
+  else sessionStorage.setItem(TENANT_STORAGE_KEY, String(municipalityId));
+}
+
+function addTenantHeader(headers: Record<string, string>) {
+  const municipalityId = getCurrentMunicipalityId();
+  if (municipalityId !== null) headers['X-Municipality-Id'] = String(municipalityId);
+  return headers;
+}
+
+function setTokens(access: string) {
   accessToken = access;
-  refreshToken = refresh;
-  localStorage.setItem('auth_token', access);
-  localStorage.setItem('refresh_token', refresh);
+  sessionStorage.setItem('auth_token', access);
 }
 
 function clearTokens() {
   accessToken = null;
-  refreshToken = null;
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('refresh_token');
+  sessionStorage.removeItem('auth_token');
 }
 
 function mapResponse<TIn, TOut>(
@@ -287,6 +326,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
   return {
     ...baseTarget,
     id: dto.id,
+    publicId: dto.publicId,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     period: mockPeriods.find(p => p.id === (dto.periodId?.toString() ?? '')) ?? baseTarget.period,
@@ -348,6 +388,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
   return {
     ...baseTarget,
     id: dto.id,
+    publicId: dto.publicId,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     relatedOPMSTarget: dto.relatedOpmsTargetId ? mockOPMSTargets.find(target => target.id === dto.relatedOpmsTargetId) : undefined,
@@ -411,6 +452,10 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     dueDate: dto.dueDate ?? new Date().toISOString(),
     extendedDueDate: dto.extendedDueDate ?? undefined,
     actual: dto.actual ?? 0,
+    actualPerformance: dto.actualPerformance ?? undefined,
+    achievementPercent: dto.achievementPercent ?? undefined,
+    targetAchieved: dto.targetAchieved ?? undefined,
+    reportingPeriodPublicId: dto.reportingPeriodPublicId ?? undefined,
     actualDescription: dto.actualDescription ?? undefined,
     actualPerformanceDescription: dto.actualPerformanceDescription ?? undefined,
     actualExpenditure: dto.actualExpenditure ?? undefined,
@@ -474,6 +519,10 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     dueDate: dto.dueDate ?? new Date().toISOString(),
     extendedDueDate: dto.extendedDueDate ?? undefined,
     actual: dto.actual ?? 0,
+    actualPerformance: dto.actualPerformance ?? undefined,
+    achievementPercent: dto.achievementPercent ?? undefined,
+    targetAchieved: dto.targetAchieved ?? undefined,
+    reportingPeriodPublicId: dto.reportingPeriodPublicId ?? undefined,
     actualDescription: dto.actualDescription ?? undefined,
     actualPerformanceDescription: dto.actualPerformanceDescription ?? undefined,
     actualExpenditure: dto.actualExpenditure ?? undefined,
@@ -533,6 +582,8 @@ function toAttachmentModel(dto: PoeFileDto) {
 
   return {
     id: dto.id,
+    publicId: dto.publicId,
+    evidenceBlobPublicId: dto.evidenceBlobPublicId,
     fileName: dto.fileName,
     fileSize: dto.sizeInBytes,
     fileType: dto.contentType ?? 'application/octet-stream',
@@ -540,6 +591,18 @@ function toAttachmentModel(dto: PoeFileDto) {
     uploadedAt: dto.uploadedAt,
     documentType: 'evidence',
     url: dto.url,
+    scanStatus: dto.scanStatus,
+    isQuarantined: dto.isQuarantined,
+    scanDetail: dto.scanDetail ?? undefined,
+    assessments: dto.assessments ?? [],
+    rowVersion: dto.rowVersion,
+    replacementOf: dto.replacementOf ?? undefined,
+    replacedBy: dto.replacedBy ?? undefined,
+    legalHolds: dto.legalHolds ?? [],
+    isActive: dto.isActive,
+    retainUntil: dto.retainUntil,
+    disposals: dto.disposals ?? [],
+    isContentDeleted: dto.isContentDeleted,
   };
 }
 
@@ -600,13 +663,15 @@ async function fetchApi<T>(
   if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
+  addTenantHeader(headers);
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,
+    credentials: 'include',
   });
 
-  if (response.status === 401 && refreshToken) {
+  if (response.status === 401 && endpoint !== '/auth/refresh-token') {
     try {
       const refreshResult = await refreshAccessToken();
       if (refreshResult.success) {
@@ -616,11 +681,13 @@ async function fetchApi<T>(
           ...(options.headers as Record<string, string>),
           'Authorization': `Bearer ${accessToken}`,
         };
+        addTenantHeader(retryHeaders);
         const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
           ...options,
           headers: retryHeaders,
+          credentials: 'include',
         });
-        return await retryResponse.json();
+        return await readApiResponse<T>(retryResponse);
       }
     } catch {
       clearTokens();
@@ -628,7 +695,26 @@ async function fetchApi<T>(
     }
   }
 
-  return await response.json();
+  return await readApiResponse<T>(response);
+}
+
+async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
+  const correlationId = response.headers.get('X-Correlation-ID');
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { success: false, message: `The server returned ${response.status} without a valid response.${correlationId ? ` Correlation ID: ${correlationId}` : ''}` };
+  }
+  if (payload && typeof payload === 'object' && 'success' in payload && typeof (payload as { success?: unknown }).success === 'boolean') return payload as ApiResponse<T>;
+  const problem = payload as { title?: string; detail?: string; errors?: Record<string, string[]>; correlationId?: string };
+  const errors = problem.errors ? Object.values(problem.errors).flat() : undefined;
+  return {
+    success: response.ok,
+    data: response.ok ? payload as T : undefined,
+    message: problem.detail ?? problem.title ?? `Request failed with status ${response.status}.${correlationId ? ` Correlation ID: ${correlationId}` : ''}`,
+    errors,
+  };
 }
 
 async function get<T>(endpoint: string): Promise<ApiResponse<T>> {
@@ -658,12 +744,13 @@ async function postForm<T>(endpoint: string, body: FormData): Promise<ApiRespons
 async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
   const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accessToken, refreshToken } as RefreshTokenRequest),
+    headers: addTenantHeader({ 'Content-Type': 'application/json' }),
+    credentials: 'include',
+    body: JSON.stringify({ accessToken: accessToken ?? '' }),
   });
-  const data = await response.json();
+  const data = await readApiResponse<LoginResponse>(response);
   if (data.success && data.data) {
-    setTokens(data.data.accessToken, data.data.refreshToken);
+    setTokens(data.data.accessToken);
   }
   return data;
 }
@@ -674,7 +761,7 @@ export async function login(credentials: LoginRequest): Promise<ApiResponse<Logi
     body: JSON.stringify(credentials),
   });
   if (result.success && result.data) {
-    setTokens(result.data.accessToken, result.data.refreshToken);
+    setTokens(result.data.accessToken);
   }
   return result;
 }
@@ -686,12 +773,16 @@ export async function register(data: RegisterRequest): Promise<ApiResponse<boole
   });
 }
 
-export async function getDemoUsers(): Promise<ApiResponse<DemoUser[]>> {
-  return get<DemoUser[]>('/auth/demo-users');
-}
-
 export async function logout() {
+  if (accessToken) {
+    await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: addTenantHeader({ Authorization: `Bearer ${accessToken}` }),
+      credentials: 'include',
+    });
+  }
   clearTokens();
+  setCurrentMunicipalityId(null);
 }
 
 export function isAuthenticated() {
@@ -706,6 +797,189 @@ export async function getMyMenu(): Promise<ApiResponse<MenuItem[]>> {
 
 export async function getMyPermissions(): Promise<ApiResponse<string[]>> {
   return get<string[]>('/access/my-permissions');
+}
+
+export async function getMyTenantContexts(): Promise<ApiResponse<TenantContextDto[]>> {
+  return get<TenantContextDto[]>('/v1/tenancy/my-contexts');
+}
+
+export async function getReportingPeriodMasters(): Promise<ApiResponse<ReportingPeriodMasterDto[]>> {
+  return get<ReportingPeriodMasterDto[]>('/v1/masters/reporting-periods');
+}
+
+export async function getFinancialYearMasters(): Promise<ApiResponse<FinancialYearMasterDto[]>> {
+  return get<FinancialYearMasterDto[]>('/v1/masters/financial-years');
+}
+
+export async function createFinancialYearMaster(payload: { code: string; name: string; startDate: string; endDate: string }): Promise<ApiResponse<FinancialYearMasterDto>> {
+  return post<FinancialYearMasterDto>('/v1/masters/financial-years', payload);
+}
+
+export async function getMunicipalityFinancialYearMasters(): Promise<ApiResponse<MunicipalityFinancialYearMasterDto[]>> {
+  return get<MunicipalityFinancialYearMasterDto[]>('/v1/masters/municipality-financial-years');
+}
+
+export async function createMunicipalityFinancialYearMaster(payload: { financialYearPublicId: string; isCurrent: boolean; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
+  return post<MunicipalityFinancialYearMasterDto>('/v1/masters/municipality-financial-years', payload);
+}
+
+export async function updateMunicipalityFinancialYearMaster(publicId: string, payload: { isCurrent: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
+  return put<MunicipalityFinancialYearMasterDto>(`/v1/masters/municipality-financial-years/${publicId}`, payload);
+}
+
+export async function createReportingPeriodMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; periodType: number; sequence: number; startDate: string; endDate: string }): Promise<ApiResponse<ReportingPeriodMasterDto>> {
+  return post<ReportingPeriodMasterDto>('/v1/masters/reporting-periods', payload);
+}
+
+export async function getMunicipalEmployees(): Promise<ApiResponse<MunicipalEmployeeDto[]>> {
+  return get<MunicipalEmployeeDto[]>('/v1/masters/employees');
+}
+
+export async function createMunicipalEmployee(payload: { employeeNumber: string; firstName: string; lastName: string; emailAddress?: string | null; identityUserId?: string | null; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+  return post<MunicipalEmployeeDto>('/v1/masters/employees', payload);
+}
+
+export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; emailAddress?: string | null; identityUserId?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+  return put<MunicipalEmployeeDto>(`/v1/masters/employees/${publicId}`, payload);
+}
+
+export async function getEmployeeAssignments(employeePublicId: string): Promise<ApiResponse<EmployeeAssignmentMasterDto[]>> {
+  return get<EmployeeAssignmentMasterDto[]>(`/v1/masters/employees/${employeePublicId}/assignments`);
+}
+
+export async function createEmployeeAssignment(payload: { employeePublicId: string; departmentPublicId: string; unitPublicId?: string | null; positionCode: string; positionName: string; effectiveFrom: string; effectiveTo?: string | null; isPrimary: boolean }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {
+  return post<EmployeeAssignmentMasterDto>('/v1/masters/employee-assignments', payload);
+}
+
+export async function closeEmployeeAssignment(publicId: string, payload: { effectiveTo: string; reason: string; rowVersion: string }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {
+  return put<EmployeeAssignmentMasterDto>(`/v1/masters/employee-assignments/${publicId}/close`, payload);
+}
+
+export async function getPerformancePeriodTargets(kind: 1 | 2, targetPublicId: string): Promise<ApiResponse<PerformancePeriodTargetDto[]>> {
+  const parameter = kind === 1 ? 'opmsTargetId' : 'ipmsTargetId';
+  return get<PerformancePeriodTargetDto[]>(`/v1/performance-period-targets?${parameter}=${encodeURIComponent(targetPublicId)}`);
+}
+
+export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2; targetPublicId: string; reportingPeriodPublicId: string; unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+  return post<PerformancePeriodTargetDto>('/v1/performance-period-targets', payload);
+}
+
+export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+  return put<PerformancePeriodTargetDto>(`/v1/performance-period-targets/${publicId}`, payload);
+}
+
+export async function getPerformanceTargetRevisions(publicId: string): Promise<ApiResponse<PerformanceTargetRevisionDto[]>> {
+  return get<PerformanceTargetRevisionDto[]>(`/v1/performance-period-targets/${publicId}/revisions`);
+}
+
+export async function getWorkflowDefinitions(): Promise<ApiResponse<WorkflowDefinitionDto[]>> {
+  return get<WorkflowDefinitionDto[]>('/v1/workflow/definitions');
+}
+
+export async function createWorkflowDefinition(payload: {
+  municipalityFinancialYearPublicId: string;
+  submissionKind: number;
+  code: string;
+  name: string;
+  isActive: boolean;
+  effectiveFrom: string;
+  reason: string;
+  stages: Array<Omit<import('../types').WorkflowStageDefinitionDto, 'publicId' | 'ratingSchemeCode'>>;
+}): Promise<ApiResponse<WorkflowDefinitionDto>> {
+  return post<WorkflowDefinitionDto>('/v1/workflow/definitions', payload);
+}
+
+export async function compareWorkflowDefinitions(from: string, to: string): Promise<ApiResponse<WorkflowDefinitionComparisonDto>> {
+  return get<WorkflowDefinitionComparisonDto>(`/v1/workflow/definitions/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+}
+
+export async function retireWorkflowDefinition(publicId: string, payload: { reason: string; effectiveTo: string; rowVersion: string }): Promise<ApiResponse<WorkflowDefinitionDto>> {
+  return post<WorkflowDefinitionDto>(`/v1/workflow/definitions/${publicId}/retire`, payload);
+}
+
+export async function getReportingWindows(): Promise<ApiResponse<ReportingWindowDto[]>> {
+  return get<ReportingWindowDto[]>('/v1/workflow/reporting-windows');
+}
+
+export async function createReportingWindow(payload: { reportingPeriodPublicId: string; submissionKind: number; opensAt: string; closesAt: string }): Promise<ApiResponse<ReportingWindowDto>> {
+  return post<ReportingWindowDto>('/v1/workflow/reporting-windows', payload);
+}
+
+export async function getReportingWindowExceptions(windowPublicId: string): Promise<ApiResponse<ReportingWindowExceptionDto[]>> {
+  return get<ReportingWindowExceptionDto[]>(`/v1/workflow/reporting-windows/${windowPublicId}/exceptions`);
+}
+
+export async function createReportingWindowException(windowPublicId: string, payload: { userPublicId?: string; departmentPublicId?: string; unitPublicId?: string; extendedClosesAt: string; reason: string }): Promise<ApiResponse<ReportingWindowExceptionDto>> {
+  return post<ReportingWindowExceptionDto>(`/v1/workflow/reporting-windows/${windowPublicId}/exceptions`, payload);
+}
+
+export async function getPerformanceRfis(kind: 1 | 2, submissionId: string): Promise<ApiResponse<PerformanceRfiDto[]>> {
+  return get<PerformanceRfiDto[]>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/rfis`);
+}
+
+export async function raisePerformanceRfi(kind: 1 | 2, submissionId: string, payload: { question: string; responseDueAt: string; evidencePublicIds?: string[] }): Promise<ApiResponse<PerformanceRfiDto>> {
+  return post<PerformanceRfiDto>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/rfis`, payload);
+}
+
+export async function respondPerformanceRfi(publicId: string, payload: { response: string; rowVersion: string; evidencePublicIds?: string[] }): Promise<ApiResponse<PerformanceRfiDto>> {
+  return post<PerformanceRfiDto>(`/v1/workflow/rfis/${publicId}/respond`, payload);
+}
+
+export async function closePerformanceRfi(publicId: string, payload: { comment?: string; rowVersion: string }): Promise<ApiResponse<PerformanceRfiDto>> {
+  return post<PerformanceRfiDto>(`/v1/workflow/rfis/${publicId}/close`, payload);
+}
+
+export async function getDepartments(): Promise<ApiResponse<DepartmentLookupDto[]>> {
+  return get<DepartmentLookupDto[]>('/departments');
+}
+
+export async function getUnits(): Promise<ApiResponse<UnitLookupDto[]>> {
+  return get<UnitLookupDto[]>('/units');
+}
+
+export async function getRatingSchemes(): Promise<ApiResponse<RatingSchemeDto[]>> {
+  return get<RatingSchemeDto[]>('/v1/workflow/rating-schemes');
+}
+
+export async function getSubmissionStageRatings(kind: number, submissionId: string): Promise<ApiResponse<StageRatingDto[]>> {
+  return get<StageRatingDto[]>(`/v1/workflow/submissions/${kind}/${submissionId}/ratings`);
+}
+
+export async function getPendingNotificationDeliveries(): Promise<ApiResponse<NotificationOutboxItemDto[]>> {
+  return get<NotificationOutboxItemDto[]>('/v1/notification-operations/pending');
+}
+
+export async function retryNotificationDelivery(item: NotificationOutboxItemDto, reason: string): Promise<ApiResponse<NotificationOutboxItemDto>> {
+  return post<NotificationOutboxItemDto>(`/v1/notification-operations/${item.publicId}/retry`, { reason, rowVersion: item.rowVersion });
+}
+
+export async function createRatingScheme(payload: { code: string; name: string; values: Array<{ value: number; label: string; minimumAchievementPercent?: number; maximumAchievementPercent?: number; sortOrder: number }> }): Promise<ApiResponse<RatingSchemeDto>> {
+  return post<RatingSchemeDto>('/v1/workflow/rating-schemes', payload);
+}
+
+export async function getPerformanceReportSummary(kind: 1 | 2, reportingPeriodPublicId?: string): Promise<ApiResponse<PerformanceReportSummaryDto>> {
+  const query = new URLSearchParams({ kind: String(kind) });
+  if (reportingPeriodPublicId) query.set('reportingPeriodPublicId', reportingPeriodPublicId);
+  return get<PerformanceReportSummaryDto>(`/v1/reports/performance-summary?${query}`);
+}
+
+export async function downloadPerformanceReportCsv(kind: 1 | 2, reportingPeriodPublicId?: string): Promise<ApiResponse<boolean>> {
+  const query = new URLSearchParams({ kind: String(kind) });
+  if (reportingPeriodPublicId) query.set('reportingPeriodPublicId', reportingPeriodPublicId);
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  addTenantHeader(headers);
+  const response = await fetch(`${API_BASE_URL}/v1/reports/performance.csv?${query}`, { headers, credentials: 'include' });
+  if (!response.ok) return readApiResponse<boolean>(response);
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1].replace(/"$/, '')) : `${kind === 1 ? 'opms' : 'ipms'}-performance.csv`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url; anchor.download = fileName; anchor.click();
+  URL.revokeObjectURL(url);
+  return { success: true, data: true };
 }
 
 export async function getUsers(): Promise<ApiResponse<AdminUserDetail[]>> {
@@ -775,6 +1049,61 @@ export async function getRolePermissions(roleId: string): Promise<ApiResponse<Ro
 
 export async function setRolePermissions(roleId: string, permissionIds: number[]): Promise<ApiResponse<boolean>> {
   return put<boolean>(`/roles/${roleId}/permissions`, { permissionIds });
+}
+
+export async function getSecurityPermissionDefinitions(): Promise<ApiResponse<SecurityPermissionDefinition[]>> {
+  return get<SecurityPermissionDefinition[]>('/v1/security/permissions');
+}
+
+export async function getSecurityNavigationRegistry(): Promise<ApiResponse<SecurityNavigationItemDto[]>> {
+  return get<SecurityNavigationItemDto[]>('/v1/security/navigation/registry');
+}
+
+export async function createSecurityNavigationItem(payload: Omit<SecurityNavigationItemDto, 'publicId' | 'rowVersion' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityNavigationItemDto>> {
+  return post<SecurityNavigationItemDto>('/v1/security/navigation/registry', payload);
+}
+
+export async function updateSecurityNavigationItem(item: SecurityNavigationItemDto, payload: Omit<SecurityNavigationItemDto, 'publicId' | 'code' | 'rowVersion'> & { reason: string }): Promise<ApiResponse<SecurityNavigationItemDto>> {
+  return put<SecurityNavigationItemDto>(`/v1/security/navigation/registry/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
+}
+
+export async function getSecurityRoles(): Promise<ApiResponse<SecurityRoleSummary[]>> {
+  return get<SecurityRoleSummary[]>('/v1/security/roles');
+}
+
+export async function createSecurityRole(payload: { roleCode: string; name: string; description?: string; effectiveFrom?: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
+  return post<SecurityRoleSummary>('/v1/security/roles', payload);
+}
+
+export async function updateSecurityRole(role: SecurityRoleSummary, payload: { name: string; description?: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
+  return put<SecurityRoleSummary>(`/v1/security/roles/${role.id}`, { ...payload, rowVersion: role.rowVersion });
+}
+
+export async function getSecurityUsers(): Promise<ApiResponse<SecurityUserSummary[]>> {
+  return get<SecurityUserSummary[]>('/v1/security/users');
+}
+
+export async function getSecurityUserRoles(userId: string): Promise<ApiResponse<SecurityUserRoleConfiguration>> {
+  return get<SecurityUserRoleConfiguration>(`/v1/security/users/${userId}/roles`);
+}
+
+export async function saveSecurityUserRoles(userId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ roleId: string; municipalityId?: number; departmentId?: number; unitId?: number; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
+  return put<boolean>(`/v1/security/users/${userId}/roles`, {
+    expectedAssignments: current.assignments.map(item => ({ assignmentId: item.id, rowVersion: item.rowVersion })),
+    assignments,
+  });
+}
+
+export async function getRoleSecurityConfiguration(roleId: string): Promise<ApiResponse<RoleSecurityConfiguration>> {
+  return get<RoleSecurityConfiguration>(`/v1/security/roles/${roleId}/permissions`);
+}
+
+export async function saveRoleSecurityConfiguration(roleId: string, roleRowVersion: string, permissions: Array<Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>>): Promise<ApiResponse<boolean>> {
+  return put<boolean>(`/v1/security/roles/${roleId}/permissions`, { roleRowVersion, permissions });
+}
+
+export async function getEffectiveSecurityPreview(userId: string): Promise<ApiResponse<EffectiveSecurityPreview>> {
+  return get<EffectiveSecurityPreview>(`/v1/security/effective-permissions/${userId}`);
 }
 
 export async function getPermissions(): Promise<ApiResponse<AdminPermission[]>> {
@@ -996,6 +1325,36 @@ export async function uploadOpmsSubmissionAttachment(id: string, file: File) {
   return mapResponse(response, toAttachmentModel);
 }
 
+export async function rescanOpmsSubmissionAttachment(id: string, attachmentId: string) {
+  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/rescan`);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function assessOpmsSubmissionAttachment(id: string, attachmentId: string, payload: { outcome: 1 | 2 | 3; comment?: string }) {
+  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/assessments`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function replaceOpmsSubmissionAttachment(id: string, attachmentId: string, payload: { replacementEvidencePublicId: string; reason: string; supersededRowVersion: string; replacementRowVersion: string }) {
+  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/replace`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function placeOpmsEvidenceLegalHold(id: string, attachmentId: string, payload: { holdReference: string; reason: string }) {
+  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/legal-holds`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function releaseOpmsEvidenceLegalHold(id: string, attachmentId: string, holdId: string, payload: { reason: string }) {
+  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/legal-holds/${holdId}/release`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function requestOpmsEvidenceDisposal(id: string, attachmentId: string, payload: { approvalReference: string; reason: string; rowVersion: string }) {
+  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
 export async function deleteOpmsSubmissionAttachment(id: string, attachmentId: string) {
   return del<boolean>(`/opms-submissions/${id}/attachments/${attachmentId}`);
 }
@@ -1059,6 +1418,36 @@ export async function uploadIpmsSubmissionAttachment(id: string, file: File) {
   const formData = new FormData();
   formData.append('file', file);
   const response = await postForm<PoeFileDto>(`/ipms-submissions/${id}/attachments`, formData);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function rescanIpmsSubmissionAttachment(id: string, attachmentId: string) {
+  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/rescan`);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function assessIpmsSubmissionAttachment(id: string, attachmentId: string, payload: { outcome: 1 | 2 | 3; comment?: string }) {
+  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/assessments`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function replaceIpmsSubmissionAttachment(id: string, attachmentId: string, payload: { replacementEvidencePublicId: string; reason: string; supersededRowVersion: string; replacementRowVersion: string }) {
+  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/replace`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function placeIpmsEvidenceLegalHold(id: string, attachmentId: string, payload: { holdReference: string; reason: string }) {
+  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/legal-holds`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function releaseIpmsEvidenceLegalHold(id: string, attachmentId: string, holdId: string, payload: { reason: string }) {
+  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/legal-holds/${holdId}/release`, payload);
+  return mapResponse(response, toAttachmentModel);
+}
+
+export async function requestIpmsEvidenceDisposal(id: string, attachmentId: string, payload: { approvalReference: string; reason: string; rowVersion: string }) {
+  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 

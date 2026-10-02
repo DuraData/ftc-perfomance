@@ -13,6 +13,7 @@ public static class DbInitializer
         await context.Database.MigrateAsync();
 
         await SeedPermissionsAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
         await SeedDepartmentsAndUnitsAsync(context);
         await SeedRolesAsync(roleManager);
         await SeedRolePermissionsAsync(context, roleManager);
@@ -20,6 +21,7 @@ public static class DbInitializer
         await SeedDemoUsersAsync(context, userManager, configuration);
         await SeedLookupTablesAsync(context);
         await SeedTargetsAndSubmissionsAsync(context, userManager);
+        await SecurityRegistrySeeder.BackfillAssignmentsAsync(context);
     }
 
     internal static DemoUserResponse[] GetDemoUserResponses(IConfiguration configuration)

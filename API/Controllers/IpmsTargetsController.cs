@@ -38,25 +38,18 @@ public class IpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse[]>(false, null, "User not found"));
 
-        var targets = await _context.IpmsTargets
+        var scope = await _accessControlService.GetQueryScopeAsync(user, "IPMS_KPI.READ");
+        if (!scope.PermissionGranted) return Ok(new ApiResponse<IpmsTargetResponse[]>(true, []));
+        var query = _context.IpmsTargets
             .AsNoTracking()
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
-            .OrderByDescending(item => item.CreatedAt)
-            .ToListAsync();
-
-        var visible = new List<IpmsTargetResponse>();
-        foreach (var target in targets)
-        {
-            var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Targets.View", BuildScope(target));
-            if (decision.Allowed)
-            {
-                visible.Add(target.ToResponse());
-            }
-        }
-
-        return Ok(new ApiResponse<IpmsTargetResponse[]>(true, visible.ToArray()));
+            .AsQueryable();
+        if (!scope.Unrestricted)
+            query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        var targets = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
+        return Ok(new ApiResponse<IpmsTargetResponse[]>(true, targets.Select(item => item.ToResponse()).ToArray()));
     }
 
     [HttpGet("{id}")]
@@ -68,7 +61,7 @@ public class IpmsTargetsController : ControllerBase
         var target = await FindTargetAsync(id);
         if (target == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Targets.View", BuildScope(target));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.READ", BuildScope(target));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
 
         return Ok(new ApiResponse<IpmsTargetResponse>(true, target.ToResponse()));
@@ -80,7 +73,7 @@ public class IpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Targets.Create", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, user.Id));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
 
         var entity = new IpmsTarget
@@ -159,7 +152,7 @@ public class IpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
 
         var before = await FindTargetAsync(id);
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Targets.Edit", BuildScope(entity));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
 
         entity.SourceTemplateId = request.SourceTemplateId;
@@ -228,10 +221,11 @@ public class IpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<bool>(false, false, "IPMS target not found"));
 
         var before = await FindTargetAsync(id);
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Targets.Delete", BuildScope(entity));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
 
-        _context.IpmsTargets.Remove(entity);
+        entity.IsWithdrawn = true;
+        entity.ReasonForWithdrawal = "Withdrawn through the API by " + user.Id;
         await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Delete", before?.ToResponse(), null, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<bool>(true, true));
@@ -253,5 +247,5 @@ public class IpmsTargetsController : ControllerBase
     }
 
     private static AccessScopeContext BuildScope(IpmsTarget target) =>
-        new(target.DepartmentId, target.UnitId, target.Id, null);
+        new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
 }
