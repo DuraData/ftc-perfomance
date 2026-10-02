@@ -425,9 +425,9 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     departmentId: target.department.id,
     unitId: target.unit?.id ?? '',
     assignedToId: target.assignedTo?.id ?? '',
-    wardIds: target.wards?.map(item => item.id).join(',') ?? '',
-    additionalAssigneeIds: target.additionalAssignees.map(item => item.id).join(','),
-    voteNumberIds: target.voteNumbers.map(item => item.id).join(','),
+    wardIds: (target.wardIds ?? target.wards?.map(item => Number(item.id)) ?? []).join(','),
+    additionalAssigneeIds: (target.additionalAssigneeIds ?? target.additionalAssignees.map(item => item.id)).join(','),
+    voteNumberIds: (target.voteNumberIds ?? target.voteNumbers.map(item => Number(item.id))).join(','),
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
     municipalKPA: target.municipalKPA,
@@ -630,7 +630,7 @@ function ipmsFormFromTemplate(template: IpmsTargetTemplate): IpmsFormState {
   };
 }
 
-function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
+export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
   return {
     sourceTemplateId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
@@ -638,9 +638,9 @@ function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     departmentId: form.departmentId ? Number(form.departmentId) : null,
     unitId: form.unitId ? Number(form.unitId) : null,
     assignedUserId: form.assignedToId || null,
-    wardIds: form.wardIds || null,
-    additionalAssigneeIds: form.additionalAssigneeIds || null,
-    voteNumberIds: form.voteNumberIds || null,
+    wardIds: [...new Set(parseCsvIds(form.wardIds).map(Number).filter(Number.isSafeInteger))],
+    additionalAssigneeIds: [...new Set(parseCsvIds(form.additionalAssigneeIds))],
+    voteNumberIds: [...new Set(parseCsvIds(form.voteNumberIds).map(Number).filter(Number.isSafeInteger))],
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
     municipalKpa: form.municipalKPA,

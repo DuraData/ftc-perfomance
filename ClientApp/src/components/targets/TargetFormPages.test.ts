@@ -1,6 +1,12 @@
-import { getTargetUnitLabel, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
+import { buildOpmsPayload, getTargetUnitLabel, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
 
 describe('TargetFormPages helpers', () => {
+  it('serializes relationship editors as typed arrays rather than CSV fields', () => {
+    const payload = buildOpmsPayload({ wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11' } as never);
+    expect(payload.wardIds).toEqual([1, 2]);
+    expect(payload.additionalAssigneeIds).toEqual(['user-a', 'user-b']);
+    expect(payload.voteNumberIds).toEqual([10, 11]);
+  });
   it('maps legacy unit type to XAF unit type', () => {
     expect(toXafUnitType('percentage')).toBe('PercentageBased');
     expect(toXafUnitType('absolute_count')).toBe('AbsoluteCount');

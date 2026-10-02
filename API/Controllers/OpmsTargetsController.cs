@@ -12,6 +12,7 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/opms-targets")]
+[Route("api/v1/opms-targets")]
 [Authorize]
 public class OpmsTargetsController : ControllerBase
 {
@@ -19,17 +20,20 @@ public class OpmsTargetsController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IAccessControlService _accessControlService;
     private readonly IWorkflowGovernanceService _workflowGovernanceService;
+    private readonly ITenantContext _tenantContext;
 
     public OpmsTargetsController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         IAccessControlService accessControlService,
-        IWorkflowGovernanceService workflowGovernanceService)
+        IWorkflowGovernanceService workflowGovernanceService,
+        ITenantContext tenantContext)
     {
         _context = context;
         _userManager = userManager;
         _accessControlService = accessControlService;
         _workflowGovernanceService = workflowGovernanceService;
+        _tenantContext = tenantContext;
     }
 
     [HttpGet]
@@ -45,6 +49,9 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
+            .Include(item => item.Wards)
+            .Include(item => item.AdditionalAssignees)
+            .Include(item => item.VoteNumbers)
             .AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
@@ -75,6 +82,8 @@ public class OpmsTargetsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        var mappingError = await ValidateMappingsAsync(request);
+        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
 
         var entity = new OpmsTarget
         {
@@ -84,9 +93,7 @@ public class OpmsTargetsController : ControllerBase
             DepartmentId = request.DepartmentId,
             UnitId = request.UnitId,
             AssignedUserId = request.AssignedUserId,
-            WardIds = request.WardIds,
-            AdditionalAssigneeIds = request.AdditionalAssigneeIds,
-            VoteNumberIds = request.VoteNumberIds,
+            MunicipalityId = _tenantContext.MunicipalityId,
             IndicatorNumber = request.IndicatorNumber.Trim(),
             NationalKpa = request.NationalKpa,
             MunicipalKpa = request.MunicipalKpa,
@@ -135,6 +142,7 @@ public class OpmsTargetsController : ControllerBase
             RevisedAnnualBudget = request.RevisedAnnualBudget,
             CreatedAt = DateTime.UtcNow
         };
+        ApplyMappings(entity, request);
 
         _context.OpmsTargets.Add(entity);
         await _context.SaveChangesAsync();
@@ -154,12 +162,18 @@ public class OpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
 
-        var entity = await _context.OpmsTargets.FirstOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.OpmsTargets
+            .Include(item => item.Wards)
+            .Include(item => item.AdditionalAssignees)
+            .Include(item => item.VoteNumbers)
+            .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
 
-        var before = await FindTargetAsync(id);
+        var before = (await FindTargetAsync(id))?.ToResponse();
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        var mappingError = await ValidateMappingsAsync(request);
+        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
 
         entity.SourceTemplateId = request.SourceTemplateId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
@@ -167,9 +181,6 @@ public class OpmsTargetsController : ControllerBase
         entity.DepartmentId = request.DepartmentId;
         entity.UnitId = request.UnitId;
         entity.AssignedUserId = request.AssignedUserId;
-        entity.WardIds = request.WardIds;
-        entity.AdditionalAssigneeIds = request.AdditionalAssigneeIds;
-        entity.VoteNumberIds = request.VoteNumberIds;
         entity.IndicatorNumber = request.IndicatorNumber.Trim();
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
@@ -216,10 +227,14 @@ public class OpmsTargetsController : ControllerBase
         entity.Q4RevisedTarget = request.Q4RevisedTarget;
         entity.RevisedAnnualTarget = request.RevisedAnnualTarget;
         entity.RevisedAnnualBudget = request.RevisedAnnualBudget;
+        _context.OpmsTargetWards.RemoveRange(entity.Wards);
+        _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
+        _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
+        ApplyMappings(entity, request);
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Edit", before?.ToResponse(), after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Edit", before, after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, after.ToResponse()));
     }
 
@@ -255,7 +270,45 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
+            .Include(item => item.Wards)
+            .Include(item => item.AdditionalAssignees)
+            .Include(item => item.VoteNumbers)
             .FirstOrDefaultAsync(item => item.Id == id);
+    }
+
+    private async Task<string?> ValidateMappingsAsync(SaveOpmsTargetRequest request)
+    {
+        var tenantId = _tenantContext.MunicipalityId;
+        if (!tenantId.HasValue || tenantId == long.MinValue) return "A municipality context is required.";
+        var wardIds = (request.WardIds ?? []).Distinct().ToArray();
+        var assigneeIds = (request.AdditionalAssigneeIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var voteIds = (request.VoteNumberIds ?? []).Distinct().ToArray();
+        if (wardIds.Length > 100 || assigneeIds.Length > 100 || voteIds.Length > 100) return "At most 100 wards, additional assignees, and vote numbers may be linked.";
+        var municipality = await _context.Municipalities.AsNoTracking().SingleOrDefaultAsync(item => item.Id == tenantId.Value);
+        if (municipality == null) return "The selected municipality does not exist.";
+
+        var wards = await _context.Wards.AsNoTracking().Where(item => wardIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
+        if (wards.Length != wardIds.Length || wards.Any(item => !string.Equals(item.Municipality, municipality.Code, StringComparison.OrdinalIgnoreCase) && !string.Equals(item.Municipality, municipality.Name, StringComparison.OrdinalIgnoreCase)))
+            return "Every ward must be active and belong to the selected municipality.";
+
+        var votes = await _context.VoteNumbers.AsNoTracking().Include(item => item.Department).Where(item => voteIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
+        if (votes.Length != voteIds.Length || votes.Any(item => item.Department?.MunicipalityId != tenantId.Value))
+            return "Every vote number must be active and belong to a department in the selected municipality.";
+
+        var users = await _context.Users.AsNoTracking().Where(item => assigneeIds.Contains(item.Id) && item.IsActive).Select(item => new { item.Id, item.MunicipalityId }).ToArrayAsync();
+        var now = DateTime.UtcNow;
+        var assignedIds = await _context.SecurityUserRoleAssignments.AsNoTracking().Where(item => assigneeIds.Contains(item.UserId) && item.MunicipalityId == tenantId.Value && item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now)).Select(item => item.UserId).Distinct().ToArrayAsync();
+        if (users.Length != assigneeIds.Length || users.Any(item => item.MunicipalityId != tenantId.Value && !assignedIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase)))
+            return "Every additional assignee must be active and assigned within the selected municipality.";
+        return null;
+    }
+
+    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request)
+    {
+        var tenantId = _tenantContext.MunicipalityId;
+        target.Wards = (request.WardIds ?? []).Distinct().Select(id => new OpmsTargetWard { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = id }).ToList();
+        target.AdditionalAssignees = (request.AdditionalAssigneeIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).Select(id => new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = id }).ToList();
+        target.VoteNumbers = (request.VoteNumberIds ?? []).Distinct().Select(id => new OpmsTargetVoteNumber { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = id }).ToList();
     }
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>

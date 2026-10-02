@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace FTCERP.Host.Domain.Entities;
 
 public enum WorkflowActionType
@@ -49,9 +51,9 @@ public class OpmsTarget
     public int? DepartmentId { get; set; }
     public int? UnitId { get; set; }
     public string? AssignedUserId { get; set; }
-    public string? WardIds { get; set; }
-    public string? AdditionalAssigneeIds { get; set; }
-    public string? VoteNumberIds { get; set; }
+    [Column("WardIds")] public string? LegacyWardIds { get; set; }
+    [Column("AdditionalAssigneeIds")] public string? LegacyAdditionalAssigneeIds { get; set; }
+    [Column("VoteNumberIds")] public string? LegacyVoteNumberIds { get; set; }
     public string IndicatorNumber { get; set; } = string.Empty;
     public string NationalKpa { get; set; } = string.Empty;
     public string MunicipalKpa { get; set; } = string.Empty;
@@ -112,6 +114,48 @@ public class OpmsTarget
         public BudgetType? BudgetType { get; set; }
         public UnitOfMeasure? UnitOfMeasure { get; set; }
         public ICollection<OpmsSubmission> Submissions { get; set; } = new List<OpmsSubmission>();
+        public ICollection<OpmsTargetWard> Wards { get; set; } = new List<OpmsTargetWard>();
+        public ICollection<OpmsTargetAdditionalAssignee> AdditionalAssignees { get; set; } = new List<OpmsTargetAdditionalAssignee>();
+        public ICollection<OpmsTargetVoteNumber> VoteNumbers { get; set; } = new List<OpmsTargetVoteNumber>();
+}
+
+public class OpmsTargetWard
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public string OpmsTargetId { get; set; } = string.Empty;
+    public int WardId { get; set; }
+    public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public Municipality? Municipality { get; set; }
+    public OpmsTarget Target { get; set; } = null!;
+    public Ward Ward { get; set; } = null!;
+}
+
+public class OpmsTargetAdditionalAssignee
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public string OpmsTargetId { get; set; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
+    public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public Municipality? Municipality { get; set; }
+    public OpmsTarget Target { get; set; } = null!;
+    public ApplicationUser User { get; set; } = null!;
+}
+
+public class OpmsTargetVoteNumber
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public string OpmsTargetId { get; set; } = string.Empty;
+    public int VoteNumberId { get; set; }
+    public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public Municipality? Municipality { get; set; }
+    public OpmsTarget Target { get; set; } = null!;
+    public VoteNumber VoteNumber { get; set; } = null!;
 }
 
 public class IpmsTarget

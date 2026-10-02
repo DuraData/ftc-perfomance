@@ -37,6 +37,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<Ward> Wards { get; set; } = null!;
     public DbSet<VoteNumber> VoteNumbers { get; set; } = null!;
     public DbSet<OpmsTarget> OpmsTargets { get; set; } = null!;
+    public DbSet<OpmsTargetWard> OpmsTargetWards { get; set; } = null!;
+    public DbSet<OpmsTargetAdditionalAssignee> OpmsTargetAdditionalAssignees { get; set; } = null!;
+    public DbSet<OpmsTargetVoteNumber> OpmsTargetVoteNumbers { get; set; } = null!;
     public DbSet<IpmsTarget> IpmsTargets { get; set; } = null!;
     public DbSet<OpmsTargetTemplate> OpmsTargetTemplates { get; set; } = null!;
     public DbSet<IpmsTargetTemplate> IpmsTargetTemplates { get; set; } = null!;
@@ -245,6 +248,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<Unit>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Position>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<OpmsTargetWard>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<OpmsTargetVoteNumber>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IpmsTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsSubmission>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IpmsSubmission>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -425,6 +431,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<OpmsTarget>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<OpmsTarget>().Property(item => item.RowVersion));
         builder.Entity<OpmsTarget>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetWard>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsTargetWard>().HasIndex(item => new { item.OpmsTargetId, item.WardId }).IsUnique();
+        builder.Entity<OpmsTargetWard>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetWard>().HasOne(item => item.Target).WithMany(item => item.Wards).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetWard>().HasOne(item => item.Ward).WithMany().HasForeignKey(item => item.WardId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasIndex(item => new { item.OpmsTargetId, item.UserId }).IsUnique();
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.Target).WithMany(item => item.AdditionalAssignees).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetVoteNumber>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsTargetVoteNumber>().HasIndex(item => new { item.OpmsTargetId, item.VoteNumberId }).IsUnique();
+        builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.Target).WithMany(item => item.VoteNumbers).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.VoteNumber).WithMany().HasForeignKey(item => item.VoteNumberId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsTarget>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<IpmsTarget>().Property(item => item.RowVersion));
         builder.Entity<IpmsTarget>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
@@ -1377,7 +1398,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         var tenantId = _tenantContext.MunicipalityId;
         var protectedTypes = new HashSet<Type>
         {
-            typeof(Department), typeof(Unit), typeof(Position), typeof(OpmsTarget), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
+            typeof(Department), typeof(Unit), typeof(Position), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),

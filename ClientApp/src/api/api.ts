@@ -102,6 +102,8 @@ import {
   mockStrategicGoals,
   mockStrategicObjectives,
   mockUnitsOfMeasure,
+  mockWards,
+  mockVoteNumbers,
 } from '../data/mockData';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -340,6 +342,12 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     department: pickDepartment(dto.departmentId, dto.departmentName),
     unit: pickUnit(dto.unitId, dto.unitName, dto.departmentId),
     assignedTo: mockEmployees.find(e => e.id === dto.assignedUserId) ?? baseTarget.assignedTo,
+    wards: dto.wardIds.map(id => mockWards.find(ward => ward.id === String(id)) ?? { id: String(id), code: String(id), name: `Ward ${id}`, municipality: '', isActive: true }),
+    wardIds: dto.wardIds,
+    additionalAssignees: dto.additionalAssigneeIds.map(id => mockEmployees.find(employee => employee.id === id)).filter((employee): employee is NonNullable<typeof employee> => Boolean(employee)),
+    additionalAssigneeIds: dto.additionalAssigneeIds,
+    voteNumbers: dto.voteNumberIds.map(id => mockVoteNumbers.find(vote => vote.id === String(id)) ?? { id: String(id), code: String(id), number: String(id), name: `Vote ${id}`, amount: 0, isActive: true }),
+    voteNumberIds: dto.voteNumberIds,
     indicatorNumber: dto.indicatorNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
@@ -1279,22 +1287,22 @@ export async function duplicateIpmsTargetTemplate(id: string | number): Promise<
 }
 
 export async function getOpmsTargets(): Promise<ApiResponse<OPMSTarget[]>> {
-  const response = await get<OpmsTargetDto[]>('/opms-targets');
+  const response = await get<OpmsTargetDto[]>('/v1/opms-targets');
   return mapResponse(response, items => items.map(toOpmsTargetModel));
 }
 
 export async function getOpmsTarget(id: string): Promise<ApiResponse<OPMSTarget>> {
-  const response = await get<OpmsTargetDto>(`/opms-targets/${id}`);
+  const response = await get<OpmsTargetDto>(`/v1/opms-targets/${id}`);
   return mapResponse(response, toOpmsTargetModel);
 }
 
 export async function createOpmsTarget(payload: SaveOpmsTargetPayload): Promise<ApiResponse<OPMSTarget>> {
-  const response = await post<OpmsTargetDto>('/opms-targets', payload);
+  const response = await post<OpmsTargetDto>('/v1/opms-targets', payload);
   return mapResponse(response, toOpmsTargetModel);
 }
 
 export async function updateOpmsTarget(id: string, payload: SaveOpmsTargetPayload): Promise<ApiResponse<OPMSTarget>> {
-  const response = await put<OpmsTargetDto>(`/opms-targets/${id}`, payload);
+  const response = await put<OpmsTargetDto>(`/v1/opms-targets/${id}`, payload);
   return mapResponse(response, toOpmsTargetModel);
 }
 

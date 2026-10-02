@@ -379,6 +379,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   department: Department;
   unit?: DepartmentUnit;
   wards?: Ward[];
+  wardIds?: number[];
   assignedTo?: Employee;
   indicatorNumber: string;
   nationalKPA: string;
@@ -432,10 +433,12 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   UserSubmit?: UserSubmitChild[];
   submissions: OPMSSubmission[];
   voteNumbers: VoteNumber[];
+  voteNumberIds?: number[];
   VoteNumbers?: OpmsVoteNumberChild[];
   relatedIPMSTargets: IPMSTarget[];
   RelatedIPMSTargets?: string[];
   additionalAssignees: Employee[];
+  additionalAssigneeIds?: string[];
   AdditionalAssignees?: AdditionalAssigneeChild[];
   attachments: Attachment[];
 }
@@ -1811,9 +1814,9 @@ export interface OpmsTargetDto {
   unitName?: string | null;
   assignedUserId?: string | null;
   assignedUserName?: string | null;
-  wardIds?: string | null;
-  additionalAssigneeIds?: string | null;
-  voteNumberIds?: string | null;
+  wardIds: number[];
+  additionalAssigneeIds: string[];
+  voteNumberIds: number[];
   indicatorNumber: string;
   nationalKpa: string;
   municipalKpa: string;
@@ -2177,9 +2180,9 @@ export interface SaveOpmsTargetPayload {
   departmentId?: number | null;
   unitId?: number | null;
   assignedUserId?: string | null;
-  wardIds?: string | null;
-  additionalAssigneeIds?: string | null;
-  voteNumberIds?: string | null;
+  wardIds?: number[];
+  additionalAssigneeIds?: string[];
+  voteNumberIds?: number[];
   indicatorNumber: string;
   nationalKpa: string;
   municipalKpa: string;
