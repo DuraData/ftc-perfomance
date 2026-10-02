@@ -159,7 +159,12 @@ public static class PerformanceApiSupport
             target.RevisedAnnualTarget,
             target.RevisedAnnualBudget,
             target.CreatedAt)
-        { PublicId = target.PublicId };
+        {
+            PublicId = target.PublicId,
+            RowVersion = Convert.ToBase64String(target.RowVersion),
+            WithdrawnAt = target.WithdrawnAt,
+            WithdrawnByUserId = target.WithdrawnByUserId
+        };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target) =>
         new(
@@ -217,7 +222,14 @@ public static class PerformanceApiSupport
             target.RevisedAnnualTarget,
             target.RevisedAnnualBudget,
             target.CreatedAt)
-        { PublicId = target.PublicId };
+        {
+            PublicId = target.PublicId,
+            RowVersion = Convert.ToBase64String(target.RowVersion),
+            IsWithdrawn = target.IsWithdrawn,
+            ReasonForWithdrawal = target.ReasonForWithdrawal,
+            WithdrawnAt = target.WithdrawnAt,
+            WithdrawnByUserId = target.WithdrawnByUserId
+        };
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>
         new(
@@ -286,7 +298,11 @@ public static class PerformanceApiSupport
             ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
             ActualPerformance = submission.ActualPerformance,
             AchievementPercent = submission.AchievementPercent,
-            TargetAchieved = submission.TargetAchieved
+            TargetAchieved = submission.TargetAchieved,
+            RowVersion = Convert.ToBase64String(submission.RowVersion),
+            WithdrawalReason = submission.WithdrawalReason,
+            WithdrawnAt = submission.WithdrawnAt,
+            WithdrawnByUserId = submission.WithdrawnByUserId
         };
 
     public static IpmsSubmissionResponse ToResponse(this IpmsSubmission submission) =>
@@ -356,7 +372,11 @@ public static class PerformanceApiSupport
             ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
             ActualPerformance = submission.ActualPerformance,
             AchievementPercent = submission.AchievementPercent,
-            TargetAchieved = submission.TargetAchieved
+            TargetAchieved = submission.TargetAchieved,
+            RowVersion = Convert.ToBase64String(submission.RowVersion),
+            WithdrawalReason = submission.WithdrawalReason,
+            WithdrawnAt = submission.WithdrawnAt,
+            WithdrawnByUserId = submission.WithdrawnByUserId
         };
 
     public static NotificationResponse ToResponse(this Notification notification) =>

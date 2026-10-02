@@ -13,6 +13,7 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/opms-submissions")]
+[Route("api/v1/opms-submissions")]
 [Authorize]
 public class OpmsSubmissionsController : ControllerBase
 {
@@ -105,6 +106,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         var target = await _context.OpmsTargets.FirstOrDefaultAsync(item => item.Id == request.OpmsTargetId);
         if (target == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS target not found"));
+        if (target.IsWithdrawn) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A submission cannot be created for a withdrawn OPMS target."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.CREATE", BuildScope(target));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));
@@ -167,6 +169,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         var entity = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission is immutable."));
 
         if (!CanMutateDraftSubmission(user.Id, entity.Status, entity.SubmittedByUserId, entity.OpmsTarget.AssignedUserId, out var mutationReason))
         {
@@ -209,29 +212,78 @@ public class OpmsSubmissionsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteSubmission(string id)
+    public ActionResult<ApiResponse<bool>> DeleteSubmission(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed submissions are never deleted. Use POST /api/v1/opms-submissions/{id}/withdraw with a reason and RowVersion."));
+
+    [HttpPost("{id}/withdraw")]
+    public async Task<ActionResult<ApiResponse<OpmsSubmissionResponse>>> WithdrawSubmission(string id, [FromBody] WithdrawGovernedRecordRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse>(false, null, "User not found"));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawal reason between 1 and 1000 characters is required."));
 
         var entity = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<bool>(false, false, "OPMS submission not found"));
+        if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission is already withdrawn."));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission must be reconciled to a municipality before withdrawal."));
 
         if (!CanMutateDraftSubmission(user.Id, entity.Status, entity.SubmittedByUserId, entity.OpmsTarget.AssignedUserId, out var mutationReason))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, mutationReason));
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, mutationReason));
         }
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.UPDATE", BuildScope(entity));
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.WITHDRAW", BuildScope(entity));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));
+        if (!TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "A valid RowVersion is required."));
 
         var before = await FindSubmissionAsync(id);
+        var occurredAt = DateTime.UtcNow;
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
         entity.IsDisabled = true;
+        entity.WithdrawalReason = reason;
+        entity.WithdrawnAt = occurredAt;
+        entity.WithdrawnByUserId = user.Id;
         entity.UpdatedBy = user.Id;
-        entity.UpdatedOn = DateTime.UtcNow;
+        entity.UpdatedOn = occurredAt;
+        _context.GovernedRecordLifecycleEvents.Add(new GovernedRecordLifecycleEvent
+        {
+            MunicipalityId = entity.MunicipalityId.Value,
+            AggregateType = "OpmsSubmission",
+            AggregateId = entity.Id,
+            Action = GovernedLifecycleAction.Withdrawn,
+            Reason = reason,
+            ActorUserId = user.Id,
+            OccurredAt = occurredAt,
+            CorrelationId = HttpContext.TraceIdentifier
+        });
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "Delete", before?.ToResponse(), null, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<bool>(true, true));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "Withdraw", before?.ToResponse(), entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await transaction.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission changed before withdrawal. Refresh and try again."));
+        }
+        var response = await FindSubmissionAsync(id) ?? entity;
+        return Ok(new ApiResponse<OpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(response, user)));
+    }
+
+    private bool TrySetExpectedVersion(OpmsSubmission entity, string value)
+    {
+        try
+        {
+            var bytes = Convert.FromBase64String(value ?? string.Empty);
+            if (bytes.Length is not (sizeof(long) or 16)) return false;
+            _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = bytes;
+            return true;
+        }
+        catch (FormatException) { return false; }
     }
 
     [HttpGet("{id}/attachments")]
@@ -276,6 +328,7 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.OpmsTarget)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
+        if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be added to a withdrawn OPMS submission."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.UPLOAD", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
@@ -391,6 +444,7 @@ public class OpmsSubmissionsController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
         var submission = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
+        if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be replaced on a withdrawn OPMS submission."));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.REPLACE", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
         var rows = await _context.PoeFiles.IncludePoeGovernance().Where(item => item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id && (item.Id == attachmentId || item.PublicId == request.ReplacementEvidencePublicId)).ToArrayAsync();
@@ -552,6 +606,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         var entity = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot be scored."));
 
         if (string.Equals(NormalizeStatus(entity.Status), "draft", StringComparison.OrdinalIgnoreCase))
         {
@@ -585,6 +640,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         var entity = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot receive a due-date extension."));
 
         var currentStatus = NormalizeStatus(entity.Status);
         if (string.Equals(currentStatus, "audited", StringComparison.OrdinalIgnoreCase))
@@ -629,6 +685,7 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.SubmittedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot transition workflow."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));

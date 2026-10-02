@@ -13,6 +13,7 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/ipms-submissions")]
+[Route("api/v1/ipms-submissions")]
 [Authorize]
 public class IpmsSubmissionsController : ControllerBase
 {
@@ -106,6 +107,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var target = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.Id == request.IpmsTargetId);
         if (target == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS target not found"));
+        if (target.IsWithdrawn) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be created for a withdrawn IPMS target."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.CREATE", BuildScope(target));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
@@ -168,6 +170,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission is immutable."));
 
         if (!CanMutateDraftSubmission(user.Id, entity.Status, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
         {
@@ -210,29 +213,78 @@ public class IpmsSubmissionsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteSubmission(string id)
+    public ActionResult<ApiResponse<bool>> DeleteSubmission(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed submissions are never deleted. Use POST /api/v1/ipms-submissions/{id}/withdraw with a reason and RowVersion."));
+
+    [HttpPost("{id}/withdraw")]
+    public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> WithdrawSubmission(string id, [FromBody] WithdrawGovernedRecordRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
+            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawal reason between 1 and 1000 characters is required."));
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<bool>(false, false, "IPMS submission not found"));
+        if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission is already withdrawn."));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before withdrawal."));
 
         if (!CanMutateDraftSubmission(user.Id, entity.Status, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, mutationReason));
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, mutationReason));
         }
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.UPDATE", BuildScope(entity));
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.WITHDRAW", BuildScope(entity));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
+        if (!TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A valid RowVersion is required."));
 
         var before = await FindSubmissionAsync(id);
+        var occurredAt = DateTime.UtcNow;
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
         entity.IsDisabled = true;
+        entity.WithdrawalReason = reason;
+        entity.WithdrawnAt = occurredAt;
+        entity.WithdrawnByUserId = user.Id;
         entity.UpdatedBy = user.Id;
-        entity.UpdatedOn = DateTime.UtcNow;
+        entity.UpdatedOn = occurredAt;
+        _context.GovernedRecordLifecycleEvents.Add(new GovernedRecordLifecycleEvent
+        {
+            MunicipalityId = entity.MunicipalityId.Value,
+            AggregateType = "IpmsSubmission",
+            AggregateId = entity.Id,
+            Action = GovernedLifecycleAction.Withdrawn,
+            Reason = reason,
+            ActorUserId = user.Id,
+            OccurredAt = occurredAt,
+            CorrelationId = HttpContext.TraceIdentifier
+        });
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmission", id, "Delete", before?.ToResponse(), null, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<bool>(true, true));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmission", id, "Withdraw", before?.ToResponse(), entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await transaction.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission changed before withdrawal. Refresh and try again."));
+        }
+        var response = await FindSubmissionAsync(id) ?? entity;
+        return Ok(new ApiResponse<IpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(response, user)));
+    }
+
+    private bool TrySetExpectedVersion(IpmsSubmission entity, string value)
+    {
+        try
+        {
+            var bytes = Convert.FromBase64String(value ?? string.Empty);
+            if (bytes.Length is not (sizeof(long) or 16)) return false;
+            _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = bytes;
+            return true;
+        }
+        catch (FormatException) { return false; }
     }
 
     [HttpGet("{id}/attachments")]
@@ -277,6 +329,7 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.IpmsTarget)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
+        if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be added to a withdrawn IPMS submission."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.UPLOAD", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
@@ -392,6 +445,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
+        if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be replaced on a withdrawn IPMS submission."));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.REPLACE", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
         var rows = await _context.PoeFiles.IncludePoeGovernance().Where(item => item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && (item.Id == attachmentId || item.PublicId == request.ReplacementEvidencePublicId)).ToArrayAsync();
@@ -553,6 +607,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot be scored."));
 
         if (string.Equals(NormalizeStatus(entity.Status), "draft", StringComparison.OrdinalIgnoreCase))
         {
@@ -586,6 +641,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot receive a due-date extension."));
 
         var currentStatus = NormalizeStatus(entity.Status);
         if (string.Equals(currentStatus, "audited", StringComparison.OrdinalIgnoreCase))
@@ -630,6 +686,7 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.SubmittedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot transition workflow."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));

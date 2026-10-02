@@ -761,9 +761,6 @@ function validateOpmsForm(form: OpmsFormState) {
     { label: 'Unit of Measure', value: form.unitOfMeasureId },
   ]);
 
-  if (form.isWithdrawn && !form.reasonForWithdrawal.trim()) {
-    errors.push('Reason For Withdrawal is required when Target Withdrawn is checked.');
-  }
 
   return errors;
 }
@@ -1349,9 +1346,12 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
         <FormPanel title="Workflow Flags" description="Track revision and withdrawal attributes for the live target." icon={<Building2 className="h-5 w-5" />}>
           <div className="grid gap-4 md:grid-cols-2">
             <Checkbox label="Target Revised" checked={form.isRevised} onChange={(event) => setForm(prev => ({ ...prev, isRevised: event.target.checked }))} />
-            <Checkbox label="Target Withdrawn" checked={form.isWithdrawn} onChange={(event) => setForm(prev => ({ ...prev, isWithdrawn: event.target.checked }))} />
           </div>
-          <Textarea label="Reason For Withdrawal" error={fieldError('Reason For Withdrawal')} rows={3} value={form.reasonForWithdrawal} onChange={(event) => setForm(prev => ({ ...prev, reasonForWithdrawal: event.target.value }))} />
+          {form.isWithdrawn ? (
+            <div className="rounded-lg border border-error-200 bg-error-50 p-3 text-xs text-error-800 dark:border-error-800 dark:bg-error-950/30 dark:text-error-200">
+              This target is withdrawn and cannot be edited. Reason: {form.reasonForWithdrawal || 'Recorded in lifecycle history'}
+            </div>
+          ) : null}
         </FormPanel>
 
         <FormPanel title="Related Targets" description="Track linked child resources and associated IPMS records." icon={<Target className="h-5 w-5" />}>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changePassword, closeEmployeeAssignment, commitIdpImport, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpKpiImport } from './api';
+import { changePassword, closeEmployeeAssignment, commitIdpImport, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpKpiImport, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -126,6 +126,26 @@ describe('versioned API routes', () => {
     await getOpmsTargets();
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-targets'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('posts reasons and concurrency tokens to governed withdrawal routes', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await withdrawOpmsTarget('target-1', { reason: 'Approved plan superseded it', rowVersion: 'AQ==' });
+    await withdrawOpmsSubmission('submission-1', { reason: 'Submission entered in error', rowVersion: 'Ag==' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/target-1/withdraw'), expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Approved plan superseded it', rowVersion: 'AQ==' }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/opms-submissions/submission-1/withdraw'), expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ reason: 'Submission entered in error', rowVersion: 'Ag==' }),
+    }));
   });
 
   it('posts both concurrency tokens to the governed POE replacement route', async () => {

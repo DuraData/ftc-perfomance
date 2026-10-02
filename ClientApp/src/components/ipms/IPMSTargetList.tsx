@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Download, Eye, Edit2, Link2, Trash2, Library, FileText } from 'lucide-react';
+import { Plus, Download, Eye, Edit2, Link2, Ban, Library, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
@@ -7,11 +7,12 @@ import { useApp } from '../../context/AppContext';
 import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createIpmsTarget as createIpmsTargetApi,
-  deleteIpmsTarget as deleteIpmsTargetApi,
+  withdrawIpmsTarget as withdrawIpmsTargetApi,
   getIpmsTargets as getIpmsTargetsApi,
 } from '../../api/api';
 import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../../types';
 import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
+import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 
 function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
   return {
@@ -49,10 +50,12 @@ export function IPMSTargetList() {
     setCurrentPath,
     pushToast,
   } = useApp();
-  const canManageTargets = useHasAnyPermission(['IPMS.Targets.Create', 'IPMS.Targets.Edit', 'IPMS.Targets.Delete']);
+  const canManageTargets = useHasAnyPermission(['IPMS_KPI.CREATE', 'IPMS_KPI.UPDATE', 'IPMS_KPI.WITHDRAW']);
   const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [withdrawalTarget, setWithdrawalTarget] = useState<IPMSTarget | null>(null);
+  const [withdrawalBusy, setWithdrawalBusy] = useState(false);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
@@ -233,20 +236,13 @@ export function IPMSTargetList() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              void (async () => {
-                const result = await deleteIpmsTargetApi(row.id);
-                if (result.success) {
-                  pushToast('success', 'IPMS target deleted');
-                  await loadTargets();
-                } else {
-                  pushToast('error', result.message ?? 'Failed to delete IPMS target');
-                }
-              })();
+              setWithdrawalTarget(row);
             }}
+            disabled={row.isWithdrawn}
             className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20"
-            title="Delete"
+            title={row.isWithdrawn ? 'Already withdrawn' : 'Withdraw'}
           >
-            <Trash2 className="w-4 h-4 text-error-500" />
+            <Ban className="w-4 h-4 text-error-500" />
           </button>
         </>
       ) : (
@@ -307,6 +303,28 @@ export function IPMSTargetList() {
             onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
           />
         ) : null}
+        <GovernedWithdrawalDialog
+          isOpen={Boolean(withdrawalTarget)}
+          recordLabel="IPMS target"
+          busy={withdrawalBusy}
+          onClose={() => setWithdrawalTarget(null)}
+          onConfirm={(reason) => {
+            if (!withdrawalTarget?.rowVersion) {
+              pushToast('error', 'Refresh the target before withdrawing it.');
+              return;
+            }
+            void (async () => {
+              setWithdrawalBusy(true);
+              const result = await withdrawIpmsTargetApi(withdrawalTarget.id, { reason, rowVersion: withdrawalTarget.rowVersion! });
+              if (result.success && result.data) {
+                setIpmsTargets(prev => prev.map(item => item.id === result.data!.id ? result.data! : item));
+                setWithdrawalTarget(null);
+                pushToast('success', 'IPMS target withdrawn');
+              } else pushToast('error', result.message ?? 'Failed to withdraw IPMS target');
+              setWithdrawalBusy(false);
+            })();
+          }}
+        />
       </div>
     </AppShell>
   );

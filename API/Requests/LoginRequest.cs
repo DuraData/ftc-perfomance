@@ -278,6 +278,8 @@ public record SubmissionWorkflowActionRequest(
 
 public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason, int? ExtendedByDays = null);
 
+public record WithdrawGovernedRecordRequest(string Reason, string RowVersion);
+
 public record CreateIdpPlanRequest(
     string MunicipalityName,
     string PlanTitle,

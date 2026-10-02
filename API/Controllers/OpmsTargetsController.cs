@@ -118,8 +118,6 @@ public class OpmsTargetsController : ControllerBase
             InternalReference = request.InternalReference,
             FmsLink = request.FmsLink,
             IsRevised = request.IsRevised,
-            IsWithdrawn = request.IsWithdrawn,
-            ReasonForWithdrawal = request.ReasonForWithdrawal,
             TargetUnitType = request.TargetUnitType,
             Q1Target = request.Q1Target,
             Q1Description = request.Q1Description,
@@ -168,6 +166,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.VoteNumbers)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
+        if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
 
         var before = (await FindTargetAsync(id))?.ToResponse();
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
@@ -205,8 +204,6 @@ public class OpmsTargetsController : ControllerBase
         entity.InternalReference = request.InternalReference;
         entity.FmsLink = request.FmsLink;
         entity.IsRevised = request.IsRevised;
-        entity.IsWithdrawn = request.IsWithdrawn;
-        entity.ReasonForWithdrawal = request.ReasonForWithdrawal;
         entity.TargetUnitType = request.TargetUnitType;
         entity.Q1Target = request.Q1Target;
         entity.Q1Description = request.Q1Description;
@@ -239,23 +236,71 @@ public class OpmsTargetsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteTarget(string id)
+    public ActionResult<ApiResponse<bool>> DeleteTarget(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed targets are never deleted. Use POST /api/v1/opms-targets/{id}/withdraw with a reason and RowVersion."));
+
+    [HttpPost("{id}/withdraw")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> WithdrawTarget(string id, [FromBody] WithdrawGovernedRecordRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawal reason between 1 and 1000 characters is required."));
 
         var entity = await _context.OpmsTargets.FirstOrDefaultAsync(item => item.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<bool>(false, false, "OPMS target not found"));
+        if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
+        if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target is already withdrawn."));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target must be reconciled to a municipality before withdrawal."));
 
         var before = await FindTargetAsync(id);
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.DELETE", BuildScope(entity));
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WITHDRAW", BuildScope(entity));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        if (!TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A valid RowVersion is required."));
 
+        var occurredAt = DateTime.UtcNow;
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
         entity.IsWithdrawn = true;
-        entity.ReasonForWithdrawal ??= "Withdrawn through the API by " + user.Id;
+        entity.ReasonForWithdrawal = reason;
+        entity.WithdrawnAt = occurredAt;
+        entity.WithdrawnByUserId = user.Id;
+        _context.GovernedRecordLifecycleEvents.Add(new GovernedRecordLifecycleEvent
+        {
+            MunicipalityId = entity.MunicipalityId.Value,
+            AggregateType = "OpmsTarget",
+            AggregateId = entity.Id,
+            Action = GovernedLifecycleAction.Withdrawn,
+            Reason = reason,
+            ActorUserId = user.Id,
+            OccurredAt = occurredAt,
+            CorrelationId = HttpContext.TraceIdentifier
+        });
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Delete", before?.ToResponse(), null, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<bool>(true, true));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Withdraw", before?.ToResponse(), entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await transaction.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target changed before withdrawal. Refresh and try again."));
+        }
+        var response = await FindTargetAsync(id) ?? entity;
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, response.ToResponse()));
+    }
+
+    private bool TrySetExpectedVersion(OpmsTarget entity, string value)
+    {
+        try
+        {
+            var bytes = Convert.FromBase64String(value ?? string.Empty);
+            if (bytes.Length is not (sizeof(long) or 16)) return false;
+            _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = bytes;
+            return true;
+        }
+        catch (FormatException) { return false; }
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()

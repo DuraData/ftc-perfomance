@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Eye, Edit2, Trash2, Copy, Library, FileText } from 'lucide-react';
+import { Plus, Download, Eye, Edit2, Ban, Copy, Library, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
@@ -7,12 +7,13 @@ import { useApp } from '../../context/AppContext';
 import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createOpmsTarget as createOpmsTargetApi,
-  deleteOpmsTarget as deleteOpmsTargetApi,
+  withdrawOpmsTarget as withdrawOpmsTargetApi,
   getOpmsTargets as getOpmsTargetsApi,
 } from '../../api/api';
 import { mockDepartments, mockPeriods } from '../../data/mockData';
 import type { OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
 import { OpmsTemplateSelectionModal } from '../library/TargetLibraries';
+import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 
 function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
   return {
@@ -136,11 +137,13 @@ export function OPMSTargetList() {
     setCurrentPath,
     pushToast,
   } = useApp();
-  const canManageTargets = useHasAnyPermission(['OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE', 'OPMS_KPI.DELETE']);
+  const canManageTargets = useHasAnyPermission(['OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE', 'OPMS_KPI.WITHDRAW']);
   const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [withdrawalTarget, setWithdrawalTarget] = useState<OPMSTarget | null>(null);
+  const [withdrawalBusy, setWithdrawalBusy] = useState(false);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
@@ -356,20 +359,13 @@ export function OPMSTargetList() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              void (async () => {
-                const result = await deleteOpmsTargetApi(row.id);
-                if (result.success) {
-                  pushToast('success', 'OPMS target deleted');
-                  await loadTargets();
-                } else {
-                  pushToast('error', result.message ?? 'Failed to delete OPMS target');
-                }
-              })();
+              setWithdrawalTarget(row);
             }}
+            disabled={row.isWithdrawn}
             className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
-            title="Delete"
+            title={row.isWithdrawn ? 'Already withdrawn' : 'Withdraw'}
           >
-            <Trash2 className="w-4 h-4 text-error-500" />
+            <Ban className="w-4 h-4 text-error-500" />
           </button>
         </>
       ) : (
@@ -433,6 +429,28 @@ export function OPMSTargetList() {
             onCreateMultiple={(templates) => { void createMultipleFromTemplates(templates); }}
           />
         ) : null}
+        <GovernedWithdrawalDialog
+          isOpen={Boolean(withdrawalTarget)}
+          recordLabel="OPMS target"
+          busy={withdrawalBusy}
+          onClose={() => setWithdrawalTarget(null)}
+          onConfirm={(reason) => {
+            if (!withdrawalTarget?.rowVersion) {
+              pushToast('error', 'Refresh the target before withdrawing it.');
+              return;
+            }
+            void (async () => {
+              setWithdrawalBusy(true);
+              const result = await withdrawOpmsTargetApi(withdrawalTarget.id, { reason, rowVersion: withdrawalTarget.rowVersion! });
+              if (result.success && result.data) {
+                setOpmsTargets(prev => prev.map(item => item.id === result.data!.id ? result.data! : item));
+                setWithdrawalTarget(null);
+                pushToast('success', 'OPMS target withdrawn');
+              } else pushToast('error', result.message ?? 'Failed to withdraw OPMS target');
+              setWithdrawalBusy(false);
+            })();
+          }}
+        />
       </div>
     </AppShell>
   );

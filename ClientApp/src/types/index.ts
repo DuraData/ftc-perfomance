@@ -372,6 +372,7 @@ export interface Employee {
 export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodValues, TargetAuditMetaFields {
   id: string;
   publicId?: string;
+  rowVersion?: string;
   PriorYearOpmsId?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
@@ -447,6 +448,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
 export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodValues, TargetAuditMetaFields {
   id: string;
   publicId?: string;
+  rowVersion?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
   relatedOPMSTarget?: OPMSTarget;
@@ -475,6 +477,10 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   idpReference?: string;
   internalReference?: string;
   isRevised: boolean;
+  isWithdrawn: boolean;
+  reasonForWithdrawal?: string;
+  withdrawnAt?: string;
+  withdrawnByUserId?: string;
 
   // Quarterly Targets
   q1Target?: number;
@@ -506,6 +512,7 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
 // Submissions
 export interface OPMSSubmission {
   id: string;
+  rowVersion?: string;
   target: OPMSTarget;
   quarter: Quarter;
   dueDate: string;
@@ -559,6 +566,9 @@ export interface OPMSSubmission {
   dueDateExtendedDays?: number;
   poeType?: string;
   isDisabled?: boolean;
+  withdrawalReason?: string;
+  withdrawnAt?: string;
+  withdrawnByUserId?: string;
   createdBy?: string;
   createdOn?: string;
   updatedBy?: string;
@@ -571,6 +581,7 @@ export interface OPMSSubmission {
 
 export interface IPMSSubmission {
   id: string;
+  rowVersion?: string;
   target: IPMSTarget;
   quarter: Quarter;
   dueDate: string;
@@ -624,6 +635,9 @@ export interface IPMSSubmission {
   dueDateExtendedDays?: number;
   poeType?: string;
   isDisabled?: boolean;
+  withdrawalReason?: string;
+  withdrawnAt?: string;
+  withdrawnByUserId?: string;
   createdBy?: string;
   createdOn?: string;
   updatedBy?: string;
@@ -1824,6 +1838,7 @@ export interface IpmsTargetTemplateDto {
 export interface OpmsTargetDto {
   id: string;
   publicId: string;
+  rowVersion: string;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   periodId?: number | null;
@@ -1862,6 +1877,8 @@ export interface OpmsTargetDto {
   isRevised: boolean;
   isWithdrawn: boolean;
   reasonForWithdrawal?: string | null;
+  withdrawnAt?: string | null;
+  withdrawnByUserId?: string | null;
   targetUnitType: string;
   q1Target?: number | null;
   q1Description?: string | null;
@@ -1888,6 +1905,7 @@ export interface OpmsTargetDto {
 export interface IpmsTargetDto {
   id: string;
   publicId: string;
+  rowVersion: string;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetId?: string | null;
@@ -1920,6 +1938,10 @@ export interface IpmsTargetDto {
   idpReference?: string | null;
   internalReference?: string | null;
   isRevised: boolean;
+  isWithdrawn: boolean;
+  reasonForWithdrawal?: string | null;
+  withdrawnAt?: string | null;
+  withdrawnByUserId?: string | null;
   targetUnitType: string;
   q1Target?: number | null;
   q1Description?: string | null;
@@ -1945,6 +1967,7 @@ export interface IpmsTargetDto {
 
 export interface OpmsSubmissionDto {
   id: string;
+  rowVersion: string;
   opmsTargetId: string;
   targetName: string;
   quarter: string;
@@ -2003,6 +2026,9 @@ export interface OpmsSubmissionDto {
   dueDateExtendedDays?: number | null;
   poeType?: string | null;
   isDisabled?: boolean | null;
+  withdrawalReason?: string | null;
+  withdrawnAt?: string | null;
+  withdrawnByUserId?: string | null;
   createdBy?: string | null;
   createdOn?: string | null;
   updatedBy?: string | null;
@@ -2013,6 +2039,7 @@ export interface OpmsSubmissionDto {
 
 export interface IpmsSubmissionDto {
   id: string;
+  rowVersion: string;
   ipmsTargetId: string;
   targetName: string;
   quarter: string;
@@ -2071,6 +2098,9 @@ export interface IpmsSubmissionDto {
   dueDateExtendedDays?: number | null;
   poeType?: string | null;
   isDisabled?: boolean | null;
+  withdrawalReason?: string | null;
+  withdrawnAt?: string | null;
+  withdrawnByUserId?: string | null;
   createdBy?: string | null;
   createdOn?: string | null;
   updatedBy?: string | null;

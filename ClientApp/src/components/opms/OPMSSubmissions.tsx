@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Eye, Trash2, FileText, CalendarRange } from 'lucide-react';
+import { Plus, Download, Eye, FileText, CalendarRange } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
@@ -18,10 +18,8 @@ import {
   assessOpmsSubmissionAttachment,
   createIpmsSubmission,
   createOpmsSubmission,
-  deleteIpmsSubmissionAttachment,
-  deleteIpmsSubmission,
-  deleteOpmsSubmissionAttachment,
-  deleteOpmsSubmission,
+  withdrawIpmsSubmission,
+  withdrawOpmsSubmission,
   extendIpmsSubmissionDueDate,
   extendOpmsSubmissionDueDate,
   getIpmsSubmissionAttachments,
@@ -125,24 +123,6 @@ export function OPMSSubmissionsList() {
   const actions = (row: OPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
       <button onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void (async () => {
-            const result = await deleteOpmsSubmission(row.id);
-            if (result.success) {
-              setOpmsSubmissions(prev => prev.filter(item => item.id !== row.id));
-              if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
-              pushToast('success', 'Submission deleted');
-            } else {
-              pushToast('error', result.message ?? 'Failed to delete submission');
-            }
-          })();
-        }}
-        className="p-1 rounded hover:bg-error-50"
-      >
-        <Trash2 className="w-3.5 h-3.5 text-error-500" />
-      </button>
     </div>
   );
 
@@ -233,15 +213,19 @@ export function OPMSSubmissionsList() {
           titlePrefix="Workflow / Verification"
           onBack={() => setSelectedSubmission(null)}
           onSave={(updated) => { void persistSubmission(updated as OPMSSubmission); }}
-          onDelete={() => {
+          onWithdraw={(reason) => {
             void (async () => {
-              const result = await deleteOpmsSubmission(selectedSubmission.id);
-              if (result.success) {
-                setOpmsSubmissions(prev => prev.filter(item => item.id !== selectedSubmission.id));
-                setSelectedSubmission(null);
-                pushToast('success', 'Submission deleted');
+              if (!selectedSubmission.rowVersion) {
+                pushToast('error', 'Refresh the submission before withdrawing it.');
+                return;
+              }
+              const result = await withdrawOpmsSubmission(selectedSubmission.id, { reason, rowVersion: selectedSubmission.rowVersion });
+              if (result.success && result.data) {
+                setOpmsSubmissions(prev => prev.map(item => item.id === result.data!.id ? result.data! : item));
+                setSelectedSubmission(result.data);
+                pushToast('success', 'Submission withdrawn');
               } else {
-                pushToast('error', result.message ?? 'Failed to delete submission');
+                pushToast('error', result.message ?? 'Failed to withdraw submission');
               }
             })();
           }}
@@ -259,19 +243,6 @@ export function OPMSSubmissionsList() {
                 setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
                 setSelectedSubmission(updated);
                 pushToast('success', `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} uploaded`);
-              }
-            })();
-          }}
-          onDeleteAttachment={(attachmentId) => {
-            void (async () => {
-              const result = await deleteOpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
-              if (result.success) {
-                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.filter(item => item.id !== attachmentId) };
-                setOpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
-                setSelectedSubmission(updated);
-                pushToast('success', 'Attachment deleted');
-              } else {
-                pushToast('error', result.message ?? 'Failed to delete attachment');
               }
             })();
           }}
@@ -472,24 +443,6 @@ export function IPMSSubmissionsList() {
   const actions = (row: IPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
       <button onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void (async () => {
-            const result = await deleteIpmsSubmission(row.id);
-            if (result.success) {
-              setIpmsSubmissions(prev => prev.filter(item => item.id !== row.id));
-              if (selectedSubmission?.id === row.id) setSelectedSubmission(null);
-              pushToast('success', 'Submission deleted');
-            } else {
-              pushToast('error', result.message ?? 'Failed to delete submission');
-            }
-          })();
-        }}
-        className="p-1 rounded hover:bg-error-50"
-      >
-        <Trash2 className="w-3.5 h-3.5 text-error-500" />
-      </button>
     </div>
   );
 
@@ -580,15 +533,19 @@ export function IPMSSubmissionsList() {
           titlePrefix="Workflow / Verification"
           onBack={() => setSelectedSubmission(null)}
           onSave={(updated) => { void persistSubmission(updated as IPMSSubmission); }}
-          onDelete={() => {
+          onWithdraw={(reason) => {
             void (async () => {
-              const result = await deleteIpmsSubmission(selectedSubmission.id);
-              if (result.success) {
-                setIpmsSubmissions(prev => prev.filter(item => item.id !== selectedSubmission.id));
-                setSelectedSubmission(null);
-                pushToast('success', 'Submission deleted');
+              if (!selectedSubmission.rowVersion) {
+                pushToast('error', 'Refresh the submission before withdrawing it.');
+                return;
+              }
+              const result = await withdrawIpmsSubmission(selectedSubmission.id, { reason, rowVersion: selectedSubmission.rowVersion });
+              if (result.success && result.data) {
+                setIpmsSubmissions(prev => prev.map(item => item.id === result.data!.id ? result.data! : item));
+                setSelectedSubmission(result.data);
+                pushToast('success', 'Submission withdrawn');
               } else {
-                pushToast('error', result.message ?? 'Failed to delete submission');
+                pushToast('error', result.message ?? 'Failed to withdraw submission');
               }
             })();
           }}
@@ -606,19 +563,6 @@ export function IPMSSubmissionsList() {
                 setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
                 setSelectedSubmission(updated);
                 pushToast('success', `${uploaded.length} file${uploaded.length === 1 ? '' : 's'} uploaded`);
-              }
-            })();
-          }}
-          onDeleteAttachment={(attachmentId) => {
-            void (async () => {
-              const result = await deleteIpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
-              if (result.success) {
-                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.filter(item => item.id !== attachmentId) };
-                setIpmsSubmissions(prev => prev.map(item => item.id === updated.id ? updated : item));
-                setSelectedSubmission(updated);
-                pushToast('success', 'Attachment deleted');
-              } else {
-                pushToast('error', result.message ?? 'Failed to delete attachment');
               }
             })();
           }}

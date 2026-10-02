@@ -30,6 +30,7 @@ import type {
 import { PerformanceRfiWorkspace } from '../workflow/PerformanceRfiWorkspace';
 import { StageRatingHistory } from '../workflow/StageRatingHistory';
 import { useSecurity } from '../../context/SecurityContext';
+import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 
 type SubmissionRecord = OPMSSubmission | IPMSSubmission;
 type WorkspaceMode = 'review' | 'list';
@@ -42,10 +43,9 @@ interface SubmissionWorkspaceProps {
   onBack?: () => void;
   mode?: WorkspaceMode;
   onSave?: (submission: SubmissionRecord) => void;
-  onDelete?: () => void;
+  onWithdraw?: (reason: string) => void;
   onAttachmentsChange?: (attachments: Attachment[]) => void;
   onUploadAttachments?: (files: File[]) => void;
-  onDeleteAttachment?: (attachmentId: string) => void;
   onRescanAttachment?: (attachmentId: string) => void;
   onAssessAttachment?: (attachmentId: string, outcome: 1 | 2 | 3, comment?: string) => void;
   onReplaceAttachment?: (attachmentId: string, replacementPublicId: string, reason: string, supersededRowVersion: string, replacementRowVersion: string) => void;
@@ -313,10 +313,9 @@ export function SubmissionWorkspace({
   onBack,
   mode = 'review',
   onSave,
-  onDelete,
+  onWithdraw,
   onAttachmentsChange,
   onUploadAttachments,
-  onDeleteAttachment,
   onRescanAttachment,
   onAssessAttachment,
   onReplaceAttachment,
@@ -335,6 +334,7 @@ export function SubmissionWorkspace({
   const [workflowScore, setWorkflowScore] = useState('');
   const [extendedDueDate, setExtendedDueDate] = useState('');
   const [extensionReason, setExtensionReason] = useState('');
+  const [showWithdrawal, setShowWithdrawal] = useState(false);
   useEffect(() => {
     setDraftSubmission(submission);
     setIsEditing(false);
@@ -447,11 +447,11 @@ export function SubmissionWorkspace({
           {subtitle && <p className="mt-1 text-sm text-secondary-500">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">
-          {!isEditing ? (
+          {!isEditing && !currentSubmission.isDisabled ? (
             <Button variant="outline" size="sm" icon={<Edit2 className="w-4 h-4" />} onClick={() => setIsEditing(true)}>
               Edit
             </Button>
-          ) : (
+          ) : isEditing ? (
             <>
               <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
                 Cancel
@@ -460,10 +460,10 @@ export function SubmissionWorkspace({
                 Save
               </Button>
             </>
-          )}
-          {onDelete && (
-            <Button variant="error" size="sm" onClick={onDelete}>
-              Delete
+          ) : null}
+          {onWithdraw && !currentSubmission.isDisabled && (
+            <Button variant="error" size="sm" onClick={() => setShowWithdrawal(true)}>
+              Withdraw
             </Button>
           )}
           {onBack && (
@@ -492,6 +492,7 @@ export function SubmissionWorkspace({
                 <Badge variant={getStatusBadgeVariant(currentSubmission.status)}>{statusLabels[currentSubmission.status]}</Badge>
                 <Badge variant="primary">{currentSubmission.quarter}</Badge>
                 <Badge variant="default">{submissionType} Submission</Badge>
+                {currentSubmission.isDisabled ? <Badge variant="error">Withdrawn</Badge> : null}
               </div>
             </div>
           </div>
@@ -522,6 +523,15 @@ export function SubmissionWorkspace({
 
         <WorkflowRail status={currentSubmission.status} />
       </Card>
+      <GovernedWithdrawalDialog
+        isOpen={showWithdrawal}
+        recordLabel={`${submissionType} submission`}
+        onClose={() => setShowWithdrawal(false)}
+        onConfirm={(reason) => {
+          onWithdraw?.(reason);
+          setShowWithdrawal(false);
+        }}
+      />
 
       <div className="flex items-center justify-between gap-2 rounded-xl border border-secondary-200 bg-white px-3 py-2 dark:border-secondary-700 dark:bg-secondary-900">
         <Button variant="ghost" size="sm" icon={<ChevronLeft className="h-4 w-4" />} onClick={onBack}>
@@ -597,19 +607,13 @@ export function SubmissionWorkspace({
           <FileUpload
             existingFiles={uploadedFileItems}
             maxFiles={undefined}
+            disabled={currentSubmission.isDisabled}
             onUpload={(files) => {
               if (onUploadAttachments) {
                 onUploadAttachments(files);
                 return;
               }
               syncAttachments([...attachments, ...files.map(buildAttachment)]);
-            }}
-            onRemove={(fileId) => {
-              if (onDeleteAttachment) {
-                onDeleteAttachment(fileId);
-                return;
-              }
-              syncAttachments(attachments.filter(attachment => attachment.id !== fileId));
             }}
             onRescan={onRescanAttachment}
             onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? onAssessAttachment : undefined}
@@ -688,7 +692,7 @@ export function SubmissionWorkspace({
         </Section>
       )}
 
-      {(onWorkflowAction || onExtendDueDate) && (
+      {!currentSubmission.isDisabled && (onWorkflowAction || onExtendDueDate) && (
         <Section title="Workflow Actions" icon={<Check className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
             <Field

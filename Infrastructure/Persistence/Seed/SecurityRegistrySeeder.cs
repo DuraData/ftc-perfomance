@@ -46,7 +46,9 @@ public static class SecurityRegistrySeeder
         var actions = new[]
         {
             Action("OPMS_KPI.ACTIVATE", "Activate KPI", "OPMS_KPI"), Action("OPMS_KPI.WITHDRAW", "Withdraw KPI", "OPMS_KPI"), Action("OPMS_KPI.REVISE", "Revise KPI", "OPMS_KPI"),
+            Action("IPMS_KPI.WITHDRAW", "Withdraw KPI", "IPMS_KPI"),
             Action("OPMS_SUBMISSION.SAVE", "Save Submission", "OPMS_SUBMISSION"), Action("OPMS_SUBMISSION.SUBMIT", "Submit", "OPMS_SUBMISSION"),
+            Action("OPMS_SUBMISSION.WITHDRAW", "Withdraw Submission", "OPMS_SUBMISSION"),
             Action("OPMS_SUBMISSION.VERIFY", "Verify", "OPMS_SUBMISSION"), Action("OPMS_SUBMISSION.VERIFY_REJECT", "Reject Verification", "OPMS_SUBMISSION"),
             Action("OPMS_SUBMISSION.APPROVE", "Approve", "OPMS_SUBMISSION"), Action("OPMS_SUBMISSION.REJECT", "Reject Approval", "OPMS_SUBMISSION"),
             Action("OPMS_SUBMISSION.EXTEND_DUE_DATE", "Extend Due Date", "OPMS_SUBMISSION"),
@@ -55,7 +57,7 @@ public static class SecurityRegistrySeeder
             Action("OPMS_POE.UPLOAD", "Upload Evidence", "OPMS_POE"), Action("OPMS_POE.REPLACE", "Replace Evidence", "OPMS_POE"), Action("OPMS_POE.ASSESS", "Assess Evidence", "OPMS_POE"), Action("OPMS_POE.PLACE_HOLD", "Place Evidence Legal Hold", "OPMS_POE"), Action("OPMS_POE.RELEASE_HOLD", "Release Evidence Legal Hold", "OPMS_POE"), Action("OPMS_POE.DISPOSE", "Dispose Retained Evidence", "OPMS_POE"),
             Action("OPMS_REPORT.GENERATE", "Generate Report", "OPMS_REPORT"), Action("OPMS_REPORT.EXPORT", "Export Report", "OPMS_REPORT"),
             Action("IPMS_REPORT.GENERATE", "Generate Report", "IPMS_REPORT"), Action("IPMS_REPORT.EXPORT", "Export Report", "IPMS_REPORT"),
-            Action("IPMS_SUBMISSION.SUBMIT", "Submit", "IPMS_SUBMISSION"), Action("IPMS_SUBMISSION.VERIFY", "Verify", "IPMS_SUBMISSION"),
+            Action("IPMS_SUBMISSION.SUBMIT", "Submit", "IPMS_SUBMISSION"), Action("IPMS_SUBMISSION.WITHDRAW", "Withdraw Submission", "IPMS_SUBMISSION"), Action("IPMS_SUBMISSION.VERIFY", "Verify", "IPMS_SUBMISSION"),
             Action("IPMS_SUBMISSION.VERIFY_REJECT", "Reject Verification", "IPMS_SUBMISSION"), Action("IPMS_SUBMISSION.APPROVE", "Approve", "IPMS_SUBMISSION"),
             Action("IPMS_SUBMISSION.REJECT", "Reject Approval", "IPMS_SUBMISSION"), Action("IPMS_SUBMISSION.EXTEND_DUE_DATE", "Extend Due Date", "IPMS_SUBMISSION"),
             Action("IPMS_WORKFLOW.PMS_REVIEW", "PMS Review", "IPMS_WORKFLOW"), Action("IPMS_WORKFLOW.INTERNAL_AUDIT", "Internal Audit Assess", "IPMS_WORKFLOW"),
@@ -208,9 +210,9 @@ public static class SecurityRegistrySeeder
         var mappings = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE"],
-            ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.DELETE"],
+            ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
             ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.VOTE_NUMBERS", "VOTE_NUMBER.READ"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
-            ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.DELETE"],
+            ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
             ["Workflow.Submit.View"] = ["NAV.SDBIP.CAPTURE", "NAV.WORKFLOW.MY_QUEUE"], ["Workflow.Verify.View"] = ["NAV.WORKFLOW.VERIFY"], ["Workflow.Review.View"] = ["NAV.WORKFLOW.REVIEW"], ["Workflow.Approve.View"] = ["NAV.WORKFLOW.APPROVE"], ["Workflow.Audit.View"] = ["NAV.WORKFLOW.AUDIT"],
             ["OPMS.Submissions.Submit"] = ["OPMS_SUBMISSION.SUBMIT"], ["OPMS.Submissions.Verify"] = ["OPMS_SUBMISSION.VERIFY"], ["OPMS.Submissions.VerifyReject"] = ["OPMS_SUBMISSION.VERIFY_REJECT"],
             ["OPMS.Submissions.Approve"] = ["OPMS_SUBMISSION.APPROVE"], ["OPMS.Submissions.Reject"] = ["OPMS_SUBMISSION.REJECT"], ["OPMS.Submissions.Review"] = ["OPMS_WORKFLOW.PMS_REVIEW"],
@@ -220,9 +222,9 @@ public static class SecurityRegistrySeeder
             ["Actuals.Edit"] = ["OPMS_SUBMISSION.ActualPerformance.UPDATE"], ["Actuals.Submit"] = ["OPMS_SUBMISSION.ActualPerformance.UPDATE"],
             ["Departments.View"] = ["DEPARTMENT.READ", "NAV.ORGANISATION.DEPARTMENTS"], ["Departments.Manage"] = ["DEPARTMENT.CREATE", "DEPARTMENT.UPDATE"],
             ["Units.View"] = ["UNIT.READ", "NAV.ORGANISATION.UNITS", "POSITION.READ", "NAV.ORGANISATION.POSITIONS"], ["Units.Manage"] = ["UNIT.CREATE", "UNIT.UPDATE", "POSITION.CREATE", "POSITION.UPDATE"],
-            ["IPMS.Targets.View"] = ["IPMS_KPI.READ"], ["IPMS.Targets.Create"] = ["IPMS_KPI.CREATE"], ["IPMS.Targets.Edit"] = ["IPMS_KPI.UPDATE"],
+            ["IPMS.Targets.View"] = ["IPMS_KPI.READ"], ["IPMS.Targets.Create"] = ["IPMS_KPI.CREATE"], ["IPMS.Targets.Edit"] = ["IPMS_KPI.UPDATE"], ["IPMS.Targets.Delete"] = ["IPMS_KPI.WITHDRAW"],
             ["IPMS.View"] = ["NAV.IPMS.DASHBOARD", "NAV.IPMS.REGISTER"], ["IPMS.Library.View"] = ["NAV.IPMS.LIBRARY"],
-            ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE"],
+            ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE"], ["IPMS.Submissions.Delete"] = ["IPMS_SUBMISSION.WITHDRAW"],
             ["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW"], ["IDP.Plan.View"] = ["NAV.IDP.PLANS"], ["IDP.Hierarchy.Manage"] = ["NAV.IDP.HIERARCHY"], ["IDP.Participation.View"] = ["NAV.IDP.PARTICIPATION"], ["IDP.Alignment.View"] = ["NAV.IDP.ALIGNMENT"], ["IDP.Reports.Generate"] = ["NAV.IDP.REPORTS"], ["IDP.Risk.Manage"] = ["NAV.RISK.DASHBOARD", "NAV.RISK.REGISTER", "NAV.RISK.ASSESSMENTS", "NAV.RISK.TREATMENTS", "NAV.RISK.REPORTS"],
             ["IPMS.Submissions.Submit"] = ["IPMS_SUBMISSION.SUBMIT"], ["IPMS.Submissions.Verify"] = ["IPMS_SUBMISSION.VERIFY"], ["IPMS.Submissions.VerifyReject"] = ["IPMS_SUBMISSION.VERIFY_REJECT"],
             ["IPMS.Submissions.Approve"] = ["IPMS_SUBMISSION.APPROVE"], ["IPMS.Submissions.Reject"] = ["IPMS_SUBMISSION.REJECT"], ["IPMS.Submissions.Review"] = ["IPMS_WORKFLOW.PMS_REVIEW"],

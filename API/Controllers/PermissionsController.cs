@@ -97,17 +97,11 @@ public class PermissionsController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<ActionResult<ApiResponse<bool>>> DeletePermission(int id)
     {
-        var entity = await _context.Permissions.FirstOrDefaultAsync(p => p.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<bool>(false, false, "Permission not found"));
+        var exists = await _context.Permissions.AnyAsync(p => p.Id == id);
+        if (!exists) return NotFound(new ApiResponse<bool>(false, false, "Permission not found"));
 
-        var roleLinks = await _context.RolePermissions.Where(rp => rp.PermissionId == id).ToListAsync();
-        var userLinks = await _context.UserPermissionOverrides.Where(up => up.PermissionId == id).ToListAsync();
-        _context.RolePermissions.RemoveRange(roleLinks);
-        _context.UserPermissionOverrides.RemoveRange(userLinks);
-        _context.Permissions.Remove(entity);
-
-        await _context.SaveChangesAsync();
-        return Ok(new ApiResponse<bool>(true, true));
+        return StatusCode(
+            StatusCodes.Status410Gone,
+            new ApiResponse<bool>(false, false, "Permission registry entries are retained for auditability. Deactivate the permission instead."));
     }
 }
-

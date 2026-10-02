@@ -21,9 +21,8 @@ import {
   placeIpmsEvidenceLegalHold,
   releaseIpmsEvidenceLegalHold,
   requestIpmsEvidenceDisposal,
-  deleteIpmsSubmissionAttachment,
   getAuditTrails,
-  deleteIpmsSubmission as deleteIpmsSubmissionApi,
+  withdrawIpmsSubmission as withdrawIpmsSubmissionApi,
   getIpmsSubmissionAttachments,
   getIpmsSubmissions as getIpmsSubmissionsApi,
   getIpmsTarget as getIpmsTargetApi,
@@ -241,7 +240,7 @@ function SubmissionsTab({
 }: {
   submissions: IPMSSubmission[];
   onUpdateSubmission: (submission: IPMSSubmission) => void;
-  onDeleteSubmission: (submissionId: string) => void;
+  onDeleteSubmission: (submissionId: string, reason: string) => void;
 }) {
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
 
@@ -276,8 +275,8 @@ function SubmissionsTab({
             onUpdateSubmission(updated as IPMSSubmission);
             setSelectedSubmission(updated as IPMSSubmission);
           }}
-          onDelete={() => {
-            onDeleteSubmission(selectedSubmission.id);
+          onWithdraw={(reason) => {
+            onDeleteSubmission(selectedSubmission.id, reason);
             setSelectedSubmission(null);
           }}
           onAttachmentsChange={(attachments) => {
@@ -291,16 +290,6 @@ function SubmissionsTab({
               const uploaded = results.filter(result => result.success && result.data).map(result => result.data!);
               if (uploaded.length > 0) {
                 const updated = { ...selectedSubmission, attachments: [...selectedSubmission.attachments, ...uploaded] };
-                onUpdateSubmission(updated);
-                setSelectedSubmission(updated);
-              }
-            })();
-          }}
-          onDeleteAttachment={(attachmentId) => {
-            void (async () => {
-              const result = await deleteIpmsSubmissionAttachment(selectedSubmission.id, attachmentId);
-              if (result.success) {
-                const updated = { ...selectedSubmission, attachments: selectedSubmission.attachments.filter(item => item.id !== attachmentId) };
                 onUpdateSubmission(updated);
                 setSelectedSubmission(updated);
               }
@@ -528,11 +517,13 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
               }
             })();
           }}
-          onDeleteSubmission={(submissionId) => {
+          onDeleteSubmission={(submissionId, reason) => {
             void (async () => {
-              const result = await deleteIpmsSubmissionApi(submissionId);
-              if (result.success) {
-                setIpmsSubmissions(prev => prev.filter(item => item.id !== submissionId));
+              const submission = ipmsSubmissions.find(item => item.id === submissionId);
+              if (!submission?.rowVersion) return;
+              const result = await withdrawIpmsSubmissionApi(submissionId, { reason, rowVersion: submission.rowVersion });
+              if (result.success && result.data) {
+                setIpmsSubmissions(prev => prev.map(item => item.id === submissionId ? result.data! : item));
               }
             })();
           }}

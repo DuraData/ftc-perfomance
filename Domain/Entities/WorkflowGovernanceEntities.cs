@@ -80,6 +80,8 @@ public class OpmsTarget
     public bool IsRevised { get; set; }
     public bool IsWithdrawn { get; set; }
     public string? ReasonForWithdrawal { get; set; }
+    public DateTime? WithdrawnAt { get; set; }
+    public string? WithdrawnByUserId { get; set; }
     public string TargetUnitType { get; set; } = "absolute_count";
     public decimal? Q1Target { get; set; }
     public string? Q1Description { get; set; }
@@ -194,6 +196,8 @@ public class IpmsTarget
     public bool IsRevised { get; set; }
     public bool IsWithdrawn { get; set; }
     public string? ReasonForWithdrawal { get; set; }
+    public DateTime? WithdrawnAt { get; set; }
+    public string? WithdrawnByUserId { get; set; }
     public string TargetUnitType { get; set; } = "absolute_count";
     public decimal? Q1Target { get; set; }
     public string? Q1Description { get; set; }
@@ -288,6 +292,9 @@ public class OpmsSubmission
     public int? DueDateExtendedDays { get; set; }
     public string? PoeType { get; set; }
     public bool IsDisabled { get; set; }
+    public string? WithdrawalReason { get; set; }
+    public DateTime? WithdrawnAt { get; set; }
+    public string? WithdrawnByUserId { get; set; }
     public string? CreatedBy { get; set; }
     public DateTime CreatedOn { get; set; } = DateTime.UtcNow;
     public string? UpdatedBy { get; set; }
@@ -366,6 +373,9 @@ public class IpmsSubmission
     public int? DueDateExtendedDays { get; set; }
     public string? PoeType { get; set; }
     public bool IsDisabled { get; set; }
+    public string? WithdrawalReason { get; set; }
+    public DateTime? WithdrawnAt { get; set; }
+    public string? WithdrawnByUserId { get; set; }
     public string? CreatedBy { get; set; }
     public DateTime CreatedOn { get; set; } = DateTime.UtcNow;
     public string? UpdatedBy { get; set; }
@@ -385,6 +395,28 @@ public class IpmsSubmission
     public ICollection<PoeFile> PoeFiles { get; set; } = new List<PoeFile>();
     public ICollection<ReviewComment> ReviewComments { get; set; } = new List<ReviewComment>();
     public ICollection<SubmissionScore> Scores { get; set; } = new List<SubmissionScore>();
+}
+
+public enum GovernedLifecycleAction
+{
+    Withdrawn = 1
+}
+
+public class GovernedRecordLifecycleEvent
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public string AggregateType { get; set; } = string.Empty;
+    public string AggregateId { get; set; } = string.Empty;
+    public GovernedLifecycleAction Action { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string ActorUserId { get; set; } = string.Empty;
+    public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public ApplicationUser ActorUser { get; set; } = null!;
 }
 
 public class PoeFile

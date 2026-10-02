@@ -229,6 +229,9 @@ public record OpmsTargetResponse(
     DateTime CreatedAt)
 {
     public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public DateTime? WithdrawnAt { get; init; }
+    public string? WithdrawnByUserId { get; init; }
 }
 
 public record IpmsTargetResponse(
@@ -288,6 +291,11 @@ public record IpmsTargetResponse(
     DateTime CreatedAt)
 {
     public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public bool IsWithdrawn { get; init; }
+    public string? ReasonForWithdrawal { get; init; }
+    public DateTime? WithdrawnAt { get; init; }
+    public string? WithdrawnByUserId { get; init; }
 }
 
 public record OpmsSubmissionResponse(
@@ -357,6 +365,10 @@ public record OpmsSubmissionResponse(
     public string? ActualPerformance { get; init; }
     public decimal? AchievementPercent { get; init; }
     public bool? TargetAchieved { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public string? WithdrawalReason { get; init; }
+    public DateTime? WithdrawnAt { get; init; }
+    public string? WithdrawnByUserId { get; init; }
 }
 
 public record IpmsSubmissionResponse(
@@ -426,6 +438,10 @@ public record IpmsSubmissionResponse(
     public string? ActualPerformance { get; init; }
     public decimal? AchievementPercent { get; init; }
     public bool? TargetAchieved { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+    public string? WithdrawalReason { get; init; }
+    public DateTime? WithdrawnAt { get; init; }
+    public string? WithdrawnByUserId { get; init; }
 }
 
 public record NotificationResponse(

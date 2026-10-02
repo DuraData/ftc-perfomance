@@ -47,6 +47,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<IpmsTargetTemplateVersion> IpmsTargetTemplateVersions { get; set; } = null!;
     public DbSet<OpmsSubmission> OpmsSubmissions { get; set; } = null!;
     public DbSet<IpmsSubmission> IpmsSubmissions { get; set; } = null!;
+    public DbSet<GovernedRecordLifecycleEvent> GovernedRecordLifecycleEvents { get; set; } = null!;
     public DbSet<EvidenceBlob> EvidenceBlobs { get; set; } = null!;
     public DbSet<PoeFile> PoeFiles { get; set; } = null!;
     public DbSet<PoeEvidenceAssessment> PoeEvidenceAssessments { get; set; } = null!;
@@ -433,6 +434,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<OpmsTarget>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsTarget>().Property(item => item.ReasonForWithdrawal).HasMaxLength(1000);
+        builder.Entity<OpmsTarget>().ToTable(table => table.HasCheckConstraint(
+            "CK_OpmsTargets_WithdrawalMetadata",
+            "[IsWithdrawn] = 0 OR ([ReasonForWithdrawal] IS NOT NULL AND [WithdrawnAt] IS NOT NULL)"));
         ConfigureRowVersion(builder.Entity<OpmsTarget>().Property(item => item.RowVersion));
         builder.Entity<OpmsTarget>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetWard>().HasIndex(item => item.PublicId).IsUnique();
@@ -451,6 +456,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.Target).WithMany(item => item.VoteNumbers).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.VoteNumber).WithMany().HasForeignKey(item => item.VoteNumberId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsTarget>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<IpmsTarget>().Property(item => item.ReasonForWithdrawal).HasMaxLength(1000);
+        builder.Entity<IpmsTarget>().ToTable(table => table.HasCheckConstraint(
+            "CK_IpmsTargets_WithdrawalMetadata",
+            "[IsWithdrawn] = 0 OR ([ReasonForWithdrawal] IS NOT NULL AND [WithdrawnAt] IS NOT NULL)"));
         ConfigureRowVersion(builder.Entity<IpmsTarget>().Property(item => item.RowVersion));
         builder.Entity<IpmsTarget>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
 
@@ -655,6 +664,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasPrecision(18, 2);
 
         builder.Entity<OpmsSubmission>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsSubmission>().Property(item => item.WithdrawalReason).HasMaxLength(1000);
+        builder.Entity<OpmsSubmission>().ToTable(table => table.HasCheckConstraint(
+            "CK_OpmsSubmissions_WithdrawalMetadata",
+            "[IsDisabled] = 0 OR ([WithdrawalReason] IS NOT NULL AND [WithdrawnAt] IS NOT NULL)"));
         ConfigureRowVersion(builder.Entity<OpmsSubmission>().Property(item => item.RowVersion));
         builder.Entity<OpmsSubmission>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsSubmission>().Property(item => item.ActualPerformance).HasMaxLength(1024);
@@ -662,12 +675,26 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<OpmsSubmission>().HasIndex(item => new { item.OpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[ReportingPeriodId] IS NOT NULL");
         builder.Entity<OpmsSubmission>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsSubmission>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<IpmsSubmission>().Property(item => item.WithdrawalReason).HasMaxLength(1000);
+        builder.Entity<IpmsSubmission>().ToTable(table => table.HasCheckConstraint(
+            "CK_IpmsSubmissions_WithdrawalMetadata",
+            "[IsDisabled] = 0 OR ([WithdrawalReason] IS NOT NULL AND [WithdrawnAt] IS NOT NULL)"));
         ConfigureRowVersion(builder.Entity<IpmsSubmission>().Property(item => item.RowVersion));
         builder.Entity<IpmsSubmission>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsSubmission>().Property(item => item.ActualPerformance).HasMaxLength(1024);
         builder.Entity<IpmsSubmission>().Property(item => item.AchievementPercent).HasPrecision(18, 4);
         builder.Entity<IpmsSubmission>().HasIndex(item => new { item.IpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[ReportingPeriodId] IS NOT NULL");
         builder.Entity<IpmsSubmission>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<GovernedRecordLifecycleEvent>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<GovernedRecordLifecycleEvent>().HasIndex(item => new { item.MunicipalityId, item.AggregateType, item.AggregateId, item.OccurredAt });
+        builder.Entity<GovernedRecordLifecycleEvent>().Property(item => item.AggregateType).HasMaxLength(80);
+        builder.Entity<GovernedRecordLifecycleEvent>().Property(item => item.AggregateId).HasMaxLength(128);
+        builder.Entity<GovernedRecordLifecycleEvent>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<GovernedRecordLifecycleEvent>().Property(item => item.CorrelationId).HasMaxLength(100);
+        builder.Entity<GovernedRecordLifecycleEvent>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<GovernedRecordLifecycleEvent>().HasOne(item => item.ActorUser).WithMany().HasForeignKey(item => item.ActorUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<GovernedRecordLifecycleEvent>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<OpmsSubmission>()
             .HasOne(submission => submission.OpmsTarget)
@@ -1461,7 +1488,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
-            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch)
+            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1501,5 +1528,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             throw new InvalidOperationException("Audit history is append-only.");
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
+        if (ChangeTracker.Entries<GovernedRecordLifecycleEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Governed record lifecycle history is append-only.");
     }
 }

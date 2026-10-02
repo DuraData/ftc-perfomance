@@ -339,6 +339,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     ...baseTarget,
     id: dto.id,
     publicId: dto.publicId,
+    rowVersion: dto.rowVersion,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     period: mockPeriods.find(p => p.id === (dto.periodId?.toString() ?? '')) ?? baseTarget.period,
@@ -377,6 +378,8 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     isRevised: dto.isRevised,
     isWithdrawn: dto.isWithdrawn,
     reasonForWithdrawal: dto.reasonForWithdrawal ?? '',
+    withdrawnAt: dto.withdrawnAt ?? undefined,
+    withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
     targetUnitType: dto.targetUnitType as TargetUnitType,
     q1Target: dto.q1Target ?? 0,
     q1Description: dto.q1Description ?? '',
@@ -407,6 +410,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     ...baseTarget,
     id: dto.id,
     publicId: dto.publicId,
+    rowVersion: dto.rowVersion,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     relatedOPMSTarget: dto.relatedOpmsTargetId ? mockOPMSTargets.find(target => target.id === dto.relatedOpmsTargetId) : undefined,
@@ -435,6 +439,10 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     idpReference: dto.idpReference ?? '',
     internalReference: dto.internalReference ?? '',
     isRevised: dto.isRevised,
+    isWithdrawn: dto.isWithdrawn,
+    reasonForWithdrawal: dto.reasonForWithdrawal ?? '',
+    withdrawnAt: dto.withdrawnAt ?? undefined,
+    withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
     targetUnitType: dto.targetUnitType as TargetUnitType,
     q1Target: dto.q1Target ?? 0,
     q1Description: dto.q1Description ?? '',
@@ -465,6 +473,7 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
   return {
     ...baseSubmission,
     id: dto.id,
+    rowVersion: dto.rowVersion,
     target,
     quarter: coerceQuarter(dto.quarter),
     dueDate: dto.dueDate ?? new Date().toISOString(),
@@ -518,6 +527,9 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     dueDateExtendedDays: dto.dueDateExtendedDays ?? undefined,
     poeType: dto.poeType ?? undefined,
     isDisabled: dto.isDisabled ?? undefined,
+    withdrawalReason: dto.withdrawalReason ?? undefined,
+    withdrawnAt: dto.withdrawnAt ?? undefined,
+    withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
     createdBy: dto.createdBy ?? undefined,
     createdOn: dto.createdOn ?? undefined,
     updatedBy: dto.updatedBy ?? undefined,
@@ -532,6 +544,7 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
   return {
     ...baseSubmission,
     id: dto.id,
+    rowVersion: dto.rowVersion,
     target,
     quarter: coerceQuarter(dto.quarter),
     dueDate: dto.dueDate ?? new Date().toISOString(),
@@ -585,6 +598,9 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     dueDateExtendedDays: dto.dueDateExtendedDays ?? undefined,
     poeType: dto.poeType ?? undefined,
     isDisabled: dto.isDisabled ?? undefined,
+    withdrawalReason: dto.withdrawalReason ?? undefined,
+    withdrawnAt: dto.withdrawnAt ?? undefined,
+    withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
     createdBy: dto.createdBy ?? undefined,
     createdOn: dto.createdOn ?? undefined,
     updatedBy: dto.updatedBy ?? undefined,
@@ -1328,8 +1344,9 @@ export async function updateOpmsTarget(id: string, payload: SaveOpmsTargetPayloa
   return mapResponse(response, toOpmsTargetModel);
 }
 
-export async function deleteOpmsTarget(id: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/opms-targets/${id}`);
+export async function withdrawOpmsTarget(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<OPMSTarget>> {
+  const response = await post<OpmsTargetDto>(`/v1/opms-targets/${id}/withdraw`, payload);
+  return mapResponse(response, toOpmsTargetModel);
 }
 
 export async function getIpmsTargets(): Promise<ApiResponse<IPMSTarget[]>> {
@@ -1352,8 +1369,9 @@ export async function updateIpmsTarget(id: string, payload: SaveIpmsTargetPayloa
   return mapResponse(response, toIpmsTargetModel);
 }
 
-export async function deleteIpmsTarget(id: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/ipms-targets/${id}`);
+export async function withdrawIpmsTarget(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<IPMSTarget>> {
+  const response = await post<IpmsTargetDto>(`/v1/ipms-targets/${id}/withdraw`, payload);
+  return mapResponse(response, toIpmsTargetModel);
 }
 
 export async function getOpmsSubmissions(): Promise<ApiResponse<OPMSSubmission[]>> {
@@ -1384,8 +1402,10 @@ export async function updateOpmsSubmission(id: string, payload: SaveOpmsSubmissi
   return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
 }
 
-export async function deleteOpmsSubmission(id: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/opms-submissions/${id}`);
+export async function withdrawOpmsSubmission(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<OPMSSubmission>> {
+  const targetsResult = await getOpmsTargets();
+  const response = await post<OpmsSubmissionDto>(`/v1/opms-submissions/${id}/withdraw`, payload);
+  return mapResponse(response, item => toOpmsSubmissionModel(item, targetsResult.data ?? []));
 }
 
 export async function applyOpmsSubmissionWorkflowAction(
@@ -1448,10 +1468,6 @@ export async function requestOpmsEvidenceDisposal(id: string, attachmentId: stri
   return mapResponse(response, toAttachmentModel);
 }
 
-export async function deleteOpmsSubmissionAttachment(id: string, attachmentId: string) {
-  return del<boolean>(`/opms-submissions/${id}/attachments/${attachmentId}`);
-}
-
 export async function getIpmsSubmissions(): Promise<ApiResponse<IPMSSubmission[]>> {
   const targetsResult = await getIpmsTargets();
   const targets = targetsResult.data ?? [];
@@ -1480,8 +1496,10 @@ export async function updateIpmsSubmission(id: string, payload: SaveIpmsSubmissi
   return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
 }
 
-export async function deleteIpmsSubmission(id: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/ipms-submissions/${id}`);
+export async function withdrawIpmsSubmission(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<IPMSSubmission>> {
+  const targetsResult = await getIpmsTargets();
+  const response = await post<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}/withdraw`, payload);
+  return mapResponse(response, item => toIpmsSubmissionModel(item, targetsResult.data ?? []));
 }
 
 export async function applyIpmsSubmissionWorkflowAction(
@@ -1542,10 +1560,6 @@ export async function releaseIpmsEvidenceLegalHold(id: string, attachmentId: str
 export async function requestIpmsEvidenceDisposal(id: string, attachmentId: string, payload: { approvalReference: string; reason: string; rowVersion: string }) {
   const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
   return mapResponse(response, toAttachmentModel);
-}
-
-export async function deleteIpmsSubmissionAttachment(id: string, attachmentId: string) {
-  return del<boolean>(`/ipms-submissions/${id}/attachments/${attachmentId}`);
 }
 
 export async function getNotifications(includeAll = false): Promise<ApiResponse<NotificationDto[]>> {
