@@ -174,9 +174,9 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     public async Task<ActionResult<ApiResponse<EmployeeAssignmentDto[]>>> GetAssignments(Guid employeePublicId)
     {
         if (!HasTenant()) return TenantRequired<EmployeeAssignmentDto[]>();
-        var rows = await context.EmployeeAssignments.AsNoTracking().Include(x => x.MunicipalEmployee).Include(x => x.Department).Include(x => x.Unit)
+        var rows = await context.EmployeeAssignments.AsNoTracking().Include(x => x.MunicipalEmployee).Include(x => x.Department).Include(x => x.Unit).Include(x => x.Position)
             .Where(x => x.MunicipalEmployee.PublicId == employeePublicId).OrderByDescending(x => x.EffectiveFrom)
-            .Select(x => new EmployeeAssignmentDto(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit == null ? null : x.Unit.PublicId, x.Unit == null ? null : x.Unit.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
+            .Select(x => new EmployeeAssignmentDto(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit == null ? null : x.Unit.PublicId, x.Unit == null ? null : x.Unit.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Position == null ? null : x.Position.PublicId)).ToArrayAsync();
         return Ok(new ApiResponse<EmployeeAssignmentDto[]>(true, rows));
     }
 
@@ -190,9 +190,12 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         var employee = await context.MunicipalEmployees.SingleOrDefaultAsync(x => x.PublicId == request.EmployeePublicId);
         var department = await context.Departments.SingleOrDefaultAsync(x => x.PublicId == request.DepartmentPublicId);
         var unit = request.UnitPublicId.HasValue ? await context.Units.SingleOrDefaultAsync(x => x.PublicId == request.UnitPublicId.Value) : null;
+        var position = request.PositionPublicId.HasValue ? await context.Positions.SingleOrDefaultAsync(x => x.PublicId == request.PositionPublicId.Value && x.IsActive) : null;
         if (employee == null || department == null || (request.UnitPublicId.HasValue && unit == null) || (unit != null && unit.DepartmentId != department.Id)) return BadRequest(Fail<EmployeeAssignmentDto>("Employee, department, or unit is invalid for the selected municipality."));
+        if (request.PositionPublicId.HasValue && (position == null || position.DepartmentId != department.Id || position.UnitId != unit?.Id)) return BadRequest(Fail<EmployeeAssignmentDto>("Position is invalid for the selected department and unit."));
+        if (position == null && (string.IsNullOrWhiteSpace(request.PositionCode) || string.IsNullOrWhiteSpace(request.PositionName))) return BadRequest(Fail<EmployeeAssignmentDto>("Select a governed position."));
         if (await HasAssignmentOverlap(employee.Id, request.EffectiveFrom, request.EffectiveTo)) return Conflict(Fail<EmployeeAssignmentDto>("Employee assignment dates overlap an existing assignment."));
-        var entity = new EmployeeAssignment { MunicipalityId = tenantContext.MunicipalityId!.Value, MunicipalEmployeeId = employee.Id, MunicipalEmployee = employee, DepartmentId = department.Id, Department = department, UnitId = unit?.Id, Unit = unit, PositionCode = request.PositionCode.Trim().ToUpperInvariant(), PositionName = request.PositionName.Trim(), EffectiveFrom = request.EffectiveFrom, EffectiveTo = request.EffectiveTo, IsPrimary = request.IsPrimary };
+        var entity = new EmployeeAssignment { MunicipalityId = tenantContext.MunicipalityId!.Value, MunicipalEmployeeId = employee.Id, MunicipalEmployee = employee, DepartmentId = department.Id, Department = department, UnitId = unit?.Id, Unit = unit, PositionId = position?.Id, Position = position, PositionCode = position?.Code ?? request.PositionCode!.Trim().ToUpperInvariant(), PositionName = position?.Name ?? request.PositionName!.Trim(), EffectiveFrom = request.EffectiveFrom, EffectiveTo = request.EffectiveTo, IsPrimary = request.IsPrimary };
         context.EmployeeAssignments.Add(entity); await context.SaveChangesAsync(); await transaction.CommitAsync();
         return Ok(new ApiResponse<EmployeeAssignmentDto>(true, ToDto(entity)));
     }
@@ -204,7 +207,7 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         if (!HasTenant()) return TenantRequired<EmployeeAssignmentDto>();
         var reason = request.Reason.Trim();
         if (reason.Length is < 10 or > 1000) return BadRequest(Fail<EmployeeAssignmentDto>("A closure reason between 10 and 1000 characters is required."));
-        var entity = await context.EmployeeAssignments.Include(x => x.MunicipalEmployee).Include(x => x.Department).Include(x => x.Unit)
+        var entity = await context.EmployeeAssignments.Include(x => x.MunicipalEmployee).Include(x => x.Department).Include(x => x.Unit).Include(x => x.Position)
             .SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<EmployeeAssignmentDto>("Employee assignment not found."));
         if (!entity.IsActive) return Conflict(Fail<EmployeeAssignmentDto>("Employee assignment is already closed."));
@@ -247,7 +250,7 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     private static MunicipalityFinancialYearDto ToDto(MunicipalityFinancialYear x) => new(x.PublicId, x.FinancialYear.PublicId, x.FinancialYear.Code, x.FinancialYear.Name, x.IsCurrent, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static ReportingPeriodDto ToDto(ReportingPeriod x) => new(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.Code, x.Name, x.PeriodType, x.Sequence, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion));
     private static EmployeeDto ToDto(MunicipalEmployee x) => new(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, x.EmailAddress, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
-    private static EmployeeAssignmentDto ToDto(EmployeeAssignment x) => new(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion));
+    private static EmployeeAssignmentDto ToDto(EmployeeAssignment x) => new(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Position?.PublicId);
 }
 
 public sealed record FinancialYearDto(Guid PublicId, string Code, string Name, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
@@ -261,6 +264,6 @@ public sealed record UpdateReportingPeriodRequest(string Name, ReportingPeriodTy
 public sealed record EmployeeDto(Guid PublicId, string EmployeeNumber, string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SaveEmployeeRequest(string EmployeeNumber, string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, DateTime EffectiveFrom, DateTime? EffectiveTo);
 public sealed record UpdateEmployeeRequest(string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record EmployeeAssignmentDto(Guid PublicId, Guid EmployeePublicId, Guid DepartmentPublicId, string DepartmentName, Guid? UnitPublicId, string? UnitName, string PositionCode, string PositionName, DateTime EffectiveFrom, DateTime? EffectiveTo, bool IsPrimary, bool IsActive, string RowVersion);
-public sealed record SaveEmployeeAssignmentRequest(Guid EmployeePublicId, Guid DepartmentPublicId, Guid? UnitPublicId, string PositionCode, string PositionName, DateTime EffectiveFrom, DateTime? EffectiveTo, bool IsPrimary);
+public sealed record EmployeeAssignmentDto(Guid PublicId, Guid EmployeePublicId, Guid DepartmentPublicId, string DepartmentName, Guid? UnitPublicId, string? UnitName, string PositionCode, string PositionName, DateTime EffectiveFrom, DateTime? EffectiveTo, bool IsPrimary, bool IsActive, string RowVersion, Guid? PositionPublicId = null);
+public sealed record SaveEmployeeAssignmentRequest(Guid EmployeePublicId, Guid DepartmentPublicId, Guid? UnitPublicId, string? PositionCode, string? PositionName, DateTime EffectiveFrom, DateTime? EffectiveTo, bool IsPrimary, Guid? PositionPublicId = null);
 public sealed record CloseEmployeeAssignmentRequest(DateTime EffectiveTo, string Reason, string RowVersion);

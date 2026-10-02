@@ -7,7 +7,7 @@ import { OPMSSubmissionsList, IPMSSubmissionsList, VoteNumbersPage } from './com
 import { IPMSTargetList } from './components/ipms/IPMSTargetList';
 import { IPMSTargetDetail } from './components/ipms/IPMSTargetDetail';
 import { WorkflowQueues, MyWorkQueue } from './components/workflow/WorkflowQueues';
-import { DepartmentList, DepartmentUnitList, PositionList } from './components/hr/HRManagement';
+import { TenantOrganizationAdministration } from './components/admin/TenantOrganizationAdministration';
 import { LookupTables } from './components/admin/AdminManagement';
 import { AdminAuditLogsPage, AdminPermissionsPage, AdminRolesPage, AdminUsersPage } from './components/admin/SystemAdmin';
 import { RoleImplementationAuditPage } from './components/admin/RoleImplementationAuditPage';
@@ -168,11 +168,11 @@ function AppContent() {
       case '/hr/employees':
         return <TenantEmployeeAdministration />;
       case '/hr/departments':
-        return <DepartmentList />;
+        return <TenantOrganizationAdministration kind="departments" />;
       case '/hr/units':
-        return <DepartmentUnitList />;
+        return <TenantOrganizationAdministration kind="units" />;
       case '/hr/positions':
-        return <PositionList />;
+        return <TenantOrganizationAdministration kind="positions" />;
       case '/hr/contacts':
         return <ContactsPage />;
       case '/hr/resumes':

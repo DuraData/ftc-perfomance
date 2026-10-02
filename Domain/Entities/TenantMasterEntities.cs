@@ -81,6 +81,7 @@ public class EmployeeAssignment
     public long MunicipalEmployeeId { get; set; }
     public int DepartmentId { get; set; }
     public int? UnitId { get; set; }
+    public int? PositionId { get; set; }
     public string PositionCode { get; set; } = string.Empty;
     public string PositionName { get; set; } = string.Empty;
     public DateTime EffectiveFrom { get; set; }
@@ -92,4 +93,5 @@ public class EmployeeAssignment
     public MunicipalEmployee MunicipalEmployee { get; set; } = null!;
     public Department Department { get; set; } = null!;
     public Unit? Unit { get; set; }
+    public Position? Position { get; set; }
 }

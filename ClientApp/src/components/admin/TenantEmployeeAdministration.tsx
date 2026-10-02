@@ -12,11 +12,12 @@ import {
   getDepartments,
   getEmployeeAssignments,
   getMunicipalEmployees,
+  getPositionMasters,
   getUnits,
   getUsers,
   updateMunicipalEmployee,
 } from '../../api/api';
-import type { AdminUserDetail, DepartmentLookupDto, EmployeeAssignmentMasterDto, MunicipalEmployeeDto, UnitLookupDto } from '../../types';
+import type { AdminUserDetail, DepartmentLookupDto, EmployeeAssignmentMasterDto, MunicipalEmployeeDto, PositionMasterDto, UnitLookupDto } from '../../types';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const atUtc = (value: string) => new Date(`${value}T00:00:00Z`).toISOString();
@@ -27,24 +28,26 @@ export function TenantEmployeeAdministration() {
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
   const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
   const [units, setUnits] = useState<UnitLookupDto[]>([]);
+  const [positions, setPositions] = useState<PositionMasterDto[]>([]);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [assignments, setAssignments] = useState<EmployeeAssignmentMasterDto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [employee, setEmployee] = useState({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() });
-  const [assignment, setAssignment] = useState({ departmentPublicId: '', unitPublicId: '', positionCode: '', positionName: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true });
+  const [assignment, setAssignment] = useState({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true });
   const [closure, setClosure] = useState({ effectiveTo: today(), reason: '' });
   const selected = employees.find(item => item.publicId === selectedId) ?? null;
   const selectedDepartmentId = departments.find(item => item.publicId === assignment.departmentPublicId)?.id;
   const availableUnits = useMemo(() => units.filter(item => !selectedDepartmentId || item.departmentId === selectedDepartmentId), [selectedDepartmentId, units]);
+  const availablePositions = useMemo(() => positions.filter(item => item.isActive && item.departmentPublicId === assignment.departmentPublicId && (item.unitPublicId ?? '') === assignment.unitPublicId), [assignment.departmentPublicId, assignment.unitPublicId, positions]);
 
   const load = async () => {
     setBusy(true); setError(null);
-    const [employeeResult, departmentResult, unitResult, userResult] = await Promise.all([getMunicipalEmployees(), getDepartments(), getUnits(), getUsers()]);
-    const failed = [employeeResult, departmentResult, unitResult, userResult].find(result => !result.success);
+    const [employeeResult, departmentResult, unitResult, positionResult, userResult] = await Promise.all([getMunicipalEmployees(), getDepartments(), getUnits(), getPositionMasters(), getUsers()]);
+    const failed = [employeeResult, departmentResult, unitResult, positionResult, userResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Employee masters could not be loaded.');
-    setEmployees(employeeResult.data ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setUsers(userResult.data ?? []);
+    setEmployees(employeeResult.data ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []); setUsers(userResult.data ?? []);
     setBusy(false);
   };
 
@@ -76,11 +79,11 @@ export function TenantEmployeeAdministration() {
   };
 
   const saveAssignment = async () => {
-    if (!selected || !assignment.departmentPublicId || !assignment.positionCode.trim() || !assignment.positionName.trim()) { setError('Employee, department, position code, and position name are required.'); return; }
+    if (!selected || !assignment.departmentPublicId || !assignment.positionPublicId) { setError('Employee, department, and governed position are required.'); return; }
     setBusy(true); setError(null);
-    const result = await createEmployeeAssignment({ employeePublicId: selected.publicId, departmentPublicId: assignment.departmentPublicId, unitPublicId: assignment.unitPublicId || null, positionCode: assignment.positionCode, positionName: assignment.positionName, effectiveFrom: atUtc(assignment.effectiveFrom), effectiveTo: assignment.effectiveTo ? atUtc(assignment.effectiveTo) : null, isPrimary: assignment.isPrimary });
+    const result = await createEmployeeAssignment({ employeePublicId: selected.publicId, departmentPublicId: assignment.departmentPublicId, unitPublicId: assignment.unitPublicId || null, positionPublicId: assignment.positionPublicId, effectiveFrom: atUtc(assignment.effectiveFrom), effectiveTo: assignment.effectiveTo ? atUtc(assignment.effectiveTo) : null, isPrimary: assignment.isPrimary });
     if (!result.success) setError(result.message ?? 'Placement could not be created.');
-    else { pushToast('success', 'Effective-dated placement created'); setAssignment({ departmentPublicId: '', unitPublicId: '', positionCode: '', positionName: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true }); await selectEmployee(selected.publicId); }
+    else { pushToast('success', 'Effective-dated placement created'); setAssignment({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true }); await selectEmployee(selected.publicId); }
     setBusy(false);
   };
 
@@ -110,9 +113,9 @@ export function TenantEmployeeAdministration() {
       </div>
       {selected && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE_ASSIGNMENT') && selected.isActive && <FormPanel title={`New placement · ${selected.firstName} ${selected.lastName}`} description="Overlapping effective dates are rejected by the server." icon={<Briefcase className="h-5 w-5" />}>
-          <Select label="Department" value={assignment.departmentPublicId} placeholder="Select department" options={departments.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setAssignment(current => ({ ...current, departmentPublicId: event.target.value, unitPublicId: '' }))} />
-          <Select label="Unit" value={assignment.unitPublicId} placeholder="No unit" options={availableUnits.map(item => ({ value: item.publicId, label: item.name }))} onChange={event => setAssignment(current => ({ ...current, unitPublicId: event.target.value }))} />
-          <div className="grid grid-cols-2 gap-2"><Input label="Position code" value={assignment.positionCode} onChange={event => setAssignment(current => ({ ...current, positionCode: event.target.value }))} /><Input label="Position name" value={assignment.positionName} onChange={event => setAssignment(current => ({ ...current, positionName: event.target.value }))} /></div>
+          <Select label="Department" value={assignment.departmentPublicId} placeholder="Select department" options={departments.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setAssignment(current => ({ ...current, departmentPublicId: event.target.value, unitPublicId: '', positionPublicId: '' }))} />
+          <Select label="Unit" value={assignment.unitPublicId} placeholder="No unit" options={availableUnits.map(item => ({ value: item.publicId, label: item.name }))} onChange={event => setAssignment(current => ({ ...current, unitPublicId: event.target.value, positionPublicId: '' }))} />
+          <Select label="Position" value={assignment.positionPublicId} placeholder="Select governed position" options={availablePositions.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setAssignment(current => ({ ...current, positionPublicId: event.target.value }))} />
           <div className="grid grid-cols-2 gap-2"><Input label="Effective from" type="date" value={assignment.effectiveFrom} onChange={event => setAssignment(current => ({ ...current, effectiveFrom: event.target.value }))} /><Input label="Effective to" type="date" value={assignment.effectiveTo} onChange={event => setAssignment(current => ({ ...current, effectiveTo: event.target.value }))} /></div>
           <Checkbox label="Primary placement" checked={assignment.isPrimary} onChange={event => setAssignment(current => ({ ...current, isPrimary: event.target.checked }))} />
           <Button onClick={() => void saveAssignment()} disabled={busy}>Create placement</Button>

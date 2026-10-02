@@ -1281,10 +1281,49 @@ export interface EmployeeAssignmentMasterDto {
   unitName?: string | null;
   positionCode: string;
   positionName: string;
+  positionPublicId?: string | null;
   effectiveFrom: string;
   effectiveTo?: string | null;
   isPrimary: boolean;
   isActive: boolean;
+  rowVersion: string;
+}
+
+export interface DepartmentMasterDto {
+  publicId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+}
+
+export interface UnitMasterDto {
+  publicId: string;
+  departmentPublicId: string;
+  departmentName: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+}
+
+export interface PositionMasterDto {
+  publicId: string;
+  departmentPublicId: string;
+  departmentName: string;
+  unitPublicId?: string | null;
+  unitName?: string | null;
+  code: string;
+  name: string;
+  grade?: string | null;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
   rowVersion: string;
 }
 

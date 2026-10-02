@@ -66,6 +66,9 @@ import type {
   MunicipalityFinancialYearMasterDto,
   MunicipalEmployeeDto,
   EmployeeAssignmentMasterDto,
+  DepartmentMasterDto,
+  UnitMasterDto,
+  PositionMasterDto,
   WorkflowDefinitionDto,
   WorkflowDefinitionComparisonDto,
   ReportingWindowDto,
@@ -847,8 +850,32 @@ export async function getEmployeeAssignments(employeePublicId: string): Promise<
   return get<EmployeeAssignmentMasterDto[]>(`/v1/masters/employees/${employeePublicId}/assignments`);
 }
 
-export async function createEmployeeAssignment(payload: { employeePublicId: string; departmentPublicId: string; unitPublicId?: string | null; positionCode: string; positionName: string; effectiveFrom: string; effectiveTo?: string | null; isPrimary: boolean }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {
+export async function createEmployeeAssignment(payload: { employeePublicId: string; departmentPublicId: string; unitPublicId?: string | null; positionPublicId?: string | null; positionCode?: string | null; positionName?: string | null; effectiveFrom: string; effectiveTo?: string | null; isPrimary: boolean }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {
   return post<EmployeeAssignmentMasterDto>('/v1/masters/employee-assignments', payload);
+}
+
+export async function getDepartmentMasters(): Promise<ApiResponse<DepartmentMasterDto[]>> {
+  return get<DepartmentMasterDto[]>('/v1/masters/departments');
+}
+
+export async function saveDepartmentMaster(publicId: string | null, payload: { code: string; name: string; description?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<DepartmentMasterDto>> {
+  return publicId ? put<DepartmentMasterDto>(`/v1/masters/departments/${publicId}`, payload) : post<DepartmentMasterDto>('/v1/masters/departments', payload);
+}
+
+export async function getUnitMasters(): Promise<ApiResponse<UnitMasterDto[]>> {
+  return get<UnitMasterDto[]>('/v1/masters/units');
+}
+
+export async function saveUnitMaster(publicId: string | null, payload: { departmentPublicId: string; code: string; name: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<UnitMasterDto>> {
+  return publicId ? put<UnitMasterDto>(`/v1/masters/units/${publicId}`, payload) : post<UnitMasterDto>('/v1/masters/units', payload);
+}
+
+export async function getPositionMasters(): Promise<ApiResponse<PositionMasterDto[]>> {
+  return get<PositionMasterDto[]>('/v1/masters/positions');
+}
+
+export async function savePositionMaster(publicId: string | null, payload: { departmentPublicId: string; unitPublicId?: string | null; code: string; name: string; grade?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<PositionMasterDto>> {
+  return publicId ? put<PositionMasterDto>(`/v1/masters/positions/${publicId}`, payload) : post<PositionMasterDto>('/v1/masters/positions', payload);
 }
 
 export async function closeEmployeeAssignment(publicId: string, payload: { effectiveTo: string; reason: string; rowVersion: string }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {

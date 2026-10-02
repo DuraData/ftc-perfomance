@@ -53,76 +53,16 @@ public class UnitsController : ControllerBase
 
     [HttpPost]
     [Authorize(Policy = "Permission:UNIT.CREATE")]
-    public async Task<ActionResult<ApiResponse<UnitResponse>>> CreateUnit([FromBody] CreateUnitRequest request)
-    {
-        var department = await _context.Departments.FindAsync(request.DepartmentId);
-        if (department == null)
-        {
-            return BadRequest(new ApiResponse<UnitResponse>(false, null, "Department not found"));
-        }
-
-        var exists = await _context.Units.AnyAsync(unit => unit.DepartmentId == request.DepartmentId && unit.Code == request.Code);
-        if (exists)
-        {
-            return Conflict(new ApiResponse<UnitResponse>(false, null, "Unit code already exists in the department"));
-        }
-
-        var unit = new Unit
-        {
-            DepartmentId = request.DepartmentId,
-            Code = request.Code.Trim(),
-            Name = request.Name.Trim()
-        };
-
-        _context.Units.Add(unit);
-        await _context.SaveChangesAsync();
-
-        return Ok(new ApiResponse<UnitResponse>(true, new UnitResponse(unit.Id, unit.DepartmentId, department.Name, unit.Code, unit.Name) { PublicId = unit.PublicId }));
-    }
+    public ActionResult<ApiResponse<UnitResponse>> CreateUnit([FromBody] CreateUnitRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<UnitResponse>(false, null, "Use POST /api/v1/masters/units with public identifiers, tenant context, and governance reason."));
 
     [HttpPut("{id:int}")]
     [Authorize(Policy = "Permission:UNIT.UPDATE")]
-    public async Task<ActionResult<ApiResponse<UnitResponse>>> UpdateUnit(int id, [FromBody] UpdateUnitRequest request)
-    {
-        var unit = await _context.Units.FindAsync(id);
-        if (unit == null)
-        {
-            return NotFound(new ApiResponse<UnitResponse>(false, null, "Unit not found"));
-        }
-
-        var department = await _context.Departments.FindAsync(request.DepartmentId);
-        if (department == null)
-        {
-            return BadRequest(new ApiResponse<UnitResponse>(false, null, "Department not found"));
-        }
-
-        var exists = await _context.Units.AnyAsync(item => item.Id != id && item.DepartmentId == request.DepartmentId && item.Code == request.Code);
-        if (exists)
-        {
-            return Conflict(new ApiResponse<UnitResponse>(false, null, "Unit code already exists in the department"));
-        }
-
-        unit.DepartmentId = request.DepartmentId;
-        unit.Code = request.Code.Trim();
-        unit.Name = request.Name.Trim();
-        await _context.SaveChangesAsync();
-
-        return Ok(new ApiResponse<UnitResponse>(true, new UnitResponse(unit.Id, unit.DepartmentId, department.Name, unit.Code, unit.Name) { PublicId = unit.PublicId }));
-    }
+    public ActionResult<ApiResponse<UnitResponse>> UpdateUnit(int id, [FromBody] UpdateUnitRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<UnitResponse>(false, null, "Use PUT /api/v1/masters/units/{publicId} with RowVersion and governance reason."));
 
     [HttpDelete("{id:int}")]
     [Authorize(Policy = "Permission:UNIT.UPDATE")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteUnit(int id)
-    {
-        var unit = await _context.Units.FindAsync(id);
-        if (unit == null)
-        {
-            return NotFound(new ApiResponse<bool>(false, false, "Unit not found"));
-        }
-
-        unit.IsActive = false;
-        unit.EffectiveTo = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-        return Ok(new ApiResponse<bool>(true, true));
-    }
+    public ActionResult<ApiResponse<bool>> DeleteUnit(int id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Units are retired through PUT /api/v1/masters/units/{publicId}; they are never deleted."));
 }

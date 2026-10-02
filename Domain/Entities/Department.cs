@@ -15,6 +15,7 @@ public class Department
     public Municipality? Municipality { get; set; }
 
     public ICollection<Unit> Units { get; set; } = new List<Unit>();
+    public ICollection<Position> Positions { get; set; } = new List<Position>();
     public ICollection<UserScope> UserScopes { get; set; } = new List<UserScope>();
     public ICollection<ApplicationUser> Users { get; set; } = new List<ApplicationUser>();
 }

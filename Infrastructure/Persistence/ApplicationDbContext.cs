@@ -25,6 +25,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<LoginAuditLog> LoginAuditLogs { get; set; } = null!;
     public DbSet<Department> Departments { get; set; } = null!;
     public DbSet<Unit> Units { get; set; } = null!;
+    public DbSet<Position> Positions { get; set; } = null!;
     public DbSet<UserScope> UserScopes { get; set; } = null!;
     public DbSet<UserAssignment> UserAssignments { get; set; } = null!;
     public DbSet<Period> Periods { get; set; } = null!;
@@ -142,6 +143,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<EmployeeAssignment>().HasOne(item => item.MunicipalEmployee).WithMany(item => item.Assignments).HasForeignKey(item => item.MunicipalEmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<EmployeeAssignment>().HasOne(item => item.Department).WithMany().HasForeignKey(item => item.DepartmentId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<EmployeeAssignment>().HasOne(item => item.Unit).WithMany().HasForeignKey(item => item.UnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<EmployeeAssignment>().HasOne(item => item.Position).WithMany(item => item.EmployeeAssignments).HasForeignKey(item => item.PositionId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<PerformancePeriodTarget>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<PerformancePeriodTarget>().HasIndex(item => new { item.OpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[OpmsTargetId] IS NOT NULL");
@@ -241,6 +243,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<Municipality>().HasQueryFilter(item => TenantFilterBypass || item.Id == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Department>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Unit>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<Position>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IpmsTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsSubmission>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -329,6 +332,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .WithMany(d => d.Units)
             .HasForeignKey(u => u.DepartmentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<Position>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<Position>().HasIndex(item => new { item.MunicipalityId, item.Code }).IsUnique();
+        ConfigureRowVersion(builder.Entity<Position>().Property(item => item.RowVersion));
+        builder.Entity<Position>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Position>().HasOne(item => item.Department).WithMany(item => item.Positions).HasForeignKey(item => item.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Position>().HasOne(item => item.Unit).WithMany(item => item.Positions).HasForeignKey(item => item.UnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Position>().ToTable(table => table.HasCheckConstraint("CK_Positions_DateRange", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]"));
 
         builder.Entity<ApplicationUser>()
             .HasOne(u => u.DepartmentEntity)
@@ -1357,7 +1368,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         var tenantId = _tenantContext.MunicipalityId;
         var protectedTypes = new HashSet<Type>
         {
-            typeof(Department), typeof(Unit), typeof(OpmsTarget), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
+            typeof(Department), typeof(Unit), typeof(Position), typeof(OpmsTarget), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
