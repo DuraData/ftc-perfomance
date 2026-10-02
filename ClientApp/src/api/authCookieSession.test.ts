@@ -32,6 +32,7 @@ describe('cookie-only authentication sessions', () => {
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     expect(request.credentials).toBe('include');
     expect(request.headers).not.toHaveProperty('Authorization');
+    expect(request.headers).toHaveProperty('X-OPMS-Request', 'same-origin');
     expect(sessionStorage.getItem('auth_session')).toBe('1');
     expect(sessionStorage.getItem('auth_token')).toBeNull();
     expect(isAuthenticated()).toBe(true);
@@ -58,6 +59,7 @@ describe('cookie-only authentication sessions', () => {
     for (const [, init] of fetchMock.mock.calls) {
       expect((init as RequestInit).credentials).toBe('include');
       expect((init as RequestInit).headers).not.toHaveProperty('Authorization');
+      expect((init as RequestInit).headers).toHaveProperty('X-OPMS-Request', 'same-origin');
     }
   });
 });

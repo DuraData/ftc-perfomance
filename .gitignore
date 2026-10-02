@@ -22,6 +22,7 @@ pnpm-debug.log*
 !.env.sample
 appsettings.Local.json
 appsettings.*.local.json
+Credentials.md
 secure-files/
 *.db
 *.db-shm

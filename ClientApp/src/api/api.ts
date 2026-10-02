@@ -700,6 +700,7 @@ async function fetchApi<T>(
   const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
+    'X-OPMS-Request': 'same-origin',
     ...(options.headers as Record<string, string>),
   };
 
@@ -717,6 +718,7 @@ async function fetchApi<T>(
       if (refreshResult.success) {
         const retryHeaders: Record<string, string> = {
           ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
+          'X-OPMS-Request': 'same-origin',
           ...(options.headers as Record<string, string>),
         };
         addTenantHeader(retryHeaders);
@@ -785,7 +787,7 @@ async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
     refreshPromise = (async () => {
       const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
         method: 'POST',
-        headers: addTenantHeader({ 'Content-Type': 'application/json' }),
+        headers: addTenantHeader({ 'Content-Type': 'application/json', 'X-OPMS-Request': 'same-origin' }),
         credentials: 'include',
       });
       const data = await readApiResponse<LoginResponse>(response);

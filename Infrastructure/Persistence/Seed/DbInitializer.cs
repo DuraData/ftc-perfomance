@@ -1,4 +1,3 @@
-using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
@@ -18,26 +17,13 @@ public static class DbInitializer
         await SeedRolesAsync(roleManager);
         await SeedRolePermissionsAsync(context, roleManager);
         await SeedDefaultAdminUserAsync(context, userManager, configuration);
-        await SeedDemoUsersAsync(context, userManager, configuration);
+        var demoDataEnabled = configuration.GetValue("SeedData:DemoUsersEnabled", false);
+        if (demoDataEnabled)
+            await SeedDemoUsersAsync(context, userManager, configuration);
         await SeedLookupTablesAsync(context);
-        await SeedTargetsAndSubmissionsAsync(context, userManager);
+        if (demoDataEnabled)
+            await SeedTargetsAndSubmissionsAsync(context, userManager);
         await SecurityRegistrySeeder.BackfillAssignmentsAsync(context);
-    }
-
-    internal static DemoUserResponse[] GetDemoUserResponses(IConfiguration configuration)
-    {
-        var password = GetDemoPassword(configuration);
-        var departments = GetDepartmentSeeds().ToDictionary(d => d.Code, d => d.Name, StringComparer.OrdinalIgnoreCase);
-        return GetDemoUserSeeds()
-            .Select(seed => new DemoUserResponse(
-                seed.Role,
-                $"{seed.FirstName} {seed.LastName}",
-                departments[seed.DepartmentCode],
-                seed.Position,
-                seed.Email,
-                seed.UserName,
-                password))
-            .ToArray();
     }
 
     private static async Task SeedPermissionsAsync(ApplicationDbContext context)
@@ -181,50 +167,34 @@ public static class DbInitializer
 
     private static async Task SeedDefaultAdminUserAsync(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IConfiguration configuration)
     {
-        var adminEmail = configuration["Admin:Email"] ?? "superadmin@example.com";
-        var adminPassword = configuration["Admin:Password"] ?? "P@ssw0rd123!";
+        var adminEmail = configuration["Admin:Email"];
+        if (string.IsNullOrWhiteSpace(adminEmail))
+            throw new InvalidOperationException("Admin:Email must be supplied through a local/deployment secret when controlled seeding is enabled.");
         var omm = await context.Departments.FirstAsync(d => d.Code == "OMM");
         var executiveUnit = await context.Units.FirstAsync(u => u.Code == "OMM-EXEC");
 
         var defaultUser = await userManager.FindByEmailAsync(adminEmail);
-        if (defaultUser == null)
-        {
-            defaultUser = new ApplicationUser
-            {
-                UserName = configuration["Admin:UserName"] ?? adminEmail,
-                Email = adminEmail,
-                FirstName = "System",
-                LastName = "Administrator",
-                Department = omm.Name,
-                DepartmentId = omm.Id,
-                UnitId = executiveUnit.Id,
-                Position = "Super Administrator",
-                PhoneNumber = "0825550001",
-                IsActive = true,
-                MustChangePassword = false,
-                EmailConfirmed = true
-            };
+        if (defaultUser != null) return;
 
-            var createResult = await userManager.CreateAsync(defaultUser, adminPassword);
-            if (!createResult.Succeeded)
-            {
-                return;
-            }
-        }
-        else
+        var adminPassword = GetRequiredSeedSecret(configuration, "Admin:Password");
+        defaultUser = new ApplicationUser
         {
-            defaultUser.UserName = configuration["Admin:UserName"] ?? defaultUser.UserName ?? adminEmail;
-            defaultUser.Department = omm.Name;
-            defaultUser.DepartmentId = omm.Id;
-            defaultUser.UnitId = executiveUnit.Id;
-            defaultUser.Position = "Super Administrator";
-            defaultUser.PhoneNumber ??= "0825550001";
-            defaultUser.IsActive = true;
-            defaultUser.EmailConfirmed = true;
-            await userManager.UpdateAsync(defaultUser);
-        }
+            UserName = configuration["Admin:UserName"] ?? adminEmail,
+            Email = adminEmail,
+            FirstName = "System",
+            LastName = "Administrator",
+            Department = omm.Name,
+            DepartmentId = omm.Id,
+            UnitId = executiveUnit.Id,
+            Position = "Super Administrator",
+            IsActive = true,
+            MustChangePassword = true,
+            EmailConfirmed = true
+        };
 
-        await EnsurePasswordAsync(userManager, defaultUser, adminPassword);
+        var createResult = await userManager.CreateAsync(defaultUser, adminPassword);
+        if (!createResult.Succeeded)
+            throw new InvalidOperationException($"Controlled administrator seed failed: {string.Join("; ", createResult.Errors.Select(error => error.Description))}");
         await SyncUserRolesAsync(userManager, defaultUser, [SecurityModel.SuperAdmin]);
         await ReplaceUserScopesAsync(context, defaultUser.Id, [new UserScope { ScopeType = ScopeType.InstitutionScope }]);
         await ReplaceUserAssignmentsAsync(context, defaultUser.Id, Array.Empty<UserAssignment>());
@@ -232,7 +202,7 @@ public static class DbInitializer
 
     private static async Task SeedDemoUsersAsync(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IConfiguration configuration)
     {
-        var defaultPassword = GetDemoPassword(configuration);
+        var defaultPassword = GetRequiredSeedSecret(configuration, "DemoUsers:DefaultPassword");
         var departments = await context.Departments.AsNoTracking().ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
         var units = await context.Units.AsNoTracking().ToDictionaryAsync(u => u.Code, StringComparer.OrdinalIgnoreCase);
         var validRoleNames = SecurityModel.OrderedRoles.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -240,15 +210,11 @@ public static class DbInitializer
         foreach (var seed in GetDemoUserSeeds())
         {
             var user = await userManager.FindByEmailAsync(seed.Email) ?? await userManager.FindByNameAsync(seed.UserName);
-            var created = false;
+            if (user != null) continue;
             var department = departments[seed.DepartmentCode];
             var unit = seed.UnitCode != null && units.TryGetValue(seed.UnitCode, out var foundUnit) ? foundUnit : null;
 
-            if (user == null)
-            {
-                user = new ApplicationUser();
-                created = true;
-            }
+            user = new ApplicationUser();
 
             user.UserName = seed.UserName;
             user.Email = seed.Email;
@@ -260,22 +226,12 @@ public static class DbInitializer
             user.UnitId = unit?.Id;
             user.Position = seed.Position;
             user.IsActive = true;
-            user.MustChangePassword = false;
+            user.MustChangePassword = true;
             user.EmailConfirmed = true;
 
-            if (created)
-            {
-                var createResult = await userManager.CreateAsync(user, defaultPassword);
-                if (!createResult.Succeeded)
-                {
-                    continue;
-                }
-            }
-            else
-            {
-                await userManager.UpdateAsync(user);
-                await EnsurePasswordAsync(userManager, user, defaultPassword);
-            }
+            var createResult = await userManager.CreateAsync(user, defaultPassword);
+            if (!createResult.Succeeded)
+                throw new InvalidOperationException($"Controlled demo-user seed failed for '{seed.UserName}': {string.Join("; ", createResult.Errors.Select(error => error.Description))}");
 
             var currentRoles = await userManager.GetRolesAsync(user);
             var rolesToRemove = currentRoles.Where(role => validRoleNames.Contains(role) && !string.Equals(role, seed.Role, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -625,29 +581,12 @@ public static class DbInitializer
         };
     }
 
-    private static async Task EnsurePasswordAsync(UserManager<ApplicationUser> userManager, ApplicationUser user, string password)
+    internal static string GetRequiredSeedSecret(IConfiguration configuration, string key)
     {
-        var hasPassword = await userManager.HasPasswordAsync(user);
-        if (!hasPassword)
-        {
-            await userManager.AddPasswordAsync(user, password);
-            return;
-        }
-
-        if (await userManager.CheckPasswordAsync(user, password))
-        {
-            return;
-        }
-
-        var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
-        await userManager.ResetPasswordAsync(user, resetToken, password);
-    }
-
-    private static string GetDemoPassword(IConfiguration configuration)
-    {
-        return configuration["DemoUsers:DefaultPassword"]
-            ?? configuration["Admin:Password"]
-            ?? "P@ssw0rd123!";
+        var value = configuration[key];
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 12)
+            throw new InvalidOperationException($"{key} must be supplied through a local/deployment secret and contain at least 12 characters.");
+        return value;
     }
 
     private static IReadOnlyList<RoleSeed> GetRoleSeeds()

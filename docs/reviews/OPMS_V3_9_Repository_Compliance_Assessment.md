@@ -288,10 +288,10 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-07 | Effective-dated KPI workflow assignments | **PARTIALLY COMPLIANT** | `UserAssignment.cs:3-30` has dates/types | Tenant-anchor it and enforce overlaps/role semantics. |
 | R-08 | Dynamic permissions and overrides | **PARTIALLY COMPLIANT** | Permission/scope/override evaluation in `AccessControlService.cs:57-160` | Remove bypass/fallback risks and tenant-scope all decisions. |
 | R-09 | Configurable local/Entra/AD/hybrid auth | **NOT IMPLEMENTED** | Local Identity/JWT only | Add configured providers and account-link rules. |
-| R-10 | MFA for privileged users | **NOT IMPLEMENTED** | No MFA flow/configuration | Enforce MFA and recovery/audit controls. |
-| R-11 | Secure session/token storage | **NON-COMPLIANT** | Tokens in localStorage, `api.ts:75-92` | Use secure HttpOnly cookies/session or equivalent BFF. |
-| R-12 | Lockout/rate limiting/failed-login audit | **NON-COMPLIANT** | Lockout disabled; no rate limiter; only success logged | Implement abuse controls and complete auth-event audit. |
-| R-13 | Secrets management | **NON-COMPLIANT** | Tracked secrets in both appsettings files | Rotate immediately; use secret provider and scanning. |
+| R-10 | MFA for privileged users | **COMPLIANT** | TOTP enrollment/challenge, recovery codes, privileged-permission enforcement, session claims and audit-aware reset/revocation behavior are implemented and tested | Confirm municipal MFA enrollment/support procedures during UAT. |
+| R-11 | Secure session/token storage | **COMPLIANT** | Access/rotating refresh tokens use Secure production, HttpOnly, SameSite=Strict scoped cookies; browser-readable legacy tokens are removed and governed server sessions can be revoked | Verify proxy TLS/cookie behavior in the deployment environment. |
+| R-12 | Lockout/rate limiting/failed-login audit | **COMPLIANT** | Identity lockout, IP authentication throttling, user/IP global API throttling and success/failure/lockout authentication evidence are implemented | Tune thresholds from production telemetry without weakening deny-by-default behavior. |
+| R-13 | Secrets management | **PARTIALLY COMPLIANT** | Runtime configuration contains placeholders only; controlled seed passwords are mandatory local/deployment secrets, demo users are separately opt-in, tracked plaintext credential material is removed, and CI secret scanning is configured | Rotate every previously exposed value, purge history where policy permits, and prove production managed-secret injection/rotation. |
 | R-14 | Tenant-scoped organization masters | **NON-COMPLIANT** | Globally unique departments in `ApplicationDbContext.cs:94-106` | Add tenant composite uniqueness/effective dates. |
 | R-15 | Relational KPI mappings | **NON-COMPLIANT** | CSV ID fields in `WorkflowGovernanceEntities.cs:50-52` | Migrate to junction tables. |
 | R-16 | Normalized KPI-period target row | **NON-COMPLIANT** | Wide Q1-Q4/Mid/Annual columns | Create period-target table and migrate wide values. |
@@ -993,3 +993,21 @@ The operational runbook is: stop or quiesce write-producing test activity; set `
 **Tests:** TypeScript type-check and ESLint pass after converting every route component to a typed lazy import. The production build emits multiple route chunks, and `npm run check:bundle` verifies the **450 KiB** maximum against the actual build artifacts. The complete frontend and backend test suites remain required CI gates.
 
 **Status:** Repository startup performance is materially hardened and regression-budgeted. Phase 11 performance remains **PARTIALLY COMPLIANT** pending representative browser performance baselines, server/API load and saturation tests, slow-query/index analysis against native SQL Server, and bounded server pagination for remaining large collection endpoints.
+
+### 11.53 Cookie-request integrity, API throttling and controlled seed secrets
+
+**Requirement:** R-10 through R-13 and Phase 11 security hardening/testing.
+
+**Implementation:** State-changing `/api` requests now require the `X-OPMS-Request: same-origin` browser header unless they use an explicit Bearer token. Combined with Secure production, HttpOnly, SameSite=Strict authentication cookies and the existing allowlisted credentialed CORS policy, this blocks cross-site form/image mutation attempts while retaining non-browser API-client compatibility. The SPA sends the header on initial, upload, refresh and retried requests. Every controller endpoint also uses a fixed-window user/IP API policy in addition to the stricter authentication policy; rejected requests return 429 before controller work.
+
+The security audit also removed the tracked `Credentials.md` plaintext credential dump and prevents it from being re-added. Controlled seeding no longer contains a password or administrator-email fallback. Administrator and optional demo-user passwords must be supplied through local/deployment secrets and meet the 12-character baseline. Demo identities require a separate `SeedData:DemoUsersEnabled` opt-in. Newly seeded identities must change their initial password, while an existing administrator or demo identity is left untouched—no password reset, profile rewrite, role rewrite or scope rewrite occurs on a later run. Seed creation failure is explicit rather than silently continuing with a partially governed identity.
+
+**Files/classes:** `Infrastructure/Security/CsrfProtectionMiddleware.cs`, `Program.cs`, `ClientApp/src/api/api.ts`, `Infrastructure/Persistence/Seed/DbInitializer.cs`, `.env.example`, `.gitignore`, and `Properties/AssemblyInfo.cs`. The insecure tracked `Credentials.md` artifact is removed.
+
+**Migration:** None. These controls are provider-neutral; deployment to SQL Server remains configuration-only for application code.
+
+**API:** All unsafe `/api` methods enforce the same-origin header for cookie sessions; Bearer-token integrations remain supported. All mapped controllers inherit the `api` rate-limit policy, while authentication endpoints retain their stricter named policy.
+
+**Tests:** Seven backend CSRF tests cover safe methods, missing-header rejection, accepted same-origin mutation, Bearer compatibility and non-API pass-through. Four controlled-secret tests reject missing/blank/short values and accept an explicit strong local secret. The cookie-session browser tests verify the header on login, refresh and retry while confirming that no Bearer token or token body is exposed. The complete backend suite passes **172/172** with one native SQL Server acceptance test explicitly skipped; the complete frontend suite passes **129/129** across **34** files. TypeScript type-check, ESLint, production build and the 66-chunk bundle budget pass.
+
+**Status:** R-10, R-11 and R-12 are **COMPLIANT** at repository level. R-13 advances to **PARTIALLY COMPLIANT** because the current tree no longer contains the credential dump or seed defaults, but repository history and any environment that used the exposed values require owner-led credential rotation, optional history remediation, and production managed-secret injection evidence. External penetration testing and deployed proxy/TLS/cookie verification remain UAT acceptance work.

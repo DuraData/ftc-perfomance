@@ -182,6 +182,18 @@ builder.Services.AddCors(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("api", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
     options.AddPolicy("authentication", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -234,6 +246,7 @@ using (var scope = app.Services.CreateScope())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<RequestTelemetryMiddleware>();
+app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages(async statusCodeContext =>
 {
@@ -264,11 +277,11 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCors("ApplicationClient");
-app.UseRateLimiter();
 
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseMiddleware<PasswordChangeMiddleware>();
 app.UseMiddleware<MfaEnrollmentMiddleware>();
 app.UseMiddleware<TenantResolutionMiddleware>();
@@ -277,7 +290,7 @@ app.UseAuthorization();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapControllers();
+app.MapControllers().RequireRateLimiting("api");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     Predicate = _ => false
