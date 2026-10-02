@@ -54,6 +54,9 @@ jobs:
       - name: Test accessibility baseline
         working-directory: ClientApp
         run: npm run test:a11y
+      - name: Build frontend and enforce bundle budget
+        working-directory: ClientApp
+        run: npm run build:verify
       - name: Audit frontend dependencies
         working-directory: ClientApp
         run: npm audit --audit-level=high

@@ -332,7 +332,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-51 | C88 independent subsystem | **COMPLIANT** | Municipality/FY enablement, immutable catalogue editions, controlled calculations, planning/calendars, versioned indicator reports, typed data/compliance responses, effective assignments, pinned configurable workflow versions, alignment-only OPMS mappings, audit, concurrency, assignment scope and governed UI are independently implemented | Native SQL Server migration/filtered-index/`rowversion` execution remains a deployment acceptance check. |
 | R-52 | Health, monitoring, correlation | **PARTIALLY COMPLIANT** | Liveness/readiness checks, safe JSON readiness output, validated correlation propagation, structured request logging, bounded .NET metrics/tracing, configurable degradation thresholds and browser security headers are implemented and tested | Provision a production collector, durable log/trace/metric sink, dashboards and external paging rules, then rehearse alert response. |
 | R-53 | Backup, restore, DR | **PARTIALLY COMPLIANT** | Safety-gated local SQL Server backup, checksum verification, isolated restore, DBCC integrity verification, RPO/RTO evaluation, cleanup and JSON evidence are executable; CI validates the drill contract | Schedule encrypted/off-site production backups and execute witnessed restore/failover exercises in approved environments. |
-| R-54 | Automated quality gate | **PARTIALLY COMPLIANT** | Tests exist, but typecheck/lint fail and no CI | Fix project discovery and enforce build/test/security gates. |
+| R-54 | Automated quality gate | **PARTIALLY COMPLIANT** | CI enforces backend/frontend build and tests, type-check, lint, accessibility, migration generation, recovery-script validation, dependency/secret scans and a frontend bundle budget | Add native SQL Server acceptance/UAT jobs and resolve or formally risk-accept outstanding dependency advisories before release. |
 | R-55 | Accessibility | **PARTIALLY COMPLIANT** | Shared shell/forms provide keyboard skip navigation, landmarks, stable label/help/error relationships and live announcements; axe-core automation is a required CI gate | Complete whole-application browser/keyboard, rendered contrast, zoom/reflow and assistive-technology acceptance with representative users before production. |
 
 ## 7. Priority gap register
@@ -975,3 +975,21 @@ The operational runbook is: stop or quiesce write-producing test activity; set `
 **Tests:** `-ValidateOnly` emits the script's explicit server/database allowlist, safety gate and operation contract without reading credentials or mutating a database; CI executes this validation on every change. PowerShell parser validation and the non-mutating contract check pass locally. The live backup/restore branch was not executed because an approved reachable SQL Server test instance is not available in this run.
 
 **Status:** R-53 advances from **NOT VERIFIABLE** to **PARTIALLY COMPLIANT**. The repository now contains a guarded and auditable recovery drill, but compliance requires retained evidence from successful scheduled backups, checksum verification, isolated restores, integrity checks and measured RPO/RTO in approved SQL Server infrastructure, plus a witnessed disaster-recovery/failover exercise.
+
+### 11.52 Route-level loading and executable frontend performance budget
+
+**Requirement:** Phase 11 performance hardening and R-54 automated quality enforcement.
+
+**Implementation:** Authenticated feature modules are now loaded through React route-level `lazy` boundaries rather than being imported into the initial application graph. Authentication and access-denied paths remain immediately available, while each governed feature downloads only after the authorised route is selected. The common Suspense fallback is an announced status region. This reduces the production entry JavaScript from approximately **1,205 KiB** (**284 KiB gzip**) to approximately **289 KiB** (**79 KiB gzip**); the largest deferred feature chunk is the report/chart workspace at approximately **378 KiB** (**105 KiB gzip**).
+
+`scripts/check-bundle-budget.mjs` rejects a production build that collapses back to one JavaScript file or emits any JavaScript chunk above **450 KiB**. `npm run build:verify` combines the production build and budget, and CI now executes it as a required step. The budget is deliberately below the prior monolith while leaving controlled headroom for the largest charting route.
+
+**Files/classes:** `ClientApp/src/App.tsx`, `ClientApp/scripts/check-bundle-budget.mjs`, `ClientApp/package.json`, and `.github/workflows/quality.yml`.
+
+**Migration:** None. Client performance behavior is independent of SQLite/SQL Server selection.
+
+**API:** None.
+
+**Tests:** TypeScript type-check and ESLint pass after converting every route component to a typed lazy import. The production build emits multiple route chunks, and `npm run check:bundle` verifies the **450 KiB** maximum against the actual build artifacts. The complete frontend and backend test suites remain required CI gates.
+
+**Status:** Repository startup performance is materially hardened and regression-budgeted. Phase 11 performance remains **PARTIALLY COMPLIANT** pending representative browser performance baselines, server/API load and saturation tests, slow-query/index analysis against native SQL Server, and bounded server pagination for remaining large collection endpoints.

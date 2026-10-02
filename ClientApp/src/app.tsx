@@ -1,66 +1,84 @@
+import { lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { SecurityProvider } from './context/SecurityContext';
-import { Dashboard } from './components/dashboard/Dashboard';
-import { OPMSTargetList } from './components/opms/OPMSTargetList';
-import { OPMSTargetDetail } from './components/opms/OPMSTargetDetail';
-import { OPMSSubmissionsList, IPMSSubmissionsList } from './components/opms/OPMSSubmissions';
-import { IPMSTargetList } from './components/ipms/IPMSTargetList';
-import { IPMSTargetDetail } from './components/ipms/IPMSTargetDetail';
-import { WorkflowQueues, MyWorkQueue } from './components/workflow/WorkflowQueues';
-import { TenantOrganizationAdministration } from './components/admin/TenantOrganizationAdministration';
-import { TenantReferenceAdministration } from './components/admin/TenantReferenceAdministration';
-import { LookupTables } from './components/admin/AdminManagement';
-import { AdminAuditLogsPage, AdminPermissionsPage, AdminRolesPage, AdminUsersPage } from './components/admin/SystemAdmin';
-import { RoleImplementationAuditPage } from './components/admin/RoleImplementationAuditPage';
-import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAuditPage, SystemCoverageAuditPage } from './components/admin/AccessGovernancePages';
-import {
-  CountriesPage, ProvincesPage, CitiesPage, SuburbsPage, AddressesPage,
-  OrganisationsPage, IndustriesPage, ContactsPage, ResumesPage, OccupationsPage,
-  BudgetTypesPage, StrategicGoalsPage, StrategicObjectivesPage, UnitOfMeasurePage,
-  KPAsPage, MunicipalKPAsPage, DepartmentalObjectivesPage, OutputsPage,
-  PerformanceObjectivesPage, PriorityIssuesPage
-} from './components/admin/GenericLookupPages';
-import {
-  IPMSTargetLibraryDetail,
-  IPMSTargetLibraryList,
-  IPMSTargetTemplateFormPage,
-  OPMSTargetLibraryDetail,
-  OPMSTargetLibraryList,
-  OPMSTargetTemplateFormPage,
-} from './components/library/TargetLibraries';
-import { TaskManagement } from './components/tasks/TaskManagement';
-import { IPMSTargetFormPage, OPMSTargetFormPage } from './components/targets/TargetFormPages';
-import { KPILibrary } from './components/kpi/KPILibrary';
-import { Reports } from './components/reports/Reports';
-import { Settings } from './components/settings/Settings';
 import { Login } from './components/auth/Login';
 import { AccessDeniedPage, useCanAccessPath } from './components/security/AccessControl';
-import { SecurityAdministrationPage } from './components/security/SecurityAdministration';
-import { WorkflowGovernanceAdminPage } from './components/admin/WorkflowGovernanceAdmin';
-import { TenantCalendarAdministration } from './components/admin/TenantCalendarAdministration';
-import { TenantEmployeeAdministration } from './components/admin/TenantEmployeeAdministration';
-import {
-  IdpAlignmentMatrixPage,
-  IdpCommunityParticipationPage,
-  IdpHierarchyPage,
-  IdpPlanManagementPage,
-  IdpPlanningDashboardPage,
-  IdpReportsPage,
-} from './components/idp/IdpWorkspace';
-import { OPMSDashboardPage } from './components/opms/OPMSDashboard';
-import { TidWorkspace } from './components/tid/TidWorkspace';
-import { StrategicDocumentsWorkspace } from './components/documents/StrategicDocumentsWorkspace';
-import { C88Workspace } from './components/c88/C88Workspace';
-import { IPMSDashboardPage } from './components/ipms/IPMSDashboard';
-import {
-  RiskDashboardPage,
-  RiskRegisterPage,
-  RiskAssessmentsPage,
-  RiskTreatmentPlansPage,
-  RiskReviewsPage,
-  RiskHeatmapPage,
-  RiskReportsPage,
-} from './components/risk/RiskWorkspace';
+
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(module => ({ default: module.Dashboard })));
+const OPMSTargetList = lazy(() => import('./components/opms/OPMSTargetList').then(module => ({ default: module.OPMSTargetList })));
+const OPMSTargetDetail = lazy(() => import('./components/opms/OPMSTargetDetail').then(module => ({ default: module.OPMSTargetDetail })));
+const OPMSSubmissionsList = lazy(() => import('./components/opms/OPMSSubmissions').then(module => ({ default: module.OPMSSubmissionsList })));
+const IPMSSubmissionsList = lazy(() => import('./components/opms/OPMSSubmissions').then(module => ({ default: module.IPMSSubmissionsList })));
+const IPMSTargetList = lazy(() => import('./components/ipms/IPMSTargetList').then(module => ({ default: module.IPMSTargetList })));
+const IPMSTargetDetail = lazy(() => import('./components/ipms/IPMSTargetDetail').then(module => ({ default: module.IPMSTargetDetail })));
+const WorkflowQueues = lazy(() => import('./components/workflow/WorkflowQueues').then(module => ({ default: module.WorkflowQueues })));
+const MyWorkQueue = lazy(() => import('./components/workflow/WorkflowQueues').then(module => ({ default: module.MyWorkQueue })));
+const TenantOrganizationAdministration = lazy(() => import('./components/admin/TenantOrganizationAdministration').then(module => ({ default: module.TenantOrganizationAdministration })));
+const TenantReferenceAdministration = lazy(() => import('./components/admin/TenantReferenceAdministration').then(module => ({ default: module.TenantReferenceAdministration })));
+const LookupTables = lazy(() => import('./components/admin/AdminManagement').then(module => ({ default: module.LookupTables })));
+const AdminAuditLogsPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminAuditLogsPage })));
+const AdminPermissionsPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminPermissionsPage })));
+const AdminRolesPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminRolesPage })));
+const AdminUsersPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminUsersPage })));
+const RoleImplementationAuditPage = lazy(() => import('./components/admin/RoleImplementationAuditPage').then(module => ({ default: module.RoleImplementationAuditPage })));
+const PermissionSimulationPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.PermissionSimulationPage })));
+const RoleAccessMatrixPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.RoleAccessMatrixPage })));
+const RolePermissionCrudAuditPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.RolePermissionCrudAuditPage })));
+const SystemCoverageAuditPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.SystemCoverageAuditPage })));
+const CountriesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.CountriesPage })));
+const ProvincesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ProvincesPage })));
+const CitiesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.CitiesPage })));
+const SuburbsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.SuburbsPage })));
+const AddressesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.AddressesPage })));
+const OrganisationsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OrganisationsPage })));
+const IndustriesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.IndustriesPage })));
+const ContactsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ContactsPage })));
+const ResumesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ResumesPage })));
+const OccupationsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OccupationsPage })));
+const BudgetTypesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.BudgetTypesPage })));
+const StrategicGoalsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.StrategicGoalsPage })));
+const StrategicObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.StrategicObjectivesPage })));
+const UnitOfMeasurePage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.UnitOfMeasurePage })));
+const KPAsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.KPAsPage })));
+const MunicipalKPAsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.MunicipalKPAsPage })));
+const DepartmentalObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.DepartmentalObjectivesPage })));
+const OutputsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OutputsPage })));
+const PerformanceObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.PerformanceObjectivesPage })));
+const PriorityIssuesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.PriorityIssuesPage })));
+const IPMSTargetLibraryDetail = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryDetail })));
+const IPMSTargetLibraryList = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryList })));
+const IPMSTargetTemplateFormPage = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetTemplateFormPage })));
+const OPMSTargetLibraryDetail = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.OPMSTargetLibraryDetail })));
+const OPMSTargetLibraryList = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.OPMSTargetLibraryList })));
+const OPMSTargetTemplateFormPage = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.OPMSTargetTemplateFormPage })));
+const TaskManagement = lazy(() => import('./components/tasks/TaskManagement').then(module => ({ default: module.TaskManagement })));
+const IPMSTargetFormPage = lazy(() => import('./components/targets/TargetFormPages').then(module => ({ default: module.IPMSTargetFormPage })));
+const OPMSTargetFormPage = lazy(() => import('./components/targets/TargetFormPages').then(module => ({ default: module.OPMSTargetFormPage })));
+const KPILibrary = lazy(() => import('./components/kpi/KPILibrary').then(module => ({ default: module.KPILibrary })));
+const Reports = lazy(() => import('./components/reports/Reports').then(module => ({ default: module.Reports })));
+const Settings = lazy(() => import('./components/settings/Settings').then(module => ({ default: module.Settings })));
+const SecurityAdministrationPage = lazy(() => import('./components/security/SecurityAdministration').then(module => ({ default: module.SecurityAdministrationPage })));
+const WorkflowGovernanceAdminPage = lazy(() => import('./components/admin/WorkflowGovernanceAdmin').then(module => ({ default: module.WorkflowGovernanceAdminPage })));
+const TenantCalendarAdministration = lazy(() => import('./components/admin/TenantCalendarAdministration').then(module => ({ default: module.TenantCalendarAdministration })));
+const TenantEmployeeAdministration = lazy(() => import('./components/admin/TenantEmployeeAdministration').then(module => ({ default: module.TenantEmployeeAdministration })));
+const IdpAlignmentMatrixPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpAlignmentMatrixPage })));
+const IdpCommunityParticipationPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpCommunityParticipationPage })));
+const IdpHierarchyPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpHierarchyPage })));
+const IdpPlanManagementPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpPlanManagementPage })));
+const IdpPlanningDashboardPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpPlanningDashboardPage })));
+const IdpReportsPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpReportsPage })));
+const OPMSDashboardPage = lazy(() => import('./components/opms/OPMSDashboard').then(module => ({ default: module.OPMSDashboardPage })));
+const TidWorkspace = lazy(() => import('./components/tid/TidWorkspace').then(module => ({ default: module.TidWorkspace })));
+const StrategicDocumentsWorkspace = lazy(() => import('./components/documents/StrategicDocumentsWorkspace').then(module => ({ default: module.StrategicDocumentsWorkspace })));
+const C88Workspace = lazy(() => import('./components/c88/C88Workspace').then(module => ({ default: module.C88Workspace })));
+const IPMSDashboardPage = lazy(() => import('./components/ipms/IPMSDashboard').then(module => ({ default: module.IPMSDashboardPage })));
+const RiskDashboardPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskDashboardPage })));
+const RiskRegisterPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskRegisterPage })));
+const RiskAssessmentsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskAssessmentsPage })));
+const RiskTreatmentPlansPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskTreatmentPlansPage })));
+const RiskReviewsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskReviewsPage })));
+const RiskHeatmapPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskHeatmapPage })));
+const RiskReportsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskReportsPage })));
 
 function AppContent() {
   const { currentPath, isAuthenticated } = useApp();
@@ -326,7 +344,11 @@ function AppContent() {
     }
   };
 
-  return <>{renderPage()}</>;
+  return (
+    <Suspense fallback={<div role="status" aria-live="polite" className="p-6 text-sm text-secondary-600">Loading workspace…</div>}>
+      {renderPage()}
+    </Suspense>
+  );
 }
 
 function App() {
