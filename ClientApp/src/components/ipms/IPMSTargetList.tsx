@@ -8,7 +8,7 @@ import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createIpmsTarget as createIpmsTargetApi,
   withdrawIpmsTarget as withdrawIpmsTargetApi,
-  getIpmsTargets as getIpmsTargetsApi,
+  getIpmsTargetsPage as getIpmsTargetsPageApi,
 } from '../../api/api';
 import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../../types';
 import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
@@ -54,19 +54,34 @@ export function IPMSTargetList() {
   const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [withdrawalTarget, setWithdrawalTarget] = useState<IPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
-    const result = await getIpmsTargetsApi();
+    const result = await getIpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection });
     if (result.success && result.data) {
-      setIpmsTargets(result.data);
+      setIpmsTargets(result.data.items);
+      setTotalCount(result.data.totalCount);
     } else {
       pushToast('error', result.message ?? 'Failed to load IPMS targets');
     }
     setIsLoading(false);
-  }, [pushToast]);
+  }, [page, pushToast, search, sortBy, sortDirection]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     void loadTargets();
@@ -124,6 +139,7 @@ export function IPMSTargetList() {
   const columns = [
     {
       id: 'indicator',
+      sortKey: 'indicatorNumber',
       header: 'Indicator',
       accessor: (row: IPMSTarget) => (
         <div>
@@ -265,7 +281,7 @@ export function IPMSTargetList() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="primary">{ipmsTargets.length} targets</Badge>
+            <Badge variant="primary">{totalCount} targets</Badge>
             {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
           </div>
           {canManageTargets ? (
@@ -290,7 +306,19 @@ export function IPMSTargetList() {
             onRowClick={handleRowClick}
             actions={actions}
             searchPlaceholder="Search IPMS targets..."
-          emptyMessage={isLoading ? 'Loading IPMS targets...' : 'No IPMS targets found'}
+            searchable
+            serverState={{
+              page,
+              pageSize: 25,
+              totalCount,
+              search: searchInput,
+              sortBy,
+              sortDirection,
+              onPageChange: setPage,
+              onSearchChange: setSearchInput,
+              onSortChange: (nextSort, nextDirection) => { setPage(1); setSortBy(nextSort); setSortDirection(nextDirection); },
+            }}
+            emptyMessage={isLoading ? 'Loading IPMS targets...' : 'No IPMS targets found'}
             getRowId={(row) => row.id}
           />
         </Card>

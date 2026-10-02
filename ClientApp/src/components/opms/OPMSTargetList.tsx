@@ -8,7 +8,7 @@ import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createOpmsTarget as createOpmsTargetApi,
   withdrawOpmsTarget as withdrawOpmsTargetApi,
-  getOpmsTargets as getOpmsTargetsApi,
+  getOpmsTargetsPage as getOpmsTargetsPageApi,
 } from '../../api/api';
 import { mockDepartments, mockPeriods } from '../../data/mockData';
 import type { OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
@@ -141,20 +141,35 @@ export function OPMSTargetList() {
   const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [withdrawalTarget, setWithdrawalTarget] = useState<OPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
-    const result = await getOpmsTargetsApi();
+    const result = await getOpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection });
     if (result.success && result.data) {
-      setOpmsTargets(result.data);
+      setOpmsTargets(result.data.items);
+      setTotalCount(result.data.totalCount);
     } else {
       pushToast('error', result.message ?? 'Failed to load OPMS targets');
     }
     setIsLoading(false);
-  }, [pushToast]);
+  }, [page, pushToast, search, sortBy, sortDirection]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     void loadTargets();
@@ -236,6 +251,7 @@ export function OPMSTargetList() {
   const columns = [
     {
       id: 'indicator',
+      sortKey: 'indicatorNumber',
       header: 'Indicator',
       accessor: (row: OPMSTarget) => (
         <div>
@@ -389,7 +405,9 @@ export function OPMSTargetList() {
         {/* Header actions */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="primary">{filteredTargets.length} targets</Badge>
+            <Badge variant="primary">
+              {Object.values(filters).some(Boolean) ? `${filteredTargets.length} shown of ${totalCount}` : `${totalCount} targets`}
+            </Badge>
             {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
           </div>
           {canManageTargets ? (
@@ -417,6 +435,18 @@ export function OPMSTargetList() {
           onRowClick={handleRowClick}
           actions={actions}
           searchPlaceholder="Search targets..."
+          searchable
+          serverState={{
+            page,
+            pageSize: 25,
+            totalCount,
+            search: searchInput,
+            sortBy,
+            sortDirection,
+            onPageChange: setPage,
+            onSearchChange: setSearchInput,
+            onSortChange: (nextSort, nextDirection) => { setPage(1); setSortBy(nextSort); setSortDirection(nextDirection); },
+          }}
           emptyMessage={isLoading ? 'Loading OPMS targets...' : 'No OPMS targets found'}
           getRowId={(row) => row.id}
         />

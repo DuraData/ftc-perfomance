@@ -15,6 +15,7 @@ interface Column<T> {
   header: string;
   accessor: keyof T | ((row: T) => React.ReactNode);
   sortable?: boolean;
+  sortKey?: string;
   className?: string;
   headerClassName?: string;
 }
@@ -29,6 +30,17 @@ interface DataTableProps<T> {
   actions?: (row: T) => React.ReactNode;
   emptyMessage?: string;
   getRowId?: (row: T) => string;
+  serverState?: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    search: string;
+    sortBy: string;
+    sortDirection: Exclude<SortDirection, null>;
+    onPageChange: (page: number) => void;
+    onSearchChange: (search: string) => void;
+    onSortChange: (sortBy: string, direction: Exclude<SortDirection, null>) => void;
+  };
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -43,6 +55,7 @@ export function DataTable<T>({
   actions,
   emptyMessage = 'No data available',
   getRowId,
+  serverState,
 }: DataTableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,6 +63,13 @@ export function DataTable<T>({
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
   const handleSort = (columnId: string) => {
+    if (serverState) {
+      const column = columns.find(item => item.id === columnId);
+      if (!column?.sortKey) return;
+      const direction = serverState.sortBy === column.sortKey && serverState.sortDirection === 'asc' ? 'desc' : 'asc';
+      serverState.onSortChange(column.sortKey, direction);
+      return;
+    }
     if (sortColumn === columnId) {
       if (sortDirection === 'asc') setSortDirection('desc');
       else if (sortDirection === 'desc') { setSortColumn(null); setSortDirection(null); }
@@ -57,6 +77,7 @@ export function DataTable<T>({
   };
 
   const filteredData = useMemo(() => {
+    if (serverState) return data;
     let result = [...data];
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -78,13 +99,23 @@ export function DataTable<T>({
       }
     }
     return result;
-  }, [data, searchQuery, sortColumn, sortDirection, columns]);
+  }, [data, searchQuery, sortColumn, sortDirection, columns, serverState]);
 
-  const totalPages = Math.ceil(filteredData.length / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
+  const effectivePageSize = serverState?.pageSize ?? pageSize;
+  const effectivePage = serverState?.page ?? currentPage;
+  const effectiveTotalCount = serverState?.totalCount ?? filteredData.length;
+  const totalPages = Math.ceil(effectiveTotalCount / effectivePageSize);
+  const startIndex = (effectivePage - 1) * effectivePageSize;
+  const paginatedData = serverState ? filteredData : filteredData.slice(startIndex, startIndex + effectivePageSize);
 
   const getSortIcon = (columnId: string) => {
+    if (serverState) {
+      const column = columns.find(item => item.id === columnId);
+      if (!column?.sortKey || serverState.sortBy !== column.sortKey) return <ChevronsUpDown className="w-3 h-3 text-secondary-400" />;
+      return serverState.sortDirection === 'asc'
+        ? <ChevronUp className="w-3 h-3 text-primary-600" />
+        : <ChevronDown className="w-3 h-3 text-primary-600" />;
+    }
     if (sortColumn !== columnId) return <ChevronsUpDown className="w-3 h-3 text-secondary-400" />;
     if (sortDirection === 'asc') return <ChevronUp className="w-3 h-3 text-primary-600" />;
     return <ChevronDown className="w-3 h-3 text-primary-600" />;
@@ -98,9 +129,13 @@ export function DataTable<T>({
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-secondary-400" />
             <input
               type="text"
+              aria-label={searchPlaceholder}
               placeholder={searchPlaceholder}
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              value={serverState?.search ?? searchQuery}
+              onChange={(e) => {
+                if (serverState) serverState.onSearchChange(e.target.value);
+                else { setSearchQuery(e.target.value); setCurrentPage(1); }
+              }}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-secondary-800 border border-secondary-200 dark:border-secondary-700 rounded focus:outline-none focus:ring-1.5 focus:ring-primary-500"
             />
           </div>
@@ -115,7 +150,7 @@ export function DataTable<T>({
               <tr className="bg-secondary-50 dark:bg-secondary-800 border-b border-secondary-200 dark:border-secondary-700">
                 {columns.map(column => (
                   <th key={column.id} className={`px-3 py-2 text-left text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase tracking-wide ${column.headerClassName || ''}`}>
-                    {column.sortable !== false ? (
+                    {column.sortable !== false && (!serverState || column.sortKey) ? (
                       <button onClick={() => handleSort(column.id)} className="flex items-center gap-1 hover:text-secondary-900 dark:hover:text-white transition-colors">
                         {column.header}
                         {getSortIcon(column.id)}
@@ -155,20 +190,20 @@ export function DataTable<T>({
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-3 py-2 border-t border-secondary-200 dark:border-secondary-700">
-            <p className="text-[10px] text-secondary-600">{startIndex + 1}-{Math.min(startIndex + pageSize, filteredData.length)} of {filteredData.length}</p>
+            <p className="text-[10px] text-secondary-600">{startIndex + 1}-{Math.min(startIndex + paginatedData.length, effectiveTotalCount)} of {effectiveTotalCount}</p>
             <div className="flex items-center gap-0.5">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
+              <button aria-label="Previous page" onClick={() => serverState ? serverState.onPageChange(Math.max(1, effectivePage - 1)) : setCurrentPage(p => Math.max(1, p - 1))} disabled={effectivePage === 1} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
                 <ChevronLeft className="w-3.5 h-3.5 text-secondary-600" />
               </button>
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const pageNum = totalPages <= 5 ? i + 1 : currentPage <= 3 ? i + 1 : currentPage >= totalPages - 2 ? totalPages - 4 + i : currentPage - 2 + i;
+                const pageNum = totalPages <= 5 ? i + 1 : effectivePage <= 3 ? i + 1 : effectivePage >= totalPages - 2 ? totalPages - 4 + i : effectivePage - 2 + i;
                 return (
-                  <button key={pageNum} onClick={() => setCurrentPage(pageNum)} className={`w-6 h-6 rounded text-xs font-medium ${currentPage === pageNum ? 'bg-primary-600 text-white' : 'text-secondary-600 hover:bg-secondary-100'}`}>
+                  <button key={pageNum} aria-label={`Page ${pageNum}`} aria-current={effectivePage === pageNum ? 'page' : undefined} onClick={() => serverState ? serverState.onPageChange(pageNum) : setCurrentPage(pageNum)} className={`w-6 h-6 rounded text-xs font-medium ${effectivePage === pageNum ? 'bg-primary-600 text-white' : 'text-secondary-600 hover:bg-secondary-100'}`}>
                     {pageNum}
                   </button>
                 );
               })}
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
+              <button aria-label="Next page" onClick={() => serverState ? serverState.onPageChange(Math.min(totalPages, effectivePage + 1)) : setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={effectivePage === totalPages} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
                 <ChevronRight className="w-3.5 h-3.5 text-secondary-600" />
               </button>
             </div>

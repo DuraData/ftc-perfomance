@@ -23,10 +23,10 @@ import {
   extendIpmsSubmissionDueDate,
   extendOpmsSubmissionDueDate,
   getIpmsSubmissionAttachments,
-  getIpmsSubmissions,
+  getIpmsSubmissionsPage,
   getIpmsTargets,
   getOpmsSubmissionAttachments,
-  getOpmsSubmissions,
+  getOpmsSubmissionsPage,
   getOpmsTargets,
   uploadIpmsSubmissionAttachment,
   uploadOpmsSubmissionAttachment,
@@ -51,6 +51,12 @@ export function OPMSSubmissionsList() {
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const [form, setForm] = useState({
     targetId: '',
@@ -67,7 +73,7 @@ export function OPMSSubmissionsList() {
     setIsLoading(true);
     const [targetsResult, submissionsResult] = await Promise.all([
       getOpmsTargets(),
-      getOpmsSubmissions(),
+      getOpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection }),
     ]);
 
     if (targetsResult.success && targetsResult.data) {
@@ -77,13 +83,22 @@ export function OPMSSubmissionsList() {
     }
 
     if (submissionsResult.success && submissionsResult.data) {
-      setOpmsSubmissions(submissionsResult.data);
+      setOpmsSubmissions(submissionsResult.data.items);
+      setTotalCount(submissionsResult.data.totalCount);
     } else {
       pushToast('error', submissionsResult.message ?? 'Failed to load OPMS submissions');
     }
 
     setIsLoading(false);
-  }, [pushToast]);
+  }, [page, pushToast, search, sortBy, sortDirection]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     void loadData();
@@ -112,12 +127,12 @@ export function OPMSSubmissionsList() {
   };
 
   const columns = [
-    { id: 'target', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
-    { id: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
+    { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
+    { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600' : ''}>{new Date(row.dueDate).toLocaleDateString()}</span> },
     { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
     { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
-    { id: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
+    { id: 'status', sortKey: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
   ];
 
   const actions = (row: OPMSSubmission) => (
@@ -142,7 +157,8 @@ export function OPMSSubmissionsList() {
       return;
     }
 
-    setOpmsSubmissions(prev => [result.data!, ...prev]);
+    setOpmsSubmissions(prev => [result.data!, ...prev].slice(0, 25));
+    setTotalCount(count => count + 1);
     pushToast('success', 'Submission created');
     setShowCreateModal(false);
     await openSubmission(result.data);
@@ -293,7 +309,7 @@ export function OPMSSubmissionsList() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Badge variant="primary">{allSubmissions.length} submissions</Badge>
+            <Badge variant="primary">{totalCount} submissions</Badge>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
               <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
@@ -306,6 +322,19 @@ export function OPMSSubmissionsList() {
               onRowClick={(row) => { void openSubmission(row); }}
               actions={actions}
               getRowId={(row) => row.id}
+              searchable
+              searchPlaceholder="Search OPMS submissions..."
+              serverState={{
+                page,
+                pageSize: 25,
+                totalCount,
+                search: searchInput,
+                sortBy,
+                sortDirection,
+                onPageChange: setPage,
+                onSearchChange: setSearchInput,
+                onSortChange: (nextSort, nextDirection) => { setPage(1); setSortBy(nextSort); setSortDirection(nextDirection); },
+              }}
               emptyMessage={isLoading ? 'Loading OPMS submissions...' : 'No OPMS submissions found'}
             />
           </Card>
@@ -371,6 +400,12 @@ export function IPMSSubmissionsList() {
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const [form, setForm] = useState({
     targetId: '',
@@ -387,7 +422,7 @@ export function IPMSSubmissionsList() {
     setIsLoading(true);
     const [targetsResult, submissionsResult] = await Promise.all([
       getIpmsTargets(),
-      getIpmsSubmissions(),
+      getIpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection }),
     ]);
 
     if (targetsResult.success && targetsResult.data) {
@@ -397,13 +432,22 @@ export function IPMSSubmissionsList() {
     }
 
     if (submissionsResult.success && submissionsResult.data) {
-      setIpmsSubmissions(submissionsResult.data);
+      setIpmsSubmissions(submissionsResult.data.items);
+      setTotalCount(submissionsResult.data.totalCount);
     } else {
       pushToast('error', submissionsResult.message ?? 'Failed to load IPMS submissions');
     }
 
     setIsLoading(false);
-  }, [pushToast]);
+  }, [page, pushToast, search, sortBy, sortDirection]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     void loadData();
@@ -432,12 +476,12 @@ export function IPMSSubmissionsList() {
   };
 
   const columns = [
-    { id: 'target', header: 'Target', accessor: (row: IPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
-    { id: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
+    { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: IPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
+    { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
     { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
     { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
-    { id: 'status', header: 'Status', accessor: (row: IPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
+    { id: 'status', sortKey: 'status', header: 'Status', accessor: (row: IPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
   ];
 
   const actions = (row: IPMSSubmission) => (
@@ -462,7 +506,8 @@ export function IPMSSubmissionsList() {
       return;
     }
 
-    setIpmsSubmissions(prev => [result.data!, ...prev]);
+    setIpmsSubmissions(prev => [result.data!, ...prev].slice(0, 25));
+    setTotalCount(count => count + 1);
     pushToast('success', 'Submission created');
     setShowCreateModal(false);
     await openSubmission(result.data);
@@ -613,7 +658,7 @@ export function IPMSSubmissionsList() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Badge variant="primary">{allSubmissions.length} submissions</Badge>
+            <Badge variant="primary">{totalCount} submissions</Badge>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
               <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
@@ -626,6 +671,19 @@ export function IPMSSubmissionsList() {
               onRowClick={(row) => { void openSubmission(row); }}
               actions={actions}
               getRowId={(row) => row.id}
+              searchable
+              searchPlaceholder="Search IPMS submissions..."
+              serverState={{
+                page,
+                pageSize: 25,
+                totalCount,
+                search: searchInput,
+                sortBy,
+                sortDirection,
+                onPageChange: setPage,
+                onSearchChange: setSearchInput,
+                onSortChange: (nextSort, nextDirection) => { setPage(1); setSortBy(nextSort); setSortDirection(nextDirection); },
+              }}
               emptyMessage={isLoading ? 'Loading IPMS submissions...' : 'No IPMS submissions found'}
             />
           </Card>
