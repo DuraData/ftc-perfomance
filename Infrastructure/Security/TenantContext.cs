@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
 
@@ -39,8 +38,8 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         {
             if (!long.TryParse(value, out var parsed) || (!system && !allowed.Contains(parsed)))
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(new ApiResponse<object>(false, null, "The requested municipality context is not authorized."));
+                await ApiProblemDetails.WriteAsync(context, StatusCodes.Status403Forbidden,
+                    "The requested municipality context is not authorized.", "TENANT_CONTEXT_DENIED");
                 return;
             }
             requested = parsed;

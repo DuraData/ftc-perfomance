@@ -1,6 +1,13 @@
 namespace FTCERP.Host.API.Responses;
 
-public record ApiResponse<T>(bool Success, T? Data, string? Message = null, string[]? Errors = null);
+public interface IApiResponse
+{
+    bool Success { get; }
+    string? Message { get; }
+    string[]? Errors { get; }
+}
+
+public record ApiResponse<T>(bool Success, T? Data, string? Message = null, string[]? Errors = null) : IApiResponse;
 
 public record LoginResponse(DateTime ExpiresAt, UserProfileResponse User, string[] Roles, string[] Permissions, MenuItemResponse[] Menu, bool MfaEnrollmentRequired = false);
 

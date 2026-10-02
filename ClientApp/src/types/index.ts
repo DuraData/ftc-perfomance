@@ -1120,6 +1120,8 @@ export interface ApiResponse<T> {
   data?: T;
   message?: string;
   errors?: string[];
+  code?: string;
+  correlationId?: string;
 }
 
 export interface UserProfile {

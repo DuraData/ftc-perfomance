@@ -270,15 +270,7 @@ public sealed class IdempotencyMiddleware(
 
     private static async Task WriteProblemAsync(HttpContext context, int statusCode, string detail)
     {
-        context.Response.StatusCode = statusCode;
-        await context.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
-        {
-            Status = statusCode,
-            Title = Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(statusCode),
-            Detail = detail,
-            Instance = context.Request.Path,
-            Extensions = { ["correlationId"] = context.TraceIdentifier }
-        }, cancellationToken: context.RequestAborted);
+        await ApiProblemDetails.WriteAsync(context, statusCode, detail);
     }
 
     private sealed record RequestIdentity(string ScopeKey, long? MunicipalityId, string UserId, string Method, string Route, string Key, string RequestHash);

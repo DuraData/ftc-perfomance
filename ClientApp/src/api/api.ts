@@ -777,13 +777,15 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
     return { success: false, message: `The server returned ${response.status} without a valid response.${correlationId ? ` Correlation ID: ${correlationId}` : ''}` };
   }
   if (payload && typeof payload === 'object' && 'success' in payload && typeof (payload as { success?: unknown }).success === 'boolean') return payload as ApiResponse<T>;
-  const problem = payload as { title?: string; detail?: string; errors?: Record<string, string[]>; correlationId?: string };
+  const problem = payload as { title?: string; detail?: string; errors?: Record<string, string[]>; code?: string; correlationId?: string };
   const errors = problem.errors ? Object.values(problem.errors).flat() : undefined;
   return {
     success: response.ok,
     data: response.ok ? payload as T : undefined,
     message: problem.detail ?? problem.title ?? `Request failed with status ${response.status}.${correlationId ? ` Correlation ID: ${correlationId}` : ''}`,
     errors,
+    code: problem.code,
+    correlationId: problem.correlationId ?? correlationId ?? undefined,
   };
 }
 

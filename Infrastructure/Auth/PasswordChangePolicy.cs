@@ -1,6 +1,6 @@
 using System.Security.Claims;
-using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
 
 namespace FTCERP.Host.Infrastructure.Auth;
@@ -19,8 +19,8 @@ public sealed class PasswordChangeMiddleware(RequestDelegate next)
             && await RequiresPasswordChangeAsync(context)
             && !IsPasswordEndpoint(context.Request.Path))
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new ApiResponse<object>(false, null, "PASSWORD_CHANGE_REQUIRED"));
+            await ApiProblemDetails.WriteAsync(context, StatusCodes.Status403Forbidden,
+                "A password change is required before accessing this resource.", "PASSWORD_CHANGE_REQUIRED");
             return;
         }
 

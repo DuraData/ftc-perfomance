@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getMfaStatus, isAuthenticated, login, retryNotificationDelivery } from './api';
+import { getMfaStatus, getMyPermissions, isAuthenticated, login, retryNotificationDelivery } from './api';
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -84,5 +84,20 @@ describe('cookie-only authentication sessions', () => {
     const retryHeaders = protectedRequests[1][1]?.headers as Record<string, string>;
     expect(firstHeaders['Idempotency-Key']).toMatch(/^[A-Za-z0-9._:-]{8,128}$/);
     expect(retryHeaders['Idempotency-Key']).toBe(firstHeaders['Idempotency-Key']);
+  });
+
+  it('normalizes RFC 7807 errors without losing code, validation, or correlation evidence', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      type: 'about:blank', title: 'Conflict', status: 409, detail: 'The record changed.',
+      code: 'STATE_CONFLICT', correlationId: 'request-409', errors: { rowVersion: ['Reload the record.'] },
+    }), { status: 409, headers: { 'Content-Type': 'application/problem+json', 'X-Correlation-ID': 'request-409' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getMyPermissions();
+
+    expect(result).toEqual(expect.objectContaining({
+      success: false, message: 'The record changed.', code: 'STATE_CONFLICT', correlationId: 'request-409',
+      errors: ['Reload the record.'],
+    }));
   });
 });

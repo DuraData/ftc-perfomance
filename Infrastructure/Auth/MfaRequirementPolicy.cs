@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
@@ -28,8 +27,8 @@ public sealed class MfaEnrollmentMiddleware(RequestDelegate next)
             && await RequiresEnrollmentAsync(context)
             && !IsEnrollmentEndpoint(context.Request.Path))
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new ApiResponse<object>(false, null, "MFA_ENROLLMENT_REQUIRED"));
+            await ApiProblemDetails.WriteAsync(context, StatusCodes.Status403Forbidden,
+                "Multi-factor authentication enrollment is required before accessing this resource.", "MFA_ENROLLMENT_REQUIRED");
             return;
         }
 

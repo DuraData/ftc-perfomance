@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
-
 namespace FTCERP.Host.Infrastructure.Security;
 
 public sealed class CsrfProtectionMiddleware(RequestDelegate next)
@@ -25,15 +23,9 @@ public sealed class CsrfProtectionMiddleware(RequestDelegate next)
             return;
         }
 
-        context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        await context.Response.WriteAsJsonAsync(new ProblemDetails
-        {
-            Status = StatusCodes.Status400BadRequest,
-            Title = "Cross-site request protection failed",
-            Detail = $"State-changing cookie-authenticated API requests must include {HeaderName}.",
-            Instance = context.Request.Path,
-            Extensions = { ["correlationId"] = context.TraceIdentifier }
-        });
+        await ApiProblemDetails.WriteAsync(context, StatusCodes.Status400BadRequest,
+            $"State-changing cookie-authenticated API requests must include {HeaderName}.",
+            "CSRF_VALIDATION_FAILED", title: "Cross-site request protection failed");
     }
 
     private static bool HasBearerToken(HttpRequest request) =>

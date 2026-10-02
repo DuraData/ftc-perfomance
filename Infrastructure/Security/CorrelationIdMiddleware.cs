@@ -26,24 +26,19 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : M
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken cancellationToken)
     {
-        var (status, title) = exception switch
+        var (status, title, code) = exception switch
         {
-            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden"),
-            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Concurrent update conflict"),
-            ArgumentException => (StatusCodes.Status400BadRequest, "Invalid request"),
-            _ => (StatusCodes.Status500InternalServerError, "Unexpected server error")
+            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden", ApiProblemCodes.AccessDenied),
+            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Concurrent update conflict", ApiProblemCodes.StateConflict),
+            ApiValidationException => (StatusCodes.Status400BadRequest, "Invalid request", ApiProblemCodes.BadRequest),
+            _ => (StatusCodes.Status500InternalServerError, "Unexpected server error", ApiProblemCodes.InternalError)
         };
         logger.LogError(exception, "Request failed with status {StatusCode}", status);
-        var details = new ProblemDetails
-        {
-            Status = status,
-            Title = title,
-            Detail = status == StatusCodes.Status500InternalServerError ? "The request could not be completed." : exception.Message,
-            Instance = context.Request.Path
-        };
-        details.Extensions["correlationId"] = context.TraceIdentifier;
-        context.Response.StatusCode = status;
-        await context.Response.WriteAsJsonAsync(details, cancellationToken);
+        await ApiProblemDetails.WriteAsync(context, status,
+            status == StatusCodes.Status500InternalServerError ? "The request could not be completed." : exception.Message,
+            code, title: title);
         return true;
     }
 }
+
+public sealed class ApiValidationException(string message) : Exception(message);

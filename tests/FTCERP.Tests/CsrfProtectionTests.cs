@@ -29,8 +29,10 @@ public sealed class CsrfProtectionTests
 
         invoked.Should().BeFalse();
         context.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        context.Response.ContentType.Should().StartWith("application/problem+json");
         context.Response.Body.Position = 0;
-        (await new StreamReader(context.Response.Body).ReadToEndAsync()).Should().Contain(CsrfProtectionMiddleware.HeaderName);
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        body.Should().Contain(CsrfProtectionMiddleware.HeaderName).And.Contain("CSRF_VALIDATION_FAILED");
     }
 
     [Fact]

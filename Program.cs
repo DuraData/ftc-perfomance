@@ -25,8 +25,9 @@ using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
-builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = problem => problem.ProblemDetails.Extensions["correlationId"] = problem.HttpContext.TraceIdentifier);
+builder.Services.AddControllers(options => options.Filters.Add<ApiFailureProblemDetailsFilter>());
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = ApiProblemDetails.InvalidModelStateResponse);
+builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = problem => ApiProblemDetails.ApplyDefaults(problem.ProblemDetails, problem.HttpContext));
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -46,6 +47,7 @@ builder.Services.AddSwaggerGen(c =>
         [new OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>()
     });
     c.OperationFilter<IdempotencyOperationFilter>();
+    c.OperationFilter<ProblemDetailsOperationFilter>();
 });
 
 // Add EF Core
@@ -291,9 +293,6 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline.
 app.UseMiddleware<CorrelationIdMiddleware>();
-app.UseMiddleware<SecurityHeadersMiddleware>();
-app.UseMiddleware<RequestTelemetryMiddleware>();
-app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages(async statusCodeContext =>
 {
@@ -303,14 +302,12 @@ app.UseStatusCodePages(async statusCodeContext =>
     await service.TryWriteAsync(new ProblemDetailsContext
     {
         HttpContext = http,
-        ProblemDetails = new Microsoft.AspNetCore.Mvc.ProblemDetails
-        {
-            Status = http.Response.StatusCode,
-            Title = Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(http.Response.StatusCode),
-            Instance = http.Request.Path
-        }
+        ProblemDetails = ApiProblemDetails.Create(http, http.Response.StatusCode)
     });
 });
+app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseMiddleware<RequestTelemetryMiddleware>();
+app.UseMiddleware<CsrfProtectionMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
