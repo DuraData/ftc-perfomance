@@ -97,6 +97,7 @@ import type {
   StrategicDocumentType,
   SaveStrategicDocumentVersionPayload,
   C88Workspace,
+  C88IndicatorReport,
   EnterpriseSignInOptions,
   EnterpriseProviderOption,
   AuthenticationConfiguration,
@@ -1888,9 +1889,20 @@ export async function downloadStrategicDocument(document: StrategicDocument): Pr
   return { success: true, data: true };
 }
 
-export async function getC88Workspace(municipalityFinancialYearPublicId?: string): Promise<ApiResponse<C88Workspace>> {
-  const query = municipalityFinancialYearPublicId ? `?municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}` : '';
+export async function getC88Workspace(municipalityFinancialYearPublicId?: string, includeReports = true): Promise<ApiResponse<C88Workspace>> {
+  const parameters = new URLSearchParams();
+  if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
+  if (!includeReports) parameters.set('includeReports', 'false');
+  const query = parameters.size ? `?${parameters.toString()}` : '';
   return get<C88Workspace>(`/v1/c88/workspace${query}`);
+}
+
+export async function getC88ReportsPage(query: RegisterPageQuery = {}, municipalityFinancialYearPublicId?: string): Promise<ApiResponse<PagedResult<C88IndicatorReport>>> {
+  const pageQuery = registerPageQuery(query);
+  const yearQuery = municipalityFinancialYearPublicId
+    ? `${pageQuery ? '&' : '?'}municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}`
+    : '';
+  return get<PagedResult<C88IndicatorReport>>(`/v1/c88/reports/page${pageQuery}${yearQuery}`);
 }
 
 export const createC88CatalogueVersion = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/catalogue-versions', payload);

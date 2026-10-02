@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88Workspace, getMunicipalEmployees, getMunicipalityFinancialYearMasters, getOpmsTargets,
+  finalSubmitC88Report, getC88ReportsPage, getC88Workspace, getMunicipalEmployees, getMunicipalityFinancialYearMasters, getOpmsTargets,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
@@ -30,6 +30,13 @@ export function C88Workspace() {
   const [selectedReport, setSelectedReport] = useState<C88IndicatorReport | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportTotalCount, setReportTotalCount] = useState(0);
+  const [reportTotalPages, setReportTotalPages] = useState(0);
+  const [reportSearchInput, setReportSearchInput] = useState('');
+  const [reportSearch, setReportSearch] = useState('');
+  const [reportSortBy, setReportSortBy] = useState('createdAt');
+  const [reportSortDirection, setReportSortDirection] = useState<'asc' | 'desc'>('desc');
   const [edition, setEdition] = useState({ code: '', name: '', editionDate: today(), effectiveFrom: today() });
   const [catalogueItem, setCatalogueItem] = useState({ catalogueVersionPublicId: '', kind: 'Sector' as C88CatalogueItemKind, code: '', name: '', parentItemPublicId: '' });
   const [indicatorDraft, setIndicatorDraft] = useState({ catalogueVersionPublicId: '', code: '', name: '', definition: '', officialTechnicalIndicatorDescription: '', valueType: 'Decimal', calculationOperator: 'None', elementCode: '', elementName: '', municipalCategoryPublicId: '', readinessTierPublicId: '' });
@@ -41,6 +48,7 @@ export function C88Workspace() {
   const [responses, setResponses] = useState<Record<string, string>>({});
 
   const canReadModule = canRead('C88_INDICATOR') || canRead('C88_REPORT');
+  const canReadReports = canRead('C88_REPORT');
   const effectiveConfigurationId = configurationId || data.configurations[0]?.publicId || '';
   const configuration = data.configurations.find(item => item.publicId === effectiveConfigurationId);
   const indicator = data.indicators.find(item => item.publicId === indicatorId);
@@ -52,16 +60,27 @@ export function C88Workspace() {
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, yearResult, employeeResult, targetResult] = await Promise.all([
-      getC88Workspace(yearId || undefined), getMunicipalityFinancialYearMasters(), getMunicipalEmployees(), getOpmsTargets(),
+    const [workspace, yearResult, employeeResult, targetResult, reportResult] = await Promise.all([
+      getC88Workspace(yearId || undefined, false), getMunicipalityFinancialYearMasters(), getMunicipalEmployees(), getOpmsTargets(),
+      canReadReports
+        ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
+        : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }, message: undefined }),
     ]);
-    if (!workspace.success) pushToast('error', workspace.message ?? 'Unable to load Circular 88.'); else setData(workspace.data ?? emptyWorkspace);
+    if (!workspace.success) pushToast('error', workspace.message ?? 'Unable to load Circular 88.');
+    else setData({ ...(workspace.data ?? emptyWorkspace), reports: reportResult.data?.items ?? [] });
+    if (!reportResult.success) pushToast('error', reportResult.message ?? 'Unable to load Circular 88 reports.');
+    setReportTotalCount(reportResult.data?.totalCount ?? 0);
+    setReportTotalPages(reportResult.data?.totalPages ?? 0);
     if (yearResult.success) setYears((yearResult.data ?? []).filter(item => item.isActive));
     if (employeeResult.success) setEmployees((employeeResult.data ?? []).filter(item => item.isActive));
     if (targetResult.success) setTargets((targetResult.data ?? []).filter(item => !item.isWithdrawn));
-  }, [canReadModule, pushToast, yearId]);
+  }, [canReadModule, canReadReports, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setReportPage(1); setReportSearch(reportSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [reportSearchInput]);
   useEffect(() => {
     setYearId(value => value || years.find(item => item.isCurrent)?.publicId || years[0]?.publicId || '');
     setConfigurationId(value => data.configurations.some(item => item.publicId === value) ? value : data.configurations[0]?.publicId || '');
@@ -91,7 +110,7 @@ export function C88Workspace() {
 
       <Section title="Municipality and financial-year configuration">
         <div className="grid gap-3 md:grid-cols-4">
-          <label className="text-sm">Financial year<select className={field} value={yearId} onChange={event => setYearId(event.target.value)}>{years.map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select></label>
+          <label className="text-sm">Financial year<select className={field} value={yearId} onChange={event => { setYearId(event.target.value); setReportPage(1); }}>{years.map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select></label>
           <label className="text-sm">Configuration<select className={field} value={effectiveConfigurationId} onChange={event => setConfigurationId(event.target.value)}><option value="">Not configured</option>{data.configurations.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} · {item.catalogueVersionCode}</option>)}</select></label>
           <label className="text-sm">Published edition<select className={field} value={configuration?.catalogueVersionPublicId ?? catalogueItem.catalogueVersionPublicId} onChange={event => setCatalogueItem(value => ({ ...value, catalogueVersionPublicId: event.target.value }))}><option value="">Select edition</option>{publishedVersions.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label>
           <div className="flex items-end"><Badge variant={configuration?.isEnabled ? 'success' : 'warning'}>{configuration?.isEnabled ? 'Enabled' : 'Disabled'}</Badge></div>
@@ -119,7 +138,9 @@ export function C88Workspace() {
       </Section>
 
       <Section title="Governed report register">
+        {canReadReports && <div className="mb-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_13rem_10rem]"><label className="text-sm">Search reports<input className={field} value={reportSearchInput} onChange={event => setReportSearchInput(event.target.value)} placeholder="Indicator code or name" /></label><label className="text-sm">Sort reports<select className={field} value={reportSortBy} onChange={event => { setReportPage(1); setReportSortBy(event.target.value); }}><option value="createdAt">Created</option><option value="indicatorCode">Indicator code</option><option value="state">State</option><option value="versionNumber">Version</option></select></label><label className="text-sm">Direction<select className={field} value={reportSortDirection} onChange={event => { setReportPage(1); setReportSortDirection(event.target.value as 'asc' | 'desc'); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label></div>}
         <div className="space-y-2">{currentReports.map(report => <button type="button" key={report.publicId} onClick={() => setSelectedReport(report)} className="w-full rounded border p-3 text-left"><div className="flex justify-between"><strong>{report.indicatorCode} · v{report.versionNumber}</strong><Badge variant={report.state === 'FinalSubmitted' ? 'success' : 'default'}>{report.state}</Badge></div><div className="text-xs text-secondary-500">Calculated value: {report.calculatedValue ?? 'Not calculated'} · Stage {report.currentStageSequence}</div></button>)}</div>
+        {canReadReports && reportTotalPages > 1 && <div className="mt-3 flex items-center justify-between"><p className="text-xs text-secondary-500">Page {reportPage} of {reportTotalPages} · {reportTotalCount} reports</p><div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy || reportPage === 1} onClick={() => setReportPage(value => Math.max(1, value - 1))}>Previous</Button><Button variant="outline" size="sm" disabled={busy || reportPage === reportTotalPages} onClick={() => setReportPage(value => Math.min(reportTotalPages, value + 1))}>Next</Button></div></div>}
         {selectedReport && <div className="mt-3 flex flex-wrap gap-2"><input className={field} placeholder="Workflow reason" value={reason} onChange={e => setReason(e.target.value)} />{canExecute('C88_REPORT.SUBMIT') && ['Draft','Rework'].includes(selectedReport.state) && <Button disabled={busy || !reason} onClick={() => void run(() => submitC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report submitted.')}>Submit</Button>}{canExecute('C88_REPORT.VERIFY') && selectedReport.state === 'Submitted' && <Button disabled={busy || !reason} onClick={() => void run(() => verifyC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report verified.')}>Verify</Button>}{canExecute('C88_REPORT.RETURN') && ['Submitted','Verified'].includes(selectedReport.state) && <Button variant="secondary" disabled={busy || !reason} onClick={() => void run(() => returnC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report returned for rework.')}>Return</Button>}{canExecute('C88_REPORT.FINAL_SUBMIT') && selectedReport.state === 'Verified' && <Button disabled={busy || !reason} onClick={() => void run(() => finalSubmitC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report finally submitted.')}>Final submit</Button>}</div>}
       </Section>
 

@@ -70,6 +70,9 @@ public class C88ControllerTests
         completed.State.Should().Be(C88ReportState.FinalSubmitted);
         completed.WorkflowActions.Select(item => item.Action).Should().Equal(C88WorkflowActionKind.Created, C88WorkflowActionKind.Submitted, C88WorkflowActionKind.Verified, C88WorkflowActionKind.FinalSubmitted);
         completed.CurrentStageSequence.Should().Be(3);
+        var page = Payload(await controller.GetReportsPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "indicatorCode", SortDirection = "asc" }, seed.Year.PublicId));
+        page.TotalCount.Should().Be(1);
+        page.Items.Should().ContainSingle().Which.IndicatorCode.Should().Be("C88-001");
         context.ChangeTracker.Clear();
         var value = await context.C88DataElementValues.FirstAsync();
         value.Value = "999";
@@ -148,6 +151,18 @@ public class C88ControllerTests
             seed.Employee.PublicId, C88AssignmentRole.Contributor, DateTime.UtcNow.AddDays(-1), null, true, "Grant scoped contribution", null))).Should().NotBeEmpty();
         var afterAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
         afterAssignment.Indicators.Should().ContainSingle().Which.PublicId.Should().Be(module.Indicator.PublicId);
+    }
+
+    [Fact]
+    public async Task Report_page_rejects_unknown_sort_fields()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+
+        var result = await controller.GetReportsPage(new PagedQueryRequest { SortBy = "calculated-sql" }, seed.Year.PublicId);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
