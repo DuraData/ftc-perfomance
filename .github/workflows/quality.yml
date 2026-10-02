@@ -34,6 +34,9 @@ jobs:
           dotnet tool install --global dotnet-ef --version 10.0.0
           dotnet ef migrations script --project FTCERP.Host.csproj --no-build --configuration Release --idempotent --output "$RUNNER_TEMP/migrations.sql"
           test -s "$RUNNER_TEMP/migrations.sql"
+      - name: Validate recovery drill safety contract
+        shell: pwsh
+        run: ./tools/Invoke-OpmsSqlServerRecoveryDrill.ps1 -ValidateOnly
       - name: Audit backend dependencies
         run: dotnet list FTCERP.Host.csproj package --vulnerable --include-transitive
       - name: Install frontend

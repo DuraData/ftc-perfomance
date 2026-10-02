@@ -29,6 +29,7 @@ secure-files/
 
 # Ignore published output
 publish/
+artifacts/recovery-drills/
 
 # IDE and editor files
 .vs/
