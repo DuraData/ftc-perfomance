@@ -394,6 +394,8 @@ public static class PerformanceApiSupport
     public static AuditTrailEntryResponse ToResponse(this AuditTrail audit) =>
         new(
             audit.Id,
+            audit.PublicId,
+            audit.MunicipalityId,
             audit.EntityName,
             audit.EntityId,
             audit.Action,
@@ -401,7 +403,11 @@ public static class PerformanceApiSupport
             audit.NewValue,
             audit.ChangedBy,
             audit.ChangedAt,
-            audit.IpAddress);
+            audit.IpAddress,
+            audit.CorrelationId,
+            audit.Reason,
+            audit.UserAgent,
+            audit.SessionId);
 
     public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context) =>
         new(

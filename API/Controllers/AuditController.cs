@@ -40,7 +40,8 @@ public class AuditController : ControllerBase
     }
 
     [HttpGet("trails")]
-    [Authorize]
+    [HttpGet("/api/v1/audit/trails")]
+    [Authorize(Policy = "Permission:Audit.Trails.View")]
     public async Task<ActionResult<ApiResponse<AuditTrailEntryResponse[]>>> GetAuditTrails([FromQuery] string? entityName = null, [FromQuery] string? entityId = null, [FromQuery] int take = 500)
     {
         take = Math.Clamp(take, 1, 1000);

@@ -560,6 +560,7 @@ public class AuditTrail
     public string? CorrelationId { get; set; }
     public string? Reason { get; set; }
     public string? UserAgent { get; set; }
+    public string? SessionId { get; set; }
 
     public Municipality? Municipality { get; set; }
     public ApplicationUser? ChangedByUser { get; set; }

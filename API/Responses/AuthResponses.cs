@@ -457,6 +457,8 @@ public record NotificationResponse(
 
 public record AuditTrailEntryResponse(
     long Id,
+    Guid PublicId,
+    long? MunicipalityId,
     string EntityName,
     string EntityId,
     string Action,
@@ -464,7 +466,11 @@ public record AuditTrailEntryResponse(
     string? NewValue,
     string ChangedBy,
     DateTime ChangedAt,
-    string? IpAddress);
+    string? IpAddress,
+    string? CorrelationId,
+    string? Reason,
+    string? UserAgent,
+    string? SessionId);
 
 public record IdpPlanSummaryResponse(
     int Id,

@@ -2,15 +2,16 @@ using System.Text.Json;
 using System.Diagnostics;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
+using System.Security.Claims;
 
 namespace FTCERP.Host.Infrastructure.Security;
 
 public interface IWorkflowGovernanceService
 {
-    void QueueAuditTrail(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress);
+    void QueueAuditTrail(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null);
     void QueueNotification(string userId, NotificationType type, string title, string message, string? entityName, string? entityId);
     void QueueWorkflowNotifications(IEnumerable<string> userIds, NotificationType type, string title, string message, string? entityName, string? entityId);
-    Task WriteAuditTrailAsync(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress);
+    Task WriteAuditTrailAsync(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null);
     Task CreateNotificationAsync(string userId, NotificationType type, string title, string message, string? entityName, string? entityId);
     Task CreateWorkflowNotificationsAsync(IEnumerable<string> userIds, NotificationType type, string title, string message, string? entityName, string? entityId);
 }
@@ -18,22 +19,28 @@ public interface IWorkflowGovernanceService
 public class WorkflowGovernanceService : IWorkflowGovernanceService
 {
     private readonly ApplicationDbContext _context;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
+    private readonly ITenantContext? _tenantContext;
 
-    public WorkflowGovernanceService(ApplicationDbContext context)
+    public WorkflowGovernanceService(ApplicationDbContext context, IHttpContextAccessor? httpContextAccessor = null, ITenantContext? tenantContext = null)
     {
         _context = context;
+        _httpContextAccessor = httpContextAccessor;
+        _tenantContext = tenantContext;
     }
 
-    public async Task WriteAuditTrailAsync(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress)
+    public async Task WriteAuditTrailAsync(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null)
     {
-        QueueAuditTrail(entityName, entityId, action, oldValue, newValue, changedBy, ipAddress);
+        QueueAuditTrail(entityName, entityId, action, oldValue, newValue, changedBy, ipAddress, reason);
         await _context.SaveChangesAsync();
     }
 
-    public void QueueAuditTrail(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress)
+    public void QueueAuditTrail(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null)
     {
+        var http = _httpContextAccessor?.HttpContext;
         _context.AuditTrails.Add(new AuditTrail
         {
+            MunicipalityId = _tenantContext?.MunicipalityId,
             EntityName = entityName,
             EntityId = entityId,
             Action = action,
@@ -41,7 +48,11 @@ public class WorkflowGovernanceService : IWorkflowGovernanceService
             NewValue = Serialize(newValue),
             ChangedBy = changedBy,
             ChangedAt = DateTime.UtcNow,
-            IpAddress = ipAddress
+            IpAddress = ipAddress ?? http?.Connection.RemoteIpAddress?.ToString(),
+            CorrelationId = http?.TraceIdentifier ?? Activity.Current?.TraceId.ToString(),
+            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
+            UserAgent = http?.Request.Headers.UserAgent.ToString(),
+            SessionId = http?.User.FindFirstValue("sid")
         });
     }
 

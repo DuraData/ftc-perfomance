@@ -2131,6 +2131,8 @@ export interface NotificationDto {
 
 export interface AuditTrailEntryDto {
   id: number;
+  publicId: string;
+  municipalityId?: number | null;
   entityName: string;
   entityId: string;
   action: string;
@@ -2139,6 +2141,10 @@ export interface AuditTrailEntryDto {
   changedBy: string;
   changedAt: string;
   ipAddress?: string | null;
+  correlationId?: string | null;
+  reason?: string | null;
+  userAgent?: string | null;
+  sessionId?: string | null;
 }
 
 export interface PoeFileDto {

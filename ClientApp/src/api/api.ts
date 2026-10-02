@@ -1677,7 +1677,7 @@ export async function markNotificationRead(id: string): Promise<ApiResponse<bool
 }
 
 export async function getAuditTrails(take = 200): Promise<ApiResponse<AuditTrailEntryDto[]>> {
-  return get<AuditTrailEntryDto[]>(`/audit/trails?take=${take}`);
+  return get<AuditTrailEntryDto[]>(`/v1/audit/trails?take=${take}`);
 }
 
 export async function getIdpPlans(): Promise<ApiResponse<IdpPlanSummary[]>> {

@@ -940,6 +940,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<AuditTrail>().HasIndex(audit => new { audit.MunicipalityId, audit.ChangedAt });
         builder.Entity<AuditTrail>().Property(audit => audit.CorrelationId).HasMaxLength(100);
         builder.Entity<AuditTrail>().Property(audit => audit.UserAgent).HasMaxLength(512);
+        builder.Entity<AuditTrail>().Property(audit => audit.SessionId).HasMaxLength(64);
+        builder.Entity<AuditTrail>().Property(audit => audit.IpAddress).HasMaxLength(64);
+        builder.Entity<AuditTrail>().Property(audit => audit.Reason).HasMaxLength(1000);
+        builder.Entity<AuditTrail>().Property(audit => audit.EntityName).HasMaxLength(160);
+        builder.Entity<AuditTrail>().Property(audit => audit.EntityId).HasMaxLength(160);
+        builder.Entity<AuditTrail>().Property(audit => audit.Action).HasMaxLength(160);
         builder.Entity<AuditTrail>().HasOne(audit => audit.Municipality).WithMany().HasForeignKey(audit => audit.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuditTrail>().HasQueryFilter(audit => TenantFilterBypass || audit.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
