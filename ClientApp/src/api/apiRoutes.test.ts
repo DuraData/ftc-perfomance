@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changePassword, closeEmployeeAssignment, commitIdpImport, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpKpiImport, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -16,6 +16,18 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans/plan-public-id/imports'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/plans/plan-public-id/imports/kpis/stage'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('"clientRequestId":"request-id"') }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/idp/imports/batch-public-id/commit'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'AQ==', reason: 'Approved reconciliation' }) }));
+  });
+
+  it('uses separately authorized hierarchy stage and commit routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const row = { sourceRowNumber: 2, outcomeCode: 'OUT', outcomeName: 'Outcome', outcomeDescription: 'Description', outcomeSortOrder: 1, objectiveCode: 'OBJ', objectiveName: 'Objective', objectiveDescription: 'Description', objectiveBaseline: 1, objectiveTarget: 2, objectiveDepartmentCode: null, objectiveStartDate: '2027-01-01T00:00:00.000Z', objectiveEndDate: '2030-01-01T00:00:00.000Z', objectiveBudget: 10, objectiveSortOrder: 1, priorityCode: 'PRI', priorityName: 'Priority', priorityDescription: 'Description', prioritySortOrder: 1, programmeCode: 'PROG', programmeName: 'Programme', programmeDescription: 'Description', programmeDepartmentCode: null, programmePlannedBudget: 10, programmeApprovedBudget: 10, programmeActualExpenditure: 0, projectCode: 'PROJECT', projectName: 'Project', projectDescription: 'Description', projectCategory: 'Capital', projectDepartmentCode: null, projectBudget: 10, projectFundingSource: 'Grant', projectStartDate: '2027-01-01T00:00:00.000Z', projectEndDate: '2029-01-01T00:00:00.000Z', projectStatus: 'Planned', communityNeedReference: null };
+
+    await stageIdpHierarchyImport('plan-id', { clientRequestId: 'hierarchy-request', sourceFileName: 'hierarchy.csv', rows: [row] });
+    await commitIdpHierarchyImport('batch-id', { rowVersion: 'AQ==', reason: 'Approved' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans/plan-id/imports/hierarchy/stage'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('hierarchy-request') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/imports/batch-id/commit-hierarchy'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'AQ==', reason: 'Approved' }) }));
   });
 
   it('loads performance target revisions from the controller route', async () => {

@@ -505,7 +505,11 @@ public record IdpPlanVersionResponse(
     string? PublicationReference,
     string RowVersion);
 
-public record IdpStrategicOutcomeResponse(int Id, int IdpPlanId, string Code, string Name, string Description, int SortOrder);
+public record IdpStrategicOutcomeResponse(int Id, int IdpPlanId, string Code, string Name, string Description, int SortOrder)
+{
+    public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+}
 
 public record IdpStrategicObjectiveResponse(
     int Id,
@@ -522,9 +526,18 @@ public record IdpStrategicObjectiveResponse(
     DateTime StartDate,
     DateTime EndDate,
     decimal BudgetAllocation,
-    int SortOrder);
+    int SortOrder)
+{
+    public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+}
 
-public record IdpDevelopmentPriorityResponse(int Id, int IdpStrategicObjectiveId, string Name, string Description, int SortOrder);
+public record IdpDevelopmentPriorityResponse(int Id, int IdpStrategicObjectiveId, string Name, string Description, int SortOrder)
+{
+    public Guid PublicId { get; init; }
+    public string PriorityCode { get; init; } = string.Empty;
+    public string RowVersion { get; init; } = string.Empty;
+}
 
 public record IdpProgrammeResponse(
     int Id,
@@ -536,7 +549,11 @@ public record IdpProgrammeResponse(
     string? ResponsibleDepartmentName,
     decimal PlannedBudget,
     decimal ApprovedBudget,
-    decimal ActualExpenditure);
+    decimal ActualExpenditure)
+{
+    public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+}
 
 public record IdpProjectResponse(
     int Id,
@@ -552,7 +569,11 @@ public record IdpProjectResponse(
     DateTime StartDate,
     DateTime EndDate,
     string Status,
-    string? CommunityNeedReference);
+    string? CommunityNeedReference)
+{
+    public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
+}
 
 public record IdpKpiResponse(
     int Id,

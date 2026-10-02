@@ -4,13 +4,15 @@ import {
   createIdpComment,
   createIdpPlan,
   createIdpPlanVersion,
-  commitIdpImport,
+    commitIdpHierarchyImport,
+    commitIdpImport,
   getIdpImportBatches,
   getIdpAlignmentMatrix,
   getIdpDashboard,
   getIdpPlans,
   getIdpPlanHierarchy,
   getIdpReport,
+  stageIdpHierarchyImport,
   stageIdpKpiImport,
   createIdpCommunitySession,
 } from '../../api/api';
@@ -24,12 +26,13 @@ import type {
   IdpDashboard,
   IdpHierarchy,
   IdpImportBatch,
+  IdpHierarchyImportRowPayload,
   IdpKpiImportRowPayload,
   IdpPlanSummary,
   IdpPlanVersion,
   IdpReportDocument,
 } from '../../types';
-import { idpKpiCsvTemplate, parseIdpKpiCsv } from './idpImportCsv';
+import { idpHierarchyCsvTemplate, idpKpiCsvTemplate, parseIdpHierarchyCsv, parseIdpKpiCsv } from './idpImportCsv';
 
 function metricCard(title: string, value: string | number, caption?: string) {
   return (
@@ -177,12 +180,14 @@ export function IdpPlanManagementPage() {
   const { canImport } = useSecurity();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
   const canImportKpis = canImport('IDP_INDICATOR');
+  const canImportHierarchy = canImport('IDP_PLAN');
   const currentYear = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [versions, setVersions] = useState<IdpPlanVersion[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
-  const [importRows, setImportRows] = useState<IdpKpiImportRowPayload[]>([]);
+  const [importMode, setImportMode] = useState<'KPI' | 'HIERARCHY'>(canImportHierarchy ? 'HIERARCHY' : 'KPI');
+  const [importRows, setImportRows] = useState<Array<IdpKpiImportRowPayload | IdpHierarchyImportRowPayload>>([]);
   const [importFileName, setImportFileName] = useState('');
   const [importBatch, setImportBatch] = useState<IdpImportBatch | null>(null);
   const [importHistory, setImportHistory] = useState<IdpImportBatch[]>([]);
@@ -221,7 +226,7 @@ export function IdpPlanManagementPage() {
       const hierarchy = hierarchyResult.data;
       setVersions(hierarchy?.versions ?? []);
       const selected = loadedPlans.find(plan => plan.id === planId);
-      if (selected && canImportKpis) {
+      if (selected && (canImportKpis || canImportHierarchy)) {
         const historyResult = await getIdpImportBatches(selected.publicId);
         setImportHistory(historyResult.data ?? []);
       }
@@ -241,7 +246,7 @@ export function IdpPlanManagementPage() {
     const hierarchyResult = await getIdpPlanHierarchy(planId);
     setVersions(hierarchyResult.data?.versions ?? []);
     const selected = plans.find(plan => plan.id === planId);
-    if (selected && canImportKpis) {
+    if (selected && (canImportKpis || canImportHierarchy)) {
       const historyResult = await getIdpImportBatches(selected.publicId);
       setImportHistory(historyResult.data ?? []);
     }
@@ -252,18 +257,17 @@ export function IdpPlanManagementPage() {
 
   const stageImport = async () => {
     if (!selectedPlan || !importRows.length || !importFileName) {
-      pushToast('error', 'Select a plan and a valid KPI CSV file first.');
+      pushToast('error', `Select a plan and a valid ${importMode === 'KPI' ? 'KPI' : 'hierarchy'} CSV file first.`);
       return;
     }
     setImportBusy(true);
     try {
-      const result = await stageIdpKpiImport(selectedPlan.publicId, {
-        clientRequestId: crypto.randomUUID(),
-        sourceFileName: importFileName,
-        rows: importRows,
-      });
+      const requestId = crypto.randomUUID();
+      const result = importMode === 'KPI'
+        ? await stageIdpKpiImport(selectedPlan.publicId, { clientRequestId: requestId, sourceFileName: importFileName, rows: importRows as IdpKpiImportRowPayload[] })
+        : await stageIdpHierarchyImport(selectedPlan.publicId, { clientRequestId: requestId, sourceFileName: importFileName, rows: importRows as IdpHierarchyImportRowPayload[] });
       if (!result.success || !result.data) {
-        pushToast('error', result.message ?? 'Unable to stage the KPI import.');
+        pushToast('error', result.message ?? 'Unable to stage the import.');
         return;
       }
       setImportBatch(result.data);
@@ -281,25 +285,27 @@ export function IdpPlanManagementPage() {
     }
     setImportBusy(true);
     try {
-      const result = await commitIdpImport(importBatch.publicId, { rowVersion: importBatch.rowVersion, reason: importReason.trim() });
+        const commit = importBatch.importType === 'HIERARCHY' ? commitIdpHierarchyImport : commitIdpImport;
+        const result = await commit(importBatch.publicId, { rowVersion: importBatch.rowVersion, reason: importReason.trim() });
       if (!result.success || !result.data) {
-        pushToast('error', result.message ?? 'Unable to commit the KPI import.');
+        pushToast('error', result.message ?? 'Unable to commit the import.');
         return;
       }
       setImportBatch(result.data);
       setImportHistory(history => history.map(item => item.publicId === result.data!.publicId ? result.data! : item));
       setImportReason('');
-      pushToast('success', 'KPI import committed atomically.');
+      pushToast('success', `${importBatch.importType === 'HIERARCHY' ? 'Hierarchy' : 'KPI'} import committed atomically.`);
     } finally {
       setImportBusy(false);
     }
   };
 
   const downloadImportTemplate = () => {
-    const url = URL.createObjectURL(new Blob([idpKpiCsvTemplate], { type: 'text/csv;charset=utf-8' }));
+    const hierarchy = importMode === 'HIERARCHY';
+    const url = URL.createObjectURL(new Blob([hierarchy ? idpHierarchyCsvTemplate : idpKpiCsvTemplate], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'idp-kpi-import-template.csv';
+    anchor.download = hierarchy ? 'idp-hierarchy-import-template.csv' : 'idp-kpi-import-template.csv';
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -428,21 +434,28 @@ export function IdpPlanManagementPage() {
           </Card>
         </div>
 
-        {canImportKpis ? (
+        {canImportKpis || canImportHierarchy ? (
           <Card>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-secondary-900 dark:text-white">KPI import reconciliation</h3>
-                <p className="text-xs text-secondary-500">Stage the complete CSV, review NEW/UNCHANGED/CHANGED/INVALID rows, then commit the valid batch atomically.</p>
+                <h3 className="text-base font-semibold text-secondary-900 dark:text-white">IDP import reconciliation</h3>
+                <p className="text-xs text-secondary-500">Stage a full hierarchy/project or KPI CSV, review NEW/UNCHANGED/CHANGED/INVALID rows, then commit the valid batch atomically.</p>
               </div>
               <Button variant="outline" onClick={downloadImportTemplate}>Download CSV Template</Button>
             </div>
 
+            {canImportKpis && canImportHierarchy ? (
+              <div className="mt-3 flex gap-2" role="group" aria-label="IDP import type">
+                <Button variant={importMode === 'HIERARCHY' ? 'primary' : 'outline'} size="sm" onClick={() => { setImportMode('HIERARCHY'); setImportRows([]); setImportFileName(''); setImportBatch(null); }}>Hierarchy and projects</Button>
+                <Button variant={importMode === 'KPI' ? 'primary' : 'outline'} size="sm" onClick={() => { setImportMode('KPI'); setImportRows([]); setImportFileName(''); setImportBatch(null); }}>KPI definitions</Button>
+              </div>
+            ) : null}
+
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
               <label className="text-xs text-secondary-600">
-                KPI CSV file
+                {importMode === 'HIERARCHY' ? 'Hierarchy/project' : 'KPI'} CSV file
                 <input
-                  aria-label="KPI CSV file"
+                  aria-label={`${importMode === 'HIERARCHY' ? 'Hierarchy/project' : 'KPI'} CSV file`}
                   type="file"
                   accept=".csv,text/csv"
                   className={fieldClass}
@@ -451,7 +464,7 @@ export function IdpPlanManagementPage() {
                     if (!file) return;
                     void file.text().then(content => {
                       try {
-                        const rows = parseIdpKpiCsv(content);
+                        const rows = importMode === 'HIERARCHY' ? parseIdpHierarchyCsv(content) : parseIdpKpiCsv(content);
                         setImportRows(rows);
                         setImportFileName(file.name);
                         setImportBatch(null);
@@ -497,7 +510,7 @@ export function IdpPlanManagementPage() {
             {importHistory.length ? (
               <div className="mt-5">
                 <h4 className="text-sm font-semibold text-secondary-800 dark:text-secondary-200">Recent import batches</h4>
-                <div className="mt-2 flex flex-wrap gap-2">{importHistory.slice(0, 10).map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => setImportBatch(batch)}>{batch.sourceFileName} · {batch.status} · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
+                <div className="mt-2 flex flex-wrap gap-2">{importHistory.slice(0, 10).map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => setImportBatch(batch)}>{batch.importType} · {batch.sourceFileName} · {batch.status} · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
               </div>
             ) : null}
           </Card>

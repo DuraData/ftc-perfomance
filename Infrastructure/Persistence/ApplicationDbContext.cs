@@ -1121,6 +1121,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<IdpStrategicOutcome>()
             .HasIndex(outcome => new { outcome.IdpPlanId, outcome.Code })
             .IsUnique();
+        builder.Entity<IdpStrategicOutcome>().HasIndex(outcome => outcome.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpStrategicOutcome>().Property(outcome => outcome.RowVersion));
 
         builder.Entity<IdpStrategicOutcome>()
             .HasOne(outcome => outcome.IdpPlan)
@@ -1131,6 +1133,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<IdpStrategicObjective>()
             .HasIndex(objective => new { objective.IdpStrategicOutcomeId, objective.Code })
             .IsUnique();
+        builder.Entity<IdpStrategicObjective>().HasIndex(objective => objective.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpStrategicObjective>().Property(objective => objective.RowVersion));
 
         builder.Entity<IdpStrategicObjective>()
             .HasOne(objective => objective.IdpStrategicOutcome)
@@ -1163,6 +1167,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasPrecision(18, 2);
 
         builder.Entity<IdpDevelopmentPriority>()
+            .HasIndex(priority => new { priority.IdpStrategicObjectiveId, priority.PriorityCode })
+            .IsUnique();
+        builder.Entity<IdpDevelopmentPriority>().HasIndex(priority => priority.PublicId).IsUnique();
+        builder.Entity<IdpDevelopmentPriority>().Property(priority => priority.PriorityCode).HasMaxLength(80);
+        ConfigureRowVersion(builder.Entity<IdpDevelopmentPriority>().Property(priority => priority.RowVersion));
+
+        builder.Entity<IdpDevelopmentPriority>()
             .HasOne(priority => priority.IdpStrategicObjective)
             .WithMany(objective => objective.DevelopmentPriorities)
             .HasForeignKey(priority => priority.IdpStrategicObjectiveId)
@@ -1171,6 +1182,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<IdpProgramme>()
             .HasIndex(programme => new { programme.IdpDevelopmentPriorityId, programme.ProgrammeCode })
             .IsUnique();
+        builder.Entity<IdpProgramme>().HasIndex(programme => programme.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpProgramme>().Property(programme => programme.RowVersion));
 
         builder.Entity<IdpProgramme>()
             .HasOne(programme => programme.IdpDevelopmentPriority)
@@ -1199,6 +1212,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<IdpProject>()
             .HasIndex(project => new { project.IdpProgrammeId, project.ProjectCode })
             .IsUnique();
+        builder.Entity<IdpProject>().HasIndex(project => project.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpProject>().Property(project => project.RowVersion));
 
         builder.Entity<IdpProject>()
             .HasOne(project => project.IdpProgramme)

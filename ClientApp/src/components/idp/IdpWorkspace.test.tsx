@@ -11,7 +11,9 @@ const api = vi.hoisted(() => ({
   getIdpDashboard: vi.fn(),
   getIdpImportBatches: vi.fn(),
   stageIdpKpiImport: vi.fn(),
+  stageIdpHierarchyImport: vi.fn(),
   commitIdpImport: vi.fn(),
+  commitIdpHierarchyImport: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
@@ -71,6 +73,8 @@ describe('IDP plan lineage workspace', () => {
   it('submits user-entered predecessor and publication metadata', async () => {
     render(<IdpPlanManagementPage />);
     await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });
+    expect(screen.getByLabelText('Hierarchy/project CSV file')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'KPI definitions' }));
     expect(screen.getByLabelText('KPI CSV file')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Plan title'), { target: { value: 'Successor IDP' } });
@@ -99,6 +103,7 @@ describe('IDP plan lineage workspace', () => {
     render(<IdpPlanManagementPage />);
     await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });
     expect(screen.queryByLabelText('KPI CSV file')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Hierarchy/project CSV file')).not.toBeInTheDocument();
     expect(api.getIdpImportBatches).not.toHaveBeenCalled();
   });
 });

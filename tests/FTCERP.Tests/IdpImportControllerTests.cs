@@ -191,6 +191,95 @@ public class IdpImportControllerTests
         (await context.IdpKpis.AnyAsync(item => item.KpiCode.StartsWith("BAD"))).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task HierarchyImport_CreatesACompleteSharedParentTree_AndUsesItsOwnCommitPermission()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var workflow = new Mock<IWorkflowGovernanceService>();
+        var controller = CreateController(context, setup.User, workflow.Object);
+        var rows = new[] { HierarchyRow(2, "PROJECT-A", "Project A"), HierarchyRow(3, "PROJECT-B", "Project B") };
+
+        var staged = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
+            Guid.NewGuid(), "hierarchy.csv", rows)));
+
+        staged.ImportType.Should().Be("HIERARCHY");
+        staged.NewRows.Should().Be(2);
+        staged.InvalidRows.Should().Be(0);
+        typeof(IdpImportsController).GetMethod(nameof(IdpImportsController.StageHierarchy))!
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single().Policy.Should().Be("Permission:IDP_PLAN.IMPORT");
+        typeof(IdpImportsController).GetMethod(nameof(IdpImportsController.CommitHierarchy))!
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single().Policy.Should().Be("Permission:IDP_PLAN.IMPORT");
+        (await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Wrong permission route"))).Result
+            .Should().BeOfType<ForbidResult>();
+
+        var committed = Payload(await controller.CommitHierarchy(staged.PublicId, new CommitIdpImportRequest(
+            staged.RowVersion, "Council-approved hierarchy reconciliation")));
+        committed.Status.Should().Be("Committed");
+
+        var outcome = await context.IdpStrategicOutcomes
+            .Include(item => item.StrategicObjectives)
+                .ThenInclude(item => item.DevelopmentPriorities)
+                    .ThenInclude(item => item.Programmes)
+                        .ThenInclude(item => item.Projects)
+            .SingleAsync(item => item.Code == "OUT-NEW");
+        var objective = outcome.StrategicObjectives.Single();
+        var priority = objective.DevelopmentPriorities.Single();
+        var programme = priority.Programmes.Single();
+        outcome.PublicId.Should().NotBeEmpty();
+        objective.PublicId.Should().NotBeEmpty();
+        priority.PriorityCode.Should().Be("PRI-NEW");
+        programme.Projects.Select(item => item.ProjectCode).Should().BeEquivalentTo("PROJECT-A", "PROJECT-B");
+        programme.Projects.Should().OnlyContain(item => item.PublicId != Guid.Empty && item.RowVersion.Length > 0);
+        workflow.Verify(service => service.WriteAuditTrailAsync(
+            "IdpImportBatch", It.IsAny<string>(), "StageHierarchy", null, It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
+        workflow.Verify(service => service.WriteAuditTrailAsync(
+            "IdpImportBatch", It.IsAny<string>(), "CommitHierarchy", It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
+
+        context.IdpDevelopmentPriorities.Add(new IdpDevelopmentPriority
+        {
+            IdpStrategicObjectiveId = objective.Id,
+            PriorityCode = priority.PriorityCode,
+            Name = "Duplicate",
+            Description = "Must be rejected by the relational business key",
+            SortOrder = 2
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task HierarchyImport_RejectsConflictingParents_AndStalePreviews()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var controller = CreateController(context, setup.User, new Mock<IWorkflowGovernanceService>().Object);
+        var conflicting = HierarchyRow(3, "PROJECT-B", "Project B") with { OutcomeName = "A conflicting shared outcome" };
+
+        var invalid = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
+            Guid.NewGuid(), "conflicting.csv", [HierarchyRow(2, "PROJECT-A", "Project A"), conflicting])));
+        invalid.InvalidRows.Should().Be(2);
+        invalid.Rows.Should().OnlyContain(item => item.ErrorCode == "CONFLICTING_PARENT_DEFINITION");
+        (await controller.CommitHierarchy(invalid.PublicId, new CommitIdpImportRequest(invalid.RowVersion, "Invalid batch"))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+
+        var initial = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
+            Guid.NewGuid(), "valid.csv", [HierarchyRow(2, "PROJECT-C", "Project C")])));
+        _ = Payload(await controller.CommitHierarchy(initial.PublicId, new CommitIdpImportRequest(initial.RowVersion, "Initial import")));
+        var unchanged = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
+            Guid.NewGuid(), "unchanged.csv", [HierarchyRow(2, "PROJECT-C", "Project C")])));
+        unchanged.UnchangedRows.Should().Be(1);
+
+        var project = await context.IdpProjects.SingleAsync(item => item.ProjectCode == "PROJECT-C");
+        project.Budget = 999999;
+        await context.SaveChangesAsync();
+
+        var staleCommit = await controller.CommitHierarchy(unchanged.PublicId, new CommitIdpImportRequest(unchanged.RowVersion, "Stale preview"));
+        staleCommit.Result.Should().BeOfType<ConflictObjectResult>();
+        (await context.IdpImportBatches.SingleAsync(item => item.PublicId == unchanged.PublicId)).Status.Should().Be(IdpImportBatchStatus.Staged);
+    }
+
     private static IdpImportsController CreateController(
         ApplicationDbContext context,
         ApplicationUser user,
@@ -230,6 +319,16 @@ public class IdpImportControllerTests
             false,
             false);
 
+    private static IdpHierarchyImportRowRequest HierarchyRow(int sourceRow, string projectCode, string projectName) => new(
+        sourceRow,
+        "out-new", "Outcome", "Outcome description", 1,
+        "obj-new", "Objective", "Objective description", 10, 20, null,
+        new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2030, 12, 31, 0, 0, 0, DateTimeKind.Utc), 1000000, 1,
+        "pri-new", "Priority", "Priority description", 1,
+        "prog-new", "Programme", "Programme description", null, 900000, 800000, 100000,
+        projectCode, projectName, $"{projectName} description", "Capital", null, 500000, "Municipal grant",
+        new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2029, 12, 31, 0, 0, 0, DateTimeKind.Utc), "Planned", "NEED-1");
+
     private static async Task<(ApplicationUser User, IdpPlan Plan, IdpProject Project)> SeedPlanAsync(ApplicationDbContext context)
     {
         var user = IdpTestFixture.CreateUser("importer");
@@ -253,7 +352,7 @@ public class IdpImportControllerTests
         var objective = new IdpStrategicObjective { IdpStrategicOutcomeId = outcome.Id, Code = "OBJ", Name = "Objective", Description = "Objective", StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(5), SortOrder = 1 };
         context.IdpStrategicObjectives.Add(objective);
         await context.SaveChangesAsync();
-        var priority = new IdpDevelopmentPriority { IdpStrategicObjectiveId = objective.Id, Name = "Priority", Description = "Priority", SortOrder = 1 };
+        var priority = new IdpDevelopmentPriority { IdpStrategicObjectiveId = objective.Id, PriorityCode = "PRI", Name = "Priority", Description = "Priority", SortOrder = 1 };
         context.IdpDevelopmentPriorities.Add(priority);
         await context.SaveChangesAsync();
         var programme = new IdpProgramme { IdpDevelopmentPriorityId = priority.Id, ProgrammeCode = "PRG", Name = "Programme", Description = "Programme" };

@@ -173,11 +173,13 @@ public class IdpChangeLog
 public class IdpStrategicOutcome
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int SortOrder { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpPlan IdpPlan { get; set; } = null!;
     public ICollection<IdpStrategicObjective> StrategicObjectives { get; set; } = new List<IdpStrategicObjective>();
@@ -186,6 +188,7 @@ public class IdpStrategicOutcome
 public class IdpStrategicObjective
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpStrategicOutcomeId { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -198,6 +201,7 @@ public class IdpStrategicObjective
     public DateTime EndDate { get; set; }
     public decimal BudgetAllocation { get; set; }
     public int SortOrder { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpStrategicOutcome IdpStrategicOutcome { get; set; } = null!;
     public Department? ResponsibleDepartment { get; set; }
@@ -211,10 +215,13 @@ public class IdpStrategicObjective
 public class IdpDevelopmentPriority
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpStrategicObjectiveId { get; set; }
+    public string PriorityCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int SortOrder { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpStrategicObjective IdpStrategicObjective { get; set; } = null!;
     public ICollection<IdpProgramme> Programmes { get; set; } = new List<IdpProgramme>();
@@ -223,6 +230,7 @@ public class IdpDevelopmentPriority
 public class IdpProgramme
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpDevelopmentPriorityId { get; set; }
     public string ProgrammeCode { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -231,6 +239,7 @@ public class IdpProgramme
     public decimal PlannedBudget { get; set; }
     public decimal ApprovedBudget { get; set; }
     public decimal ActualExpenditure { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpDevelopmentPriority IdpDevelopmentPriority { get; set; } = null!;
     public Department? ResponsibleDepartment { get; set; }
@@ -240,6 +249,7 @@ public class IdpProgramme
 public class IdpProject
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpProgrammeId { get; set; }
     public string ProjectCode { get; set; } = string.Empty;
     public string ProjectName { get; set; } = string.Empty;
@@ -252,6 +262,7 @@ public class IdpProject
     public DateTime EndDate { get; set; }
     public IdpProjectStatus Status { get; set; } = IdpProjectStatus.Planned;
     public string? CommunityNeedReference { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpProgramme IdpProgramme { get; set; } = null!;
     public Department? Department { get; set; }

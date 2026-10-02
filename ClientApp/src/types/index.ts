@@ -2422,6 +2422,8 @@ export interface IdpPlanVersion {
 
 export interface IdpStrategicOutcome {
   id: number;
+  publicId: string;
+  rowVersion: string;
   idpPlanId: number;
   code: string;
   name: string;
@@ -2431,6 +2433,8 @@ export interface IdpStrategicOutcome {
 
 export interface IdpStrategicObjective {
   id: number;
+  publicId: string;
+  rowVersion: string;
   idpStrategicOutcomeId: number;
   code: string;
   name: string;
@@ -2449,7 +2453,10 @@ export interface IdpStrategicObjective {
 
 export interface IdpDevelopmentPriority {
   id: number;
+  publicId: string;
+  rowVersion: string;
   idpStrategicObjectiveId: number;
+  priorityCode: string;
   name: string;
   description: string;
   sortOrder: number;
@@ -2457,6 +2464,8 @@ export interface IdpDevelopmentPriority {
 
 export interface IdpProgramme {
   id: number;
+  publicId: string;
+  rowVersion: string;
   idpDevelopmentPriorityId: number;
   programmeCode: string;
   name: string;
@@ -2470,6 +2479,8 @@ export interface IdpProgramme {
 
 export interface IdpProject {
   id: number;
+  publicId: string;
+  rowVersion: string;
   idpProgrammeId: number;
   projectCode: string;
   projectName: string;
@@ -2558,6 +2569,46 @@ export interface IdpKpiImportRowPayload {
   indicatorType: string;
   circular88Linked: boolean;
   treasuryTidLinked: boolean;
+}
+
+export interface IdpHierarchyImportRowPayload {
+  sourceRowNumber: number;
+  outcomeCode: string;
+  outcomeName: string;
+  outcomeDescription: string;
+  outcomeSortOrder: number;
+  objectiveCode: string;
+  objectiveName: string;
+  objectiveDescription: string;
+  objectiveBaseline: number;
+  objectiveTarget: number;
+  objectiveDepartmentCode?: string | null;
+  objectiveStartDate: string;
+  objectiveEndDate: string;
+  objectiveBudget: number;
+  objectiveSortOrder: number;
+  priorityCode: string;
+  priorityName: string;
+  priorityDescription: string;
+  prioritySortOrder: number;
+  programmeCode: string;
+  programmeName: string;
+  programmeDescription: string;
+  programmeDepartmentCode?: string | null;
+  programmePlannedBudget: number;
+  programmeApprovedBudget: number;
+  programmeActualExpenditure: number;
+  projectCode: string;
+  projectName: string;
+  projectDescription: string;
+  projectCategory: string;
+  projectDepartmentCode?: string | null;
+  projectBudget: number;
+  projectFundingSource: string;
+  projectStartDate: string;
+  projectEndDate: string;
+  projectStatus: string;
+  communityNeedReference?: string | null;
 }
 
 export interface IdpAnnualTarget {

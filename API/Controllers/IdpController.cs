@@ -1173,6 +1173,9 @@ public class IdpController : ControllerBase
         var entity = new IdpDevelopmentPriority
         {
             IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
+            PriorityCode = string.IsNullOrWhiteSpace(request.PriorityCode)
+                ? $"PRIORITY-{Guid.NewGuid():N}"[..17].ToUpperInvariant()
+                : request.PriorityCode.Trim().ToUpperInvariant(),
             Name = request.Name.Trim(),
             Description = request.Description.Trim(),
             SortOrder = request.SortOrder
@@ -1245,7 +1248,11 @@ public class IdpController : ControllerBase
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static IdpStrategicOutcomeResponse ToOutcomeResponse(IdpStrategicOutcome outcome) =>
-        new(outcome.Id, outcome.IdpPlanId, outcome.Code, outcome.Name, outcome.Description, outcome.SortOrder);
+        new(outcome.Id, outcome.IdpPlanId, outcome.Code, outcome.Name, outcome.Description, outcome.SortOrder)
+        {
+            PublicId = outcome.PublicId,
+            RowVersion = Convert.ToBase64String(outcome.RowVersion)
+        };
 
     private static IdpStrategicObjectiveResponse ToObjectiveResponse(IdpStrategicObjective objective) =>
         new(
@@ -1263,10 +1270,19 @@ public class IdpController : ControllerBase
             objective.StartDate,
             objective.EndDate,
             objective.BudgetAllocation,
-            objective.SortOrder);
+            objective.SortOrder)
+        {
+            PublicId = objective.PublicId,
+            RowVersion = Convert.ToBase64String(objective.RowVersion)
+        };
 
     private static IdpDevelopmentPriorityResponse ToPriorityResponse(IdpDevelopmentPriority priority) =>
-        new(priority.Id, priority.IdpStrategicObjectiveId, priority.Name, priority.Description, priority.SortOrder);
+        new(priority.Id, priority.IdpStrategicObjectiveId, priority.Name, priority.Description, priority.SortOrder)
+        {
+            PublicId = priority.PublicId,
+            PriorityCode = priority.PriorityCode,
+            RowVersion = Convert.ToBase64String(priority.RowVersion)
+        };
 
     private static IdpProgrammeResponse ToProgrammeResponse(IdpProgramme programme) =>
         new(
@@ -1279,7 +1295,11 @@ public class IdpController : ControllerBase
             programme.ResponsibleDepartment?.Name,
             programme.PlannedBudget,
             programme.ApprovedBudget,
-            programme.ActualExpenditure);
+            programme.ActualExpenditure)
+        {
+            PublicId = programme.PublicId,
+            RowVersion = Convert.ToBase64String(programme.RowVersion)
+        };
 
     private static IdpProjectResponse ToProjectResponse(IdpProject project) =>
         new(
@@ -1296,7 +1316,11 @@ public class IdpController : ControllerBase
             project.StartDate,
             project.EndDate,
             project.Status.ToString(),
-            project.CommunityNeedReference);
+            project.CommunityNeedReference)
+        {
+            PublicId = project.PublicId,
+            RowVersion = Convert.ToBase64String(project.RowVersion)
+        };
 
     private static IdpKpiResponse ToKpiResponse(IdpKpi kpi) =>
         new(

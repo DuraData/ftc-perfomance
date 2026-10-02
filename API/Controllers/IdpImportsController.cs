@@ -118,6 +118,70 @@ public class IdpImportsController(
         return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
     }
 
+    [HttpPost("plans/{planPublicId:guid}/imports/hierarchy/stage")]
+    [Authorize(Policy = "Permission:IDP_PLAN.IMPORT")]
+    public async Task<ActionResult<ApiResponse<IdpImportBatchResponse>>> StageHierarchy(
+        Guid planPublicId,
+        [FromBody] StageIdpHierarchyImportRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpImportBatchResponse>(false, null, "User not found."));
+        if (request.ClientRequestId == Guid.Empty)
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "ClientRequestId is required for idempotency."));
+        if (request.Rows is not { Length: > 0 } || request.Rows.Length > MaximumRows)
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, $"An import must contain between 1 and {MaximumRows} rows."));
+
+        var plan = await context.IdpPlans.SingleOrDefaultAsync(item => item.PublicId == planPublicId);
+        if (plan == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP plan not found."));
+        if (!plan.MunicipalityId.HasValue)
+            return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The IDP plan must be reconciled to a municipality before importing."));
+
+        var sourceFileName = Path.GetFileName(request.SourceFileName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(sourceFileName) || sourceFileName.Length > 260)
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "A valid source file name is required."));
+        var sourceHash = ComputeHash(request.Rows);
+
+        var existingBatch = await context.IdpImportBatches
+            .Include(item => item.IdpPlan)
+            .Include(item => item.Rows)
+            .SingleOrDefaultAsync(item => item.MunicipalityId == plan.MunicipalityId.Value && item.ClientRequestId == request.ClientRequestId);
+        if (existingBatch != null)
+        {
+            if (!string.Equals(existingBatch.SourceSha256, sourceHash, StringComparison.OrdinalIgnoreCase))
+                return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "ClientRequestId was already used for different import content."));
+            return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(existingBatch), "Existing staged result returned."));
+        }
+
+        var candidates = await BuildHierarchyCandidatesAsync(plan, request.Rows, trackExisting: false);
+        var batch = new IdpImportBatch
+        {
+            ClientRequestId = request.ClientRequestId,
+            MunicipalityId = plan.MunicipalityId.Value,
+            IdpPlanId = plan.Id,
+            ImportType = "HIERARCHY",
+            SourceFileName = sourceFileName,
+            SourceSha256 = sourceHash,
+            Status = IdpImportBatchStatus.Staged,
+            TotalRows = candidates.Count,
+            NewRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.New),
+            UnchangedRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Unchanged),
+            ChangedRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Changed),
+            InvalidRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Invalid),
+            CreatedByUserId = user.Id,
+            Rows = candidates.Select(item => item.Row).ToList()
+        };
+        context.IdpImportBatches.Add(batch);
+        await context.SaveChangesAsync();
+        batch.IdpPlan = plan;
+
+        await workflowGovernanceService.WriteAuditTrailAsync(
+            "IdpImportBatch", batch.PublicId.ToString(), "StageHierarchy", null,
+            new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+    }
+
     [HttpPost("imports/{batchPublicId:guid}/commit")]
     [Authorize(Policy = "Permission:IDP_INDICATOR.IMPORT")]
     public async Task<ActionResult<ApiResponse<IdpImportBatchResponse>>> Commit(
@@ -136,6 +200,8 @@ public class IdpImportsController(
             .Include(item => item.Rows)
             .SingleOrDefaultAsync(item => item.PublicId == batchPublicId);
         if (batch == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP import batch not found."));
+        if (string.Equals(batch.ImportType, "HIERARCHY", StringComparison.OrdinalIgnoreCase))
+            return Forbid();
         if (batch.Status != IdpImportBatchStatus.Staged)
             return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "Only a staged import can be committed."));
         if (batch.InvalidRows > 0)
@@ -146,6 +212,9 @@ public class IdpImportsController(
         if (expectedBatchVersion.Length == 0)
             return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "RowVersion is required."));
         context.Entry(batch).Property(item => item.RowVersion).OriginalValue = expectedBatchVersion;
+
+        if (!string.Equals(batch.ImportType, "KPI", StringComparison.OrdinalIgnoreCase))
+            return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The import type is not supported by this application version."));
 
         var requests = batch.Rows.OrderBy(item => item.SourceRowNumber)
             .Select(item => JsonSerializer.Deserialize<IdpKpiImportRowRequest>(item.PayloadJson, JsonOptions)!)
@@ -193,6 +262,265 @@ public class IdpImportsController(
         }
 
         return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+    }
+
+    [HttpPost("imports/{batchPublicId:guid}/commit-hierarchy")]
+    [Authorize(Policy = "Permission:IDP_PLAN.IMPORT")]
+    public async Task<ActionResult<ApiResponse<IdpImportBatchResponse>>> CommitHierarchy(
+        Guid batchPublicId,
+        [FromBody] CommitIdpImportRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpImportBatchResponse>(false, null, "User not found."));
+        if (string.IsNullOrWhiteSpace(request.Reason))
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "A commit reason is required."));
+        if (request.Reason.Trim().Length > 1000)
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "The commit reason cannot exceed 1000 characters."));
+
+        var batch = await context.IdpImportBatches
+            .Include(item => item.IdpPlan)
+            .Include(item => item.Rows)
+            .SingleOrDefaultAsync(item => item.PublicId == batchPublicId);
+        if (batch == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP import batch not found."));
+        if (!string.Equals(batch.ImportType, "HIERARCHY", StringComparison.OrdinalIgnoreCase))
+            return Forbid();
+        if (batch.Status != IdpImportBatchStatus.Staged)
+            return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "Only a staged import can be committed."));
+        if (batch.InvalidRows > 0)
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "The complete batch must be valid before commit."));
+        byte[] expectedBatchVersion;
+        try { expectedBatchVersion = Convert.FromBase64String(request.RowVersion ?? string.Empty); }
+        catch (FormatException) { return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "Invalid RowVersion.")); }
+        if (expectedBatchVersion.Length == 0)
+            return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "RowVersion is required."));
+        context.Entry(batch).Property(item => item.RowVersion).OriginalValue = expectedBatchVersion;
+
+        return await CommitHierarchyAsync(batch, request, user);
+    }
+
+    private async Task<ActionResult<ApiResponse<IdpImportBatchResponse>>> CommitHierarchyAsync(
+        IdpImportBatch batch,
+        CommitIdpImportRequest request,
+        ApplicationUser user)
+    {
+        var requests = batch.Rows.OrderBy(item => item.SourceRowNumber)
+            .Select(item => JsonSerializer.Deserialize<IdpHierarchyImportRowRequest>(item.PayloadJson, JsonOptions)!)
+            .ToArray();
+        var current = await BuildHierarchyCandidatesAsync(batch.IdpPlan, requests, trackExisting: true);
+        var staged = batch.Rows.ToDictionary(item => item.SourceRowNumber);
+        foreach (var candidate in current)
+        {
+            var original = staged[candidate.Row.SourceRowNumber];
+            if (candidate.Row.Status == IdpImportRowStatus.Invalid
+                || candidate.Row.Status != original.Status
+                || !string.Equals(candidate.Row.NormalizedJson, original.NormalizedJson, StringComparison.Ordinal)
+                || !string.Equals(candidate.Row.ExistingValueJson, original.ExistingValueJson, StringComparison.Ordinal)
+                || !VersionsEqual(candidate.Row.ExpectedEntityRowVersion, original.ExpectedEntityRowVersion))
+                return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, $"Source row {candidate.Row.SourceRowNumber} changed since reconciliation. Stage a new preview."));
+        }
+
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        try
+        {
+            await ApplyHierarchyDefinitionsAsync(batch.IdpPlanId, current
+                .Where(item => item.Row.Status is IdpImportRowStatus.New or IdpImportRowStatus.Changed)
+                .Select(item => item.Definition!)
+                .ToArray());
+            batch.Status = IdpImportBatchStatus.Committed;
+            batch.CommittedAt = DateTime.UtcNow;
+            batch.CommittedByUserId = user.Id;
+            await context.SaveChangesAsync();
+            await workflowGovernanceService.WriteAuditTrailAsync(
+                "IdpImportBatch", batch.PublicId.ToString(), "CommitHierarchy",
+                new { Status = IdpImportBatchStatus.Staged.ToString() },
+                new { Status = batch.Status.ToString(), Reason = request.Reason.Trim(), batch.NewRows, batch.UnchangedRows, batch.ChangedRows },
+                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The import preview or an IDP hierarchy record changed before commit. Stage a new preview."));
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The hierarchy changed or now conflicts with an existing business key. Stage a new preview."));
+        }
+
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+    }
+
+    private async Task<List<HierarchyImportCandidate>> BuildHierarchyCandidatesAsync(
+        IdpPlan plan,
+        IReadOnlyCollection<IdpHierarchyImportRowRequest> requests,
+        bool trackExisting)
+    {
+        IQueryable<IdpStrategicOutcome> hierarchyQuery = context.IdpStrategicOutcomes
+            .Include(item => item.StrategicObjectives)
+                .ThenInclude(item => item.DevelopmentPriorities)
+                    .ThenInclude(item => item.Programmes)
+                        .ThenInclude(item => item.Projects)
+            .Where(item => item.IdpPlanId == plan.Id);
+        IQueryable<Department> departmentQuery = context.Departments.Where(item => item.IsActive);
+        if (!trackExisting)
+        {
+            hierarchyQuery = hierarchyQuery.AsNoTracking();
+            departmentQuery = departmentQuery.AsNoTracking();
+        }
+
+        var outcomes = await hierarchyQuery.ToListAsync();
+        var departments = await departmentQuery.ToListAsync();
+        var duplicateSourceRows = requests.GroupBy(item => item.SourceRowNumber)
+            .Where(group => group.Key <= 0 || group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet();
+        var duplicateProjects = requests.GroupBy(HierarchyProjectKey, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var prepared = new List<PreparedHierarchyRow>(requests.Count);
+        foreach (var request in requests.OrderBy(item => item.SourceRowNumber))
+        {
+            var payload = JsonSerializer.Serialize(request, JsonOptions);
+            var reference = HierarchyProjectKey(request).Replace('|', '/');
+            if (duplicateSourceRows.Contains(request.SourceRowNumber))
+            {
+                prepared.Add(new(request, payload, reference, null,
+                    new ValidationIssue("DUPLICATE_SOURCE_ROW", nameof(request.SourceRowNumber), request.SourceRowNumber.ToString(), "Source row numbers must be positive and unique.")));
+                continue;
+            }
+            if (duplicateProjects.Contains(HierarchyProjectKey(request)))
+            {
+                prepared.Add(new(request, payload, reference, null,
+                    new ValidationIssue("DUPLICATE_PROJECT", nameof(request.ProjectCode), request.ProjectCode, "The same hierarchy project path appears more than once in this batch.")));
+                continue;
+            }
+            if (!TryNormalizeHierarchy(plan, request, departments, out var definition, out var issue))
+            {
+                prepared.Add(new(request, payload, reference, null, issue));
+                continue;
+            }
+            prepared.Add(new(request, payload, reference, definition, null));
+        }
+
+        var conflictingDefinitions = prepared.Where(item => item.Definition != null)
+            .SelectMany(item => DefinitionSignatures(item.Definition!))
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Select(item => item.Value).Distinct(StringComparer.Ordinal).Skip(1).Any())
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var candidates = new List<HierarchyImportCandidate>(prepared.Count);
+        foreach (var item in prepared)
+        {
+            if (item.Issue != null)
+            {
+                candidates.Add(HierarchyInvalid(item, item.Issue));
+                continue;
+            }
+            var definition = item.Definition!;
+            var conflict = DefinitionSignatures(definition).FirstOrDefault(signature => conflictingDefinitions.Contains(signature.Key));
+            if (conflict != default)
+            {
+                candidates.Add(HierarchyInvalid(item, new ValidationIssue(
+                    "CONFLICTING_PARENT_DEFINITION", "Hierarchy", item.Reference,
+                    "Rows sharing a hierarchy code path must supply identical parent definitions.")));
+                continue;
+            }
+
+            var outcome = outcomes.SingleOrDefault(entity => CodeEquals(entity.Code, definition.Outcome.Code));
+            var objective = outcome?.StrategicObjectives.SingleOrDefault(entity => CodeEquals(entity.Code, definition.Objective.Code));
+            var priority = objective?.DevelopmentPriorities.SingleOrDefault(entity => CodeEquals(entity.PriorityCode, definition.Priority.Code));
+            var programme = priority?.Programmes.SingleOrDefault(entity => CodeEquals(entity.ProgrammeCode, definition.Programme.Code));
+            var project = programme?.Projects.SingleOrDefault(entity => CodeEquals(entity.ProjectCode, definition.Project.Code));
+            var snapshot = new HierarchySnapshot(
+                outcome == null ? null : OutcomeDefinition.From(outcome),
+                objective == null ? null : ObjectiveDefinition.From(objective),
+                priority == null ? null : PriorityDefinition.From(priority),
+                programme == null ? null : ProgrammeDefinition.From(programme),
+                project == null ? null : ProjectDefinition.From(project));
+            var allExist = outcome != null && objective != null && priority != null && programme != null && project != null;
+            var existingPathMatches = (snapshot.Outcome == null || snapshot.Outcome == definition.Outcome)
+                && (snapshot.Objective == null || snapshot.Objective == definition.Objective)
+                && (snapshot.Priority == null || snapshot.Priority == definition.Priority)
+                && (snapshot.Programme == null || snapshot.Programme == definition.Programme)
+                && (snapshot.Project == null || snapshot.Project == definition.Project);
+            var status = allExist && snapshot.Equals(HierarchySnapshot.From(definition))
+                ? IdpImportRowStatus.Unchanged
+                : !existingPathMatches ? IdpImportRowStatus.Changed : IdpImportRowStatus.New;
+            candidates.Add(new HierarchyImportCandidate(new IdpImportRow
+            {
+                SourceRowNumber = item.Request.SourceRowNumber,
+                Reference = item.Reference,
+                Status = status,
+                PayloadJson = item.Payload,
+                NormalizedJson = JsonSerializer.Serialize(definition, JsonOptions),
+                ExistingValueJson = JsonSerializer.Serialize(snapshot, JsonOptions),
+                ExpectedEntityRowVersion = HierarchyVersionDigest(outcome, objective, priority, programme, project)
+            }, definition));
+        }
+        return candidates;
+    }
+
+    private async Task ApplyHierarchyDefinitionsAsync(int planId, IReadOnlyCollection<HierarchyDefinition> definitions)
+    {
+        var outcomes = await context.IdpStrategicOutcomes
+            .Include(item => item.StrategicObjectives)
+                .ThenInclude(item => item.DevelopmentPriorities)
+                    .ThenInclude(item => item.Programmes)
+                        .ThenInclude(item => item.Projects)
+            .Where(item => item.IdpPlanId == planId)
+            .ToListAsync();
+
+        foreach (var definition in definitions)
+        {
+            var outcome = outcomes.SingleOrDefault(item => CodeEquals(item.Code, definition.Outcome.Code));
+            if (outcome == null)
+            {
+                outcome = new IdpStrategicOutcome { IdpPlanId = planId };
+                outcomes.Add(outcome);
+                context.IdpStrategicOutcomes.Add(outcome);
+            }
+            definition.Outcome.Apply(outcome);
+
+            var objective = outcome.StrategicObjectives.SingleOrDefault(item => CodeEquals(item.Code, definition.Objective.Code));
+            if (objective == null)
+            {
+                objective = new IdpStrategicObjective { IdpStrategicOutcome = outcome };
+                outcome.StrategicObjectives.Add(objective);
+                context.IdpStrategicObjectives.Add(objective);
+            }
+            definition.Objective.Apply(objective);
+
+            var priority = objective.DevelopmentPriorities.SingleOrDefault(item => CodeEquals(item.PriorityCode, definition.Priority.Code));
+            if (priority == null)
+            {
+                priority = new IdpDevelopmentPriority { IdpStrategicObjective = objective };
+                objective.DevelopmentPriorities.Add(priority);
+                context.IdpDevelopmentPriorities.Add(priority);
+            }
+            definition.Priority.Apply(priority);
+
+            var programme = priority.Programmes.SingleOrDefault(item => CodeEquals(item.ProgrammeCode, definition.Programme.Code));
+            if (programme == null)
+            {
+                programme = new IdpProgramme { IdpDevelopmentPriority = priority };
+                priority.Programmes.Add(programme);
+                context.IdpProgrammes.Add(programme);
+            }
+            definition.Programme.Apply(programme);
+
+            var project = programme.Projects.SingleOrDefault(item => CodeEquals(item.ProjectCode, definition.Project.Code));
+            if (project == null)
+            {
+                project = new IdpProject { IdpProgramme = programme };
+                programme.Projects.Add(project);
+                context.IdpProjects.Add(project);
+            }
+            definition.Project.Apply(project);
+        }
     }
 
     private async Task<List<ImportCandidate>> BuildCandidatesAsync(
@@ -356,8 +684,227 @@ public class IdpImportsController(
     private static string ComputeHash(IdpKpiImportRowRequest[] rows) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(rows, JsonOptions)))).ToLowerInvariant();
 
+    private static string ComputeHash(IdpHierarchyImportRowRequest[] rows) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(rows, JsonOptions)))).ToLowerInvariant();
+
+    private static bool TryNormalizeHierarchy(
+        IdpPlan plan,
+        IdpHierarchyImportRowRequest request,
+        IReadOnlyCollection<Department> departments,
+        out HierarchyDefinition? definition,
+        out ValidationIssue? issue)
+    {
+        definition = null;
+        issue = null;
+        if (!TryRequiredCode(request.OutcomeCode, nameof(request.OutcomeCode), out var outcomeCode, out issue)
+            || !TryRequired(request.OutcomeName, nameof(request.OutcomeName), 240, out var outcomeName, out issue)
+            || !TryRequired(request.OutcomeDescription, nameof(request.OutcomeDescription), 4000, out var outcomeDescription, out issue)
+            || !TryRequiredCode(request.ObjectiveCode, nameof(request.ObjectiveCode), out var objectiveCode, out issue)
+            || !TryRequired(request.ObjectiveName, nameof(request.ObjectiveName), 240, out var objectiveName, out issue)
+            || !TryRequired(request.ObjectiveDescription, nameof(request.ObjectiveDescription), 4000, out var objectiveDescription, out issue)
+            || !TryRequiredCode(request.PriorityCode, nameof(request.PriorityCode), out var priorityCode, out issue)
+            || !TryRequired(request.PriorityName, nameof(request.PriorityName), 240, out var priorityName, out issue)
+            || !TryRequired(request.PriorityDescription, nameof(request.PriorityDescription), 4000, out var priorityDescription, out issue)
+            || !TryRequiredCode(request.ProgrammeCode, nameof(request.ProgrammeCode), out var programmeCode, out issue)
+            || !TryRequired(request.ProgrammeName, nameof(request.ProgrammeName), 240, out var programmeName, out issue)
+            || !TryRequired(request.ProgrammeDescription, nameof(request.ProgrammeDescription), 4000, out var programmeDescription, out issue)
+            || !TryRequiredCode(request.ProjectCode, nameof(request.ProjectCode), out var projectCode, out issue)
+            || !TryRequired(request.ProjectName, nameof(request.ProjectName), 240, out var projectName, out issue)
+            || !TryRequired(request.ProjectDescription, nameof(request.ProjectDescription), 4000, out var projectDescription, out issue)
+            || !TryRequired(request.ProjectCategory, nameof(request.ProjectCategory), 240, out var projectCategory, out issue)
+            || !TryRequired(request.ProjectFundingSource, nameof(request.ProjectFundingSource), 240, out var fundingSource, out issue))
+            return false;
+
+        if (request.OutcomeSortOrder < 0 || request.ObjectiveSortOrder < 0 || request.PrioritySortOrder < 0)
+        {
+            issue = new ValidationIssue("INVALID_SORT_ORDER", "SortOrder", null, "Hierarchy sort orders cannot be negative.");
+            return false;
+        }
+        if (request.ObjectiveStartDate >= request.ObjectiveEndDate)
+        {
+            issue = new ValidationIssue("INVALID_OBJECTIVE_DATES", nameof(request.ObjectiveEndDate), request.ObjectiveEndDate.ToString("O"), "Objective EndDate must be after StartDate.");
+            return false;
+        }
+        if (request.ProjectStartDate >= request.ProjectEndDate)
+        {
+            issue = new ValidationIssue("INVALID_PROJECT_DATES", nameof(request.ProjectEndDate), request.ProjectEndDate.ToString("O"), "Project EndDate must be after StartDate.");
+            return false;
+        }
+        if (request.ObjectiveBudget < 0 || request.ProgrammePlannedBudget < 0 || request.ProgrammeApprovedBudget < 0
+            || request.ProgrammeActualExpenditure < 0 || request.ProjectBudget < 0)
+        {
+            issue = new ValidationIssue("NEGATIVE_BUDGET", "Budget", null, "Hierarchy budget and expenditure values cannot be negative.");
+            return false;
+        }
+        if (!Enum.TryParse<IdpProjectStatus>(request.ProjectStatus?.Trim(), true, out var projectStatus)
+            || !Enum.IsDefined(projectStatus))
+        {
+            issue = new ValidationIssue("INVALID_PROJECT_STATUS", nameof(request.ProjectStatus), request.ProjectStatus, "ProjectStatus is not recognized.");
+            return false;
+        }
+        if (!TryDepartment(request.ObjectiveDepartmentCode, departments, nameof(request.ObjectiveDepartmentCode), out var objectiveDepartmentId, out issue)
+            || !TryDepartment(request.ProgrammeDepartmentCode, departments, nameof(request.ProgrammeDepartmentCode), out var programmeDepartmentId, out issue)
+            || !TryDepartment(request.ProjectDepartmentCode, departments, nameof(request.ProjectDepartmentCode), out var projectDepartmentId, out issue))
+            return false;
+
+        var objectiveStart = AsUtc(request.ObjectiveStartDate);
+        var objectiveEnd = AsUtc(request.ObjectiveEndDate);
+        var projectStart = AsUtc(request.ProjectStartDate);
+        var projectEnd = AsUtc(request.ProjectEndDate);
+        if (objectiveStart < plan.EffectiveFrom || (plan.EffectiveTo.HasValue && objectiveEnd > plan.EffectiveTo.Value))
+        {
+            issue = new ValidationIssue("OBJECTIVE_OUTSIDE_PLAN", nameof(request.ObjectiveStartDate), request.ObjectiveStartDate.ToString("O"), "Objective dates must fall inside the plan effective period.");
+            return false;
+        }
+        if (projectStart < plan.EffectiveFrom || (plan.EffectiveTo.HasValue && projectEnd > plan.EffectiveTo.Value))
+        {
+            issue = new ValidationIssue("PROJECT_OUTSIDE_PLAN", nameof(request.ProjectStartDate), request.ProjectStartDate.ToString("O"), "Project dates must fall inside the plan effective period.");
+            return false;
+        }
+
+        definition = new HierarchyDefinition(
+            new OutcomeDefinition(outcomeCode, outcomeName, outcomeDescription, request.OutcomeSortOrder),
+            new ObjectiveDefinition(objectiveCode, objectiveName, objectiveDescription, request.ObjectiveBaseline, request.ObjectiveTarget,
+                objectiveDepartmentId, objectiveStart, objectiveEnd, request.ObjectiveBudget, request.ObjectiveSortOrder),
+            new PriorityDefinition(priorityCode, priorityName, priorityDescription, request.PrioritySortOrder),
+            new ProgrammeDefinition(programmeCode, programmeName, programmeDescription, programmeDepartmentId,
+                request.ProgrammePlannedBudget, request.ProgrammeApprovedBudget, request.ProgrammeActualExpenditure),
+            new ProjectDefinition(projectCode, projectName, projectDescription, projectCategory, projectDepartmentId,
+                request.ProjectBudget, fundingSource, projectStart, projectEnd, projectStatus,
+                string.IsNullOrWhiteSpace(request.CommunityNeedReference) ? null : request.CommunityNeedReference.Trim()));
+        return true;
+    }
+
+    private static bool TryRequiredCode(string? value, string field, out string normalized, out ValidationIssue? issue)
+    {
+        if (!TryRequired(value, field, 80, out normalized, out issue)) return false;
+        normalized = normalized.ToUpperInvariant();
+        if (normalized.Any(character => !(char.IsLetterOrDigit(character) || character is '-' or '_' or '.' or '/')))
+        {
+            issue = new ValidationIssue("INVALID_CODE", field, value, $"{field} may contain letters, digits, hyphens, underscores, dots, and slashes only.");
+            return false;
+        }
+        return true;
+    }
+
+    private static bool TryRequired(string? value, string field, int maximumLength, out string normalized, out ValidationIssue? issue)
+    {
+        normalized = value?.Trim() ?? string.Empty;
+        issue = null;
+        if (normalized.Length is 0 || normalized.Length > maximumLength)
+        {
+            issue = new ValidationIssue("INVALID_TEXT", field, value, $"{field} must contain between 1 and {maximumLength} characters.");
+            return false;
+        }
+        return true;
+    }
+
+    private static bool TryDepartment(string? code, IReadOnlyCollection<Department> departments, string field, out int? id, out ValidationIssue? issue)
+    {
+        id = null;
+        issue = null;
+        if (string.IsNullOrWhiteSpace(code)) return true;
+        var matches = departments.Where(item => CodeEquals(item.Code, code)).ToArray();
+        if (matches.Length != 1)
+        {
+            issue = new ValidationIssue("DEPARTMENT_NOT_FOUND", field, code, $"{field} must identify one active department in the selected municipality.");
+            return false;
+        }
+        id = matches[0].Id;
+        return true;
+    }
+
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
+
+    private static string HierarchyProjectKey(IdpHierarchyImportRowRequest request) => string.Join('|',
+        NormalizeCode(request.OutcomeCode), NormalizeCode(request.ObjectiveCode), NormalizeCode(request.PriorityCode),
+        NormalizeCode(request.ProgrammeCode), NormalizeCode(request.ProjectCode));
+
+    private static IEnumerable<(string Key, string Value)> DefinitionSignatures(HierarchyDefinition definition)
+    {
+        var outcomeKey = $"O|{definition.Outcome.Code}";
+        var objectiveKey = $"{outcomeKey}|{definition.Objective.Code}";
+        var priorityKey = $"{objectiveKey}|{definition.Priority.Code}";
+        var programmeKey = $"{priorityKey}|{definition.Programme.Code}";
+        yield return (outcomeKey, JsonSerializer.Serialize(definition.Outcome, JsonOptions));
+        yield return (objectiveKey, JsonSerializer.Serialize(definition.Objective, JsonOptions));
+        yield return (priorityKey, JsonSerializer.Serialize(definition.Priority, JsonOptions));
+        yield return (programmeKey, JsonSerializer.Serialize(definition.Programme, JsonOptions));
+    }
+
+    private static HierarchyImportCandidate HierarchyInvalid(PreparedHierarchyRow item, ValidationIssue issue) =>
+        new(new IdpImportRow
+        {
+            SourceRowNumber = item.Request.SourceRowNumber,
+            Reference = item.Reference,
+            Status = IdpImportRowStatus.Invalid,
+            PayloadJson = item.Payload,
+            ErrorCode = issue.Code,
+            ErrorField = issue.Field,
+            SuppliedValue = issue.SuppliedValue?.Length > 1000 ? issue.SuppliedValue[..1000] : issue.SuppliedValue,
+            ErrorMessage = issue.Message
+        }, null);
+
+    private static byte[]? HierarchyVersionDigest(params object?[] entities)
+    {
+        var versions = entities.Where(item => item != null).Select(item => item switch
+        {
+            IdpStrategicOutcome value => $"O:{value.PublicId}:{Convert.ToBase64String(value.RowVersion)}",
+            IdpStrategicObjective value => $"SO:{value.PublicId}:{Convert.ToBase64String(value.RowVersion)}",
+            IdpDevelopmentPriority value => $"D:{value.PublicId}:{Convert.ToBase64String(value.RowVersion)}",
+            IdpProgramme value => $"P:{value.PublicId}:{Convert.ToBase64String(value.RowVersion)}",
+            IdpProject value => $"J:{value.PublicId}:{Convert.ToBase64String(value.RowVersion)}",
+            _ => string.Empty
+        }).ToArray();
+        return versions.Length == 0 ? null : SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('|', versions)));
+    }
+
     private static string NormalizeCode(string? value) => value?.Trim().ToUpperInvariant() ?? string.Empty;
+    private static bool CodeEquals(string? left, string? right) => string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     private static bool VersionsEqual(byte[]? left, byte[]? right) => left == null ? right == null : right != null && left.SequenceEqual(right);
 
     private sealed record ImportCandidate(IdpImportRow Row, NormalizedIdpKpiDefinition? Definition, IdpKpi? Existing);
+    private sealed record HierarchyImportCandidate(IdpImportRow Row, HierarchyDefinition? Definition);
+    private sealed record PreparedHierarchyRow(IdpHierarchyImportRowRequest Request, string Payload, string Reference, HierarchyDefinition? Definition, ValidationIssue? Issue);
+    private sealed record ValidationIssue(string Code, string Field, string? SuppliedValue, string Message);
+    private sealed record HierarchyDefinition(OutcomeDefinition Outcome, ObjectiveDefinition Objective, PriorityDefinition Priority, ProgrammeDefinition Programme, ProjectDefinition Project);
+    private sealed record HierarchySnapshot(OutcomeDefinition? Outcome, ObjectiveDefinition? Objective, PriorityDefinition? Priority, ProgrammeDefinition? Programme, ProjectDefinition? Project)
+    {
+        public static HierarchySnapshot From(HierarchyDefinition value) => new(value.Outcome, value.Objective, value.Priority, value.Programme, value.Project);
+    }
+
+    private sealed record OutcomeDefinition(string Code, string Name, string Description, int SortOrder)
+    {
+        public static OutcomeDefinition From(IdpStrategicOutcome value) => new(value.Code, value.Name, value.Description, value.SortOrder);
+        public void Apply(IdpStrategicOutcome value) { value.Code = Code; value.Name = Name; value.Description = Description; value.SortOrder = SortOrder; }
+    }
+
+    private sealed record ObjectiveDefinition(string Code, string Name, string Description, decimal Baseline, decimal Target, int? DepartmentId, DateTime StartDate, DateTime EndDate, decimal Budget, int SortOrder)
+    {
+        public static ObjectiveDefinition From(IdpStrategicObjective value) => new(value.Code, value.Name, value.Description, value.BaselineValue, value.TargetValue, value.ResponsibleDepartmentId, value.StartDate, value.EndDate, value.BudgetAllocation, value.SortOrder);
+        public void Apply(IdpStrategicObjective value) { value.Code = Code; value.Name = Name; value.Description = Description; value.BaselineValue = Baseline; value.TargetValue = Target; value.ResponsibleDepartmentId = DepartmentId; value.StartDate = StartDate; value.EndDate = EndDate; value.BudgetAllocation = Budget; value.SortOrder = SortOrder; }
+    }
+
+    private sealed record PriorityDefinition(string Code, string Name, string Description, int SortOrder)
+    {
+        public static PriorityDefinition From(IdpDevelopmentPriority value) => new(value.PriorityCode, value.Name, value.Description, value.SortOrder);
+        public void Apply(IdpDevelopmentPriority value) { value.PriorityCode = Code; value.Name = Name; value.Description = Description; value.SortOrder = SortOrder; }
+    }
+
+    private sealed record ProgrammeDefinition(string Code, string Name, string Description, int? DepartmentId, decimal PlannedBudget, decimal ApprovedBudget, decimal ActualExpenditure)
+    {
+        public static ProgrammeDefinition From(IdpProgramme value) => new(value.ProgrammeCode, value.Name, value.Description, value.ResponsibleDepartmentId, value.PlannedBudget, value.ApprovedBudget, value.ActualExpenditure);
+        public void Apply(IdpProgramme value) { value.ProgrammeCode = Code; value.Name = Name; value.Description = Description; value.ResponsibleDepartmentId = DepartmentId; value.PlannedBudget = PlannedBudget; value.ApprovedBudget = ApprovedBudget; value.ActualExpenditure = ActualExpenditure; }
+    }
+
+    private sealed record ProjectDefinition(string Code, string Name, string Description, string Category, int? DepartmentId, decimal Budget, string FundingSource, DateTime StartDate, DateTime EndDate, IdpProjectStatus Status, string? CommunityNeedReference)
+    {
+        public static ProjectDefinition From(IdpProject value) => new(value.ProjectCode, value.ProjectName, value.Description, value.Category, value.DepartmentId, value.Budget, value.FundingSource, value.StartDate, value.EndDate, value.Status, value.CommunityNeedReference);
+        public void Apply(IdpProject value) { value.ProjectCode = Code; value.ProjectName = Name; value.Description = Description; value.Category = Category; value.DepartmentId = DepartmentId; value.Budget = Budget; value.FundingSource = FundingSource; value.StartDate = StartDate; value.EndDate = EndDate; value.Status = Status; value.CommunityNeedReference = CommunityNeedReference; }
+    }
 }

@@ -1602,11 +1602,25 @@ export async function stageIdpKpiImport(
   return post<import('../types').IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/kpis/stage`, payload);
 }
 
+export async function stageIdpHierarchyImport(
+  planPublicId: string,
+  payload: { clientRequestId: string; sourceFileName: string; rows: import('../types').IdpHierarchyImportRowPayload[] },
+): Promise<ApiResponse<import('../types').IdpImportBatch>> {
+  return post<import('../types').IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/hierarchy/stage`, payload);
+}
+
 export async function commitIdpImport(
   batchPublicId: string,
   payload: { rowVersion: string; reason: string },
 ): Promise<ApiResponse<import('../types').IdpImportBatch>> {
   return post<import('../types').IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit`, payload);
+}
+
+export async function commitIdpHierarchyImport(
+  batchPublicId: string,
+  payload: { rowVersion: string; reason: string },
+): Promise<ApiResponse<import('../types').IdpImportBatch>> {
+  return post<import('../types').IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit-hierarchy`, payload);
 }
 
 export async function getIdpHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {

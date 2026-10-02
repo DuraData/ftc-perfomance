@@ -301,7 +301,7 @@ public class IdpControllerFunctionalityTests
         context.IdpStrategicObjectives.Add(objective);
         await context.SaveChangesAsync();
 
-        var priority = new IdpDevelopmentPriority { IdpStrategicObjectiveId = objective.Id, Name = "Priority", Description = "Desc", SortOrder = 1 };
+        var priority = new IdpDevelopmentPriority { IdpStrategicObjectiveId = objective.Id, PriorityCode = "PRI", Name = "Priority", Description = "Desc", SortOrder = 1 };
         context.IdpDevelopmentPriorities.Add(priority);
         await context.SaveChangesAsync();
 
@@ -386,7 +386,7 @@ public class IdpControllerFunctionalityTests
         context.IdpStrategicObjectives.Add(objective);
         await context.SaveChangesAsync();
 
-        var priority = new IdpDevelopmentPriority { IdpStrategicObjectiveId = objective.Id, Name = "Priority", Description = "Desc", SortOrder = 1 };
+        var priority = new IdpDevelopmentPriority { IdpStrategicObjectiveId = objective.Id, PriorityCode = "PRI", Name = "Priority", Description = "Desc", SortOrder = 1 };
         context.IdpDevelopmentPriorities.Add(priority);
         await context.SaveChangesAsync();
 

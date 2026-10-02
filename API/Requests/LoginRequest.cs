@@ -334,7 +334,8 @@ public record CreateIdpDevelopmentPriorityRequest(
     int IdpStrategicObjectiveId,
     string Name,
     string Description,
-    int SortOrder);
+    int SortOrder,
+    string? PriorityCode = null);
 
 public record CreateIdpProgrammeRequest(
     int IdpDevelopmentPriorityId,
@@ -397,6 +398,50 @@ public record IdpKpiImportRowRequest(
     string IndicatorType,
     bool Circular88Linked,
     bool TreasuryTidLinked);
+
+public record StageIdpHierarchyImportRequest(
+    Guid ClientRequestId,
+    string SourceFileName,
+    IdpHierarchyImportRowRequest[] Rows);
+
+public record IdpHierarchyImportRowRequest(
+    int SourceRowNumber,
+    string OutcomeCode,
+    string OutcomeName,
+    string OutcomeDescription,
+    int OutcomeSortOrder,
+    string ObjectiveCode,
+    string ObjectiveName,
+    string ObjectiveDescription,
+    decimal ObjectiveBaseline,
+    decimal ObjectiveTarget,
+    string? ObjectiveDepartmentCode,
+    DateTime ObjectiveStartDate,
+    DateTime ObjectiveEndDate,
+    decimal ObjectiveBudget,
+    int ObjectiveSortOrder,
+    string PriorityCode,
+    string PriorityName,
+    string PriorityDescription,
+    int PrioritySortOrder,
+    string ProgrammeCode,
+    string ProgrammeName,
+    string ProgrammeDescription,
+    string? ProgrammeDepartmentCode,
+    decimal ProgrammePlannedBudget,
+    decimal ProgrammeApprovedBudget,
+    decimal ProgrammeActualExpenditure,
+    string ProjectCode,
+    string ProjectName,
+    string ProjectDescription,
+    string ProjectCategory,
+    string? ProjectDepartmentCode,
+    decimal ProjectBudget,
+    string ProjectFundingSource,
+    DateTime ProjectStartDate,
+    DateTime ProjectEndDate,
+    string ProjectStatus,
+    string? CommunityNeedReference);
 
 public record CommitIdpImportRequest(string RowVersion, string Reason);
 
