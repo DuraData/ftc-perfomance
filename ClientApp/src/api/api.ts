@@ -922,6 +922,22 @@ export async function savePositionMaster(publicId: string | null, payload: { dep
   return publicId ? put<PositionMasterDto>(`/v1/masters/positions/${publicId}`, payload) : post<PositionMasterDto>('/v1/masters/positions', payload);
 }
 
+export async function getWardMasters(): Promise<ApiResponse<import('../types').WardMasterDto[]>> {
+  return get<import('../types').WardMasterDto[]>('/v1/masters/wards');
+}
+
+export async function saveWardMaster(publicId: string | null, payload: { code: string; name: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').WardMasterDto>> {
+  return publicId ? put<import('../types').WardMasterDto>(`/v1/masters/wards/${publicId}`, payload) : post<import('../types').WardMasterDto>('/v1/masters/wards', payload);
+}
+
+export async function getVoteNumberMasters(): Promise<ApiResponse<import('../types').VoteNumberMasterDto[]>> {
+  return get<import('../types').VoteNumberMasterDto[]>('/v1/masters/vote-numbers');
+}
+
+export async function saveVoteNumberMaster(publicId: string | null, payload: { departmentPublicId: string; code: string; number: string; name: string; amount: number; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').VoteNumberMasterDto>> {
+  return publicId ? put<import('../types').VoteNumberMasterDto>(`/v1/masters/vote-numbers/${publicId}`, payload) : post<import('../types').VoteNumberMasterDto>('/v1/masters/vote-numbers', payload);
+}
+
 export async function closeEmployeeAssignment(publicId: string, payload: { effectiveTo: string; reason: string; rowVersion: string }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {
   return put<EmployeeAssignmentMasterDto>(`/v1/masters/employee-assignments/${publicId}/close`, payload);
 }

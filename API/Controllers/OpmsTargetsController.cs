@@ -284,15 +284,12 @@ public class OpmsTargetsController : ControllerBase
         var assigneeIds = (request.AdditionalAssigneeIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var voteIds = (request.VoteNumberIds ?? []).Distinct().ToArray();
         if (wardIds.Length > 100 || assigneeIds.Length > 100 || voteIds.Length > 100) return "At most 100 wards, additional assignees, and vote numbers may be linked.";
-        var municipality = await _context.Municipalities.AsNoTracking().SingleOrDefaultAsync(item => item.Id == tenantId.Value);
-        if (municipality == null) return "The selected municipality does not exist.";
-
         var wards = await _context.Wards.AsNoTracking().Where(item => wardIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
-        if (wards.Length != wardIds.Length || wards.Any(item => !string.Equals(item.Municipality, municipality.Code, StringComparison.OrdinalIgnoreCase) && !string.Equals(item.Municipality, municipality.Name, StringComparison.OrdinalIgnoreCase)))
+        if (wards.Length != wardIds.Length || wards.Any(item => item.MunicipalityId != tenantId.Value))
             return "Every ward must be active and belong to the selected municipality.";
 
         var votes = await _context.VoteNumbers.AsNoTracking().Include(item => item.Department).Where(item => voteIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
-        if (votes.Length != voteIds.Length || votes.Any(item => item.Department?.MunicipalityId != tenantId.Value))
+        if (votes.Length != voteIds.Length || votes.Any(item => item.MunicipalityId != tenantId.Value || item.Department.MunicipalityId != tenantId.Value))
             return "Every vote number must be active and belong to a department in the selected municipality.";
 
         var users = await _context.Users.AsNoTracking().Where(item => assigneeIds.Contains(item.Id) && item.IsActive).Select(item => new { item.Id, item.MunicipalityId }).ToArrayAsync();

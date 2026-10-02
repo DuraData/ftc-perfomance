@@ -3,11 +3,12 @@ import { SecurityProvider } from './context/SecurityContext';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { OPMSTargetList } from './components/opms/OPMSTargetList';
 import { OPMSTargetDetail } from './components/opms/OPMSTargetDetail';
-import { OPMSSubmissionsList, IPMSSubmissionsList, VoteNumbersPage } from './components/opms/OPMSSubmissions';
+import { OPMSSubmissionsList, IPMSSubmissionsList } from './components/opms/OPMSSubmissions';
 import { IPMSTargetList } from './components/ipms/IPMSTargetList';
 import { IPMSTargetDetail } from './components/ipms/IPMSTargetDetail';
 import { WorkflowQueues, MyWorkQueue } from './components/workflow/WorkflowQueues';
 import { TenantOrganizationAdministration } from './components/admin/TenantOrganizationAdministration';
+import { TenantReferenceAdministration } from './components/admin/TenantReferenceAdministration';
 import { LookupTables } from './components/admin/AdminManagement';
 import { AdminAuditLogsPage, AdminPermissionsPage, AdminRolesPage, AdminUsersPage } from './components/admin/SystemAdmin';
 import { RoleImplementationAuditPage } from './components/admin/RoleImplementationAuditPage';
@@ -130,7 +131,7 @@ function AppContent() {
       case '/opms/submissions':
         return <OPMSSubmissionsList />;
       case '/opms/vote-numbers':
-        return <VoteNumbersPage />;
+        return <TenantReferenceAdministration kind="vote-numbers" />;
       case '/ipms/dashboard':
         return <IPMSDashboardPage />;
       case '/ipms/library':
@@ -173,6 +174,8 @@ function AppContent() {
         return <TenantOrganizationAdministration kind="units" />;
       case '/hr/positions':
         return <TenantOrganizationAdministration kind="positions" />;
+      case '/admin/wards':
+        return <TenantReferenceAdministration kind="wards" />;
       case '/hr/contacts':
         return <ContactsPage />;
       case '/hr/resumes':

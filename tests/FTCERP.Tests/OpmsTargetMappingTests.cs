@@ -26,9 +26,9 @@ public sealed class OpmsTargetMappingTests
             var municipalityB = new Municipality { Code = "MAP-B", Name = "Mapping B" };
             setup.AddRange(tenantA, municipalityB); await setup.SaveChangesAsync(); tenantAId = tenantA.Id; tenantBId = municipalityB.Id;
             var department = new Department { MunicipalityId = tenantAId, Code = "FIN", Name = "Finance" };
-            var ward = new Ward { Code = "W1", Name = "Ward 1", Municipality = tenantA.Code, IsActive = true };
+            var ward = new Ward { MunicipalityId = tenantAId, Code = "W1", Name = "Ward 1", LegacyMunicipality = tenantA.Name, IsActive = true };
             setup.AddRange(department, ward); await setup.SaveChangesAsync(); wardId = ward.Id;
-            var vote = new VoteNumber { Code = "V1", Number = "001", Name = "Operations", DepartmentId = department.Id, IsActive = true };
+            var vote = new VoteNumber { MunicipalityId = tenantAId, Code = "V1", Number = "001", Name = "Operations", DepartmentId = department.Id, IsActive = true };
             setup.Add(vote); await setup.SaveChangesAsync(); voteId = vote.Id;
         }
 

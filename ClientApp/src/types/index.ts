@@ -1359,6 +1359,32 @@ export interface PositionMasterDto {
   rowVersion: string;
 }
 
+export interface WardMasterDto {
+  publicId: string;
+  id: number;
+  code: string;
+  name: string;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+}
+
+export interface VoteNumberMasterDto {
+  publicId: string;
+  id: number;
+  departmentPublicId: string;
+  departmentName: string;
+  code: string;
+  number: string;
+  name: string;
+  amount: number;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rowVersion: string;
+}
+
 export interface PerformancePeriodTargetDto {
   publicId: string;
   reportingPeriodPublicId: string;

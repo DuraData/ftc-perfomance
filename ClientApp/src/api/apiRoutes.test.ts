@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changePassword, closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster, setupMfa } from './api';
+import { changePassword, closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -45,6 +45,19 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/positions'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/positions/position-public-id'), expect.objectContaining({ method: 'PUT', body: expect.stringContaining('"rowVersion":"AQ=="') }));
+  });
+
+  it('uses governed ward and vote-number master routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWardMasters();
+    await getVoteNumberMasters();
+    await saveVoteNumberMaster('vote-public-id', { departmentPublicId: 'department-public-id', code: 'V01', number: '001', name: 'Operating Vote', amount: 1250, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', reason: 'Council approved budget', rowVersion: 'AQ==' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/wards'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/vote-numbers'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/masters/vote-numbers/vote-public-id'), expect.objectContaining({ method: 'PUT', body: expect.stringContaining('"rowVersion":"AQ=="') }));
   });
 
   it('uses governed session-list and revoke-all routes', async () => {

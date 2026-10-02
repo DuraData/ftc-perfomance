@@ -247,6 +247,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<Department>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Unit>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Position>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<Ward>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<VoteNumber>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsTargetWard>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsTargetAdditionalAssignee>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -940,13 +942,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasIndex(uom => uom.Code)
             .IsUnique();
 
-        builder.Entity<Ward>()
-            .HasIndex(w => w.Code)
-            .IsUnique();
+        builder.Entity<Ward>().HasIndex(w => w.PublicId).IsUnique();
+        builder.Entity<Ward>().HasIndex(w => new { w.MunicipalityId, w.Code }).IsUnique();
+        builder.Entity<Ward>().HasOne(w => w.Municipality).WithMany().HasForeignKey(w => w.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureRowVersion(builder.Entity<Ward>().Property(w => w.RowVersion));
 
-        builder.Entity<VoteNumber>()
-            .HasIndex(vn => vn.Code)
-            .IsUnique();
+        builder.Entity<VoteNumber>().HasIndex(vn => vn.PublicId).IsUnique();
+        builder.Entity<VoteNumber>().HasIndex(vn => new { vn.MunicipalityId, vn.Code }).IsUnique();
+        builder.Entity<VoteNumber>().HasOne(vn => vn.Municipality).WithMany().HasForeignKey(vn => vn.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureRowVersion(builder.Entity<VoteNumber>().Property(vn => vn.RowVersion));
 
         builder.Entity<VoteNumber>()
             .HasOne(vn => vn.Department)
@@ -1382,6 +1386,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     {
         EnforceTenantWrites();
         EnforceAppendOnlyRecords();
+        AdvancePortableRowVersions();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -1389,7 +1394,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     {
         EnforceTenantWrites();
         EnforceAppendOnlyRecords();
+        AdvancePortableRowVersions();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void AdvancePortableRowVersions()
+    {
+        if (Database.IsSqlServer()) return;
+        foreach (var entry in ChangeTracker.Entries().Where(item => item.State is EntityState.Added or EntityState.Modified))
+        {
+            var version = entry.Properties.FirstOrDefault(item => item.Metadata.IsConcurrencyToken && item.Metadata.ClrType == typeof(byte[]));
+            if (version != null) version.CurrentValue = Guid.NewGuid().ToByteArray();
+        }
     }
 
     private void EnforceTenantWrites()
@@ -1398,7 +1414,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         var tenantId = _tenantContext.MunicipalityId;
         var protectedTypes = new HashSet<Type>
         {
-            typeof(Department), typeof(Unit), typeof(Position), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
+            typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),

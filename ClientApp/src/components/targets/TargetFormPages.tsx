@@ -13,6 +13,8 @@ import {
   getIpmsTargetTemplate,
   getOpmsTarget,
   getOpmsTargetTemplate,
+  getVoteNumberMasters,
+  getWardMasters,
   updateIpmsTarget,
   updateOpmsTarget,
 } from '../../api/api';
@@ -28,8 +30,6 @@ import {
   mockStrategicGoals,
   mockStrategicObjectives,
   mockUnitsOfMeasure,
-  mockVoteNumbers,
-  mockWards,
 } from '../../data/mockData';
 import type {
   IPMSTarget,
@@ -39,6 +39,8 @@ import type {
   SaveIpmsTargetPayload,
   SaveOpmsTargetPayload,
   TargetUnitType,
+  VoteNumberMasterDto,
+  WardMasterDto,
   XafUnitValue,
 } from '../../types';
 
@@ -791,6 +793,17 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [selectedWardId, setSelectedWardId] = useState('');
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
   const [selectedVoteNumberId, setSelectedVoteNumberId] = useState('');
+  const [wardMasters, setWardMasters] = useState<WardMasterDto[]>([]);
+  const [voteNumberMasters, setVoteNumberMasters] = useState<VoteNumberMasterDto[]>([]);
+
+  useEffect(() => {
+    const loadReferenceMasters = async () => {
+      const [wardResult, voteResult] = await Promise.all([getWardMasters(), getVoteNumberMasters()]);
+      if (wardResult.success) setWardMasters((wardResult.data ?? []).filter(item => item.isActive));
+      if (voteResult.success) setVoteNumberMasters((voteResult.data ?? []).filter(item => item.isActive));
+    };
+    void loadReferenceMasters();
+  }, []);
 
   useEffect(() => {
     const initialize = async () => {
@@ -924,7 +937,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 label="Wards"
                 value={selectedWardId}
                 onChange={(event) => setSelectedWardId(event.target.value)}
-                options={[{ value: '', label: 'Select Ward' }, ...mockWards.map(item => ({ value: item.id, label: item.name }))]}
+                options={[{ value: '', label: 'Select Ward' }, ...wardMasters.map(item => ({ value: String(item.id), label: `${item.code} · ${item.name}` }))]}
               />
               <div className="flex items-end">
                 <Button
@@ -944,7 +957,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="flex flex-wrap gap-2">
               {selectedWardIds.length === 0 ? <p className="text-xs text-secondary-500">No wards linked.</p> : null}
               {selectedWardIds.map(wardId => {
-                const ward = mockWards.find(item => item.id === wardId);
+                const ward = wardMasters.find(item => String(item.id) === wardId);
                 return (
                   <button
                     key={wardId}
@@ -1009,7 +1022,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 label="Vote Numbers"
                 value={selectedVoteNumberId}
                 onChange={(event) => setSelectedVoteNumberId(event.target.value)}
-                options={[{ value: '', label: 'Select Vote Number' }, ...mockVoteNumbers.map(item => ({ value: item.id, label: `${item.number} - ${item.description}` }))]}
+                options={[{ value: '', label: 'Select Vote Number' }, ...voteNumberMasters.map(item => ({ value: String(item.id), label: `${item.number} · ${item.name} · ${item.departmentName}` }))]}
               />
               <div className="flex items-end">
                 <Button
@@ -1029,7 +1042,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="flex flex-wrap gap-2">
               {selectedVoteIds.length === 0 ? <p className="text-xs text-secondary-500">No vote numbers linked.</p> : null}
               {selectedVoteIds.map(voteId => {
-                const vote = mockVoteNumbers.find(item => item.id === voteId);
+                const vote = voteNumberMasters.find(item => String(item.id) === voteId);
                 return (
                   <button
                     key={voteId}
@@ -1038,7 +1051,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                     className="rounded-full border border-secondary-300 px-3 py-1 text-xs text-secondary-700 hover:bg-secondary-100 dark:border-secondary-700 dark:text-secondary-200 dark:hover:bg-secondary-800"
                     title="Remove vote number"
                   >
-                    {vote ? `${vote.number} - ${vote.description}` : voteId} x
+                    {vote ? `${vote.number} - ${vote.name}` : voteId} x
                   </button>
                 );
               })}

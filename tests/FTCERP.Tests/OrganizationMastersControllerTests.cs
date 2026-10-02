@@ -14,6 +14,71 @@ namespace FTCERP.Tests;
 public sealed class OrganizationMastersControllerTests
 {
     [Fact]
+    public async Task Sqlite_enforces_tenant_scoped_ward_and_vote_number_uniqueness_and_filters()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        long tenantAId;
+        long tenantBId;
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var tenantA = new Municipality { Code = "REF-A", Name = "Reference A", RowVersion = [1] };
+            var tenantB = new Municipality { Code = "REF-B", Name = "Reference B", RowVersion = [1] };
+            setup.AddRange(tenantA, tenantB); await setup.SaveChangesAsync(); tenantAId = tenantA.Id; tenantBId = tenantB.Id;
+            var departmentA = new Department { MunicipalityId = tenantAId, Code = "FIN", Name = "Finance A", RowVersion = [1] };
+            var departmentB = new Department { MunicipalityId = tenantBId, Code = "FIN", Name = "Finance B", RowVersion = [1] };
+            setup.AddRange(departmentA, departmentB); await setup.SaveChangesAsync();
+            setup.Wards.AddRange(
+                new Ward { MunicipalityId = tenantAId, LegacyMunicipality = tenantA.Name, Code = "W01", Name = "Ward A", RowVersion = [1] },
+                new Ward { MunicipalityId = tenantBId, LegacyMunicipality = tenantB.Name, Code = "W01", Name = "Ward B", RowVersion = [1] });
+            setup.VoteNumbers.AddRange(
+                new VoteNumber { MunicipalityId = tenantAId, DepartmentId = departmentA.Id, Code = "V01", Number = "1", Name = "Vote A", RowVersion = [1] },
+                new VoteNumber { MunicipalityId = tenantBId, DepartmentId = departmentB.Id, Code = "V01", Number = "1", Name = "Vote B", RowVersion = [1] });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var tenantAContext = new ApplicationDbContext(options, new TenantContext(tenantAId, "tenant-a"));
+        await using var tenantBContext = new ApplicationDbContext(options, new TenantContext(tenantBId, "tenant-b"));
+        Assert.Equal("Ward A", (await tenantAContext.Wards.AsNoTracking().SingleAsync()).Name);
+        Assert.Equal("Ward B", (await tenantBContext.Wards.AsNoTracking().SingleAsync()).Name);
+        Assert.Equal("Vote A", (await tenantAContext.VoteNumbers.AsNoTracking().SingleAsync()).Name);
+        Assert.Equal("Vote B", (await tenantBContext.VoteNumbers.AsNoTracking().SingleAsync()).Name);
+
+        await using var staleContext = new ApplicationDbContext(options, new TenantContext(tenantAId, "stale-editor"));
+        var currentWard = await tenantAContext.Wards.SingleAsync();
+        var staleWard = await staleContext.Wards.SingleAsync();
+        currentWard.Name = "Ward A updated";
+        await tenantAContext.SaveChangesAsync();
+        staleWard.Name = "Stale overwrite";
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => staleContext.SaveChangesAsync());
+
+        tenantAContext.Wards.Add(new Ward { MunicipalityId = tenantAId, LegacyMunicipality = "Reference A", Code = "W01", Name = "Duplicate", RowVersion = [1] });
+        await Assert.ThrowsAsync<DbUpdateException>(() => tenantAContext.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task CreateWard_and_vote_number_persist_tenant_scope_and_reasoned_audit()
+    {
+        var tenant = new TenantContext(75, "reference-admin");
+        await using var context = NewContext(tenant);
+        var municipality = new Municipality { Id = 75, Code = "M75", Name = "Municipality 75" };
+        var department = new Department { Id = 11, MunicipalityId = 75, Code = "FIN", Name = "Finance" };
+        context.AddRange(municipality, department); await context.SaveChangesAsync();
+        var controller = CreateController(context, tenant);
+
+        var wardResponse = await controller.CreateWard(new SaveWardMasterRequest(" w01 ", "Ward One", true, DateTime.UtcNow.Date, null, "Approved municipal demarcation"));
+        var voteResponse = await controller.CreateVoteNumber(new SaveVoteNumberMasterRequest(department.PublicId, " v01 ", "001", "Operating Vote", 1250m, true, DateTime.UtcNow.Date, null, "Approved annual budget structure"));
+
+        Assert.Equal("W01", Assert.IsType<ApiResponse<WardMasterDto>>(Assert.IsType<OkObjectResult>(wardResponse.Result).Value).Data!.Code);
+        Assert.Equal("V01", Assert.IsType<ApiResponse<VoteNumberMasterDto>>(Assert.IsType<OkObjectResult>(voteResponse.Result).Value).Data!.Code);
+        Assert.All(await context.AuditTrails.ToArrayAsync(), row => Assert.Equal(75, row.MunicipalityId));
+        Assert.Contains(await context.AuditTrails.ToArrayAsync(), row => row.EntityName == nameof(Ward) && row.Reason == "Approved municipal demarcation");
+        Assert.Contains(await context.AuditTrails.ToArrayAsync(), row => row.EntityName == nameof(VoteNumber) && row.Reason == "Approved annual budget structure");
+    }
+
+    [Fact]
     public async Task Sqlite_enforces_position_uniqueness_and_tenant_filters()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

@@ -216,8 +216,9 @@ public class IdpControllerFunctionalityTests
         var user = IdpTestFixture.CreateUser("creator");
         context.Users.Add(user);
 
-        var ward = new Ward { Id = 9, Code = "W9", Name = "Ward 9", Municipality = "Blue Hills", IsActive = true, CreatedAt = DateTime.UtcNow };
-        context.Wards.Add(ward);
+        var municipality = new Municipality { Id = 1, Code = "BLUE", Name = "Blue Hills" };
+        var ward = new Ward { Id = 9, MunicipalityId = municipality.Id, Code = "W9", Name = "Ward 9", LegacyMunicipality = "Blue Hills", IsActive = true, CreatedAt = DateTime.UtcNow };
+        context.AddRange(municipality, ward);
 
         var plan = new IdpPlan
         {

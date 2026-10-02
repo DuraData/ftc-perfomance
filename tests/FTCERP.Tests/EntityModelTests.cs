@@ -121,7 +121,7 @@ public class EntityModelTests
         var user = IdpTestFixture.CreateUser("creator");
         context.Users.Add(user);
 
-        var ward = new Ward { Id = 5, Code = "W5", Name = "Ward 5", Municipality = "Blue Hills", IsActive = true, CreatedAt = DateTime.UtcNow };
+        var ward = new Ward { Id = 5, MunicipalityId = 1, Code = "W5", Name = "Ward 5", LegacyMunicipality = "Blue Hills", IsActive = true, CreatedAt = DateTime.UtcNow };
         context.Wards.Add(ward);
 
         var plan = new IdpPlan

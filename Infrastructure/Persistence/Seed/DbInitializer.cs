@@ -957,16 +957,21 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // Seed Wards
-        var existingWards = await context.Wards.ToDictionaryAsync(w => w.Code, StringComparer.OrdinalIgnoreCase);
+        var municipalities = await context.Municipalities.IgnoreQueryFilters().ToListAsync();
+        var existingWards = await context.Wards.IgnoreQueryFilters().ToDictionaryAsync(w => $"{w.MunicipalityId}:{w.Code}", StringComparer.OrdinalIgnoreCase);
         foreach (var wardSeed in GetWardSeeds())
         {
-            if (!existingWards.TryGetValue(wardSeed.Code, out var ward))
+            var municipality = municipalities.SingleOrDefault(item => string.Equals(item.Code, wardSeed.Municipality, StringComparison.OrdinalIgnoreCase) || string.Equals(item.Name, wardSeed.Municipality, StringComparison.OrdinalIgnoreCase));
+            if (municipality == null) continue;
+            var wardKey = $"{municipality.Id}:{wardSeed.Code}";
+            if (!existingWards.TryGetValue(wardKey, out var ward))
             {
                 ward = new Ward
                 {
+                    MunicipalityId = municipality.Id,
                     Name = wardSeed.Name,
                     Code = wardSeed.Code,
-                    Municipality = wardSeed.Municipality,
+                    LegacyMunicipality = municipality.Name,
                     IsActive = wardSeed.IsActive
                 };
                 context.Wards.Add(ward);
@@ -974,7 +979,7 @@ public static class DbInitializer
             else
             {
                 ward.Name = wardSeed.Name;
-                ward.Municipality = wardSeed.Municipality;
+                ward.LegacyMunicipality = municipality.Name;
                 ward.IsActive = wardSeed.IsActive;
             }
         }
@@ -982,17 +987,20 @@ public static class DbInitializer
 
         // Seed Vote Numbers
         var departments = await context.Departments.ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
-        var existingVotes = await context.VoteNumbers.ToDictionaryAsync(v => v.Code, StringComparer.OrdinalIgnoreCase);
+        var existingVotes = await context.VoteNumbers.IgnoreQueryFilters().ToDictionaryAsync(v => $"{v.MunicipalityId}:{v.Code}", StringComparer.OrdinalIgnoreCase);
         foreach (var voteSeed in GetVoteNumberSeeds())
         {
-            if (!existingVotes.TryGetValue(voteSeed.Code, out var vote))
+            if (voteSeed.DepartmentCode == null || !departments.TryGetValue(voteSeed.DepartmentCode, out var department) || !department.MunicipalityId.HasValue) continue;
+            var voteKey = $"{department.MunicipalityId.Value}:{voteSeed.Code}";
+            if (!existingVotes.TryGetValue(voteKey, out var vote))
             {
                 vote = new VoteNumber
                 {
+                    MunicipalityId = department.MunicipalityId.Value,
                     Code = voteSeed.Code,
                     Number = voteSeed.Code,
                     Name = voteSeed.Name,
-                    DepartmentId = voteSeed.DepartmentCode != null ? departments[voteSeed.DepartmentCode].Id : null,
+                    DepartmentId = department.Id,
                     Amount = voteSeed.Amount,
                     IsActive = voteSeed.IsActive
                 };
@@ -1002,7 +1010,7 @@ public static class DbInitializer
             {
                 vote.Number = voteSeed.Code;
                 vote.Name = voteSeed.Name;
-                vote.DepartmentId = voteSeed.DepartmentCode != null ? departments[voteSeed.DepartmentCode].Id : null;
+                vote.DepartmentId = department.Id;
                 vote.Amount = voteSeed.Amount;
                 vote.IsActive = voteSeed.IsActive;
             }

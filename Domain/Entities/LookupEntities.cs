@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace FTCERP.Host.Domain.Entities;
 
 public class Period
@@ -65,23 +67,37 @@ public class UnitOfMeasure
 public class Ward
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Code { get; set; } = string.Empty;
-    public string Municipality { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
+    [Column("Municipality")]
+    public string LegacyMunicipality { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+    public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
+    public DateTime? EffectiveTo { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
+
+    public Municipality Municipality { get; set; } = null!;
 }
 
 public class VoteNumber
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Number { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public int? DepartmentId { get; set; }
+    public int DepartmentId { get; set; }
     public decimal Amount { get; set; }
-    public bool IsActive { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
+    public DateTime? EffectiveTo { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
-    public Department? Department { get; set; }
+    public Municipality Municipality { get; set; } = null!;
+    public Department Department { get; set; } = null!;
 }

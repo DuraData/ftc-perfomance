@@ -138,6 +138,7 @@ const buildFullMenu = (): MenuItem[] => [
       { label: 'Organisations', path: '/admin/organisations', icon: 'settings', isDivider: false },
       { label: 'Approval Setup', path: '/admin/approval-setup', icon: 'settings', isDivider: false },
       { label: 'Lookup Tables', path: '/admin/lookups', icon: 'settings', isDivider: false },
+      { label: 'Wards', path: '/admin/wards', icon: 'map', isDivider: false },
       { label: 'Budget Types', path: '/admin/budget-types', icon: 'settings', isDivider: false },
       { label: 'Strategic Goals', path: '/admin/strategic-goals', icon: 'settings', isDivider: false },
       { label: 'Strategic Objectives', path: '/admin/strategic-objectives', icon: 'settings', isDivider: false },
