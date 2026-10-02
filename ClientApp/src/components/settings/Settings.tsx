@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { User, Bell, Shield, Palette, Globe, Save } from 'lucide-react';
+import { User, Bell, Shield, Palette, Globe, Save, RefreshCw } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card, Badge } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
+import { getAuthSessions, revokeAllAuthSessions, revokeAuthSession } from '../../api/api';
+import type { AuthSessionDto } from '../../types';
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
@@ -131,6 +133,31 @@ function AppearanceSettings() {
 }
 
 function SecuritySettings() {
+  const { pushToast, logout } = useApp();
+  const [sessions, setSessions] = useState<AuthSessionDto[]>([]);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const loadSessions = async () => {
+    setBusy(true); setSessionError(null);
+    const result = await getAuthSessions();
+    if (!result.success) setSessionError(result.message ?? 'Sessions could not be loaded.');
+    setSessions(result.data ?? []); setBusy(false);
+  };
+  useEffect(() => { void loadSessions(); }, []);
+  const revoke = async (session: AuthSessionDto) => {
+    setBusy(true); setSessionError(null);
+    const result = await revokeAuthSession(session.sessionId, 'User revoked session from account settings');
+    if (!result.success) setSessionError(result.message ?? 'Session could not be revoked.');
+    else if (session.isCurrent) logout();
+    else { pushToast('success', 'Session revoked'); await loadSessions(); }
+    setBusy(false);
+  };
+  const revokeAll = async () => {
+    setBusy(true); setSessionError(null);
+    const result = await revokeAllAuthSessions('User signed out all sessions from account settings');
+    if (!result.success) { setSessionError(result.message ?? 'Sessions could not be revoked.'); setBusy(false); return; }
+    logout();
+  };
   return (
     <div className="space-y-3">
       <FormSection title="Password">
@@ -140,7 +167,7 @@ function SecuritySettings() {
             <Input label="New Password" type="password" placeholder="New password" />
             <Input label="Confirm" type="password" placeholder="Confirm" />
           </FormRow>
-          <Button variant="outline" size="sm">Change Password</Button>
+          <Button variant="outline" size="sm" disabled>Change password unavailable</Button>
         </div>
       </FormSection>
       <FormSection title="Two-Factor">
@@ -154,19 +181,12 @@ function SecuritySettings() {
           </div>
           <Badge variant="warning" size="sm">Disabled</Badge>
         </div>
-        <Button variant="outline" size="sm">Enable</Button>
+        <p className="text-xs text-secondary-500">MFA enrollment is not enabled in this deployment.</p>
       </FormSection>
       <FormSection title="Sessions">
-        <div className="flex items-center justify-between p-3 border border-secondary-200 rounded">
-          <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-secondary-400" />
-            <div>
-              <p className="text-xs font-medium">Current Session</p>
-              <p className="text-[10px] text-secondary-500">Chrome • Active</p>
-            </div>
-          </div>
-          <Badge variant="success" size="sm">Active</Badge>
-        </div>
+        <div className="mb-2 flex justify-end gap-2"><Button variant="ghost" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => void loadSessions()} disabled={busy}>Refresh</Button><Button variant="outline" size="sm" onClick={() => void revokeAll()} disabled={busy || !sessions.length}>Sign out all</Button></div>
+        {sessionError && <p role="alert" className="mb-2 text-xs text-error-600">{sessionError}</p>}
+        <div className="space-y-2">{sessions.map(session => <div key={session.sessionId} className="flex items-center justify-between gap-3 rounded border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex min-w-0 items-center gap-2"><Globe className="h-4 w-4 shrink-0 text-secondary-400" /><div className="min-w-0"><p className="text-xs font-medium">{session.isCurrent ? 'Current session' : 'Signed-in session'}</p><p className="truncate text-[10px] text-secondary-500">{session.userAgent || 'Unknown device'} · last active {new Date(session.lastUsedAt).toLocaleString()} · expires {new Date(session.absoluteExpiresAt).toLocaleString()}</p></div></div><div className="flex items-center gap-2"><Badge variant={session.isCurrent ? 'success' : 'default'} size="sm">{session.isCurrent ? 'Current' : 'Active'}</Badge><Button variant="outline" size="sm" onClick={() => void revoke(session)} disabled={busy}>Revoke</Button></div></div>)}{!sessions.length && !busy && <p className="text-xs text-secondary-500">No active sessions.</p>}</div>
       </FormSection>
     </div>
   );

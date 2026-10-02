@@ -288,6 +288,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<SecurityUserRoleAssignment>().HasOne(item => item.Role).WithMany(item => item.UserAssignments).HasForeignKey(item => item.RoleId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SecurityUserRoleAssignment>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<RefreshToken>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<RefreshToken>().HasIndex(item => new { item.UserId, item.SessionId, item.CreatedAt });
+        builder.Entity<RefreshToken>().HasIndex(item => item.Token).IsUnique();
+        builder.Entity<RefreshToken>().Property(item => item.Token).HasMaxLength(128);
+        builder.Entity<RefreshToken>().Property(item => item.SecurityStamp).HasMaxLength(256);
+        builder.Entity<RefreshToken>().Property(item => item.UserAgent).HasMaxLength(1024);
+        builder.Entity<RefreshToken>().Property(item => item.RevokedReason).HasMaxLength(500);
+        ConfigureRowVersion(builder.Entity<RefreshToken>().Property(item => item.RowVersion));
+
         // Configure RolePermission
         builder.Entity<RolePermission>()
             .HasKey(rp => new { rp.RoleId, rp.PermissionId });

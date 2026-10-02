@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
         user.LastLoginAt = DateTime.UtcNow;
         await _userManager.UpdateAsync(user);
 
-        var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user);
+        var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString());
         SetRefreshCookie(refreshToken);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToList();
@@ -136,11 +136,16 @@ public class AuthController : ControllerBase
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
         var existingRefreshToken = await _jwtService.GetRefreshTokenAsync(rawRefreshToken);
-        if (existingRefreshToken == null || existingRefreshToken.UserId != userId || existingRefreshToken.RevokedAt.HasValue || existingRefreshToken.ExpiresAt < DateTime.UtcNow)
+        var now = DateTime.UtcNow;
+        var settings = HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<JwtSettings>>().Value;
+        var idleCutoff = now.AddMinutes(-Math.Clamp(settings.SessionIdleTimeoutMinutes, 5, 24 * 60));
+        if (existingRefreshToken == null || existingRefreshToken.UserId != userId || existingRefreshToken.RevokedAt.HasValue || existingRefreshToken.ExpiresAt <= now || existingRefreshToken.AbsoluteExpiresAt <= now || existingRefreshToken.LastUsedAt <= idleCutoff || existingRefreshToken.SecurityStamp != (user.SecurityStamp ?? string.Empty))
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
-        await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString());
-        var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user);
+        await using var rotation = await _context.Database.BeginTransactionAsync();
+        await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), "Rotated");
+        var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), existingRefreshToken.SessionId, existingRefreshToken.AbsoluteExpiresAt);
+        await rotation.CommitAsync();
         SetRefreshCookie(refreshToken);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToList();
@@ -158,13 +163,58 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public async Task<ActionResult<ApiResponse<bool>>> Logout()
     {
-        var rawRefreshToken = Request.Cookies[RefreshCookieName];
-        if (!string.IsNullOrWhiteSpace(rawRefreshToken))
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sessionValue = User.FindFirstValue("sid");
+        if (!string.IsNullOrWhiteSpace(userId) && Guid.TryParse(sessionValue, out var sessionId))
         {
-            await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString());
+            await _jwtService.RevokeSessionAsync(userId, sessionId, HttpContext.Connection.RemoteIpAddress?.ToString(), "User logout");
+        }
+        var rawRefreshToken = Request.Cookies[RefreshCookieName];
+        if (!string.IsNullOrWhiteSpace(rawRefreshToken) && !Guid.TryParse(sessionValue, out _))
+        {
+            await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), "User logout");
         }
         Response.Cookies.Delete(RefreshCookieName);
         return Ok(new ApiResponse<bool>(true, true));
+    }
+
+    [Authorize]
+    [HttpGet("/api/v1/auth/sessions")]
+    public async Task<ActionResult<ApiResponse<AuthSessionResponse[]>>> GetSessions()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+        var current = User.FindFirstValue("sid");
+        var rows = await _jwtService.GetActiveSessionsAsync(userId);
+        var data = rows.Select(item => new AuthSessionResponse(item.SessionId, item.CreatedAt, item.LastUsedAt, item.AbsoluteExpiresAt, item.CreatedByIp, item.LastUsedByIp, item.UserAgent, item.SessionId.ToString() == current)).ToArray();
+        return Ok(new ApiResponse<AuthSessionResponse[]>(true, data));
+    }
+
+    [Authorize]
+    [HttpPost("/api/v1/auth/sessions/{sessionId:guid}/revoke")]
+    public async Task<ActionResult<ApiResponse<bool>>> RevokeSession(Guid sessionId, RevokeAuthSessionRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+        var reason = request.Reason.Trim();
+        if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<bool>(false, false, "A reason between 5 and 500 characters is required."));
+        var revoked = await _jwtService.RevokeSessionAsync(userId, sessionId, HttpContext.Connection.RemoteIpAddress?.ToString(), reason);
+        if (!revoked) return NotFound(new ApiResponse<bool>(false, false, "Active session not found."));
+        if (User.FindFirstValue("sid") == sessionId.ToString()) Response.Cookies.Delete(RefreshCookieName);
+        return Ok(new ApiResponse<bool>(true, true));
+    }
+
+    [Authorize]
+    [HttpPost("/api/v1/auth/sessions/revoke-all")]
+    public async Task<ActionResult<ApiResponse<int>>> RevokeAllSessions(RevokeAuthSessionRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+        var reason = request.Reason.Trim();
+        if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<int>(false, 0, "A reason between 5 and 500 characters is required."));
+        var count = await _jwtService.RevokeAllSessionsAsync(userId, HttpContext.Connection.RemoteIpAddress?.ToString(), reason);
+        Response.Cookies.Delete(RefreshCookieName);
+        return Ok(new ApiResponse<int>(true, count));
     }
 
     [Authorize]
@@ -211,3 +261,6 @@ public class AuthController : ControllerBase
         await _context.SaveChangesAsync();
     }
 }
+
+public sealed record AuthSessionResponse(Guid SessionId, DateTime CreatedAt, DateTime LastUsedAt, DateTime AbsoluteExpiresAt, string? CreatedByIp, string? LastUsedByIp, string? UserAgent, bool IsCurrent);
+public sealed record RevokeAuthSessionRequest(string Reason);

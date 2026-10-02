@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { closeEmployeeAssignment, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, savePositionMaster } from './api';
+import { closeEmployeeAssignment, getAuthSessions, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -45,6 +45,17 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/positions'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/positions/position-public-id'), expect.objectContaining({ method: 'PUT', body: expect.stringContaining('"rowVersion":"AQ=="') }));
+  });
+
+  it('uses governed session-list and revoke-all routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getAuthSessions();
+    await revokeAllAuthSessions('User requested global sign out');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/auth/sessions'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/auth/sessions/revoke-all'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'User requested global sign out' }) }));
   });
 
   it('posts both concurrency tokens to the governed POE replacement route', async () => {

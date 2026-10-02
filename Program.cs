@@ -90,6 +90,23 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings.Audience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret))
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async validationContext =>
+        {
+            var userId = validationContext.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var sessionValue = validationContext.Principal?.FindFirstValue("sid");
+            var securityStamp = validationContext.Principal?.FindFirstValue("security_stamp");
+            if (string.IsNullOrWhiteSpace(userId) || !Guid.TryParse(sessionValue, out var sessionId) || securityStamp == null)
+            {
+                validationContext.Fail("The access token has no governed session.");
+                return;
+            }
+            var sessions = validationContext.HttpContext.RequestServices.GetRequiredService<IJwtService>();
+            if (!await sessions.ValidateAccessSessionAsync(userId, sessionId, securityStamp, validationContext.HttpContext.Connection.RemoteIpAddress?.ToString()))
+                validationContext.Fail("The session is inactive, expired, or revoked.");
+        }
+    };
 });
 
 builder.Services.AddScoped<IJwtService, JwtService>();

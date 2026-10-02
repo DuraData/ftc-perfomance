@@ -1289,6 +1289,17 @@ export interface EmployeeAssignmentMasterDto {
   rowVersion: string;
 }
 
+export interface AuthSessionDto {
+  sessionId: string;
+  createdAt: string;
+  lastUsedAt: string;
+  absoluteExpiresAt: string;
+  createdByIp?: string | null;
+  lastUsedByIp?: string | null;
+  userAgent?: string | null;
+  isCurrent: boolean;
+}
+
 export interface DepartmentMasterDto {
   publicId: string;
   code: string;

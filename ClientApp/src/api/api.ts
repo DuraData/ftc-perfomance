@@ -66,6 +66,7 @@ import type {
   MunicipalityFinancialYearMasterDto,
   MunicipalEmployeeDto,
   EmployeeAssignmentMasterDto,
+  AuthSessionDto,
   DepartmentMasterDto,
   UnitMasterDto,
   PositionMasterDto,
@@ -786,6 +787,18 @@ export async function logout() {
   }
   clearTokens();
   setCurrentMunicipalityId(null);
+}
+
+export async function getAuthSessions(): Promise<ApiResponse<AuthSessionDto[]>> {
+  return get<AuthSessionDto[]>('/v1/auth/sessions');
+}
+
+export async function revokeAuthSession(sessionId: string, reason: string): Promise<ApiResponse<boolean>> {
+  return post<boolean>(`/v1/auth/sessions/${encodeURIComponent(sessionId)}/revoke`, { reason });
+}
+
+export async function revokeAllAuthSessions(reason: string): Promise<ApiResponse<number>> {
+  return post<number>('/v1/auth/sessions/revoke-all', { reason });
 }
 
 export function isAuthenticated() {
