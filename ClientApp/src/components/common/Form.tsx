@@ -21,7 +21,9 @@ export function Input({
   id,
   ...props
 }: InputProps) {
-  const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
+  const generatedId = React.useId();
+  const inputId = id || `input-${generatedId}`;
+  const messageId = `${inputId}-message`;
 
   return (
     <div className="space-y-0.5">
@@ -39,6 +41,8 @@ export function Input({
         )}
         <input
           id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error || success || helpText ? messageId : undefined}
           className={`w-full px-2.5 py-1.5 text-sm bg-white dark:bg-secondary-800 border rounded transition-colors focus:outline-none focus:ring-1.5 ${
             error
               ? 'border-error-500 focus:ring-error-500'
@@ -64,9 +68,9 @@ export function Input({
           </div>
         )}
       </div>
-      {error && <p className="text-xs text-error-600 dark:text-error-400">{error}</p>}
-      {success && <p className="text-xs text-success-600 dark:text-success-400">{success}</p>}
-      {helpText && !error && !success && <p className="text-xs text-secondary-500 dark:text-secondary-400">{helpText}</p>}
+      {error && <p id={messageId} role="alert" className="text-xs text-error-600 dark:text-error-400">{error}</p>}
+      {success && <p id={messageId} role="status" className="text-xs text-success-600 dark:text-success-400">{success}</p>}
+      {helpText && !error && !success && <p id={messageId} className="text-xs text-secondary-500 dark:text-secondary-400">{helpText}</p>}
     </div>
   );
 }
@@ -87,7 +91,9 @@ export function Select({
   id,
   ...props
 }: SelectProps) {
-  const selectId = id || `select-${Math.random().toString(36).substr(2, 9)}`;
+  const generatedId = React.useId();
+  const selectId = id || `select-${generatedId}`;
+  const errorId = `${selectId}-error`;
 
   return (
     <div className="space-y-0.5">
@@ -99,6 +105,8 @@ export function Select({
       )}
       <select
         id={selectId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
         className={`w-full px-2.5 py-1.5 text-sm bg-white dark:bg-secondary-800 border rounded transition-colors focus:outline-none focus:ring-1.5 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%236b7280%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.293%207.293a1%201%200%20011.414%200L10%2010.586l3.293-3.293a1%201%200%20111.414%201.414l-4%204a1%201%200%2001-1.414%200l-4-4a1%201%200%20010-1.414z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1rem] bg-[right_0.5rem_center] bg-no-repeat ${
           error
             ? 'border-error-500 focus:ring-error-500'
@@ -113,7 +121,7 @@ export function Select({
           </option>
         ))}
       </select>
-      {error && <p className="text-xs text-error-600 dark:text-error-400">{error}</p>}
+      {error && <p id={errorId} role="alert" className="text-xs text-error-600 dark:text-error-400">{error}</p>}
     </div>
   );
 }
@@ -132,7 +140,9 @@ export function Textarea({
   id,
   ...props
 }: TextareaProps) {
-  const textareaId = id || `textarea-${Math.random().toString(36).substr(2, 9)}`;
+  const generatedId = React.useId();
+  const textareaId = id || `textarea-${generatedId}`;
+  const messageId = `${textareaId}-message`;
 
   return (
     <div className="space-y-0.5">
@@ -144,6 +154,8 @@ export function Textarea({
       )}
       <textarea
         id={textareaId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error || helpText ? messageId : undefined}
         className={`w-full px-2.5 py-1.5 text-sm bg-white dark:bg-secondary-800 border rounded transition-colors focus:outline-none focus:ring-1.5 resize-none ${
           error
             ? 'border-error-500 focus:ring-error-500'
@@ -151,8 +163,8 @@ export function Textarea({
         } ${className}`}
         {...props}
       />
-      {error && <p className="text-xs text-error-600 dark:text-error-400">{error}</p>}
-      {helpText && !error && <p className="text-xs text-secondary-500 dark:text-secondary-400">{helpText}</p>}
+      {error && <p id={messageId} role="alert" className="text-xs text-error-600 dark:text-error-400">{error}</p>}
+      {helpText && !error && <p id={messageId} className="text-xs text-secondary-500 dark:text-secondary-400">{helpText}</p>}
     </div>
   );
 }
@@ -163,19 +175,22 @@ interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>
 }
 
 export function Checkbox({ label, description, className = '', id, ...props }: CheckboxProps) {
-  const checkboxId = id || `checkbox-${Math.random().toString(36).substr(2, 9)}`;
+  const generatedId = React.useId();
+  const checkboxId = id || `checkbox-${generatedId}`;
+  const descriptionId = `${checkboxId}-description`;
 
   return (
     <div className={`flex items-start gap-2 ${className}`}>
       <input
         type="checkbox"
         id={checkboxId}
+        aria-describedby={description ? descriptionId : undefined}
         className="mt-0.5 w-3.5 h-3.5 rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500"
         {...props}
       />
       <div>
         <label htmlFor={checkboxId} className="text-xs font-semibold text-secondary-700 dark:text-secondary-200 cursor-pointer">{label}</label>
-        {description && <p className="text-[10px] text-secondary-500 dark:text-secondary-400">{description}</p>}
+        {description && <p id={descriptionId} className="text-[10px] text-secondary-500 dark:text-secondary-400">{description}</p>}
       </div>
     </div>
   );

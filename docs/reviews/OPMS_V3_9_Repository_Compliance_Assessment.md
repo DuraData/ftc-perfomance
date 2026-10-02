@@ -333,7 +333,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-52 | Health, monitoring, correlation | **NOT IMPLEMENTED** | No health checks/correlation/metrics code | Add operational telemetry and alerts. |
 | R-53 | Backup, restore, DR | **NOT VERIFIABLE** | No infrastructure/runbook evidence | Define RPO/RTO and prove restore exercises. |
 | R-54 | Automated quality gate | **PARTIALLY COMPLIANT** | Tests exist, but typecheck/lint fail and no CI | Fix project discovery and enforce build/test/security gates. |
-| R-55 | Accessibility | **NOT VERIFIABLE** | No accessibility audit/test evidence | Establish WCAG target and automated/manual verification. |
+| R-55 | Accessibility | **PARTIALLY COMPLIANT** | Shared shell/forms provide keyboard skip navigation, landmarks, stable label/help/error relationships and live announcements; axe-core automation is a required CI gate | Complete whole-application browser/keyboard, rendered contrast, zoom/reflow and assistive-technology acceptance with representative users before production. |
 
 ## 7. Priority gap register
 
@@ -923,3 +923,19 @@ Effective-dated `PRIMARY_CAPTURER`, `CONTRIBUTOR`, `REVIEWER_VERIFIER` and `FINA
 Migration `20261002130455_V39Circular88` creates the 17 tenant-scoped catalogue, configuration, planning, reporting, assignment, workflow and mapping tables with restricted foreign keys, public/business-key uniqueness, effective/date/sequence/version checks, filtered current-version and Primary Capturer uniqueness, query filters and native SQL Server RowVersion columns. Five focused relational/controller tests prove edition completeness/immutability, controlled numeric and response-type validation, planning, report calculation, pinned workflow history, append-only evidence, tenant isolation, assignment-scoped reads, direct API denial, Primary Capturer uniqueness, alignment-only mappings and disabled-module independence.
 
 The complete suites pass **157/157** backend tests with one native SQL Server acceptance test explicitly skipped and **127/127** frontend tests across **33** files. TypeScript type-check, ESLint, Release host/frontend build, model/snapshot consistency, `git diff --check`, and generation of a **373,315-byte** idempotent SQL Server migration script pass. R-51 is **COMPLIANT** at repository level. Native SQL Server migration, filtered-index and generated `rowversion` execution remain deployment acceptance items; switching from interim SQLite testing to SQL Server requires configuration and migrations, not domain, controller, service or UI changes.
+
+### 11.49 Accessibility baseline and automated gate
+
+**Requirement:** R-55 / Phase 11 accessibility hardening.
+
+**Implementation:** The shared application shell now has a keyboard-visible skip link and a stable main landmark/focus target. Success and error notifications use appropriate polite/assertive live regions. Shared input, select, textarea and checkbox primitives use deterministic React identifiers and explicitly associate labels, validation state, errors, help text and descriptions; validation errors are announced rather than communicated only by colour. These primitives improve every feature that composes them without introducing page-specific behavior or database-provider coupling.
+
+**Files/classes:** `ClientApp/src/components/layout/AppShell.tsx`, `ClientApp/src/components/common/Form.tsx`, `ClientApp/src/components/common/Accessibility.test.tsx`, `ClientApp/package.json`, and `.github/workflows/quality.yml`.
+
+**Migration:** None. Accessibility behavior is presentation-only and switching from SQLite to SQL Server remains configuration-only.
+
+**API:** None.
+
+**Tests:** Two axe-core checks exercise the shared application landmark/notification shell and the shared form-label/error/help/description contract. The focused suite passes **2/2** and the complete frontend suite passes **129/129** tests across **34** files. TypeScript type-check, ESLint, and the production frontend build pass; the complete backend suite remains green at **157/157** with one native SQL Server acceptance test explicitly skipped. `npm run test:a11y` is an explicit required CI step in addition to the complete frontend suite. JSDOM cannot evaluate rendered colour contrast, layout, zoom/reflow, keyboard behavior across every screen or assistive-technology output.
+
+**Status:** R-55 advances from **NOT VERIFIABLE** to **PARTIALLY COMPLIANT**. Repository automation now provides repeatable regression evidence, but WCAG conformance is not claimed until browser-based whole-application audits, manual keyboard testing, rendered contrast/zoom/reflow checks and representative screen-reader/UAT evidence are completed in the deployment environment.
