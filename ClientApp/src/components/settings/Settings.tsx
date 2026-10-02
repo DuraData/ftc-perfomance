@@ -209,7 +209,7 @@ function SecuritySettings() {
             <Input label="New Password" type="password" placeholder="New password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
             <Input label="Confirm" type="password" placeholder="Confirm" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
           </FormRow>
-          <p className="text-[10px] text-secondary-500">Use at least 12 characters with upper-case, lower-case, number, and symbol.</p>
+          <p className="text-[10px] text-secondary-500">Use at least 12 characters with upper-case, lower-case, number, and symbol. Common or breached passwords are rejected.</p>
           <Button variant="outline" size="sm" onClick={() => void savePassword()} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>Change password</Button>
         </div>
       </FormSection>

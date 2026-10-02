@@ -64,7 +64,8 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
+.AddDefaultTokenProviders()
+.AddPasswordValidator<CompromisedPasswordValidator>();
 
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
     options.TokenLifespan = TimeSpan.FromMinutes(Math.Clamp(builder.Configuration.GetValue("Authentication:PasswordReset:TokenLifetimeMinutes", 30), 5, 1440)));
@@ -132,6 +133,9 @@ builder.Services.AddHttpClient<IEvidenceMalwareScanner, HttpEvidenceMalwareScann
 builder.Services.AddHttpClient<INotificationChannelSender, HttpEmailNotificationSender>(client =>
     client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Notifications:Email:TimeoutSeconds", 20), 5, 120)));
 builder.Services.AddScoped<IPasswordResetNotifier, PasswordResetNotifier>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<ICompromisedPasswordLookup, PwnedPasswordLookup>(client =>
+    client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Authentication:PasswordProtection:TimeoutSeconds", 5), 2, 30)));
 builder.Services.AddScoped<IWorkflowGovernanceService, WorkflowGovernanceService>();
 builder.Services.AddScoped<FileSystemEvidenceBlobStorage>();
 builder.Services.AddHttpClient<HttpEvidenceBlobStorage>(client =>
@@ -188,7 +192,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels");
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels").AddCheck<CompromisedPasswordHealthCheck>("compromised-passwords");
 
 var app = builder.Build();
 

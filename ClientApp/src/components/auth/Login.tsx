@@ -202,7 +202,7 @@ export function Login() {
             <Input label="Email address" type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} required />
             <Input label="New password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
             <Input label="Confirm new password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
-            <p className="text-xs text-secondary-500">Use at least 12 characters with uppercase, lowercase, number, symbol, and at least four distinct characters.</p>
+            <p className="text-xs text-secondary-500">Use at least 12 characters with uppercase, lowercase, number, symbol, and at least four distinct characters. Common or breached passwords are rejected.</p>
             <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading} disabled={loading}>Reset password</Button>
             <button type="button" className="w-full text-sm text-primary-600 hover:text-primary-700" onClick={returnToLogin}>Back to sign in</button>
           </form>}
