@@ -1325,14 +1325,15 @@ export interface EmployeeAssignmentMasterDto {
   rowVersion: string;
 }
 
-export interface AuthSessionDto {
+  export interface AuthSessionDto {
   sessionId: string;
   createdAt: string;
   lastUsedAt: string;
   absoluteExpiresAt: string;
   createdByIp?: string | null;
   lastUsedByIp?: string | null;
-  userAgent?: string | null;
+    userAgent?: string | null;
+    authenticationMethod: string;
   isCurrent: boolean;
 }
 

@@ -102,6 +102,32 @@ public sealed class AuthSessionTests
     }
 
     [Fact]
+    public async Task Municipality_policy_controls_session_limits_expiry_and_local_mfa_only()
+    {
+        await using var context = NewContext();
+        var user = User("policy-user"); context.Users.Add(user); await context.SaveChangesAsync();
+        var policies = new Mock<IAuthenticationPolicyResolver>();
+        policies.Setup(service => service.ResolveAsync(It.IsAny<ApplicationUser>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveAuthenticationPolicy(16, 3, 60, true, true, true, 10, 2, 1));
+        var service = CreateService(context, user, policyResolver: policies.Object);
+
+        var local = await service.GenerateTokensAsync(user, authenticationMethod: "LOCAL");
+        var localPrincipal = await service.GetPrincipalFromExpiredTokenAsync(local.AccessToken);
+        var external = await service.GenerateTokensAsync(user, authenticationMethod: "entra");
+        var externalPrincipal = await service.GetPrincipalFromExpiredTokenAsync(external.AccessToken);
+
+        localPrincipal.Should().NotBeNull();
+        externalPrincipal.Should().NotBeNull();
+        localPrincipal!.FindFirstValue(MfaRequirementPolicy.EnrollmentRequiredClaim).Should().Be("true");
+        externalPrincipal!.FindFirstValue(MfaRequirementPolicy.EnrollmentRequiredClaim).Should().BeNull();
+        new JwtSecurityTokenHandler().ReadJwtToken(external.AccessToken).Claims.Single(claim => claim.Type == "amr").Value.Should().Be("ENTRA");
+        var sessions = await context.RefreshTokens.OrderBy(item => item.CreatedAt).ToArrayAsync();
+        sessions[0].RevokedReason.Should().Be("Concurrent session limit");
+        sessions[1].AuthenticationMethod.Should().Be("ENTRA");
+        sessions[1].AbsoluteExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddHours(2), TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
     public async Task Enrollment_middleware_blocks_direct_api_calls_but_allows_mfa_endpoints()
     {
         var downstreamCalled = false;
@@ -152,7 +178,7 @@ public sealed class AuthSessionTests
 
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ApplicationUser User(string id) => new() { Id = id, UserName = $"{id}@example.test", Email = $"{id}@example.test", FirstName = "Test", LastName = "User", IsActive = true, SecurityStamp = $"stamp-{id}" };
-    private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5, string[]? permissions = null)
+    private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5, string[]? permissions = null, IAuthenticationPolicyResolver? policyResolver = null)
     {
         var store = new Mock<IUserStore<ApplicationUser>>();
         var users = new Mock<UserManager<ApplicationUser>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
@@ -160,6 +186,6 @@ public sealed class AuthSessionTests
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetEffectiveAccessAsync(user)).ReturnsAsync(new EffectiveAccessResult([], permissions ?? [], [], [], [], []));
         var settings = Options.Create(new JwtSettings { Secret = "A-development-test-secret-at-least-32-characters-long", Issuer = "tests", Audience = "tests", ExpiryMinutes = 15, RefreshTokenExpiryDays = 7, SessionIdleTimeoutMinutes = 30, SessionAbsoluteTimeoutHours = 24, MaxConcurrentSessions = maximumSessions, MfaRequiredPermissionCodes = ["SECURITY.MANAGE_ROLES"] });
-        return new JwtService(settings, users.Object, context, access.Object);
+        return new JwtService(settings, users.Object, context, access.Object, policyResolver);
     }
 }

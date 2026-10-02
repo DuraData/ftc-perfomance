@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { Button } from '../ui';
-import { Input, Select } from '../common/Form';
+import { Checkbox, Input, Select } from '../common/Form';
 import {
   getAuthenticationConfiguration, getAuthenticationEvents, getAuthenticationProviders, getSecurityUsers,
   getUserAuthenticators, provisionUserAuthenticator, saveAuthenticationConfiguration, setUserAuthenticatorStatus,
@@ -24,6 +24,15 @@ export function AuthenticationAdministrationPage() {
   const [providerCode, setProviderCode] = useState('');
   const [displayName, setDisplayName] = useState('Municipal sign-in');
   const [effectiveFrom, setEffectiveFrom] = useState(nowLocal);
+  const [minimumPasswordLength, setMinimumPasswordLength] = useState(12);
+  const [maximumFailedAttempts, setMaximumFailedAttempts] = useState(5);
+  const [lockoutMinutes, setLockoutMinutes] = useState(15);
+  const [requireMfaForPrivilegedLocalUsers, setRequireMfaForPrivilegedLocalUsers] = useState(true);
+  const [requireMfaForAllLocalUsers, setRequireMfaForAllLocalUsers] = useState(false);
+  const [requireFirstLoginPasswordChange, setRequireFirstLoginPasswordChange] = useState(true);
+  const [sessionIdleTimeoutMinutes, setSessionIdleTimeoutMinutes] = useState(30);
+  const [sessionAbsoluteTimeoutHours, setSessionAbsoluteTimeoutHours] = useState(24);
+  const [maximumConcurrentSessions, setMaximumConcurrentSessions] = useState(5);
   const [reason, setReason] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [linkReason, setLinkReason] = useState('');
@@ -40,6 +49,17 @@ export function AuthenticationAdministrationPage() {
     if (config) {
       setMode(config.mode); setProviderCode(config.providerRegistrationCode ?? ''); setDisplayName(config.displayName);
       setEffectiveFrom(new Date(new Date(config.effectiveFrom).getTime() - new Date(config.effectiveFrom).getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+      if (config.policy) {
+        setMinimumPasswordLength(config.policy.minimumPasswordLength);
+        setMaximumFailedAttempts(config.policy.maximumFailedAttempts);
+        setLockoutMinutes(config.policy.lockoutMinutes);
+        setRequireMfaForPrivilegedLocalUsers(config.policy.requireMfaForPrivilegedLocalUsers);
+        setRequireMfaForAllLocalUsers(config.policy.requireMfaForAllLocalUsers);
+        setRequireFirstLoginPasswordChange(config.policy.requireFirstLoginPasswordChange);
+        setSessionIdleTimeoutMinutes(config.policy.sessionIdleTimeoutMinutes);
+        setSessionAbsoluteTimeoutHours(config.policy.sessionAbsoluteTimeoutHours);
+        setMaximumConcurrentSessions(config.policy.maximumConcurrentSessions);
+      }
     }
   }, []);
 
@@ -48,21 +68,14 @@ export function AuthenticationAdministrationPage() {
 
   const save = async () => {
     setBusy(true); setMessage('');
-    const existingPolicy = configuration?.policy;
     const result = await saveAuthenticationConfiguration({
       mode, providerRegistrationCode: mode === 1 ? null : providerCode, displayName, isActive: true,
       effectiveFrom: new Date(effectiveFrom).toISOString(), effectiveTo: null, reason, rowVersion: configuration?.rowVersion ?? null,
       policy: {
-        minimumPasswordLength: existingPolicy?.minimumPasswordLength ?? 12,
-        maximumFailedAttempts: existingPolicy?.maximumFailedAttempts ?? 5,
-        lockoutMinutes: existingPolicy?.lockoutMinutes ?? 15,
-        requireMfaForPrivilegedLocalUsers: existingPolicy?.requireMfaForPrivilegedLocalUsers ?? true,
-        requireMfaForAllLocalUsers: existingPolicy?.requireMfaForAllLocalUsers ?? false,
-        requireFirstLoginPasswordChange: existingPolicy?.requireFirstLoginPasswordChange ?? true,
-        sessionIdleTimeoutMinutes: existingPolicy?.sessionIdleTimeoutMinutes ?? 30,
-        sessionAbsoluteTimeoutHours: existingPolicy?.sessionAbsoluteTimeoutHours ?? 24,
-        maximumConcurrentSessions: existingPolicy?.maximumConcurrentSessions ?? 5,
-        rowVersion: existingPolicy?.rowVersion ?? null,
+        minimumPasswordLength, maximumFailedAttempts, lockoutMinutes,
+        requireMfaForPrivilegedLocalUsers, requireMfaForAllLocalUsers, requireFirstLoginPasswordChange,
+        sessionIdleTimeoutMinutes, sessionAbsoluteTimeoutHours, maximumConcurrentSessions,
+        rowVersion: configuration?.policy?.rowVersion ?? null,
       },
     });
     setMessage(result.success ? 'Authentication configuration saved.' : result.message ?? 'Unable to save authentication configuration.');
@@ -98,7 +111,23 @@ export function AuthenticationAdministrationPage() {
         <Input label="Display name" value={displayName} onChange={event => setDisplayName(event.target.value)} />
         <Input label="Effective from" type="datetime-local" value={effectiveFrom} onChange={event => setEffectiveFrom(event.target.value)} />
       </div>
-      <Input label="Governance reason" value={reason} onChange={event => setReason(event.target.value)} required />
+      <div className="border-t border-secondary-200 pt-4 dark:border-secondary-700">
+        <h3 className="mb-3 text-sm font-semibold">Local authentication policy</h3>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Input label="Minimum password length" type="number" min={12} max={128} value={minimumPasswordLength} onChange={event => setMinimumPasswordLength(Number(event.target.value))} />
+          <Input label="Maximum failed attempts" type="number" min={1} max={20} value={maximumFailedAttempts} onChange={event => setMaximumFailedAttempts(Number(event.target.value))} />
+          <Input label="Lockout duration (minutes)" type="number" min={1} max={1440} value={lockoutMinutes} onChange={event => setLockoutMinutes(Number(event.target.value))} />
+          <Input label="Idle timeout (minutes)" type="number" min={5} max={1440} value={sessionIdleTimeoutMinutes} onChange={event => setSessionIdleTimeoutMinutes(Number(event.target.value))} />
+          <Input label="Absolute timeout (hours)" type="number" min={1} max={720} value={sessionAbsoluteTimeoutHours} onChange={event => setSessionAbsoluteTimeoutHours(Number(event.target.value))} />
+          <Input label="Maximum concurrent sessions" type="number" min={1} max={50} value={maximumConcurrentSessions} onChange={event => setMaximumConcurrentSessions(Number(event.target.value))} />
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <Checkbox label="MFA for privileged local users" checked={requireMfaForPrivilegedLocalUsers} onChange={event => setRequireMfaForPrivilegedLocalUsers(event.target.checked)} />
+          <Checkbox label="MFA for all local users" checked={requireMfaForAllLocalUsers} onChange={event => setRequireMfaForAllLocalUsers(event.target.checked)} />
+          <Checkbox label="Password change on first login" checked={requireFirstLoginPasswordChange} onChange={event => setRequireFirstLoginPasswordChange(event.target.checked)} />
+        </div>
+      </div>
+      <Input id="authentication-policy-reason" label="Governance reason" value={reason} onChange={event => setReason(event.target.value)} required />
       <Button onClick={save} loading={busy} disabled={busy || reason.trim().length < 5 || (mode !== 1 && !providerCode)}>Save configuration</Button>
     </section>
     <section className="rounded-xl border border-secondary-200 dark:border-secondary-700 p-5 space-y-4">
@@ -107,7 +136,7 @@ export function AuthenticationAdministrationPage() {
         <Select label="User" options={users.map(item => ({ value: item.id, label: `${item.fullName} — ${item.email}` }))} placeholder="Select user" value={selectedUser} onChange={event => setSelectedUser(event.target.value)} />
         <Input label="Verified email" value={selectedUserRecord?.email ?? ''} disabled />
       </div>
-      <Input label="Governance reason" value={linkReason} onChange={event => setLinkReason(event.target.value)} required />
+      <Input id="identity-provisioning-reason" label="Governance reason" value={linkReason} onChange={event => setLinkReason(event.target.value)} required />
       <Button onClick={provision} loading={busy} disabled={busy || !selectedUserRecord || !providerCode || linkReason.trim().length < 5}>Pre-provision identity</Button>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-2">User</th><th className="p-2">Provider</th><th className="p-2">Link state</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead><tbody>{authenticators.map(item => <tr key={item.publicId} className="border-t"><td className="p-2">{item.userEmail}</td><td className="p-2">{item.providerRegistrationCode}</td><td className="p-2">{item.linkedAt ? 'Bound' : 'Awaiting first validated sign-in'}</td><td className="p-2">{item.isActive ? 'Active' : 'Disabled'}</td><td className="p-2"><Button variant="secondary" size="sm" onClick={() => toggle(item)} disabled={busy}>{item.isActive ? 'Disable' : 'Enable'}</Button></td></tr>)}</tbody></table></div>
     </section>

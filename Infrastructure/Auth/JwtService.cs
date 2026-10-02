@@ -13,7 +13,7 @@ namespace FTCERP.Host.Infrastructure.Auth;
 
 public interface IJwtService
 {
-    Task<(string AccessToken, string RefreshToken, DateTime ExpiresAt)> GenerateTokensAsync(ApplicationUser user, string? ipAddress = null, string? userAgent = null, Guid? sessionId = null, DateTime? absoluteExpiresAt = null);
+    Task<(string AccessToken, string RefreshToken, DateTime ExpiresAt)> GenerateTokensAsync(ApplicationUser user, string? ipAddress = null, string? userAgent = null, Guid? sessionId = null, DateTime? absoluteExpiresAt = null, string authenticationMethod = "LOCAL");
     Task<ClaimsPrincipal?> GetPrincipalFromExpiredTokenAsync(string token);
     Task<RefreshToken?> GetRefreshTokenAsync(string token);
     Task RevokeRefreshTokenAsync(string token, string? ipAddress, string reason = "Logout");
@@ -29,21 +29,25 @@ public class JwtService : IJwtService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly Infrastructure.Persistence.ApplicationDbContext _context;
     private readonly IAccessControlService _accessControlService;
+    private readonly IAuthenticationPolicyResolver? _policyResolver;
 
-    public JwtService(IOptions<JwtSettings> jwtSettings, UserManager<ApplicationUser> userManager, Infrastructure.Persistence.ApplicationDbContext context, IAccessControlService accessControlService)
+    public JwtService(IOptions<JwtSettings> jwtSettings, UserManager<ApplicationUser> userManager, Infrastructure.Persistence.ApplicationDbContext context, IAccessControlService accessControlService, IAuthenticationPolicyResolver? policyResolver = null)
     {
         _jwtSettings = jwtSettings.Value;
         _userManager = userManager;
         _context = context;
         _accessControlService = accessControlService;
+        _policyResolver = policyResolver;
     }
 
-    public async Task<(string AccessToken, string RefreshToken, DateTime ExpiresAt)> GenerateTokensAsync(ApplicationUser user, string? ipAddress = null, string? userAgent = null, Guid? sessionId = null, DateTime? absoluteExpiresAt = null)
+    public async Task<(string AccessToken, string RefreshToken, DateTime ExpiresAt)> GenerateTokensAsync(ApplicationUser user, string? ipAddress = null, string? userAgent = null, Guid? sessionId = null, DateTime? absoluteExpiresAt = null, string authenticationMethod = "LOCAL")
     {
         var now = DateTime.UtcNow;
+        var policy = await ResolvePolicyAsync(user);
+        authenticationMethod = NormalizeAuthenticationMethod(authenticationMethod);
         var currentSessionId = sessionId ?? Guid.NewGuid();
-        var absoluteExpiry = absoluteExpiresAt ?? now.AddHours(Math.Clamp(_jwtSettings.SessionAbsoluteTimeoutHours, 1, 24 * 30));
-        if (!sessionId.HasValue) await EnforceConcurrentSessionLimitAsync(user.Id, now);
+        var absoluteExpiry = absoluteExpiresAt ?? now.AddHours(policy.SessionAbsoluteTimeoutHours);
+        if (!sessionId.HasValue) await EnforceConcurrentSessionLimitAsync(user.Id, now, policy.MaximumConcurrentSessions);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions;
 
@@ -53,7 +57,8 @@ public class JwtService : IJwtService
             new(ClaimTypes.Email, user.Email!),
             new(ClaimTypes.Name, user.FullName),
             new("sid", currentSessionId.ToString()),
-            new("security_stamp", user.SecurityStamp ?? string.Empty)
+            new("security_stamp", user.SecurityStamp ?? string.Empty),
+            new("amr", authenticationMethod)
         };
 
         if (user.MustChangePassword)
@@ -61,7 +66,7 @@ public class JwtService : IJwtService
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         claims.AddRange(permissions.Select(perm => new Claim("Permission", perm)));
-        if (MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes))
+        if (AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, policy, _jwtSettings.MfaRequiredPermissionCodes, authenticationMethod))
             claims.Add(new Claim(MfaRequirementPolicy.EnrollmentRequiredClaim, bool.TrueString.ToLowerInvariant()));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
@@ -91,7 +96,8 @@ public class JwtService : IJwtService
             CreatedByIp = ipAddress,
             LastUsedByIp = ipAddress,
             UserAgent = string.IsNullOrWhiteSpace(userAgent) ? null : userAgent[..Math.Min(userAgent.Length, 1024)],
-            SecurityStamp = user.SecurityStamp ?? string.Empty
+            SecurityStamp = user.SecurityStamp ?? string.Empty,
+            AuthenticationMethod = authenticationMethod
         });
         await _context.SaveChangesAsync();
 
@@ -157,7 +163,10 @@ public class JwtService : IJwtService
     public async Task<RefreshToken[]> GetActiveSessionsAsync(string userId)
     {
         var now = DateTime.UtcNow;
-        var idleCutoff = now.AddMinutes(-Math.Clamp(_jwtSettings.SessionIdleTimeoutMinutes, 5, 24 * 60));
+        var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == userId);
+        if (user == null) return [];
+        var policy = await ResolvePolicyAsync(user);
+        var idleCutoff = now.AddMinutes(-policy.SessionIdleTimeoutMinutes);
         var tokens = await _context.RefreshTokens.AsNoTracking()
             .Where(item => item.UserId == userId && !item.RevokedAt.HasValue && item.ExpiresAt > now && item.AbsoluteExpiresAt > now && item.LastUsedAt > idleCutoff)
             .OrderByDescending(item => item.LastUsedAt).ToArrayAsync();
@@ -169,7 +178,8 @@ public class JwtService : IJwtService
         var now = DateTime.UtcNow;
         var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == userId);
         if (user == null || !user.IsActive || user.SecurityStamp != securityStamp) return false;
-        var idleCutoff = now.AddMinutes(-Math.Clamp(_jwtSettings.SessionIdleTimeoutMinutes, 5, 24 * 60));
+        var policy = await ResolvePolicyAsync(user);
+        var idleCutoff = now.AddMinutes(-policy.SessionIdleTimeoutMinutes);
         var session = await _context.RefreshTokens
             .Where(item => item.UserId == userId && item.SessionId == sessionId && !item.RevokedAt.HasValue)
             .OrderByDescending(item => item.CreatedAt).FirstOrDefaultAsync();
@@ -209,13 +219,22 @@ public class JwtService : IJwtService
         return rows.Length;
     }
 
-    private async Task EnforceConcurrentSessionLimitAsync(string userId, DateTime now)
+    private async Task EnforceConcurrentSessionLimitAsync(string userId, DateTime now, int maximum)
     {
-        var maximum = Math.Clamp(_jwtSettings.MaxConcurrentSessions, 1, 50);
         var active = await _context.RefreshTokens.Where(item => item.UserId == userId && !item.RevokedAt.HasValue && item.ExpiresAt > now && item.AbsoluteExpiresAt > now).OrderBy(item => item.CreatedAt).ToArrayAsync();
         var sessions = active.GroupBy(item => item.SessionId).OrderBy(group => group.Min(item => item.CreatedAt)).ToArray();
         foreach (var group in sessions.Take(Math.Max(0, sessions.Length - maximum + 1)))
             foreach (var row in group) { row.RevokedAt = now; row.RevokedReason = "Concurrent session limit"; }
+    }
+
+    private Task<EffectiveAuthenticationPolicy> ResolvePolicyAsync(ApplicationUser user) => _policyResolver?.ResolveAsync(user)
+        ?? Task.FromResult(new EffectiveAuthenticationPolicy(12, 5, 15, true, false, true,
+            Math.Clamp(_jwtSettings.SessionIdleTimeoutMinutes, 5, 1440), Math.Clamp(_jwtSettings.SessionAbsoluteTimeoutHours, 1, 720), Math.Clamp(_jwtSettings.MaxConcurrentSessions, 1, 50)));
+
+    private static string NormalizeAuthenticationMethod(string value)
+    {
+        value = value.Trim().ToUpperInvariant();
+        return value.Length is >= 2 and <= 40 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-') ? value : "EXTERNAL";
     }
 
     private static string HashRefreshToken(string token)

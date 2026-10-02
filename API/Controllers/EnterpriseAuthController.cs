@@ -80,7 +80,7 @@ public sealed class EnterpriseAuthController(
         await HttpContext.SignOutAsync(ExternalCookieScheme);
         if (!resolved.Succeeded || resolved.User == null) return RedirectFailure();
         var (accessToken, refreshToken, expiresAt) = await jwtService.GenerateTokensAsync(resolved.User,
-            HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString());
+            HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), authenticationMethod: providerCode);
         SetSessionCookies(accessToken, refreshToken, expiresAt);
         return LocalRedirect(options.Value.PostLoginPath);
     }

@@ -10,7 +10,7 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 describe('Security session settings', () => {
   beforeEach(() => {
     localStorage.setItem('settings_active_tab', 'security');
-    api.getAuthSessions.mockResolvedValue({ success: true, data: [{ sessionId: 'session-1', createdAt: '2026-10-02T08:00:00Z', lastUsedAt: '2026-10-02T09:00:00Z', absoluteExpiresAt: '2026-10-03T08:00:00Z', userAgent: 'Test Browser', isCurrent: false }] });
+    api.getAuthSessions.mockResolvedValue({ success: true, data: [{ sessionId: 'session-1', createdAt: '2026-10-02T08:00:00Z', lastUsedAt: '2026-10-02T09:00:00Z', absoluteExpiresAt: '2026-10-03T08:00:00Z', userAgent: 'Test Browser', authenticationMethod: 'LOCAL', isCurrent: false }] });
     api.revokeAuthSession.mockResolvedValue({ success: true, data: true });
     api.revokeAllAuthSessions.mockResolvedValue({ success: true, data: 1 });
     api.getMfaStatus.mockResolvedValue({ success: true, data: { isEnabled: false, enrollmentRequired: true, recoveryCodesLeft: 0 } });

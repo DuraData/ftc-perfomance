@@ -19,5 +19,6 @@ public class RefreshToken
     public string? UserAgent { get; set; }
     public string? RevokedReason { get; set; }
     public string SecurityStamp { get; set; } = string.Empty;
+    public string AuthenticationMethod { get; set; } = "LOCAL";
     public byte[] RowVersion { get; set; } = [];
 }

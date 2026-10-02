@@ -84,7 +84,8 @@ public sealed class PasswordResetControllerTests
         IJwtService jwt,
         ApplicationDbContext context,
         IPasswordResetNotifier notifier,
-        IServiceProvider services) => new(users, null!, jwt, null!, context, Options.Create(new JwtSettings()), notifier)
+        IServiceProvider services) => new(users, null!, jwt, null!, context, Options.Create(new JwtSettings()), notifier,
+            Mock.Of<IAuthenticationPolicyResolver>(), Mock.Of<ITenantContext>())
         {
             ControllerContext = new ControllerContext
             {

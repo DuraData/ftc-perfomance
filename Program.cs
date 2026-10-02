@@ -65,12 +65,14 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = true;
     options.Lockout.AllowedForNewUsers = true;
-    options.Lockout.MaxFailedAccessAttempts = 5;
+    // Per-municipality enforcement applies the configured threshold at or before this safe ceiling.
+    options.Lockout.MaxFailedAccessAttempts = 21;
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders()
-.AddPasswordValidator<CompromisedPasswordValidator>();
+.AddPasswordValidator<CompromisedPasswordValidator>()
+.AddPasswordValidator<MunicipalityPasswordPolicyValidator>();
 
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
     options.TokenLifespan = TimeSpan.FromMinutes(Math.Clamp(builder.Configuration.GetValue("Authentication:PasswordReset:TokenLifetimeMinutes", 30), 5, 1440)));
@@ -164,6 +166,7 @@ foreach (var provider in enterpriseProviders.Providers)
 }
 
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IAuthenticationPolicyResolver, AuthenticationPolicyResolver>();
 builder.Services.AddScoped<IEnterpriseAuthenticationService, EnterpriseAuthenticationService>();
 builder.Services.AddScoped<IAccessControlService, AccessControlService>();
 builder.Services.AddSingleton<IPerformanceUnitEngine, PerformanceUnitEngine>();

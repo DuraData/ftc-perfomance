@@ -25,6 +25,8 @@ public class AuthController : ControllerBase
     private readonly Infrastructure.Persistence.ApplicationDbContext _context;
     private readonly JwtSettings _jwtSettings;
     private readonly IPasswordResetNotifier _passwordResetNotifier;
+    private readonly IAuthenticationPolicyResolver _authenticationPolicies;
+    private readonly ITenantContext _tenantContext;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
@@ -33,7 +35,9 @@ public class AuthController : ControllerBase
         IAccessControlService accessControlService,
         Infrastructure.Persistence.ApplicationDbContext context,
         IOptions<JwtSettings> jwtSettings,
-        IPasswordResetNotifier passwordResetNotifier)
+        IPasswordResetNotifier passwordResetNotifier,
+        IAuthenticationPolicyResolver authenticationPolicies,
+        ITenantContext tenantContext)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -42,6 +46,8 @@ public class AuthController : ControllerBase
         _context = context;
         _jwtSettings = jwtSettings.Value;
         _passwordResetNotifier = passwordResetNotifier;
+        _authenticationPolicies = authenticationPolicies;
+        _tenantContext = tenantContext;
     }
 
     [HttpPost("login")]
@@ -62,7 +68,9 @@ public class AuthController : ControllerBase
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid credentials"));
         }
 
+        var authenticationPolicy = await _authenticationPolicies.ResolveAsync(user);
         var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
+        var dynamicallyLocked = await EnforceDynamicLockoutAsync(user, result, authenticationPolicy);
         if (result.RequiresTwoFactor)
         {
             if (string.IsNullOrWhiteSpace(request.TwoFactorCode) && string.IsNullOrWhiteSpace(request.RecoveryCode))
@@ -79,7 +87,7 @@ public class AuthController : ControllerBase
         }
         else if (!result.Succeeded)
         {
-            await RecordAuthenticationEventAsync(user.Id, user.Email ?? request.Email, false, result.IsLockedOut ? "Account locked" : "Invalid credentials");
+            await RecordAuthenticationEventAsync(user.Id, user.Email ?? request.Email, false, result.IsLockedOut || dynamicallyLocked ? "Account locked" : "Invalid credentials");
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid credentials"));
         }
 
@@ -98,7 +106,7 @@ public class AuthController : ControllerBase
             user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
             user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
-        var enrollmentRequired = MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes);
+        var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, authenticationPolicy, _jwtSettings.MfaRequiredPermissionCodes, "LOCAL");
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
             expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
     }
@@ -107,15 +115,19 @@ public class AuthController : ControllerBase
     [Authorize(Policy = "Permission:Admin.Users.Manage")]
     public async Task<ActionResult<ApiResponse<bool>>> Register([FromBody] RegisterRequest request)
     {
+        if (!_tenantContext.MunicipalityId.HasValue || _tenantContext.MunicipalityId <= 0)
+            return BadRequest(new ApiResponse<bool>(false, false, "Select a municipality context before creating a user."));
+        var authenticationPolicy = await _authenticationPolicies.ResolveAsync(_tenantContext.MunicipalityId);
         var user = new ApplicationUser
         {
+            MunicipalityId = _tenantContext.MunicipalityId,
             FirstName = request.FirstName,
             LastName = request.LastName,
             Email = request.Email,
             UserName = request.Email,
             PhoneNumber = request.PhoneNumber,
             IsActive = true,
-            MustChangePassword = true,
+            MustChangePassword = authenticationPolicy.RequireFirstLoginPasswordChange,
             EmailConfirmed = true
         };
 
@@ -124,14 +136,15 @@ public class AuthController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "Failed to register user", result.Errors.Select(e => e.Description).ToArray()));
 
         await _userManager.AddToRoleAsync(user, SecurityModel.Submitter);
-        var defaultRole = await _context.Roles.FirstOrDefaultAsync(role => role.Name == SecurityModel.Submitter && role.IsActive);
+        var defaultRole = await _context.Roles.FirstOrDefaultAsync(role => role.Name == SecurityModel.Submitter && role.IsActive
+            && (role.MunicipalityId == null || role.MunicipalityId == _tenantContext.MunicipalityId));
         if (defaultRole != null)
         {
             _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment
             {
                 UserId = user.Id,
                 RoleId = defaultRole.Id,
-                MunicipalityId = defaultRole.MunicipalityId,
+                MunicipalityId = _tenantContext.MunicipalityId,
                 EffectiveFrom = DateTime.UtcNow,
                 AssignedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "BOOTSTRAP",
                 AssignedAt = DateTime.UtcNow,
@@ -218,13 +231,14 @@ public class AuthController : ControllerBase
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
         var now = DateTime.UtcNow;
-        var idleCutoff = now.AddMinutes(-Math.Clamp(_jwtSettings.SessionIdleTimeoutMinutes, 5, 24 * 60));
+        var authenticationPolicy = await _authenticationPolicies.ResolveAsync(user);
+        var idleCutoff = now.AddMinutes(-authenticationPolicy.SessionIdleTimeoutMinutes);
         if (existingRefreshToken.RevokedAt.HasValue || existingRefreshToken.ExpiresAt <= now || existingRefreshToken.AbsoluteExpiresAt <= now || existingRefreshToken.LastUsedAt <= idleCutoff || existingRefreshToken.SecurityStamp != (user.SecurityStamp ?? string.Empty))
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
         await using var rotation = await _context.Database.BeginTransactionAsync();
         await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), "Rotated");
-        var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), existingRefreshToken.SessionId, existingRefreshToken.AbsoluteExpiresAt);
+        var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), existingRefreshToken.SessionId, existingRefreshToken.AbsoluteExpiresAt, existingRefreshToken.AuthenticationMethod);
         await rotation.CommitAsync();
         SetSessionCookies(accessToken, refreshToken, expiresAt);
         var roles = await _userManager.GetRolesAsync(user);
@@ -235,7 +249,7 @@ public class AuthController : ControllerBase
             user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
             user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
-        var enrollmentRequired = MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes);
+        var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, authenticationPolicy, _jwtSettings.MfaRequiredPermissionCodes, existingRefreshToken.AuthenticationMethod);
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
             expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
     }
@@ -267,7 +281,7 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
         var current = User.FindFirstValue("sid");
         var rows = await _jwtService.GetActiveSessionsAsync(userId);
-        var data = rows.Select(item => new AuthSessionResponse(item.SessionId, item.CreatedAt, item.LastUsedAt, item.AbsoluteExpiresAt, item.CreatedByIp, item.LastUsedByIp, item.UserAgent, item.SessionId.ToString() == current)).ToArray();
+        var data = rows.Select(item => new AuthSessionResponse(item.SessionId, item.CreatedAt, item.LastUsedAt, item.AbsoluteExpiresAt, item.CreatedByIp, item.LastUsedByIp, item.UserAgent, item.AuthenticationMethod, item.SessionId.ToString() == current)).ToArray();
         return Ok(new ApiResponse<AuthSessionResponse[]>(true, data));
     }
 
@@ -516,7 +530,17 @@ public class AuthController : ControllerBase
             .Where(item => item.Id == user.MunicipalityId).Select(item => item.AuthenticationMode).SingleAsync();
         return mode is AuthenticationMode.Local or AuthenticationMode.Hybrid;
     }
+
+    private async Task<bool> EnforceDynamicLockoutAsync(ApplicationUser user, Microsoft.AspNetCore.Identity.SignInResult result, EffectiveAuthenticationPolicy policy)
+    {
+        if (result.Succeeded || result.RequiresTwoFactor || !user.LockoutEnabled || result.IsLockedOut) return result.IsLockedOut;
+        if (user.AccessFailedCount < policy.MaximumFailedAttempts) return false;
+        var locked = await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(policy.LockoutMinutes));
+        if (!locked.Succeeded) return false;
+        await _userManager.ResetAccessFailedCountAsync(user);
+        return true;
+    }
 }
 
-public sealed record AuthSessionResponse(Guid SessionId, DateTime CreatedAt, DateTime LastUsedAt, DateTime AbsoluteExpiresAt, string? CreatedByIp, string? LastUsedByIp, string? UserAgent, bool IsCurrent);
+public sealed record AuthSessionResponse(Guid SessionId, DateTime CreatedAt, DateTime LastUsedAt, DateTime AbsoluteExpiresAt, string? CreatedByIp, string? LastUsedByIp, string? UserAgent, string AuthenticationMethod, bool IsCurrent);
 public sealed record RevokeAuthSessionRequest(string Reason);

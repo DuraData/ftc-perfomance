@@ -381,6 +381,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<RefreshToken>().HasIndex(item => item.Token).IsUnique();
         builder.Entity<RefreshToken>().Property(item => item.Token).HasMaxLength(128);
         builder.Entity<RefreshToken>().Property(item => item.SecurityStamp).HasMaxLength(256);
+        builder.Entity<RefreshToken>().Property(item => item.AuthenticationMethod).HasMaxLength(40);
         builder.Entity<RefreshToken>().Property(item => item.UserAgent).HasMaxLength(1024);
         builder.Entity<RefreshToken>().Property(item => item.RevokedReason).HasMaxLength(500);
         ConfigureRowVersion(builder.Entity<RefreshToken>().Property(item => item.RowVersion));
