@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocuments, getTidConfiguration, getTidHistory, getTidRegister, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegister, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -60,14 +60,14 @@ describe('versioned API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await createStrategicDocumentType({ code: 'IDP', name: 'Integrated Development Plan', allowsExternalLinks: true, isActive: true, displayOrder: 10, reason: 'Controlled type' });
-    await getStrategicDocuments({ municipalityFinancialYearPublicId: 'year-id', search: 'plan' });
+    await getStrategicDocumentsPage({ page: 2, pageSize: 25, search: 'plan', sortBy: 'title', sortDirection: 'asc' }, { municipalityFinancialYearPublicId: 'year-id' });
     await createStrategicDocumentVersion({ municipalityFinancialYearPublicId: 'year-id', documentTypePublicId: 'type-id', title: 'Approved IDP', documentDate: '2026-07-01T00:00:00Z', displayOrder: 10, externalUrl: 'https://example.gov.za/idp.pdf', reason: 'Version reason' });
     await getStrategicDocumentHistory('family-id');
     await approveStrategicDocument('document-id', { rowVersion: 'AQ==', approvalReference: 'Council 1/2026', reason: 'Approved' });
     await publishStrategicDocument('document-id', { rowVersion: 'Ag==', publicationDate: '2026-07-02T00:00:00Z', reason: 'Published' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/strategic-documents/types'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('Controlled type') }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/strategic-documents?municipalityFinancialYearPublicId=year-id&search=plan'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/strategic-documents/page?page=2&pageSize=25&search=plan&sortBy=title&sortDirection=asc&municipalityFinancialYearPublicId=year-id'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/strategic-documents/versions'), expect.objectContaining({ method: 'POST', body: expect.any(FormData) }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/strategic-documents/families/family-id/versions'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/strategic-documents/document-id/approve'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('Council 1/2026') }));

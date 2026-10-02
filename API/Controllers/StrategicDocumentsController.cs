@@ -135,20 +135,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (session.Error != null) return session.Error;
         var manager = (await accessControl.CheckPermissionAsync(session.User!, "STRATEGIC_DOCUMENT.UPDATE", MunicipalityScope())).Allowed;
         if (includeHistory && !manager) return Forbidden<StrategicDocumentResponse[]>("Document history requires strategic-document administration permission.");
-        var now = DateTime.UtcNow;
-        var query = DocumentQuery();
-        if (manager && !includeHistory) query = query.Where(item => item.IsCurrent);
-        if (!manager)
-            query = query.Where(item => item.IsActive && item.IsApproved && item.IsPublished
-                && item.DocumentType.IsActive && item.PublishedAt <= now
-                && (item.EvidenceBlobId == null
-                    ? item.ExternalUrl != null && item.DocumentType.AllowsExternalLinks
-                    : item.Blob != null && item.Blob.SignatureVerified && !item.Blob.IsQuarantined && item.Blob.ScanStatus == "Clean" && !item.Blob.IsContentDeleted)
-                && !context.StrategicDocuments.Any(later => later.DocumentFamilyId == item.DocumentFamilyId && later.VersionNumber > item.VersionNumber
-                    && later.IsActive && later.IsApproved && later.IsPublished && later.DocumentType.IsActive && later.PublishedAt <= now
-                    && (later.EvidenceBlobId == null
-                        ? later.ExternalUrl != null && later.DocumentType.AllowsExternalLinks
-                        : later.Blob != null && later.Blob.SignatureVerified && !later.Blob.IsQuarantined && later.Blob.ScanStatus == "Clean" && !later.Blob.IsContentDeleted)));
+        var query = VisibleDocumentQuery(manager, includeHistory, DateTime.UtcNow);
         if (municipalityFinancialYearPublicId.HasValue)
             query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
         if (!string.IsNullOrWhiteSpace(search))
@@ -160,6 +147,54 @@ public sealed class StrategicDocumentsController : ControllerBase
             .ThenBy(item => item.DisplayOrder).ThenBy(item => item.Title).ThenByDescending(item => item.VersionNumber).Take(500).ToArrayAsync();
         return Ok(new ApiResponse<StrategicDocumentResponse[]>(true, rows.Select(item => ToResponse(item, manager)).ToArray()));
     }
+
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<StrategicDocumentResponse>>>> GetDocumentsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] bool includeHistory = false)
+    {
+        var session = await SessionAsync<PagedResponse<StrategicDocumentResponse>>("STRATEGIC_DOCUMENT.READ");
+        if (session.Error != null) return session.Error;
+        if (!StrategicDocumentSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<StrategicDocumentResponse>>("SortBy must be createdAt, title, documentDate, versionNumber, financialYear, or displayOrder."));
+        var manager = (await accessControl.CheckPermissionAsync(session.User!, "STRATEGIC_DOCUMENT.UPDATE", MunicipalityScope())).Allowed;
+        if (includeHistory && !manager)
+            return Forbidden<PagedResponse<StrategicDocumentResponse>>("Document history requires strategic-document administration permission.");
+
+        var query = VisibleDocumentQuery(manager, includeHistory, DateTime.UtcNow);
+        if (municipalityFinancialYearPublicId.HasValue)
+            query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Title.Contains(request.NormalizedSearch)
+                || item.DocumentType.Name.Contains(request.NormalizedSearch)
+                || item.DocumentType.Code.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyDocumentOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<StrategicDocumentResponse>>(true,
+            PagedResponse<StrategicDocumentResponse>.Create(rows.Select(item => ToResponse(item, manager)), request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> StrategicDocumentSortFields =
+        ["createdat", "title", "documentdate", "versionnumber", "financialyear", "displayorder"];
+
+    private static IOrderedQueryable<StrategicDocument> ApplyDocumentOrdering(IQueryable<StrategicDocument> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("title", false) => query.OrderBy(item => item.Title).ThenBy(item => item.PublicId),
+            ("title", true) => query.OrderByDescending(item => item.Title).ThenBy(item => item.PublicId),
+            ("documentdate", false) => query.OrderBy(item => item.DocumentDate).ThenBy(item => item.PublicId),
+            ("documentdate", true) => query.OrderByDescending(item => item.DocumentDate).ThenBy(item => item.PublicId),
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.PublicId),
+            ("versionnumber", true) => query.OrderByDescending(item => item.VersionNumber).ThenBy(item => item.PublicId),
+            ("financialyear", false) => query.OrderBy(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.PublicId),
+            ("financialyear", true) => query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.PublicId),
+            ("displayorder", false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+            ("displayorder", true) => query.OrderByDescending(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
+        };
 
     [HttpGet("families/{familyId:guid}/versions")]
     public async Task<ActionResult<ApiResponse<StrategicDocumentResponse[]>>> GetVersionHistory(Guid familyId)
@@ -401,6 +436,23 @@ public sealed class StrategicDocumentsController : ControllerBase
         return query.Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.DocumentType).Include(item => item.PreviousVersion).Include(item => item.Blob)
             .Include(item => item.Events);
+    }
+
+    private IQueryable<StrategicDocument> VisibleDocumentQuery(bool manager, bool includeHistory, DateTime now)
+    {
+        var query = DocumentQuery();
+        if (manager && !includeHistory) return query.Where(item => item.IsCurrent);
+        if (manager) return query;
+        return query.Where(item => item.IsActive && item.IsApproved && item.IsPublished
+            && item.DocumentType.IsActive && item.PublishedAt <= now
+            && (item.EvidenceBlobId == null
+                ? item.ExternalUrl != null && item.DocumentType.AllowsExternalLinks
+                : item.Blob != null && item.Blob.SignatureVerified && !item.Blob.IsQuarantined && item.Blob.ScanStatus == "Clean" && !item.Blob.IsContentDeleted)
+            && !context.StrategicDocuments.Any(later => later.DocumentFamilyId == item.DocumentFamilyId && later.VersionNumber > item.VersionNumber
+                && later.IsActive && later.IsApproved && later.IsPublished && later.DocumentType.IsActive && later.PublishedAt <= now
+                && (later.EvidenceBlobId == null
+                    ? later.ExternalUrl != null && later.DocumentType.AllowsExternalLinks
+                    : later.Blob != null && later.Blob.SignatureVerified && !later.Blob.IsQuarantined && later.Blob.ScanStatus == "Clean" && !later.Blob.IsContentDeleted)));
     }
 
     private async Task<(ApplicationUser? User, StrategicDocument? Document, ActionResult<ApiResponse<StrategicDocumentResponse>>? Error)> LoadForCommand(Guid publicId, string permission, string rowVersion)

@@ -1836,6 +1836,16 @@ export async function getStrategicDocuments(options?: {
   return get<StrategicDocument[]>(`/v1/strategic-documents${suffix}`);
 }
 
+export async function getStrategicDocumentsPage(page: RegisterPageQuery = {}, options?: {
+  municipalityFinancialYearPublicId?: string; includeHistory?: boolean;
+}): Promise<ApiResponse<PagedResult<StrategicDocument>>> {
+  const parameters = new URLSearchParams(registerPageQuery(page).slice(1));
+  if (options?.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', options.municipalityFinancialYearPublicId);
+  if (options?.includeHistory) parameters.set('includeHistory', 'true');
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PagedResult<StrategicDocument>>(`/v1/strategic-documents/page${suffix}`);
+}
+
 export async function getStrategicDocumentHistory(familyId: string): Promise<ApiResponse<StrategicDocument[]>> {
   return get<StrategicDocument[]>(`/v1/strategic-documents/families/${familyId}/versions`);
 }

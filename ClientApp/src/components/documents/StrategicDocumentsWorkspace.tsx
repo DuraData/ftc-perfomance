@@ -6,7 +6,7 @@ import {
   downloadStrategicDocument,
   getMunicipalityFinancialYearMasters,
   getStrategicDocumentHistory,
-  getStrategicDocuments,
+  getStrategicDocumentsPage,
   getStrategicDocumentTypes,
   publishStrategicDocument,
   rescanStrategicDocument,
@@ -45,7 +45,13 @@ export function StrategicDocumentsWorkspace() {
   const [history, setHistory] = useState<StrategicDocument[]>([]);
   const [selected, setSelected] = useState<StrategicDocument | null>(null);
   const [yearFilter, setYearFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [draft, setDraft] = useState<SaveStrategicDocumentVersionPayload>(emptyDocument);
   const [typeDraft, setTypeDraft] = useState(emptyType);
   const [contentMode, setContentMode] = useState<'file' | 'link'>('file');
@@ -59,17 +65,28 @@ export function StrategicDocumentsWorkspace() {
     const [typeResult, yearResult, documentResult] = await Promise.all([
       getStrategicDocumentTypes(canManageTypes),
       getMunicipalityFinancialYearMasters(),
-      getStrategicDocuments({ municipalityFinancialYearPublicId: yearFilter || undefined, search }),
+      getStrategicDocumentsPage(
+        { page, pageSize: 25, search, sortBy, sortDirection },
+        { municipalityFinancialYearPublicId: yearFilter || undefined },
+      ),
     ]);
     if (!typeResult.success) pushToast('error', typeResult.message ?? 'Unable to load strategic-document types.');
     else setTypes(typeResult.data ?? []);
     if (!yearResult.success) pushToast('error', yearResult.message ?? 'Unable to load financial years.');
     else setYears((yearResult.data ?? []).filter(item => item.isActive));
     if (!documentResult.success) pushToast('error', documentResult.message ?? 'Unable to load strategic documents.');
-    else setDocuments(documentResult.data ?? []);
-  }, [canManageTypes, canRead, pushToast, search, yearFilter]);
+    else {
+      setDocuments(documentResult.data?.items ?? []);
+      setTotalCount(documentResult.data?.totalCount ?? 0);
+      setTotalPages(documentResult.data?.totalPages ?? 0);
+    }
+  }, [canManageTypes, canRead, page, pushToast, search, sortBy, sortDirection, yearFilter]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); setSelected(null); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
   useEffect(() => {
     setDraft(current => ({
       ...current,
@@ -181,9 +198,11 @@ export function StrategicDocumentsWorkspace() {
     <AppShell title="Strategic Documents" subtitle="Controlled municipality and financial-year publications with governed versions, approval, and private file delivery">
       <div className="space-y-4">
         <Card>
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-            <label className="text-xs text-secondary-600">Financial year<select aria-label="Strategic document financial year filter" className={fieldClass} value={yearFilter} onChange={event => setYearFilter(event.target.value)}><option value="">All active years</option>{years.map(year => <option key={year.publicId} value={year.publicId}>{year.code} — {year.name}</option>)}</select></label>
-            <label className="text-xs text-secondary-600">Search<input aria-label="Search strategic documents" className={fieldClass} value={search} onChange={event => setSearch(event.target.value)} /></label>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_12rem_9rem_auto] md:items-end">
+            <label className="text-xs text-secondary-600">Financial year<select aria-label="Strategic document financial year filter" className={fieldClass} value={yearFilter} onChange={event => { setYearFilter(event.target.value); setPage(1); setSelected(null); }}><option value="">All active years</option>{years.map(year => <option key={year.publicId} value={year.publicId}>{year.code} — {year.name}</option>)}</select></label>
+            <label className="text-xs text-secondary-600">Search<input aria-label="Search strategic documents" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
+            <label className="text-xs text-secondary-600">Sort<select aria-label="Sort strategic documents" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); setSelected(null); }}><option value="createdAt">Created</option><option value="title">Title</option><option value="documentDate">Document date</option><option value="financialYear">Financial year</option><option value="displayOrder">Display order</option><option value="versionNumber">Version</option></select></label>
+            <label className="text-xs text-secondary-600">Direction<select aria-label="Strategic document sort direction" className={fieldClass} value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); setSelected(null); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
           </div>
         </Card>
@@ -235,6 +254,7 @@ export function StrategicDocumentsWorkspace() {
               ))}
               {!documents.length ? <EmptyState title="No strategic documents" description={canManage ? 'Create a controlled document version for an active municipality financial year.' : 'No active, approved, published document is available in this context.'} /> : null}
             </div>
+            {totalPages > 1 ? <div className="mt-3 flex items-center justify-between"><p className="text-xs text-secondary-500">Page {page} of {totalPages} · {totalCount} documents</p><div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy || page === 1} onClick={() => { setSelected(null); setPage(value => Math.max(1, value - 1)); }}>Previous</Button><Button variant="outline" size="sm" disabled={busy || page === totalPages} onClick={() => { setSelected(null); setPage(value => Math.min(totalPages, value + 1)); }}>Next</Button></div></div> : null}
           </Card>
 
           <Card>

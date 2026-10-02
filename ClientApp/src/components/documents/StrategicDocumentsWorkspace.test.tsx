@@ -10,7 +10,7 @@ const capabilities = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   approveStrategicDocument: vi.fn(), createStrategicDocumentType: vi.fn(), createStrategicDocumentVersion: vi.fn(),
   downloadStrategicDocument: vi.fn(), getMunicipalityFinancialYearMasters: vi.fn(), getStrategicDocumentHistory: vi.fn(),
-  getStrategicDocuments: vi.fn(), getStrategicDocumentTypes: vi.fn(), publishStrategicDocument: vi.fn(),
+  getStrategicDocumentsPage: vi.fn(), getStrategicDocumentTypes: vi.fn(), publishStrategicDocument: vi.fn(),
   rescanStrategicDocument: vi.fn(), retireStrategicDocument: vi.fn(), updateStrategicDocumentType: vi.fn(),
 }));
 
@@ -42,7 +42,7 @@ describe('Strategic documents workspace', () => {
     capabilities.canExecute.mockReturnValue(true);
     api.getStrategicDocumentTypes.mockResolvedValue({ success: true, data: [type] });
     api.getMunicipalityFinancialYearMasters.mockResolvedValue({ success: true, data: [year] });
-    api.getStrategicDocuments.mockResolvedValue({ success: true, data: [document] });
+    api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentHistory.mockResolvedValue({ success: true, data: [document] });
     api.createStrategicDocumentVersion.mockResolvedValue({ success: true, data: { ...document, publicId: 'document-2', title: 'Annual Review' } });
     api.approveStrategicDocument.mockResolvedValue({ success: true, data: { ...document, isApproved: true, approvalReference: 'Council 1/2026', rowVersion: 'Aw==' } });
@@ -87,5 +87,18 @@ describe('Strategic documents workspace', () => {
     await waitFor(() => expect(api.approveStrategicDocument).toHaveBeenCalledWith('document-1', {
       rowVersion: 'Ag==', approvalReference: 'Council 1/2026', reason: 'Approved by council',
     }));
+  });
+
+  it('loads the strategic-document register in bounded server pages', async () => {
+    api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
+    render(<StrategicDocumentsWorkspace />);
+
+    expect(await screen.findByText('Page 1 of 2 · 26 documents')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    await waitFor(() => expect(api.getStrategicDocumentsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }),
+      { municipalityFinancialYearPublicId: undefined },
+    ));
   });
 });

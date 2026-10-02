@@ -55,6 +55,12 @@ public class StrategicDocumentsControllerTests
         var secondPublished = Payload(await manager.Publish(second.PublicId, new PublishStrategicDocumentRequest(secondApproved.RowVersion, DateTime.UtcNow.AddMinutes(-1), "Publish annual review")));
         var currentPublished = Payload(await ordinary.GetDocuments(setup.Year.PublicId));
         currentPublished.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
+        var page = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "annual", SortBy = "title", SortDirection = "asc"
+        }, setup.Year.PublicId));
+        page.TotalCount.Should().Be(1);
+        page.Items.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
 
         var persisted = await context.StrategicDocuments.OrderBy(item => item.VersionNumber).ToArrayAsync();
         persisted[0].IsCurrent.Should().BeFalse();
@@ -132,6 +138,18 @@ public class StrategicDocumentsControllerTests
         var response = await denied.CreateVersion(ExternalRequest(setup, "Denied", "https://example.gov.za/denied.pdf"));
         response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         (await context.StrategicDocuments.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Document_page_rejects_unknown_sort_fields()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var controller = Controller(context, setup.User, setup.Municipality.Id);
+
+        var response = await controller.GetDocumentsPage(new PagedQueryRequest { SortBy = "raw-sql" }, setup.Year.PublicId);
+
+        response.Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     private static StrategicDocumentsController Controller(
