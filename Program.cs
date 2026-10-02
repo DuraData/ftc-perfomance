@@ -6,6 +6,7 @@ using FTCERP.Host.Infrastructure.Security;
 using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Application.Services;
 using FTCERP.Host.Infrastructure.Health;
+using FTCERP.Host.Infrastructure.Observability;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -152,6 +153,7 @@ builder.Services.AddHostedService<NotificationOutboxWorker>();
 builder.Services.AddHostedService<PoeDisposalWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
+builder.Services.AddSingleton<OperationalTelemetry>();
 
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -192,7 +194,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels").AddCheck<CompromisedPasswordHealthCheck>("compromised-passwords");
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels").AddCheck<CompromisedPasswordHealthCheck>("compromised-passwords").AddCheck<OperationalTelemetryHealthCheck>("operational-telemetry");
 
 var app = builder.Build();
 
@@ -230,6 +232,8 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline.
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
+app.UseMiddleware<RequestTelemetryMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages(async statusCodeContext =>
 {
@@ -278,7 +282,10 @@ app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthC
 {
     Predicate = _ => false
 });
-app.MapHealthChecks("/health/ready");
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = HealthResponseWriter.WriteAsync
+});
 
 app.MapFallback(async context =>
 {
