@@ -1,5 +1,6 @@
 import type {
   ApiResponse,
+  PagedResult,
   AuditTrailEntryDto,
   LoginRequest,
   LoginResponse,
@@ -478,7 +479,11 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
 
 function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): OPMSSubmission {
   const baseSubmission = mockOPMSSubmissions[0];
-  const target = targets.find(item => item.id === dto.opmsTargetId) ?? baseSubmission?.target ?? mockOPMSTargets[0];
+  const target = targets.find(item => item.id === dto.opmsTargetId) ?? {
+    ...(baseSubmission?.target ?? mockOPMSTargets[0]),
+    id: dto.opmsTargetId,
+    targetName: dto.targetName,
+  };
   return {
     ...baseSubmission,
     id: dto.id,
@@ -549,7 +554,11 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
 
 function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): IPMSSubmission {
   const baseSubmission = mockIPMSSubmissions[0];
-  const target = targets.find(item => item.id === dto.ipmsTargetId) ?? baseSubmission?.target ?? mockIPMSTargets[0];
+  const target = targets.find(item => item.id === dto.ipmsTargetId) ?? {
+    ...(baseSubmission?.target ?? mockIPMSTargets[0]),
+    id: dto.ipmsTargetId,
+    targetName: dto.targetName,
+  };
   return {
     ...baseSubmission,
     id: dto.id,
@@ -1340,6 +1349,30 @@ export async function getOpmsTargets(): Promise<ApiResponse<OPMSTarget[]>> {
   return mapResponse(response, items => items.map(toOpmsTargetModel));
 }
 
+export type RegisterPageQuery = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+};
+
+function registerPageQuery(query: RegisterPageQuery): string {
+  const parameters = new URLSearchParams();
+  if (query.page !== undefined) parameters.set('page', String(query.page));
+  if (query.pageSize !== undefined) parameters.set('pageSize', String(query.pageSize));
+  if (query.search?.trim()) parameters.set('search', query.search.trim());
+  if (query.sortBy?.trim()) parameters.set('sortBy', query.sortBy.trim());
+  if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
+  const value = parameters.toString();
+  return value ? `?${value}` : '';
+}
+
+export async function getOpmsTargetsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OPMSTarget>>> {
+  const response = await get<PagedResult<OpmsTargetDto>>(`/v1/opms-targets/page${registerPageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(toOpmsTargetModel) }));
+}
+
 export async function getOpmsTarget(id: string): Promise<ApiResponse<OPMSTarget>> {
   const response = await get<OpmsTargetDto>(`/v1/opms-targets/${id}`);
   return mapResponse(response, toOpmsTargetModel);
@@ -1363,6 +1396,11 @@ export async function withdrawOpmsTarget(id: string, payload: { reason: string; 
 export async function getIpmsTargets(): Promise<ApiResponse<IPMSTarget[]>> {
   const response = await get<IpmsTargetDto[]>('/ipms-targets');
   return mapResponse(response, items => items.map(toIpmsTargetModel));
+}
+
+export async function getIpmsTargetsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSTarget>>> {
+  const response = await get<PagedResult<IpmsTargetDto>>(`/v1/ipms-targets/page${registerPageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(toIpmsTargetModel) }));
 }
 
 export async function getIpmsTarget(id: string): Promise<ApiResponse<IPMSTarget>> {
@@ -1390,6 +1428,14 @@ export async function getOpmsSubmissions(): Promise<ApiResponse<OPMSSubmission[]
   const targets = targetsResult.data ?? [];
   const response = await get<OpmsSubmissionDto[]>('/opms-submissions');
   return mapResponse(response, items => items.map(item => toOpmsSubmissionModel(item, targets)));
+}
+
+export async function getOpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OPMSSubmission>>> {
+  const response = await get<PagedResult<OpmsSubmissionDto>>(`/v1/opms-submissions/page${registerPageQuery(query)}`);
+  return mapResponse(response, page => ({
+    ...page,
+    items: page.items.map(item => toOpmsSubmissionModel(item, [])),
+  }));
 }
 
 export async function getOpmsSubmission(id: string): Promise<ApiResponse<OPMSSubmission>> {
@@ -1484,6 +1530,14 @@ export async function getIpmsSubmissions(): Promise<ApiResponse<IPMSSubmission[]
   const targets = targetsResult.data ?? [];
   const response = await get<IpmsSubmissionDto[]>('/ipms-submissions');
   return mapResponse(response, items => items.map(item => toIpmsSubmissionModel(item, targets)));
+}
+
+export async function getIpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSSubmission>>> {
+  const response = await get<PagedResult<IpmsSubmissionDto>>(`/v1/ipms-submissions/page${registerPageQuery(query)}`);
+  return mapResponse(response, page => ({
+    ...page,
+    items: page.items.map(item => toIpmsSubmissionModel(item, [])),
+  }));
 }
 
 export async function getIpmsSubmission(id: string): Promise<ApiResponse<IPMSSubmission>> {

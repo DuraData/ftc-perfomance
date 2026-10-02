@@ -53,6 +53,45 @@ public class IpmsTargetsController : ControllerBase
         return Ok(new ApiResponse<IpmsTargetResponse[]>(true, targets.Select(item => item.ToResponse()).ToArray()));
     }
 
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IpmsTargetResponse>>>> GetTargetsPage([FromQuery] PagedQueryRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<IpmsTargetResponse>>(false, null, "User not found"));
+        if (!TargetSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<IpmsTargetResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, or targetName."));
+
+        var scope = await _accessControlService.GetQueryScopeAsync(user, "IPMS_KPI.READ");
+        if (!scope.PermissionGranted)
+            return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true, PagedResponse<IpmsTargetResponse>.Empty(request.Page, request.PageSize)));
+        var query = _context.IpmsTargets.AsNoTracking().AsQueryable();
+        if (!scope.Unrestricted)
+            query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
+
+        var totalCount = await query.CountAsync();
+        query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending);
+        var items = await query.Skip(request.Offset).Take(request.PageSize)
+            .Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
+            .AsSplitQuery().ToListAsync();
+        return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true,
+            PagedResponse<IpmsTargetResponse>.Create(items.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname"];
+
+    private static IQueryable<IpmsTarget> ApplyTargetOrdering(IQueryable<IpmsTarget> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("indicatornumber", false) => query.OrderBy(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("targetname", false) => query.OrderBy(item => item.TargetName).ThenBy(item => item.PublicId),
+            ("targetname", true) => query.OrderByDescending(item => item.TargetName).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
+        };
+
     [HttpGet("{id}")]
     public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> GetTarget(string id)
     {

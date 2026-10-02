@@ -83,6 +83,50 @@ public class OpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<OpmsSubmissionResponse[]>(true, items.Select(item => ToAuthorizedResponse(item, memberPermissions)).ToArray()));
     }
 
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>> GetSubmissionsPage([FromQuery] PagedQueryRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "User not found"));
+        if (!SubmissionSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "SortBy must be createdAt, status, quarter, or indicatorNumber."));
+
+        var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ");
+        if (!scope.PermissionGranted)
+            return Ok(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(true, PagedResponse<OpmsSubmissionResponse>.Empty(request.Page, request.PageSize)));
+        var query = _context.OpmsSubmissions.AsNoTracking().AsQueryable();
+        if (!scope.Unrestricted)
+            query = query.Where(item => (item.OpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId.Value)) || (item.OpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.OpmsTarget.UnitId.Value)) || (item.OpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.OpmsTargetId) || scope.KpiIds.Contains(item.OpmsTargetId));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.OpmsTarget.TargetName.Contains(request.NormalizedSearch) || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
+
+        var totalCount = await query.CountAsync();
+        query = ApplySubmissionOrdering(query, request.NormalizedSortBy, request.Descending);
+        var items = await query.Skip(request.Offset).Take(request.PageSize)
+            .Include(item => item.OpmsTarget).ThenInclude(target => target.Department)
+            .Include(item => item.OpmsTarget).ThenInclude(target => target.Unit)
+            .Include(item => item.SubmittedByUser)
+            .AsSplitQuery().ToListAsync();
+        var memberPermissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Ok(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(true,
+            PagedResponse<OpmsSubmissionResponse>.Create(items.Select(item => ToAuthorizedResponse(item, memberPermissions)), request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
+
+    private static IQueryable<OpmsSubmission> ApplySubmissionOrdering(IQueryable<OpmsSubmission> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("status", false) => query.OrderBy(item => item.Status).ThenBy(item => item.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.PublicId),
+            ("quarter", false) => query.OrderBy(item => item.Quarter).ThenBy(item => item.PublicId),
+            ("quarter", true) => query.OrderByDescending(item => item.Quarter).ThenBy(item => item.PublicId),
+            ("indicatornumber", false) => query.OrderBy(item => item.OpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.OpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
+        };
+
     [HttpGet("{id}")]
     public async Task<ActionResult<ApiResponse<OpmsSubmissionResponse>>> GetSubmission(string id)
     {

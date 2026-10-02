@@ -1153,6 +1153,14 @@ export interface LoginResponse {
   mfaEnrollmentRequired: boolean;
 }
 
+export interface PagedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;

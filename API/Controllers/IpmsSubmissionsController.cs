@@ -84,6 +84,50 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<IpmsSubmissionResponse[]>(true, items.Select(item => ToAuthorizedResponse(item, memberPermissions)).ToArray()));
     }
 
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>> GetSubmissionsPage([FromQuery] PagedQueryRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(false, null, "User not found"));
+        if (!SubmissionSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(false, null, "SortBy must be createdAt, status, quarter, or indicatorNumber."));
+
+        var scope = await _accessControlService.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ");
+        if (!scope.PermissionGranted)
+            return Ok(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(true, PagedResponse<IpmsSubmissionResponse>.Empty(request.Page, request.PageSize)));
+        var query = _context.IpmsSubmissions.AsNoTracking().AsQueryable();
+        if (!scope.Unrestricted)
+            query = query.Where(item => (item.IpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId.Value)) || (item.IpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.IpmsTarget.UnitId.Value)) || (item.IpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.IpmsTargetId) || scope.KpiIds.Contains(item.IpmsTargetId));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.IpmsTarget.TargetName.Contains(request.NormalizedSearch) || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
+
+        var totalCount = await query.CountAsync();
+        query = ApplySubmissionOrdering(query, request.NormalizedSortBy, request.Descending);
+        var items = await query.Skip(request.Offset).Take(request.PageSize)
+            .Include(item => item.IpmsTarget).ThenInclude(target => target.Department)
+            .Include(item => item.IpmsTarget).ThenInclude(target => target.Unit)
+            .Include(item => item.SubmittedByUser).Include(item => item.ReportingPeriod)
+            .AsSplitQuery().ToListAsync();
+        var memberPermissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Ok(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(true,
+            PagedResponse<IpmsSubmissionResponse>.Create(items.Select(item => ToAuthorizedResponse(item, memberPermissions)), request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
+
+    private static IQueryable<IpmsSubmission> ApplySubmissionOrdering(IQueryable<IpmsSubmission> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("status", false) => query.OrderBy(item => item.Status).ThenBy(item => item.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.PublicId),
+            ("quarter", false) => query.OrderBy(item => item.Quarter).ThenBy(item => item.PublicId),
+            ("quarter", true) => query.OrderByDescending(item => item.Quarter).ThenBy(item => item.PublicId),
+            ("indicatornumber", false) => query.OrderBy(item => item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
+        };
+
     [HttpGet("{id}")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> GetSubmission(string id)
     {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocuments, getTidConfiguration, getTidHistory, getTidRegister, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthSessions, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getOpmsTargets, getOpmsTargetsPage, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocuments, getTidConfiguration, getTidHistory, getTidRegister, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -175,6 +175,18 @@ describe('versioned API routes', () => {
     await getOpmsTargets();
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-targets'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('encodes bounded register paging and allow-listed sort parameters', async () => {
+    const page = { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getOpmsTargetsPage({ page: 2, pageSize: 25, search: ' water ', sortBy: 'targetName', sortDirection: 'asc' });
+    await getIpmsTargetsPage({ page: 1, pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/page?page=2&pageSize=25&search=water&sortBy=targetName&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-targets/page?page=1&pageSize=100&sortBy=createdAt&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('posts reasons and concurrency tokens to governed withdrawal routes', async () => {
