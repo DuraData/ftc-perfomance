@@ -23,6 +23,9 @@ pnpm-debug.log*
 appsettings.Local.json
 appsettings.*.local.json
 secure-files/
+*.db
+*.db-shm
+*.db-wal
 
 # Ignore published output
 publish/

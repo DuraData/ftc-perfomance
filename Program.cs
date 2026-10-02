@@ -46,7 +46,7 @@ builder.Services.AddSwaggerGen(c =>
 // Add EF Core
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.UseConfiguredDatabase(builder.Configuration);
     options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
 });
 
@@ -195,6 +195,18 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels").AddCheck<CompromisedPasswordHealthCheck>("compromised-passwords");
 
 var app = builder.Build();
+
+if (app.Configuration.GetValue<bool>("Database:EnsureCreated"))
+{
+    if (!app.Environment.IsDevelopment())
+        throw new InvalidOperationException("Database:EnsureCreated is restricted to the Development environment.");
+
+    await using var initializationScope = app.Services.CreateAsyncScope();
+    var initializationContext = initializationScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    if (!initializationContext.Database.IsSqlite())
+        throw new InvalidOperationException("Database:EnsureCreated is supported only for disposable local SQLite development databases.");
+    await initializationContext.Database.EnsureCreatedAsync();
+}
 
 // Seed only when explicitly enabled. Production must be provisioned through controlled administration.
 if (app.Configuration.GetValue<bool>("SeedData:Enabled"))
