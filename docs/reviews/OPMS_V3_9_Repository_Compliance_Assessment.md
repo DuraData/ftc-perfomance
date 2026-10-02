@@ -2,28 +2,24 @@
 
 **Repository:** `ftc-perfomance`  
 **Requirements baseline:** `OPMS Requirements V3.9.docx`  
-**Assessment date:** 2026-10-01  
-**Assessment type:** Static repository, schema, configuration, and automated-test review
+**Assessment date:** 2026-10-02
+**Assessment type:** Current-state repository, schema, configuration, migration, and automated-test review
 
 ## 1. Executive summary
 
-The repository is **not compliant with the OPMS V3.9 baseline in its current form**. It contains a substantial working prototype: an integrated ASP.NET Core/EF Core/SQL Server backend, a React client, Identity-based authentication, permission records, OPMS/IPMS targets and submissions, workflow endpoints, audit-related tables, notifications, IDP functionality, and automated tests. Those assets are reusable. They do not, however, implement several architectural invariants that V3.9 treats as foundational.
+The repository has been materially modernized toward OPMS V3.9 and now implements the major repository-controlled foundations: municipality tenancy, dynamic scoped security, canonical periods and normalized values, configurable workflow, governed evidence, audit/outbox processing, IDP lineage/import, independent TID and Circular 88 modules, strategic documents, protected browser sessions, operational telemetry, bounded primary-register APIs, and general business-mutation idempotency. It is **not yet eligible for an unconditional production-compliance claim** because native SQL Server acceptance, legacy-data cutover, configurable enterprise identity providers, production provider provisioning, remaining secondary-surface completion, accessibility/UAT certification, and owner-controlled credential rotation are outstanding.
 
-The most consequential gaps are structural rather than cosmetic:
+The remaining release blockers are explicit:
 
-- there is no Municipality tenant root and no server-enforced MunicipalityId boundary across business tables;
-- financial years and reporting periods are not modelled through the required municipality/financial-year hierarchy;
-- OPMS period targets remain wide columns on the KPI, while V3.9 requires normalized period-specific rows with one authoritative `TargetValue` and a period-specific OPMS unit;
-- submissions allow multiple competing actual representations, client-provided variance, free-text quarters, `draft` state, duplicate KPI/period submissions, mutable stage columns, and hard deletion;
-- workflow is hard-coded rather than configuration-driven and lacks the canonical append-only action ledger, RFI model, stage-rating ledger, scoped reporting windows, and exception model;
-- evidence files are stored under the publicly served web root, have unlimited request size, lack type/hash/scanning controls, and are physically deleted;
-- users, employees, assignments, tenant scopes, and effective-dated organization history are not separated as required;
-- API versioning, concurrency tokens, public identifiers, idempotency, standardized error handling, server-side pagination/filtering, background jobs, health monitoring, backup/recovery evidence, TID, and C88 are absent or not verifiable;
-- production and default configuration files contain tracked plaintext secrets and passwords, while the browser stores bearer and refresh tokens in `localStorage`.
+- apply the complete migration chain and execute the native SQL Server constraint, filtered-index, migration/backfill, `rowversion`, tenant-isolation, and recovery suite;
+- reconcile legacy nullable tenant keys, wide targets, free-text periods and historical duplicate/compatibility data before final non-null constraints and retirement;
+- implement municipality-configurable Microsoft Entra ID, Active Directory and hybrid identity modes with governed account linking;
+- provision and rehearse production object storage, malware scanning, notification, compromised-password, telemetry, alerting, backup and restore services;
+- migrate remaining compatibility/secondary collections to bounded APIs and complete secondary member, audit, PublicId/RowVersion and standardized-error coverage;
+- complete official report/channel breadth, representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
+- rotate and verify revocation of credentials that existed in prior repository history.
 
-These are release-blocking issues for a V3.9 production claim. The repository should be treated as an earlier-domain prototype requiring a controlled schema and workflow migration, not as a nearly compliant system needing only incremental UI additions.
-
-Positive findings are meaningful but narrower: authorization policies are enforced on many controllers; the repository has permission, scope, override, and effective-dated assignment concepts; fixed OPMS/IPMS workflow actions enforce some separation of duties; IDP has a real domain and controller surface; the backend builds; 16 compiled backend tests and 53 frontend tests passed when invoked correctly. The frontend also exposes the expected unit-type choices. These strengths reduce implementation effort but do not compensate for missing V3.9 invariants.
+Current automated evidence is substantial: **184 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **131 frontend tests pass** across 34 files. TypeScript type-check, ESLint, accessibility automation, Release build, a 66-chunk executable bundle budget, model/snapshot consistency, and generation of a **376,498-byte** idempotent SQL Server migration script pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -324,7 +320,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-43 | PublicId and optimistic concurrency | **PARTIALLY COMPLIANT** | Core governed entities expose stable PublicId and RowVersion with conflict handling | Complete conventions for secondary legacy lookup/business entities. |
 | R-44 | Standard errors and validation | **PARTIALLY COMPLIANT** | Ad hoc ApiResponse exists | Centralize ProblemDetails and required status mapping. |
 | R-45 | Pagination/filter/sort/search | **PARTIALLY COMPLIANT** | Primary OPMS/IPMS target and submission registers have bounded `/page` endpoints with validated 1-100 page sizes, search, allow-listed sorting, stable ordering and authorization scope applied before count/page; compatibility arrays and several secondary collections remain | Migrate SPA register views and remaining large/fixed-limit collections to the shared page contract. |
-| R-46 | POST idempotency | **PARTIALLY COMPLIANT** | Logical submission create, IDP imports, outbox delivery and disposal are idempotent | Add a general request-result/idempotency-key contract for remaining mutation/export jobs. |
+| R-46 | POST idempotency | **COMPLIANT** | Every authenticated business API POST requires a validated key; a tenant/user/method/route identity plus request hash ledger atomically acquires requests, replays completed results, rejects changed payload/query reuse, blocks in-flight or ambiguous failures, expires records, and preserves one key across SPA refresh retries | Execute concurrent duplicate-request acceptance against native SQL Server before deployment. |
 | R-47 | IDP non-blocking independence | **COMPLIANT** | OPMS does not require an IDP FK | Preserve this separation during migration. |
 | R-48 | IDP plan/version lineage | **COMPLIANT** | Tenant-filtered plan families, predecessor chains, effective periods, publication evidence, immutable public IDs, version lineage, concurrency tokens, migration backfill, governed forms, and relational tests are implemented | Native SQL Server execution remains an environment acceptance item. |
 | R-49 | IDP import/reconciliation | **COMPLIANT** | Governed full-hierarchy/project and KPI-definition CSV staging classifies NEW/UNCHANGED/CHANGED/INVALID rows, preserves immutable reconciliation evidence, and commits valid batches atomically with tenant, distinct import permissions, audit, idempotency, stale-preview detection, and concurrency controls | Native SQL Server migration/constraint/`rowversion` execution remains a deployment acceptance check. |
@@ -344,7 +340,6 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | **P0** | Legacy data cutover/reconciliation is incomplete | Nullable tenant keys, wide targets, free-text periods, old actual/status/score fields and duplicate historic rows can block final constraints or produce ambiguous history | R-01, R-04, R-16-R-18, R-22, R-24-R-25, R-27, R-31, R-33 | Execute repeatable reconciliation with exception reports and business-owner sign-off before retiring compatibility fields/fallbacks. |
 | **P1** | Configurable enterprise identity providers are absent | Municipal Entra ID/AD/hybrid policy cannot be selected without implementation | R-09 | Implement provider configuration, immutable external-account linking, local fallback governance, audit and end-to-end tests. |
 | **P1** | Collection APIs are not uniformly paged | Large tenants can still cause high memory/latency on compatibility and secondary endpoints | R-45; primary register page contracts exist, while SPA migration and several fixed 200/500 collection loads remain | Migrate register views and remaining large collections to the bounded page contract. |
-| **P1** | General mutation idempotency is incomplete | Network retries can duplicate remaining create/export operations | R-46 | Add a tenant/user/route/request-hash idempotency ledger and apply it to remaining POST/export jobs. |
 | **P1** | Production integrations and operational evidence are absent | Scanner/storage/email/password-breach readiness, metrics, paging, backup and restore behavior are not deployment-certified | R-40, R-50, R-52-R-54 | Provision providers/collectors, dashboards and schedules; rehearse failure, replay, alert and recovery procedures. |
 | **P1** | End-to-end UAT and accessibility certification remain | Unit/component/controller tests do not prove deployed browser workflows, representative roles or assistive technology | R-54-R-55 | Execute role/tenant workflow matrices, direct-API denial, keyboard/screen-reader/contrast/zoom tests and formal acceptance sign-off. |
 | **P2** | Notification/report breadth is incomplete | SMS, reminders/escalations, scheduled distribution, PDF/XLSX and some official report families are unavailable | R-40-R-41 | Implement only municipality-approved channels/templates/schedules and governed report jobs. |
@@ -1007,3 +1002,33 @@ The security audit also removed the tracked `Credentials.md` plaintext credentia
 **Tests:** Seven backend CSRF tests cover safe methods, missing-header rejection, accepted same-origin mutation, Bearer compatibility and non-API pass-through. Four controlled-secret tests reject missing/blank/short values and accept an explicit strong local secret. The cookie-session browser tests verify the header on login, refresh and retry while confirming that no Bearer token or token body is exposed. The complete backend suite passes **172/172** with one native SQL Server acceptance test explicitly skipped; the complete frontend suite passes **129/129** across **34** files. TypeScript type-check, ESLint, production build and the 66-chunk bundle budget pass.
 
 **Status:** R-10, R-11 and R-12 are **COMPLIANT** at repository level. R-13 advances to **PARTIALLY COMPLIANT** because the current tree no longer contains the credential dump or seed defaults, but repository history and any environment that used the exposed values require owner-led credential rotation, optional history remediation, and production managed-secret injection evidence. External penetration testing and deployed proxy/TLS/cookie verification remain UAT acceptance work.
+
+### 11.54 Bounded primary-register pagination
+
+**Requirement:** R-45 / server-side pagination, filtering, sorting and search.
+
+**Implementation:** OPMS targets, IPMS targets, OPMS submissions and IPMS submissions now expose additive `/api/v1/.../page` contracts. `PagedQueryRequest` validates page numbers, limits page size to 1-100, bounds search/sort input and accepts only ascending or descending order. Each controller applies the existing permission-derived record scope before search, `TotalCount`, sorting, `Skip` and `Take`; unauthorized records therefore cannot influence either results or metadata. Sort fields are explicit allowlists rather than client-provided expressions, and every sort ends with immutable `PublicId` as a deterministic tie-break. Response metadata includes page, page size, total count and total pages. Existing array contracts remain temporarily available for dashboard/detail compatibility.
+
+**Files/classes:** `API/Requests/PagedQueryRequest.cs`, `API/Responses/PagedResponse.cs`, the four OPMS/IPMS target/submission controllers, `ClientApp/src/api/api.ts`, and `ClientApp/src/types/index.ts`.
+
+**Migration:** None. All queries use provider-neutral EF Core and the same tenant/security model for SQLite and SQL Server.
+
+**Tests:** Six focused backend tests cover page bounds, metadata, stable server ordering, unknown-sort rejection, and scope-before-count behavior against relational SQLite. Frontend routing tests verify encoded bounded query parameters and versioned endpoints. The complete suites pass **184 backend tests** with one native SQL Server acceptance test skipped and **131 frontend tests** across 34 files; build, lint, type-check and bundle-budget gates pass.
+
+**Status:** R-45 is **PARTIALLY COMPLIANT**. The largest primary registers have a correct bounded contract. Existing SPA register views and remaining compatibility/secondary endpoints that still load complete or fixed 200/500 collections must migrate before the rule is uniform, and representative SQL Server load/query-plan evidence remains outstanding.
+
+### 11.55 General business-mutation idempotency
+
+**Requirement:** R-46 / retry-safe POST mutations.
+
+**Implementation:** Every authenticated non-authentication API `POST`, including JSON and multipart business mutations, now requires an `Idempotency-Key` containing 8-128 safe characters. The middleware runs after authentication, tenant resolution and authorization. It hashes the complete query/body stream, then atomically acquires a durable identity derived from municipality/system scope, user, method, normalized route and caller key. An identical completed request replays status, content type, location, ETag and body with `Idempotency-Replayed: true`; reuse with a changed body/query returns 409; an in-flight duplicate returns 409 plus `Retry-After`; and an exception after possible side effects is marked ambiguous and cannot be re-executed with the same key. Authentication endpoints are intentionally excluded because session-cookie responses must never be persisted or replayed.
+
+`IdempotencyRequest` stores only request hashes—not request bodies—and retains replay bodies for a configurable 24-hour window. Records are tenant-filtered, FK-bound to user/municipality, concurrency protected, state constrained and uniquely indexed by a fixed SHA-256 identity hash, avoiding SQL Server composite-index width limits. A hosted cleanup worker removes expired records. The SPA generates one key per POST user action and reuses that exact key if cookie-session refresh causes an automatic retry. Swagger declares the required header on protected business POST operations.
+
+**Files/classes:** `Domain/Entities/IdempotencyRequest.cs`, `Infrastructure/Security/IdempotencyMiddleware.cs`, `Infrastructure/OpenApi/IdempotencyOperationFilter.cs`, `Infrastructure/Persistence/ApplicationDbContext.cs`, `Program.cs`, `ClientApp/src/api/api.ts`, and `appsettings.json`.
+
+**Migration:** `20261002135324_V39IdempotentMutationRequests` creates the ledger with restricted user/municipality foreign keys, public-ID and fixed identity-hash uniqueness, expiry lookup, state check, response evidence and native SQL Server `rowversion`. SQLite uses the shared portable concurrency mechanism; deployment to SQL Server remains configuration plus migrations only.
+
+**Tests:** Six focused relational/middleware tests prove single execution plus exact replay, payload and query conflict detection, missing/unsafe-key rejection, mandatory municipality resolution, municipality isolation, durable hashes, and fail-safe blocking after ambiguous exceptions. The browser session test proves one generated key survives a 401/refresh/retry sequence. Release build and the complete **184/184 backend** and **131/131 frontend** suites pass, with only the explicitly environment-gated native SQL Server test skipped. The complete idempotent SQL Server migration script generates at **376,498 bytes** and contains the ledger table, unique identity-hash index and generated `rowversion`.
+
+**Status:** R-46 is **COMPLIANT** at repository level. Native SQL Server concurrent duplicate-request execution remains deployment acceptance evidence; no domain, controller, service or UI code changes are required when changing the configured database provider.

@@ -7,6 +7,7 @@ using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Application.Services;
 using FTCERP.Host.Infrastructure.Health;
 using FTCERP.Host.Infrastructure.Observability;
+using FTCERP.Host.Infrastructure.OpenApi;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -42,6 +43,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         [new OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>()
     });
+    c.OperationFilter<IdempotencyOperationFilter>();
 });
 
 // Add EF Core
@@ -154,6 +156,8 @@ builder.Services.AddHostedService<PoeDisposalWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
 builder.Services.AddSingleton<OperationalTelemetry>();
+builder.Services.Configure<IdempotencyOptions>(builder.Configuration.GetSection(IdempotencyOptions.SectionName));
+builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -286,6 +290,7 @@ app.UseMiddleware<PasswordChangeMiddleware>();
 app.UseMiddleware<MfaEnrollmentMiddleware>();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
+app.UseMiddleware<IdempotencyMiddleware>();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

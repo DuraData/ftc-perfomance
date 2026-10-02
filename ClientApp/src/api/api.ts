@@ -152,6 +152,15 @@ function clearTokens() {
   sessionStorage.removeItem('auth_token');
 }
 
+function createIdempotencyKey(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('Secure random generation is unavailable; the mutation was not sent.');
+}
+
 function mapResponse<TIn, TOut>(
   response: ApiResponse<TIn>,
   mapper: (value: TIn) => TOut,
@@ -707,10 +716,15 @@ async function fetchApi<T>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const suppliedHeaders = { ...(options.headers as Record<string, string>) };
+  const isPost = (options.method ?? 'GET').toUpperCase() === 'POST';
+  const idempotencyKey = suppliedHeaders['Idempotency-Key']
+    ?? (isPost ? createIdempotencyKey() : undefined);
   const headers: Record<string, string> = {
     ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
     'X-OPMS-Request': 'same-origin',
-    ...(options.headers as Record<string, string>),
+    ...suppliedHeaders,
+    ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
   };
 
   addTenantHeader(headers);
@@ -728,7 +742,8 @@ async function fetchApi<T>(
         const retryHeaders: Record<string, string> = {
           ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
           'X-OPMS-Request': 'same-origin',
-          ...(options.headers as Record<string, string>),
+          ...suppliedHeaders,
+          ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         };
         addTenantHeader(retryHeaders);
         const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {

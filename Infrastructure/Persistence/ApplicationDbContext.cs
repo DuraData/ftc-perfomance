@@ -58,6 +58,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<AuditTrail> AuditTrails { get; set; } = null!;
     public DbSet<BusinessEventOutbox> BusinessEventOutbox { get; set; } = null!;
     public DbSet<NotificationDeliveryAttempt> NotificationDeliveryAttempts { get; set; } = null!;
+    public DbSet<IdempotencyRequest> IdempotencyRequests { get; set; } = null!;
     public DbSet<DueDateExtension> DueDateExtensions { get; set; } = null!;
     public DbSet<ReviewComment> ReviewComments { get; set; } = null!;
     public DbSet<AuditFinding> AuditFindings { get; set; } = null!;
@@ -908,6 +909,27 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<NotificationDeliveryAttempt>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<NotificationDeliveryAttempt>().HasOne(item => item.BusinessEventOutbox).WithMany(item => item.DeliveryAttempts).HasForeignKey(item => item.BusinessEventOutboxId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<IdempotencyRequest>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<IdempotencyRequest>().HasIndex(item => item.IdentityHash).IsUnique();
+        builder.Entity<IdempotencyRequest>().HasIndex(item => item.ExpiresAt);
+        builder.Entity<IdempotencyRequest>().Property(item => item.ScopeKey).HasMaxLength(64);
+        builder.Entity<IdempotencyRequest>().Property(item => item.IdentityHash).HasMaxLength(64);
+        builder.Entity<IdempotencyRequest>().Property(item => item.UserId).HasMaxLength(450);
+        builder.Entity<IdempotencyRequest>().Property(item => item.Method).HasMaxLength(10);
+        builder.Entity<IdempotencyRequest>().Property(item => item.Route).HasMaxLength(600);
+        builder.Entity<IdempotencyRequest>().Property(item => item.IdempotencyKey).HasMaxLength(128);
+        builder.Entity<IdempotencyRequest>().Property(item => item.RequestHash).HasMaxLength(64);
+        builder.Entity<IdempotencyRequest>().Property(item => item.State).HasMaxLength(20);
+        builder.Entity<IdempotencyRequest>().Property(item => item.ResponseContentType).HasMaxLength(200);
+        builder.Entity<IdempotencyRequest>().Property(item => item.ResponseLocation).HasMaxLength(1000);
+        builder.Entity<IdempotencyRequest>().Property(item => item.ResponseETag).HasMaxLength(200);
+        builder.Entity<IdempotencyRequest>().Property(item => item.CorrelationId).HasMaxLength(100);
+        builder.Entity<IdempotencyRequest>().ToTable(table => table.HasCheckConstraint("CK_IdempotencyRequests_State", "[State] IN ('InProgress','Completed','Failed')"));
+        ConfigureRowVersion(builder.Entity<IdempotencyRequest>().Property(item => item.RowVersion));
+        builder.Entity<IdempotencyRequest>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdempotencyRequest>().HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdempotencyRequest>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<IdpPlan>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<IdpPlan>().HasIndex(item => new { item.MunicipalityId, item.PlanFamilyId });
@@ -1810,7 +1832,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
-            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
+            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdempotencyRequest), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
             typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
