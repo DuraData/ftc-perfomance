@@ -92,6 +92,14 @@ builder.Services.AddAuthentication(options =>
     };
     options.Events = new JwtBearerEvents
     {
+        OnMessageReceived = messageContext =>
+        {
+            var authorization = messageContext.Request.Headers.Authorization.ToString();
+            if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                && messageContext.Request.Cookies.TryGetValue(AuthCookiePolicy.AccessCookieName, out var cookieToken))
+                messageContext.Token = cookieToken;
+            return Task.CompletedTask;
+        },
         OnTokenValidated = async validationContext =>
         {
             var userId = validationContext.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);

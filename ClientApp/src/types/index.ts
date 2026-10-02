@@ -1131,8 +1131,6 @@ export interface MenuItem {
 }
 
 export interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
   expiresAt: string;
   user: UserProfile;
   roles: string[];
@@ -1161,11 +1159,6 @@ export interface MfaSetupDto {
 
 export interface MfaEnableDto {
   recoveryCodes: string[];
-}
-
-export interface RefreshTokenRequest {
-  accessToken: string;
-  refreshToken: string;
 }
 
 export interface RegisterRequest {

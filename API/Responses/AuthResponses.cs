@@ -2,7 +2,7 @@ namespace FTCERP.Host.API.Responses;
 
 public record ApiResponse<T>(bool Success, T? Data, string? Message = null, string[]? Errors = null);
 
-public record LoginResponse(string AccessToken, string RefreshToken, DateTime ExpiresAt, UserProfileResponse User, string[] Roles, string[] Permissions, MenuItemResponse[] Menu, bool MfaEnrollmentRequired = false);
+public record LoginResponse(DateTime ExpiresAt, UserProfileResponse User, string[] Roles, string[] Permissions, MenuItemResponse[] Menu, bool MfaEnrollmentRequired = false);
 
 public record MfaStatusResponse(bool IsEnabled, bool EnrollmentRequired, int RecoveryCodesLeft);
 

@@ -18,7 +18,6 @@ namespace FTCERP.Host.API.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private const string RefreshCookieName = "opms_refresh";
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IJwtService _jwtService;
@@ -81,7 +80,7 @@ public class AuthController : ControllerBase
         await _userManager.UpdateAsync(user);
 
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString());
-        SetRefreshCookie(refreshToken);
+        SetSessionCookies(accessToken, refreshToken, expiresAt);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToList();
         var menu = await _accessControlService.GetAuthorizedNavigationAsync(user);
@@ -92,7 +91,7 @@ public class AuthController : ControllerBase
 
         var enrollmentRequired = MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes);
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
-            accessToken, string.Empty, expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
+            expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
     }
 
     [HttpPost("register")]
@@ -137,35 +136,30 @@ public class AuthController : ControllerBase
 
     [HttpPost("refresh-token")]
     [EnableRateLimiting("authentication")]
-    public async Task<ActionResult<ApiResponse<LoginResponse>>> RefreshToken([FromBody] RefreshTokenRequest request)
+    public async Task<ActionResult<ApiResponse<LoginResponse>>> RefreshToken()
     {
-        var principal = await _jwtService.GetPrincipalFromExpiredTokenAsync(request.AccessToken);
-        if (principal == null)
-            return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid token"));
-
-        var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null)
-            return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid token"));
-
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user == null || !user.IsActive)
-            return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid token"));
-
-        var rawRefreshToken = Request.Cookies[RefreshCookieName];
+        var rawRefreshToken = Request.Cookies[AuthCookiePolicy.RefreshCookieName];
         if (string.IsNullOrWhiteSpace(rawRefreshToken))
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
         var existingRefreshToken = await _jwtService.GetRefreshTokenAsync(rawRefreshToken);
+        if (existingRefreshToken == null)
+            return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
+
+        var user = await _userManager.FindByIdAsync(existingRefreshToken.UserId);
+        if (user == null || !user.IsActive)
+            return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
+
         var now = DateTime.UtcNow;
         var idleCutoff = now.AddMinutes(-Math.Clamp(_jwtSettings.SessionIdleTimeoutMinutes, 5, 24 * 60));
-        if (existingRefreshToken == null || existingRefreshToken.UserId != userId || existingRefreshToken.RevokedAt.HasValue || existingRefreshToken.ExpiresAt <= now || existingRefreshToken.AbsoluteExpiresAt <= now || existingRefreshToken.LastUsedAt <= idleCutoff || existingRefreshToken.SecurityStamp != (user.SecurityStamp ?? string.Empty))
+        if (existingRefreshToken.RevokedAt.HasValue || existingRefreshToken.ExpiresAt <= now || existingRefreshToken.AbsoluteExpiresAt <= now || existingRefreshToken.LastUsedAt <= idleCutoff || existingRefreshToken.SecurityStamp != (user.SecurityStamp ?? string.Empty))
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
         await using var rotation = await _context.Database.BeginTransactionAsync();
         await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), "Rotated");
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(), existingRefreshToken.SessionId, existingRefreshToken.AbsoluteExpiresAt);
         await rotation.CommitAsync();
-        SetRefreshCookie(refreshToken);
+        SetSessionCookies(accessToken, refreshToken, expiresAt);
         var roles = await _userManager.GetRolesAsync(user);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToList();
         var menu = await _accessControlService.GetAuthorizedNavigationAsync(user);
@@ -176,7 +170,7 @@ public class AuthController : ControllerBase
 
         var enrollmentRequired = MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes);
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
-            accessToken, string.Empty, expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
+            expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
     }
 
     [Authorize]
@@ -189,12 +183,12 @@ public class AuthController : ControllerBase
         {
             await _jwtService.RevokeSessionAsync(userId, sessionId, HttpContext.Connection.RemoteIpAddress?.ToString(), "User logout");
         }
-        var rawRefreshToken = Request.Cookies[RefreshCookieName];
+        var rawRefreshToken = Request.Cookies[AuthCookiePolicy.RefreshCookieName];
         if (!string.IsNullOrWhiteSpace(rawRefreshToken) && !Guid.TryParse(sessionValue, out _))
         {
             await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), "User logout");
         }
-        Response.Cookies.Delete(RefreshCookieName);
+        ClearSessionCookies();
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -220,7 +214,7 @@ public class AuthController : ControllerBase
         if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<bool>(false, false, "A reason between 5 and 500 characters is required."));
         var revoked = await _jwtService.RevokeSessionAsync(userId, sessionId, HttpContext.Connection.RemoteIpAddress?.ToString(), reason);
         if (!revoked) return NotFound(new ApiResponse<bool>(false, false, "Active session not found."));
-        if (User.FindFirstValue("sid") == sessionId.ToString()) Response.Cookies.Delete(RefreshCookieName);
+        if (User.FindFirstValue("sid") == sessionId.ToString()) ClearSessionCookies();
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -233,7 +227,7 @@ public class AuthController : ControllerBase
         var reason = request.Reason.Trim();
         if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<int>(false, 0, "A reason between 5 and 500 characters is required."));
         var count = await _jwtService.RevokeAllSessionsAsync(userId, HttpContext.Connection.RemoteIpAddress?.ToString(), reason);
-        Response.Cookies.Delete(RefreshCookieName);
+        ClearSessionCookies();
         return Ok(new ApiResponse<int>(true, count));
     }
 
@@ -263,7 +257,7 @@ public class AuthController : ControllerBase
         AddAuthenticationAudit(user, "PasswordChange", null);
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Password changed");
         await transaction.CommitAsync();
-        Response.Cookies.Delete(RefreshCookieName);
+        ClearSessionCookies();
         return Ok(new ApiResponse<bool>(true, true, "Password changed. Sign in again."));
     }
 
@@ -319,7 +313,7 @@ public class AuthController : ControllerBase
         await _userManager.UpdateSecurityStampAsync(user);
         AddAuthenticationAudit(user, "MfaEnable", new { RecoveryCodeCount = recoveryCodes.Length });
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "MFA enabled");
-        Response.Cookies.Delete(RefreshCookieName);
+        ClearSessionCookies();
         return Ok(new ApiResponse<MfaEnableResponse>(true, new MfaEnableResponse(recoveryCodes), "MFA enabled. Save the recovery codes and sign in again."));
     }
 
@@ -343,7 +337,7 @@ public class AuthController : ControllerBase
         await _userManager.UpdateSecurityStampAsync(user);
         AddAuthenticationAudit(user, "MfaDisable", null);
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "MFA disabled");
-        Response.Cookies.Delete(RefreshCookieName);
+        ClearSessionCookies();
         return Ok(new ApiResponse<bool>(true, true, "MFA disabled. Sign in again."));
     }
 
@@ -363,17 +357,21 @@ public class AuthController : ControllerBase
         return Ok(new ApiResponse<UserProfileResponse>(true, profile));
     }
 
-    private void SetRefreshCookie(string refreshToken)
+    private void SetSessionCookies(string accessToken, string refreshToken, DateTime accessExpiresAt)
     {
-        Response.Cookies.Append(RefreshCookieName, refreshToken, new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = !HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment(),
-            SameSite = SameSiteMode.Strict,
-            Path = "/api/auth",
-            MaxAge = TimeSpan.FromDays(7),
-            IsEssential = true
-        });
+        var environment = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
+        Response.Cookies.Append(AuthCookiePolicy.AccessCookieName, accessToken, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath, accessExpiresAt - DateTime.UtcNow));
+        Response.Cookies.Append(AuthCookiePolicy.RefreshCookieName, refreshToken, AuthCookiePolicy.Create(
+            environment,
+            AuthCookiePolicy.RefreshPath,
+            TimeSpan.FromDays(Math.Clamp(_jwtSettings.RefreshTokenExpiryDays, 1, 90))));
+    }
+
+    private void ClearSessionCookies()
+    {
+        var environment = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
+        Response.Cookies.Delete(AuthCookiePolicy.AccessCookieName, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath));
+        Response.Cookies.Delete(AuthCookiePolicy.RefreshCookieName, AuthCookiePolicy.Create(environment, AuthCookiePolicy.RefreshPath));
     }
 
     private async Task<ApplicationUser?> GetCurrentUserAsync()

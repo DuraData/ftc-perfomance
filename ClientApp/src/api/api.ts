@@ -108,8 +108,10 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-let accessToken: string | null = sessionStorage.getItem('auth_token');
+const SESSION_MARKER_KEY = 'auth_session';
 const TENANT_STORAGE_KEY = 'municipality_context_id';
+let refreshPromise: Promise<ApiResponse<LoginResponse>> | null = null;
+sessionStorage.removeItem('auth_token');
 
 export function getCurrentMunicipalityId(): number | null {
   const value = sessionStorage.getItem(TENANT_STORAGE_KEY);
@@ -129,13 +131,14 @@ function addTenantHeader(headers: Record<string, string>) {
   return headers;
 }
 
-function setTokens(access: string) {
-  accessToken = access;
-  sessionStorage.setItem('auth_token', access);
+function markSessionEstablished() {
+  sessionStorage.removeItem('auth_token');
+  sessionStorage.setItem(SESSION_MARKER_KEY, '1');
 }
 
 function clearTokens() {
-  accessToken = null;
+  sessionStorage.removeItem(SESSION_MARKER_KEY);
+  // Remove legacy browser-readable tokens left by older deployments.
   sessionStorage.removeItem('auth_token');
 }
 
@@ -675,9 +678,6 @@ async function fetchApi<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
   addTenantHeader(headers);
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -686,15 +686,13 @@ async function fetchApi<T>(
     credentials: 'include',
   });
 
-  if (response.status === 401 && endpoint !== '/auth/refresh-token') {
+  if (response.status === 401 && endpoint !== '/auth/refresh-token' && endpoint !== '/auth/login') {
     try {
       const refreshResult = await refreshAccessToken();
       if (refreshResult.success) {
-        // Retry the original request with new token
         const retryHeaders: Record<string, string> = {
           ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
           ...(options.headers as Record<string, string>),
-          'Authorization': `Bearer ${accessToken}`,
         };
         addTenantHeader(retryHeaders);
         const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -704,6 +702,7 @@ async function fetchApi<T>(
         });
         return await readApiResponse<T>(retryResponse);
       }
+      clearTokens();
     } catch {
       clearTokens();
       window.location.href = '/login';
@@ -757,17 +756,20 @@ async function postForm<T>(endpoint: string, body: FormData): Promise<ApiRespons
 }
 
 async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
-  const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
-    method: 'POST',
-    headers: addTenantHeader({ 'Content-Type': 'application/json' }),
-    credentials: 'include',
-    body: JSON.stringify({ accessToken: accessToken ?? '' }),
-  });
-  const data = await readApiResponse<LoginResponse>(response);
-  if (data.success && data.data) {
-    setTokens(data.data.accessToken);
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+        method: 'POST',
+        headers: addTenantHeader({ 'Content-Type': 'application/json' }),
+        credentials: 'include',
+      });
+      const data = await readApiResponse<LoginResponse>(response);
+      if (data.success && data.data) markSessionEstablished();
+      else clearTokens();
+      return data;
+    })().finally(() => { refreshPromise = null; });
   }
-  return data;
+  return refreshPromise;
 }
 
 export async function login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
@@ -776,7 +778,7 @@ export async function login(credentials: LoginRequest): Promise<ApiResponse<Logi
     body: JSON.stringify(credentials),
   });
   if (result.success && result.data) {
-    setTokens(result.data.accessToken);
+    markSessionEstablished();
   }
   return result;
 }
@@ -789,15 +791,12 @@ export async function register(data: RegisterRequest): Promise<ApiResponse<boole
 }
 
 export async function logout() {
-  if (accessToken) {
-    await fetch(`${API_BASE_URL}/auth/logout`, {
-      method: 'POST',
-      headers: addTenantHeader({ Authorization: `Bearer ${accessToken}` }),
-      credentials: 'include',
-    });
+  try {
+    await fetchApi<boolean>('/auth/logout', { method: 'POST' });
+  } finally {
+    clearTokens();
+    setCurrentMunicipalityId(null);
   }
-  clearTokens();
-  setCurrentMunicipalityId(null);
 }
 
 export async function getAuthSessions(): Promise<ApiResponse<AuthSessionDto[]>> {
@@ -833,10 +832,10 @@ export async function changePassword(currentPassword: string, newPassword: strin
 }
 
 export function isAuthenticated() {
-  return !!accessToken;
+  return sessionStorage.getItem(SESSION_MARKER_KEY) === '1';
 }
 
-export { setTokens, clearTokens };
+export { clearTokens };
 
 export async function getMyMenu(): Promise<ApiResponse<MenuItem[]>> {
   return get<MenuItem[]>('/navigation/my-menu');
@@ -1054,7 +1053,6 @@ export async function downloadPerformanceReportCsv(kind: 1 | 2, reportingPeriodP
   const query = new URLSearchParams({ kind: String(kind) });
   if (reportingPeriodPublicId) query.set('reportingPeriodPublicId', reportingPeriodPublicId);
   const headers: Record<string, string> = {};
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   addTenantHeader(headers);
   const response = await fetch(`${API_BASE_URL}/v1/reports/performance.csv?${query}`, { headers, credentials: 'include' });
   if (!response.ok) return readApiResponse<boolean>(response);
