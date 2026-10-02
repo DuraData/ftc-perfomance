@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { closeEmployeeAssignment, getAuthSessions, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster } from './api';
+import { closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster, setupMfa } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -56,6 +56,19 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/auth/sessions'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/auth/sessions/revoke-all'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'User requested global sign out' }) }));
+  });
+
+  it('uses versioned MFA status, setup, and enable routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getMfaStatus();
+    await setupMfa();
+    await enableMfa('123456');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/auth/mfa/status'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/auth/mfa/setup'), expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/auth/mfa/enable'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ code: '123456' }) }));
   });
 
   it('posts both concurrency tokens to the governed POE replacement route', async () => {

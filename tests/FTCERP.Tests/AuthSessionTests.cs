@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -85,16 +86,55 @@ public sealed class AuthSessionTests
         Assert.Equal("Concurrent session limit", (await context.RefreshTokens.SingleAsync(item => item.UserAgent == "First")).RevokedReason);
     }
 
+    [Fact]
+    public async Task Privileged_effective_permission_requires_enrollment_without_hard_coded_role()
+    {
+        await using var context = NewContext();
+        var user = User("privileged-user"); context.Users.Add(user); await context.SaveChangesAsync();
+        var service = CreateService(context, user, permissions: ["SECURITY.MANAGE_ROLES"]);
+
+        var token = (await service.GenerateTokensAsync(user)).AccessToken;
+        var principal = await service.GetPrincipalFromExpiredTokenAsync(token);
+
+        Assert.Equal("true", principal!.FindFirstValue(MfaRequirementPolicy.EnrollmentRequiredClaim));
+        Assert.False(MfaRequirementPolicy.IsEnrollmentRequired(true, ["SECURITY.MANAGE_ROLES"], ["SECURITY.MANAGE_ROLES"]));
+        Assert.False(MfaRequirementPolicy.IsEnrollmentRequired(false, ["PERFORMANCE.VIEW"], ["SECURITY.MANAGE_ROLES"]));
+    }
+
+    [Fact]
+    public async Task Enrollment_middleware_blocks_direct_api_calls_but_allows_mfa_endpoints()
+    {
+        var downstreamCalled = false;
+        var middleware = new MfaEnrollmentMiddleware(_ => { downstreamCalled = true; return Task.CompletedTask; });
+        var blocked = new DefaultHttpContext();
+        blocked.Request.Path = "/api/v1/security/roles";
+        blocked.Response.Body = new MemoryStream();
+        blocked.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(MfaRequirementPolicy.EnrollmentRequiredClaim, "true")], "test"));
+
+        await middleware.InvokeAsync(blocked);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, blocked.Response.StatusCode);
+        Assert.False(downstreamCalled);
+        blocked.Response.Body.Position = 0;
+        Assert.Contains("MFA_ENROLLMENT_REQUIRED", await new StreamReader(blocked.Response.Body, Encoding.UTF8).ReadToEndAsync());
+
+        var allowed = new DefaultHttpContext();
+        allowed.Request.Path = "/api/v1/auth/mfa/status";
+        allowed.User = blocked.User;
+        await middleware.InvokeAsync(allowed);
+        Assert.True(downstreamCalled);
+    }
+
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ApplicationUser User(string id) => new() { Id = id, UserName = $"{id}@example.test", Email = $"{id}@example.test", FirstName = "Test", LastName = "User", IsActive = true, SecurityStamp = $"stamp-{id}" };
-    private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5)
+    private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5, string[]? permissions = null)
     {
         var store = new Mock<IUserStore<ApplicationUser>>();
         var users = new Mock<UserManager<ApplicationUser>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
         users.Setup(manager => manager.GetRolesAsync(user)).ReturnsAsync([]);
         var access = new Mock<IAccessControlService>();
-        access.Setup(service => service.GetEffectiveAccessAsync(user)).ReturnsAsync(new EffectiveAccessResult([], [], [], [], [], []));
-        var settings = Options.Create(new JwtSettings { Secret = "A-development-test-secret-at-least-32-characters-long", Issuer = "tests", Audience = "tests", ExpiryMinutes = 15, RefreshTokenExpiryDays = 7, SessionIdleTimeoutMinutes = 30, SessionAbsoluteTimeoutHours = 24, MaxConcurrentSessions = maximumSessions });
+        access.Setup(service => service.GetEffectiveAccessAsync(user)).ReturnsAsync(new EffectiveAccessResult([], permissions ?? [], [], [], [], []));
+        var settings = Options.Create(new JwtSettings { Secret = "A-development-test-secret-at-least-32-characters-long", Issuer = "tests", Audience = "tests", ExpiryMinutes = 15, RefreshTokenExpiryDays = 7, SessionIdleTimeoutMinutes = 30, SessionAbsoluteTimeoutHours = 24, MaxConcurrentSessions = maximumSessions, MfaRequiredPermissionCodes = ["SECURITY.MANAGE_ROLES"] });
         return new JwtService(settings, users.Object, context, access.Object);
     }
 }

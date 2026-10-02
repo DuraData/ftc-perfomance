@@ -58,6 +58,8 @@ public class JwtService : IJwtService
 
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         claims.AddRange(permissions.Select(perm => new Claim("Permission", perm)));
+        if (MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes))
+            claims.Add(new Claim(MfaRequirementPolicy.EnrollmentRequiredClaim, bool.TrueString.ToLowerInvariant()));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

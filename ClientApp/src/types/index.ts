@@ -1135,11 +1135,29 @@ export interface LoginResponse {
   roles: string[];
   permissions: string[];
   menu: MenuItem[];
+  mfaEnrollmentRequired: boolean;
 }
 
 export interface LoginRequest {
   email: string;
   password: string;
+  twoFactorCode?: string;
+  recoveryCode?: string;
+}
+
+export interface MfaStatusDto {
+  isEnabled: boolean;
+  enrollmentRequired: boolean;
+  recoveryCodesLeft: number;
+}
+
+export interface MfaSetupDto {
+  sharedKey: string;
+  authenticatorUri: string;
+}
+
+export interface MfaEnableDto {
+  recoveryCodes: string[];
 }
 
 export interface RefreshTokenRequest {

@@ -1,6 +1,10 @@
 namespace FTCERP.Host.API.Requests;
 
-public record LoginRequest(string Email, string Password);
+public record LoginRequest(string Email, string Password, string? TwoFactorCode = null, string? RecoveryCode = null);
+
+public record EnableMfaRequest(string Code);
+
+public record DisableMfaRequest(string Password, string? Code = null, string? RecoveryCode = null);
 
 public record RefreshTokenRequest(string AccessToken);
 

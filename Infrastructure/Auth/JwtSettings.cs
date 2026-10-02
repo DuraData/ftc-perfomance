@@ -9,6 +9,14 @@ public class JwtSettings
     public int SessionIdleTimeoutMinutes { get; set; } = 30;
     public int SessionAbsoluteTimeoutHours { get; set; } = 24;
     public int MaxConcurrentSessions { get; set; } = 5;
+    public string[] MfaRequiredPermissionCodes { get; set; } =
+    [
+        "SECURITY.SYSTEM_SCOPE",
+        "SECURITY.MANAGE_ROLES",
+        "SECURITY.ASSIGN_ROLES",
+        "SECURITY.MANAGE_PERMISSIONS",
+        "SECURITY.MANAGE_NAVIGATION"
+    ];
     public string Issuer { get; set; } = "FTCERP";
     public string Audience { get; set; } = "FTCERP";
 }

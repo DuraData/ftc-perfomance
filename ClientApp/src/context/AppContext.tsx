@@ -164,7 +164,7 @@ interface AppContextType {
   tenantContexts: TenantContextDto[];
   currentMunicipalityId: number | null;
   switchMunicipality: (municipalityId: number) => Promise<boolean>;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'failed'>;
   logout: () => void;
   sidebarCollapsed: boolean;
   expandedSidebarGroups: string[];
@@ -324,8 +324,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCurrentPathState(nextPath);
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    const result = await apiLogin({ email, password });
+  const login = async (email: string, password: string, twoFactorCode?: string, recoveryCode?: string): Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'failed'> => {
+    const result = await apiLogin({ email, password, twoFactorCode, recoveryCode });
     if (result.success && result.data) {
       const data = result.data as LoginResponse;
       setUserProfile(data.user);
@@ -338,11 +338,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       safeSetItem('roles', JSON.stringify(data.roles ?? []));
       safeRemoveItem('permissions');
       safeRemoveItem('menu_items');
+      if (data.mfaEnrollmentRequired) {
+        safeSetItem('settings_active_tab', 'security');
+        setCurrentPath('/settings');
+        return 'mfa_enrollment_required';
+      }
       await loadTenantContexts();
       setCurrentPath('/dashboard');
-      return true;
+      return 'success';
     }
-    return false;
+    return result.message === 'MFA_REQUIRED' ? 'mfa_required' : 'failed';
   };
 
   const logout = () => {

@@ -5,8 +5,8 @@ import { Button, Card, Badge } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { getAuthSessions, revokeAllAuthSessions, revokeAuthSession } from '../../api/api';
-import type { AuthSessionDto } from '../../types';
+import { disableMfa, enableMfa, getAuthSessions, getMfaStatus, revokeAllAuthSessions, revokeAuthSession, setupMfa } from '../../api/api';
+import type { AuthSessionDto, MfaSetupDto, MfaStatusDto } from '../../types';
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
@@ -137,13 +137,43 @@ function SecuritySettings() {
   const [sessions, setSessions] = useState<AuthSessionDto[]>([]);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mfaStatus, setMfaStatus] = useState<MfaStatusDto | null>(null);
+  const [mfaSetup, setMfaSetup] = useState<MfaSetupDto | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaPassword, setMfaPassword] = useState('');
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const loadSessions = async () => {
     setBusy(true); setSessionError(null);
     const result = await getAuthSessions();
     if (!result.success) setSessionError(result.message ?? 'Sessions could not be loaded.');
     setSessions(result.data ?? []); setBusy(false);
   };
-  useEffect(() => { void loadSessions(); }, []);
+  const loadMfaStatus = async () => {
+    const result = await getMfaStatus();
+    if (!result.success) setSessionError(result.message ?? 'MFA status could not be loaded.');
+    else setMfaStatus(result.data ?? null);
+  };
+  useEffect(() => { void loadSessions(); void loadMfaStatus(); }, []);
+  const beginMfaSetup = async () => {
+    setBusy(true); setSessionError(null);
+    const result = await setupMfa();
+    if (!result.success) setSessionError(result.message ?? 'MFA setup could not be started.');
+    else setMfaSetup(result.data ?? null);
+    setBusy(false);
+  };
+  const confirmMfa = async () => {
+    setBusy(true); setSessionError(null);
+    const result = await enableMfa(mfaCode);
+    if (!result.success) setSessionError(result.message ?? 'MFA could not be enabled.');
+    else { setRecoveryCodes(result.data?.recoveryCodes ?? []); setMfaStatus({ isEnabled: true, enrollmentRequired: false, recoveryCodesLeft: result.data?.recoveryCodes.length ?? 0 }); setMfaSetup(null); pushToast('success', 'MFA enabled'); }
+    setBusy(false);
+  };
+  const turnOffMfa = async () => {
+    setBusy(true); setSessionError(null);
+    const result = await disableMfa(mfaPassword, mfaCode);
+    if (!result.success) { setSessionError(result.message ?? 'MFA could not be disabled.'); setBusy(false); return; }
+    logout();
+  };
   const revoke = async (session: AuthSessionDto) => {
     setBusy(true); setSessionError(null);
     const result = await revokeAuthSession(session.sessionId, 'User revoked session from account settings');
@@ -179,9 +209,28 @@ function SecuritySettings() {
               <p className="text-[10px] text-secondary-500">Extra security</p>
             </div>
           </div>
-          <Badge variant="warning" size="sm">Disabled</Badge>
+          <Badge variant={mfaStatus?.isEnabled ? 'success' : 'warning'} size="sm">{mfaStatus?.isEnabled ? 'Enabled' : 'Disabled'}</Badge>
         </div>
-        <p className="text-xs text-secondary-500">MFA enrollment is not enabled in this deployment.</p>
+        {mfaStatus?.enrollmentRequired && <p role="alert" className="text-xs font-medium text-warning-700">Your privileged permissions require MFA. Other application functions remain blocked until enrollment is complete.</p>}
+        {!mfaStatus?.isEnabled && !mfaSetup && <Button variant="outline" size="sm" onClick={() => void beginMfaSetup()} disabled={busy}>Set up authenticator</Button>}
+        {mfaSetup && <div className="space-y-2 rounded border border-secondary-200 p-3 dark:border-secondary-700">
+          <p className="text-xs">Add this account to your authenticator app, then enter its six-digit code.</p>
+          <p className="break-all font-mono text-xs" aria-label="Authenticator shared key">{mfaSetup.sharedKey}</p>
+          <details><summary className="cursor-pointer text-xs text-primary-600">Manual authenticator URI</summary><p className="break-all font-mono text-[10px]">{mfaSetup.authenticatorUri}</p></details>
+          <Input label="Authenticator code" value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} placeholder="123456" />
+          <Button variant="primary" size="sm" onClick={() => void confirmMfa()} disabled={busy || !mfaCode.trim()}>Verify and enable</Button>
+        </div>}
+        {recoveryCodes.length > 0 && <div role="status" className="space-y-2 rounded border border-warning-300 bg-warning-50 p-3">
+          <p className="text-xs font-semibold">Save these one-time recovery codes now. They will not be shown again.</p>
+          <div className="grid grid-cols-2 gap-1 font-mono text-xs">{recoveryCodes.map(code => <span key={code}>{code}</span>)}</div>
+          <Button variant="primary" size="sm" onClick={logout}>I saved the codes — sign in again</Button>
+        </div>}
+        {mfaStatus?.isEnabled && recoveryCodes.length === 0 && <div className="space-y-2">
+          <p className="text-xs text-secondary-500">{mfaStatus.recoveryCodesLeft} recovery codes remain.</p>
+          <Input label="Current password" type="password" value={mfaPassword} onChange={(event) => setMfaPassword(event.target.value)} />
+          <Input label="Authenticator code" value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} />
+          <Button variant="outline" size="sm" onClick={() => void turnOffMfa()} disabled={busy || !mfaPassword || !mfaCode}>Disable MFA</Button>
+        </div>}
       </FormSection>
       <FormSection title="Sessions">
         <div className="mb-2 flex justify-end gap-2"><Button variant="ghost" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => void loadSessions()} disabled={busy}>Refresh</Button><Button variant="outline" size="sm" onClick={() => void revokeAll()} disabled={busy || !sessions.length}>Sign out all</Button></div>

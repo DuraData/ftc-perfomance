@@ -11,6 +11,9 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [authenticationCode, setAuthenticationCode] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,11 +21,21 @@ export function Login() {
     setLoading(true);
 
     try {
-      const success = await login(identifier, password);
-      if (success) {
+      const result = await login(
+        identifier,
+        password,
+        mfaRequired && !useRecoveryCode ? authenticationCode : undefined,
+        mfaRequired && useRecoveryCode ? authenticationCode : undefined,
+      );
+      if (result === 'success') {
         setCurrentPath('/dashboard');
+      } else if (result === 'mfa_enrollment_required') {
+        setCurrentPath('/settings');
+      } else if (result === 'mfa_required') {
+        setMfaRequired(true);
+        setAuthenticationCode('');
       } else {
-        setError('Invalid username, email, or password');
+        setError(mfaRequired ? 'Invalid authentication code' : 'Invalid username, email, or password');
       }
     } catch {
       setError('Something went wrong. Please try again later.');
@@ -63,6 +76,7 @@ export function Login() {
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder="Enter your username or email"
               required
+              disabled={mfaRequired}
             />
 
             <div className="relative">
@@ -73,6 +87,7 @@ export function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
+                disabled={mfaRequired}
                 rightIcon={
                   <button
                     type="button"
@@ -85,15 +100,19 @@ export function Login() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-secondary-600 dark:text-secondary-400">
-                <input type="checkbox" className="rounded border-secondary-300" />
-                Remember me
-              </label>
-              <button type="button" className="text-sm text-primary-600 hover:text-primary-700">
-                Forgot password?
+            {mfaRequired && <div className="space-y-2">
+              <Input
+                label={useRecoveryCode ? 'Recovery code' : 'Authenticator code'}
+                type="text"
+                value={authenticationCode}
+                onChange={(e) => setAuthenticationCode(e.target.value)}
+                placeholder={useRecoveryCode ? 'Enter a recovery code' : 'Enter the 6-digit code'}
+                required
+              />
+              <button type="button" className="text-sm text-primary-600 hover:text-primary-700" onClick={() => { setUseRecoveryCode(!useRecoveryCode); setAuthenticationCode(''); }}>
+                {useRecoveryCode ? 'Use authenticator code' : 'Use a recovery code'}
               </button>
-            </div>
+            </div>}
 
             <Button
               type="submit"
@@ -103,7 +122,7 @@ export function Login() {
               loading={loading}
               disabled={loading}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? 'Signing in...' : mfaRequired ? 'Verify and sign in' : 'Sign In'}
             </Button>
           </form>
 

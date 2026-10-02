@@ -67,6 +67,9 @@ import type {
   MunicipalEmployeeDto,
   EmployeeAssignmentMasterDto,
   AuthSessionDto,
+  MfaStatusDto,
+  MfaSetupDto,
+  MfaEnableDto,
   DepartmentMasterDto,
   UnitMasterDto,
   PositionMasterDto,
@@ -799,6 +802,22 @@ export async function revokeAuthSession(sessionId: string, reason: string): Prom
 
 export async function revokeAllAuthSessions(reason: string): Promise<ApiResponse<number>> {
   return post<number>('/v1/auth/sessions/revoke-all', { reason });
+}
+
+export async function getMfaStatus(): Promise<ApiResponse<MfaStatusDto>> {
+  return get<MfaStatusDto>('/v1/auth/mfa/status');
+}
+
+export async function setupMfa(): Promise<ApiResponse<MfaSetupDto>> {
+  return post<MfaSetupDto>('/v1/auth/mfa/setup');
+}
+
+export async function enableMfa(code: string): Promise<ApiResponse<MfaEnableDto>> {
+  return post<MfaEnableDto>('/v1/auth/mfa/enable', { code });
+}
+
+export async function disableMfa(password: string, code?: string, recoveryCode?: string): Promise<ApiResponse<boolean>> {
+  return post<boolean>('/v1/auth/mfa/disable', { password, code, recoveryCode });
 }
 
 export function isAuthenticated() {
