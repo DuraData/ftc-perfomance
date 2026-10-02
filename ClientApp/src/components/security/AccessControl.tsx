@@ -31,6 +31,7 @@ const routePermissionMap: Array<{ match: (path: string) => boolean; permissions:
   { match: (path) => path.startsWith('/opms/targets'), permissions: ['OPMS_KPI.READ', 'OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE'] },
   { match: (path) => path === '/opms/vote-numbers', permissions: ['VOTE_NUMBER.READ', 'VOTE_NUMBER.CREATE', 'VOTE_NUMBER.UPDATE'] },
   { match: (path) => path === '/opms/tids', permissions: ['TID.READ', 'NAV.SDBIP.TIDS'] },
+  { match: (path) => path === '/strategic-documents', permissions: ['STRATEGIC_DOCUMENT.READ', 'NAV.STRATEGIC_DOCUMENTS'] },
   { match: (path) => path.startsWith('/ipms/targets'), permissions: ['IPMS.View', 'Targets.View', 'Targets.Manage'] },
   { match: (path) => path === '/opms/submissions', permissions: ['OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.CREATE', 'OPMS_SUBMISSION.UPDATE'] },
   { match: (path) => path === '/ipms/submissions', permissions: ['IPMS.View', 'Workflow.Submit.View', 'Workflow.Verify.View', 'Workflow.Approve.View', 'Workflow.Review.View', 'Workflow.Audit.View'] },

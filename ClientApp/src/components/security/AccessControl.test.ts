@@ -36,6 +36,12 @@ describe('AccessControl helpers', () => {
     expect(canAccessPath('/opms/tids', ['NAV.SDBIP.TIDS'], false)).toBe(true);
   });
 
+  it('protects strategic documents with dynamic resource or navigation permission', () => {
+    expect(canAccessPath('/strategic-documents', [], false)).toBe(false);
+    expect(canAccessPath('/strategic-documents', ['STRATEGIC_DOCUMENT.READ'], false)).toBe(true);
+    expect(canAccessPath('/strategic-documents', ['NAV.STRATEGIC_DOCUMENTS'], false)).toBe(true);
+  });
+
   it('allows reporting routes through stable report permissions', () => {
     expect(canAccessPath('/reports', [], false)).toBe(false);
     expect(canAccessPath('/reports', ['OPMS_REPORT.READ'], false)).toBe(true);

@@ -92,6 +92,9 @@ import type {
   TidSourceDocument,
   TidVersion,
   SaveTidVersionPayload,
+  StrategicDocument,
+  StrategicDocumentType,
+  SaveStrategicDocumentVersionPayload,
 } from '../types';
 import {
   mockBudgetSources,
@@ -1689,6 +1692,88 @@ export async function rescanTidSourceDocument(tidPublicId: string, documentPubli
 }
 
 export async function downloadTidSourceDocument(document: TidSourceDocument): Promise<ApiResponse<boolean>> {
+  const headers: Record<string, string> = {};
+  addTenantHeader(headers);
+  const response = await fetch(document.contentUrl, { headers, credentials: 'include' });
+  if (!response.ok) return readApiResponse<boolean>(response);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = window.document.createElement('a');
+  anchor.href = url;
+  anchor.download = document.fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return { success: true, data: true };
+}
+
+export async function getStrategicDocumentTypes(includeInactive = false): Promise<ApiResponse<StrategicDocumentType[]>> {
+  return get<StrategicDocumentType[]>(`/v1/strategic-documents/types${includeInactive ? '?includeInactive=true' : ''}`);
+}
+
+export async function createStrategicDocumentType(payload: {
+  code: string; name: string; description?: string | null; allowsExternalLinks: boolean; isActive: boolean;
+  displayOrder: number; reason: string;
+}): Promise<ApiResponse<StrategicDocumentType>> {
+  return post<StrategicDocumentType>('/v1/strategic-documents/types', payload);
+}
+
+export async function updateStrategicDocumentType(publicId: string, payload: {
+  code: string; name: string; description?: string | null; allowsExternalLinks: boolean; isActive: boolean;
+  displayOrder: number; rowVersion: string; reason: string;
+}): Promise<ApiResponse<StrategicDocumentType>> {
+  return put<StrategicDocumentType>(`/v1/strategic-documents/types/${publicId}`, payload);
+}
+
+export async function getStrategicDocuments(options?: {
+  municipalityFinancialYearPublicId?: string; includeHistory?: boolean; search?: string;
+}): Promise<ApiResponse<StrategicDocument[]>> {
+  const query = new URLSearchParams();
+  if (options?.municipalityFinancialYearPublicId) query.set('municipalityFinancialYearPublicId', options.municipalityFinancialYearPublicId);
+  if (options?.includeHistory) query.set('includeHistory', 'true');
+  if (options?.search?.trim()) query.set('search', options.search.trim());
+  const suffix = query.size ? `?${query.toString()}` : '';
+  return get<StrategicDocument[]>(`/v1/strategic-documents${suffix}`);
+}
+
+export async function getStrategicDocumentHistory(familyId: string): Promise<ApiResponse<StrategicDocument[]>> {
+  return get<StrategicDocument[]>(`/v1/strategic-documents/families/${familyId}/versions`);
+}
+
+export async function createStrategicDocumentVersion(payload: SaveStrategicDocumentVersionPayload): Promise<ApiResponse<StrategicDocument>> {
+  const form = new FormData();
+  form.append('municipalityFinancialYearPublicId', payload.municipalityFinancialYearPublicId);
+  form.append('documentTypePublicId', payload.documentTypePublicId);
+  if (payload.previousVersionPublicId) form.append('previousVersionPublicId', payload.previousVersionPublicId);
+  if (payload.previousVersionRowVersion) form.append('previousVersionRowVersion', payload.previousVersionRowVersion);
+  if (payload.sdbipLayer) form.append('sdbipLayer', payload.sdbipLayer);
+  form.append('title', payload.title);
+  if (payload.description) form.append('description', payload.description);
+  form.append('documentDate', payload.documentDate);
+  form.append('displayOrder', String(payload.displayOrder));
+  if (payload.externalUrl) form.append('externalUrl', payload.externalUrl);
+  if (payload.file) form.append('file', payload.file);
+  form.append('reason', payload.reason);
+  return postForm<StrategicDocument>('/v1/strategic-documents/versions', form);
+}
+
+export async function approveStrategicDocument(publicId: string, payload: { rowVersion: string; approvalReference: string; reason: string }): Promise<ApiResponse<StrategicDocument>> {
+  return post<StrategicDocument>(`/v1/strategic-documents/${publicId}/approve`, payload);
+}
+
+export async function publishStrategicDocument(publicId: string, payload: { rowVersion: string; publicationDate: string; reason: string }): Promise<ApiResponse<StrategicDocument>> {
+  return post<StrategicDocument>(`/v1/strategic-documents/${publicId}/publish`, payload);
+}
+
+export async function retireStrategicDocument(publicId: string, payload: { rowVersion: string; reason: string }): Promise<ApiResponse<StrategicDocument>> {
+  return post<StrategicDocument>(`/v1/strategic-documents/${publicId}/retire`, payload);
+}
+
+export async function rescanStrategicDocument(publicId: string): Promise<ApiResponse<StrategicDocument>> {
+  return post<StrategicDocument>(`/v1/strategic-documents/${publicId}/rescan`);
+}
+
+export async function downloadStrategicDocument(document: StrategicDocument): Promise<ApiResponse<boolean>> {
+  if (!document.contentUrl || !document.fileName) return { success: false, message: 'Managed document content is unavailable.' };
   const headers: Record<string, string> = {};
   addTenantHeader(headers);
   const response = await fetch(document.contentUrl, { headers, credentials: 'include' });

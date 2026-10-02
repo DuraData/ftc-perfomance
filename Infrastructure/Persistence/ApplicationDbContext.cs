@@ -110,6 +110,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<SubmissionStageRating> SubmissionStageRatings { get; set; } = null!;
     public DbSet<TechnicalIndicatorDescription> TechnicalIndicatorDescriptions { get; set; } = null!;
     public DbSet<TidSourceDocument> TidSourceDocuments { get; set; } = null!;
+    public DbSet<StrategicDocumentType> StrategicDocumentTypes { get; set; } = null!;
+    public DbSet<StrategicDocument> StrategicDocuments { get; set; } = null!;
+    public DbSet<StrategicDocumentEvent> StrategicDocumentEvents { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -1497,6 +1500,54 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<TidSourceDocument>().HasOne(item => item.Blob).WithMany(item => item.TidSourceDocumentAssociations).HasForeignKey(item => item.EvidenceBlobId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<TidSourceDocument>().HasOne(item => item.UploadedByUser).WithMany().HasForeignKey(item => item.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<TidSourceDocument>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<StrategicDocumentType>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicDocumentType>().HasIndex(item => new { item.MunicipalityId, item.Code }).IsUnique();
+        builder.Entity<StrategicDocumentType>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<StrategicDocumentType>().Property(item => item.Name).HasMaxLength(160);
+        builder.Entity<StrategicDocumentType>().Property(item => item.Description).HasMaxLength(1000);
+        builder.Entity<StrategicDocumentType>().ToTable(table => table.HasCheckConstraint("CK_StrategicDocumentTypes_DisplayOrder", "[DisplayOrder] >= 0"));
+        ConfigureRowVersion(builder.Entity<StrategicDocumentType>().Property(item => item.RowVersion));
+        builder.Entity<StrategicDocumentType>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocumentType>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocumentType>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<StrategicDocument>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicDocument>().HasIndex(item => new { item.MunicipalityId, item.DocumentFamilyId, item.VersionNumber }).IsUnique();
+        builder.Entity<StrategicDocument>().HasIndex(item => item.DocumentFamilyId).IsUnique().HasFilter("[IsCurrent] = 1");
+        builder.Entity<StrategicDocument>().HasIndex(item => new { item.MunicipalityFinancialYearId, item.IsActive, item.IsApproved, item.IsPublished });
+        builder.Entity<StrategicDocument>().Property(item => item.SdbipLayer).HasMaxLength(120);
+        builder.Entity<StrategicDocument>().Property(item => item.Title).HasMaxLength(240);
+        builder.Entity<StrategicDocument>().Property(item => item.Description).HasMaxLength(4000);
+        builder.Entity<StrategicDocument>().Property(item => item.FileName).HasMaxLength(260);
+        builder.Entity<StrategicDocument>().Property(item => item.ExternalUrl).HasMaxLength(2048);
+        builder.Entity<StrategicDocument>().Property(item => item.ApprovalReference).HasMaxLength(240);
+        builder.Entity<StrategicDocument>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_StrategicDocuments_Version", "[VersionNumber] > 0");
+            table.HasCheckConstraint("CK_StrategicDocuments_DisplayOrder", "[DisplayOrder] >= 0");
+            table.HasCheckConstraint("CK_StrategicDocuments_Content", "([EvidenceBlobId] IS NOT NULL AND [ExternalUrl] IS NULL) OR ([EvidenceBlobId] IS NULL AND [ExternalUrl] IS NOT NULL)");
+            table.HasCheckConstraint("CK_StrategicDocuments_Publication", "[IsPublished] = 0 OR [IsApproved] = 1");
+        });
+        ConfigureRowVersion(builder.Entity<StrategicDocument>().Property(item => item.RowVersion));
+        builder.Entity<StrategicDocument>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.MunicipalityFinancialYear).WithMany().HasForeignKey(item => item.MunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.DocumentType).WithMany(item => item.Documents).HasForeignKey(item => item.StrategicDocumentTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.PreviousVersion).WithMany(item => item.SuccessorVersions).HasForeignKey(item => item.PreviousVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.Blob).WithMany(item => item.StrategicDocumentAssociations).HasForeignKey(item => item.EvidenceBlobId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.ApprovedByUser).WithMany().HasForeignKey(item => item.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasOne(item => item.PublishedByUser).WithMany().HasForeignKey(item => item.PublishedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocument>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<StrategicDocumentEvent>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicDocumentEvent>().HasIndex(item => new { item.StrategicDocumentId, item.OccurredAt });
+        builder.Entity<StrategicDocumentEvent>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<StrategicDocumentEvent>().Property(item => item.SnapshotJson).HasMaxLength(8000);
+        builder.Entity<StrategicDocumentEvent>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocumentEvent>().HasOne(item => item.StrategicDocument).WithMany(item => item.Events).HasForeignKey(item => item.StrategicDocumentId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocumentEvent>().HasOne(item => item.ActorUser).WithMany().HasForeignKey(item => item.ActorUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicDocumentEvent>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
     }
 
     private void ConfigureRowVersion(PropertyBuilder<byte[]> property)
@@ -1543,7 +1594,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
-            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument)
+            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1587,6 +1638,27 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             throw new InvalidOperationException("Governed record lifecycle history is append-only.");
         if (ChangeTracker.Entries<TidSourceDocument>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("TID source-document history is append-only.");
+        if (ChangeTracker.Entries<StrategicDocumentEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-document lifecycle history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<StrategicDocument>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Strategic-document version history is append-only.");
+            var allowed = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(StrategicDocument.IsCurrent), nameof(StrategicDocument.IsActive), nameof(StrategicDocument.IsApproved),
+                nameof(StrategicDocument.ApprovedAt), nameof(StrategicDocument.ApprovedByUserId), nameof(StrategicDocument.ApprovalReference),
+                nameof(StrategicDocument.IsPublished), nameof(StrategicDocument.PublicationDate), nameof(StrategicDocument.PublishedAt),
+                nameof(StrategicDocument.PublishedByUserId), nameof(StrategicDocument.RowVersion)
+            };
+            var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToArray();
+            if (changed.Any(property => !allowed.Contains(property))
+                || entry.OriginalValues.GetValue<bool>(nameof(StrategicDocument.IsCurrent)) == false && entry.CurrentValues.GetValue<bool>(nameof(StrategicDocument.IsCurrent))
+                || entry.OriginalValues.GetValue<bool>(nameof(StrategicDocument.IsActive)) == false && entry.CurrentValues.GetValue<bool>(nameof(StrategicDocument.IsActive))
+                || entry.OriginalValues.GetValue<bool>(nameof(StrategicDocument.IsApproved)) && !entry.CurrentValues.GetValue<bool>(nameof(StrategicDocument.IsApproved))
+                || entry.OriginalValues.GetValue<bool>(nameof(StrategicDocument.IsPublished)) && !entry.CurrentValues.GetValue<bool>(nameof(StrategicDocument.IsPublished)))
+                throw new InvalidOperationException("Strategic-document versions are append-preserved and lifecycle projections cannot be reversed.");
+        }
         foreach (var entry in ChangeTracker.Entries<TechnicalIndicatorDescription>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)

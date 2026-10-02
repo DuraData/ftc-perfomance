@@ -2828,3 +2828,77 @@ export interface SaveTidVersionPayload {
   previousVersionRowVersion?: string | null;
   reason: string;
 }
+
+export interface StrategicDocumentType {
+  publicId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  allowsExternalLinks: boolean;
+  isActive: boolean;
+  displayOrder: number;
+  rowVersion: string;
+}
+
+export interface StrategicDocumentEvent {
+  publicId: string;
+  action: string;
+  reason: string;
+  actorUserId: string;
+  occurredAt: string;
+}
+
+export interface StrategicDocument {
+  publicId: string;
+  documentFamilyId: string;
+  previousVersionPublicId?: string | null;
+  versionNumber: number;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  financialYearName: string;
+  documentTypePublicId: string;
+  documentTypeCode: string;
+  documentTypeName: string;
+  sdbipLayer?: string | null;
+  title: string;
+  description?: string | null;
+  documentDate: string;
+  displayOrder: number;
+  isCurrent: boolean;
+  isActive: boolean;
+  isApproved: boolean;
+  approvedAt?: string | null;
+  approvedByUserId?: string | null;
+  approvalReference?: string | null;
+  isPublished: boolean;
+  publicationDate?: string | null;
+  publishedAt?: string | null;
+  publishedByUserId?: string | null;
+  createdAt: string;
+  createdByUserId: string;
+  fileName?: string | null;
+  contentType?: string | null;
+  sizeInBytes?: number | null;
+  sha256?: string | null;
+  scanStatus?: string | null;
+  isQuarantined: boolean;
+  externalUrl?: string | null;
+  contentUrl?: string | null;
+  rowVersion: string;
+  events: StrategicDocumentEvent[];
+}
+
+export interface SaveStrategicDocumentVersionPayload {
+  municipalityFinancialYearPublicId: string;
+  documentTypePublicId: string;
+  previousVersionPublicId?: string | null;
+  previousVersionRowVersion?: string | null;
+  sdbipLayer?: string | null;
+  title: string;
+  description?: string | null;
+  documentDate: string;
+  displayOrder: number;
+  externalUrl?: string | null;
+  file?: File | null;
+  reason: string;
+}

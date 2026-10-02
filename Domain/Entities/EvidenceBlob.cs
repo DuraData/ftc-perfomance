@@ -25,4 +25,5 @@ public class EvidenceBlob
     public ICollection<PoeFile> PoeAssociations { get; set; } = new List<PoeFile>();
     public ICollection<IdpDocument> IdpDocumentAssociations { get; set; } = new List<IdpDocument>();
     public ICollection<TidSourceDocument> TidSourceDocumentAssociations { get; set; } = new List<TidSourceDocument>();
+    public ICollection<StrategicDocument> StrategicDocumentAssociations { get; set; } = new List<StrategicDocument>();
 }

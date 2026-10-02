@@ -1,0 +1,57 @@
+namespace FTCERP.Host.API.Responses;
+
+public sealed record StrategicDocumentTypeResponse(
+    Guid PublicId,
+    string Code,
+    string Name,
+    string? Description,
+    bool AllowsExternalLinks,
+    bool IsActive,
+    int DisplayOrder,
+    string RowVersion);
+
+public sealed record StrategicDocumentEventResponse(
+    Guid PublicId,
+    string Action,
+    string Reason,
+    string ActorUserId,
+    DateTime OccurredAt);
+
+public sealed record StrategicDocumentResponse(
+    Guid PublicId,
+    Guid DocumentFamilyId,
+    Guid? PreviousVersionPublicId,
+    int VersionNumber,
+    Guid MunicipalityFinancialYearPublicId,
+    string FinancialYearCode,
+    string FinancialYearName,
+    Guid DocumentTypePublicId,
+    string DocumentTypeCode,
+    string DocumentTypeName,
+    string? SdbipLayer,
+    string Title,
+    string? Description,
+    DateTime DocumentDate,
+    int DisplayOrder,
+    bool IsCurrent,
+    bool IsActive,
+    bool IsApproved,
+    DateTime? ApprovedAt,
+    string? ApprovedByUserId,
+    string? ApprovalReference,
+    bool IsPublished,
+    DateTime? PublicationDate,
+    DateTime? PublishedAt,
+    string? PublishedByUserId,
+    DateTime CreatedAt,
+    string CreatedByUserId,
+    string? FileName,
+    string? ContentType,
+    long? SizeInBytes,
+    string? Sha256,
+    string? ScanStatus,
+    bool IsQuarantined,
+    string? ExternalUrl,
+    string? ContentUrl,
+    string RowVersion,
+    StrategicDocumentEventResponse[] Events);

@@ -112,6 +112,7 @@ const buildFullMenu = (): MenuItem[] => [
     ],
   },
   { label: 'Reports', path: '/reports', icon: 'reports', isDivider: false },
+  { label: 'Strategic Documents', path: '/strategic-documents', icon: 'file-text', isDivider: false },
   { label: 'Divider', isDivider: true },
   {
     label: 'System Administration',
