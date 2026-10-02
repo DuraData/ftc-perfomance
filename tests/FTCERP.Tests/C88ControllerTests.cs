@@ -1,0 +1,221 @@
+namespace FTCERP.Tests;
+
+public class C88ControllerTests
+{
+    [Fact]
+    public async Task VersionedCatalogueAndMunicipalityConfiguration_AreGovernedAndControlled()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        module.Version.IsPublished.Should().BeTrue();
+        module.Indicator.CalculationOperator.Should().Be(C88ControlledCalculationOperator.Percentage);
+        module.Indicator.OfficialFormulaText.Should().Be("Numerator divided by denominator times 100");
+        module.Indicator.DataElements.Should().HaveCount(2);
+        module.Indicator.Applicability.Should().ContainSingle();
+        module.Configuration.MunicipalityFinancialYearId.Should().Be(seed.Year.Id);
+
+        var immutable = await controller.CreateCatalogueItem(new SaveC88CatalogueItemRequest(module.Version.PublicId,
+            C88CatalogueItemKind.Sector, "LATE", "Late item", null, null, 99, true, "Attempt late edit", null));
+        immutable.Result.Should().BeOfType<ConflictObjectResult>();
+        (await context.C88CatalogueItems.CountAsync()).Should().Be(7);
+    }
+
+    [Fact]
+    public async Task PlanningReportingAssignmentsAndIndependentWorkflow_PreserveHistory()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var workflowAudit = new Mock<IWorkflowGovernanceService>();
+        var controller = Controller(context, seed.User, seed.Municipality.Id, workflowAudit);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+
+        var planId = Payload(await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId,
+            module.Indicator.PublicId, "20", "55", "80", null, null, "Approve C88 plan", null)));
+        planId.Should().NotBeEmpty();
+
+        var workflowId = Payload(await controller.CreateWorkflow(new SaveC88WorkflowRequest(module.Configuration.PublicId,
+            DateTime.UtcNow.AddDays(-1), null,
+            [new(1, C88WorkflowStageKind.Capturer, "Capture", C88AssignmentRole.PrimaryCapturer, true),
+             new(2, C88WorkflowStageKind.ReviewerVerifier, "Verify", C88AssignmentRole.ReviewerVerifier, true),
+             new(3, C88WorkflowStageKind.FinalSubmission, "Final submit", C88AssignmentRole.FinalSubmitter, true)],
+            "Configure independent workflow", null, null)));
+        workflowId.Should().NotBeEmpty();
+
+        foreach (var role in new[] { C88AssignmentRole.PrimaryCapturer, C88AssignmentRole.ReviewerVerifier, C88AssignmentRole.FinalSubmitter })
+            Payload(await controller.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+                seed.Employee.PublicId, role, DateTime.UtcNow.AddDays(-2), null, true, $"Assign {role}", null))).Should().NotBeEmpty();
+
+        var calendarId = Payload(await controller.CreateCalendar(new SaveC88ReportingCalendarRequest(module.Configuration.PublicId,
+            module.ReportType.PublicId, null, "Q1", "Quarter 1", DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1), DateTime.UtcNow.AddDays(2), true, "Open calendar", null)));
+        var calendar = await context.C88ReportingCalendars.SingleAsync(item => item.PublicId == calendarId);
+        var reportId = Payload(await controller.CreateReportVersion(new CreateC88ReportVersionRequest(module.Configuration.PublicId,
+            calendar.PublicId, module.Indicator.PublicId, null, null, null, null,
+            [new(module.Numerator.PublicId, "45", null, null), new(module.Denominator.PublicId, "60", null, null)],
+            [new(module.Question.PublicId, "true", "Evidence checked")], "Capture official C88 values")));
+        var report = await context.C88IndicatorReports.SingleAsync(item => item.PublicId == reportId);
+        report.CalculatedValue.Should().Be("75");
+        report.State.Should().Be(C88ReportState.Draft);
+
+        var submitVersion = Convert.ToBase64String(report.RowVersion);
+        Payload(await controller.Submit(report.PublicId, new(submitVersion, "Submit for verification"))).Should().Be(report.PublicId);
+        var submitted = await context.C88IndicatorReports.SingleAsync(item => item.PublicId == report.PublicId);
+        Payload(await controller.Verify(report.PublicId, new(Convert.ToBase64String(submitted.RowVersion), "Verified against source"))).Should().Be(report.PublicId);
+        var verified = await context.C88IndicatorReports.SingleAsync(item => item.PublicId == report.PublicId);
+        Payload(await controller.FinalSubmit(report.PublicId, new(Convert.ToBase64String(verified.RowVersion), "Final Treasury submission"))).Should().Be(report.PublicId);
+
+        var completed = await context.C88IndicatorReports.Include(item => item.WorkflowActions).SingleAsync(item => item.PublicId == report.PublicId);
+        completed.State.Should().Be(C88ReportState.FinalSubmitted);
+        completed.WorkflowActions.Select(item => item.Action).Should().Equal(C88WorkflowActionKind.Created, C88WorkflowActionKind.Submitted, C88WorkflowActionKind.Verified, C88WorkflowActionKind.FinalSubmitted);
+        completed.CurrentStageSequence.Should().Be(3);
+        context.ChangeTracker.Clear();
+        var value = await context.C88DataElementValues.FirstAsync();
+        value.Value = "999";
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>().WithMessage("*append-only*");
+        workflowAudit.Verify(service => service.QueueAuditTrail("C88", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object>(), seed.User.Id, It.IsAny<string?>()), Times.AtLeast(10));
+    }
+
+    [Fact]
+    public async Task OpmsMappingIsAlignmentOnly_AndDisabledC88NeverBlocksCoreOpms()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var originalTarget = (seed.Target.AnnualTarget, seed.Target.TargetUnitType, seed.Target.KpiDescription);
+
+        Payload(await controller.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Target.PublicId, C88MappingType.Contributing, "Alignment only", true, null))).Should().NotBeEmpty();
+        var target = await context.OpmsTargets.SingleAsync(item => item.Id == seed.Target.Id);
+        (target.AnnualTarget, target.TargetUnitType, target.KpiDescription).Should().Be(originalTarget);
+
+        Payload(await controller.Configure(new ConfigureC88Request(seed.Year.PublicId, module.Version.PublicId, false,
+            seed.Year.EffectiveFrom, null, "Municipality disabled optional C88", Convert.ToBase64String(module.Configuration.RowVersion)))).Should().Be(module.Configuration.PublicId);
+        var denied = await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            "1", "2", "3", null, null, "Must remain disabled", null));
+        denied.Result.Should().BeOfType<BadRequestObjectResult>();
+        (await context.OpmsTargets.SingleAsync(item => item.Id == seed.Target.Id)).IsWithdrawn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TenantFiltersAndPrimaryCapturerConstraint_AreRelationallyEnforced()
+    {
+        var database = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(database).Options;
+        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true)))
+        {
+            var user = IdpTestFixture.CreateUser("c88-system");
+            var a = new Municipality { Id = 9401, Code = "A", Name = "A" };
+            var b = new Municipality { Id = 9402, Code = "B", Name = "B" };
+            system.AddRange(user, a, b,
+                new C88CatalogueVersion { MunicipalityId = a.Id, Code = "A-2026", Name = "A", EditionDate = DateTime.UtcNow, EffectiveFrom = DateTime.UtcNow, CreatedByUserId = user.Id },
+                new C88CatalogueVersion { MunicipalityId = b.Id, Code = "B-2026", Name = "B", EditionDate = DateTime.UtcNow, EffectiveFrom = DateTime.UtcNow, CreatedByUserId = user.Id });
+            await system.SaveChangesAsync();
+        }
+        await using var tenantA = new ApplicationDbContext(options, new FixedTenantContext(9401, false));
+        (await tenantA.C88CatalogueVersions.Select(item => item.Code).ToArrayAsync()).Should().Equal("A-2026");
+
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        Payload(await controller.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Employee.PublicId, C88AssignmentRole.PrimaryCapturer, DateTime.UtcNow.AddDays(-1), null, true, "Primary one", null))).Should().NotBeEmpty();
+        var duplicate = await controller.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Employee.PublicId, C88AssignmentRole.PrimaryCapturer, DateTime.UtcNow, null, true, "Primary two", null));
+        duplicate.Result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task DirectApiDenialAndAssignmentScope_AreEnforcedBeyondNavigation()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var manager = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, manager, seed);
+        var reader = Controller(context, seed.User, seed.Municipality.Id,
+            permissionRule: permission => permission is "C88_INDICATOR.READ" or "C88_REPORT.READ");
+
+        var beforeAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
+        beforeAssignment.Indicators.Should().BeEmpty();
+        var denied = await reader.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Target.PublicId, C88MappingType.Direct, "Must be denied", true, null));
+        denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        Payload(await manager.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Employee.PublicId, C88AssignmentRole.Contributor, DateTime.UtcNow.AddDays(-1), null, true, "Grant scoped contribution", null))).Should().NotBeEmpty();
+        var afterAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
+        afterAssignment.Indicators.Should().ContainSingle().Which.PublicId.Should().Be(module.Indicator.PublicId);
+    }
+
+    private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
+    {
+        var versionId = Payload(await controller.CreateCatalogueVersion(new("2026.1", "Treasury C88 2026", DateTime.UtcNow.Date,
+            seed.Year.EffectiveFrom, null, false, true, "Create edition", null)));
+        async Task<C88CatalogueItem> Item(C88CatalogueItemKind kind, string code, Guid? parent = null)
+        {
+            var id = Payload(await controller.CreateCatalogueItem(new(versionId, kind, code, code + " name", null, parent, 1, true, "Create catalogue item", null)));
+            return await context.C88CatalogueItems.SingleAsync(value => value.PublicId == id);
+        }
+        var sector = await Item(C88CatalogueItemKind.Sector, "GOV");
+        var outcome = await Item(C88CatalogueItemKind.Outcome, "GOV-1", sector.PublicId);
+        var type = await Item(C88CatalogueItemKind.IndicatorType, "OUTCOME");
+        var category = await Item(C88CatalogueItemKind.MunicipalCategory, "B");
+        var tier = await Item(C88CatalogueItemKind.ReadinessTier, "TIER-2");
+        var reportType = await Item(C88CatalogueItemKind.ReportType, "QUARTERLY");
+        var responseType = await Item(C88CatalogueItemKind.ResponseType, "BOOLEAN");
+        var indicatorId = Payload(await controller.CreateIndicator(new(versionId, "C88-001", "Households served", "Official definition", "Official technical indicator description",
+            sector.PublicId, outcome.PublicId, type.PublicId, C88ValueType.Percentage, C88ControlledCalculationOperator.Percentage,
+            "Numerator divided by denominator times 100", true, true, true, true,
+            [new("NUM", "Numerator", null, C88ValueType.Decimal, true, 1), new("DEN", "Denominator", null, C88ValueType.Decimal, true, 2)],
+            [new(category.PublicId, tier.PublicId, true, "Applicable")], "Create official indicator")));
+        var indicator = await context.C88Indicators.Include(item => item.DataElements).Include(item => item.Applicability).SingleAsync(item => item.PublicId == indicatorId);
+        var questionId = Payload(await controller.CreateComplianceQuestion(new(versionId, reportType.PublicId, responseType.PublicId,
+            "Q1", "Was the source verified?", true, 1, true, "Create compliance question")));
+        var version = await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == versionId);
+        Payload(await controller.UpdateCatalogueVersion(versionId, new(version.Code, version.Name, version.EditionDate, version.EffectiveFrom,
+            version.EffectiveTo, true, true, "Publish controlled edition", Convert.ToBase64String(version.RowVersion)))).Should().Be(versionId);
+        var configurationId = Payload(await controller.Configure(new(seed.Year.PublicId, versionId, true, seed.Year.EffectiveFrom, null, "Enable optional C88", null)));
+        return new(await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == versionId),
+            await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == configurationId), indicator,
+            indicator.DataElements.Single(item => item.Code == "NUM"), indicator.DataElements.Single(item => item.Code == "DEN"),
+            reportType, await context.C88ComplianceQuestions.SingleAsync(item => item.PublicId == questionId));
+    }
+
+    private static async Task<Seed> SeedAsync(ApplicationDbContext context)
+    {
+        var user = IdpTestFixture.CreateUser("c88-user");
+        var municipality = new Municipality { Id = 9301, Code = "C88", Name = "C88 Municipality" };
+        user.MunicipalityId = municipality.Id;
+        var financialYear = new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30) };
+        var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYear = financialYear, IsCurrent = true, IsActive = true, EffectiveFrom = financialYear.StartDate };
+        var employee = new MunicipalEmployee { MunicipalityId = municipality.Id, EmployeeNumber = "E-1", FirstName = "C88", LastName = "Owner", IdentityUserId = user.Id, IsActive = true, EffectiveFrom = financialYear.StartDate };
+        var target = new OpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "OPMS-1", KpiDescription = "Core KPI", TargetName = "Core KPI", PerformanceObjective = "Objective", NationalKpa = "KPA", MunicipalKpa = "KPA", AnnualTarget = 80, AnnualTargetDescription = "Eighty", TargetUnitType = "percentage" };
+        context.AddRange(user, municipality, financialYear, year, employee, target);
+        await context.SaveChangesAsync();
+        return new(user, municipality, year, employee, target);
+    }
+
+    private static C88Controller Controller(ApplicationDbContext context, ApplicationUser user, long municipalityId, Mock<IWorkflowGovernanceService>? audit = null, Func<string, bool>? permissionRule = null)
+    {
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
+            {
+                var allowed = permissionRule?.Invoke(permission) ?? true;
+                return new AccessDecisionResult(allowed, allowed ? "Allowed" : "Denied", [], [], []);
+            });
+        return new C88Controller(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            (audit ?? new Mock<IWorkflowGovernanceService>()).Object, new FixedTenantContext(municipalityId, false))
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+        };
+    }
+
+    private static T Payload<T>(ActionResult<ApiResponse<T>> action) => ((action.Result as OkObjectResult)!.Value as ApiResponse<T>)!.Data!;
+    private sealed record Seed(ApplicationUser User, Municipality Municipality, MunicipalityFinancialYear Year, MunicipalEmployee Employee, OpmsTarget Target);
+    private sealed record Module(C88CatalogueVersion Version, C88MunicipalityConfiguration Configuration, C88Indicator Indicator, C88DataElement Numerator, C88DataElement Denominator, C88CatalogueItem ReportType, C88ComplianceQuestion Question);
+    private sealed class FixedTenantContext(long? municipalityId, bool isSystem) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => isSystem; public string? UserId => "c88-test"; }
+}

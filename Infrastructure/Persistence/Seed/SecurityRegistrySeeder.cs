@@ -76,7 +76,11 @@ public static class SecurityRegistrySeeder
             Action("STRATEGIC_DOCUMENT.PUBLISH", "Publish Strategic Document", "STRATEGIC_DOCUMENT"),
             Action("STRATEGIC_DOCUMENT.RETIRE", "Retire Strategic Document", "STRATEGIC_DOCUMENT"),
             Action("STRATEGIC_DOCUMENT.RESCAN", "Rescan Strategic Document", "STRATEGIC_DOCUMENT"),
-            Action("C88_REPORT.SUBMIT", "Submit C88 Report", "C88_REPORT"), Action("C88_REPORT.VERIFY", "Verify C88 Report", "C88_REPORT"), Action("C88_REPORT.FINAL_SUBMIT", "Final Submit C88 Report", "C88_REPORT")
+            Action("C88_INDICATOR.CONFIGURE", "Configure Circular 88", "C88_INDICATOR"), Action("C88_INDICATOR.MANAGE_CATALOGUE", "Manage Circular 88 Catalogue", "C88_INDICATOR"),
+            Action("C88_INDICATOR.MANAGE_ASSIGNMENTS", "Manage Circular 88 Assignments", "C88_INDICATOR"), Action("C88_INDICATOR.MANAGE_WORKFLOW", "Manage Circular 88 Workflow", "C88_INDICATOR"),
+            Action("C88_INDICATOR.MANAGE_MAPPING", "Manage OPMS to Circular 88 Mappings", "C88_INDICATOR"),
+            Action("C88_REPORT.SUBMIT", "Submit C88 Report", "C88_REPORT"), Action("C88_REPORT.VERIFY", "Verify C88 Report", "C88_REPORT"),
+            Action("C88_REPORT.RETURN", "Return C88 Report", "C88_REPORT"), Action("C88_REPORT.FINAL_SUBMIT", "Final Submit C88 Report", "C88_REPORT")
         };
         var existingActionCodes = await context.SecurityActionDefinitions.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
         context.SecurityActionDefinitions.AddRange(actions.Where(item => !existingActionCodes.Contains(item.Code)));
@@ -171,6 +175,10 @@ public static class SecurityRegistrySeeder
             Nav("NAV.RISK.TREATMENTS", "Treatment Plans", "/risk/treatment-plans", "heart-pulse", 40, "NAV.RISK.TREATMENTS", rootIds["NAV.RISK"]),
             Nav("NAV.RISK.REPORTS", "Risk Reports", "/risk/reports", "reports", 50, "NAV.RISK.REPORTS", rootIds["NAV.RISK"]),
             Nav("NAV.C88.PLANNING", "C88 Planning", "/c88/planning", "layers", 10, "NAV.C88.PLANNING", rootIds["NAV.C88"]),
+            Nav("NAV.C88.REPORTING", "C88 Reporting", "/c88/reporting", "file-text", 20, "NAV.C88.REPORTING", rootIds["NAV.C88"]),
+            Nav("NAV.C88.COMPLIANCE", "C88 Compliance", "/c88/compliance", "check-circle", 30, "NAV.C88.COMPLIANCE", rootIds["NAV.C88"]),
+            Nav("NAV.C88.MAPPING", "C88 Mapping", "/c88/mapping", "link", 40, "NAV.C88.MAPPING", rootIds["NAV.C88"]),
+            Nav("NAV.C88.REPORTS", "C88 Reports", "/c88/reports", "reports", 50, "NAV.C88.REPORTS", rootIds["NAV.C88"]),
             Nav("NAV.ORGANISATION.EMPLOYEES", "Employees", "/hr/employees", "users", 10, "NAV.ORGANISATION.EMPLOYEES", rootIds["NAV.ORGANISATION"]),
             Nav("NAV.ORGANISATION.DEPARTMENTS", "Departments", "/hr/departments", "users", 20, "NAV.ORGANISATION.DEPARTMENTS", rootIds["NAV.ORGANISATION"]),
             Nav("NAV.ORGANISATION.UNITS", "Units", "/hr/units", "users", 30, "NAV.ORGANISATION.UNITS", rootIds["NAV.ORGANISATION"]),
@@ -240,7 +248,7 @@ public static class SecurityRegistrySeeder
             ["IPMS.Submissions.Approve"] = ["IPMS_SUBMISSION.APPROVE"], ["IPMS.Submissions.Reject"] = ["IPMS_SUBMISSION.REJECT"], ["IPMS.Submissions.Review"] = ["IPMS_WORKFLOW.PMS_REVIEW"],
             ["IPMS.Submissions.Audit"] = ["IPMS_WORKFLOW.INTERNAL_AUDIT", "IPMS_SUBMISSION.InternalAuditObservation.READ", "IPMS_SUBMISSION.InternalAuditObservation.UPDATE", "IPMS_POE.ASSESS", "IPMS_POE.PLACE_HOLD", "IPMS_POE.RELEASE_HOLD", "IPMS_POE.DISPOSE"],
             ["IPMS.Submissions.ExtendDueDate"] = ["IPMS_SUBMISSION.EXTEND_DUE_DATE"], ["IPMS.POE.Upload"] = ["IPMS_POE.UPLOAD", "IPMS_POE.REPLACE"],
-            ["Configuration.Manage"] = ["WORKFLOW.CONFIGURE", "TID.READ", "TID.CREATE", "TID.UPDATE", "TID.CONFIGURE", "TID.UPLOAD_SOURCE", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.UPDATE", "STRATEGIC_DOCUMENT.MANAGE_TYPES", "STRATEGIC_DOCUMENT.APPROVE", "STRATEGIC_DOCUMENT.PUBLISH", "STRATEGIC_DOCUMENT.RETIRE", "STRATEGIC_DOCUMENT.RESCAN", "NAV.STRATEGIC_DOCUMENTS", "WARD.READ", "WARD.CREATE", "WARD.UPDATE", "VOTE_NUMBER.READ", "VOTE_NUMBER.CREATE", "VOTE_NUMBER.UPDATE", "NAV.CONFIGURATION.PERIODS", "NAV.CONFIGURATION.WORKFLOW", "NAV.CONFIGURATION.LOOKUPS", "NAV.CONFIGURATION.WARDS", "NAV.SDBIP.VOTE_NUMBERS"],
+            ["Configuration.Manage"] = ["WORKFLOW.CONFIGURE", "TID.READ", "TID.CREATE", "TID.UPDATE", "TID.CONFIGURE", "TID.UPLOAD_SOURCE", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.UPDATE", "STRATEGIC_DOCUMENT.MANAGE_TYPES", "STRATEGIC_DOCUMENT.APPROVE", "STRATEGIC_DOCUMENT.PUBLISH", "STRATEGIC_DOCUMENT.RETIRE", "STRATEGIC_DOCUMENT.RESCAN", "NAV.STRATEGIC_DOCUMENTS", "C88_INDICATOR.READ", "C88_INDICATOR.CREATE", "C88_INDICATOR.UPDATE", "C88_INDICATOR.CONFIGURE", "C88_INDICATOR.MANAGE_CATALOGUE", "C88_INDICATOR.MANAGE_ASSIGNMENTS", "C88_INDICATOR.MANAGE_WORKFLOW", "C88_INDICATOR.MANAGE_MAPPING", "C88_REPORT.READ", "C88_REPORT.CREATE", "C88_REPORT.UPDATE", "C88_REPORT.SUBMIT", "C88_REPORT.VERIFY", "C88_REPORT.RETURN", "C88_REPORT.FINAL_SUBMIT", "NAV.C88.PLANNING", "NAV.C88.REPORTING", "NAV.C88.COMPLIANCE", "NAV.C88.MAPPING", "NAV.C88.REPORTS", "WARD.READ", "WARD.CREATE", "WARD.UPDATE", "VOTE_NUMBER.READ", "VOTE_NUMBER.CREATE", "VOTE_NUMBER.UPDATE", "NAV.CONFIGURATION.PERIODS", "NAV.CONFIGURATION.WORKFLOW", "NAV.CONFIGURATION.LOOKUPS", "NAV.CONFIGURATION.WARDS", "NAV.SDBIP.VOTE_NUMBERS"],
             ["UserDirectory.View"] = ["NAV.ORGANISATION.EMPLOYEES"],
             ["Admin.Users.Manage"] = ["NAV.ADMIN.USERS"], ["Admin.Roles.Manage"] = ["NAV.ADMIN.ROLES"], ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT"],
             ["Notifications.View"] = ["NAV.NOTIFICATIONS"],

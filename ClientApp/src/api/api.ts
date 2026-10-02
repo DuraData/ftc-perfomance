@@ -95,6 +95,7 @@ import type {
   StrategicDocument,
   StrategicDocumentType,
   SaveStrategicDocumentVersionPayload,
+  C88Workspace,
 } from '../types';
 import {
   mockBudgetSources,
@@ -1787,3 +1788,25 @@ export async function downloadStrategicDocument(document: StrategicDocument): Pr
   URL.revokeObjectURL(url);
   return { success: true, data: true };
 }
+
+export async function getC88Workspace(municipalityFinancialYearPublicId?: string): Promise<ApiResponse<C88Workspace>> {
+  const query = municipalityFinancialYearPublicId ? `?municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}` : '';
+  return get<C88Workspace>(`/v1/c88/workspace${query}`);
+}
+
+export const createC88CatalogueVersion = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/catalogue-versions', payload);
+export const updateC88CatalogueVersion = (publicId: string, payload: unknown): Promise<ApiResponse<string>> => put<string>(`/v1/c88/catalogue-versions/${publicId}`, payload);
+export const createC88CatalogueItem = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/catalogue-items', payload);
+export const createC88Indicator = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/indicators', payload);
+export const createC88ComplianceQuestion = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/compliance-questions', payload);
+export const configureC88 = (payload: unknown): Promise<ApiResponse<string>> => put<string>('/v1/c88/configurations', payload);
+export const saveC88IndicatorPlan = (payload: unknown): Promise<ApiResponse<string>> => put<string>('/v1/c88/plans', payload);
+export const createC88Calendar = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/calendars', payload);
+export const createC88Assignment = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/assignments', payload);
+export const createC88Workflow = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/workflows', payload);
+export const createC88Mapping = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/mappings', payload);
+export const createC88ReportVersion = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/reports', payload);
+export const submitC88Report = (publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<string>> => post<string>(`/v1/c88/reports/${publicId}/submit`, { rowVersion, reason });
+export const verifyC88Report = (publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<string>> => post<string>(`/v1/c88/reports/${publicId}/verify`, { rowVersion, reason });
+export const returnC88Report = (publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<string>> => post<string>(`/v1/c88/reports/${publicId}/return`, { rowVersion, reason });
+export const finalSubmitC88Report = (publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<string>> => post<string>(`/v1/c88/reports/${publicId}/final-submit`, { rowVersion, reason });

@@ -113,6 +113,23 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<StrategicDocumentType> StrategicDocumentTypes { get; set; } = null!;
     public DbSet<StrategicDocument> StrategicDocuments { get; set; } = null!;
     public DbSet<StrategicDocumentEvent> StrategicDocumentEvents { get; set; } = null!;
+    public DbSet<C88CatalogueVersion> C88CatalogueVersions { get; set; } = null!;
+    public DbSet<C88MunicipalityConfiguration> C88MunicipalityConfigurations { get; set; } = null!;
+    public DbSet<C88CatalogueItem> C88CatalogueItems { get; set; } = null!;
+    public DbSet<C88Indicator> C88Indicators { get; set; } = null!;
+    public DbSet<C88DataElement> C88DataElements { get; set; } = null!;
+    public DbSet<C88IndicatorApplicability> C88IndicatorApplicabilities { get; set; } = null!;
+    public DbSet<C88ComplianceQuestion> C88ComplianceQuestions { get; set; } = null!;
+    public DbSet<C88IndicatorPlan> C88IndicatorPlans { get; set; } = null!;
+    public DbSet<C88ReportingCalendar> C88ReportingCalendars { get; set; } = null!;
+    public DbSet<C88IndicatorReport> C88IndicatorReports { get; set; } = null!;
+    public DbSet<C88DataElementValue> C88DataElementValues { get; set; } = null!;
+    public DbSet<C88ComplianceResponse> C88ComplianceResponses { get; set; } = null!;
+    public DbSet<C88Assignment> C88Assignments { get; set; } = null!;
+    public DbSet<C88WorkflowDefinition> C88WorkflowDefinitions { get; set; } = null!;
+    public DbSet<C88WorkflowStage> C88WorkflowStages { get; set; } = null!;
+    public DbSet<C88WorkflowAction> C88WorkflowActions { get; set; } = null!;
+    public DbSet<C88OpmsMapping> C88OpmsMappings { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -1548,6 +1565,205 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<StrategicDocumentEvent>().HasOne(item => item.StrategicDocument).WithMany(item => item.Events).HasForeignKey(item => item.StrategicDocumentId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<StrategicDocumentEvent>().HasOne(item => item.ActorUser).WithMany().HasForeignKey(item => item.ActorUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<StrategicDocumentEvent>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        ConfigureC88Model(builder);
+    }
+
+    private void ConfigureC88Model(ModelBuilder builder)
+    {
+        builder.Entity<C88CatalogueVersion>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88CatalogueVersion>().HasIndex(item => new { item.MunicipalityId, item.Code }).IsUnique();
+        builder.Entity<C88CatalogueVersion>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<C88CatalogueVersion>().Property(item => item.Name).HasMaxLength(240);
+        builder.Entity<C88CatalogueVersion>().ToTable(table => table.HasCheckConstraint("CK_C88CatalogueVersions_EffectivePeriod", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]"));
+        ConfigureRowVersion(builder.Entity<C88CatalogueVersion>().Property(item => item.RowVersion));
+        builder.Entity<C88CatalogueVersion>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88CatalogueVersion>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88CatalogueVersion>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88MunicipalityConfiguration>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88MunicipalityConfiguration>().HasIndex(item => item.MunicipalityFinancialYearId).IsUnique();
+        builder.Entity<C88MunicipalityConfiguration>().ToTable(table => table.HasCheckConstraint("CK_C88MunicipalityConfigurations_EffectivePeriod", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]"));
+        ConfigureRowVersion(builder.Entity<C88MunicipalityConfiguration>().Property(item => item.RowVersion));
+        builder.Entity<C88MunicipalityConfiguration>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88MunicipalityConfiguration>().HasOne(item => item.MunicipalityFinancialYear).WithMany().HasForeignKey(item => item.MunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88MunicipalityConfiguration>().HasOne(item => item.CatalogueVersion).WithMany().HasForeignKey(item => item.C88CatalogueVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88MunicipalityConfiguration>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88MunicipalityConfiguration>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88CatalogueItem>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88CatalogueItem>().HasIndex(item => new { item.C88CatalogueVersionId, item.Kind, item.Code }).IsUnique();
+        builder.Entity<C88CatalogueItem>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<C88CatalogueItem>().Property(item => item.Name).HasMaxLength(240);
+        builder.Entity<C88CatalogueItem>().Property(item => item.Description).HasMaxLength(4000);
+        builder.Entity<C88CatalogueItem>().ToTable(table => table.HasCheckConstraint("CK_C88CatalogueItems_DisplayOrder", "[DisplayOrder] >= 0"));
+        ConfigureRowVersion(builder.Entity<C88CatalogueItem>().Property(item => item.RowVersion));
+        builder.Entity<C88CatalogueItem>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88CatalogueItem>().HasOne(item => item.CatalogueVersion).WithMany(item => item.Items).HasForeignKey(item => item.C88CatalogueVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88CatalogueItem>().HasOne(item => item.ParentItem).WithMany(item => item.ChildItems).HasForeignKey(item => item.ParentItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88CatalogueItem>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88Indicator>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88Indicator>().HasIndex(item => new { item.C88CatalogueVersionId, item.Code }).IsUnique();
+        builder.Entity<C88Indicator>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<C88Indicator>().Property(item => item.Name).HasMaxLength(300);
+        builder.Entity<C88Indicator>().Property(item => item.Definition).HasMaxLength(8000);
+        builder.Entity<C88Indicator>().Property(item => item.OfficialTechnicalIndicatorDescription).HasMaxLength(16000);
+        builder.Entity<C88Indicator>().Property(item => item.OfficialFormulaText).HasMaxLength(4000);
+        ConfigureRowVersion(builder.Entity<C88Indicator>().Property(item => item.RowVersion));
+        builder.Entity<C88Indicator>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Indicator>().HasOne(item => item.CatalogueVersion).WithMany(item => item.Indicators).HasForeignKey(item => item.C88CatalogueVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Indicator>().HasOne(item => item.SectorItem).WithMany().HasForeignKey(item => item.SectorItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Indicator>().HasOne(item => item.OutcomeItem).WithMany().HasForeignKey(item => item.OutcomeItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Indicator>().HasOne(item => item.IndicatorTypeItem).WithMany().HasForeignKey(item => item.IndicatorTypeItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Indicator>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88DataElement>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88DataElement>().HasIndex(item => new { item.C88IndicatorId, item.Code }).IsUnique();
+        builder.Entity<C88DataElement>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<C88DataElement>().Property(item => item.Name).HasMaxLength(240);
+        builder.Entity<C88DataElement>().Property(item => item.Description).HasMaxLength(4000);
+        builder.Entity<C88DataElement>().ToTable(table => table.HasCheckConstraint("CK_C88DataElements_Sequence", "[Sequence] > 0"));
+        ConfigureRowVersion(builder.Entity<C88DataElement>().Property(item => item.RowVersion));
+        builder.Entity<C88DataElement>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88DataElement>().HasOne(item => item.Indicator).WithMany(item => item.DataElements).HasForeignKey(item => item.C88IndicatorId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88DataElement>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88IndicatorApplicability>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88IndicatorApplicability>().HasIndex(item => new { item.C88IndicatorId, item.MunicipalCategoryItemId, item.ReadinessTierItemId }).IsUnique();
+        builder.Entity<C88IndicatorApplicability>().Property(item => item.Notes).HasMaxLength(2000);
+        builder.Entity<C88IndicatorApplicability>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorApplicability>().HasOne(item => item.Indicator).WithMany(item => item.Applicability).HasForeignKey(item => item.C88IndicatorId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorApplicability>().HasOne(item => item.MunicipalCategoryItem).WithMany().HasForeignKey(item => item.MunicipalCategoryItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorApplicability>().HasOne(item => item.ReadinessTierItem).WithMany().HasForeignKey(item => item.ReadinessTierItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorApplicability>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88ComplianceQuestion>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88ComplianceQuestion>().HasIndex(item => new { item.C88CatalogueVersionId, item.Code }).IsUnique();
+        builder.Entity<C88ComplianceQuestion>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<C88ComplianceQuestion>().Property(item => item.Prompt).HasMaxLength(4000);
+        builder.Entity<C88ComplianceQuestion>().ToTable(table => table.HasCheckConstraint("CK_C88ComplianceQuestions_Sequence", "[Sequence] > 0"));
+        ConfigureRowVersion(builder.Entity<C88ComplianceQuestion>().Property(item => item.RowVersion));
+        builder.Entity<C88ComplianceQuestion>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceQuestion>().HasOne(item => item.CatalogueVersion).WithMany(item => item.ComplianceQuestions).HasForeignKey(item => item.C88CatalogueVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceQuestion>().HasOne(item => item.ReportTypeItem).WithMany().HasForeignKey(item => item.ReportTypeItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceQuestion>().HasOne(item => item.ResponseTypeItem).WithMany().HasForeignKey(item => item.ResponseTypeItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceQuestion>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88IndicatorPlan>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88IndicatorPlan>().HasIndex(item => new { item.C88MunicipalityConfigurationId, item.C88IndicatorId }).IsUnique();
+        builder.Entity<C88IndicatorPlan>().Property(item => item.BaselineValue).HasMaxLength(1024);
+        builder.Entity<C88IndicatorPlan>().Property(item => item.MediumTermTarget).HasMaxLength(1024);
+        builder.Entity<C88IndicatorPlan>().Property(item => item.AnnualTarget).HasMaxLength(1024);
+        builder.Entity<C88IndicatorPlan>().Property(item => item.MissingDataExplanation).HasMaxLength(4000);
+        ConfigureRowVersion(builder.Entity<C88IndicatorPlan>().Property(item => item.RowVersion));
+        builder.Entity<C88IndicatorPlan>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorPlan>().HasOne(item => item.Configuration).WithMany().HasForeignKey(item => item.C88MunicipalityConfigurationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorPlan>().HasOne(item => item.Indicator).WithMany().HasForeignKey(item => item.C88IndicatorId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorPlan>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorPlan>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88ReportingCalendar>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88ReportingCalendar>().HasIndex(item => new { item.C88MunicipalityConfigurationId, item.Code }).IsUnique();
+        builder.Entity<C88ReportingCalendar>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<C88ReportingCalendar>().Property(item => item.Name).HasMaxLength(240);
+        builder.Entity<C88ReportingCalendar>().ToTable(table => table.HasCheckConstraint("CK_C88ReportingCalendars_Dates", "[ClosesAt] >= [OpensAt] AND [DueAt] >= [OpensAt]"));
+        ConfigureRowVersion(builder.Entity<C88ReportingCalendar>().Property(item => item.RowVersion));
+        builder.Entity<C88ReportingCalendar>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ReportingCalendar>().HasOne(item => item.Configuration).WithMany().HasForeignKey(item => item.C88MunicipalityConfigurationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ReportingCalendar>().HasOne(item => item.ReportTypeItem).WithMany().HasForeignKey(item => item.ReportTypeItemId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ReportingCalendar>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ReportingCalendar>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88IndicatorReport>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88IndicatorReport>().HasIndex(item => new { item.MunicipalityId, item.ReportFamilyId, item.VersionNumber }).IsUnique();
+        builder.Entity<C88IndicatorReport>().HasIndex(item => item.ReportFamilyId).IsUnique().HasFilter("[IsCurrent] = 1");
+        builder.Entity<C88IndicatorReport>().HasIndex(item => new { item.C88ReportingCalendarId, item.C88IndicatorId, item.IsCurrent }).IsUnique().HasFilter("[IsCurrent] = 1");
+        builder.Entity<C88IndicatorReport>().Property(item => item.CalculatedValue).HasMaxLength(1024);
+        builder.Entity<C88IndicatorReport>().Property(item => item.MissingDataExplanation).HasMaxLength(4000);
+        builder.Entity<C88IndicatorReport>().ToTable(table => table.HasCheckConstraint("CK_C88IndicatorReports_Version", "[VersionNumber] > 0"));
+        ConfigureRowVersion(builder.Entity<C88IndicatorReport>().Property(item => item.RowVersion));
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.Configuration).WithMany().HasForeignKey(item => item.C88MunicipalityConfigurationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.Calendar).WithMany().HasForeignKey(item => item.C88ReportingCalendarId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.Indicator).WithMany().HasForeignKey(item => item.C88IndicatorId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.WorkflowDefinition).WithMany().HasForeignKey(item => item.C88WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.PreviousVersion).WithMany(item => item.SuccessorVersions).HasForeignKey(item => item.PreviousVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasOne(item => item.FinalSubmittedByUser).WithMany().HasForeignKey(item => item.FinalSubmittedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88IndicatorReport>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88DataElementValue>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88DataElementValue>().HasIndex(item => new { item.C88IndicatorReportId, item.C88DataElementId }).IsUnique();
+        builder.Entity<C88DataElementValue>().Property(item => item.Value).HasMaxLength(1024);
+        builder.Entity<C88DataElementValue>().Property(item => item.MissingDataExplanation).HasMaxLength(4000);
+        builder.Entity<C88DataElementValue>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88DataElementValue>().HasOne(item => item.IndicatorReport).WithMany(item => item.DataElementValues).HasForeignKey(item => item.C88IndicatorReportId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88DataElementValue>().HasOne(item => item.DataElement).WithMany().HasForeignKey(item => item.C88DataElementId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88DataElementValue>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88ComplianceResponse>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88ComplianceResponse>().HasIndex(item => new { item.C88IndicatorReportId, item.C88ComplianceQuestionId }).IsUnique();
+        builder.Entity<C88ComplianceResponse>().Property(item => item.Response).HasMaxLength(4000);
+        builder.Entity<C88ComplianceResponse>().Property(item => item.Comment).HasMaxLength(4000);
+        builder.Entity<C88ComplianceResponse>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceResponse>().HasOne(item => item.IndicatorReport).WithMany(item => item.ComplianceResponses).HasForeignKey(item => item.C88IndicatorReportId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceResponse>().HasOne(item => item.ComplianceQuestion).WithMany().HasForeignKey(item => item.C88ComplianceQuestionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88ComplianceResponse>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88Assignment>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88Assignment>().HasIndex(item => new { item.C88MunicipalityConfigurationId, item.C88IndicatorId, item.MunicipalEmployeeId, item.Role, item.EffectiveFrom }).IsUnique();
+        builder.Entity<C88Assignment>().HasIndex(item => new { item.C88MunicipalityConfigurationId, item.C88IndicatorId }).IsUnique().HasFilter("[Role] = 1 AND [IsActive] = 1 AND [EffectiveTo] IS NULL");
+        builder.Entity<C88Assignment>().ToTable(table => table.HasCheckConstraint("CK_C88Assignments_EffectivePeriod", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]"));
+        ConfigureRowVersion(builder.Entity<C88Assignment>().Property(item => item.RowVersion));
+        builder.Entity<C88Assignment>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Assignment>().HasOne(item => item.Configuration).WithMany().HasForeignKey(item => item.C88MunicipalityConfigurationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Assignment>().HasOne(item => item.Indicator).WithMany().HasForeignKey(item => item.C88IndicatorId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Assignment>().HasOne(item => item.MunicipalEmployee).WithMany().HasForeignKey(item => item.MunicipalEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88Assignment>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88WorkflowDefinition>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88WorkflowDefinition>().HasIndex(item => new { item.C88MunicipalityConfigurationId, item.VersionNumber }).IsUnique();
+        builder.Entity<C88WorkflowDefinition>().HasIndex(item => item.C88MunicipalityConfigurationId).IsUnique().HasFilter("[IsCurrent] = 1");
+        builder.Entity<C88WorkflowDefinition>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_C88WorkflowDefinitions_Version", "[VersionNumber] > 0");
+            table.HasCheckConstraint("CK_C88WorkflowDefinitions_EffectivePeriod", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]");
+        });
+        ConfigureRowVersion(builder.Entity<C88WorkflowDefinition>().Property(item => item.RowVersion));
+        builder.Entity<C88WorkflowDefinition>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowDefinition>().HasOne(item => item.Configuration).WithMany().HasForeignKey(item => item.C88MunicipalityConfigurationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowDefinition>().HasOne(item => item.PreviousVersion).WithMany(item => item.SuccessorVersions).HasForeignKey(item => item.PreviousVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowDefinition>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88WorkflowStage>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88WorkflowStage>().HasIndex(item => new { item.C88WorkflowDefinitionId, item.Sequence }).IsUnique();
+        builder.Entity<C88WorkflowStage>().Property(item => item.Name).HasMaxLength(160);
+        builder.Entity<C88WorkflowStage>().ToTable(table => table.HasCheckConstraint("CK_C88WorkflowStages_Sequence", "[Sequence] > 0"));
+        builder.Entity<C88WorkflowStage>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowStage>().HasOne(item => item.WorkflowDefinition).WithMany(item => item.Stages).HasForeignKey(item => item.C88WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowStage>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88WorkflowAction>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88WorkflowAction>().HasIndex(item => new { item.C88IndicatorReportId, item.OccurredAt });
+        builder.Entity<C88WorkflowAction>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<C88WorkflowAction>().Property(item => item.SnapshotJson).HasMaxLength(8000);
+        builder.Entity<C88WorkflowAction>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowAction>().HasOne(item => item.IndicatorReport).WithMany(item => item.WorkflowActions).HasForeignKey(item => item.C88IndicatorReportId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowAction>().HasOne(item => item.ActorUser).WithMany().HasForeignKey(item => item.ActorUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88WorkflowAction>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<C88OpmsMapping>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<C88OpmsMapping>().HasIndex(item => new { item.C88MunicipalityConfigurationId, item.C88IndicatorId, item.OpmsTargetId }).IsUnique();
+        builder.Entity<C88OpmsMapping>().Property(item => item.Reason).HasMaxLength(1000);
+        ConfigureRowVersion(builder.Entity<C88OpmsMapping>().Property(item => item.RowVersion));
+        builder.Entity<C88OpmsMapping>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88OpmsMapping>().HasOne(item => item.Configuration).WithMany().HasForeignKey(item => item.C88MunicipalityConfigurationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88OpmsMapping>().HasOne(item => item.Indicator).WithMany().HasForeignKey(item => item.C88IndicatorId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88OpmsMapping>().HasOne(item => item.OpmsTarget).WithMany().HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88OpmsMapping>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<C88OpmsMapping>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
     }
 
     private void ConfigureRowVersion(PropertyBuilder<byte[]> property)
@@ -1594,7 +1810,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
-            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent)
+            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
+            typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1640,6 +1857,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             throw new InvalidOperationException("TID source-document history is append-only.");
         if (ChangeTracker.Entries<StrategicDocumentEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Strategic-document lifecycle history is append-only.");
+        if (ChangeTracker.Entries<C88WorkflowAction>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Circular 88 workflow history is append-only.");
+        if (ChangeTracker.Entries<C88DataElementValue>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<C88ComplianceResponse>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Circular 88 report evidence is append-only; create a successor report version.");
+        if (ChangeTracker.Entries<C88WorkflowStage>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Circular 88 workflow-stage versions are append-only.");
+        var c88GovernedTypes = new HashSet<Type>
+        {
+            typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator),
+            typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan),
+            typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88OpmsMapping)
+        };
+        if (ChangeTracker.Entries().Any(entry => entry.State == EntityState.Deleted && c88GovernedTypes.Contains(entry.Entity.GetType())))
+            throw new InvalidOperationException("Circular 88 governed records cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<StrategicDocument>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)
@@ -1658,6 +1890,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
                 || entry.OriginalValues.GetValue<bool>(nameof(StrategicDocument.IsApproved)) && !entry.CurrentValues.GetValue<bool>(nameof(StrategicDocument.IsApproved))
                 || entry.OriginalValues.GetValue<bool>(nameof(StrategicDocument.IsPublished)) && !entry.CurrentValues.GetValue<bool>(nameof(StrategicDocument.IsPublished)))
                 throw new InvalidOperationException("Strategic-document versions are append-preserved and lifecycle projections cannot be reversed.");
+        }
+        foreach (var entry in ChangeTracker.Entries<C88IndicatorReport>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var allowed = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(C88IndicatorReport.IsCurrent), nameof(C88IndicatorReport.State), nameof(C88IndicatorReport.CurrentStageSequence),
+                nameof(C88IndicatorReport.FinalSubmittedAt), nameof(C88IndicatorReport.FinalSubmittedByUserId), nameof(C88IndicatorReport.RowVersion)
+            };
+            if (entry.Properties.Where(property => property.IsModified).Any(property => !allowed.Contains(property.Metadata.Name))
+                || !entry.OriginalValues.GetValue<bool>(nameof(C88IndicatorReport.IsCurrent)) && entry.CurrentValues.GetValue<bool>(nameof(C88IndicatorReport.IsCurrent)))
+                throw new InvalidOperationException("Circular 88 report content is append-preserved; create a successor version for content changes.");
         }
         foreach (var entry in ChangeTracker.Entries<TechnicalIndicatorDescription>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {

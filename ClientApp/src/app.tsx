@@ -50,6 +50,7 @@ import {
 import { OPMSDashboardPage } from './components/opms/OPMSDashboard';
 import { TidWorkspace } from './components/tid/TidWorkspace';
 import { StrategicDocumentsWorkspace } from './components/documents/StrategicDocumentsWorkspace';
+import { C88Workspace } from './components/c88/C88Workspace';
 import { IPMSDashboardPage } from './components/ipms/IPMSDashboard';
 import {
   RiskDashboardPage,
@@ -138,6 +139,12 @@ function AppContent() {
         return <TidWorkspace />;
       case '/strategic-documents':
         return <StrategicDocumentsWorkspace />;
+      case '/c88/planning':
+      case '/c88/reporting':
+      case '/c88/compliance':
+      case '/c88/mapping':
+      case '/c88/reports':
+        return <C88Workspace />;
       case '/ipms/dashboard':
         return <IPMSDashboardPage />;
       case '/ipms/library':

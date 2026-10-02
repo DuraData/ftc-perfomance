@@ -42,6 +42,15 @@ describe('AccessControl helpers', () => {
     expect(canAccessPath('/strategic-documents', ['NAV.STRATEGIC_DOCUMENTS'], false)).toBe(true);
   });
 
+  it('protects each Circular 88 workspace with its resource or navigation permission', () => {
+    expect(canAccessPath('/c88/planning', [], false)).toBe(false);
+    expect(canAccessPath('/c88/planning', ['C88_INDICATOR.READ'], false)).toBe(true);
+    expect(canAccessPath('/c88/reporting', ['NAV.C88.REPORTING'], false)).toBe(true);
+    expect(canAccessPath('/c88/compliance', ['C88_REPORT.READ'], false)).toBe(true);
+    expect(canAccessPath('/c88/mapping', ['NAV.C88.MAPPING'], false)).toBe(true);
+    expect(canAccessPath('/c88/reports', ['NAV.C88.REPORTS'], false)).toBe(true);
+  });
+
   it('allows reporting routes through stable report permissions', () => {
     expect(canAccessPath('/reports', [], false)).toBe(false);
     expect(canAccessPath('/reports', ['OPMS_REPORT.READ'], false)).toBe(true);
