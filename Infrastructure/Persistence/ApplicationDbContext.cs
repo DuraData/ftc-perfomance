@@ -859,10 +859,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<IdpPlan>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<IdpPlan>().HasIndex(item => new { item.MunicipalityId, item.PlanFamilyId });
         builder.Entity<IdpPlan>().HasIndex(item => new { item.MunicipalityId, item.PlanCode }).IsUnique().HasFilter("[MunicipalityId] IS NOT NULL");
+        builder.Entity<IdpPlan>().Property(item => item.PublicationReference).HasMaxLength(240);
+        builder.Entity<IdpPlan>().ToTable(table => table.HasCheckConstraint("CK_IdpPlans_EffectiveDates", "[EffectiveTo] IS NULL OR [EffectiveTo] > [EffectiveFrom]"));
         ConfigureRowVersion(builder.Entity<IdpPlan>().Property(item => item.RowVersion));
         builder.Entity<IdpPlan>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpPlan>().HasOne(item => item.PredecessorPlan).WithMany(item => item.SuccessorPlans).HasForeignKey(item => item.PredecessorPlanId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IdpPlan>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<IdpPlanVersion>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<IdpPlanVersion>().Property(item => item.PublicationReference).HasMaxLength(240);
+        builder.Entity<IdpPlanVersion>().ToTable(table => table.HasCheckConstraint("CK_IdpPlanVersions_EffectiveDates", "[EffectiveTo] IS NULL OR [EffectiveTo] > [EffectiveFrom]"));
+        ConfigureRowVersion(builder.Entity<IdpPlanVersion>().Property(item => item.RowVersion));
+        builder.Entity<IdpPlanVersion>().HasOne(item => item.PredecessorVersion).WithMany(item => item.SuccessorVersions).HasForeignKey(item => item.PredecessorVersionId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IdpPlanVersion>().HasQueryFilter(item => TenantFilterBypass || item.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpChangeLog>().HasQueryFilter(item => TenantFilterBypass || item.IdpPlanVersion.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpStrategicOutcome>().HasQueryFilter(item => TenantFilterBypass || item.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);

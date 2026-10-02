@@ -462,11 +462,19 @@ public record IdpPlanSummaryResponse(
     int CurrentVersionNumber,
     DateTime CreatedAt,
     DateTime? ApprovedAt,
-    string RowVersion);
+    string RowVersion,
+    Guid PlanFamilyId,
+    Guid? PredecessorPlanPublicId,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    DateTime? PublishedAt,
+    string? PublicationReference);
 
 public record IdpPlanVersionResponse(
     int Id,
+    Guid PublicId,
     int IdpPlanId,
+    Guid? PredecessorVersionPublicId,
     int VersionNumber,
     string VersionType,
     string VersionLabel,
@@ -474,7 +482,12 @@ public record IdpPlanVersionResponse(
     string? SummaryOfChanges,
     bool IsActive,
     DateTime CreatedAt,
-    string CreatedByUserId);
+    string CreatedByUserId,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    DateTime? PublishedAt,
+    string? PublicationReference,
+    string RowVersion);
 
 public record IdpStrategicOutcomeResponse(int Id, int IdpPlanId, string Code, string Name, string Description, int SortOrder);
 

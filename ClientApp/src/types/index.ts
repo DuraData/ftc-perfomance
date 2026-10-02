@@ -2351,6 +2351,7 @@ export interface DueDateExtensionPayload {
 
 export interface IdpPlanSummary {
   id: number;
+  publicId: string;
   municipalityName: string;
   planTitle: string;
   planCode: string;
@@ -2360,11 +2361,20 @@ export interface IdpPlanSummary {
   currentVersionNumber: number;
   createdAt: string;
   approvedAt?: string | null;
+  rowVersion: string;
+  planFamilyId: string;
+  predecessorPlanPublicId?: string | null;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  publishedAt?: string | null;
+  publicationReference?: string | null;
 }
 
 export interface IdpPlanVersion {
   id: number;
+  publicId: string;
   idpPlanId: number;
+  predecessorVersionPublicId?: string | null;
   versionNumber: number;
   versionType: string;
   versionLabel: string;
@@ -2373,6 +2383,11 @@ export interface IdpPlanVersion {
   isActive: boolean;
   createdAt: string;
   createdByUserId: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  publishedAt?: string | null;
+  publicationReference?: string | null;
+  rowVersion: string;
 }
 
 export interface IdpStrategicOutcome {
@@ -2564,6 +2579,10 @@ export interface CreateIdpPlanPayload {
   planCode: string;
   startFinancialYear: number;
   endFinancialYear: number;
+  predecessorPlanPublicId?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  publicationReference?: string | null;
 }
 
 export interface CreateIdpPlanVersionPayload {
@@ -2571,6 +2590,8 @@ export interface CreateIdpPlanVersionPayload {
   versionLabel: string;
   reviewYear?: string | null;
   summaryOfChanges?: string | null;
+  effectiveFrom?: string | null;
+  publicationReference?: string | null;
 }
 
 export interface CreateIdpCommentPayload {

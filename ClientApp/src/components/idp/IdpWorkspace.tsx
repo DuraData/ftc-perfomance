@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, FileText, Layers, Map, Plus, RefreshCcw, Users } from 'lucide-react';
+import { BarChart3, FileText, Layers, Map, RefreshCcw, Users } from 'lucide-react';
 import {
   createIdpComment,
   createIdpPlan,
@@ -35,7 +35,7 @@ function metricCard(title: string, value: string | number, caption?: string) {
 }
 
 export function IdpPlanningDashboardPage() {
-  const { pushToast } = useApp();
+  const { setCurrentPath } = useApp();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
@@ -78,26 +78,9 @@ export function IdpPlanningDashboardPage() {
           {canManagePlan ? (
             <Button
               variant="primary"
-              icon={<Plus className="h-4 w-4" />}
-              onClick={async () => {
-                const year = new Date().getFullYear();
-                const result = await createIdpPlan({
-                  municipalityName: 'Blue Hills Municipality',
-                  planTitle: `Integrated Development Plan ${year}-${year + 5}`,
-                  planCode: `IDP-${year}`,
-                  startFinancialYear: year,
-                  endFinancialYear: year + 5,
-                });
-
-                if (result.success) {
-                  pushToast('success', 'IDP plan created successfully.');
-                  await load();
-                } else {
-                  pushToast('error', result.message ?? 'Failed to create IDP plan.');
-                }
-              }}
+              onClick={() => setCurrentPath('/idp/plans')}
             >
-              New IDP Plan
+              Manage Plans and Versions
             </Button>
           ) : null}
           <select
@@ -112,29 +95,6 @@ export function IdpPlanningDashboardPage() {
               <option key={plan.id} value={plan.id}>{plan.planCode} - {plan.planTitle}</option>
             ))}
           </select>
-          {canManagePlan ? (
-            <Button
-              variant="outline"
-              onClick={async () => {
-                if (!selectedPlanId) return;
-                const year = new Date().getFullYear();
-                const result = await createIdpPlanVersion(selectedPlanId, {
-                  versionType: 'AnnualReview',
-                  versionLabel: `Annual Review ${year}`,
-                  reviewYear: `${year}/${year + 1}`,
-                  summaryOfChanges: 'Annual review generated from planning dashboard',
-                });
-
-                if (result.success) {
-                  pushToast('success', 'Annual review version created.');
-                } else {
-                  pushToast('error', result.message ?? 'Unable to create annual review version.');
-                }
-              }}
-            >
-              Annual Review
-            </Button>
-          ) : null}
         </div>
 
         {busy ? <Card><p className="text-sm text-secondary-500">Loading IDP dashboard...</p></Card> : null}
@@ -208,9 +168,31 @@ export function IdpPlanningDashboardPage() {
 export function IdpPlanManagementPage() {
   const { pushToast } = useApp();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
+  const currentYear = new Date().getFullYear();
+  const today = new Date().toISOString().slice(0, 10);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [versions, setVersions] = useState<IdpPlanVersion[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [planDraft, setPlanDraft] = useState({
+    planTitle: '',
+    planCode: '',
+    startFinancialYear: currentYear,
+    endFinancialYear: currentYear + 5,
+    predecessorPlanPublicId: '',
+    effectiveFrom: today,
+    effectiveTo: '',
+    publicationReference: '',
+  });
+  const [versionDraft, setVersionDraft] = useState({
+    versionType: 'AnnualReview',
+    versionLabel: '',
+    reviewYear: `${currentYear}/${currentYear + 1}`,
+    summaryOfChanges: '',
+    effectiveFrom: today,
+    publicationReference: '',
+  });
+
+  const fieldClass = 'w-full rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100';
 
   const load = async () => {
     const plansResult = await getIdpPlans();
@@ -233,37 +215,88 @@ export function IdpPlanManagementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const selectPlan = async (planId: number) => {
+    setSelectedPlanId(planId);
+    const hierarchyResult = await getIdpPlanHierarchy(planId);
+    setVersions(hierarchyResult.data?.versions ?? []);
+  };
+
+  const submitPlan = async () => {
+    if (!planDraft.planTitle.trim() || !planDraft.planCode.trim() || !planDraft.effectiveFrom) {
+      pushToast('error', 'Plan title, code, and effective date are required.');
+      return;
+    }
+
+    const result = await createIdpPlan({
+      municipalityName: '',
+      planTitle: planDraft.planTitle.trim(),
+      planCode: planDraft.planCode.trim(),
+      startFinancialYear: planDraft.startFinancialYear,
+      endFinancialYear: planDraft.endFinancialYear,
+      predecessorPlanPublicId: planDraft.predecessorPlanPublicId || null,
+      effectiveFrom: `${planDraft.effectiveFrom}T00:00:00.000Z`,
+      effectiveTo: planDraft.effectiveTo ? `${planDraft.effectiveTo}T00:00:00.000Z` : null,
+      publicationReference: planDraft.publicationReference.trim() || null,
+    });
+
+    if (result.success) {
+      pushToast('success', 'IDP plan created with governed lineage.');
+      setPlanDraft(draft => ({ ...draft, planTitle: '', planCode: '', predecessorPlanPublicId: '', publicationReference: '' }));
+      await load();
+    } else {
+      pushToast('error', result.message ?? 'Failed to create plan.');
+    }
+  };
+
+  const submitVersion = async () => {
+    if (!selectedPlanId || !versionDraft.versionLabel.trim() || !versionDraft.effectiveFrom) {
+      pushToast('error', 'Select a plan and provide a version label and effective date.');
+      return;
+    }
+
+    const result = await createIdpPlanVersion(selectedPlanId, {
+      versionType: versionDraft.versionType,
+      versionLabel: versionDraft.versionLabel.trim(),
+      reviewYear: versionDraft.reviewYear.trim() || null,
+      summaryOfChanges: versionDraft.summaryOfChanges.trim() || null,
+      effectiveFrom: `${versionDraft.effectiveFrom}T00:00:00.000Z`,
+      publicationReference: versionDraft.publicationReference.trim() || null,
+    });
+
+    if (result.success) {
+      pushToast('success', 'IDP version created and linked to its predecessor.');
+      setVersionDraft(draft => ({ ...draft, versionLabel: '', summaryOfChanges: '', publicationReference: '' }));
+      await selectPlan(selectedPlanId);
+    } else {
+      pushToast('error', result.message ?? 'Failed to create version.');
+    }
+  };
+
   return (
     <AppShell title="IDP Plans" subtitle="Five-year plan lifecycle, annual reviews, and version governance">
       <div className="space-y-4">
         <Card>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Create governed plan</h3>
+              <p className="text-xs text-secondary-500">Capture the approved identity, effective period, publication reference, and optional predecessor.</p>
+            </div>
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
             {!canManagePlan ? <Badge variant="warning">Read Only</Badge> : null}
-            {canManagePlan ? (
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  const year = new Date().getFullYear();
-                  const result = await createIdpPlan({
-                    municipalityName: 'Blue Hills Municipality',
-                    planTitle: `Integrated Development Plan ${year}-${year + 5}`,
-                    planCode: `IDP-${year}`,
-                    startFinancialYear: year,
-                    endFinancialYear: year + 5,
-                  });
-                  if (result.success) {
-                    pushToast('success', 'IDP plan created.');
-                    await load();
-                  } else {
-                    pushToast('error', result.message ?? 'Failed to create plan.');
-                  }
-                }}
-              >
-                Create Plan
-              </Button>
-            ) : null}
           </div>
+          {canManagePlan ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="text-xs text-secondary-600">Plan title<input aria-label="Plan title" className={fieldClass} value={planDraft.planTitle} onChange={event => setPlanDraft({ ...planDraft, planTitle: event.target.value })} /></label>
+              <label className="text-xs text-secondary-600">Plan code<input aria-label="Plan code" className={fieldClass} value={planDraft.planCode} onChange={event => setPlanDraft({ ...planDraft, planCode: event.target.value })} /></label>
+              <label className="text-xs text-secondary-600">Start financial year<input aria-label="Start financial year" type="number" className={fieldClass} value={planDraft.startFinancialYear} onChange={event => setPlanDraft({ ...planDraft, startFinancialYear: Number(event.target.value) })} /></label>
+              <label className="text-xs text-secondary-600">End financial year<input aria-label="End financial year" type="number" className={fieldClass} value={planDraft.endFinancialYear} onChange={event => setPlanDraft({ ...planDraft, endFinancialYear: Number(event.target.value) })} /></label>
+              <label className="text-xs text-secondary-600">Predecessor plan<select aria-label="Predecessor plan" className={fieldClass} value={planDraft.predecessorPlanPublicId} onChange={event => setPlanDraft({ ...planDraft, predecessorPlanPublicId: event.target.value })}><option value="">New plan family</option>{plans.map(plan => <option key={plan.publicId} value={plan.publicId}>{plan.planCode} - {plan.planTitle}</option>)}</select></label>
+              <label className="text-xs text-secondary-600">Effective from<input aria-label="Plan effective from" type="date" className={fieldClass} value={planDraft.effectiveFrom} onChange={event => setPlanDraft({ ...planDraft, effectiveFrom: event.target.value })} /></label>
+              <label className="text-xs text-secondary-600">Effective to<input aria-label="Plan effective to" type="date" className={fieldClass} value={planDraft.effectiveTo} onChange={event => setPlanDraft({ ...planDraft, effectiveTo: event.target.value })} /></label>
+              <label className="text-xs text-secondary-600">Publication reference<input aria-label="Plan publication reference" className={fieldClass} value={planDraft.publicationReference} onChange={event => setPlanDraft({ ...planDraft, publicationReference: event.target.value })} /></label>
+              <div className="md:col-span-2 xl:col-span-4"><Button variant="primary" onClick={() => void submitPlan()}>Create Plan</Button></div>
+            </div>
+          ) : null}
         </Card>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -273,11 +306,12 @@ export function IdpPlanManagementPage() {
               {plans.map(plan => (
                 <button
                   key={plan.id}
-                  onClick={() => setSelectedPlanId(plan.id)}
+                  onClick={() => void selectPlan(plan.id)}
                   className={`w-full rounded border px-3 py-2 text-left ${selectedPlanId === plan.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}
                 >
                   <p className="font-medium text-secondary-900 dark:text-secondary-100">{plan.planCode} - {plan.planTitle}</p>
                   <p className="text-xs text-secondary-500">{plan.startFinancialYear}/{plan.startFinancialYear + 1} to {plan.endFinancialYear}/{plan.endFinancialYear + 1} | Status: {plan.status}</p>
+                  <p className="text-xs text-secondary-500">Family: {plan.planFamilyId} | Effective: {new Date(plan.effectiveFrom).toLocaleDateString()} | Publication: {plan.publicationReference ?? 'Not published'}</p>
                 </button>
               ))}
             </div>
@@ -286,36 +320,24 @@ export function IdpPlanManagementPage() {
           <Card>
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Version Control</h3>
-              {canManagePlan ? (
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    if (!selectedPlanId) return;
-                    const now = new Date();
-                    const result = await createIdpPlanVersion(selectedPlanId, {
-                      versionType: 'Revised',
-                      versionLabel: `Revised IDP ${now.getFullYear()}`,
-                      reviewYear: `${now.getFullYear()}/${now.getFullYear() + 1}`,
-                      summaryOfChanges: 'Revision initiated from IDP plan management workspace',
-                    });
-
-                    if (result.success) {
-                      pushToast('success', 'New revised IDP version created.');
-                      await load();
-                    } else {
-                      pushToast('error', result.message ?? 'Failed to create version.');
-                    }
-                  }}
-                >
-                  Create Revision
-                </Button>
-              ) : null}
             </div>
+            {canManagePlan ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <label className="text-xs text-secondary-600">Version type<select aria-label="Version type" className={fieldClass} value={versionDraft.versionType} onChange={event => setVersionDraft({ ...versionDraft, versionType: event.target.value })}><option value="AnnualReview">Annual review</option><option value="Revised">Revised</option><option value="Amended">Amended</option></select></label>
+                <label className="text-xs text-secondary-600">Version label<input aria-label="Version label" className={fieldClass} value={versionDraft.versionLabel} onChange={event => setVersionDraft({ ...versionDraft, versionLabel: event.target.value })} /></label>
+                <label className="text-xs text-secondary-600">Review year<input aria-label="Review year" className={fieldClass} value={versionDraft.reviewYear} onChange={event => setVersionDraft({ ...versionDraft, reviewYear: event.target.value })} /></label>
+                <label className="text-xs text-secondary-600">Effective from<input aria-label="Version effective from" type="date" className={fieldClass} value={versionDraft.effectiveFrom} onChange={event => setVersionDraft({ ...versionDraft, effectiveFrom: event.target.value })} /></label>
+                <label className="text-xs text-secondary-600">Publication reference<input aria-label="Version publication reference" className={fieldClass} value={versionDraft.publicationReference} onChange={event => setVersionDraft({ ...versionDraft, publicationReference: event.target.value })} /></label>
+                <label className="text-xs text-secondary-600 md:col-span-2">Summary of changes<textarea aria-label="Summary of changes" className={fieldClass} rows={3} value={versionDraft.summaryOfChanges} onChange={event => setVersionDraft({ ...versionDraft, summaryOfChanges: event.target.value })} /></label>
+                <div className="md:col-span-2"><Button variant="outline" disabled={!selectedPlanId} onClick={() => void submitVersion()}>Create Version</Button></div>
+              </div>
+            ) : null}
             <div className="mt-3 space-y-2">
               {versions.map(version => (
                 <div key={version.id} className="rounded border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
                   <p className="font-medium text-secondary-900 dark:text-secondary-100">v{version.versionNumber} - {version.versionLabel}</p>
                   <p className="text-xs text-secondary-500">Type: {version.versionType} | Review Year: {version.reviewYear ?? 'N/A'} | Active: {version.isActive ? 'Yes' : 'No'}</p>
+                  <p className="text-xs text-secondary-500">Effective: {new Date(version.effectiveFrom).toLocaleDateString()} | Predecessor: {version.predecessorVersionPublicId ?? 'Original'} | Publication: {version.publicationReference ?? 'Not published'}</p>
                 </div>
               ))}
               {!versions.length ? <p className="text-sm text-secondary-500">No versions available.</p> : null}

@@ -80,6 +80,8 @@ public class IdpPlan
 {
     public int Id { get; set; }
     public Guid PublicId { get; set; } = Guid.NewGuid();
+    public Guid PlanFamilyId { get; set; } = Guid.NewGuid();
+    public int? PredecessorPlanId { get; set; }
     public long? MunicipalityId { get; set; }
     public string MunicipalityName { get; set; } = string.Empty;
     public string PlanTitle { get; set; } = string.Empty;
@@ -92,9 +94,15 @@ public class IdpPlan
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTime? ApprovedAt { get; set; }
     public string? ApprovedByUserId { get; set; }
+    public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
+    public DateTime? EffectiveTo { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public string? PublicationReference { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
     public Municipality? Municipality { get; set; }
+    public IdpPlan? PredecessorPlan { get; set; }
+    public ICollection<IdpPlan> SuccessorPlans { get; set; } = new List<IdpPlan>();
     public ApplicationUser? CreatedByUser { get; set; }
     public ApplicationUser? ApprovedByUser { get; set; }
     public ICollection<IdpPlanVersion> Versions { get; set; } = new List<IdpPlanVersion>();
@@ -106,7 +114,9 @@ public class IdpPlan
 public class IdpPlanVersion
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
+    public int? PredecessorVersionId { get; set; }
     public int VersionNumber { get; set; }
     public IdpVersionType VersionType { get; set; }
     public string VersionLabel { get; set; } = string.Empty;
@@ -115,8 +125,15 @@ public class IdpPlanVersion
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string CreatedByUserId { get; set; } = string.Empty;
+    public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
+    public DateTime? EffectiveTo { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public string? PublicationReference { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpPlan IdpPlan { get; set; } = null!;
+    public IdpPlanVersion? PredecessorVersion { get; set; }
+    public ICollection<IdpPlanVersion> SuccessorVersions { get; set; } = new List<IdpPlanVersion>();
     public ApplicationUser? CreatedByUser { get; set; }
     public ICollection<IdpChangeLog> ChangeLogs { get; set; } = new List<IdpChangeLog>();
 }

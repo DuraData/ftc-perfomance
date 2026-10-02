@@ -23,9 +23,15 @@ public class IdpControllerFunctionalityTests
         payload.Success.Should().BeTrue();
         payload.Data.Should().NotBeNull();
         payload.Data!.PlanCode.Should().Be("IDP-2026");
+        payload.Data.PlanFamilyId.Should().NotBeEmpty();
+        payload.Data.EffectiveFrom.Should().BeAfter(DateTime.UtcNow.AddMinutes(-1));
 
         (await context.IdpPlans.CountAsync()).Should().Be(1);
         (await context.IdpPlanVersions.CountAsync()).Should().Be(1);
+        var initialVersion = await context.IdpPlanVersions.SingleAsync();
+        initialVersion.PublicId.Should().NotBeEmpty();
+        initialVersion.PredecessorVersionId.Should().BeNull();
+        initialVersion.EffectiveFrom.Should().Be(payload.Data.EffectiveFrom);
 
         workflow.Verify(w => w.QueueAuditTrail(
             "IdpPlan",
@@ -35,6 +41,42 @@ public class IdpControllerFunctionalityTests
             It.IsAny<object>(),
             user.Id,
             It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreatePlan_WithPredecessor_ShouldContinuePlanFamilyLineage()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var user = IdpTestFixture.CreateUser("creator");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var workflow = new Mock<IWorkflowGovernanceService>();
+        var userManager = IdpTestFixture.CreateUserManagerMock(user);
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
+        var firstEffectiveFrom = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var firstAction = await controller.CreatePlan(new CreateIdpPlanRequest(
+            "Blue Hills", "First cycle", "IDP-2026", 2026, 2031, EffectiveFrom: firstEffectiveFrom));
+        var first = ((firstAction.Result as OkObjectResult)!.Value as ApiResponse<IdpPlanSummaryResponse>)!.Data!;
+
+        var secondAction = await controller.CreatePlan(new CreateIdpPlanRequest(
+            "Blue Hills",
+            "Second cycle",
+            "IDP-2031",
+            2031,
+            2036,
+            first.PublicId,
+            firstEffectiveFrom.AddYears(5),
+            PublicationReference: "Council resolution 2031/42"));
+        var second = ((secondAction.Result as OkObjectResult)!.Value as ApiResponse<IdpPlanSummaryResponse>)!.Data!;
+
+        second.PlanFamilyId.Should().Be(first.PlanFamilyId);
+        second.PredecessorPlanPublicId.Should().Be(first.PublicId);
+        second.PublicationReference.Should().Be("Council resolution 2031/42");
+
+        var persisted = await context.IdpPlans.Include(plan => plan.PredecessorPlan).SingleAsync(plan => plan.PublicId == second.PublicId);
+        persisted.PredecessorPlan!.PublicId.Should().Be(first.PublicId);
     }
 
     [Fact]
@@ -116,10 +158,102 @@ public class IdpControllerFunctionalityTests
         var versions = await context.IdpPlanVersions.OrderBy(v => v.VersionNumber).ToListAsync();
         versions.Should().HaveCount(2);
         versions[0].IsActive.Should().BeFalse();
+        versions[0].EffectiveTo.Should().Be(versions[1].EffectiveFrom);
         versions[1].IsActive.Should().BeTrue();
         versions[1].VersionNumber.Should().Be(2);
+        versions[1].PublicId.Should().NotBeEmpty();
+        versions[1].PredecessorVersionId.Should().Be(versions[0].Id);
 
         (await context.IdpPlans.SingleAsync()).CurrentVersionNumber.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task UpdatePlan_ShouldRequirePublicationReference_WhenPublishing()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var user = IdpTestFixture.CreateUser("publisher");
+        context.Users.Add(user);
+        var plan = new IdpPlan
+        {
+            MunicipalityName = "Blue Hills",
+            PlanTitle = "IDP",
+            PlanCode = "IDP-PUBLISH",
+            StartFinancialYear = 2026,
+            EndFinancialYear = 2031,
+            CreatedByUserId = user.Id
+        };
+        context.IdpPlans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var workflow = new Mock<IWorkflowGovernanceService>();
+        var controller = IdpTestFixture.CreateController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            workflow.Object,
+            user.Id);
+
+        var rejected = await controller.UpdatePlan(plan.Id, new UpdateIdpPlanRequest("IDP", 2026, 2031, "Published"));
+        rejected.Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var accepted = await controller.UpdatePlan(plan.Id, new UpdateIdpPlanRequest(
+            "IDP", 2026, 2031, "Published", PublicationReference: "Council resolution 2026/17"));
+        accepted.Result.Should().BeOfType<OkObjectResult>();
+
+        var published = await context.IdpPlans.SingleAsync();
+        published.Status.Should().Be(IdpPlanStatus.Published);
+        published.PublishedAt.Should().NotBeNull();
+        published.PublicationReference.Should().Be("Council resolution 2026/17");
+    }
+
+    [Fact]
+    public async Task IdpLineage_ShouldEnforceRelationalUniquenessAndEffectiveDateConstraints_InSqlite()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("creator");
+        context.Users.Add(user);
+        var plan = new IdpPlan
+        {
+            MunicipalityName = "Blue Hills",
+            PlanTitle = "IDP",
+            PlanCode = "IDP-CONSTRAINT",
+            StartFinancialYear = 2026,
+            EndFinancialYear = 2031,
+            CreatedByUserId = user.Id,
+            EffectiveFrom = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc)
+        };
+        context.IdpPlans.Add(plan);
+        await context.SaveChangesAsync();
+
+        var publicId = Guid.NewGuid();
+        context.IdpPlanVersions.Add(new IdpPlanVersion
+        {
+            PublicId = publicId,
+            IdpPlanId = plan.Id,
+            VersionNumber = 1,
+            VersionType = IdpVersionType.Original,
+            VersionLabel = "Original",
+            CreatedByUserId = user.Id,
+            EffectiveFrom = plan.EffectiveFrom
+        });
+        await context.SaveChangesAsync();
+
+        context.IdpPlanVersions.Add(new IdpPlanVersion
+        {
+            PublicId = publicId,
+            IdpPlanId = plan.Id,
+            VersionNumber = 2,
+            VersionType = IdpVersionType.Revised,
+            VersionLabel = "Duplicate public ID",
+            CreatedByUserId = user.Id,
+            EffectiveFrom = plan.EffectiveFrom.AddDays(1)
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
+        context.ChangeTracker.Clear();
+
+        var persistedPlan = await context.IdpPlans.SingleAsync();
+        persistedPlan.EffectiveTo = persistedPlan.EffectiveFrom;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
     }
 
     [Fact]

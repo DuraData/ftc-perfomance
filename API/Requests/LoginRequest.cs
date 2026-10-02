@@ -283,20 +283,29 @@ public record CreateIdpPlanRequest(
     string PlanTitle,
     string PlanCode,
     int StartFinancialYear,
-    int EndFinancialYear);
+    int EndFinancialYear,
+    Guid? PredecessorPlanPublicId = null,
+    DateTime? EffectiveFrom = null,
+    DateTime? EffectiveTo = null,
+    string? PublicationReference = null);
 
 public record UpdateIdpPlanRequest(
     string PlanTitle,
     int StartFinancialYear,
     int EndFinancialYear,
     string Status,
-    string? RowVersion = null);
+    string? RowVersion = null,
+    DateTime? EffectiveFrom = null,
+    DateTime? EffectiveTo = null,
+    string? PublicationReference = null);
 
 public record CreateIdpPlanVersionRequest(
     string VersionType,
     string VersionLabel,
     string? ReviewYear,
-    string? SummaryOfChanges);
+    string? SummaryOfChanges,
+    DateTime? EffectiveFrom = null,
+    string? PublicationReference = null);
 
 public record CreateIdpStrategicOutcomeRequest(
     int IdpPlanId,

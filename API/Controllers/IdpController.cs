@@ -58,6 +58,7 @@ public class IdpController : ControllerBase
     {
         var plans = await _context.IdpPlans
             .AsNoTracking()
+            .Include(plan => plan.PredecessorPlan)
             .OrderByDescending(plan => plan.CreatedAt)
             .Select(plan => ToSummaryResponse(plan))
             .ToArrayAsync();
@@ -82,8 +83,22 @@ public class IdpController : ControllerBase
             if (string.IsNullOrWhiteSpace(municipalityName)) return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Selected municipality is not active."));
         }
 
+        var effectiveFrom = request.EffectiveFrom ?? DateTime.UtcNow;
+        if (request.EndFinancialYear < request.StartFinancialYear || request.EffectiveTo.HasValue && request.EffectiveTo <= effectiveFrom)
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "The financial-year and effective-date ranges must end after they begin."));
+
+        IdpPlan? predecessor = null;
+        if (request.PredecessorPlanPublicId.HasValue)
+        {
+            predecessor = await _context.IdpPlans.FirstOrDefaultAsync(plan => plan.PublicId == request.PredecessorPlanPublicId.Value);
+            if (predecessor == null) return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "The predecessor plan was not found in the selected municipality."));
+            if (effectiveFrom < predecessor.EffectiveFrom) return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "A successor plan cannot become effective before its predecessor."));
+        }
+
         var entity = new IdpPlan
         {
+            PlanFamilyId = predecessor?.PlanFamilyId ?? Guid.NewGuid(),
+            PredecessorPlan = predecessor,
             MunicipalityName = municipalityName,
             PlanTitle = request.PlanTitle.Trim(),
             PlanCode = request.PlanCode.Trim(),
@@ -91,6 +106,9 @@ public class IdpController : ControllerBase
             EndFinancialYear = request.EndFinancialYear,
             Status = IdpPlanStatus.Draft,
             CurrentVersionNumber = 1,
+            EffectiveFrom = effectiveFrom,
+            EffectiveTo = request.EffectiveTo,
+            PublicationReference = NormalizeOptional(request.PublicationReference),
             CreatedAt = DateTime.UtcNow,
             CreatedByUserId = user.Id
         };
@@ -103,6 +121,9 @@ public class IdpController : ControllerBase
             VersionLabel = "Original Approved IDP",
             ReviewYear = null,
             SummaryOfChanges = "Original approved five-year IDP version.",
+            EffectiveFrom = effectiveFrom,
+            PublicationReference = NormalizeOptional(request.PublicationReference),
+            PublishedAt = string.IsNullOrWhiteSpace(request.PublicationReference) ? null : DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,
             CreatedByUserId = user.Id,
             IsActive = true
@@ -133,7 +154,7 @@ public class IdpController : ControllerBase
             return Unauthorized(new ApiResponse<IdpPlanSummaryResponse>(false, null, "User not found"));
         }
 
-        var entity = await _context.IdpPlans.FirstOrDefaultAsync(plan => plan.Id == id);
+        var entity = await _context.IdpPlans.Include(plan => plan.PredecessorPlan).FirstOrDefaultAsync(plan => plan.Id == id);
         if (entity == null)
         {
             return NotFound(new ApiResponse<IdpPlanSummaryResponse>(false, null, "IDP plan not found"));
@@ -146,16 +167,26 @@ public class IdpController : ControllerBase
             catch (FormatException) { return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Invalid RowVersion.")); }
         }
         entity.PlanTitle = request.PlanTitle.Trim();
+        var effectiveFrom = request.EffectiveFrom ?? entity.EffectiveFrom;
+        var effectiveTo = request.EffectiveTo;
+        if (request.EndFinancialYear < request.StartFinancialYear || effectiveTo.HasValue && effectiveTo <= effectiveFrom)
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "The financial-year and effective-date ranges must end after they begin."));
         entity.StartFinancialYear = request.StartFinancialYear;
         entity.EndFinancialYear = request.EndFinancialYear;
+        entity.EffectiveFrom = effectiveFrom;
+        entity.EffectiveTo = effectiveTo;
+        entity.PublicationReference = NormalizeOptional(request.PublicationReference) ?? entity.PublicationReference;
         if (TryParseEnum(request.Status, out IdpPlanStatus status))
         {
+            if (status == IdpPlanStatus.Published && string.IsNullOrWhiteSpace(entity.PublicationReference))
+                return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "A publication reference is required before publishing an IDP plan."));
             entity.Status = status;
             if (status == IdpPlanStatus.Approved || status == IdpPlanStatus.Published)
             {
                 entity.ApprovedAt = DateTime.UtcNow;
                 entity.ApprovedByUserId = user.Id;
             }
+            if (status == IdpPlanStatus.Published) entity.PublishedAt ??= DateTime.UtcNow;
         }
 
         _workflowGovernanceService.QueueAuditTrail(
@@ -193,24 +224,36 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "Invalid version type"));
         }
 
+        var effectiveFrom = request.EffectiveFrom ?? DateTime.UtcNow;
+        if (effectiveFrom < plan.EffectiveFrom || plan.EffectiveTo.HasValue && effectiveFrom >= plan.EffectiveTo)
+            return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "The version effective date must fall within the plan effective period."));
+        var previousActive = await _context.IdpPlanVersions.Where(item => item.IdpPlanId == id && item.IsActive).OrderByDescending(item => item.VersionNumber).ToListAsync();
+        var predecessor = previousActive.FirstOrDefault();
+        if (predecessor != null && effectiveFrom <= predecessor.EffectiveFrom)
+            return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "A successor version must become effective after its predecessor."));
+
         var nextVersion = plan.CurrentVersionNumber + 1;
         var entity = new IdpPlanVersion
         {
             IdpPlanId = id,
+            PredecessorVersion = predecessor,
             VersionNumber = nextVersion,
             VersionType = versionType,
             VersionLabel = request.VersionLabel.Trim(),
             ReviewYear = request.ReviewYear,
             SummaryOfChanges = request.SummaryOfChanges,
+            EffectiveFrom = effectiveFrom,
+            PublicationReference = NormalizeOptional(request.PublicationReference),
+            PublishedAt = string.IsNullOrWhiteSpace(request.PublicationReference) ? null : DateTime.UtcNow,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             CreatedByUserId = user.Id
         };
 
-        var previousActive = await _context.IdpPlanVersions.Where(item => item.IdpPlanId == id && item.IsActive).ToListAsync();
         foreach (var existing in previousActive)
         {
             existing.IsActive = false;
+            existing.EffectiveTo = effectiveFrom;
         }
 
         _context.IdpPlanVersions.Add(entity);
@@ -233,7 +276,7 @@ public class IdpController : ControllerBase
     [Authorize(Policy = "Permission:IDP.Plan.View")]
     public async Task<ActionResult<ApiResponse<IdpHierarchyResponse>>> GetHierarchy(int id)
     {
-        var plan = await _context.IdpPlans.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+        var plan = await _context.IdpPlans.AsNoTracking().Include(item => item.PredecessorPlan).FirstOrDefaultAsync(item => item.Id == id);
         if (plan == null)
         {
             return NotFound(new ApiResponse<IdpHierarchyResponse>(false, null, "IDP plan not found"));
@@ -241,6 +284,7 @@ public class IdpController : ControllerBase
 
         var versions = await _context.IdpPlanVersions
             .AsNoTracking()
+            .Include(item => item.PredecessorVersion)
             .Where(item => item.IdpPlanId == id)
             .OrderByDescending(item => item.VersionNumber)
             .ToArrayAsync();
@@ -1201,10 +1245,12 @@ public class IdpController : ControllerBase
     }
 
     private static IdpPlanSummaryResponse ToSummaryResponse(IdpPlan plan) =>
-        new(plan.Id, plan.PublicId, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt, Convert.ToBase64String(plan.RowVersion));
+        new(plan.Id, plan.PublicId, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt, Convert.ToBase64String(plan.RowVersion), plan.PlanFamilyId, plan.PredecessorPlan?.PublicId, plan.EffectiveFrom, plan.EffectiveTo, plan.PublishedAt, plan.PublicationReference);
 
     private static IdpPlanVersionResponse ToVersionResponse(IdpPlanVersion version) =>
-        new(version.Id, version.IdpPlanId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear, version.SummaryOfChanges, version.IsActive, version.CreatedAt, version.CreatedByUserId);
+        new(version.Id, version.PublicId, version.IdpPlanId, version.PredecessorVersion?.PublicId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear, version.SummaryOfChanges, version.IsActive, version.CreatedAt, version.CreatedByUserId, version.EffectiveFrom, version.EffectiveTo, version.PublishedAt, version.PublicationReference, Convert.ToBase64String(version.RowVersion));
+
+    private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static IdpStrategicOutcomeResponse ToOutcomeResponse(IdpStrategicOutcome outcome) =>
         new(outcome.Id, outcome.IdpPlanId, outcome.Code, outcome.Name, outcome.Description, outcome.SortOrder);
