@@ -164,7 +164,7 @@ interface AppContextType {
   tenantContexts: TenantContextDto[];
   currentMunicipalityId: number | null;
   switchMunicipality: (municipalityId: number) => Promise<boolean>;
-  login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'failed'>;
+  login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'>;
   logout: () => void;
   sidebarCollapsed: boolean;
   expandedSidebarGroups: string[];
@@ -324,7 +324,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCurrentPathState(nextPath);
   };
 
-  const login = async (email: string, password: string, twoFactorCode?: string, recoveryCode?: string): Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'failed'> => {
+  const login = async (email: string, password: string, twoFactorCode?: string, recoveryCode?: string): Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'> => {
     const result = await apiLogin({ email, password, twoFactorCode, recoveryCode });
     if (result.success && result.data) {
       const data = result.data as LoginResponse;
@@ -338,6 +338,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       safeSetItem('roles', JSON.stringify(data.roles ?? []));
       safeRemoveItem('permissions');
       safeRemoveItem('menu_items');
+      if (data.user.mustChangePassword) {
+        safeSetItem('settings_active_tab', 'security');
+        setCurrentPath('/settings');
+        return 'password_change_required';
+      }
       if (data.mfaEnrollmentRequired) {
         safeSetItem('settings_active_tab', 'security');
         setCurrentPath('/settings');

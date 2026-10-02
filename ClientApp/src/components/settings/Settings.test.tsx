@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Settings } from './Settings';
 
-const api = vi.hoisted(() => ({ getAuthSessions: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn() }));
-const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn() }));
+const api = vi.hoisted(() => ({ getAuthSessions: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn(), changePassword: vi.fn() }));
+const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn(), userProfile: null as null | { mustChangePassword: boolean } }));
 vi.mock('../../api/api', () => api);
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ ...app, userProfile: null, darkMode: false, toggleDarkMode: vi.fn() }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ ...app, darkMode: false, toggleDarkMode: vi.fn() }) }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 
 describe('Security session settings', () => {
@@ -16,6 +16,8 @@ describe('Security session settings', () => {
     api.getMfaStatus.mockResolvedValue({ success: true, data: { isEnabled: false, enrollmentRequired: true, recoveryCodesLeft: 0 } });
     api.setupMfa.mockResolvedValue({ success: true, data: { sharedKey: 'abcd efgh', authenticatorUri: 'otpauth://totp/test' } });
     api.enableMfa.mockResolvedValue({ success: true, data: { recoveryCodes: ['recovery-one', 'recovery-two'] } });
+    api.changePassword.mockResolvedValue({ success: true, data: true });
+    app.userProfile = null;
   });
 
   it('shows real sessions and revokes a selected session', async () => {
@@ -42,5 +44,18 @@ describe('Security session settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify and enable' }));
     expect(await screen.findByText('recovery-one')).toBeInTheDocument();
     expect(api.enableMfa).toHaveBeenCalledWith('123456');
+  });
+
+  it('enforces a matching new password and signs out after changing it', async () => {
+    app.userProfile = { mustChangePassword: true };
+    render(<Settings />);
+    expect(screen.getByText(/must change your password/i)).toBeInTheDocument();
+    await screen.findByText(/Test Browser/);
+    fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'OldPassword1!' } });
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword2@' } });
+    fireEvent.change(screen.getByLabelText('Confirm'), { target: { value: 'NewPassword2@' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    await waitFor(() => expect(api.changePassword).toHaveBeenCalledWith('OldPassword1!', 'NewPassword2@'));
+    expect(app.logout).toHaveBeenCalled();
   });
 });

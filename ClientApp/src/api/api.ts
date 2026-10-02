@@ -820,6 +820,10 @@ export async function disableMfa(password: string, code?: string, recoveryCode?:
   return post<boolean>('/v1/auth/mfa/disable', { password, code, recoveryCode });
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<boolean>> {
+  return post<boolean>('/v1/auth/password/change', { currentPassword, newPassword });
+}
+
 export function isAuthenticated() {
   return !!accessToken;
 }

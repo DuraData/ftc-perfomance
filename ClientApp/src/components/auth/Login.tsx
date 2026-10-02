@@ -29,7 +29,7 @@ export function Login() {
       );
       if (result === 'success') {
         setCurrentPath('/dashboard');
-      } else if (result === 'mfa_enrollment_required') {
+      } else if (result === 'mfa_enrollment_required' || result === 'password_change_required') {
         setCurrentPath('/settings');
       } else if (result === 'mfa_required') {
         setMfaRequired(true);

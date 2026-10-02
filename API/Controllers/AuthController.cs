@@ -238,6 +238,36 @@ public class AuthController : ControllerBase
     }
 
     [Authorize]
+    [HttpPost("/api/v1/auth/password/change")]
+    public async Task<ActionResult<ApiResponse<bool>>> ChangePassword(ChangePasswordRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(request.CurrentPassword) || string.IsNullOrWhiteSpace(request.NewPassword))
+            return BadRequest(new ApiResponse<bool>(false, false, "Current and new passwords are required."));
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var changed = await _userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!changed.Succeeded)
+        {
+            await transaction.RollbackAsync();
+            return BadRequest(new ApiResponse<bool>(false, false, "Password could not be changed.", changed.Errors.Select(error => error.Description).ToArray()));
+        }
+        user.MustChangePassword = false;
+        var updated = await _userManager.UpdateAsync(user);
+        if (!updated.Succeeded)
+        {
+            await transaction.RollbackAsync();
+            return BadRequest(new ApiResponse<bool>(false, false, "Password state could not be updated.", updated.Errors.Select(error => error.Description).ToArray()));
+        }
+        await _userManager.UpdateSecurityStampAsync(user);
+        AddAuthenticationAudit(user, "PasswordChange", null);
+        await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Password changed");
+        await transaction.CommitAsync();
+        Response.Cookies.Delete(RefreshCookieName);
+        return Ok(new ApiResponse<bool>(true, true, "Password changed. Sign in again."));
+    }
+
+    [Authorize]
     [HttpGet("/api/v1/auth/mfa/status")]
     public async Task<ActionResult<ApiResponse<MfaStatusResponse>>> GetMfaStatus()
     {
@@ -287,7 +317,7 @@ public class AuthController : ControllerBase
         if (!enabled.Succeeded) return BadRequest(new ApiResponse<MfaEnableResponse>(false, null, "MFA could not be enabled.", enabled.Errors.Select(error => error.Description).ToArray()));
         var recoveryCodes = (await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray() ?? [];
         await _userManager.UpdateSecurityStampAsync(user);
-        AddMfaAudit(user, "Enable", new { RecoveryCodeCount = recoveryCodes.Length });
+        AddAuthenticationAudit(user, "MfaEnable", new { RecoveryCodeCount = recoveryCodes.Length });
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "MFA enabled");
         Response.Cookies.Delete(RefreshCookieName);
         return Ok(new ApiResponse<MfaEnableResponse>(true, new MfaEnableResponse(recoveryCodes), "MFA enabled. Save the recovery codes and sign in again."));
@@ -300,6 +330,7 @@ public class AuthController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
         if (!user.TwoFactorEnabled) return BadRequest(new ApiResponse<bool>(false, false, "MFA is not enabled."));
+        if (string.IsNullOrWhiteSpace(request.Password)) return BadRequest(new ApiResponse<bool>(false, false, "Password is required."));
         if (!await _userManager.CheckPasswordAsync(user, request.Password)) return Unauthorized(new ApiResponse<bool>(false, false, "Password verification failed."));
         var secondFactorValid = !string.IsNullOrWhiteSpace(request.RecoveryCode)
             ? (await _userManager.RedeemTwoFactorRecoveryCodeAsync(user, NormalizeCode(request.RecoveryCode))).Succeeded
@@ -310,7 +341,7 @@ public class AuthController : ControllerBase
         if (!disabled.Succeeded) return BadRequest(new ApiResponse<bool>(false, false, "MFA could not be disabled.", disabled.Errors.Select(error => error.Description).ToArray()));
         await _userManager.ResetAuthenticatorKeyAsync(user);
         await _userManager.UpdateSecurityStampAsync(user);
-        AddMfaAudit(user, "Disable", null);
+        AddAuthenticationAudit(user, "MfaDisable", null);
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "MFA disabled");
         Response.Cookies.Delete(RefreshCookieName);
         return Ok(new ApiResponse<bool>(true, true, "MFA disabled. Sign in again."));
@@ -351,12 +382,12 @@ public class AuthController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? null : await _userManager.FindByIdAsync(userId);
     }
 
-    private void AddMfaAudit(ApplicationUser user, string action, object? value)
+    private void AddAuthenticationAudit(ApplicationUser user, string action, object? value)
     {
         _context.AuditTrails.Add(new AuditTrail
         {
             MunicipalityId = user.MunicipalityId,
-            EntityName = "UserMfa",
+            EntityName = "UserAuthentication",
             EntityId = user.Id,
             Action = action,
             NewValue = value == null ? null : JsonSerializer.Serialize(value),

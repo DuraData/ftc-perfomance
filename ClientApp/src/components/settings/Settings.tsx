@@ -5,7 +5,7 @@ import { Button, Card, Badge } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { disableMfa, enableMfa, getAuthSessions, getMfaStatus, revokeAllAuthSessions, revokeAuthSession, setupMfa } from '../../api/api';
+import { changePassword, disableMfa, enableMfa, getAuthSessions, getMfaStatus, revokeAllAuthSessions, revokeAuthSession, setupMfa } from '../../api/api';
 import type { AuthSessionDto, MfaSetupDto, MfaStatusDto } from '../../types';
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
@@ -133,7 +133,7 @@ function AppearanceSettings() {
 }
 
 function SecuritySettings() {
-  const { pushToast, logout } = useApp();
+  const { pushToast, logout, userProfile } = useApp();
   const [sessions, setSessions] = useState<AuthSessionDto[]>([]);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,6 +142,9 @@ function SecuritySettings() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaPassword, setMfaPassword] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const loadSessions = async () => {
     setBusy(true); setSessionError(null);
     const result = await getAuthSessions();
@@ -174,6 +177,14 @@ function SecuritySettings() {
     if (!result.success) { setSessionError(result.message ?? 'MFA could not be disabled.'); setBusy(false); return; }
     logout();
   };
+  const savePassword = async () => {
+    setSessionError(null);
+    if (newPassword !== confirmPassword) { setSessionError('The new password and confirmation do not match.'); return; }
+    setBusy(true);
+    const result = await changePassword(currentPassword, newPassword);
+    if (!result.success) { setSessionError(result.errors?.join(' ') || result.message || 'Password could not be changed.'); setBusy(false); return; }
+    logout();
+  };
   const revoke = async (session: AuthSessionDto) => {
     setBusy(true); setSessionError(null);
     const result = await revokeAuthSession(session.sessionId, 'User revoked session from account settings');
@@ -192,12 +203,14 @@ function SecuritySettings() {
     <div className="space-y-3">
       <FormSection title="Password">
         <div className="space-y-2">
-          <Input label="Current Password" type="password" placeholder="Enter current" />
+          {userProfile?.mustChangePassword && <p role="alert" className="text-xs font-medium text-warning-700">You must change your password before using other application functions.</p>}
+          <Input label="Current Password" type="password" placeholder="Enter current" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
           <FormRow cols={2}>
-            <Input label="New Password" type="password" placeholder="New password" />
-            <Input label="Confirm" type="password" placeholder="Confirm" />
+            <Input label="New Password" type="password" placeholder="New password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+            <Input label="Confirm" type="password" placeholder="Confirm" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
           </FormRow>
-          <Button variant="outline" size="sm" disabled>Change password unavailable</Button>
+          <p className="text-[10px] text-secondary-500">Use at least 12 characters with upper-case, lower-case, number, and symbol.</p>
+          <Button variant="outline" size="sm" onClick={() => void savePassword()} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>Change password</Button>
         </div>
       </FormSection>
       <FormSection title="Two-Factor">

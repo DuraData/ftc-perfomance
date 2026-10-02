@@ -125,6 +125,31 @@ public sealed class AuthSessionTests
         Assert.True(downstreamCalled);
     }
 
+    [Fact]
+    public async Task Required_password_change_is_claimed_and_blocks_direct_api_calls()
+    {
+        await using var context = NewContext();
+        var user = User("password-user"); user.MustChangePassword = true;
+        context.Users.Add(user); await context.SaveChangesAsync();
+        var service = CreateService(context, user);
+        var principal = await service.GetPrincipalFromExpiredTokenAsync((await service.GenerateTokensAsync(user)).AccessToken);
+        Assert.Equal("true", principal!.FindFirstValue(PasswordChangePolicy.ChangeRequiredClaim));
+
+        var downstreamCalled = false;
+        var middleware = new PasswordChangeMiddleware(_ => { downstreamCalled = true; return Task.CompletedTask; });
+        var blocked = new DefaultHttpContext { User = principal! };
+        blocked.Request.Path = "/api/v1/performance-targets";
+        blocked.Response.Body = new MemoryStream();
+        await middleware.InvokeAsync(blocked);
+        Assert.Equal(StatusCodes.Status403Forbidden, blocked.Response.StatusCode);
+        Assert.False(downstreamCalled);
+
+        var allowed = new DefaultHttpContext { User = principal! };
+        allowed.Request.Path = "/api/v1/auth/password/change";
+        await middleware.InvokeAsync(allowed);
+        Assert.True(downstreamCalled);
+    }
+
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ApplicationUser User(string id) => new() { Id = id, UserName = $"{id}@example.test", Email = $"{id}@example.test", FirstName = "Test", LastName = "User", IsActive = true, SecurityStamp = $"stamp-{id}" };
     private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5, string[]? permissions = null)

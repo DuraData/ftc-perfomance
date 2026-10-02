@@ -56,6 +56,9 @@ public class JwtService : IJwtService
             new("security_stamp", user.SecurityStamp ?? string.Empty)
         };
 
+        if (user.MustChangePassword)
+            claims.Add(new Claim(PasswordChangePolicy.ChangeRequiredClaim, bool.TrueString.ToLowerInvariant()));
+
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
         claims.AddRange(permissions.Select(perm => new Claim("Permission", perm)));
         if (MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes))

@@ -237,6 +237,7 @@ app.UseRateLimiter();
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
+app.UseMiddleware<PasswordChangeMiddleware>();
 app.UseMiddleware<MfaEnrollmentMiddleware>();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();

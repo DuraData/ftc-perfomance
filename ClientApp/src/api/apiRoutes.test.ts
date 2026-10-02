@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster, setupMfa } from './api';
+import { changePassword, closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster, setupMfa } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -69,6 +69,15 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/auth/mfa/status'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/auth/mfa/setup'), expect.objectContaining({ method: 'POST' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/auth/mfa/enable'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ code: '123456' }) }));
+  });
+
+  it('uses the versioned password-change route without exposing credentials in the URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await changePassword('OldPassword1!', 'NewPassword2@');
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/auth/password/change'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ currentPassword: 'OldPassword1!', newPassword: 'NewPassword2@' }) }));
   });
 
   it('posts both concurrency tokens to the governed POE replacement route', async () => {
