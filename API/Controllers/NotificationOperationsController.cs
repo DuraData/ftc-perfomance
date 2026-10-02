@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -28,6 +29,43 @@ public sealed class NotificationOperationsController(ApplicationDbContext contex
             .ToArrayAsync();
         return Ok(new ApiResponse<NotificationOutboxItemDto[]>(true, rows.Select(ToDto).ToArray()));
     }
+
+    [HttpGet("pending/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<NotificationOutboxItemDto>>>> GetPendingPage([FromQuery] PagedQueryRequest request)
+    {
+        if (tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<PagedResponse<NotificationOutboxItemDto>>(false, null, "Select a municipality context."));
+        if (!PendingSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<NotificationOutboxItemDto>>(false, null, "SortBy must be createdAt, availableAt, attemptCount, or eventType."));
+
+        var query = context.BusinessEventOutbox.AsNoTracking()
+            .Where(item => item.ProcessedAt == null && item.EventType.StartsWith("Notification."));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.EventType.Contains(request.NormalizedSearch) || item.AggregateType.Contains(request.NormalizedSearch) || item.AggregateId.Contains(request.NormalizedSearch) || (item.LastError != null && item.LastError.Contains(request.NormalizedSearch)));
+
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyPendingOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize)
+            .Include(item => item.DeliveryAttempts)
+            .AsSplitQuery()
+            .ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<NotificationOutboxItemDto>>(true,
+            PagedResponse<NotificationOutboxItemDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> PendingSortFields = ["createdat", "availableat", "attemptcount", "eventtype"];
+
+    private static IOrderedQueryable<BusinessEventOutbox> ApplyPendingOrdering(IQueryable<BusinessEventOutbox> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("availableat", false) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenBy(item => item.AvailableAt).ThenBy(item => item.PublicId),
+            ("availableat", true) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenByDescending(item => item.AvailableAt).ThenBy(item => item.PublicId),
+            ("attemptcount", false) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenBy(item => item.AttemptCount).ThenBy(item => item.PublicId),
+            ("attemptcount", true) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenByDescending(item => item.AttemptCount).ThenBy(item => item.PublicId),
+            ("eventtype", false) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenBy(item => item.EventType).ThenBy(item => item.PublicId),
+            ("eventtype", true) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenByDescending(item => item.EventType).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderByDescending(item => item.AttemptCount >= 10).ThenBy(item => item.OccurredAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.AttemptCount >= 10).ThenByDescending(item => item.OccurredAt).ThenBy(item => item.PublicId)
+        };
 
     [HttpPost("{publicId:guid}/retry")]
     public async Task<ActionResult<ApiResponse<NotificationOutboxItemDto>>> Retry(Guid publicId, RetryNotificationOutboxRequest request)

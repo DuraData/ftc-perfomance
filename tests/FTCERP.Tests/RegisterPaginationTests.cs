@@ -72,6 +72,49 @@ public sealed class RegisterPaginationTests
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
+    [Fact]
+    public async Task Notification_delivery_page_is_bounded_searchable_and_prioritizes_dead_letters()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.BusinessEventOutbox.AddRange(
+            NotificationEvent("Notification.Zeta", "record-z", 10, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
+            NotificationEvent("Notification.Alpha", "record-a", 1, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
+            NotificationEvent("Notification.Beta", "record-b", 2, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+            NotificationEvent("Integration.Unrelated", "record-x", 10, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc)));
+        await context.SaveChangesAsync();
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(value => value.MunicipalityId).Returns(7);
+        var controller = new NotificationOperationsController(context, tenant.Object);
+
+        var result = await controller.GetPendingPage(new PagedQueryRequest
+        {
+            Page = 1,
+            PageSize = 2,
+            SortBy = "eventType",
+            SortDirection = "asc"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<NotificationOutboxItemDto>>>(ok.Value);
+        Assert.Equal(3, envelope.Data!.TotalCount);
+        Assert.Equal(2, envelope.Data.TotalPages);
+        Assert.Equal(["Notification.Zeta", "Notification.Alpha"], envelope.Data.Items.Select(item => item.EventType));
+        Assert.True(envelope.Data.Items[0].IsDeadLetter);
+    }
+
+    [Fact]
+    public async Task Notification_delivery_page_rejects_unknown_sort_fields()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(value => value.MunicipalityId).Returns(7);
+        var controller = new NotificationOperationsController(context, tenant.Object);
+
+        var result = await controller.GetPendingPage(new PagedQueryRequest { SortBy = "payload" });
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
     [Theory]
     [InlineData(0, 25)]
     [InlineData(1, 0)]
@@ -106,6 +149,17 @@ public sealed class RegisterPaginationTests
         KpiDescription = $"{name} description",
         AnnualTargetDescription = "One",
         CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+    };
+
+    private static BusinessEventOutbox NotificationEvent(string eventType, string aggregateId, int attemptCount, DateTime occurredAt) => new()
+    {
+        EventType = eventType,
+        AggregateType = "OpmsSubmission",
+        AggregateId = aggregateId,
+        Payload = "{}",
+        AttemptCount = attemptCount,
+        OccurredAt = occurredAt,
+        AvailableAt = occurredAt
     };
 
     private static ControllerContext ControllerContext(string userId) => new()

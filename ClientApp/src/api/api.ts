@@ -1117,8 +1117,8 @@ export async function getSubmissionStageRatings(kind: number, submissionId: stri
   return get<StageRatingDto[]>(`/v1/workflow/submissions/${kind}/${submissionId}/ratings`);
 }
 
-export async function getPendingNotificationDeliveries(): Promise<ApiResponse<NotificationOutboxItemDto[]>> {
-  return get<NotificationOutboxItemDto[]>('/v1/notification-operations/pending');
+export async function getPendingNotificationDeliveries(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<NotificationOutboxItemDto>>> {
+  return get<PagedResult<NotificationOutboxItemDto>>(`/v1/notification-operations/pending/page${registerPageQuery(query)}`);
 }
 
 export async function retryNotificationDelivery(item: NotificationOutboxItemDto, reason: string): Promise<ApiResponse<NotificationOutboxItemDto>> {
