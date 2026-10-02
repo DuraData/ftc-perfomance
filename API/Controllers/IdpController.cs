@@ -1,6 +1,7 @@
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -656,37 +657,28 @@ public class IdpController : ControllerBase
     }
 
     [HttpPost("kpis")]
-    [Authorize(Policy = "Permission:IDP.Kpi.Manage")]
+    [Authorize(Policy = "Permission:IDP_INDICATOR.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpKpiResponse>>> CreateKpi([FromBody] CreateIdpKpiRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpKpiResponse>(false, null, "User not found"));
 
-        if (!TryParseEnum(request.IndicatorType, out IdpKpiIndicatorType indicatorType))
-        {
-            return BadRequest(new ApiResponse<IdpKpiResponse>(false, null, "Invalid KPI indicator type"));
-        }
-
         var projectExists = await _context.IdpProjects.AnyAsync(item => item.Id == request.IdpProjectId);
         if (!projectExists) return NotFound(new ApiResponse<IdpKpiResponse>(false, null, "Project not found"));
+        if (request.ResponsibleDepartmentId.HasValue
+            && !await _context.Departments.AnyAsync(item => item.Id == request.ResponsibleDepartmentId.Value && item.IsActive))
+            return BadRequest(new ApiResponse<IdpKpiResponse>(false, null, "Responsible department was not found in the selected municipality."));
 
-        var entity = new IdpKpi
-        {
-            IdpProjectId = request.IdpProjectId,
-            KpiCode = request.KpiCode.Trim(),
-            KpiName = request.KpiName.Trim(),
-            Description = request.Description.Trim(),
-            Formula = request.Formula.Trim(),
-            Baseline = request.Baseline,
-            AnnualTarget = request.AnnualTarget,
-            FiveYearTarget = request.FiveYearTarget,
-            ResponsibleDepartmentId = request.ResponsibleDepartmentId,
-            DataSource = request.DataSource.Trim(),
-            ReportingFrequency = request.ReportingFrequency.Trim(),
-            IndicatorType = indicatorType,
-            Circular88Linked = request.Circular88Linked,
-            TreasuryTidLinked = request.TreasuryTidLinked
-        };
+        var input = new IdpKpiDefinitionInput(
+            request.IdpProjectId, request.KpiCode, request.KpiName, request.Description, request.Formula,
+            request.Baseline, request.AnnualTarget, request.FiveYearTarget, request.ResponsibleDepartmentId,
+            request.DataSource, request.ReportingFrequency, request.IndicatorType,
+            request.Circular88Linked, request.TreasuryTidLinked);
+        if (!IdpKpiDefinitionPolicy.TryNormalize(input, out var definition, out var issue))
+            return BadRequest(new ApiResponse<IdpKpiResponse>(false, null, issue!.Message));
+
+        var entity = new IdpKpi();
+        IdpKpiDefinitionPolicy.Apply(entity, definition!);
 
         _context.IdpKpis.Add(entity);
         await _context.SaveChangesAsync();
@@ -697,7 +689,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpPost("annual-targets")]
-    [Authorize(Policy = "Permission:IDP.Kpi.Manage")]
+    [Authorize(Policy = "Permission:IDP_INDICATOR.UPDATE")]
     public async Task<ActionResult<ApiResponse<IdpAnnualTargetResponse>>> CreateAnnualTarget([FromBody] CreateIdpAnnualTargetRequest request)
     {
         var user = await GetCurrentUserAsync();
@@ -1323,7 +1315,9 @@ public class IdpController : ControllerBase
             kpi.ReportingFrequency,
             kpi.IndicatorType.ToString(),
             kpi.Circular88Linked,
-            kpi.TreasuryTidLinked);
+            kpi.TreasuryTidLinked,
+            kpi.PublicId,
+            Convert.ToBase64String(kpi.RowVersion));
 
     private static IdpAnnualTargetResponse ToAnnualTargetResponse(IdpAnnualTarget annualTarget) =>
         new(annualTarget.Id, annualTarget.IdpKpiId, annualTarget.FinancialYear, annualTarget.TargetValue, annualTarget.ActualValue, annualTarget.ProgressComment);

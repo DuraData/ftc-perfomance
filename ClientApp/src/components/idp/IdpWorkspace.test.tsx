@@ -2,16 +2,21 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
+const security = vi.hoisted(() => ({ canImport: vi.fn(() => true) }));
 const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
   getIdpPlans: vi.fn(),
   getIdpPlanHierarchy: vi.fn(),
   getIdpDashboard: vi.fn(),
+  getIdpImportBatches: vi.fn(),
+  stageIdpKpiImport: vi.fn(),
+  commitIdpImport: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../security/AccessControl', () => ({ useHasAnyPermission: () => true }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('../../api/api', () => ({
   ...api,
@@ -45,9 +50,11 @@ const predecessor = {
 describe('IDP plan lineage workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.canImport.mockReturnValue(true);
     api.getIdpPlans.mockResolvedValue({ success: true, data: [predecessor] });
     api.getIdpPlanHierarchy.mockResolvedValue({ success: true, data: { versions: [] } });
     api.getIdpDashboard.mockResolvedValue({ success: true, data: null });
+    api.getIdpImportBatches.mockResolvedValue({ success: true, data: [] });
     api.createIdpPlan.mockResolvedValue({ success: true, data: predecessor });
     api.createIdpPlanVersion.mockResolvedValue({ success: true, data: {} });
   });
@@ -64,6 +71,7 @@ describe('IDP plan lineage workspace', () => {
   it('submits user-entered predecessor and publication metadata', async () => {
     render(<IdpPlanManagementPage />);
     await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });
+    expect(screen.getByLabelText('KPI CSV file')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Plan title'), { target: { value: 'Successor IDP' } });
     fireEvent.change(screen.getByLabelText('Plan code'), { target: { value: 'IDP-2031' } });
@@ -84,5 +92,13 @@ describe('IDP plan lineage workspace', () => {
       effectiveFrom: '2031-07-01T00:00:00.000Z',
       publicationReference: 'Council resolution 2031/42',
     })));
+  });
+
+  it('does not render import controls without the dynamic import capability', async () => {
+    security.canImport.mockReturnValue(false);
+    render(<IdpPlanManagementPage />);
+    await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });
+    expect(screen.queryByLabelText('KPI CSV file')).not.toBeInTheDocument();
+    expect(api.getIdpImportBatches).not.toHaveBeenCalled();
   });
 });

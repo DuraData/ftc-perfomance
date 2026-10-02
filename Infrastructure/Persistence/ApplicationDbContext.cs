@@ -70,6 +70,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<IdpProgramme> IdpProgrammes { get; set; } = null!;
     public DbSet<IdpProject> IdpProjects { get; set; } = null!;
     public DbSet<IdpKpi> IdpKpis { get; set; } = null!;
+    public DbSet<IdpImportBatch> IdpImportBatches { get; set; } = null!;
+    public DbSet<IdpImportRow> IdpImportRows { get; set; } = null!;
     public DbSet<IdpAnnualTarget> IdpAnnualTargets { get; set; } = null!;
     public DbSet<IdpAlignmentLink> IdpAlignmentLinks { get; set; } = null!;
     public DbSet<IdpCommunitySession> IdpCommunitySessions { get; set; } = null!;
@@ -880,6 +882,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<IdpProgramme>().HasQueryFilter(item => TenantFilterBypass || item.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpProject>().HasQueryFilter(item => TenantFilterBypass || item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpKpi>().HasQueryFilter(item => TenantFilterBypass || item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<IdpImportBatch>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<IdpImportRow>().HasQueryFilter(item => TenantFilterBypass || item.IdpImportBatch.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpAnnualTarget>().HasQueryFilter(item => TenantFilterBypass || item.IdpKpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpAlignmentLink>().HasQueryFilter(item => TenantFilterBypass || item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpCommunitySession>().HasQueryFilter(item => TenantFilterBypass || item.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -1189,6 +1193,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .HasIndex(kpi => new { kpi.IdpProjectId, kpi.KpiCode })
             .IsUnique();
 
+        builder.Entity<IdpKpi>().HasIndex(kpi => kpi.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpKpi>().Property(kpi => kpi.RowVersion));
+
         builder.Entity<IdpKpi>()
             .HasOne(kpi => kpi.IdpProject)
             .WithMany(project => project.Kpis)
@@ -1212,6 +1219,32 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<IdpKpi>()
             .Property(kpi => kpi.FiveYearTarget)
             .HasPrecision(18, 2);
+
+        builder.Entity<IdpImportBatch>().HasIndex(batch => batch.PublicId).IsUnique();
+        builder.Entity<IdpImportBatch>().HasIndex(batch => new { batch.MunicipalityId, batch.ClientRequestId }).IsUnique();
+        builder.Entity<IdpImportBatch>().HasIndex(batch => new { batch.IdpPlanId, batch.CreatedAt });
+        builder.Entity<IdpImportBatch>().Property(batch => batch.ImportType).HasMaxLength(40);
+        builder.Entity<IdpImportBatch>().Property(batch => batch.SourceFileName).HasMaxLength(260);
+        builder.Entity<IdpImportBatch>().Property(batch => batch.SourceSha256).HasMaxLength(64);
+        builder.Entity<IdpImportBatch>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_IdpImportBatches_RowCounts", "[TotalRows] > 0 AND [TotalRows] = [NewRows] + [UnchangedRows] + [ChangedRows] + [InvalidRows]");
+            table.HasCheckConstraint("CK_IdpImportBatches_CommitMetadata", "[Status] <> 1 OR ([CommittedAt] IS NOT NULL AND [CommittedByUserId] IS NOT NULL)");
+        });
+        ConfigureRowVersion(builder.Entity<IdpImportBatch>().Property(batch => batch.RowVersion));
+        builder.Entity<IdpImportBatch>().HasOne(batch => batch.Municipality).WithMany().HasForeignKey(batch => batch.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpImportBatch>().HasOne(batch => batch.IdpPlan).WithMany(plan => plan.ImportBatches).HasForeignKey(batch => batch.IdpPlanId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpImportBatch>().HasOne(batch => batch.CreatedByUser).WithMany().HasForeignKey(batch => batch.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpImportBatch>().HasOne(batch => batch.CommittedByUser).WithMany().HasForeignKey(batch => batch.CommittedByUserId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<IdpImportRow>().HasIndex(row => row.PublicId).IsUnique();
+        builder.Entity<IdpImportRow>().HasIndex(row => new { row.IdpImportBatchId, row.SourceRowNumber }).IsUnique();
+        builder.Entity<IdpImportRow>().Property(row => row.Reference).HasMaxLength(240);
+        builder.Entity<IdpImportRow>().Property(row => row.ErrorCode).HasMaxLength(80);
+        builder.Entity<IdpImportRow>().Property(row => row.ErrorField).HasMaxLength(120);
+        builder.Entity<IdpImportRow>().Property(row => row.SuppliedValue).HasMaxLength(1000);
+        builder.Entity<IdpImportRow>().Property(row => row.ErrorMessage).HasMaxLength(2000);
+        builder.Entity<IdpImportRow>().HasOne(row => row.IdpImportBatch).WithMany(batch => batch.Rows).HasForeignKey(row => row.IdpImportBatchId).OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<IdpAnnualTarget>()
             .HasIndex(annualTarget => new { annualTarget.IdpKpiId, annualTarget.FinancialYear })
@@ -1428,7 +1461,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
-            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan)
+            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1466,5 +1499,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             throw new InvalidOperationException("POE disposal history is append-only.");
         if (ChangeTracker.Entries<AuditTrail>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Audit history is append-only.");
+        if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
     }
 }

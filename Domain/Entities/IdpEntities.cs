@@ -37,6 +37,21 @@ public enum IdpKpiIndicatorType
     TreasuryTid = 6
 }
 
+public enum IdpImportBatchStatus
+{
+    Staged = 0,
+    Committed = 1,
+    Cancelled = 2
+}
+
+public enum IdpImportRowStatus
+{
+    New = 0,
+    Unchanged = 1,
+    Changed = 2,
+    Invalid = 3
+}
+
 public enum AlignmentFrameworkType
 {
     NationalDevelopmentPlan = 1,
@@ -109,6 +124,7 @@ public class IdpPlan
     public ICollection<IdpStrategicOutcome> StrategicOutcomes { get; set; } = new List<IdpStrategicOutcome>();
     public ICollection<IdpCommunitySession> CommunitySessions { get; set; } = new List<IdpCommunitySession>();
     public ICollection<IdpDocument> Documents { get; set; } = new List<IdpDocument>();
+    public ICollection<IdpImportBatch> ImportBatches { get; set; } = new List<IdpImportBatch>();
 }
 
 public class IdpPlanVersion
@@ -247,6 +263,7 @@ public class IdpProject
 public class IdpKpi
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpProjectId { get; set; }
     public string KpiCode { get; set; } = string.Empty;
     public string KpiName { get; set; } = string.Empty;
@@ -261,11 +278,61 @@ public class IdpKpi
     public IdpKpiIndicatorType IndicatorType { get; set; } = IdpKpiIndicatorType.Strategic;
     public bool Circular88Linked { get; set; }
     public bool TreasuryTidLinked { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpProject IdpProject { get; set; } = null!;
     public Department? ResponsibleDepartment { get; set; }
     public ICollection<IdpAnnualTarget> AnnualTargets { get; set; } = new List<IdpAnnualTarget>();
     public ICollection<IdpRiskLink> RiskLinks { get; set; } = new List<IdpRiskLink>();
+}
+
+public class IdpImportBatch
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public Guid ClientRequestId { get; set; }
+    public long MunicipalityId { get; set; }
+    public int IdpPlanId { get; set; }
+    public string ImportType { get; set; } = "KPI";
+    public string SourceFileName { get; set; } = string.Empty;
+    public string SourceSha256 { get; set; } = string.Empty;
+    public IdpImportBatchStatus Status { get; set; } = IdpImportBatchStatus.Staged;
+    public int TotalRows { get; set; }
+    public int NewRows { get; set; }
+    public int UnchangedRows { get; set; }
+    public int ChangedRows { get; set; }
+    public int InvalidRows { get; set; }
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? CommittedByUserId { get; set; }
+    public DateTime? CommittedAt { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+
+    public Municipality Municipality { get; set; } = null!;
+    public IdpPlan IdpPlan { get; set; } = null!;
+    public ApplicationUser? CreatedByUser { get; set; }
+    public ApplicationUser? CommittedByUser { get; set; }
+    public ICollection<IdpImportRow> Rows { get; set; } = new List<IdpImportRow>();
+}
+
+public class IdpImportRow
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long IdpImportBatchId { get; set; }
+    public int SourceRowNumber { get; set; }
+    public string Reference { get; set; } = string.Empty;
+    public IdpImportRowStatus Status { get; set; }
+    public string PayloadJson { get; set; } = string.Empty;
+    public string? NormalizedJson { get; set; }
+    public string? ExistingValueJson { get; set; }
+    public byte[]? ExpectedEntityRowVersion { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? ErrorField { get; set; }
+    public string? SuppliedValue { get; set; }
+    public string? ErrorMessage { get; set; }
+
+    public IdpImportBatch IdpImportBatch { get; set; } = null!;
 }
 
 public class IdpAnnualTarget

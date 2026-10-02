@@ -2457,6 +2457,7 @@ export interface IdpProject {
 
 export interface IdpKpi {
   id: number;
+  publicId: string;
   idpProjectId: number;
   kpiCode: string;
   kpiName: string;
@@ -2467,6 +2468,61 @@ export interface IdpKpi {
   fiveYearTarget: number;
   responsibleDepartmentId?: number | null;
   responsibleDepartmentName?: string | null;
+  dataSource: string;
+  reportingFrequency: string;
+  indicatorType: string;
+  circular88Linked: boolean;
+  treasuryTidLinked: boolean;
+  rowVersion: string;
+}
+
+export type IdpImportRowStatus = 'New' | 'Unchanged' | 'Changed' | 'Invalid';
+
+export interface IdpImportRow {
+  publicId: string;
+  sourceRowNumber: number;
+  reference: string;
+  status: IdpImportRowStatus;
+  existingValueJson?: string | null;
+  normalizedJson?: string | null;
+  errorCode?: string | null;
+  errorField?: string | null;
+  suppliedValue?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface IdpImportBatch {
+  publicId: string;
+  clientRequestId: string;
+  idpPlanPublicId: string;
+  importType: string;
+  sourceFileName: string;
+  sourceSha256: string;
+  status: 'Staged' | 'Committed' | 'Cancelled';
+  totalRows: number;
+  newRows: number;
+  unchangedRows: number;
+  changedRows: number;
+  invalidRows: number;
+  createdByUserId: string;
+  createdAt: string;
+  committedByUserId?: string | null;
+  committedAt?: string | null;
+  rowVersion: string;
+  rows: IdpImportRow[];
+}
+
+export interface IdpKpiImportRowPayload {
+  sourceRowNumber: number;
+  projectCode: string;
+  kpiCode: string;
+  kpiName: string;
+  description: string;
+  formula: string;
+  baseline: number;
+  annualTarget: number;
+  fiveYearTarget: number;
+  responsibleDepartmentCode?: string | null;
   dataSource: string;
   reportingFrequency: string;
   indicatorType: string;

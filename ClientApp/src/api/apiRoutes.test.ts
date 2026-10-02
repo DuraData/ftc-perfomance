@@ -1,8 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changePassword, closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa } from './api';
+import { changePassword, closeEmployeeAssignment, commitIdpImport, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpKpiImport } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('uses versioned IDP reconciliation routes and transports idempotency plus concurrency', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const row = { sourceRowNumber: 2, projectCode: 'P1', kpiCode: 'K1', kpiName: 'KPI', description: 'Description', formula: 'x', baseline: 0, annualTarget: 1, fiveYearTarget: 5, dataSource: 'System', reportingFrequency: 'Quarterly', indicatorType: 'Output', circular88Linked: false, treasuryTidLinked: false };
+
+    await getIdpImportBatches('plan-public-id');
+    await stageIdpKpiImport('plan-public-id', { clientRequestId: 'request-id', sourceFileName: 'kpis.csv', rows: [row] });
+    await commitIdpImport('batch-public-id', { rowVersion: 'AQ==', reason: 'Approved reconciliation' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans/plan-public-id/imports'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/plans/plan-public-id/imports/kpis/stage'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('"clientRequestId":"request-id"') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/idp/imports/batch-public-id/commit'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'AQ==', reason: 'Approved reconciliation' }) }));
+  });
 
   it('loads performance target revisions from the controller route', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), {

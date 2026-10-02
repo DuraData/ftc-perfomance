@@ -4,14 +4,18 @@ import {
   createIdpComment,
   createIdpPlan,
   createIdpPlanVersion,
+  commitIdpImport,
+  getIdpImportBatches,
   getIdpAlignmentMatrix,
   getIdpDashboard,
   getIdpPlans,
   getIdpPlanHierarchy,
   getIdpReport,
+  stageIdpKpiImport,
   createIdpCommunitySession,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { useHasAnyPermission } from '../security/AccessControl';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState } from '../ui';
@@ -19,10 +23,13 @@ import type {
   IdpAlignmentMatrixItem,
   IdpDashboard,
   IdpHierarchy,
+  IdpImportBatch,
+  IdpKpiImportRowPayload,
   IdpPlanSummary,
   IdpPlanVersion,
   IdpReportDocument,
 } from '../../types';
+import { idpKpiCsvTemplate, parseIdpKpiCsv } from './idpImportCsv';
 
 function metricCard(title: string, value: string | number, caption?: string) {
   return (
@@ -167,12 +174,20 @@ export function IdpPlanningDashboardPage() {
 
 export function IdpPlanManagementPage() {
   const { pushToast } = useApp();
+  const { canImport } = useSecurity();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
+  const canImportKpis = canImport('IDP_INDICATOR');
   const currentYear = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [versions, setVersions] = useState<IdpPlanVersion[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [importRows, setImportRows] = useState<IdpKpiImportRowPayload[]>([]);
+  const [importFileName, setImportFileName] = useState('');
+  const [importBatch, setImportBatch] = useState<IdpImportBatch | null>(null);
+  const [importHistory, setImportHistory] = useState<IdpImportBatch[]>([]);
+  const [importReason, setImportReason] = useState('');
+  const [importBusy, setImportBusy] = useState(false);
   const [planDraft, setPlanDraft] = useState({
     planTitle: '',
     planCode: '',
@@ -205,8 +220,14 @@ export function IdpPlanManagementPage() {
       const hierarchyResult = await getIdpPlanHierarchy(planId);
       const hierarchy = hierarchyResult.data;
       setVersions(hierarchy?.versions ?? []);
+      const selected = loadedPlans.find(plan => plan.id === planId);
+      if (selected && canImportKpis) {
+        const historyResult = await getIdpImportBatches(selected.publicId);
+        setImportHistory(historyResult.data ?? []);
+      }
     } else {
       setVersions([]);
+      setImportHistory([]);
     }
   };
 
@@ -219,6 +240,68 @@ export function IdpPlanManagementPage() {
     setSelectedPlanId(planId);
     const hierarchyResult = await getIdpPlanHierarchy(planId);
     setVersions(hierarchyResult.data?.versions ?? []);
+    const selected = plans.find(plan => plan.id === planId);
+    if (selected && canImportKpis) {
+      const historyResult = await getIdpImportBatches(selected.publicId);
+      setImportHistory(historyResult.data ?? []);
+    }
+    setImportBatch(null);
+  };
+
+  const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
+
+  const stageImport = async () => {
+    if (!selectedPlan || !importRows.length || !importFileName) {
+      pushToast('error', 'Select a plan and a valid KPI CSV file first.');
+      return;
+    }
+    setImportBusy(true);
+    try {
+      const result = await stageIdpKpiImport(selectedPlan.publicId, {
+        clientRequestId: crypto.randomUUID(),
+        sourceFileName: importFileName,
+        rows: importRows,
+      });
+      if (!result.success || !result.data) {
+        pushToast('error', result.message ?? 'Unable to stage the KPI import.');
+        return;
+      }
+      setImportBatch(result.data);
+      setImportHistory(history => [result.data!, ...history.filter(item => item.publicId !== result.data!.publicId)]);
+      pushToast(result.data.invalidRows ? 'info' : 'success', result.data.invalidRows ? 'Reconciliation contains invalid rows.' : 'Reconciliation preview is ready.');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const commitImport = async () => {
+    if (!importBatch || !importReason.trim()) {
+      pushToast('error', 'A commit reason is required.');
+      return;
+    }
+    setImportBusy(true);
+    try {
+      const result = await commitIdpImport(importBatch.publicId, { rowVersion: importBatch.rowVersion, reason: importReason.trim() });
+      if (!result.success || !result.data) {
+        pushToast('error', result.message ?? 'Unable to commit the KPI import.');
+        return;
+      }
+      setImportBatch(result.data);
+      setImportHistory(history => history.map(item => item.publicId === result.data!.publicId ? result.data! : item));
+      setImportReason('');
+      pushToast('success', 'KPI import committed atomically.');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const downloadImportTemplate = () => {
+    const url = URL.createObjectURL(new Blob([idpKpiCsvTemplate], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'idp-kpi-import-template.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const submitPlan = async () => {
@@ -344,6 +427,81 @@ export function IdpPlanManagementPage() {
             </div>
           </Card>
         </div>
+
+        {canImportKpis ? (
+          <Card>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-secondary-900 dark:text-white">KPI import reconciliation</h3>
+                <p className="text-xs text-secondary-500">Stage the complete CSV, review NEW/UNCHANGED/CHANGED/INVALID rows, then commit the valid batch atomically.</p>
+              </div>
+              <Button variant="outline" onClick={downloadImportTemplate}>Download CSV Template</Button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <label className="text-xs text-secondary-600">
+                KPI CSV file
+                <input
+                  aria-label="KPI CSV file"
+                  type="file"
+                  accept=".csv,text/csv"
+                  className={fieldClass}
+                  onChange={event => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    void file.text().then(content => {
+                      try {
+                        const rows = parseIdpKpiCsv(content);
+                        setImportRows(rows);
+                        setImportFileName(file.name);
+                        setImportBatch(null);
+                        pushToast('success', `${file.name}: ${rows.length} rows parsed.`);
+                      } catch (error) {
+                        setImportRows([]);
+                        setImportFileName('');
+                        pushToast('error', error instanceof Error ? error.message : 'Unable to parse CSV.');
+                      }
+                    });
+                  }}
+                />
+              </label>
+              <div className="self-end"><Button variant="primary" disabled={importBusy || !selectedPlan || !importRows.length} onClick={() => void stageImport()}>{importBusy ? 'Working...' : 'Stage and Reconcile'}</Button></div>
+            </div>
+            {importFileName ? <p className="mt-2 text-xs text-secondary-500">Selected: {importFileName} ({importRows.length} data rows)</p> : null}
+
+            {importBatch ? (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="primary">Total {importBatch.totalRows}</Badge>
+                  <Badge variant="success">New {importBatch.newRows}</Badge>
+                  <Badge variant="info">Unchanged {importBatch.unchangedRows}</Badge>
+                  <Badge variant="warning">Changed {importBatch.changedRows}</Badge>
+                  <Badge variant={importBatch.invalidRows ? 'error' : 'success'}>Invalid {importBatch.invalidRows}</Badge>
+                  <Badge variant={importBatch.status === 'Committed' ? 'success' : 'default'}>{importBatch.status}</Badge>
+                </div>
+                <div className="max-h-80 overflow-auto rounded border border-secondary-200 dark:border-secondary-700">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="bg-secondary-50 dark:bg-secondary-800"><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Error</th></tr></thead>
+                    <tbody>{importBatch.rows.map(row => <tr key={row.publicId} className="border-t border-secondary-200 dark:border-secondary-700"><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="px-3 py-2">{row.reference}</td><td className="px-3 py-2"><Badge variant={row.status === 'Invalid' ? 'error' : row.status === 'Changed' ? 'warning' : row.status === 'New' ? 'success' : 'info'}>{row.status}</Badge></td><td className="px-3 py-2 text-error-700">{row.errorCode ? `${row.errorCode}: ${row.errorMessage}` : '—'}</td></tr>)}</tbody>
+                  </table>
+                </div>
+                {importBatch.status === 'Staged' ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="min-w-72 flex-1 text-xs text-secondary-600">Commit reason<input aria-label="Import commit reason" className={fieldClass} value={importReason} onChange={event => setImportReason(event.target.value)} /></label>
+                    <Button variant="primary" disabled={importBusy || importBatch.invalidRows > 0 || !importReason.trim()} onClick={() => void commitImport()}>Commit Valid Batch</Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {importHistory.length ? (
+              <div className="mt-5">
+                <h4 className="text-sm font-semibold text-secondary-800 dark:text-secondary-200">Recent import batches</h4>
+                <div className="mt-2 flex flex-wrap gap-2">{importHistory.slice(0, 10).map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => setImportBatch(batch)}>{batch.sourceFileName} · {batch.status} · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
+              </div>
+            ) : null}
+          </Card>
+        ) : null}
       </div>
     </AppShell>
   );

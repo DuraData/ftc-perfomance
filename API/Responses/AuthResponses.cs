@@ -554,7 +554,41 @@ public record IdpKpiResponse(
     string ReportingFrequency,
     string IndicatorType,
     bool Circular88Linked,
-    bool TreasuryTidLinked);
+    bool TreasuryTidLinked,
+    Guid PublicId,
+    string RowVersion);
+
+public record IdpImportBatchResponse(
+    Guid PublicId,
+    Guid ClientRequestId,
+    Guid IdpPlanPublicId,
+    string ImportType,
+    string SourceFileName,
+    string SourceSha256,
+    string Status,
+    int TotalRows,
+    int NewRows,
+    int UnchangedRows,
+    int ChangedRows,
+    int InvalidRows,
+    string CreatedByUserId,
+    DateTime CreatedAt,
+    string? CommittedByUserId,
+    DateTime? CommittedAt,
+    string RowVersion,
+    IdpImportRowResponse[] Rows);
+
+public record IdpImportRowResponse(
+    Guid PublicId,
+    int SourceRowNumber,
+    string Reference,
+    string Status,
+    string? ExistingValueJson,
+    string? NormalizedJson,
+    string? ErrorCode,
+    string? ErrorField,
+    string? SuppliedValue,
+    string? ErrorMessage);
 
 public record IdpAnnualTargetResponse(int Id, int IdpKpiId, int FinancialYear, decimal TargetValue, decimal? ActualValue, string? ProgressComment);
 

@@ -1577,6 +1577,24 @@ export async function getIdpPlanHierarchy(planId: number): Promise<ApiResponse<I
   return get<IdpHierarchy>(`/idp/plans/${planId}/hierarchy`);
 }
 
+export async function getIdpImportBatches(planPublicId: string): Promise<ApiResponse<import('../types').IdpImportBatch[]>> {
+  return get<import('../types').IdpImportBatch[]>(`/v1/idp/plans/${planPublicId}/imports`);
+}
+
+export async function stageIdpKpiImport(
+  planPublicId: string,
+  payload: { clientRequestId: string; sourceFileName: string; rows: import('../types').IdpKpiImportRowPayload[] },
+): Promise<ApiResponse<import('../types').IdpImportBatch>> {
+  return post<import('../types').IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/kpis/stage`, payload);
+}
+
+export async function commitIdpImport(
+  batchPublicId: string,
+  payload: { rowVersion: string; reason: string },
+): Promise<ApiResponse<import('../types').IdpImportBatch>> {
+  return post<import('../types').IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit`, payload);
+}
+
 export async function getIdpHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {
   return getIdpPlanHierarchy(planId);
 }

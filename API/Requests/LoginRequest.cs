@@ -374,6 +374,30 @@ public record CreateIdpKpiRequest(
     bool Circular88Linked,
     bool TreasuryTidLinked);
 
+public record StageIdpKpiImportRequest(
+    Guid ClientRequestId,
+    string SourceFileName,
+    IdpKpiImportRowRequest[] Rows);
+
+public record IdpKpiImportRowRequest(
+    int SourceRowNumber,
+    string ProjectCode,
+    string KpiCode,
+    string KpiName,
+    string Description,
+    string Formula,
+    decimal Baseline,
+    decimal AnnualTarget,
+    decimal FiveYearTarget,
+    string? ResponsibleDepartmentCode,
+    string DataSource,
+    string ReportingFrequency,
+    string IndicatorType,
+    bool Circular88Linked,
+    bool TreasuryTidLinked);
+
+public record CommitIdpImportRequest(string RowVersion, string Reason);
+
 public record CreateIdpAnnualTargetRequest(
     int IdpKpiId,
     int FinancialYear,
