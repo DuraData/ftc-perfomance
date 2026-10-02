@@ -30,7 +30,7 @@ import type {
   IpmsTargetDto,
   OpmsSubmissionDto,
   IpmsSubmissionDto,
-  NotificationDto,
+  NotificationPageResult,
   PoeFileDto,
   SaveOpmsTargetTemplatePayload,
   SaveIpmsTargetTemplatePayload,
@@ -1669,9 +1669,10 @@ export async function requestIpmsEvidenceDisposal(id: string, attachmentId: stri
   return mapResponse(response, toAttachmentModel);
 }
 
-export async function getNotifications(includeAll = false): Promise<ApiResponse<NotificationDto[]>> {
-  const suffix = includeAll ? '?includeAll=true' : '';
-  return get<NotificationDto[]>(`/notifications${suffix}`);
+export async function getNotifications(query: RegisterPageQuery = {}, includeAll = false): Promise<ApiResponse<NotificationPageResult>> {
+  const pageQuery = registerPageQuery(query);
+  const suffix = includeAll ? `${pageQuery || '?'}${pageQuery ? '&' : ''}includeAll=true` : pageQuery;
+  return get<NotificationPageResult>(`/v1/notifications/page${suffix}`);
 }
 
 export async function markNotificationRead(id: string): Promise<ApiResponse<boolean>> {

@@ -462,6 +462,19 @@ public record NotificationResponse(
     bool IsRead,
     DateTime CreatedAt);
 
+public sealed record NotificationPageResponse(
+    NotificationResponse[] Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int TotalPages,
+    int UnreadCount)
+{
+    public static NotificationPageResponse Create(IEnumerable<NotificationResponse> items, int page, int pageSize, int totalCount, int unreadCount) =>
+        new(items.ToArray(), page, pageSize, totalCount,
+            totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize), unreadCount);
+}
+
 public record AuditTrailEntryResponse(
     long Id,
     Guid PublicId,

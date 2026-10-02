@@ -2132,6 +2132,10 @@ export interface NotificationDto {
   createdAt: string;
 }
 
+export interface NotificationPageResult extends PagedResult<NotificationDto> {
+  unreadCount: number;
+}
+
 export interface AuditTrailEntryDto {
   id: number;
   publicId: string;

@@ -115,6 +115,43 @@ public sealed class RegisterPaginationTests
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
+    [Fact]
+    public async Task User_notification_page_reports_authoritative_unread_count_and_excludes_other_users()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("notification-user");
+        var other = IdpTestFixture.CreateUser("other-notification-user");
+        context.Users.AddRange(user, other);
+        context.Notifications.AddRange(
+            UserNotification("n-1", user.Id, "Zulu", false, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
+            UserNotification("n-2", user.Id, "Alpha", true, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
+            UserNotification("n-3", user.Id, "Beta", false, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+            UserNotification("outside", other.Id, "Outside", false, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc)));
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, "Notifications.View", null))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = new NotificationsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object)
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+        var result = await controller.GetNotificationsPage(new PagedQueryRequest
+        {
+            Page = 1,
+            PageSize = 2,
+            SortBy = "title",
+            SortDirection = "asc"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<NotificationPageResponse>>(ok.Value);
+        Assert.Equal(3, envelope.Data!.TotalCount);
+        Assert.Equal(2, envelope.Data.UnreadCount);
+        Assert.Equal(["Alpha", "Beta"], envelope.Data.Items.Select(item => item.Title));
+        Assert.DoesNotContain(envelope.Data.Items, item => item.Id == "outside");
+    }
+
     [Theory]
     [InlineData(0, 25)]
     [InlineData(1, 0)]
@@ -160,6 +197,17 @@ public sealed class RegisterPaginationTests
         AttemptCount = attemptCount,
         OccurredAt = occurredAt,
         AvailableAt = occurredAt
+    };
+
+    private static Notification UserNotification(string id, string userId, string title, bool isRead, DateTime createdAt) => new()
+    {
+        Id = id,
+        UserId = userId,
+        Type = NotificationType.Submission,
+        Title = title,
+        Message = $"{title} message",
+        IsRead = isRead,
+        CreatedAt = createdAt
     };
 
     private static ControllerContext ControllerContext(string userId) => new()

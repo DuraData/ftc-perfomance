@@ -37,13 +37,15 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<NotificationDto[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     setLoadingNotifications(true);
-    const result = await getNotifications();
+    const result = await getNotifications({ page: 1, pageSize: 8, sortBy: 'createdAt', sortDirection: 'desc' });
     if (result.success && result.data) {
-      setNotifications(result.data);
+      setNotifications(result.data.items);
+      setUnreadCount(result.data.unreadCount);
     } else {
       pushToast('error', result.message ?? 'Failed to load notifications');
     }
@@ -53,8 +55,6 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   useEffect(() => {
     void loadNotifications();
   }, [loadNotifications]);
-
-  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const recentNotifications = useMemo(
     () => notifications
@@ -164,6 +164,8 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           <button
             className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors relative"
             onClick={toggleNotifications}
+            aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+            aria-expanded={showNotifications}
           >
             <Bell className="w-5 h-5 text-secondary-500 dark:text-secondary-400" />
             {unreadCount > 0 && (
@@ -198,9 +200,10 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                         void (async () => {
                           if (!notification.isRead) {
                             const result = await markNotificationRead(notification.id);
-                            if (result.success) {
-                              setNotifications(prev => prev.map(item => item.id === notification.id ? { ...item, isRead: true } : item));
-                            }
+                             if (result.success) {
+                               setNotifications(prev => prev.map(item => item.id === notification.id ? { ...item, isRead: true } : item));
+                               setUnreadCount(current => Math.max(0, current - 1));
+                             }
                           }
                           setShowNotifications(false);
                           if (notification.entityName?.toLowerCase().includes('submission')) {

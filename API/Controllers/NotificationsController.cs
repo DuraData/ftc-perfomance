@@ -1,3 +1,4 @@
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -11,6 +12,7 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/notifications")]
+[Route("api/v1/notifications")]
 [Authorize]
 public class NotificationsController : ControllerBase
 {
@@ -44,6 +46,45 @@ public class NotificationsController : ControllerBase
         var items = await query.Take(500).ToArrayAsync();
         return Ok(new ApiResponse<NotificationResponse[]>(true, items.Select(item => item.ToResponse()).ToArray()));
     }
+
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<NotificationPageResponse>>> GetNotificationsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool includeAll = false)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<NotificationPageResponse>(false, null, "User not found"));
+        if (!NotificationSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<NotificationPageResponse>(false, null, "SortBy must be createdAt, type, or title."));
+
+        var permissionCode = includeAll ? "Notifications.Manage" : "Notifications.View";
+        var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode);
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<NotificationPageResponse>(false, null, decision.Reason));
+
+        var permittedQuery = _context.Notifications.AsNoTracking().AsQueryable();
+        if (!includeAll) permittedQuery = permittedQuery.Where(item => item.UserId == user.Id);
+        var unreadCount = await permittedQuery.CountAsync(item => !item.IsRead);
+        var query = permittedQuery;
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Title.Contains(request.NormalizedSearch) || item.Message.Contains(request.NormalizedSearch) || (item.EntityName != null && item.EntityName.Contains(request.NormalizedSearch)));
+
+        var totalCount = await query.CountAsync();
+        var items = await ApplyNotificationOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<NotificationPageResponse>(true,
+            NotificationPageResponse.Create(items.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount, unreadCount)));
+    }
+
+    private static readonly HashSet<string> NotificationSortFields = ["createdat", "type", "title"];
+
+    private static IOrderedQueryable<Notification> ApplyNotificationOrdering(IQueryable<Notification> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("type", false) => query.OrderBy(item => item.Type).ThenBy(item => item.Id),
+            ("type", true) => query.OrderByDescending(item => item.Type).ThenBy(item => item.Id),
+            ("title", false) => query.OrderBy(item => item.Title).ThenBy(item => item.Id),
+            ("title", true) => query.OrderByDescending(item => item.Title).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+        };
 
     [HttpPatch("{id}/read")]
     public async Task<ActionResult<ApiResponse<bool>>> MarkRead(string id)
