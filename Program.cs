@@ -9,6 +9,8 @@ using FTCERP.Host.Infrastructure.Health;
 using FTCERP.Host.Infrastructure.Observability;
 using FTCERP.Host.Infrastructure.OpenApi;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -76,14 +78,28 @@ builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
 // Configure JWT Settings
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>() ?? new JwtSettings();
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
+var enterpriseOptions = builder.Configuration.GetSection(EnterpriseAuthenticationOptions.SectionName).Get<EnterpriseAuthenticationOptions>() ?? new EnterpriseAuthenticationOptions();
+if (!enterpriseOptions.PostLoginPath.StartsWith('/') || !enterpriseOptions.FailurePath.StartsWith('/'))
+    throw new InvalidOperationException("Enterprise authentication redirects must be local application paths.");
+var enterpriseProviders = new EnterpriseProviderRegistry(enterpriseOptions.Providers);
+builder.Services.Configure<EnterpriseAuthenticationOptions>(builder.Configuration.GetSection(EnterpriseAuthenticationOptions.SectionName));
+builder.Services.AddSingleton<IEnterpriseProviderRegistry>(enterpriseProviders);
 
-builder.Services.AddAuthentication(options =>
+var authentication = builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
+});
+authentication.AddCookie(FTCERP.Host.API.Controllers.EnterpriseAuthController.ExternalCookieScheme, options =>
+{
+    options.Cookie.Name = "opms_enterprise_external";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+});
+authentication.AddJwtBearer(options =>
 {
     options.SaveToken = true;
     options.RequireHttpsMetadata = false;
@@ -123,8 +139,32 @@ builder.Services.AddAuthentication(options =>
         }
     };
 });
+foreach (var provider in enterpriseProviders.Providers)
+{
+    authentication.AddOpenIdConnect(EnterpriseProviderRegistry.Scheme(provider.Code), options =>
+    {
+        options.SignInScheme = FTCERP.Host.API.Controllers.EnterpriseAuthController.ExternalCookieScheme;
+        options.Authority = provider.Authority;
+        options.ClientId = provider.ClientId;
+        options.ClientSecret = provider.ClientSecret;
+        options.CallbackPath = provider.CallbackPath;
+        options.ResponseType = "code";
+        options.UsePkce = true;
+        options.SaveTokens = false;
+        options.GetClaimsFromUserInfoEndpoint = true;
+        options.TokenValidationParameters.ValidateIssuer = true;
+        options.TokenValidationParameters.NameClaimType = "name";
+        options.TokenValidationParameters.RoleClaimType = "roles";
+        options.Scope.Clear();
+        options.Scope.Add("openid");
+        options.Scope.Add("profile");
+        options.Scope.Add("email");
+        foreach (var scope in provider.Scopes) options.Scope.Add(scope);
+    });
+}
 
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IEnterpriseAuthenticationService, EnterpriseAuthenticationService>();
 builder.Services.AddScoped<IAccessControlService, AccessControlService>();
 builder.Services.AddSingleton<IPerformanceUnitEngine, PerformanceUnitEngine>();
 builder.Services.AddScoped<ISubmissionValueService, SubmissionValueService>();

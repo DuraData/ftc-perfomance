@@ -38,6 +38,7 @@ public static class SecurityRegistrySeeder
             Resource("IDP_INDICATOR", "IDP Indicator", true, true, true, false, true, true),
             Resource("TID", "Technical Indicator Definition", true, true, true, false, true, true),
             Resource("STRATEGIC_DOCUMENT", "Strategic Document", true, true, true, false, true, true),
+            Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, false, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
@@ -69,6 +70,9 @@ public static class SecurityRegistrySeeder
             Action("SECURITY.ASSIGN_ROLES", "Assign Roles", "ROLE"), Action("SECURITY.MANAGE_PERMISSIONS", "Manage Permissions", "ROLE"),
             Action("SECURITY.MANAGE_NAVIGATION", "Manage Navigation", "ROLE"), Action("SECURITY.VIEW_EFFECTIVE", "View Effective Permissions", "ROLE"),
             Action("SECURITY.SYSTEM_SCOPE", "Administer System Scope", "ROLE"),
+            Action("AUTHENTICATION.CONFIGURE", "Configure Authentication", "AUTHENTICATION"),
+            Action("AUTHENTICATION.LINK_IDENTITIES", "Link Enterprise Identities", "AUTHENTICATION"),
+            Action("AUTHENTICATION.VIEW_EVENTS", "View Authentication Events", "AUTHENTICATION"),
             Action("WORKFLOW.CONFIGURE", "Configure Workflow and Reporting Windows", "OPMS_WORKFLOW"),
             Action("TID.CONFIGURE", "Configure TID Policy", "TID"), Action("TID.UPLOAD_SOURCE", "Upload TID Source Document", "TID"),
             Action("STRATEGIC_DOCUMENT.MANAGE_TYPES", "Manage Strategic Document Types", "STRATEGIC_DOCUMENT"),
@@ -190,7 +194,8 @@ public static class SecurityRegistrySeeder
             Nav("NAV.ADMIN.USERS", "Users", "/system-administration/users", "users", 10, "NAV.ADMIN.USERS", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.ROLES", "Roles", "/system-administration/roles", "users-group", 20, "NAV.ADMIN.ROLES", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.SECURITY", "Security", "/system-administration/security", "key", 30, "NAV.ADMIN.SECURITY", rootIds["NAV.ADMIN"]),
-            Nav("NAV.ADMIN.AUDIT", "Audit Logs", "/system-administration/audit-logs", "history", 40, "NAV.ADMIN.AUDIT", rootIds["NAV.ADMIN"])
+            Nav("NAV.ADMIN.AUTHENTICATION", "Authentication", "/system-administration/authentication", "shield", 40, "AUTHENTICATION.READ", rootIds["NAV.ADMIN"]),
+            Nav("NAV.ADMIN.AUDIT", "Audit Logs", "/system-administration/audit-logs", "history", 50, "NAV.ADMIN.AUDIT", rootIds["NAV.ADMIN"])
         };
         existingCodes = await context.SecurityNavigationItems.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
         context.SecurityNavigationItems.AddRange(children.Where(item => !existingCodes.Contains(item.Code)));

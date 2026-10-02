@@ -97,6 +97,11 @@ import type {
   StrategicDocumentType,
   SaveStrategicDocumentVersionPayload,
   C88Workspace,
+  EnterpriseSignInOptions,
+  EnterpriseProviderOption,
+  AuthenticationConfiguration,
+  UserAuthenticator,
+  AuthenticationEvent,
 } from '../types';
 import {
   mockBudgetSources,
@@ -822,6 +827,26 @@ async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
   }
   return refreshPromise;
 }
+
+export async function completeEnterpriseLogin(): Promise<ApiResponse<LoginResponse>> {
+  return refreshAccessToken();
+}
+
+export async function getEnterpriseSignInOptions(municipalityCode: string): Promise<ApiResponse<EnterpriseSignInOptions>> {
+  return get<EnterpriseSignInOptions>(`/v1/auth/enterprise/options/${encodeURIComponent(municipalityCode.trim())}`);
+}
+
+export function enterpriseSignInUrl(municipalityCode: string, providerCode: string): string {
+  return `${API_BASE_URL}/v1/auth/enterprise/challenge/${encodeURIComponent(municipalityCode.trim())}/${encodeURIComponent(providerCode)}`;
+}
+
+export async function getAuthenticationConfiguration(): Promise<ApiResponse<AuthenticationConfiguration | null>> { return get<AuthenticationConfiguration | null>('/v1/admin/authentication'); }
+export async function getAuthenticationProviders(): Promise<ApiResponse<EnterpriseProviderOption[]>> { return get<EnterpriseProviderOption[]>('/v1/admin/authentication/providers'); }
+export async function saveAuthenticationConfiguration(payload: unknown): Promise<ApiResponse<AuthenticationConfiguration>> { return put<AuthenticationConfiguration>('/v1/admin/authentication', payload); }
+export async function getUserAuthenticators(): Promise<ApiResponse<UserAuthenticator[]>> { return get<UserAuthenticator[]>('/v1/admin/authentication/authenticators'); }
+export async function provisionUserAuthenticator(payload: unknown): Promise<ApiResponse<UserAuthenticator>> { return post<UserAuthenticator>('/v1/admin/authentication/authenticators', payload); }
+export async function setUserAuthenticatorStatus(publicId: string, isActive: boolean, reason: string, rowVersion: string): Promise<ApiResponse<UserAuthenticator>> { return put<UserAuthenticator>(`/v1/admin/authentication/authenticators/${encodeURIComponent(publicId)}/status`, { isActive, reason, rowVersion }); }
+export async function getAuthenticationEvents(): Promise<ApiResponse<AuthenticationEvent[]>> { return get<AuthenticationEvent[]>('/v1/admin/authentication/events?take=100'); }
 
 export async function login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
   const result = await fetchApi<LoginResponse>('/auth/login', {

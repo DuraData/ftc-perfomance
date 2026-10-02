@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
-import { Target, Eye, EyeOff } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Target, Eye, EyeOff, Building2 } from 'lucide-react';
 import { Button } from '../ui';
 import { Input } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { requestPasswordReset, resetPassword } from '../../api/api';
+import { enterpriseSignInUrl, getEnterpriseSignInOptions, requestPasswordReset, resetPassword } from '../../api/api';
+import type { EnterpriseSignInOptions } from '../../types';
 
 type AuthMode = 'login' | 'forgot' | 'reset';
 
 export function Login() {
-  const { login, setCurrentPath } = useApp();
+  const { login, resumeEnterpriseLogin, setCurrentPath } = useApp();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,6 +25,30 @@ export function Login() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [notice, setNotice] = useState('');
+  const [municipalityCode, setMunicipalityCode] = useState('');
+  const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseSignInOptions | null>(null);
+
+  useEffect(() => {
+    const enterpriseStatus = new URLSearchParams(window.location.search).get('enterprise');
+    if (enterpriseStatus !== 'complete') {
+      if (enterpriseStatus === 'failed') setError('Enterprise sign-in could not be completed. Contact your administrator if the account should be linked.');
+      return;
+    }
+    setLoading(true);
+    void resumeEnterpriseLogin().then(result => {
+      if (result === 'failed') setError('Enterprise sign-in could not be completed.');
+    }).finally(() => setLoading(false));
+  }, [resumeEnterpriseLogin]);
+
+  const discoverEnterpriseOptions = async () => {
+    setError(''); setEnterpriseOptions(null); setLoading(true);
+    try {
+      const result = await getEnterpriseSignInOptions(municipalityCode);
+      if (result.success && result.data) setEnterpriseOptions(result.data);
+      else setError(result.message ?? 'No sign-in configuration was found for that municipality.');
+    } catch { setError('Sign-in options could not be loaded.'); }
+    finally { setLoading(false); }
+  };
 
   const returnToLogin = () => {
     window.history.replaceState({}, '', '/login');
@@ -131,6 +156,21 @@ export function Login() {
           )}
 
           {mode === 'login' && <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="rounded-lg border border-secondary-200 dark:border-secondary-700 p-3 space-y-3">
+              <Input label="Municipality code" type="text" value={municipalityCode} onChange={(event) => { setMunicipalityCode(event.target.value); setEnterpriseOptions(null); }} placeholder="For example: CPT" />
+              <Button type="button" variant="secondary" className="w-full" disabled={loading || municipalityCode.trim().length < 2} onClick={discoverEnterpriseOptions}>
+                <Building2 className="w-4 h-4 mr-2" /> Find sign-in options
+              </Button>
+              {enterpriseOptions?.providers.map(provider => (
+                <Button key={provider.code} type="button" variant="primary" className="w-full" onClick={() => window.location.assign(enterpriseSignInUrl(enterpriseOptions.municipalityCode, provider.code))}>
+                  Sign in with {provider.displayName}
+                </Button>
+              ))}
+              {enterpriseOptions && enterpriseOptions.providers.length === 0 ? <p className="text-sm text-secondary-500">No enterprise provider is enabled for this municipality.</p> : null}
+            </div>
+
+            {enterpriseOptions?.localEnabled === false ? <p className="text-sm text-secondary-600 dark:text-secondary-300">Local password sign-in is disabled for {enterpriseOptions.municipalityName}.</p> : null}
+            {enterpriseOptions?.localEnabled !== false ? <>
             <Input
               label="Username or Email"
               type="text"
@@ -189,6 +229,7 @@ export function Login() {
             {!mfaRequired && <button type="button" className="w-full text-sm text-primary-600 hover:text-primary-700" onClick={() => { setResetEmail(identifier); setMode('forgot'); setError(''); setNotice(''); }}>
               Forgot your password?
             </button>}
+            </> : null}
           </form>}
 
           {mode === 'forgot' && <form onSubmit={handleForgotPassword} className="space-y-4">

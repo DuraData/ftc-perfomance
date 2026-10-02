@@ -58,6 +58,7 @@ const KPILibrary = lazy(() => import('./components/kpi/KPILibrary').then(module 
 const Reports = lazy(() => import('./components/reports/Reports').then(module => ({ default: module.Reports })));
 const Settings = lazy(() => import('./components/settings/Settings').then(module => ({ default: module.Settings })));
 const SecurityAdministrationPage = lazy(() => import('./components/security/SecurityAdministration').then(module => ({ default: module.SecurityAdministrationPage })));
+const AuthenticationAdministrationPage = lazy(() => import('./components/security/AuthenticationAdministration').then(module => ({ default: module.AuthenticationAdministrationPage })));
 const WorkflowGovernanceAdminPage = lazy(() => import('./components/admin/WorkflowGovernanceAdmin').then(module => ({ default: module.WorkflowGovernanceAdminPage })));
 const TenantCalendarAdministration = lazy(() => import('./components/admin/TenantCalendarAdministration').then(module => ({ default: module.TenantCalendarAdministration })));
 const TenantEmployeeAdministration = lazy(() => import('./components/admin/TenantEmployeeAdministration').then(module => ({ default: module.TenantEmployeeAdministration })));
@@ -237,6 +238,8 @@ function AppContent() {
         return <AdminPermissionsPage />;
       case '/system-administration/security':
         return <SecurityAdministrationPage />;
+      case '/system-administration/authentication':
+        return <AuthenticationAdministrationPage />;
       case '/system-administration/audit-logs':
         return <AdminAuditLogsPage />;
       case '/system-administration/role-implementation-audit':

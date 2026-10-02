@@ -131,6 +131,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<C88WorkflowStage> C88WorkflowStages { get; set; } = null!;
     public DbSet<C88WorkflowAction> C88WorkflowActions { get; set; } = null!;
     public DbSet<C88OpmsMapping> C88OpmsMappings { get; set; } = null!;
+    public DbSet<AuthenticationConfiguration> AuthenticationConfigurations { get; set; } = null!;
+    public DbSet<AuthenticationPolicy> AuthenticationPolicies { get; set; } = null!;
+    public DbSet<UserAuthenticator> UserAuthenticators { get; set; } = null!;
+    public DbSet<AuthenticationEvent> AuthenticationEvents { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -143,6 +147,56 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
         builder.Entity<ApplicationUser>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<ApplicationUser>().Property(item => item.RowVersion));
         builder.Entity<ApplicationUser>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<AuthenticationConfiguration>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<AuthenticationConfiguration>().HasIndex(item => item.MunicipalityId).IsUnique();
+        builder.Entity<AuthenticationConfiguration>().Property(item => item.ProviderRegistrationCode).HasMaxLength(40);
+        builder.Entity<AuthenticationConfiguration>().Property(item => item.DisplayName).HasMaxLength(160);
+        builder.Entity<AuthenticationConfiguration>().ToTable(table => table.HasCheckConstraint("CK_AuthenticationConfigurations_Dates", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]"));
+        ConfigureRowVersion(builder.Entity<AuthenticationConfiguration>().Property(item => item.RowVersion));
+        builder.Entity<AuthenticationConfiguration>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationConfiguration>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationConfiguration>().HasOne(item => item.ModifiedByUser).WithMany().HasForeignKey(item => item.ModifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationConfiguration>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<AuthenticationPolicy>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<AuthenticationPolicy>().HasIndex(item => item.AuthenticationConfigurationId).IsUnique();
+        builder.Entity<AuthenticationPolicy>().HasIndex(item => item.MunicipalityId).IsUnique();
+        builder.Entity<AuthenticationPolicy>().ToTable(table => table.HasCheckConstraint("CK_AuthenticationPolicies_Bounds", "[MinimumPasswordLength] BETWEEN 12 AND 128 AND [MaximumFailedAttempts] BETWEEN 1 AND 20 AND [LockoutMinutes] BETWEEN 1 AND 1440 AND [SessionIdleTimeoutMinutes] BETWEEN 5 AND 1440 AND [SessionAbsoluteTimeoutHours] BETWEEN 1 AND 720 AND [MaximumConcurrentSessions] BETWEEN 1 AND 50"));
+        ConfigureRowVersion(builder.Entity<AuthenticationPolicy>().Property(item => item.RowVersion));
+        builder.Entity<AuthenticationPolicy>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationPolicy>().HasOne(item => item.AuthenticationConfiguration).WithOne(item => item.Policy).HasForeignKey<AuthenticationPolicy>(item => item.AuthenticationConfigurationId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<AuthenticationPolicy>().HasOne(item => item.ModifiedByUser).WithMany().HasForeignKey(item => item.ModifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationPolicy>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<UserAuthenticator>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<UserAuthenticator>().HasIndex(item => new { item.MunicipalityId, item.UserId, item.ProviderRegistrationCode }).IsUnique();
+        builder.Entity<UserAuthenticator>().HasIndex(item => new { item.MunicipalityId, item.ProviderRegistrationCode, item.ExpectedEmail });
+        builder.Entity<UserAuthenticator>().HasIndex(item => item.ExternalIdentityHash).IsUnique().HasFilter("[ExternalIdentityHash] IS NOT NULL");
+        builder.Entity<UserAuthenticator>().Property(item => item.ProviderRegistrationCode).HasMaxLength(40);
+        builder.Entity<UserAuthenticator>().Property(item => item.ExpectedEmail).HasMaxLength(320);
+        builder.Entity<UserAuthenticator>().Property(item => item.Issuer).HasMaxLength(512);
+        builder.Entity<UserAuthenticator>().Property(item => item.Subject).HasMaxLength(512);
+        builder.Entity<UserAuthenticator>().Property(item => item.ExternalIdentityHash).HasMaxLength(64);
+        ConfigureRowVersion(builder.Entity<UserAuthenticator>().Property(item => item.RowVersion));
+        builder.Entity<UserAuthenticator>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<UserAuthenticator>().HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<UserAuthenticator>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<UserAuthenticator>().HasOne(item => item.LinkedByUser).WithMany().HasForeignKey(item => item.LinkedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<UserAuthenticator>().HasOne(item => item.DisabledByUser).WithMany().HasForeignKey(item => item.DisabledByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<UserAuthenticator>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<AuthenticationEvent>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<AuthenticationEvent>().HasIndex(item => new { item.MunicipalityId, item.OccurredAt });
+        builder.Entity<AuthenticationEvent>().Property(item => item.ProviderCode).HasMaxLength(40);
+        builder.Entity<AuthenticationEvent>().Property(item => item.EventType).HasMaxLength(80);
+        builder.Entity<AuthenticationEvent>().Property(item => item.FailureCode).HasMaxLength(160);
+        builder.Entity<AuthenticationEvent>().Property(item => item.IpAddress).HasMaxLength(64);
+        builder.Entity<AuthenticationEvent>().Property(item => item.UserAgent).HasMaxLength(1024);
+        builder.Entity<AuthenticationEvent>().Property(item => item.CorrelationId).HasMaxLength(128);
+        builder.Entity<AuthenticationEvent>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationEvent>().HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationEvent>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<FinancialYear>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<FinancialYear>().HasIndex(item => item.Code).IsUnique();
@@ -1833,7 +1887,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
             , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdempotencyRequest), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
-            typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping)
+            typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping),
+            typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1871,6 +1926,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             throw new InvalidOperationException("POE disposal history is append-only.");
         if (ChangeTracker.Entries<AuditTrail>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Audit history is append-only.");
+        if (ChangeTracker.Entries<AuthenticationEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Authentication event history is append-only.");
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<GovernedRecordLifecycleEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

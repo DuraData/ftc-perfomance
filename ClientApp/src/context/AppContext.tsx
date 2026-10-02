@@ -13,6 +13,7 @@ import {
   getMyPermissions,
   getMyTenantContexts,
   login as apiLogin,
+  completeEnterpriseLogin,
   isAuthenticated,
   logout as apiLogout,
   setCurrentMunicipalityId,
@@ -168,6 +169,7 @@ interface AppContextType {
   currentMunicipalityId: number | null;
   switchMunicipality: (municipalityId: number) => Promise<boolean>;
   login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'>;
+  resumeEnterpriseLogin: () => Promise<'success' | 'failed'>;
   logout: () => void;
   sidebarCollapsed: boolean;
   expandedSidebarGroups: string[];
@@ -358,6 +360,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return result.message === 'MFA_REQUIRED' ? 'mfa_required' : 'failed';
   };
 
+  const resumeEnterpriseLogin = useCallback(async (): Promise<'success' | 'failed'> => {
+    const result = await completeEnterpriseLogin();
+    if (!result.success || !result.data) return 'failed';
+    const data = result.data;
+    setUserProfile(data.user);
+    setRoles(data.roles ?? []);
+    setCurrentMunicipalityId(null);
+    setCurrentMunicipalityIdState(null);
+    setPermissions([]);
+    setMenuItems([]);
+    safeSetItem('user_profile', JSON.stringify(data.user));
+    safeSetItem('roles', JSON.stringify(data.roles ?? []));
+    safeRemoveItem('permissions');
+    safeRemoveItem('menu_items');
+    await loadTenantContexts();
+    window.history.replaceState({}, '', '/dashboard');
+    setCurrentPathState('/dashboard');
+    return 'success';
+  }, [loadTenantContexts]);
+
   const logout = () => {
     apiLogout();
     setUserProfile(null);
@@ -427,6 +449,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         currentMunicipalityId: currentMunicipalityIdState,
         switchMunicipality,
         login,
+        resumeEnterpriseLogin,
         logout,
         sidebarCollapsed,
         expandedSidebarGroups,

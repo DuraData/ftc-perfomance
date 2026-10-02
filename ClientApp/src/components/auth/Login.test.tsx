@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Login } from './Login';
 
-const app = vi.hoisted(() => ({ login: vi.fn(), setCurrentPath: vi.fn() }));
-const authApi = vi.hoisted(() => ({ requestPasswordReset: vi.fn(), resetPassword: vi.fn() }));
+const app = vi.hoisted(() => ({ login: vi.fn(), resumeEnterpriseLogin: vi.fn(), setCurrentPath: vi.fn() }));
+const authApi = vi.hoisted(() => ({ requestPasswordReset: vi.fn(), resetPassword: vi.fn(), getEnterpriseSignInOptions: vi.fn(), enterpriseSignInUrl: vi.fn() }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../../api/api', () => authApi);
 
@@ -10,6 +10,17 @@ describe('MFA login challenge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.history.replaceState({}, '', '/login');
+    app.resumeEnterpriseLogin.mockResolvedValue('success');
+  });
+
+  it('discovers municipality authentication modes without exposing provider secrets', async () => {
+    authApi.getEnterpriseSignInOptions.mockResolvedValue({ success: true, data: { municipalityCode: 'M1', municipalityName: 'Metro One', localEnabled: false, providers: [{ code: 'ENTRA', displayName: 'Work account', kind: 'MICROSOFT_ENTRA_ID' }] } });
+    render(<Login />);
+    fireEvent.change(screen.getByLabelText(/Municipality code/), { target: { value: 'M1' } });
+    fireEvent.click(screen.getByRole('button', { name: /Find sign-in options/i }));
+    expect(await screen.findByRole('button', { name: /Sign in with Work account/i })).toBeInTheDocument();
+    expect(screen.getByText(/Local password sign-in is disabled/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Username or Email/)).not.toBeInTheDocument();
   });
 
   it('requests and submits an authenticator code after password validation', async () => {

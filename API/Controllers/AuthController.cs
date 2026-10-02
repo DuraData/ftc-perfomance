@@ -56,6 +56,12 @@ public class AuthController : ControllerBase
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid credentials"));
         }
 
+        if (!await IsLocalSignInEnabledAsync(user))
+        {
+            await RecordAuthenticationEventAsync(user.Id, user.Email ?? request.Email, false, "Local sign-in disabled");
+            return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid credentials"));
+        }
+
         var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
         if (result.RequiresTwoFactor)
         {
@@ -474,7 +480,41 @@ public class AuthController : ControllerBase
             FailureReason = failureReason,
             LoggedAt = DateTime.UtcNow
         });
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            var municipalityId = await _context.Users.IgnoreQueryFilters().Where(item => item.Id == userId).Select(item => item.MunicipalityId).SingleOrDefaultAsync();
+            if (municipalityId.HasValue)
+            {
+                HttpContext.Items[TenantResolutionMiddleware.MunicipalityItem] = municipalityId.Value;
+                _context.AuthenticationEvents.Add(new AuthenticationEvent
+                {
+                    MunicipalityId = municipalityId,
+                    UserId = userId,
+                    ProviderCode = "LOCAL",
+                    EventType = "LocalSignIn",
+                    Success = success,
+                    FailureCode = failureReason,
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    UserAgent = Request.Headers.UserAgent.ToString(),
+                    CorrelationId = HttpContext.TraceIdentifier,
+                    OccurredAt = DateTime.UtcNow
+                });
+            }
+        }
         await _context.SaveChangesAsync();
+    }
+
+    private async Task<bool> IsLocalSignInEnabledAsync(ApplicationUser user)
+    {
+        if (!user.MunicipalityId.HasValue) return true;
+        var now = DateTime.UtcNow;
+        var configuredMode = await _context.AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking()
+            .Where(item => item.MunicipalityId == user.MunicipalityId && item.IsActive && item.EffectiveFrom <= now
+                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
+            .Select(item => (AuthenticationMode?)item.Mode).SingleOrDefaultAsync();
+        var mode = configuredMode ?? await _context.Municipalities.IgnoreQueryFilters().AsNoTracking()
+            .Where(item => item.Id == user.MunicipalityId).Select(item => item.AuthenticationMode).SingleAsync();
+        return mode is AuthenticationMode.Local or AuthenticationMode.Hybrid;
     }
 }
 
