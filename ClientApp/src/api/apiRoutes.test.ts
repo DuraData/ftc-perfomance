@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createTidVersion, enableMfa, getAuthSessions, getIdpImportBatches, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getTidConfiguration, getTidHistory, getTidRegister, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -28,6 +28,24 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans/plan-id/imports/hierarchy/stage'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('hierarchy-request') }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/imports/batch-id/commit-hierarchy'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'AQ==', reason: 'Approved' }) }));
+  });
+
+  it('uses versioned TID configuration, register, history and lineage routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const payload = { indicatorDefinition: 'Definition', purpose: 'Purpose', dataSource: 'Source', collectionMethod: 'Collect', calculationMethod: 'Calculate', numeratorDescription: null, denominatorDescription: null, limitations: null, assumptions: null, verificationMethod: 'Verify', responsibleEmployeePublicId: null, notes: null, effectiveFrom: '2026-07-01T00:00:00Z', previousVersionRowVersion: 'AQ==', reason: 'Approved' };
+
+    await getTidConfiguration();
+    await updateTidConfiguration({ tidEnabled: true, allKpisRequired: true, rowVersion: 'AQ==', reason: 'Approved policy' });
+    await getTidRegister('water');
+    await getTidHistory('target-id');
+    await createTidVersion('target-id', payload);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/tids/configuration'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/tids/configuration'), expect.objectContaining({ method: 'PUT', body: expect.stringContaining('Approved policy') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/tids?search=water'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/tids/targets/target-id'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/tids/targets/target-id/versions'), expect.objectContaining({ method: 'POST', body: JSON.stringify(payload) }));
   });
 
   it('loads performance target revisions from the controller route', async () => {

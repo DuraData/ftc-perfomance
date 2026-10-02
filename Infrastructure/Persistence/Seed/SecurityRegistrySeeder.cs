@@ -69,6 +69,7 @@ public static class SecurityRegistrySeeder
             Action("SECURITY.MANAGE_NAVIGATION", "Manage Navigation", "ROLE"), Action("SECURITY.VIEW_EFFECTIVE", "View Effective Permissions", "ROLE"),
             Action("SECURITY.SYSTEM_SCOPE", "Administer System Scope", "ROLE"),
             Action("WORKFLOW.CONFIGURE", "Configure Workflow and Reporting Windows", "OPMS_WORKFLOW"),
+            Action("TID.CONFIGURE", "Configure TID Policy", "TID"), Action("TID.UPLOAD_SOURCE", "Upload TID Source Document", "TID"),
             Action("C88_REPORT.SUBMIT", "Submit C88 Report", "C88_REPORT"), Action("C88_REPORT.VERIFY", "Verify C88 Report", "C88_REPORT"), Action("C88_REPORT.FINAL_SUBMIT", "Final Submit C88 Report", "C88_REPORT")
         };
         var existingActionCodes = await context.SecurityActionDefinitions.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
@@ -140,6 +141,7 @@ public static class SecurityRegistrySeeder
             Nav("NAV.SDBIP.CAPTURE", "Performance Reporting", "/opms/submissions", "file-text", 20, "NAV.SDBIP.CAPTURE", rootIds["NAV.SDBIP"]),
             Nav("NAV.SDBIP.LIBRARY", "OPMS Target Library", "/opms/library", "library", 30, "NAV.SDBIP.LIBRARY", rootIds["NAV.SDBIP"]),
             Nav("NAV.SDBIP.VOTE_NUMBERS", "Vote Numbers", "/opms/vote-numbers", "layers", 40, "NAV.SDBIP.VOTE_NUMBERS", rootIds["NAV.SDBIP"]),
+            Nav("NAV.SDBIP.TIDS", "Technical Indicator Descriptions", "/opms/tids", "file-search", 50, "NAV.SDBIP.TIDS", rootIds["NAV.SDBIP"]),
             Nav("NAV.IPMS.DASHBOARD", "IPMS Dashboard", "/ipms/dashboard", "dashboard", 10, "NAV.IPMS.DASHBOARD", rootIds["NAV.IPMS"]),
             Nav("NAV.IPMS.REGISTER", "IPMS Targets", "/ipms/targets", "target", 20, "NAV.IPMS.REGISTER", rootIds["NAV.IPMS"]),
             Nav("NAV.IPMS.CAPTURE", "IPMS Submissions", "/ipms/submissions", "file-text", 30, "NAV.IPMS.CAPTURE", rootIds["NAV.IPMS"]),
@@ -211,7 +213,7 @@ public static class SecurityRegistrySeeder
         {
             ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE"],
             ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
-            ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.VOTE_NUMBERS", "VOTE_NUMBER.READ"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
+            ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.VOTE_NUMBERS", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
             ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
             ["Workflow.Submit.View"] = ["NAV.SDBIP.CAPTURE", "NAV.WORKFLOW.MY_QUEUE"], ["Workflow.Verify.View"] = ["NAV.WORKFLOW.VERIFY"], ["Workflow.Review.View"] = ["NAV.WORKFLOW.REVIEW"], ["Workflow.Approve.View"] = ["NAV.WORKFLOW.APPROVE"], ["Workflow.Audit.View"] = ["NAV.WORKFLOW.AUDIT"],
             ["OPMS.Submissions.Submit"] = ["OPMS_SUBMISSION.SUBMIT"], ["OPMS.Submissions.Verify"] = ["OPMS_SUBMISSION.VERIFY"], ["OPMS.Submissions.VerifyReject"] = ["OPMS_SUBMISSION.VERIFY_REJECT"],
@@ -230,7 +232,7 @@ public static class SecurityRegistrySeeder
             ["IPMS.Submissions.Approve"] = ["IPMS_SUBMISSION.APPROVE"], ["IPMS.Submissions.Reject"] = ["IPMS_SUBMISSION.REJECT"], ["IPMS.Submissions.Review"] = ["IPMS_WORKFLOW.PMS_REVIEW"],
             ["IPMS.Submissions.Audit"] = ["IPMS_WORKFLOW.INTERNAL_AUDIT", "IPMS_SUBMISSION.InternalAuditObservation.READ", "IPMS_SUBMISSION.InternalAuditObservation.UPDATE", "IPMS_POE.ASSESS", "IPMS_POE.PLACE_HOLD", "IPMS_POE.RELEASE_HOLD", "IPMS_POE.DISPOSE"],
             ["IPMS.Submissions.ExtendDueDate"] = ["IPMS_SUBMISSION.EXTEND_DUE_DATE"], ["IPMS.POE.Upload"] = ["IPMS_POE.UPLOAD", "IPMS_POE.REPLACE"],
-            ["Configuration.Manage"] = ["WORKFLOW.CONFIGURE", "WARD.READ", "WARD.CREATE", "WARD.UPDATE", "VOTE_NUMBER.READ", "VOTE_NUMBER.CREATE", "VOTE_NUMBER.UPDATE", "NAV.CONFIGURATION.PERIODS", "NAV.CONFIGURATION.WORKFLOW", "NAV.CONFIGURATION.LOOKUPS", "NAV.CONFIGURATION.WARDS", "NAV.SDBIP.VOTE_NUMBERS"],
+            ["Configuration.Manage"] = ["WORKFLOW.CONFIGURE", "TID.READ", "TID.CREATE", "TID.UPDATE", "TID.CONFIGURE", "TID.UPLOAD_SOURCE", "NAV.SDBIP.TIDS", "WARD.READ", "WARD.CREATE", "WARD.UPDATE", "VOTE_NUMBER.READ", "VOTE_NUMBER.CREATE", "VOTE_NUMBER.UPDATE", "NAV.CONFIGURATION.PERIODS", "NAV.CONFIGURATION.WORKFLOW", "NAV.CONFIGURATION.LOOKUPS", "NAV.CONFIGURATION.WARDS", "NAV.SDBIP.VOTE_NUMBERS"],
             ["UserDirectory.View"] = ["NAV.ORGANISATION.EMPLOYEES"],
             ["Admin.Users.Manage"] = ["NAV.ADMIN.USERS"], ["Admin.Roles.Manage"] = ["NAV.ADMIN.ROLES"], ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT"],
             ["Notifications.View"] = ["NAV.NOTIFICATIONS"],

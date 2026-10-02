@@ -108,6 +108,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
     public DbSet<RatingScheme> RatingSchemes { get; set; } = null!;
     public DbSet<RatingSchemeValue> RatingSchemeValues { get; set; } = null!;
     public DbSet<SubmissionStageRating> SubmissionStageRatings { get; set; } = null!;
+    public DbSet<TechnicalIndicatorDescription> TechnicalIndicatorDescriptions { get; set; } = null!;
+    public DbSet<TidSourceDocument> TidSourceDocuments { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -1457,6 +1459,44 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             .WithMany()
             .HasForeignKey(task => task.AssignedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<TechnicalIndicatorDescription>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<TechnicalIndicatorDescription>().HasIndex(item => new { item.OpmsTargetId, item.VersionNumber }).IsUnique();
+        builder.Entity<TechnicalIndicatorDescription>().HasIndex(item => item.OpmsTargetId).IsUnique().HasFilter("[IsCurrent] = 1");
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.IndicatorDefinition).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.Purpose).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.DataSource).HasMaxLength(2000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.CollectionMethod).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.CalculationMethod).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.NumeratorDescription).HasMaxLength(2000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.DenominatorDescription).HasMaxLength(2000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.Limitations).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.Assumptions).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.VerificationMethod).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().Property(item => item.Notes).HasMaxLength(4000);
+        builder.Entity<TechnicalIndicatorDescription>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_TechnicalIndicatorDescriptions_Version", "[VersionNumber] > 0");
+            table.HasCheckConstraint("CK_TechnicalIndicatorDescriptions_EffectivePeriod", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]");
+            table.HasCheckConstraint("CK_TechnicalIndicatorDescriptions_Current", "[IsCurrent] = 0 OR [EffectiveTo] IS NULL");
+        });
+        ConfigureRowVersion(builder.Entity<TechnicalIndicatorDescription>().Property(item => item.RowVersion));
+        builder.Entity<TechnicalIndicatorDescription>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TechnicalIndicatorDescription>().HasOne(item => item.OpmsTarget).WithMany(item => item.TechnicalIndicatorDescriptions).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TechnicalIndicatorDescription>().HasOne(item => item.PreviousVersion).WithMany(item => item.SuccessorVersions).HasForeignKey(item => item.PreviousVersionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TechnicalIndicatorDescription>().HasOne(item => item.ResponsibleEmployee).WithMany().HasForeignKey(item => item.ResponsibleEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TechnicalIndicatorDescription>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TechnicalIndicatorDescription>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<TidSourceDocument>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<TidSourceDocument>().HasIndex(item => new { item.TechnicalIndicatorDescriptionId, item.EvidenceBlobId }).IsUnique();
+        builder.Entity<TidSourceDocument>().Property(item => item.Title).HasMaxLength(240);
+        builder.Entity<TidSourceDocument>().Property(item => item.FileName).HasMaxLength(260);
+        builder.Entity<TidSourceDocument>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TidSourceDocument>().HasOne(item => item.TechnicalIndicatorDescription).WithMany(item => item.SourceDocuments).HasForeignKey(item => item.TechnicalIndicatorDescriptionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TidSourceDocument>().HasOne(item => item.Blob).WithMany(item => item.TidSourceDocumentAssociations).HasForeignKey(item => item.EvidenceBlobId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TidSourceDocument>().HasOne(item => item.UploadedByUser).WithMany().HasForeignKey(item => item.UploadedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<TidSourceDocument>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
     }
 
     private void ConfigureRowVersion(PropertyBuilder<byte[]> property)
@@ -1503,7 +1543,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
-            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent)
+            , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1545,5 +1585,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, Applicati
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<GovernedRecordLifecycleEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Governed record lifecycle history is append-only.");
+        if (ChangeTracker.Entries<TidSourceDocument>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("TID source-document history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<TechnicalIndicatorDescription>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("TID version history is append-only.");
+            var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+            changed.Remove(nameof(TechnicalIndicatorDescription.IsCurrent));
+            changed.Remove(nameof(TechnicalIndicatorDescription.EffectiveTo));
+            changed.Remove(nameof(TechnicalIndicatorDescription.RowVersion));
+            if (changed.Count > 0 || entry.OriginalValues.GetValue<bool>(nameof(TechnicalIndicatorDescription.IsCurrent)) != true
+                || entry.CurrentValues.GetValue<bool>(nameof(TechnicalIndicatorDescription.IsCurrent)) != false
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue)
+                throw new InvalidOperationException("Published TID versions are append-only; only the current version may be closed by a successor.");
+        }
     }
 }

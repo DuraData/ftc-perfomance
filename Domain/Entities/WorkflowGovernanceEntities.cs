@@ -119,6 +119,7 @@ public class OpmsTarget
         public ICollection<OpmsTargetWard> Wards { get; set; } = new List<OpmsTargetWard>();
         public ICollection<OpmsTargetAdditionalAssignee> AdditionalAssignees { get; set; } = new List<OpmsTargetAdditionalAssignee>();
         public ICollection<OpmsTargetVoteNumber> VoteNumbers { get; set; } = new List<OpmsTargetVoteNumber>();
+        public ICollection<TechnicalIndicatorDescription> TechnicalIndicatorDescriptions { get; set; } = new List<TechnicalIndicatorDescription>();
 }
 
 public class OpmsTargetWard

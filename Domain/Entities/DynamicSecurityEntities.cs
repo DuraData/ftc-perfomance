@@ -36,6 +36,8 @@ public class Municipality
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
     public AuthenticationMode AuthenticationMode { get; set; } = AuthenticationMode.Local;
+    public bool TidEnabled { get; set; }
+    public bool TidAllKpisRequired { get; set; }
     public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
     public DateTime? EffectiveTo { get; set; }
     public byte[] RowVersion { get; set; } = [];

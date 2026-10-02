@@ -2749,3 +2749,82 @@ export interface CreateIdpCommunitySessionPayload {
   attendanceRegisterPath?: string | null;
   minutesPath?: string | null;
 }
+
+export interface TidSourceDocument {
+  publicId: string;
+  title: string;
+  fileName: string;
+  contentType?: string | null;
+  sizeInBytes: number;
+  sha256: string;
+  scanStatus: string;
+  isQuarantined: boolean;
+  uploadedAt: string;
+  uploadedByUserId: string;
+  contentUrl: string;
+}
+
+export interface TidVersion {
+  publicId: string;
+  targetPublicId: string;
+  versionNumber: number;
+  previousVersionPublicId?: string | null;
+  indicatorDefinition: string;
+  purpose: string;
+  dataSource: string;
+  collectionMethod: string;
+  calculationMethod: string;
+  numeratorDescription?: string | null;
+  denominatorDescription?: string | null;
+  limitations?: string | null;
+  assumptions?: string | null;
+  verificationMethod: string;
+  responsibleEmployeePublicId?: string | null;
+  responsibleEmployeeName?: string | null;
+  notes?: string | null;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isCurrent: boolean;
+  createdAt: string;
+  createdByUserId: string;
+  rowVersion: string;
+  sourceDocuments: TidSourceDocument[];
+}
+
+export interface TidConfiguration {
+  municipalityPublicId: string;
+  tidEnabled: boolean;
+  allKpisRequired: boolean;
+  scopedKpiCount: number;
+  currentTidCount: number;
+  missingTidCount: number;
+  rowVersion: string;
+}
+
+export interface TidRegisterItem {
+  targetPublicId: string;
+  indicatorNumber: string;
+  targetName: string;
+  departmentName?: string | null;
+  unitName?: string | null;
+  tidRequired: boolean;
+  currentVersion?: TidVersion | null;
+}
+
+export interface SaveTidVersionPayload {
+  indicatorDefinition: string;
+  purpose: string;
+  dataSource: string;
+  collectionMethod: string;
+  calculationMethod: string;
+  numeratorDescription?: string | null;
+  denominatorDescription?: string | null;
+  limitations?: string | null;
+  assumptions?: string | null;
+  verificationMethod: string;
+  responsibleEmployeePublicId?: string | null;
+  notes?: string | null;
+  effectiveFrom: string;
+  previousVersionRowVersion?: string | null;
+  reason: string;
+}

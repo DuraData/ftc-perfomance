@@ -24,4 +24,5 @@ public class EvidenceBlob
     public Municipality? Municipality { get; set; }
     public ICollection<PoeFile> PoeAssociations { get; set; } = new List<PoeFile>();
     public ICollection<IdpDocument> IdpDocumentAssociations { get; set; } = new List<IdpDocument>();
+    public ICollection<TidSourceDocument> TidSourceDocumentAssociations { get; set; } = new List<TidSourceDocument>();
 }

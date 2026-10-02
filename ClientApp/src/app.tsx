@@ -48,6 +48,7 @@ import {
   IdpReportsPage,
 } from './components/idp/IdpWorkspace';
 import { OPMSDashboardPage } from './components/opms/OPMSDashboard';
+import { TidWorkspace } from './components/tid/TidWorkspace';
 import { IPMSDashboardPage } from './components/ipms/IPMSDashboard';
 import {
   RiskDashboardPage,
@@ -132,6 +133,8 @@ function AppContent() {
         return <OPMSSubmissionsList />;
       case '/opms/vote-numbers':
         return <TenantReferenceAdministration kind="vote-numbers" />;
+      case '/opms/tids':
+        return <TidWorkspace />;
       case '/ipms/dashboard':
         return <IPMSDashboardPage />;
       case '/ipms/library':

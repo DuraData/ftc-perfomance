@@ -87,6 +87,11 @@ import type {
   StageRatingDto,
   SecurityNavigationItemDto,
   NotificationOutboxItemDto,
+  TidConfiguration,
+  TidRegisterItem,
+  TidSourceDocument,
+  TidVersion,
+  SaveTidVersionPayload,
 } from '../types';
 import {
   mockBudgetSources,
@@ -1649,4 +1654,51 @@ export async function getIdpReport(planId: number, reportType: string, format: '
 
 export async function requestIdpReport(planId: number, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
   return getIdpReport(planId, reportType, format);
+}
+
+export async function getTidConfiguration(): Promise<ApiResponse<TidConfiguration>> {
+  return get<TidConfiguration>('/v1/tids/configuration');
+}
+
+export async function updateTidConfiguration(payload: { tidEnabled: boolean; allKpisRequired: boolean; rowVersion: string; reason: string }): Promise<ApiResponse<TidConfiguration>> {
+  return put<TidConfiguration>('/v1/tids/configuration', payload);
+}
+
+export async function getTidRegister(search?: string): Promise<ApiResponse<TidRegisterItem[]>> {
+  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
+  return get<TidRegisterItem[]>(`/v1/tids${query}`);
+}
+
+export async function getTidHistory(targetPublicId: string): Promise<ApiResponse<TidVersion[]>> {
+  return get<TidVersion[]>(`/v1/tids/targets/${targetPublicId}`);
+}
+
+export async function createTidVersion(targetPublicId: string, payload: SaveTidVersionPayload): Promise<ApiResponse<TidVersion>> {
+  return post<TidVersion>(`/v1/tids/targets/${targetPublicId}/versions`, payload);
+}
+
+export async function uploadTidSourceDocument(tidPublicId: string, file: File, title: string): Promise<ApiResponse<TidSourceDocument>> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('title', title);
+  return postForm<TidSourceDocument>(`/v1/tids/${tidPublicId}/documents`, form);
+}
+
+export async function rescanTidSourceDocument(tidPublicId: string, documentPublicId: string): Promise<ApiResponse<TidSourceDocument>> {
+  return post<TidSourceDocument>(`/v1/tids/${tidPublicId}/documents/${documentPublicId}/rescan`);
+}
+
+export async function downloadTidSourceDocument(document: TidSourceDocument): Promise<ApiResponse<boolean>> {
+  const headers: Record<string, string> = {};
+  addTenantHeader(headers);
+  const response = await fetch(document.contentUrl, { headers, credentials: 'include' });
+  if (!response.ok) return readApiResponse<boolean>(response);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = window.document.createElement('a');
+  anchor.href = url;
+  anchor.download = document.fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return { success: true, data: true };
 }

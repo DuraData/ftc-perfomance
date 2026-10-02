@@ -30,6 +30,12 @@ describe('AccessControl helpers', () => {
     expect(canAccessPath('/admin/approval-setup', ['WORKFLOW.CONFIGURE'], false)).toBe(true);
   });
 
+  it('protects the TID workspace with dynamic resource or navigation permission', () => {
+    expect(canAccessPath('/opms/tids', [], false)).toBe(false);
+    expect(canAccessPath('/opms/tids', ['TID.READ'], false)).toBe(true);
+    expect(canAccessPath('/opms/tids', ['NAV.SDBIP.TIDS'], false)).toBe(true);
+  });
+
   it('allows reporting routes through stable report permissions', () => {
     expect(canAccessPath('/reports', [], false)).toBe(false);
     expect(canAccessPath('/reports', ['OPMS_REPORT.READ'], false)).toBe(true);
