@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changePassword, closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa } from './api';
+import { changePassword, closeEmployeeAssignment, enableMfa, getAuthSessions, getMfaStatus, getOpmsTargets, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getVoteNumberMasters, getWardMasters, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -91,6 +91,18 @@ describe('versioned API routes', () => {
     await changePassword('OldPassword1!', 'NewPassword2@');
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/auth/password/change'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ currentPassword: 'OldPassword1!', newPassword: 'NewPassword2@' }) }));
+  });
+
+  it('keeps password-reset email, token, and password in versioned POST bodies', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestPasswordReset('person@example.test');
+    await resetPassword('person@example.test', 'one-time-token', 'A-Strong-New-Password9!');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/auth/password/forgot'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ email: 'person@example.test' }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/auth/password/reset'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ email: 'person@example.test', token: 'one-time-token', newPassword: 'A-Strong-New-Password9!' }) }));
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain('one-time-token');
   });
 
   it('uses the versioned OPMS target route for relational mapping responses', async () => {

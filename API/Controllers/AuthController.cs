@@ -24,6 +24,7 @@ public class AuthController : ControllerBase
     private readonly IAccessControlService _accessControlService;
     private readonly Infrastructure.Persistence.ApplicationDbContext _context;
     private readonly JwtSettings _jwtSettings;
+    private readonly IPasswordResetNotifier _passwordResetNotifier;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
@@ -31,7 +32,8 @@ public class AuthController : ControllerBase
         IJwtService jwtService,
         IAccessControlService accessControlService,
         Infrastructure.Persistence.ApplicationDbContext context,
-        IOptions<JwtSettings> jwtSettings)
+        IOptions<JwtSettings> jwtSettings,
+        IPasswordResetNotifier passwordResetNotifier)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -39,6 +41,7 @@ public class AuthController : ControllerBase
         _accessControlService = accessControlService;
         _context = context;
         _jwtSettings = jwtSettings.Value;
+        _passwordResetNotifier = passwordResetNotifier;
     }
 
     [HttpPost("login")]
@@ -132,6 +135,64 @@ public class AuthController : ControllerBase
         }
 
         return Ok(new ApiResponse<bool>(true, true, "User registered successfully"));
+    }
+
+    [HttpPost("/api/v1/auth/password/forgot")]
+    [EnableRateLimiting("authentication")]
+    public async Task<ActionResult<ApiResponse<bool>>> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        const string message = "If an active account matches that email address, password reset instructions will be sent.";
+        var email = request.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            return Ok(new ApiResponse<bool>(true, true, message));
+
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user == null || !user.IsActive || !user.EmailConfirmed)
+            return Ok(new ApiResponse<bool>(true, true, message));
+
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var delivery = await _passwordResetNotifier.SendAsync(user, token, HttpContext.TraceIdentifier, cancellationToken);
+        AddAuthenticationAudit(user, "PasswordResetRequested", new { delivery.Delivered, delivery.Provider });
+        await _context.SaveChangesAsync(cancellationToken);
+        return Ok(new ApiResponse<bool>(true, true, message));
+    }
+
+    [HttpPost("/api/v1/auth/password/reset")]
+    [EnableRateLimiting("authentication")]
+    public async Task<ActionResult<ApiResponse<bool>>> ResetPassword(ResetPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.NewPassword))
+            return BadRequest(new ApiResponse<bool>(false, false, "The password reset link is invalid or has expired."));
+
+        var user = await _userManager.FindByEmailAsync(request.Email.Trim());
+        if (user == null || !user.IsActive || !user.EmailConfirmed)
+            return BadRequest(new ApiResponse<bool>(false, false, "The password reset link is invalid or has expired."));
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var reset = await _userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        if (!reset.Succeeded)
+        {
+            await transaction.RollbackAsync();
+            var invalidToken = reset.Errors.Any(error => string.Equals(error.Code, "InvalidToken", StringComparison.OrdinalIgnoreCase));
+            return BadRequest(new ApiResponse<bool>(false, false,
+                invalidToken ? "The password reset link is invalid or has expired." : "The new password does not satisfy the password policy.",
+                invalidToken ? null : reset.Errors.Select(error => error.Description).ToArray()));
+        }
+
+        user.MustChangePassword = false;
+        var updated = await _userManager.UpdateAsync(user);
+        if (!updated.Succeeded)
+        {
+            await transaction.RollbackAsync();
+            return BadRequest(new ApiResponse<bool>(false, false, "The password could not be updated.", updated.Errors.Select(error => error.Description).ToArray()));
+        }
+        await _userManager.UpdateSecurityStampAsync(user);
+        await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Password reset");
+        AddAuthenticationAudit(user, "PasswordResetCompleted", null);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        ClearSessionCookies();
+        return Ok(new ApiResponse<bool>(true, true, "Password reset completed. Sign in with the new password."));
     }
 
     [HttpPost("refresh-token")]

@@ -2,10 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Login } from './Login';
 
 const app = vi.hoisted(() => ({ login: vi.fn(), setCurrentPath: vi.fn() }));
+const authApi = vi.hoisted(() => ({ requestPasswordReset: vi.fn(), resetPassword: vi.fn() }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
+vi.mock('../../api/api', () => authApi);
 
 describe('MFA login challenge', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.history.replaceState({}, '', '/login');
+  });
 
   it('requests and submits an authenticator code after password validation', async () => {
     app.login.mockResolvedValueOnce('mfa_required').mockResolvedValueOnce('success');
@@ -18,5 +23,27 @@ describe('MFA login challenge', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify and sign in' }));
     await waitFor(() => expect(app.login).toHaveBeenLastCalledWith('admin@example.test', 'Password1!', '123456', undefined));
     expect(app.setCurrentPath).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('uses an enumeration-safe forgot-password flow', async () => {
+    authApi.requestPasswordReset.mockResolvedValue({ success: true, data: true, message: 'If an active account matches that email address, password reset instructions will be sent.' });
+    render(<Login />);
+    fireEvent.click(screen.getByRole('button', { name: /Forgot your password/i }));
+    fireEvent.change(screen.getByLabelText(/Email address/), { target: { value: 'person@example.test' } });
+    fireEvent.click(screen.getByRole('button', { name: /Send reset instructions/i }));
+    await waitFor(() => expect(authApi.requestPasswordReset).toHaveBeenCalledWith('person@example.test'));
+    expect(screen.getByText(/If an active account matches/i)).toBeInTheDocument();
+  });
+
+  it('submits a reset-link token and returns to sign in after success', async () => {
+    window.history.replaceState({}, '', '/reset-password#email=person%40example.test&token=one-time-token');
+    authApi.resetPassword.mockResolvedValue({ success: true, data: true, message: 'Password reset completed. Sign in with the new password.' });
+    render(<Login />);
+    fireEvent.change(screen.getByLabelText(/^New password/), { target: { value: 'A-Strong-New-Password9!' } });
+    fireEvent.change(screen.getByLabelText(/Confirm new password/), { target: { value: 'A-Strong-New-Password9!' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Reset password$/i }));
+    await waitFor(() => expect(authApi.resetPassword).toHaveBeenCalledWith('person@example.test', 'one-time-token', 'A-Strong-New-Password9!'));
+    expect(window.location.pathname).toBe('/login');
+    expect(screen.getByText(/Password reset completed/i)).toBeInTheDocument();
   });
 });

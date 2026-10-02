@@ -831,6 +831,14 @@ export async function changePassword(currentPassword: string, newPassword: strin
   return post<boolean>('/v1/auth/password/change', { currentPassword, newPassword });
 }
 
+export async function requestPasswordReset(email: string): Promise<ApiResponse<boolean>> {
+  return post<boolean>('/v1/auth/password/forgot', { email });
+}
+
+export async function resetPassword(email: string, token: string, newPassword: string): Promise<ApiResponse<boolean>> {
+  return post<boolean>('/v1/auth/password/reset', { email, token, newPassword });
+}
+
 export function isAuthenticated() {
   return sessionStorage.getItem(SESSION_MARKER_KEY) === '1';
 }

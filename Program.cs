@@ -66,6 +66,9 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+    options.TokenLifespan = TimeSpan.FromMinutes(Math.Clamp(builder.Configuration.GetValue("Authentication:PasswordReset:TokenLifetimeMinutes", 30), 5, 1440)));
+
 // Configure JWT Settings
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>() ?? new JwtSettings();
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
@@ -128,6 +131,7 @@ builder.Services.AddHttpClient<IEvidenceMalwareScanner, HttpEvidenceMalwareScann
     client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("EvidenceScanning:TimeoutSeconds", 30), 5, 120)));
 builder.Services.AddHttpClient<INotificationChannelSender, HttpEmailNotificationSender>(client =>
     client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Notifications:Email:TimeoutSeconds", 20), 5, 120)));
+builder.Services.AddScoped<IPasswordResetNotifier, PasswordResetNotifier>();
 builder.Services.AddScoped<IWorkflowGovernanceService, WorkflowGovernanceService>();
 builder.Services.AddScoped<FileSystemEvidenceBlobStorage>();
 builder.Services.AddHttpClient<HttpEvidenceBlobStorage>(client =>

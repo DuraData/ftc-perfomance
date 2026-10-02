@@ -3,6 +3,9 @@ import { Target, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../ui';
 import { Input } from '../common/Form';
 import { useApp } from '../../context/AppContext';
+import { requestPasswordReset, resetPassword } from '../../api/api';
+
+type AuthMode = 'login' | 'forgot' | 'reset';
 
 export function Login() {
   const { login, setCurrentPath } = useApp();
@@ -14,6 +17,19 @@ export function Login() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [authenticationCode, setAuthenticationCode] = useState('');
+  const resetParameters = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const [mode, setMode] = useState<AuthMode>(window.location.pathname === '/reset-password' ? 'reset' : 'login');
+  const [resetEmail, setResetEmail] = useState(resetParameters.get('email') ?? '');
+  const [resetToken] = useState(resetParameters.get('token') ?? '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const returnToLogin = () => {
+    window.history.replaceState({}, '', '/login');
+    setMode('login');
+    setError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +60,46 @@ export function Login() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setNotice('');
+    setLoading(true);
+    try {
+      const result = await requestPasswordReset(resetEmail);
+      if (result.success) setNotice(result.message ?? 'If an active account matches that email address, password reset instructions will be sent.');
+      else setError('The request could not be completed. Please try again later.');
+    } catch {
+      setError('The request could not be completed. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setNotice('');
+    if (!resetToken) { setError('The password reset link is invalid or incomplete.'); return; }
+    if (newPassword !== confirmPassword) { setError('The new passwords do not match.'); return; }
+    setLoading(true);
+    try {
+      const result = await resetPassword(resetEmail, resetToken, newPassword);
+      if (result.success) {
+        returnToLogin();
+        setNotice(result.message ?? 'Password reset completed. Sign in with the new password.');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setError(result.errors?.join(' ') || result.message || 'The password reset link is invalid or has expired.');
+      }
+    } catch {
+      setError('The password reset could not be completed. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-800 to-secondary-900 flex items-center justify-center p-6">
       <div className="w-full max-w-xl">
@@ -59,7 +115,7 @@ export function Login() {
         {/* Login Card */}
         <div className="bg-white dark:bg-secondary-900 rounded-2xl shadow-2xl p-6 md:p-8">
           <h2 className="text-xl font-semibold text-secondary-900 dark:text-white text-center mb-6">
-            Sign in to your account
+            {mode === 'login' ? 'Sign in to your account' : mode === 'forgot' ? 'Reset your password' : 'Choose a new password'}
           </h2>
 
           {error && (
@@ -68,7 +124,13 @@ export function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {notice && (
+            <div className="mb-4 p-3 bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 rounded-lg">
+              <p className="text-sm text-success-700 dark:text-success-400">{notice}</p>
+            </div>
+          )}
+
+          {mode === 'login' && <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               label="Username or Email"
               type="text"
@@ -124,7 +186,26 @@ export function Login() {
             >
               {loading ? 'Signing in...' : mfaRequired ? 'Verify and sign in' : 'Sign In'}
             </Button>
-          </form>
+            {!mfaRequired && <button type="button" className="w-full text-sm text-primary-600 hover:text-primary-700" onClick={() => { setResetEmail(identifier); setMode('forgot'); setError(''); setNotice(''); }}>
+              Forgot your password?
+            </button>}
+          </form>}
+
+          {mode === 'forgot' && <form onSubmit={handleForgotPassword} className="space-y-4">
+            <p className="text-sm text-secondary-600 dark:text-secondary-300">Enter your account email. The response is identical whether or not an account exists.</p>
+            <Input label="Email address" type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} required />
+            <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading} disabled={loading}>Send reset instructions</Button>
+            <button type="button" className="w-full text-sm text-primary-600 hover:text-primary-700" onClick={returnToLogin}>Back to sign in</button>
+          </form>}
+
+          {mode === 'reset' && <form onSubmit={handleResetPassword} className="space-y-4">
+            <Input label="Email address" type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} required />
+            <Input label="New password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+            <Input label="Confirm new password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <p className="text-xs text-secondary-500">Use at least 12 characters with uppercase, lowercase, number, symbol, and at least four distinct characters.</p>
+            <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading} disabled={loading}>Reset password</Button>
+            <button type="button" className="w-full text-sm text-primary-600 hover:text-primary-700" onClick={returnToLogin}>Back to sign in</button>
+          </form>}
 
         </div>
 
