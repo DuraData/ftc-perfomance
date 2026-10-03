@@ -1365,11 +1365,22 @@ Production workflows no longer fetch complete OPMS/IPMS target collections to po
 
 The complete suites pass **313 backend tests**, with one environment-gated SQL Server test skipped, and **153/153 frontend tests across 46 files**. TypeScript, ESLint, the production frontend/Release backend build and the **69-chunk** bundle budget pass with **0 warnings and 0 errors**; the largest JavaScript chunk is **374.1 KiB**. R-45 remains **PARTIALLY COMPLIANT** for other secondary/fixed-limit collections and representative native SQL Server query-plan/load acceptance.
 
+### 11.78 Tenant-scoped paged audit administration
+
+The production audit-administration surface no longer downloads fixed-size login and business-audit arrays:
+
+- `/api/v1/audit/login-logs/page` and `/api/v1/audit/trails/page` apply the shared validated 1-100 page contract, search and allow-listed deterministic sorting in the database. Failure-only login filtering and entity-specific trail filtering occur before authoritative counts and paging.
+- `LoginAuditLog` is now municipality-owned when an account is identifiable, tenant query-filtered and append-only. Migration `20261003230747_V39TenantScopedPagedAudit` backfills existing ownership from the linked user before creating the tenant/time index and restricted municipality relationship. Unattributable historic or unknown-account failures remain nullable and therefore visible only in a system context; the migration does not guess tenant ownership.
+- The administration UI uses server search, sorting, paging and authoritative totals for both tabs. Detail-specific target history retains its separately bounded compatibility call.
+- Relational SQLite tests prove tenant scope precedes search/count/page, failure filtering, stable ordering and append-only login history. Transport and component tests prove query/filter serialization plus server-controlled page, search, failure and tab behavior.
+
+The complete suites pass **315 backend tests**, with one environment-gated SQL Server test skipped, and **155/155 frontend tests across 47 files**. TypeScript and ESLint pass. R-45 remains **PARTIALLY COMPLIANT** for other secondary collections and representative native SQL Server query-plan/load acceptance.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
 
-- clean and upgrade application of every committed migration, including `20261002204550_V39CanonicalSubmissionBaseState`, its legacy-state backfill, `20261003145227_V39InternalAuditAssessmentModels`, `20261003152131_V39OfficialReportGeneration`, `20261003160701_V39NotificationPoliciesAndScheduling`, `20261003161402_V39NotificationPreferences` and `20261003170339_V39CanonicalActualPerformanceCutover`;
+- clean and upgrade application of every committed migration, including `20261002204550_V39CanonicalSubmissionBaseState`, its legacy-state backfill, `20261003145227_V39InternalAuditAssessmentModels`, `20261003152131_V39OfficialReportGeneration`, `20261003160701_V39NotificationPoliciesAndScheduling`, `20261003161402_V39NotificationPreferences`, `20261003170339_V39CanonicalActualPerformanceCutover` and `20261003230747_V39TenantScopedPagedAudit`;
 - native generated `rowversion`, stale-writer conflicts and all filtered/unique/check indexes;
 - decimal precision, UTC/date behavior, restricted cascades and workflow/audit transaction rollback;
 - tenant/security query plans, bounded register load behavior, locking and concurrency under representative volume;
@@ -1410,12 +1421,12 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 14 | RFI, submission windows and governed exceptions | Compliant | Governed RFI/window/exception behavior and workflow evidence are implemented. |
 | 15 | Ratings and evidence-based assessment | Compliant | Independent workflow ratings, POE assessments and both IA model paths are implemented; configured IA-stage rating values are validated against the selected scheme and appended to rating history. |
 | 16 | POE storage, inherited access and assessments | Compliant | Governed file metadata, content safety, authorization inheritance and assessment records are implemented and tested at repository level. |
-| 17 | Audit, history, versioning and deletion governance | Partially Compliant | Contextual append-only audit and several version ledgers exist; complete immutable history for every legacy mutable projection is not demonstrated. |
+| 17 | Audit, history, versioning and deletion governance | Partially Compliant | Contextual append-only audit and several version ledgers exist. Login audit is now tenant-owned, migration-backfilled and append-only, but complete immutable history for every legacy mutable projection is not demonstrated. |
 | 18 | Imports, validation and reconciliation | Partially Compliant | Governed import capability exists in selected modules, but complete OPMS/SDBIP import and reconciliation coverage is not evidenced. |
 | 19 | Dashboards and role-scoped operational views | Partially Compliant | OPMS/IPMS headline metrics use authorization-scoped database aggregates, while staff and personal workflow queues use combined scope-filtered SQL counts and paging; broader analytical drill-down and some specified operational flows remain incomplete. |
 | 20 | Official reports, exports and version history | Compliant | Municipality/FY/period-scoped approved template versions generate immutable CSV/XLSX/DOCX/PDF performance outputs from one authorized dataset; each generation pins template/version, scope/filters, actor/time, snapshot/content hashes and private blob, while regeneration preserves prior versions and downloads re-evaluate scope and integrity. |
 | 21 | Notifications, reminders and delivery operations | Compliant | Versioned municipality/FY policies inherit through stage and period scope, materialize idempotent working-day reminders/escalations for reporting windows and RFIs, support in-app/email/SMS delivery, preserve retry/terminal receipts, catch up after downtime, enforce mandatory delivery over persisted optional preferences and expose governed administration/operations. |
-| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail collections are bounded, dashboards use aggregates, workflow queues use combined database paging, and target selectors use lightweight searchable pages; unbounded OPMS/IPMS target/submission reads are retired. Other secondary collections and uniform SQL Server query-plan acceptance remain. |
+| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail collections are bounded, dashboards use aggregates, workflow queues use combined database paging, target selectors use lightweight searchable pages, and audit administration uses tenant-scoped server paging; unbounded OPMS/IPMS target/submission reads are retired. Other secondary collections and uniform SQL Server query-plan acceptance remain. |
 | 23 | Technical Indicator Descriptions | Compliant | Governed configuration, versions, files, scans, register paging and authorization are implemented. |
 | 24 | Circular 88 | Compliant | Catalogue, assignments, governed reports, workflow and paged register are implemented and tested. |
 | 25 | Integrated Development Plan | Compliant | Governed IDP structures, import/report paths and repository tests are present. |
@@ -1473,6 +1484,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced OPMS/IPMS dashboard register downloads and browser scans with versioned, authorization-scoped database aggregates for target, submission and workflow-queue metrics.
 - Replaced staff and personal workflow register downloads with one combined OPMS/IPMS endpoint that applies dynamic scopes before SQL counts, queue filters and stable paging, then delegates protected row details to the existing member-secured APIs.
 - Replaced every production full-target selector with lightweight scope-filtered search/paging, paged the OPMS related-IPMS display and retired unbounded target/submission collection routes with HTTP 410.
+- Replaced fixed-size audit-administration downloads with tenant-scoped searchable pages, made identifiable login audit municipality-owned and append-only, and added a data-preserving ownership backfill/index migration plus relational/UI evidence.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
 
@@ -1480,8 +1492,8 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 313; Failed: 0; Skipped: 1; Total: 314.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 153/153 across 46 files.** Each file also passed independently to avoid local Windows worker-start contention. |
+| Backend test suite | **Passed: 315; Failed: 0; Skipped: 1; Total: 316.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 155/155 across 47 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,095 modules transformed. |
@@ -1489,7 +1501,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
-| SQL Server migration artifact | Idempotent migration script generation passed at **461,184 bytes** and includes the notification policy plus canonical-actual archive/backfill/drop migrations. Inspection confirms archive/backfill SQL precedes every retired-column drop. This proves generation only, not native application. |
+| SQL Server migration artifact | Idempotent migration script generation passed at **463,308 bytes** and includes the notification policy, canonical-actual archive/backfill/drop, and tenant-scoped login-audit ownership migrations. Inspection confirms archive/backfill SQL precedes retired-column drops and the login-audit tenant index. This proves generation only, not native application. |
 | Diff hygiene | `git diff --check` passed; line-ending conversion warnings are informational and no whitespace errors were reported. |
 
 No complete browser E2E suite, native SQL Server execution, representative load test, penetration test, backup/restore exercise or formal UAT was available; none is inferred from the passing repository suites.

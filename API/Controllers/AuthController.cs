@@ -484,8 +484,12 @@ public class AuthController : ControllerBase
 
     private async Task RecordAuthenticationEventAsync(string? userId, string email, bool success, string? failureReason)
     {
+        var municipalityId = string.IsNullOrWhiteSpace(userId)
+            ? null
+            : await _context.Users.IgnoreQueryFilters().Where(item => item.Id == userId).Select(item => item.MunicipalityId).SingleOrDefaultAsync();
         _context.LoginAuditLogs.Add(new LoginAuditLog
         {
+            MunicipalityId = municipalityId,
             UserId = userId,
             Email = email,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
@@ -494,26 +498,22 @@ public class AuthController : ControllerBase
             FailureReason = failureReason,
             LoggedAt = DateTime.UtcNow
         });
-        if (!string.IsNullOrWhiteSpace(userId))
+        if (!string.IsNullOrWhiteSpace(userId) && municipalityId.HasValue)
         {
-            var municipalityId = await _context.Users.IgnoreQueryFilters().Where(item => item.Id == userId).Select(item => item.MunicipalityId).SingleOrDefaultAsync();
-            if (municipalityId.HasValue)
+            HttpContext.Items[TenantResolutionMiddleware.MunicipalityItem] = municipalityId.Value;
+            _context.AuthenticationEvents.Add(new AuthenticationEvent
             {
-                HttpContext.Items[TenantResolutionMiddleware.MunicipalityItem] = municipalityId.Value;
-                _context.AuthenticationEvents.Add(new AuthenticationEvent
-                {
-                    MunicipalityId = municipalityId,
-                    UserId = userId,
-                    ProviderCode = "LOCAL",
-                    EventType = "LocalSignIn",
-                    Success = success,
-                    FailureCode = failureReason,
-                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-                    UserAgent = Request.Headers.UserAgent.ToString(),
-                    CorrelationId = HttpContext.TraceIdentifier,
-                    OccurredAt = DateTime.UtcNow
-                });
-            }
+                MunicipalityId = municipalityId,
+                UserId = userId,
+                ProviderCode = "LOCAL",
+                EventType = "LocalSignIn",
+                Success = success,
+                FailureCode = failureReason,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = Request.Headers.UserAgent.ToString(),
+                CorrelationId = HttpContext.TraceIdentifier,
+                OccurredAt = DateTime.UtcNow
+            });
         }
         await _context.SaveChangesAsync();
     }

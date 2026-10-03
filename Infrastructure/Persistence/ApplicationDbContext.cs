@@ -346,6 +346,11 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatingSchemeValue).WithMany().HasForeignKey(x => x.RatingSchemeValueId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatedByUser).WithMany().HasForeignKey(x => x.RatedByUserId).OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<LoginAuditLog>().HasIndex(item => new { item.MunicipalityId, item.LoggedAt });
+        builder.Entity<LoginAuditLog>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LoginAuditLog>().HasOne(item => item.User).WithMany(item => item.LoginAuditLogs).HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<LoginAuditLog>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
         builder.Entity<Municipality>().HasQueryFilter(item => TenantFilterBypass || item.Id == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Department>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<Unit>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -1974,6 +1979,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Audit history is append-only.");
         if (ChangeTracker.Entries<AuthenticationEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Authentication event history is append-only.");
+        if (ChangeTracker.Entries<LoginAuditLog>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Login audit history is append-only.");
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<LegacySubmissionValueArchive>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

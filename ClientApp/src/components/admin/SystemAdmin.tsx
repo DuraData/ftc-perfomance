@@ -14,7 +14,7 @@ import {
   deletePermission,
   deleteRole,
   deleteUser,
-  getAuditTrails,
+  getAuditTrailsPage,
   getLoginAuditLogs,
   getPermissions,
   getPermissionsGrouped,
@@ -1030,46 +1030,59 @@ export function AdminAuditLogsPage() {
   const [showFailuresOnly, setShowFailuresOnly] = useState(false);
   const [selectedLog, setSelectedLog] = useState<LoginAuditLog | null>(null);
   const [selectedTrail, setSelectedTrail] = useState<AuditTrailEntryDto | null>(null);
+  const [loginPage, setLoginPage] = useState(1);
+  const [loginTotal, setLoginTotal] = useState(0);
+  const [loginSearch, setLoginSearch] = useState('');
+  const [loginSort, setLoginSort] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
+  const [trailPage, setTrailPage] = useState(1);
+  const [trailTotal, setTrailTotal] = useState(0);
+  const [trailSearch, setTrailSearch] = useState('');
+  const [trailSort, setTrailSort] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
+  const pageSize = 25;
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+    void (async () => {
       if (!canViewLoginLogs && !canViewAuditTrails) return;
       setLoading(true);
-      const [loginRes, trailsRes] = await Promise.all([
-        canViewLoginLogs ? getLoginAuditLogs(200) : Promise.resolve({ success: true, data: [] as LoginAuditLog[] }),
-        canViewAuditTrails ? getAuditTrails(250) : Promise.resolve({ success: true, data: [] as AuditTrailEntryDto[] }),
-      ]);
-
-      setRows(loginRes.data ?? []);
-      setTrailRows(trailsRes.data ?? []);
-      const loginErrorMessage = 'message' in loginRes ? loginRes.message : undefined;
-      const trailsErrorMessage = 'message' in trailsRes ? trailsRes.message : undefined;
-      setError(
-        !loginRes.success
-          ? (loginErrorMessage ?? 'Failed to load login audit logs')
-          : !trailsRes.success
-          ? (trailsErrorMessage ?? 'Failed to load audit trails')
-          : null,
-      );
+      setError(null);
+      if (activeTab === 'login' && canViewLoginLogs) {
+        const result = await getLoginAuditLogs({ page: loginPage, pageSize, search: loginSearch, sortBy: loginSort.key, sortDirection: loginSort.direction }, showFailuresOnly);
+        if (cancelled) return;
+        if (!result.success) setError(result.message ?? 'Failed to load login audit logs');
+        else {
+          setRows(result.data?.items ?? []);
+          setLoginTotal(result.data?.totalCount ?? 0);
+        }
+      } else if (activeTab === 'trail' && canViewAuditTrails) {
+        const result = await getAuditTrailsPage({ page: trailPage, pageSize, search: trailSearch, sortBy: trailSort.key, sortDirection: trailSort.direction });
+        if (cancelled) return;
+        if (!result.success) setError(result.message ?? 'Failed to load audit trails');
+        else {
+          setTrailRows(result.data?.items ?? []);
+          setTrailTotal(result.data?.totalCount ?? 0);
+        }
+      }
       setLoading(false);
     })();
-  }, [canViewLoginLogs, canViewAuditTrails]);
+    return () => { cancelled = true; };
+  }, [activeTab, canViewLoginLogs, canViewAuditTrails, loginPage, loginSearch, loginSort, showFailuresOnly, trailPage, trailSearch, trailSort]);
 
   const loginColumns = [
-    { id: 'email', header: 'Email', accessor: (l: LoginAuditLog) => l.email },
-    { id: 'ip', header: 'IP', accessor: (l: LoginAuditLog) => l.ipAddress ?? '-' },
-    { id: 'ua', header: 'User Agent', accessor: (l: LoginAuditLog) => <span className="text-xs">{l.userAgent ?? '-'}</span> },
-    { id: 'result', header: 'Result', accessor: (l: LoginAuditLog) => l.success ? <Badge variant="success" size="sm">Success</Badge> : <Badge variant="error" size="sm">Fail</Badge> },
-    { id: 'time', header: 'When', accessor: (l: LoginAuditLog) => new Date(l.loggedAt).toLocaleString() },
+    { id: 'email', header: 'Email', accessor: (l: LoginAuditLog) => l.email, sortKey: 'email' },
+    { id: 'ip', header: 'IP', accessor: (l: LoginAuditLog) => l.ipAddress ?? '-', sortable: false },
+    { id: 'ua', header: 'User Agent', accessor: (l: LoginAuditLog) => <span className="text-xs">{l.userAgent ?? '-'}</span>, sortable: false },
+    { id: 'result', header: 'Result', accessor: (l: LoginAuditLog) => l.success ? <Badge variant="success" size="sm">Success</Badge> : <Badge variant="error" size="sm">Fail</Badge>, sortKey: 'success' },
+    { id: 'time', header: 'When', accessor: (l: LoginAuditLog) => new Date(l.loggedAt).toLocaleString(), sortKey: 'createdAt' },
   ];
 
   const trailColumns = [
-    { id: 'entity', header: 'Entity', accessor: (row: AuditTrailEntryDto) => row.entityName },
-    { id: 'entityId', header: 'Entity ID', accessor: (row: AuditTrailEntryDto) => <span className="font-mono text-xs">{row.entityId}</span> },
-    { id: 'action', header: 'Action', accessor: (row: AuditTrailEntryDto) => <Badge variant="info" size="sm">{row.action}</Badge> },
-    { id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedBy },
-    { id: 'ip', header: 'IP', accessor: (row: AuditTrailEntryDto) => row.ipAddress ?? '-' },
-    { id: 'time', header: 'When', accessor: (row: AuditTrailEntryDto) => new Date(row.changedAt).toLocaleString() },
+    { id: 'entity', header: 'Entity', accessor: (row: AuditTrailEntryDto) => row.entityName, sortKey: 'entityName' },
+    { id: 'entityId', header: 'Entity ID', accessor: (row: AuditTrailEntryDto) => <span className="font-mono text-xs">{row.entityId}</span>, sortable: false },
+    { id: 'action', header: 'Action', accessor: (row: AuditTrailEntryDto) => <Badge variant="info" size="sm">{row.action}</Badge>, sortKey: 'action' },
+    { id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedBy, sortKey: 'changedBy' },
+    { id: 'ip', header: 'IP', accessor: (row: AuditTrailEntryDto) => row.ipAddress ?? '-', sortable: false },
+    { id: 'time', header: 'When', accessor: (row: AuditTrailEntryDto) => new Date(row.changedAt).toLocaleString(), sortKey: 'createdAt' },
   ];
 
   const loginActions = (l: LoginAuditLog) => (
@@ -1090,15 +1103,13 @@ export function AdminAuditLogsPage() {
     </button>
   );
 
-  const filteredRows = showFailuresOnly ? rows.filter(r => !r.success) : rows;
-
   return (
     <AppShell title="Audit Logs" subtitle="System Administration: Login logs and workflow audit trails">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="primary">
-              {activeTab === 'login' ? `${filteredRows.length} logs` : `${trailRows.length} entries`}
+              {activeTab === 'login' ? `${loginTotal} logs` : `${trailTotal} entries`}
             </Badge>
             <div className="flex items-center gap-2 text-secondary-500">
               <History className="w-4 h-4" />
@@ -1125,7 +1136,7 @@ export function AdminAuditLogsPage() {
               <Checkbox
                 label="Failures only"
                 checked={showFailuresOnly}
-                onChange={(e) => setShowFailuresOnly(e.target.checked)}
+                onChange={(e) => { setShowFailuresOnly(e.target.checked); setLoginPage(1); }}
               />
             )}
           </div>
@@ -1139,9 +1150,9 @@ export function AdminAuditLogsPage() {
 
         <Card>
           {activeTab === 'login' ? (
-            <DataTable data={filteredRows} columns={loginColumns} actions={loginActions} searchable getRowId={(l) => String(l.id)} emptyMessage={loading ? 'Loading...' : 'No logs'} />
+            <DataTable data={rows} columns={loginColumns} actions={loginActions} searchable searchPlaceholder="Search login audit logs" getRowId={(l) => String(l.id)} emptyMessage={loading ? 'Loading...' : 'No logs'} serverState={{ page: loginPage, pageSize, totalCount: loginTotal, search: loginSearch, sortBy: loginSort.key, sortDirection: loginSort.direction, onPageChange: setLoginPage, onSearchChange: value => { setLoginSearch(value); setLoginPage(1); }, onSortChange: (key, direction) => { setLoginSort({ key, direction }); setLoginPage(1); } }} />
           ) : (
-            <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable getRowId={(entry) => String(entry.id)} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} />
+            <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable searchPlaceholder="Search audit trails" getRowId={(entry) => String(entry.id)} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} serverState={{ page: trailPage, pageSize, totalCount: trailTotal, search: trailSearch, sortBy: trailSort.key, sortDirection: trailSort.direction, onPageChange: setTrailPage, onSearchChange: value => { setTrailSearch(value); setTrailPage(1); }, onSortChange: (key, direction) => { setTrailSort({ key, direction }); setTrailPage(1); } }} />
           )}
         </Card>
 

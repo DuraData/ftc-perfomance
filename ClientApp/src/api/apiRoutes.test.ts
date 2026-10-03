@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getLoginAuditLogs, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -9,6 +9,17 @@ describe('versioned API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
     await getAuditTrails(250, { entityName: 'OpmsTarget', entityId: 'target-public-id' });
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/audit/trails?take=250&entityName=OpmsTarget&entityId=target-public-id'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('transports bounded audit administration search, sorting, filters, and pages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getLoginAuditLogs({ page: 2, pageSize: 25, search: 'locked', sortBy: 'email', sortDirection: 'asc' }, true);
+    await getAuditTrailsPage({ page: 3, pageSize: 50, search: 'approve', sortBy: 'action', sortDirection: 'desc' }, { entityName: 'OpmsSubmission' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/audit/login-logs/page?page=2&pageSize=25&search=locked&sortBy=email&sortDirection=asc&failuresOnly=true'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/audit/trails/page?page=3&pageSize=50&search=approve&sortBy=action&sortDirection=desc&entityName=OpmsSubmission'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('transports bounded target-detail filters to submission and related-KPI pages', async () => {

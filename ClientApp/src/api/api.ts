@@ -1614,8 +1614,10 @@ export async function deletePermission(id: number): Promise<ApiResponse<boolean>
   return del<boolean>(`/permissions/${id}`);
 }
 
-export async function getLoginAuditLogs(take = 200): Promise<ApiResponse<LoginAuditLog[]>> {
-  return get<LoginAuditLog[]>(`/audit/login-logs?take=${take}`);
+export async function getLoginAuditLogs(query: RegisterPageQuery = {}, failuresOnly = false): Promise<ApiResponse<PagedResult<LoginAuditLog>>> {
+  const pageQuery = registerPageQuery(query);
+  const suffix = failuresOnly ? `${pageQuery || '?'}${pageQuery ? '&' : ''}failuresOnly=true` : pageQuery;
+  return get<PagedResult<LoginAuditLog>>(`/v1/audit/login-logs/page${suffix}`);
 }
 
 export async function getRoleImplementationAudit(): Promise<ApiResponse<RoleImplementationAuditRow[]>> {
@@ -1997,6 +1999,14 @@ export async function getAuditTrails(take = 200, filter: { entityName?: string; 
   if (filter.entityName?.trim()) parameters.set('entityName', filter.entityName.trim());
   if (filter.entityId?.trim()) parameters.set('entityId', filter.entityId.trim());
   return get<AuditTrailEntryDto[]>(`/v1/audit/trails?${parameters.toString()}`);
+}
+
+export async function getAuditTrailsPage(query: RegisterPageQuery = {}, filter: { entityName?: string; entityId?: string } = {}): Promise<ApiResponse<PagedResult<AuditTrailEntryDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (filter.entityName?.trim()) parameters.set('entityName', filter.entityName.trim());
+  if (filter.entityId?.trim()) parameters.set('entityId', filter.entityId.trim());
+  const value = parameters.toString();
+  return get<PagedResult<AuditTrailEntryDto>>(`/v1/audit/trails/page${value ? `?${value}` : ''}`);
 }
 
 export async function getIdpPlans(): Promise<ApiResponse<IdpPlanSummary[]>> {
