@@ -172,6 +172,7 @@ builder.Services.AddScoped<IAuthenticationPolicyResolver, AuthenticationPolicyRe
 builder.Services.AddScoped<IEnterpriseAuthenticationService, EnterpriseAuthenticationService>();
 builder.Services.AddScoped<IAccessControlService, AccessControlService>();
 builder.Services.AddSingleton<IPerformanceUnitEngine, PerformanceUnitEngine>();
+builder.Services.AddSingleton<IPerformanceConsolidationEngine, PerformanceConsolidationEngine>();
 builder.Services.AddScoped<ISubmissionValueService, SubmissionValueService>();
 builder.Services.AddScoped<IReportingWindowService, ReportingWindowService>();
 builder.Services.AddScoped<IConfigurableWorkflowService, ConfigurableWorkflowService>();
