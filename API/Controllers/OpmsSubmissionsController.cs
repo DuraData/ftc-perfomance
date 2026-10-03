@@ -160,7 +160,7 @@ public class OpmsSubmissionsController : ControllerBase
         var memberError = await ValidateMemberUpdatesAsync(user, request, null);
         if (memberError != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberError));
         SubmissionValueResolution resolved;
-        try { resolved = await _submissionValues.ResolveOpmsAsync(target.Id, request.Quarter, request.ActualPerformance, request.Actual); }
+        try { resolved = await _submissionValues.ResolveOpmsAsync(target.Id, request.Quarter, request.ActualPerformance, null); }
         catch (ArgumentException exception) { return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, exception.Message)); }
         catch (InvalidOperationException exception) { return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, exception.Message)); }
         var existingLogical = await _context.OpmsSubmissions.FirstOrDefaultAsync(item => item.OpmsTargetId == target.Id && item.ReportingPeriodId == resolved.Period.Id);
@@ -184,12 +184,9 @@ public class OpmsSubmissionsController : ControllerBase
             ApproverStatus = "Pending",
             PmsStatus = "Pending",
             AuditorStatus = "Pending",
-            Actual = null,
             ActualPerformance = resolved.Calculation?.CanonicalActual,
             AchievementPercent = resolved.Calculation?.AchievementPercent,
             TargetAchieved = resolved.Calculation?.Achieved,
-            ActualDescription = null,
-            ActualPerformanceDescription = null,
             ActualExpenditure = null,
             Variance = resolved.Calculation?.Variance,
             VarianceReason = request.VarianceReason?.Trim(),
@@ -230,7 +227,7 @@ public class OpmsSubmissionsController : ControllerBase
         if (memberError != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberError));
         if (!string.Equals(request.OpmsTargetId, entity.OpmsTargetId, StringComparison.Ordinal)) return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "A submission cannot be moved to another KPI."));
         SubmissionValueResolution resolved;
-        try { resolved = await _submissionValues.ResolveOpmsAsync(entity.OpmsTargetId, request.Quarter, request.ActualPerformance, request.Actual); }
+        try { resolved = await _submissionValues.ResolveOpmsAsync(entity.OpmsTargetId, request.Quarter, request.ActualPerformance, null); }
         catch (ArgumentException exception) { return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, exception.Message)); }
         catch (InvalidOperationException exception) { return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, exception.Message)); }
         if (entity.ReportingPeriodId.HasValue && entity.ReportingPeriodId != resolved.Period.Id) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A submission cannot be moved to another reporting period."));
@@ -238,12 +235,9 @@ public class OpmsSubmissionsController : ControllerBase
         var before = await FindSubmissionAsync(id);
         entity.Quarter = request.Quarter.Trim();
         entity.ReportingPeriodId = resolved.Period.Id;
-        entity.Actual = null;
         entity.ActualPerformance = resolved.Calculation?.CanonicalActual;
         entity.AchievementPercent = resolved.Calculation?.AchievementPercent;
         entity.TargetAchieved = resolved.Calculation?.Achieved;
-        entity.ActualDescription = null;
-        entity.ActualPerformanceDescription = null;
         entity.ActualExpenditure = null;
         entity.Variance = resolved.Calculation?.Variance;
         entity.VarianceReason = request.VarianceReason?.Trim();
@@ -959,14 +953,14 @@ public class OpmsSubmissionsController : ControllerBase
     {
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var actualChanged = existing == null
-            ? request.Actual.HasValue || !string.IsNullOrWhiteSpace(request.ActualPerformance) || request.ActualExpenditure.HasValue || !string.IsNullOrWhiteSpace(request.ActualDescription) || !string.IsNullOrWhiteSpace(request.ActualPerformanceDescription)
-            : request.Actual != existing.Actual || request.ActualPerformance?.Trim() != existing.ActualPerformance || request.ActualExpenditure != existing.ActualExpenditure || request.ActualDescription?.Trim() != existing.ActualDescription || request.ActualPerformanceDescription?.Trim() != existing.ActualPerformanceDescription;
+            ? !string.IsNullOrWhiteSpace(request.ActualPerformance) || request.ActualExpenditure.HasValue
+            : request.ActualPerformance?.Trim() != existing.ActualPerformance || request.ActualExpenditure != existing.ActualExpenditure;
         if (actualChanged && !permissions.Contains("OPMS_SUBMISSION.ActualPerformance.UPDATE"))
             return "Actual Performance is protected by member-level security.";
 
         var varianceChanged = existing == null
-            ? request.Variance.HasValue || !string.IsNullOrWhiteSpace(request.VarianceReason)
-            : request.Variance != existing.Variance || request.VarianceReason?.Trim() != existing.VarianceReason;
+            ? !string.IsNullOrWhiteSpace(request.VarianceReason)
+            : request.VarianceReason?.Trim() != existing.VarianceReason;
         if (varianceChanged && !permissions.Contains("OPMS_SUBMISSION.Variance.UPDATE"))
             return "Variance is system-managed and cannot be modified by the current user.";
         return null;
@@ -992,7 +986,7 @@ public class OpmsSubmissionsController : ControllerBase
     {
         var response = submission.ToResponse();
         if (!permissions.Contains("OPMS_SUBMISSION.ActualPerformance.READ"))
-            response = response with { Actual = null, ActualDescription = null, ActualPerformanceDescription = null, ActualExpenditure = null, ActualPerformance = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserId = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
+            response = response with { ActualPerformance = null, ActualExpenditure = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserId = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
         if (!permissions.Contains("OPMS_SUBMISSION.Variance.READ"))
             response = response with { Variance = null, VarianceReason = null };
         if (!permissions.Contains("OPMS_SUBMISSION.SubmittedDate.READ"))

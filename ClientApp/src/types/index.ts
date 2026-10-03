@@ -2183,7 +2183,6 @@ export interface OpmsSubmissionDto {
   approverStatus?: string | null;
   pmsStatus?: string | null;
   auditorStatus?: string | null;
-  actual?: number | null;
   actualPerformance?: string | null;
   systemSuggestedActualPerformance?: string | null;
   wasSystemSuggestionEdited?: boolean;
@@ -2194,8 +2193,6 @@ export interface OpmsSubmissionDto {
   achievementPercent?: number | null;
   targetAchieved?: boolean | null;
   reportingPeriodPublicId?: string | null;
-  actualDescription?: string | null;
-  actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
   variance?: number | null;
   varianceReason?: string | null;
@@ -2262,7 +2259,6 @@ export interface IpmsSubmissionDto {
   approverStatus?: string | null;
   pmsStatus?: string | null;
   auditorStatus?: string | null;
-  actual?: number | null;
   actualPerformance?: string | null;
   systemSuggestedActualPerformance?: string | null;
   wasSystemSuggestionEdited?: boolean;
@@ -2273,8 +2269,6 @@ export interface IpmsSubmissionDto {
   achievementPercent?: number | null;
   targetAchieved?: boolean | null;
   reportingPeriodPublicId?: string | null;
-  actualDescription?: string | null;
-  actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
   variance?: number | null;
   varianceReason?: string | null;
@@ -2589,12 +2583,8 @@ export interface SaveIpmsTargetPayload {
 export interface SaveOpmsSubmissionPayload {
   opmsTargetId: string;
   quarter: string;
-  actual?: number | null;
   actualPerformance?: string | null;
-  actualDescription?: string | null;
-  actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
-  variance?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
   submitterScore?: number | null;
@@ -2606,12 +2596,8 @@ export interface SaveOpmsSubmissionPayload {
 export interface SaveIpmsSubmissionPayload {
   ipmsTargetId: string;
   quarter: string;
-  actual?: number | null;
   actualPerformance?: string | null;
-  actualDescription?: string | null;
-  actualPerformanceDescription?: string | null;
   actualExpenditure?: number | null;
-  variance?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
   submitterScore?: number | null;

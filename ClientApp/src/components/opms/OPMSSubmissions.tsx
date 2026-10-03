@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Eye, FileText, CalendarRange } from 'lucide-react';
+import { Plus, Download, Eye, CalendarRange } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
@@ -59,11 +59,7 @@ export function OPMSSubmissionsList() {
   const [form, setForm] = useState({
     targetId: '',
     quarter: 'Q1',
-    dueDate: new Date().toISOString().slice(0, 10),
-    actual: '0',
-    variance: '0',
-    status: 'draft',
-    actualDescription: '',
+    actualPerformance: '',
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
 
@@ -116,11 +112,7 @@ export function OPMSSubmissionsList() {
     setForm({
       targetId: opmsTargets[0]?.id ?? '',
       quarter: 'Q1',
-      dueDate: new Date().toISOString().slice(0, 10),
-      actual: '0',
-      variance: '0',
-      status: 'draft',
-      actualDescription: '',
+      actualPerformance: '',
     });
   };
 
@@ -143,11 +135,9 @@ export function OPMSSubmissionsList() {
     const result = await createOpmsSubmission({
       opmsTargetId: form.targetId,
       quarter: form.quarter,
-      actual: Number(form.actual || 0),
-      actualDescription: form.actualDescription || null,
+      actualPerformance: form.actualPerformance.trim() || null,
       varianceReason: null,
       correctiveMeasure: null,
-      dueDate: form.dueDate,
     });
 
     if (!result.success || !result.data) {
@@ -166,11 +156,9 @@ export function OPMSSubmissionsList() {
     const result = await updateOpmsSubmission(submission.id, {
       opmsTargetId: submission.target.id,
       quarter: submission.quarter,
-      actual: submission.actual,
-      actualDescription: submission.actualDescription ?? null,
+      actualPerformance: submission.actualPerformance ?? String(submission.actual),
       varianceReason: submission.varianceReason ?? null,
       correctiveMeasure: submission.correctiveMeasure ?? null,
-      dueDate: submission.dueDate,
     });
 
     if (!result.success || !result.data) {
@@ -362,21 +350,7 @@ export function OPMSSubmissionsList() {
                       required
                     />
                   </FormRow>
-                  <FormRow cols={3}>
-                    <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} required />
-                    <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} required />
-                    <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
-                  </FormRow>
-                </FormPanel>
-                <FormPanel title="Submission Details" description="Provide workflow status and a concise performance narrative." icon={<FileText className="h-5 w-5" />}>
-                  <Select
-                    label="Status"
-                    options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-                    value={form.status}
-                    onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
-                    required
-                  />
-                  <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} required />
                 </FormPanel>
               </div>
             </div>
@@ -408,11 +382,7 @@ export function IPMSSubmissionsList() {
   const [form, setForm] = useState({
     targetId: '',
     quarter: 'Q1',
-    dueDate: new Date().toISOString().slice(0, 10),
-    actual: '0',
-    variance: '0',
-    status: 'draft',
-    actualDescription: '',
+    actualPerformance: '',
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
 
@@ -465,11 +435,7 @@ export function IPMSSubmissionsList() {
     setForm({
       targetId: ipmsTargets[0]?.id ?? '',
       quarter: 'Q1',
-      dueDate: new Date().toISOString().slice(0, 10),
-      actual: '0',
-      variance: '0',
-      status: 'draft',
-      actualDescription: '',
+      actualPerformance: '',
     });
   };
 
@@ -492,11 +458,9 @@ export function IPMSSubmissionsList() {
     const result = await createIpmsSubmission({
       ipmsTargetId: form.targetId,
       quarter: form.quarter,
-      actual: Number(form.actual || 0),
-      actualDescription: form.actualDescription || null,
+      actualPerformance: form.actualPerformance.trim() || null,
       varianceReason: null,
       correctiveMeasure: null,
-      dueDate: form.dueDate,
     });
 
     if (!result.success || !result.data) {
@@ -515,11 +479,9 @@ export function IPMSSubmissionsList() {
     const result = await updateIpmsSubmission(submission.id, {
       ipmsTargetId: submission.target.id,
       quarter: submission.quarter,
-      actual: submission.actual,
-      actualDescription: submission.actualDescription ?? null,
+      actualPerformance: submission.actualPerformance ?? String(submission.actual),
       varianceReason: submission.varianceReason ?? null,
       correctiveMeasure: submission.correctiveMeasure ?? null,
-      dueDate: submission.dueDate,
     });
 
     if (!result.success || !result.data) {
@@ -711,21 +673,7 @@ export function IPMSSubmissionsList() {
                       required
                     />
                   </FormRow>
-                  <FormRow cols={3}>
-                    <Input label="Due Date" type="date" value={form.dueDate} onChange={(e) => setForm(prev => ({ ...prev, dueDate: e.target.value }))} required />
-                    <Input label="Actual" type="number" value={form.actual} onChange={(e) => setForm(prev => ({ ...prev, actual: e.target.value }))} required />
-                    <Input label="Variance %" type="number" value={form.variance} onChange={(e) => setForm(prev => ({ ...prev, variance: e.target.value }))} />
-                  </FormRow>
-                </FormPanel>
-                <FormPanel title="Submission Details" description="Provide workflow status and a concise performance narrative." icon={<FileText className="h-5 w-5" />}>
-                  <Select
-                    label="Status"
-                    options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
-                    value={form.status}
-                    onChange={(e) => setForm(prev => ({ ...prev, status: e.target.value }))}
-                    required
-                  />
-                  <Input label="Performance Description" value={form.actualDescription} onChange={(e) => setForm(prev => ({ ...prev, actualDescription: e.target.value }))} />
+                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} required />
                 </FormPanel>
               </div>
             </div>

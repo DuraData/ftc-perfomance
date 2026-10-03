@@ -606,11 +606,9 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
               const result = await updateOpmsSubmissionApi(submission.id, {
                 opmsTargetId: submission.target.id,
                 quarter: submission.quarter,
-                actual: submission.actual,
-                actualDescription: submission.actualDescription ?? null,
+                actualPerformance: submission.actualPerformance ?? String(submission.actual),
                 varianceReason: submission.varianceReason ?? null,
                 correctiveMeasure: submission.correctiveMeasure ?? null,
-                dueDate: submission.dueDate ?? null,
               });
               if (result.success && result.data) {
                 setOpmsSubmissions(prev => prev.map(item => item.id === submission.id ? result.data! : item));

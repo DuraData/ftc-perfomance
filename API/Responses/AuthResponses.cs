@@ -316,9 +316,7 @@ public record OpmsSubmissionResponse(
     string ApproverStatus,
     string PmsStatus,
     string AuditorStatus,
-    decimal? Actual,
-    string? ActualDescription,
-    string? ActualPerformanceDescription,
+    string? ActualPerformance,
     decimal? ActualExpenditure,
     decimal? Variance,
     string? VarianceReason,
@@ -370,7 +368,6 @@ public record OpmsSubmissionResponse(
 {
     public string BaseState { get; init; } = "IN_PROGRESS";
     public Guid? ReportingPeriodPublicId { get; init; }
-    public string? ActualPerformance { get; init; }
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }
@@ -396,9 +393,7 @@ public record IpmsSubmissionResponse(
     string ApproverStatus,
     string PmsStatus,
     string AuditorStatus,
-    decimal? Actual,
-    string? ActualDescription,
-    string? ActualPerformanceDescription,
+    string? ActualPerformance,
     decimal? ActualExpenditure,
     decimal? Variance,
     string? VarianceReason,
@@ -450,7 +445,6 @@ public record IpmsSubmissionResponse(
 {
     public string BaseState { get; init; } = "IN_PROGRESS";
     public Guid? ReportingPeriodPublicId { get; init; }
-    public string? ActualPerformance { get; init; }
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }

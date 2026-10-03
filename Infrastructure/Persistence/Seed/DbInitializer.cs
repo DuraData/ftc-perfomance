@@ -1,3 +1,4 @@
+using System.Globalization;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
@@ -1070,8 +1071,7 @@ public static class DbInitializer
                     OpmsTargetId = target.Id,
                     Quarter = submissionSeed.Quarter,
                     Status = submissionSeed.Status,
-                    Actual = submissionSeed.Actual,
-                    ActualDescription = submissionSeed.ActualDescription,
+                    ActualPerformance = submissionSeed.Actual?.ToString(CultureInfo.InvariantCulture),
                     ActualExpenditure = submissionSeed.ActualExpenditure,
                     Variance = submissionSeed.Variance,
                     VarianceReason = submissionSeed.VarianceReason,
@@ -1112,8 +1112,7 @@ public static class DbInitializer
                     IpmsTargetId = target.Id,
                     Quarter = submissionSeed.Quarter,
                     Status = submissionSeed.Status,
-                    Actual = submissionSeed.Actual,
-                    ActualDescription = submissionSeed.ActualDescription,
+                    ActualPerformance = submissionSeed.Actual?.ToString(CultureInfo.InvariantCulture),
                     ActualExpenditure = submissionSeed.ActualExpenditure,
                     Variance = submissionSeed.Variance,
                     VarianceReason = submissionSeed.VarianceReason,

@@ -50,3 +50,27 @@ public class PerformanceTargetRevision
     public PerformancePeriodTarget PerformancePeriodTarget { get; set; } = null!;
     public ApplicationUser RevisedByUser { get; set; } = null!;
 }
+
+/// <summary>
+/// Immutable preservation record created during the V3.9 canonical-actual cutover.
+/// It is not an operational value source; runtime behavior uses ActualPerformance only.
+/// </summary>
+public sealed class LegacySubmissionValueArchive
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long? MunicipalityId { get; set; }
+    public SubmissionKind SubmissionKind { get; set; }
+    public string? OpmsSubmissionId { get; set; }
+    public string? IpmsSubmissionId { get; set; }
+    public decimal? LegacyActual { get; set; }
+    public string? LegacyActualDescription { get; set; }
+    public string? LegacyActualPerformanceDescription { get; set; }
+    public string? CanonicalActualPerformance { get; set; }
+    public DateTime ArchivedAt { get; set; } = DateTime.UtcNow;
+    public string ArchiveReason { get; set; } = "V3.9 canonical ActualPerformance cutover";
+
+    public Municipality? Municipality { get; set; }
+    public OpmsSubmission? OpmsSubmission { get; set; }
+    public IpmsSubmission? IpmsSubmission { get; set; }
+}

@@ -649,6 +649,12 @@ function toSubmissionBaseState(dto: OpmsSubmissionDto | IpmsSubmissionDto) {
   return { baseState: baseState === 'SUBMITTED' ? 'SUBMITTED' as const : 'IN_PROGRESS' as const };
 }
 
+function numericActualProjection(value?: string | null): number {
+  if (!value?.trim()) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): OPMSSubmission {
   const target = targets.find(item => item.id === dto.opmsTargetId)
     ?? unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName);
@@ -660,7 +666,7 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     quarter: coerceQuarter(dto.quarter),
     dueDate: dto.dueDate ?? '',
     extendedDueDate: dto.extendedDueDate ?? undefined,
-    actual: dto.actual ?? 0,
+    actual: numericActualProjection(dto.actualPerformance),
     actualPerformance: dto.actualPerformance ?? undefined,
     systemSuggestedActualPerformance: dto.systemSuggestedActualPerformance ?? undefined,
     wasSystemSuggestionEdited: dto.wasSystemSuggestionEdited,
@@ -671,8 +677,6 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     achievementPercent: dto.achievementPercent ?? undefined,
     targetAchieved: dto.targetAchieved ?? undefined,
     reportingPeriodPublicId: dto.reportingPeriodPublicId ?? undefined,
-    actualDescription: dto.actualDescription ?? undefined,
-    actualPerformanceDescription: dto.actualPerformanceDescription ?? undefined,
     actualExpenditure: dto.actualExpenditure ?? undefined,
     variance: dto.variance ?? undefined,
     varianceReason: dto.varianceReason ?? undefined,
@@ -740,7 +744,7 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     quarter: coerceQuarter(dto.quarter),
     dueDate: dto.dueDate ?? '',
     extendedDueDate: dto.extendedDueDate ?? undefined,
-    actual: dto.actual ?? 0,
+    actual: numericActualProjection(dto.actualPerformance),
     actualPerformance: dto.actualPerformance ?? undefined,
     systemSuggestedActualPerformance: dto.systemSuggestedActualPerformance ?? undefined,
     wasSystemSuggestionEdited: dto.wasSystemSuggestionEdited,
@@ -751,8 +755,6 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     achievementPercent: dto.achievementPercent ?? undefined,
     targetAchieved: dto.targetAchieved ?? undefined,
     reportingPeriodPublicId: dto.reportingPeriodPublicId ?? undefined,
-    actualDescription: dto.actualDescription ?? undefined,
-    actualPerformanceDescription: dto.actualPerformanceDescription ?? undefined,
     actualExpenditure: dto.actualExpenditure ?? undefined,
     variance: dto.variance ?? undefined,
     varianceReason: dto.varianceReason ?? undefined,

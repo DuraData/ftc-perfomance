@@ -265,12 +265,9 @@ public partial class OpmsSubmission
     public string ApproverStatus { get; set; } = "Pending";
     public string PmsStatus { get; set; } = "Pending";
     public string AuditorStatus { get; set; } = "Pending";
-    public decimal? Actual { get; set; }
     public string? ActualPerformance { get; set; }
     public decimal? AchievementPercent { get; set; }
     public bool? TargetAchieved { get; set; }
-    public string? ActualDescription { get; set; }
-    public string? ActualPerformanceDescription { get; set; }
     public decimal? ActualExpenditure { get; set; }
     public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
@@ -347,12 +344,9 @@ public partial class IpmsSubmission
     public string ApproverStatus { get; set; } = "Pending";
     public string PmsStatus { get; set; } = "Pending";
     public string AuditorStatus { get; set; } = "Pending";
-    public decimal? Actual { get; set; }
     public string? ActualPerformance { get; set; }
     public decimal? AchievementPercent { get; set; }
     public bool? TargetAchieved { get; set; }
-    public string? ActualDescription { get; set; }
-    public string? ActualPerformanceDescription { get; set; }
     public decimal? ActualExpenditure { get; set; }
     public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }

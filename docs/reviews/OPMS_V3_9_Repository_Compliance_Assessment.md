@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete remaining analytical/oversight/evidence report breadth and report scheduling/distribution, representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **304 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **144 frontend tests pass** across 43 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **306 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **146 frontend tests pass** across 44 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -1279,11 +1279,24 @@ The controlled target-normalization API is now exposed as an administrator-opera
 
 The complete frontend suite now passes **146/146 tests across 44 files**. TypeScript, ESLint, the production build and the 66-chunk bundle budget pass; the build transforms 2,328 modules and the largest JavaScript chunk remains 379.2 KiB. This closes the administrator-operability gap for controlled reconciliation. Area 6 remains **PARTIALLY COMPLIANT** until historic data is actually reconciled in an approved environment, downstream compatibility projections are removed, and the legacy columns can be retired safely.
 
+### 11.71 Canonical ActualPerformance contract and lossless legacy retirement
+
+The remaining repository-side competing-actual representation is retired without discarding historic data:
+
+- OPMS/IPMS submission request and response contracts now expose one business value, `ActualPerformance`. `Actual`, `ActualDescription`, `ActualPerformanceDescription` and client-supplied `Variance` are absent from the public DTOs. Server-derived variance, achievement and target-achieved results remain response evidence, not client-owned inputs.
+- Submission controllers pass only `ActualPerformance` to the central unit engine, persist its canonical value and derive metrics from the matching normalized period target. Member security continues to protect the canonical value and variance narrative; unauthorized responses redact `ActualPerformance`, expenditure, derived metrics and suggestion evidence together.
+- Production submission forms and the shared workspace capture `ActualPerformance` as text so numeric, percentage, date, time, binary, ratio and qualitative units can all use the same canonical contract. The former numeric-only actual, client due-date, client variance and separate performance-description inputs are no longer presented as authoritative capture fields.
+- `V39CanonicalActualPerformanceCutover` creates `LegacySubmissionValueArchives` before removing any column. It archives each OPMS/IPMS legacy value and narrative with submission linkage, municipality where recoverable, canonical value, UTC timestamp and reason; backfills missing canonical numeric values; then drops the six retired columns. The downgrade recreates and restores all archived legacy fields before removing the archive table.
+- Archive rows are tenant-filtered, relationally constrained, unique per submission and append-only at the persistence boundary. Nullable municipality ownership is intentionally retained only for unreconciled historic orphan rows so the migration never discards them; all governed runtime writes still require tenant ownership.
+- Contract/model tests prove all four public request/response types and both submission entities lack the competing fields, and relational tests prove archive linkage plus append-only enforcement. The generated idempotent SQL orders archive inserts and canonical backfill before `DROP COLUMN`.
+
+The complete suites pass **306 backend tests**, with one environment-gated SQL Server test skipped, and **146/146 frontend tests across 44 files**. TypeScript, ESLint, frontend and Release backend builds, model/snapshot consistency, the 66-chunk bundle budget and the inspected **461,184-byte** idempotent SQL Server script pass. The local SQL Server instance was unreachable during this increment, so native application of the migration remains area 31 rather than being inferred. The ActualPerformance portion of R-25 is **COMPLIANT at repository level**; final area 7 remains **PARTIALLY COMPLIANT** only because target DTO compatibility projections and historic target reconciliation are still open.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
 
-- clean and upgrade application of every committed migration, including `20261002204550_V39CanonicalSubmissionBaseState`, its legacy-state backfill, `20261003145227_V39InternalAuditAssessmentModels`, `20261003152131_V39OfficialReportGeneration`, `20261003160701_V39NotificationPoliciesAndScheduling` and `20261003161402_V39NotificationPreferences`;
+- clean and upgrade application of every committed migration, including `20261002204550_V39CanonicalSubmissionBaseState`, its legacy-state backfill, `20261003145227_V39InternalAuditAssessmentModels`, `20261003152131_V39OfficialReportGeneration`, `20261003160701_V39NotificationPoliciesAndScheduling`, `20261003161402_V39NotificationPreferences` and `20261003170339_V39CanonicalActualPerformanceCutover`;
 - native generated `rowversion`, stale-writer conflicts and all filtered/unique/check indexes;
 - decimal precision, UTC/date behavior, restricted cascades and workflow/audit transaction rollback;
 - tenant/security query plans, bounded register load behavior, locking and concurrency under representative volume;
@@ -1314,7 +1327,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and two protected member paths are tested; the sensitive-member catalogue is not complete and deployment-level HTTP privilege-escalation testing remains outstanding. |
 | 5 | Authentication, municipality policy, sessions, MFA and federation | Partially Compliant | Local policy/session/MFA and configurable enterprise-provider code exist; live Entra/AD federation, conditional-access and recovery acceptance are external and unverified. |
 | 6 | Normalized period target model | Partially Compliant | New OPMS/IPMS target writes resolve the governed municipality financial year, normalize values through the unit engine and persist `PerformancePeriodTarget` rows; the general form cannot bypass revision history. A governed production console previews and executes permission-protected, bounded reconciliation with explicit actor/reason/audit evidence while refusing ambiguous legacy revisions. Legacy columns remain for read compatibility until reconciliation is executed and verified. |
-| 7 | Canonical target value and actual performance | Partially Compliant | New target and submission writes use canonical values, while compatibility projections still expose legacy-shaped target/actual contracts pending downstream cutover and historic reconciliation. |
+| 7 | Canonical target value and actual performance | Partially Compliant | Submission persistence and public contracts now use only canonical `ActualPerformance`; legacy values are losslessly archived and the six competing columns are removed by migration. Target writes are canonical, but target DTO compatibility projections remain pending downstream cutover and historic target reconciliation. |
 | 8 | Dynamic unit, variance and performance engine | Compliant | Configurable unit/calculation handling and automated engine coverage are present. |
 | 9 | Mid-term and annual consolidation suggestions and history | Compliant | The central engine implements all nine calculation types and fail-closed unit/missing-value behavior. OPMS/IPMS APIs generate from exact submitted source quarters, preserve suggested versus final values, require reasons for edits, recalculate metrics and append generated/accepted/edited history; member permissions protect direct calls and the SPA exposes the governed workflow. |
 | 10 | Target revisions, ordering and withdrawal | Partially Compliant | Revision/governance foundations exist, but the complete V3.9 revision/carry-forward/ordering experience is not evidenced end to end. |
@@ -1357,7 +1370,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Canonical submission base state and fail-closed workflow | Closed at repository level | Constrained base state, backfill migration and regression coverage pass. |
 | Primary register paging and TID fixed-limit collection | Substantially closed | Main registers and TID are server-paged; compatibility/detail selectors and SQL Server query-plan evidence remain open. |
 | Frontend use of mock business data | Closed at repository level | Removed production `mockData` imports and API fixture overlays. Target capture and target-template forms use persisted performance catalogues, tenant organization/employee endpoints and real related-target APIs with explicit loading/error/empty behavior. |
-| Normalized target cutover and legacy wide fields | **Partially closed — release blocker remains** | Active OPMS/IPMS create/update no longer write annual/Q1–Q4 columns and governed revisions cannot be bypassed. The production Data Cutover console previews blocked/ready/normalized rows and invokes bounded reconciliation for explicitly selected records with actor/reason/audit evidence. Execute and verify reconciliation, migrate remaining consumers, then remove compatibility columns and legacy actual projections. |
+| Normalized target cutover and legacy wide fields | **Partially closed — release blocker remains** | Active OPMS/IPMS create/update no longer write annual/Q1–Q4 columns and governed revisions cannot be bypassed. The production Data Cutover console previews blocked/ready/normalized rows and invokes bounded reconciliation for explicitly selected records with actor/reason/audit evidence. Competing actual projections are retired losslessly; execute and verify target reconciliation, migrate remaining target consumers, then remove the target compatibility columns. |
 | Mid-term/annual consolidation suggestions | **Closed at repository level** | Central calculation, municipality policies, suggested-versus-final persistence, immutable generated/accepted/edited history, protected OPMS/IPMS APIs, canonical metric recalculation and the Mid-Term/Annual SPA workflow are implemented and tested. Native SQL Server acceptance remains under area 31. |
 | Configurable IA assessment models | **Closed at repository level** | Both models, tenant/year configuration, model-specific validation, IA RFI/workflow/rating integration, immutable history and SPA capture are implemented and tested. Official formatted reports remain under area 20. |
 | Official OPMS reports and report version history | **Closed at repository level** | Approved municipality/FY templates, deterministic CSV/XLSX/DOCX/PDF output, immutable stored generations, snapshot/content hashes, scope-pinned re-authorized downloads, regeneration history, migration and production UI/tests are implemented. Scheduling/distribution and additional report-family breadth remain under R-41. |
@@ -1381,13 +1394,14 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Implemented approved official performance-report template versioning and immutable generation history across CSV, XLSX, DOCX and paginated PDF, including deterministic snapshot/content hashes, tenant/FY/period metadata, scope-pinned authorization, private storage, integrity-checked downloads, regeneration and production SPA administration/history.
 - Implemented municipality/FY notification policy versions, scope inheritance, configurable working-day reminders and escalations, reporting-window/RFI scheduling, downtime catch-up, SMS, controlled templates with preview/test, pause/resume, prior-FY copy, persisted optional preferences and terminal missing-address delivery evidence.
 - Added an administrator-facing OPMS/IPMS Data Cutover console over the governed target-normalization API, with bounded paging, explicit ready-record selection, blocked-state explanations, permission-aware execution and mandatory reconciliation reasons.
+- Retired competing OPMS/IPMS actual request, response, entity and UI fields; added a lossless append-only archive/backfill/drop migration so runtime behavior and public contracts use only canonical `ActualPerformance`.
 - Re-ran every available quality gate after the fixes.
 
 ### 12.5 Final test and build evidence
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 304; Failed: 0; Skipped: 1; Total: 305.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Backend test suite | **Passed: 306; Failed: 0; Skipped: 1; Total: 307.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
 | Frontend Vitest suite | **Passed: 146/146 across 44 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
@@ -1395,7 +1409,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Bundle budget | Passed with 66 JavaScript chunks; largest chunk 379.2 KiB. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
-| SQL Server migration artifact | Idempotent migration script generation passed at **451,703 bytes** and includes the notification policy, schedule and preference migrations. This proves generation only, not native application. |
+| SQL Server migration artifact | Idempotent migration script generation passed at **461,184 bytes** and includes the notification policy plus canonical-actual archive/backfill/drop migrations. Inspection confirms archive/backfill SQL precedes every retired-column drop. This proves generation only, not native application. |
 | Diff hygiene | `git diff --check` passed; line-ending conversion warnings are informational and no whitespace errors were reported. |
 
 No complete browser E2E suite, native SQL Server execution, representative load test, penetration test, backup/restore exercise or formal UAT was available; none is inferred from the passing repository suites.

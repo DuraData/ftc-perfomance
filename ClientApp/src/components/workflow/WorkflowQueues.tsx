@@ -72,7 +72,6 @@ function SubmissionDetailModal({ submission, isOpen, onClose, showAudit = false 
               <div><p className="text-[10px] text-secondary-500">Expenditure</p><p className="text-sm font-medium">R {submission.actualExpenditure?.toLocaleString() ?? '-'}</p></div>
               <div><p className="text-[10px] text-secondary-500">Submitter</p><p className="text-sm font-medium">{submission.submitter?.displayName ?? '-'}</p></div>
               <div><p className="text-[10px] text-secondary-500">Submitted</p><p className="text-sm font-medium">{submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : '-'}</p></div>
-              {submission.actualDescription && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Description</p><p className="text-xs">{submission.actualDescription}</p></div>}
               {submission.varianceReason && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Variance Reason</p><p className="text-xs">{submission.varianceReason}</p></div>}
             </div>
           )}
@@ -219,6 +218,7 @@ export function MyWorkQueue() {
           quarter: item.quarter,
           dueDate: item.dueDate,
           actual: item.actual,
+          actualPerformance: item.actualPerformance,
           variance: item.variance,
           status: item.status,
           submitter: item.submitter,

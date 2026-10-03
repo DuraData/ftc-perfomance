@@ -240,34 +240,26 @@ public record SaveIpmsTargetRequest(
 public record SaveOpmsSubmissionRequest(
     string OpmsTargetId,
     string Quarter,
-    decimal? Actual,
-    string? ActualDescription,
-    string? ActualPerformanceDescription,
+    string? ActualPerformance,
     decimal? ActualExpenditure,
-    decimal? Variance,
     string? VarianceReason,
     string? CorrectiveMeasure,
     decimal? SubmitterScore,
     string? PoeType,
-    DateTime? DueDate,
-    DateTime? ExtendedDueDate,
-    string? ActualPerformance = null);
+    DateTime? DueDate = null,
+    DateTime? ExtendedDueDate = null);
 
 public record SaveIpmsSubmissionRequest(
     string IpmsTargetId,
     string Quarter,
-    decimal? Actual,
-    string? ActualDescription,
-    string? ActualPerformanceDescription,
+    string? ActualPerformance,
     decimal? ActualExpenditure,
-    decimal? Variance,
     string? VarianceReason,
     string? CorrectiveMeasure,
     decimal? SubmitterScore,
     string? PoeType,
-    DateTime? DueDate,
-    DateTime? ExtendedDueDate,
-    string? ActualPerformance = null);
+    DateTime? DueDate = null,
+    DateTime? ExtendedDueDate = null);
 
 public record SubmissionWorkflowActionRequest(
     string? Comment,

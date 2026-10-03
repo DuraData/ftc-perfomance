@@ -613,7 +613,7 @@ export function SubmissionWorkspace({
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Actual</p>
               <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">
-                {formatValue(currentSubmission.actual, targetUnit)}
+                {currentSubmission.actualPerformance || formatValue(currentSubmission.actual, targetUnit)}
               </p>
             </div>
             <div>
@@ -658,11 +658,10 @@ export function SubmissionWorkspace({
           <Section title="Actual Performance" icon={<CheckCircle2 className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
               <Field
-                label="Actual"
-                value={currentSubmission.actual ?? ''}
+                label="Actual Performance"
+                value={currentSubmission.actualPerformance ?? ''}
                 editable={isEditing}
-                type="number"
-                onChange={(value) => updateDraftSubmission(current => ({ ...current, actual: Number(value || 0) }))}
+                onChange={(value) => updateDraftSubmission(current => ({ ...current, actualPerformance: value, actual: Number.isFinite(Number(value)) ? Number(value) : 0 }))}
               />
               <Field
                 label="Actual Expenditure"
@@ -672,13 +671,6 @@ export function SubmissionWorkspace({
                 onChange={(value) => updateDraftSubmission(current => 'actualExpenditure' in current ? { ...current, actualExpenditure: Number(value || 0) } : current)}
               />
               <Field label="Variance" value={formatVariance(variance)} />
-              <Field
-                label="Actual Performance Description"
-                value={currentSubmission.actualDescription || ''}
-                wide
-                editable={isEditing}
-                onChange={(value) => updateDraftSubmission(current => ({ ...current, actualDescription: value }))}
-              />
             </div>
           </Section>
 
