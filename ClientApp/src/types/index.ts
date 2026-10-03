@@ -1177,6 +1177,21 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface TargetNormalizationPreviewDto {
+  targetPublicId: string;
+  indicatorNumber: string;
+  targetName: string;
+  status: 'Blocked' | 'Ready' | 'Normalized';
+  missingPeriodTargets: number;
+  error?: string | null;
+}
+
+export interface TargetNormalizationResultDto {
+  selectedTargets: number;
+  addedPeriodTargets: number;
+  alreadyNormalizedTargets: number;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;

@@ -25,8 +25,9 @@ import type { AdminUserDetail, DepartmentLookupDto, InternalAuditConfigurationDt
 import { useApp } from '../../context/AppContext';
 import { NotificationDeliveryOperations } from './NotificationDeliveryOperations';
 import { NotificationPolicyAdministration } from './NotificationPolicyAdministration';
+import { TargetNormalizationAdministration } from './TargetNormalizationAdministration';
 
-type Tab = 'definitions' | 'windows' | 'ratings' | 'audit' | 'notifications' | 'delivery';
+type Tab = 'definitions' | 'windows' | 'ratings' | 'audit' | 'notifications' | 'delivery' | 'cutover';
 type StageDraft = {
   code: string;
   name: string;
@@ -238,7 +239,7 @@ export function WorkflowGovernanceAdminPage() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-2">
-            {(['definitions', 'windows', 'ratings', 'audit', 'notifications', 'delivery'] as Tab[]).map(value => <Button key={value} size="sm" variant={tab === value ? 'primary' : 'outline'} onClick={() => setTab(value)}>{value === 'audit' ? 'Internal Audit' : value[0].toUpperCase() + value.slice(1)}</Button>)}
+            {(['definitions', 'windows', 'ratings', 'audit', 'notifications', 'delivery', 'cutover'] as Tab[]).map(value => <Button key={value} size="sm" variant={tab === value ? 'primary' : 'outline'} onClick={() => setTab(value)}>{value === 'audit' ? 'Internal Audit' : value === 'cutover' ? 'Data Cutover' : value[0].toUpperCase() + value.slice(1)}</Button>)}
           </div>
           <Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button>
         </div>
@@ -311,6 +312,7 @@ export function WorkflowGovernanceAdminPage() {
 
         {tab === 'delivery' && <NotificationDeliveryOperations />}
         {tab === 'notifications' && <NotificationPolicyAdministration periods={periods} />}
+        {tab === 'cutover' && <TargetNormalizationAdministration />}
       </div>
     </AppShell>
   );

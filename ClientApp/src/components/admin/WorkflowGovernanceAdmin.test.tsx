@@ -28,11 +28,13 @@ const api = vi.hoisted(() => ({
   runDueNotificationPolicies: vi.fn(),
   addWorkingCalendarHoliday: vi.fn(),
   testNotificationPolicy: vi.fn(),
+  getTargetNormalizationPreview: vi.fn(),
+  executeTargetNormalization: vi.fn(),
 }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: ['OPMS_KPI.NORMALIZE_LEGACY'], pushToast: vi.fn() }) }));
 
 describe('WorkflowGovernanceAdminPage', () => {
   beforeEach(() => {
@@ -44,6 +46,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getInternalAuditConfigurations.mockResolvedValue({ success: true, data: [] });
     api.getNotificationPolicies.mockResolvedValue({ success: true, data: [] });
     api.getWorkingCalendarHolidays.mockResolvedValue({ success: true, data: [] });
+    api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
     api.getUsers.mockResolvedValue({ success: true, data: [] });
     api.getDepartments.mockResolvedValue({ success: true, data: [] });
@@ -79,6 +82,10 @@ describe('WorkflowGovernanceAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Internal Audit' }));
     expect(screen.getByText('Select Internal Audit model')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Data Cutover' }));
+    await waitFor(() => expect(api.getTargetNormalizationPreview).toHaveBeenCalledWith(1, 1, 50));
+    expect(screen.getByText('Normalized target cutover')).toBeInTheDocument();
   });
 
   it('opens scoped reporting-window exception administration', async () => {

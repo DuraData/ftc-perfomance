@@ -1267,6 +1267,18 @@ Focused relational and worker tests prove weekend/holiday calculations, controll
 
 **Status:** R-40 and final assessment area 21 are **COMPLIANT at repository level**. Live provider credentials, delivery receipts and outage rehearsal remain environment acceptance evidence and are not inferred from repository tests.
 
+### 11.70 Governed legacy-target reconciliation console
+
+The controlled target-normalization API is now exposed as an administrator-operable production workflow rather than a backend-only capability:
+
+- Workflow Governance includes a dedicated Data Cutover surface for both OPMS and IPMS target registers. It calls the tenant-scoped, permission-protected preview API and presents `Ready`, `Blocked` and `Normalized` status without inventing a successful state client-side.
+- Only `Ready` records can be selected. Blocked records retain the server's specific governance explanation, including ambiguous legacy revised values that require a reasoned governed revision rather than an unsafe automatic overwrite. Already-normalized records are visible but immutable through the cutover action.
+- Execution requires `OPMS_KPI.NORMALIZE_LEGACY`, at least one explicit target public ID and a governance reason. The existing API revalidates all selected records inside the transaction, adds only missing `PerformancePeriodTarget` rows, attributes them to the authenticated operator and writes audit evidence. Re-running the same selection is idempotent.
+- Paging is bounded to 50 records, register selection is explicit, and changing between OPMS and IPMS clears stale selection. The UI never offers an unbounded or silent “migrate everything” operation.
+- Component tests prove readiness rendering, blocked-selection enforcement, exact reason/identifier transport, success evidence and OPMS/IPMS register switching. The Workflow Governance integration test proves the production route opens the cutover console.
+
+The complete frontend suite now passes **146/146 tests across 44 files**. TypeScript, ESLint, the production build and the 66-chunk bundle budget pass; the build transforms 2,328 modules and the largest JavaScript chunk remains 379.2 KiB. This closes the administrator-operability gap for controlled reconciliation. Area 6 remains **PARTIALLY COMPLIANT** until historic data is actually reconciled in an approved environment, downstream compatibility projections are removed, and the legacy columns can be retired safely.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1301,7 +1313,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 3 | Employee identity, placement and organisation model | Compliant | Governed employee/organisation administration, placement scope and protected employee email member access are implemented and tested. |
 | 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and two protected member paths are tested; the sensitive-member catalogue is not complete and deployment-level HTTP privilege-escalation testing remains outstanding. |
 | 5 | Authentication, municipality policy, sessions, MFA and federation | Partially Compliant | Local policy/session/MFA and configurable enterprise-provider code exist; live Entra/AD federation, conditional-access and recovery acceptance are external and unverified. |
-| 6 | Normalized period target model | Partially Compliant | New OPMS/IPMS target writes resolve the governed municipality financial year, normalize values through the unit engine and persist `PerformancePeriodTarget` rows; the general form cannot bypass revision history. A permission-protected preview/execute reconciliation API backfills selected historic targets with an explicit actor, reason and audit entry while refusing ambiguous legacy revisions. Legacy columns remain for read compatibility until reconciliation is executed and verified. |
+| 6 | Normalized period target model | Partially Compliant | New OPMS/IPMS target writes resolve the governed municipality financial year, normalize values through the unit engine and persist `PerformancePeriodTarget` rows; the general form cannot bypass revision history. A governed production console previews and executes permission-protected, bounded reconciliation with explicit actor/reason/audit evidence while refusing ambiguous legacy revisions. Legacy columns remain for read compatibility until reconciliation is executed and verified. |
 | 7 | Canonical target value and actual performance | Partially Compliant | New target and submission writes use canonical values, while compatibility projections still expose legacy-shaped target/actual contracts pending downstream cutover and historic reconciliation. |
 | 8 | Dynamic unit, variance and performance engine | Compliant | Configurable unit/calculation handling and automated engine coverage are present. |
 | 9 | Mid-term and annual consolidation suggestions and history | Compliant | The central engine implements all nine calculation types and fail-closed unit/missing-value behavior. OPMS/IPMS APIs generate from exact submitted source quarters, preserve suggested versus final values, require reasons for edits, recalculate metrics and append generated/accepted/edited history; member permissions protect direct calls and the SPA exposes the governed workflow. |
@@ -1345,7 +1357,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Canonical submission base state and fail-closed workflow | Closed at repository level | Constrained base state, backfill migration and regression coverage pass. |
 | Primary register paging and TID fixed-limit collection | Substantially closed | Main registers and TID are server-paged; compatibility/detail selectors and SQL Server query-plan evidence remain open. |
 | Frontend use of mock business data | Closed at repository level | Removed production `mockData` imports and API fixture overlays. Target capture and target-template forms use persisted performance catalogues, tenant organization/employee endpoints and real related-target APIs with explicit loading/error/empty behavior. |
-| Normalized target cutover and legacy wide fields | **Partially closed — release blocker remains** | Active OPMS/IPMS create/update no longer write annual/Q1–Q4 columns and governed revisions cannot be bypassed. The controlled reconciliation API previews blocked/ready/normalized rows and backfills selected records with actor/reason/audit evidence. Execute and verify reconciliation, migrate remaining consumers, then remove compatibility columns and legacy actual projections. |
+| Normalized target cutover and legacy wide fields | **Partially closed — release blocker remains** | Active OPMS/IPMS create/update no longer write annual/Q1–Q4 columns and governed revisions cannot be bypassed. The production Data Cutover console previews blocked/ready/normalized rows and invokes bounded reconciliation for explicitly selected records with actor/reason/audit evidence. Execute and verify reconciliation, migrate remaining consumers, then remove compatibility columns and legacy actual projections. |
 | Mid-term/annual consolidation suggestions | **Closed at repository level** | Central calculation, municipality policies, suggested-versus-final persistence, immutable generated/accepted/edited history, protected OPMS/IPMS APIs, canonical metric recalculation and the Mid-Term/Annual SPA workflow are implemented and tested. Native SQL Server acceptance remains under area 31. |
 | Configurable IA assessment models | **Closed at repository level** | Both models, tenant/year configuration, model-specific validation, IA RFI/workflow/rating integration, immutable history and SPA capture are implemented and tested. Official formatted reports remain under area 20. |
 | Official OPMS reports and report version history | **Closed at repository level** | Approved municipality/FY templates, deterministic CSV/XLSX/DOCX/PDF output, immutable stored generations, snapshot/content hashes, scope-pinned re-authorized downloads, regeneration history, migration and production UI/tests are implemented. Scheduling/distribution and additional report-family breadth remain under R-41. |
@@ -1368,6 +1380,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Implemented both configurable Internal Audit assessment models with versioned tenant/year selection, exact simplified-model fields, detailed-model narratives and configured ratings, automatic adverse-result RFI creation, immutable reassessment chains, scoped API enforcement and administration/auditor UI workflows.
 - Implemented approved official performance-report template versioning and immutable generation history across CSV, XLSX, DOCX and paginated PDF, including deterministic snapshot/content hashes, tenant/FY/period metadata, scope-pinned authorization, private storage, integrity-checked downloads, regeneration and production SPA administration/history.
 - Implemented municipality/FY notification policy versions, scope inheritance, configurable working-day reminders and escalations, reporting-window/RFI scheduling, downtime catch-up, SMS, controlled templates with preview/test, pause/resume, prior-FY copy, persisted optional preferences and terminal missing-address delivery evidence.
+- Added an administrator-facing OPMS/IPMS Data Cutover console over the governed target-normalization API, with bounded paging, explicit ready-record selection, blocked-state explanations, permission-aware execution and mandatory reconciliation reasons.
 - Re-ran every available quality gate after the fixes.
 
 ### 12.5 Final test and build evidence
@@ -1375,10 +1388,10 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Gate | Result |
 |---|---|
 | Backend test suite | **Passed: 304; Failed: 0; Skipped: 1; Total: 305.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 144/144 across 43 files.** |
+| Frontend Vitest suite | **Passed: 146/146 across 44 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
-| Frontend production build | Passed; 2,327 modules transformed. |
+| Frontend production build | Passed; 2,328 modules transformed. |
 | Bundle budget | Passed with 66 JavaScript chunks; largest chunk 379.2 KiB. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |

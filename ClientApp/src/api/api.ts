@@ -126,6 +126,8 @@ import type {
   StrategicGoal,
   StrategicObjective,
   UnitOfMeasure,
+  TargetNormalizationPreviewDto,
+  TargetNormalizationResultDto,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -1200,6 +1202,14 @@ export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2
 
 export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
   return put<PerformancePeriodTargetDto>(`/v1/performance-period-targets/${publicId}`, payload);
+}
+
+export async function getTargetNormalizationPreview(targetKind: 1 | 2, page = 1, pageSize = 50): Promise<ApiResponse<PagedResult<TargetNormalizationPreviewDto>>> {
+  return get<PagedResult<TargetNormalizationPreviewDto>>(`/v1/target-normalization?targetKind=${targetKind}&page=${page}&pageSize=${pageSize}`);
+}
+
+export async function executeTargetNormalization(payload: { targetKind: 1 | 2; targetPublicIds: string[]; reason: string }): Promise<ApiResponse<TargetNormalizationResultDto>> {
+  return post<TargetNormalizationResultDto>('/v1/target-normalization/execute', payload);
 }
 
 export async function getPerformanceTargetRevisions(publicId: string): Promise<ApiResponse<PerformanceTargetRevisionDto[]>> {
