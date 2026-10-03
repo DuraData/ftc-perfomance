@@ -25,7 +25,18 @@ import type {
   OPMSSubmission,
   SubmissionComment,
   SubmissionStatus,
+  PerformanceSuggestionEvent,
 } from '../../types';
+import {
+  generateIpmsConsolidationSuggestion,
+  generateOpmsConsolidationSuggestion,
+  getIpmsConsolidationHistory,
+  getIpmsSubmission,
+  getOpmsConsolidationHistory,
+  getOpmsSubmission,
+  saveIpmsConsolidatedActual,
+  saveOpmsConsolidatedActual,
+} from '../../api/api';
 import { PerformanceRfiWorkspace } from '../workflow/PerformanceRfiWorkspace';
 import { StageRatingHistory } from '../workflow/StageRatingHistory';
 import { useSecurity } from '../../context/SecurityContext';
@@ -334,6 +345,11 @@ export function SubmissionWorkspace({
   const [extendedDueDate, setExtendedDueDate] = useState('');
   const [extensionReason, setExtensionReason] = useState('');
   const [showWithdrawal, setShowWithdrawal] = useState(false);
+  const [consolidationBusy, setConsolidationBusy] = useState(false);
+  const [consolidationError, setConsolidationError] = useState('');
+  const [consolidatedActual, setConsolidatedActual] = useState(submission.actualPerformance ?? '');
+  const [consolidationReason, setConsolidationReason] = useState('');
+  const [consolidationHistory, setConsolidationHistory] = useState<PerformanceSuggestionEvent[]>([]);
   useEffect(() => {
     setDraftSubmission(submission);
     setIsEditing(false);
@@ -341,7 +357,28 @@ export function SubmissionWorkspace({
     setWorkflowScore('');
     setExtendedDueDate(submission.extendedDueDate?.slice(0, 10) ?? submission.dueDate?.slice(0, 10) ?? '');
     setExtensionReason('');
+    setConsolidatedActual(submission.actualPerformance ?? '');
+    setConsolidationReason('');
+    setConsolidationError('');
+    setConsolidationHistory([]);
   }, [submission]);
+
+  useEffect(() => {
+    if ((submission.quarter !== 'Mid-Year' && submission.quarter !== 'Annual') || !submission.systemSuggestedActualPerformance) return;
+    let active = true;
+    const load = async () => {
+      try {
+        const response = submissionType === 'OPMS'
+          ? await getOpmsConsolidationHistory(submission.id)
+          : await getIpmsConsolidationHistory(submission.id);
+        if (active && response.success && response.data) setConsolidationHistory(response.data);
+      } catch {
+        // Authorization and transport failures remain represented by the protected API; the rest of the workspace stays usable.
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [submission.id, submission.quarter, submission.systemSuggestedActualPerformance, submissionType]);
 
   const currentSubmission = draftSubmission;
   const tabs = useMemo(
@@ -363,6 +400,9 @@ export function SubmissionWorkspace({
   const variance = getVariance(currentSubmission);
   const actualExpenditure = getActualExpenditure(currentSubmission);
   const targetUnit = currentSubmission.target.unitOfMeasure.symbol || currentSubmission.target.unitOfMeasure.name;
+  const isConsolidationPeriod = currentSubmission.quarter === 'Mid-Year' || currentSubmission.quarter === 'Annual';
+  const resourceCode = `${submissionType}_SUBMISSION`;
+  const canManageConsolidation = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
 
   const smallTitle = `${titlePrefix}`;
   const pageTitle = `Submission: ${submissionType}-${currentSubmission.quarter}-${currentSubmission.id.padStart(4, '0')}`;
@@ -443,6 +483,61 @@ export function SubmissionWorkspace({
     onWorkflowAction?.(action, {
       comment: workflowComment || undefined,
     });
+  };
+
+  const refreshConsolidation = async () => {
+    const response = submissionType === 'OPMS'
+      ? await getOpmsSubmission(currentSubmission.id)
+      : await getIpmsSubmission(currentSubmission.id);
+    if (response.success && response.data) {
+      setDraftSubmission(response.data);
+      setConsolidatedActual(response.data.actualPerformance ?? '');
+    }
+    const history = submissionType === 'OPMS'
+      ? await getOpmsConsolidationHistory(currentSubmission.id)
+      : await getIpmsConsolidationHistory(currentSubmission.id);
+    if (history.success && history.data) setConsolidationHistory(history.data);
+  };
+
+  const generateConsolidation = async () => {
+    setConsolidationBusy(true);
+    setConsolidationError('');
+    try {
+      const response = submissionType === 'OPMS'
+        ? await generateOpmsConsolidationSuggestion(currentSubmission.id)
+        : await generateIpmsConsolidationSuggestion(currentSubmission.id);
+      if (!response.success) {
+        setConsolidationError(response.message || response.data?.explanation || 'The suggestion could not be generated.');
+        return;
+      }
+      await refreshConsolidation();
+    } catch (error) {
+      setConsolidationError(error instanceof Error ? error.message : 'The suggestion could not be generated.');
+    } finally {
+      setConsolidationBusy(false);
+    }
+  };
+
+  const saveConsolidation = async () => {
+    if (!currentSubmission.rowVersion || !consolidatedActual.trim()) return;
+    setConsolidationBusy(true);
+    setConsolidationError('');
+    try {
+      const payload = { actualPerformance: consolidatedActual.trim(), editReason: consolidationReason.trim() || undefined, rowVersion: currentSubmission.rowVersion };
+      const response = submissionType === 'OPMS'
+        ? await saveOpmsConsolidatedActual(currentSubmission.id, payload)
+        : await saveIpmsConsolidatedActual(currentSubmission.id, payload);
+      if (!response.success) {
+        setConsolidationError(response.message || response.data?.explanation || 'The consolidated actual could not be saved.');
+        return;
+      }
+      await refreshConsolidation();
+      setConsolidationReason('');
+    } catch (error) {
+      setConsolidationError(error instanceof Error ? error.message : 'The consolidated actual could not be saved.');
+    } finally {
+      setConsolidationBusy(false);
+    }
   };
 
   return (
@@ -586,6 +681,56 @@ export function SubmissionWorkspace({
               />
             </div>
           </Section>
+
+          {isConsolidationPeriod && (
+            <Section title="Governed Consolidation" icon={<Sparkles className="h-4 w-4" />}>
+              <p className="text-sm text-secondary-600 dark:text-secondary-300">
+                The system suggestion is calculated from submitted source quarters. It is retained permanently when the final actual is accepted or edited.
+              </p>
+              {consolidationError && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-700">{consolidationError}</div>}
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="System Suggestion" value={currentSubmission.systemSuggestedActualPerformance || 'Not generated'} />
+                <Field label="Final Actual" value={currentSubmission.actualPerformance || '-'} />
+                <Field label="Suggestion Generated" value={formatDateTime(currentSubmission.suggestionGeneratedDate)} />
+                <Field label="Edited" value={currentSubmission.wasSystemSuggestionEdited ? 'Yes' : 'No'} />
+                <Field label="Edit Reason" value={currentSubmission.suggestionEditReason || '-'} wide />
+              </div>
+              {canManageConsolidation && currentSubmission.baseState === 'IN_PROGRESS' && !currentSubmission.isDisabled && (
+                <div className="space-y-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="text-sm font-medium text-secondary-700 dark:text-secondary-200">
+                      Final actual
+                      <input aria-label="Final consolidated actual" className="mt-1 min-h-11 w-full rounded-lg border border-secondary-200 bg-white px-3 dark:border-secondary-700 dark:bg-secondary-800" value={consolidatedActual} onChange={event => setConsolidatedActual(event.target.value)} />
+                    </label>
+                    <label className="text-sm font-medium text-secondary-700 dark:text-secondary-200">
+                      Reason when changing the suggestion
+                      <input aria-label="Consolidation edit reason" className="mt-1 min-h-11 w-full rounded-lg border border-secondary-200 bg-white px-3 dark:border-secondary-700 dark:bg-secondary-800" value={consolidationReason} onChange={event => setConsolidationReason(event.target.value)} />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" disabled={consolidationBusy || Boolean(currentSubmission.systemSuggestedActualPerformance)} onClick={() => void generateConsolidation()}>
+                      Generate suggestion
+                    </Button>
+                    <Button variant="primary" size="sm" disabled={consolidationBusy || !currentSubmission.systemSuggestedActualPerformance || !consolidatedActual.trim() || (consolidatedActual.trim() !== currentSubmission.systemSuggestedActualPerformance && !consolidationReason.trim())} onClick={() => void saveConsolidation()}>
+                      Save final actual
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {consolidationHistory.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Suggestion history</h4>
+                  {consolidationHistory.map(event => (
+                    <div key={event.publicId} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
+                      <div className="flex flex-wrap justify-between gap-2"><span className="font-medium">{event.eventType}</span><span className="text-secondary-500">{formatDateTime(event.occurredAt)}</span></div>
+                      <p className="mt-1 text-secondary-600 dark:text-secondary-300">Suggestion {event.systemSuggestedActualPerformance ?? '-'} · Final {event.actualPerformance ?? '-'} · Sources {event.sourcePeriods.join(', ') || '-'}</p>
+                      {event.reason && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Reason: {event.reason}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
 
           <Section title="Variance & Corrective Action" icon={<AlertTriangle className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">

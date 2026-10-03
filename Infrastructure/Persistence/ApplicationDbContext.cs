@@ -750,6 +750,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<OpmsSubmission>().Property(item => item.RowVersion));
         builder.Entity<OpmsSubmission>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsSubmission>().Property(item => item.ActualPerformance).HasMaxLength(1024);
+        builder.Entity<OpmsSubmission>().Property(item => item.BaseState).HasMaxLength(20);
+        builder.Entity<OpmsSubmission>().ToTable(table => table.HasCheckConstraint(
+            "CK_OpmsSubmissions_BaseState",
+            "[BaseState] IN ('IN_PROGRESS','SUBMITTED')"));
         builder.Entity<OpmsSubmission>().Property(item => item.AchievementPercent).HasPrecision(18, 4);
         builder.Entity<OpmsSubmission>().HasIndex(item => new { item.OpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[ReportingPeriodId] IS NOT NULL");
         builder.Entity<OpmsSubmission>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
@@ -761,6 +765,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<IpmsSubmission>().Property(item => item.RowVersion));
         builder.Entity<IpmsSubmission>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsSubmission>().Property(item => item.ActualPerformance).HasMaxLength(1024);
+        builder.Entity<IpmsSubmission>().Property(item => item.BaseState).HasMaxLength(20);
+        builder.Entity<IpmsSubmission>().ToTable(table => table.HasCheckConstraint(
+            "CK_IpmsSubmissions_BaseState",
+            "[BaseState] IN ('IN_PROGRESS','SUBMITTED')"));
         builder.Entity<IpmsSubmission>().Property(item => item.AchievementPercent).HasPrecision(18, 4);
         builder.Entity<IpmsSubmission>().HasIndex(item => new { item.IpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[ReportingPeriodId] IS NOT NULL");
         builder.Entity<IpmsSubmission>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);

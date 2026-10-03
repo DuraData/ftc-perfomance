@@ -513,12 +513,19 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
 export interface OPMSSubmission {
   id: string;
   rowVersion?: string;
+  baseState: 'IN_PROGRESS' | 'SUBMITTED';
   target: OPMSTarget;
   quarter: Quarter;
   dueDate: string;
   extendedDueDate?: string;
   actual: number;
   actualPerformance?: string;
+  systemSuggestedActualPerformance?: string;
+  wasSystemSuggestionEdited?: boolean;
+  suggestionGeneratedDate?: string;
+  suggestionEditedByUserId?: string;
+  suggestionEditedAt?: string;
+  suggestionEditReason?: string;
   achievementPercent?: number;
   targetAchieved?: boolean;
   reportingPeriodPublicId?: string;
@@ -582,12 +589,19 @@ export interface OPMSSubmission {
 export interface IPMSSubmission {
   id: string;
   rowVersion?: string;
+  baseState: 'IN_PROGRESS' | 'SUBMITTED';
   target: IPMSTarget;
   quarter: Quarter;
   dueDate: string;
   extendedDueDate?: string;
   actual: number;
   actualPerformance?: string;
+  systemSuggestedActualPerformance?: string;
+  wasSystemSuggestionEdited?: boolean;
+  suggestionGeneratedDate?: string;
+  suggestionEditedByUserId?: string;
+  suggestionEditedAt?: string;
+  suggestionEditReason?: string;
   achievementPercent?: number;
   targetAchieved?: boolean;
   reportingPeriodPublicId?: string;
@@ -2008,6 +2022,7 @@ export interface IpmsTargetDto {
 export interface OpmsSubmissionDto {
   id: string;
   rowVersion: string;
+  baseState: string;
   opmsTargetId: string;
   targetName: string;
   quarter: string;
@@ -2019,6 +2034,12 @@ export interface OpmsSubmissionDto {
   auditorStatus?: string | null;
   actual?: number | null;
   actualPerformance?: string | null;
+  systemSuggestedActualPerformance?: string | null;
+  wasSystemSuggestionEdited?: boolean;
+  suggestionGeneratedDate?: string | null;
+  suggestionEditedByUserId?: string | null;
+  suggestionEditedAt?: string | null;
+  suggestionEditReason?: string | null;
   achievementPercent?: number | null;
   targetAchieved?: boolean | null;
   reportingPeriodPublicId?: string | null;
@@ -2080,6 +2101,7 @@ export interface OpmsSubmissionDto {
 export interface IpmsSubmissionDto {
   id: string;
   rowVersion: string;
+  baseState: string;
   ipmsTargetId: string;
   targetName: string;
   quarter: string;
@@ -2091,6 +2113,12 @@ export interface IpmsSubmissionDto {
   auditorStatus?: string | null;
   actual?: number | null;
   actualPerformance?: string | null;
+  systemSuggestedActualPerformance?: string | null;
+  wasSystemSuggestionEdited?: boolean;
+  suggestionGeneratedDate?: string | null;
+  suggestionEditedByUserId?: string | null;
+  suggestionEditedAt?: string | null;
+  suggestionEditReason?: string | null;
   achievementPercent?: number | null;
   targetAchieved?: boolean | null;
   reportingPeriodPublicId?: string | null;
@@ -2159,6 +2187,31 @@ export interface NotificationDto {
   entityId?: string | null;
   isRead: boolean;
   createdAt: string;
+}
+
+export interface PerformanceSuggestionResult {
+  generated: boolean;
+  manualRequired: boolean;
+  code: string;
+  explanation: string;
+  systemSuggestedActualPerformance?: string | null;
+  actualPerformance?: string | null;
+  wasSystemSuggestionEdited: boolean;
+  sourcePeriods: string[];
+}
+
+export interface PerformanceSuggestionEvent {
+  publicId: string;
+  eventType: 'Generated' | 'Accepted' | 'Edited';
+  systemSuggestedActualPerformance?: string | null;
+  actualPerformance?: string | null;
+  wasSystemSuggestionEdited: boolean;
+  effectiveCalculationType?: string | null;
+  sourcePeriods: string[];
+  actorUserId: string;
+  reason?: string | null;
+  occurredAt: string;
+  correlationId: string;
 }
 
 export interface NotificationPageResult extends PagedResult<NotificationDto> {

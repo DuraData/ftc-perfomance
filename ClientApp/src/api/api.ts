@@ -40,6 +40,8 @@ import type {
   SaveIpmsSubmissionPayload,
   SubmissionWorkflowActionPayload,
   DueDateExtensionPayload,
+  PerformanceSuggestionResult,
+  PerformanceSuggestionEvent,
   TemplateQuarterlyTarget,
   Quarter,
   SubmissionStatus,
@@ -648,6 +650,12 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     extendedDueDate: dto.extendedDueDate ?? undefined,
     actual: dto.actual ?? 0,
     actualPerformance: dto.actualPerformance ?? undefined,
+    systemSuggestedActualPerformance: dto.systemSuggestedActualPerformance ?? undefined,
+    wasSystemSuggestionEdited: dto.wasSystemSuggestionEdited,
+    suggestionGeneratedDate: dto.suggestionGeneratedDate ?? undefined,
+    suggestionEditedByUserId: dto.suggestionEditedByUserId ?? undefined,
+    suggestionEditedAt: dto.suggestionEditedAt ?? undefined,
+    suggestionEditReason: dto.suggestionEditReason ?? undefined,
     achievementPercent: dto.achievementPercent ?? undefined,
     targetAchieved: dto.targetAchieved ?? undefined,
     reportingPeriodPublicId: dto.reportingPeriodPublicId ?? undefined,
@@ -722,6 +730,12 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     extendedDueDate: dto.extendedDueDate ?? undefined,
     actual: dto.actual ?? 0,
     actualPerformance: dto.actualPerformance ?? undefined,
+    systemSuggestedActualPerformance: dto.systemSuggestedActualPerformance ?? undefined,
+    wasSystemSuggestionEdited: dto.wasSystemSuggestionEdited,
+    suggestionGeneratedDate: dto.suggestionGeneratedDate ?? undefined,
+    suggestionEditedByUserId: dto.suggestionEditedByUserId ?? undefined,
+    suggestionEditedAt: dto.suggestionEditedAt ?? undefined,
+    suggestionEditReason: dto.suggestionEditReason ?? undefined,
     achievementPercent: dto.achievementPercent ?? undefined,
     targetAchieved: dto.targetAchieved ?? undefined,
     reportingPeriodPublicId: dto.reportingPeriodPublicId ?? undefined,
@@ -1109,7 +1123,7 @@ export async function createMunicipalEmployee(payload: { employeeNumber: string;
   return post<MunicipalEmployeeDto>('/v1/masters/employees', payload);
 }
 
-export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; emailAddress?: string | null; identityUserId?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserId?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
   return put<MunicipalEmployeeDto>(`/v1/masters/employees/${publicId}`, payload);
 }
 
@@ -1649,6 +1663,15 @@ export async function withdrawOpmsSubmission(id: string, payload: { reason: stri
   return mapResponse(response, item => toOpmsSubmissionModel(item, targetsResult.data ?? []));
 }
 
+export const generateOpmsConsolidationSuggestion = (id: string): Promise<ApiResponse<PerformanceSuggestionResult>> =>
+  post<PerformanceSuggestionResult>(`/v1/opms-submissions/${id}/consolidation-suggestion`);
+
+export const saveOpmsConsolidatedActual = (id: string, payload: { actualPerformance: string; editReason?: string; rowVersion: string }): Promise<ApiResponse<PerformanceSuggestionResult>> =>
+  put<PerformanceSuggestionResult>(`/v1/opms-submissions/${id}/consolidated-actual`, payload);
+
+export const getOpmsConsolidationHistory = (id: string): Promise<ApiResponse<PerformanceSuggestionEvent[]>> =>
+  get<PerformanceSuggestionEvent[]>(`/v1/opms-submissions/${id}/consolidation-history`);
+
 export async function applyOpmsSubmissionWorkflowAction(
   id: string,
   action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
@@ -1750,6 +1773,15 @@ export async function withdrawIpmsSubmission(id: string, payload: { reason: stri
   const response = await post<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}/withdraw`, payload);
   return mapResponse(response, item => toIpmsSubmissionModel(item, targetsResult.data ?? []));
 }
+
+export const generateIpmsConsolidationSuggestion = (id: string): Promise<ApiResponse<PerformanceSuggestionResult>> =>
+  post<PerformanceSuggestionResult>(`/v1/ipms-submissions/${id}/consolidation-suggestion`);
+
+export const saveIpmsConsolidatedActual = (id: string, payload: { actualPerformance: string; editReason?: string; rowVersion: string }): Promise<ApiResponse<PerformanceSuggestionResult>> =>
+  put<PerformanceSuggestionResult>(`/v1/ipms-submissions/${id}/consolidated-actual`, payload);
+
+export const getIpmsConsolidationHistory = (id: string): Promise<ApiResponse<PerformanceSuggestionEvent[]>> =>
+  get<PerformanceSuggestionEvent[]>(`/v1/ipms-submissions/${id}/consolidation-history`);
 
 export async function applyIpmsSubmissionWorkflowAction(
   id: string,

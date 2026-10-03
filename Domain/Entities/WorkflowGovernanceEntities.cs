@@ -40,6 +40,18 @@ public enum SubmissionKind
     Ipms = 2
 }
 
+public static class SubmissionBaseStates
+{
+    public const string InProgress = "IN_PROGRESS";
+    public const string Submitted = "SUBMITTED";
+
+    public static string Normalize(string? state) => state?.Trim().ToUpperInvariant() switch
+    {
+        InProgress or "DRAFT" or "VERIFY_REJECTED" or "REJECTED" or null or "" => InProgress,
+        _ => Submitted
+    };
+}
+
 public partial class OpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -244,6 +256,7 @@ public partial class OpmsSubmission
     public long? ReportingPeriodId { get; set; }
     public string OpmsTargetId { get; set; } = string.Empty;
     public string Quarter { get; set; } = string.Empty;
+    public string BaseState { get; set; } = SubmissionBaseStates.InProgress;
     public string Status { get; set; } = string.Empty;
     public string SubmitterStatus { get; set; } = "Draft";
     public string VerifierStatus { get; set; } = "Pending";
@@ -325,6 +338,7 @@ public partial class IpmsSubmission
     public long? ReportingPeriodId { get; set; }
     public string IpmsTargetId { get; set; } = string.Empty;
     public string Quarter { get; set; } = string.Empty;
+    public string BaseState { get; set; } = SubmissionBaseStates.InProgress;
     public string Status { get; set; } = string.Empty;
     public string SubmitterStatus { get; set; } = "Draft";
     public string VerifierStatus { get; set; } = "Pending";

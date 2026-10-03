@@ -295,8 +295,15 @@ public static class PerformanceApiSupport
             submission.OrganisationId,
             submission.CreatedAt)
         {
+            BaseState = submission.BaseState,
             ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
             ActualPerformance = submission.ActualPerformance,
+            SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
+            WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
+            SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
+            SuggestionEditedByUserId = submission.SuggestionEditedByUserId,
+            SuggestionEditedAt = submission.SuggestionEditedAt,
+            SuggestionEditReason = submission.SuggestionEditReason,
             AchievementPercent = submission.AchievementPercent,
             TargetAchieved = submission.TargetAchieved,
             RowVersion = Convert.ToBase64String(submission.RowVersion),
@@ -369,8 +376,15 @@ public static class PerformanceApiSupport
             submission.OrganisationId,
             submission.CreatedAt)
         {
+            BaseState = submission.BaseState,
             ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
             ActualPerformance = submission.ActualPerformance,
+            SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
+            WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
+            SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
+            SuggestionEditedByUserId = submission.SuggestionEditedByUserId,
+            SuggestionEditedAt = submission.SuggestionEditedAt,
+            SuggestionEditReason = submission.SuggestionEditReason,
             AchievementPercent = submission.AchievementPercent,
             TargetAchieved = submission.TargetAchieved,
             RowVersion = Convert.ToBase64String(submission.RowVersion),

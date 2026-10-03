@@ -875,6 +875,7 @@ export const mockIPMSTargets: IPMSTarget[] = [
 export const mockOPMSSubmissions: OPMSSubmission[] = [
   {
     id: '1',
+    baseState: 'SUBMITTED',
     target: mockOPMSTargets[0],
     quarter: 'Q1',
     dueDate: '2024-09-30',
@@ -894,6 +895,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
   },
   {
     id: '2',
+    baseState: 'SUBMITTED',
     target: mockOPMSTargets[0],
     quarter: 'Q2',
     dueDate: '2024-12-31',
@@ -912,6 +914,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
   },
   {
     id: '3',
+    baseState: 'SUBMITTED',
     target: mockOPMSTargets[1],
     quarter: 'Q1',
     dueDate: '2024-09-30',
@@ -931,6 +934,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
   },
   {
     id: '4',
+    baseState: 'SUBMITTED',
     target: mockOPMSTargets[2],
     quarter: 'Q1',
     dueDate: '2024-09-30',
@@ -947,6 +951,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
   },
   {
     id: '5',
+    baseState: 'IN_PROGRESS',
     target: mockOPMSTargets[0],
     quarter: 'Q3',
     dueDate: '2025-03-31',
@@ -959,6 +964,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
   },
   {
     id: '6',
+    baseState: 'IN_PROGRESS',
     target: mockOPMSTargets[0],
     quarter: 'Q4',
     dueDate: '2025-06-30',
@@ -970,6 +976,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
   },
   {
     id: '7',
+    baseState: 'IN_PROGRESS',
     target: mockOPMSTargets[3],
     quarter: 'Q1',
     dueDate: '2024-09-30',
@@ -986,6 +993,7 @@ export const mockOPMSSubmissions: OPMSSubmission[] = [
 export const mockIPMSSubmissions: IPMSSubmission[] = [
   {
     id: '1',
+    baseState: 'SUBMITTED',
     target: mockIPMSTargets[1],
     quarter: 'Q3',
     dueDate: '2025-04-30',
@@ -1036,6 +1044,7 @@ export const mockIPMSSubmissions: IPMSSubmission[] = [
   },
   {
     id: '2',
+    baseState: 'SUBMITTED',
     target: mockIPMSTargets[0],
     quarter: 'Q2',
     dueDate: '2024-12-31',

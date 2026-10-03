@@ -37,6 +37,7 @@ public class IpmsSubmissionsController : ControllerBase
     private readonly IReportingWindowService _reportingWindows;
     private readonly IEvidenceInspectionService _evidenceInspection;
     private readonly IEvidenceMalwareScanner _malwareScanner;
+    private readonly IPerformanceSuggestionService _performanceSuggestions;
 
     public IpmsSubmissionsController(
         ApplicationDbContext context,
@@ -48,7 +49,8 @@ public class IpmsSubmissionsController : ControllerBase
         IConfigurableWorkflowService configurableWorkflow,
         IReportingWindowService reportingWindows,
         IEvidenceInspectionService evidenceInspection,
-        IEvidenceMalwareScanner malwareScanner)
+        IEvidenceMalwareScanner malwareScanner,
+        IPerformanceSuggestionService performanceSuggestions)
     {
         _context = context;
         _userManager = userManager;
@@ -60,6 +62,7 @@ public class IpmsSubmissionsController : ControllerBase
         _reportingWindows = reportingWindows;
         _evidenceInspection = evidenceInspection;
         _malwareScanner = malwareScanner;
+        _performanceSuggestions = performanceSuggestions;
     }
 
     [HttpGet]
@@ -175,19 +178,20 @@ public class IpmsSubmissionsController : ControllerBase
             ReportingPeriodId = resolved.Period.Id,
             ReportingPeriod = resolved.Period,
             Quarter = request.Quarter.Trim(),
-            Status = "draft",
-            SubmitterStatus = "Draft",
+            BaseState = SubmissionBaseStates.InProgress,
+            Status = SubmissionBaseStates.InProgress,
+            SubmitterStatus = "In Progress",
             VerifierStatus = "Pending",
             ApproverStatus = "Pending",
             PmsStatus = "Pending",
             AuditorStatus = "Pending",
-            Actual = request.Actual,
+            Actual = null,
             ActualPerformance = resolved.Calculation?.CanonicalActual,
             AchievementPercent = resolved.Calculation?.AchievementPercent,
             TargetAchieved = resolved.Calculation?.Achieved,
-            ActualDescription = request.ActualDescription?.Trim(),
-            ActualPerformanceDescription = request.ActualPerformanceDescription?.Trim(),
-            ActualExpenditure = request.ActualExpenditure,
+            ActualDescription = null,
+            ActualPerformanceDescription = null,
+            ActualExpenditure = null,
             Variance = resolved.Calculation?.Variance,
             VarianceReason = request.VarianceReason?.Trim(),
             CorrectiveMeasure = request.CorrectiveMeasure?.Trim(),
@@ -216,7 +220,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission is immutable."));
 
-        if (!CanMutateDraftSubmission(user.Id, entity.Status, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
+        if (!CanMutateInProgressSubmission(user.Id, entity.BaseState, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
         {
             return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, mutationReason));
         }
@@ -235,13 +239,13 @@ public class IpmsSubmissionsController : ControllerBase
         var before = await FindSubmissionAsync(id);
         entity.Quarter = request.Quarter.Trim();
         entity.ReportingPeriodId = resolved.Period.Id;
-        entity.Actual = request.Actual;
+        entity.Actual = null;
         entity.ActualPerformance = resolved.Calculation?.CanonicalActual;
         entity.AchievementPercent = resolved.Calculation?.AchievementPercent;
         entity.TargetAchieved = resolved.Calculation?.Achieved;
-        entity.ActualDescription = request.ActualDescription?.Trim();
-        entity.ActualPerformanceDescription = request.ActualPerformanceDescription?.Trim();
-        entity.ActualExpenditure = request.ActualExpenditure;
+        entity.ActualDescription = null;
+        entity.ActualPerformanceDescription = null;
+        entity.ActualExpenditure = null;
         entity.Variance = resolved.Calculation?.Variance;
         entity.VarianceReason = request.VarianceReason?.Trim();
         entity.CorrectiveMeasure = request.CorrectiveMeasure?.Trim();
@@ -254,6 +258,62 @@ public class IpmsSubmissionsController : ControllerBase
         var after = await FindSubmissionAsync(id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmission", id, "Edit", before?.ToResponse(), after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<IpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(after, user)));
+    }
+
+    [HttpPost("{id}/consolidation-suggestion")]
+    public async Task<ActionResult<ApiResponse<PerformanceSuggestionResult>>> GenerateConsolidationSuggestion(string id)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PerformanceSuggestionResult>(false, null, "User not found"));
+        var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<PerformanceSuggestionResult>(false, null, "IPMS submission not found"));
+        if (!CanMutateInProgressSubmission(user.Id, entity.BaseState, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionResult>(false, null, mutationReason));
+        var denial = await ConsolidationPermissionDenialAsync(user, entity, update: true);
+        if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionResult>(false, null, denial));
+
+        var result = await _performanceSuggestions.GenerateIpmsAsync(id, user.Id, HttpContext.TraceIdentifier);
+        if (result.Code == "CONCURRENCY_CONFLICT") return Conflict(new ApiResponse<PerformanceSuggestionResult>(false, result, result.Explanation));
+        return result.Generated || result.Code == "SUGGESTION_ALREADY_GENERATED"
+            ? Ok(new ApiResponse<PerformanceSuggestionResult>(true, result))
+            : UnprocessableEntity(new ApiResponse<PerformanceSuggestionResult>(false, result, result.Explanation));
+    }
+
+    [HttpPut("{id}/consolidated-actual")]
+    public async Task<ActionResult<ApiResponse<PerformanceSuggestionResult>>> SaveConsolidatedActual(string id, [FromBody] SaveConsolidatedActualRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PerformanceSuggestionResult>(false, null, "User not found"));
+        var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<PerformanceSuggestionResult>(false, null, "IPMS submission not found"));
+        if (!CanMutateInProgressSubmission(user.Id, entity.BaseState, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionResult>(false, null, mutationReason));
+        var denial = await ConsolidationPermissionDenialAsync(user, entity, update: true);
+        if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionResult>(false, null, denial));
+
+        var result = await _performanceSuggestions.RecordFinalIpmsActualAsync(id, request.ActualPerformance, request.EditReason, request.RowVersion, user.Id, HttpContext.TraceIdentifier);
+        if (result.Code == "CONCURRENCY_CONFLICT") return Conflict(new ApiResponse<PerformanceSuggestionResult>(false, result, result.Explanation));
+        return result.ManualRequired
+            ? UnprocessableEntity(new ApiResponse<PerformanceSuggestionResult>(false, result, result.Explanation))
+            : Ok(new ApiResponse<PerformanceSuggestionResult>(true, result));
+    }
+
+    [HttpGet("{id}/consolidation-history")]
+    public async Task<ActionResult<ApiResponse<PerformanceSuggestionEventResponse[]>>> GetConsolidationHistory(string id)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null, "User not found"));
+        var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null, "IPMS submission not found"));
+        var denial = await ConsolidationPermissionDenialAsync(user, entity, update: false);
+        if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null, denial));
+        var persistedEvents = await _context.PerformanceSuggestionEvents.AsNoTracking().Where(item => item.IpmsSubmissionId == id)
+            .OrderBy(item => item.OccurredAt).ThenBy(item => item.Id).ToArrayAsync();
+        var events = persistedEvents.Select(item => new PerformanceSuggestionEventResponse(item.PublicId, item.EventType.ToString(), item.SystemSuggestedActualPerformance,
+            item.ActualPerformance, item.WasSystemSuggestionEdited, item.EffectiveCalculationType?.ToString(),
+            item.SourcePeriods.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            item.ActorUserId, item.Reason, item.OccurredAt, item.CorrelationId)).ToArray();
+        return Ok(new ApiResponse<PerformanceSuggestionEventResponse[]>(true, events));
     }
 
     [HttpDelete("{id}")]
@@ -274,7 +334,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission is already withdrawn."));
         if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before withdrawal."));
 
-        if (!CanMutateDraftSubmission(user.Id, entity.Status, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
+        if (!CanMutateInProgressSubmission(user.Id, entity.BaseState, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
         {
             return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, mutationReason));
         }
@@ -653,7 +713,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot be scored."));
 
-        if (string.Equals(NormalizeStatus(entity.Status), "draft", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(SubmissionBaseStates.Normalize(entity.BaseState), SubmissionBaseStates.InProgress, StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Scoring is not allowed while the submission is still in draft state."));
         }
@@ -737,11 +797,8 @@ public class IpmsSubmissionsController : ControllerBase
         if (string.Equals(permissionCode, "IPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(entity.ActualPerformance))
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Authoritative actual performance is required before submission."));
         var configurable = entity.ReportingPeriodId.HasValue && await HasConfiguredWorkflowAsync(entity.ReportingPeriodId.Value);
-        if (!configurable && !TryValidateWorkflowAction(permissionCode, entity, user.Id, out var transitionReason))
-        {
-            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, transitionReason));
-        }
-        if (configurable)
+        if (!configurable)
+            return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "No effective configured workflow exists for this municipality, financial year, and submission type."));
         {
             if (string.Equals(permissionCode, "IPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase))
             {
@@ -756,6 +813,8 @@ public class IpmsSubmissionsController : ControllerBase
 
         var before = await FindSubmissionAsync(id);
         entity.Status = status;
+        if (string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase)) entity.BaseState = SubmissionBaseStates.Submitted;
+        else if (status is "rejected" or "verify_rejected") entity.BaseState = SubmissionBaseStates.InProgress;
         entity.UpdatedBy = user.Id;
         entity.UpdatedOn = DateTime.UtcNow;
         if (string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase))
@@ -825,7 +884,6 @@ public class IpmsSubmissionsController : ControllerBase
             });
         }
 
-        if (!configurable) _workflowGovernanceService.QueueAuditTrail("IpmsSubmission", id, action, before?.ToResponse(), new { Status = status, request.Comment }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         _workflowGovernanceService.QueueWorkflowNotifications(GetRelevantUserIds(entity), notificationType, $"IPMS submission {action}", $"IPMS submission '{entity.Id}' was marked as {status}.", "IpmsSubmission", id);
         await _context.SaveChangesAsync();
 
@@ -844,7 +902,7 @@ public class IpmsSubmissionsController : ControllerBase
         return await _context.WorkflowDefinitions.AnyAsync(item => item.MunicipalityFinancialYearId == municipalityYearId && item.SubmissionKind == SubmissionKind.Ipms && item.IsActive);
     }
 
-    private static bool CanMutateDraftSubmission(string actorUserId, string? status, string? submittedByUserId, string? assignedUserId, out string reason)
+    private static bool CanMutateInProgressSubmission(string actorUserId, string? baseState, string? submittedByUserId, string? assignedUserId, out string reason)
     {
         if (!IsSubmissionOwner(actorUserId, submittedByUserId, assignedUserId))
         {
@@ -852,115 +910,11 @@ public class IpmsSubmissionsController : ControllerBase
             return false;
         }
 
-        var normalizedStatus = NormalizeStatus(status);
-        if (!string.Equals(normalizedStatus, "draft", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(normalizedStatus, "verify_rejected", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(normalizedStatus, "rejected", StringComparison.OrdinalIgnoreCase))
+        var normalizedState = SubmissionBaseStates.Normalize(baseState);
+        if (!string.Equals(normalizedState, SubmissionBaseStates.InProgress, StringComparison.OrdinalIgnoreCase))
         {
-            reason = $"Submissions in '{normalizedStatus}' status cannot be edited or deleted.";
+            reason = $"Submissions in '{normalizedState}' base state cannot be edited.";
             return false;
-        }
-
-        reason = string.Empty;
-        return true;
-    }
-
-    private static bool TryValidateWorkflowAction(string permissionCode, IpmsSubmission submission, string actorUserId, out string reason)
-    {
-        var currentStatus = NormalizeStatus(submission.Status);
-        var actorIsSubmitter = !string.IsNullOrWhiteSpace(submission.SubmittedByUserId)
-            && string.Equals(submission.SubmittedByUserId, actorUserId, StringComparison.OrdinalIgnoreCase);
-
-        if (string.Equals(permissionCode, "IPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!IsSubmissionOwner(actorUserId, submission.SubmittedByUserId, submission.IpmsTarget.AssignedUserId))
-            {
-                reason = "Only the submission owner can submit this record.";
-                return false;
-            }
-
-            if (currentStatus is not ("draft" or "verify_rejected" or "rejected"))
-            {
-                reason = $"Cannot submit from '{currentStatus}' status.";
-                return false;
-            }
-
-            reason = string.Empty;
-            return true;
-        }
-
-        if (string.Equals(permissionCode, "IPMS_SUBMISSION.VERIFY", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(permissionCode, "IPMS_SUBMISSION.VERIFY_REJECT", StringComparison.OrdinalIgnoreCase))
-        {
-            if (actorIsSubmitter)
-            {
-                reason = "Submitter cannot verify their own submission.";
-                return false;
-            }
-
-            if (!string.Equals(currentStatus, "submitted", StringComparison.OrdinalIgnoreCase))
-            {
-                reason = $"Verification actions require 'submitted' status, current status is '{currentStatus}'.";
-                return false;
-            }
-
-            reason = string.Empty;
-            return true;
-        }
-
-        if (string.Equals(permissionCode, "IPMS_SUBMISSION.APPROVE", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(permissionCode, "IPMS_SUBMISSION.REJECT", StringComparison.OrdinalIgnoreCase))
-        {
-            if (actorIsSubmitter)
-            {
-                reason = "Submitter cannot approve or reject their own submission.";
-                return false;
-            }
-
-            if (currentStatus is not ("verified" or "reviewed"))
-            {
-                reason = $"Approval actions require 'verified' or 'reviewed' status, current status is '{currentStatus}'.";
-                return false;
-            }
-
-            reason = string.Empty;
-            return true;
-        }
-
-        if (string.Equals(permissionCode, "IPMS_WORKFLOW.PMS_REVIEW", StringComparison.OrdinalIgnoreCase))
-        {
-            if (actorIsSubmitter)
-            {
-                reason = "Submitter cannot review their own submission.";
-                return false;
-            }
-
-            if (currentStatus is not ("submitted" or "verified"))
-            {
-                reason = $"Review requires 'submitted' or 'verified' status, current status is '{currentStatus}'.";
-                return false;
-            }
-
-            reason = string.Empty;
-            return true;
-        }
-
-        if (string.Equals(permissionCode, "IPMS_WORKFLOW.INTERNAL_AUDIT", StringComparison.OrdinalIgnoreCase))
-        {
-            if (actorIsSubmitter)
-            {
-                reason = "Submitter cannot audit their own submission.";
-                return false;
-            }
-
-            if (currentStatus is not ("approved" or "reviewed"))
-            {
-                reason = $"Audit requires 'approved' or 'reviewed' status, current status is '{currentStatus}'.";
-                return false;
-            }
-
-            reason = string.Empty;
-            return true;
         }
 
         reason = string.Empty;
@@ -1016,11 +970,21 @@ public class IpmsSubmissionsController : ControllerBase
     private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user) =>
         ToAuthorizedResponse(submission, (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase));
 
+    private async Task<string?> ConsolidationPermissionDenialAsync(ApplicationUser user, IpmsSubmission submission, bool update)
+    {
+        var scope = BuildScope(submission);
+        var entityDecision = await _accessControlService.CheckPermissionAsync(user, update ? "IPMS_SUBMISSION.UPDATE" : "IPMS_SUBMISSION.READ", scope);
+        if (!entityDecision.Allowed) return entityDecision.Reason;
+        var memberDecision = await _accessControlService.CheckPermissionAsync(user,
+            update ? "IPMS_SUBMISSION.ActualPerformance.UPDATE" : "IPMS_SUBMISSION.ActualPerformance.READ", scope);
+        return memberDecision.Allowed ? null : memberDecision.Reason;
+    }
+
     private static IpmsSubmissionResponse ToAuthorizedResponse(IpmsSubmission submission, HashSet<string> permissions)
     {
         var response = submission.ToResponse();
         if (!permissions.Contains("IPMS_SUBMISSION.ActualPerformance.READ"))
-            response = response with { Actual = null, ActualDescription = null, ActualPerformanceDescription = null, ActualExpenditure = null, ActualPerformance = null, AchievementPercent = null, TargetAchieved = null };
+            response = response with { Actual = null, ActualDescription = null, ActualPerformanceDescription = null, ActualExpenditure = null, ActualPerformance = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserId = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
         if (!permissions.Contains("IPMS_SUBMISSION.Variance.READ")) response = response with { Variance = null, VarianceReason = null };
         if (!permissions.Contains("IPMS_SUBMISSION.SubmittedDate.READ")) response = response with { SubmittedAt = null };
         if (!permissions.Contains("IPMS_SUBMISSION.InternalAuditObservation.READ"))

@@ -6,6 +6,27 @@ namespace FTCERP.Tests;
 public sealed class ConfigurableWorkflowTests
 {
     [Fact]
+    public async Task Workflow_DeniesActionWhenNoEffectiveDefinitionExists()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Id = 7, Code = "WF-NONE", Name = "Workflow Test Municipality" };
+        var financialYear = new FinancialYear { Id = 901, Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30) };
+        var year = new MunicipalityFinancialYear { Id = 901, Municipality = municipality, FinancialYear = financialYear, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var period = new ReportingPeriod { Id = 902, MunicipalityFinancialYearId = year.Id, Code = "Q-NONE", Name = "Unconfigured period", StartDate = DateTime.UtcNow.AddDays(-1), EndDate = DateTime.UtcNow.AddDays(1) };
+        context.AddRange(municipality, financialYear, year, period);
+        await context.SaveChangesAsync();
+
+        var result = await new ConfigurableWorkflowService(context).PrepareActionAsync(
+            SubmissionKind.Opms, "submission-unconfigured", period.Id, "submitter", "submitter",
+            "OPMS_SUBMISSION.SUBMIT", WorkflowActionOutcome.Submit, null, null, "trace-unconfigured");
+
+        result.Allowed.Should().BeFalse();
+        result.Reason.Should().Contain("No effective active workflow definition");
+        context.SubmissionWorkflowInstances.Should().BeEmpty();
+        context.SubmissionWorkflowActions.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Workflow_AdvancesByConfiguration_AndEnforcesSubmitterSeparation()
     {
         await using var context = IdpTestFixture.CreateContext();

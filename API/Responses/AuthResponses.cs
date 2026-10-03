@@ -368,8 +368,15 @@ public record OpmsSubmissionResponse(
     string? OrganisationId,
     DateTime CreatedAt)
 {
+    public string BaseState { get; init; } = "IN_PROGRESS";
     public Guid? ReportingPeriodPublicId { get; init; }
     public string? ActualPerformance { get; init; }
+    public string? SystemSuggestedActualPerformance { get; init; }
+    public bool WasSystemSuggestionEdited { get; init; }
+    public DateTime? SuggestionGeneratedDate { get; init; }
+    public string? SuggestionEditedByUserId { get; init; }
+    public DateTime? SuggestionEditedAt { get; init; }
+    public string? SuggestionEditReason { get; init; }
     public decimal? AchievementPercent { get; init; }
     public bool? TargetAchieved { get; init; }
     public string RowVersion { get; init; } = string.Empty;
@@ -441,8 +448,15 @@ public record IpmsSubmissionResponse(
     string? OrganisationId,
     DateTime CreatedAt)
 {
+    public string BaseState { get; init; } = "IN_PROGRESS";
     public Guid? ReportingPeriodPublicId { get; init; }
     public string? ActualPerformance { get; init; }
+    public string? SystemSuggestedActualPerformance { get; init; }
+    public bool WasSystemSuggestionEdited { get; init; }
+    public DateTime? SuggestionGeneratedDate { get; init; }
+    public string? SuggestionEditedByUserId { get; init; }
+    public DateTime? SuggestionEditedAt { get; init; }
+    public string? SuggestionEditReason { get; init; }
     public decimal? AchievementPercent { get; init; }
     public bool? TargetAchieved { get; init; }
     public string RowVersion { get; init; } = string.Empty;
@@ -450,6 +464,19 @@ public record IpmsSubmissionResponse(
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
 }
+
+public sealed record PerformanceSuggestionEventResponse(
+    Guid PublicId,
+    string EventType,
+    string? SystemSuggestedActualPerformance,
+    string? ActualPerformance,
+    bool WasSystemSuggestionEdited,
+    string? EffectiveCalculationType,
+    string[] SourcePeriods,
+    string ActorUserId,
+    string? Reason,
+    DateTime OccurredAt,
+    string CorrelationId);
 
 public record NotificationResponse(
     string Id,

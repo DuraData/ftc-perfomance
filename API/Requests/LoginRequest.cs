@@ -280,6 +280,8 @@ public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason, i
 
 public record WithdrawGovernedRecordRequest(string Reason, string RowVersion);
 
+public sealed record SaveConsolidatedActualRequest(string ActualPerformance, string? EditReason, string RowVersion);
+
 public record CreateIdpPlanRequest(
     string MunicipalityName,
     string PlanTitle,
