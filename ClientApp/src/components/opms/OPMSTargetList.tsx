@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Eye, Edit2, Ban, Copy, Library, FileText } from 'lucide-react';
+import { Plus, Eye, Edit2, Ban, Copy, Library, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
@@ -9,9 +9,9 @@ import {
   createOpmsTarget as createOpmsTargetApi,
   withdrawOpmsTarget as withdrawOpmsTargetApi,
   getOpmsTargetsPage as getOpmsTargetsPageApi,
+  getDepartments,
 } from '../../api/api';
-import { mockDepartments, mockPeriods } from '../../data/mockData';
-import type { OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
+import type { DepartmentLookupDto, OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
 import { OpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 
@@ -49,12 +49,10 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
   };
 }
 
-function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Record<string, string>) => void }) {
+export function OPMSTargetFilters({ departments, onFilterChange }: { departments: DepartmentLookupDto[]; onFilterChange: (filters: Record<string, string>) => void }) {
   const [filters, setFilters] = useState({
     department: '',
-    period: '',
     status: '',
-    kpa: '',
   });
 
   const handleChange = (key: string, value: string) => {
@@ -65,58 +63,29 @@ function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Recor
 
   return (
     <Card className="mb-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
+          <label htmlFor="opms-department-filter" className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
             Department
           </label>
           <select
+            id="opms-department-filter"
             value={filters.department}
             onChange={(e) => handleChange('department', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-secondary-200 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-800 focus:ring-2 focus:ring-primary-500"
           >
             <option value="">All Departments</option>
-            {mockDepartments.map(d => (
+            {departments.map(d => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
-            Period
-          </label>
-          <select
-            value={filters.period}
-            onChange={(e) => handleChange('period', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-secondary-200 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-800 focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">All Periods</option>
-            {mockPeriods.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
-            KPA
-          </label>
-          <select
-            value={filters.kpa}
-            onChange={(e) => handleChange('kpa', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-secondary-200 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-800 focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">All KPAs</option>
-            <option value="bsd">Basic Service Delivery</option>
-            <option value="gg">Good Governance</option>
-            <option value="led">Local Economic Development</option>
-            <option value="fv">Financial Viability</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
+          <label htmlFor="opms-status-filter" className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
             Status
           </label>
           <select
+            id="opms-status-filter"
             value={filters.status}
             onChange={(e) => handleChange('status', e.target.value)}
             className="w-full px-3 py-2 text-sm border border-secondary-200 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-800 focus:ring-2 focus:ring-primary-500"
@@ -150,6 +119,7 @@ export function OPMSTargetList() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [withdrawalTarget, setWithdrawalTarget] = useState<OPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
+  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
@@ -174,6 +144,13 @@ export function OPMSTargetList() {
   useEffect(() => {
     void loadTargets();
   }, [loadTargets]);
+
+  useEffect(() => {
+    void getDepartments().then(result => {
+      if (result.success) setDepartments(result.data ?? []);
+      else pushToast('error', result.message ?? 'Failed to load department filters');
+    }).catch(() => pushToast('error', 'The department service is unavailable.'));
+  }, [pushToast]);
 
   const handleRowClick = (row: OPMSTarget) => {
     setCurrentPath(`/opms/targets/${row.id}`);
@@ -231,14 +208,6 @@ export function OPMSTargetList() {
     () =>
       opmsTargets.filter(target => {
         if (filters.department && target.department.id !== filters.department) return false;
-        if (filters.period && target.period.id !== filters.period) return false;
-        if (
-          filters.kpa &&
-          !target.nationalKPA.toLowerCase().includes(filters.kpa.toLowerCase()) &&
-          !target.municipalKPA.toLowerCase().includes(filters.kpa.toLowerCase())
-        ) {
-          return false;
-        }
         if (filters.status) {
           const status = target.isWithdrawn ? 'withdrawn' : target.isRevised ? 'revised' : 'active';
           if (status !== filters.status) return false;
@@ -412,9 +381,6 @@ export function OPMSTargetList() {
           </div>
           {canManageTargets ? (
             <div className="flex items-center gap-2">
-              <Button variant="outline" icon={<Download className="w-4 h-4" />}>
-                Export
-              </Button>
               <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
                 Create From OPMS Library
               </Button>
@@ -426,7 +392,7 @@ export function OPMSTargetList() {
         </div>
 
         {/* Filters */}
-        <OPMSTargetFilters onFilterChange={setFilters} />
+        <OPMSTargetFilters departments={departments} onFilterChange={setFilters} />
 
         {/* Data Table */}
         <DataTable
