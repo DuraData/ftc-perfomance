@@ -19,6 +19,7 @@ import {
   updateOpmsTarget,
 } from '../../api/api';
 import { usePerformanceReferenceData } from '../../hooks/usePerformanceReferenceData';
+import { canonicalPeriodTarget, performanceUnitValue } from '../../lib/performanceTargetContract';
 import type {
   IPMSTarget,
   IpmsTargetTemplate,
@@ -26,6 +27,7 @@ import type {
   OpmsTargetTemplate,
   SaveIpmsTargetPayload,
   SaveOpmsTargetPayload,
+  SaveTargetPeriodValuePayload,
   TargetUnitType,
   VoteNumberMasterDto,
   WardMasterDto,
@@ -406,6 +408,9 @@ function createDefaultIpmsFormState(): IpmsFormState {
 }
 
 function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
+  const period = (periodType: number) => target.periodTargets.find(item => item.periodType === periodType && item.isActive);
+  const q1 = period(1); const q2 = period(2); const midTerm = period(3);
+  const q3 = period(4); const q4 = period(5); const annual = period(6);
   return {
     sourceTemplateId: target.sourceTemplateId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
@@ -426,8 +431,8 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     kpiDescription: target.kpiDescription,
     baseline: String(target.baseline),
     baselineDescription: target.baselineDescription ?? '',
-    annualTarget: String(target.annualTarget),
-    annualTargetDescription: target.annualTargetDescription,
+    annualTarget: annual?.targetValue ?? '',
+    annualTargetDescription: annual?.description ?? '',
     budgetSourceId: target.budgetSource.id,
     budgetTypeId: target.budgetType.id,
     unitOfMeasureId: target.unitOfMeasure.id,
@@ -443,28 +448,28 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     isWithdrawn: target.isWithdrawn,
     reasonForWithdrawal: target.reasonForWithdrawal ?? '',
     targetUnitType: toXafUnitType(target.targetUnitType),
-    q1UnitType: toXafUnitType(target.TargetUnitQ1 ?? target.targetUnitType),
-    q2UnitType: toXafUnitType(target.TargetUnitQ2 ?? target.targetUnitType),
-    midTermUnitType: toXafUnitType(target.MidTermTargetUnit ?? target.targetUnitType),
-    q3UnitType: toXafUnitType(target.TargetUnitQ3 ?? target.targetUnitType),
-    q4UnitType: toXafUnitType(target.TargetUnitQ4 ?? target.targetUnitType),
-    annualUnitType: toXafUnitType(target.AnnualTargetUnit ?? target.targetUnitType),
-    q1Target: numberText(target.q1Target),
-    q1Description: target.q1Description ?? '',
-    q1Budget: numberText(target.q1Budget),
-    q2Target: numberText(target.q2Target),
-    q2Description: target.q2Description ?? '',
-    q2Budget: numberText(target.q2Budget),
-    midTermTarget: numberText(target.midTermTarget),
-    midTermDescription: target.midTermDescription ?? '',
-    midTermBudget: numberText(target.midTermBudget),
-    q3Target: numberText(target.q3Target),
-    q3Description: target.q3Description ?? '',
-    q3Budget: numberText(target.q3Budget),
+    q1UnitType: performanceUnitValue(q1?.unitKind),
+    q2UnitType: performanceUnitValue(q2?.unitKind),
+    midTermUnitType: performanceUnitValue(midTerm?.unitKind),
+    q3UnitType: performanceUnitValue(q3?.unitKind),
+    q4UnitType: performanceUnitValue(q4?.unitKind),
+    annualUnitType: performanceUnitValue(annual?.unitKind),
+    q1Target: q1?.targetValue ?? '',
+    q1Description: q1?.description ?? '',
+    q1Budget: numberText(q1?.budgetValue ?? undefined),
+    q2Target: q2?.targetValue ?? '',
+    q2Description: q2?.description ?? '',
+    q2Budget: numberText(q2?.budgetValue ?? undefined),
+    midTermTarget: midTerm?.targetValue ?? '',
+    midTermDescription: midTerm?.description ?? '',
+    midTermBudget: numberText(midTerm?.budgetValue ?? undefined),
+    q3Target: q3?.targetValue ?? '',
+    q3Description: q3?.description ?? '',
+    q3Budget: numberText(q3?.budgetValue ?? undefined),
     q3RevisedTarget: numberText(target.q3RevisedTarget),
-    q4Target: numberText(target.q4Target),
-    q4Description: target.q4Description ?? '',
-    q4Budget: numberText(target.q4Budget),
+    q4Target: q4?.targetValue ?? '',
+    q4Description: q4?.description ?? '',
+    q4Budget: numberText(q4?.budgetValue ?? undefined),
     q4RevisedTarget: numberText(target.q4RevisedTarget),
     revisedAnnualTarget: numberText(target.revisedAnnualTarget),
     revisedAnnualBudget: numberText(target.revisedAnnualBudget),
@@ -476,6 +481,9 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
 }
 
 function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
+  const period = (periodType: number) => target.periodTargets.find(item => item.periodType === periodType && item.isActive);
+  const q1 = period(1); const q2 = period(2); const midTerm = period(3);
+  const q3 = period(4); const q4 = period(5); const annual = period(6);
   return {
     sourceTemplateId: target.sourceTemplateId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
@@ -494,8 +502,8 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     targetName: target.targetName,
     kpiDescription: target.kpiDescription,
     baseline: String(target.baseline),
-    annualTarget: String(target.annualTarget),
-    annualTargetDescription: target.annualTargetDescription,
+    annualTarget: annual?.targetValue ?? '',
+    annualTargetDescription: annual?.description ?? '',
     budgetSourceId: target.budgetSource.id,
     budgetTypeId: target.budgetType.id,
     unitOfMeasureId: target.unitOfMeasure.id,
@@ -507,28 +515,28 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     internalReference: target.internalReference ?? '',
     isRevised: target.isRevised,
     targetUnitType: toXafUnitType(target.targetUnitType),
-    q1UnitType: toXafUnitType(target.TargetUnitQ1 ?? target.targetUnitType),
-    q2UnitType: toXafUnitType(target.TargetUnitQ2 ?? target.targetUnitType),
-    midTermUnitType: toXafUnitType(target.MidTermTargetUnit ?? target.targetUnitType),
-    q3UnitType: toXafUnitType(target.TargetUnitQ3 ?? target.targetUnitType),
-    q4UnitType: toXafUnitType(target.TargetUnitQ4 ?? target.targetUnitType),
-    annualUnitType: toXafUnitType(target.AnnualTargetUnit ?? target.targetUnitType),
-    q1Target: numberText(target.q1Target),
-    q1Description: '',
-    q1Budget: '',
-    q2Target: numberText(target.q2Target),
-    q2Description: '',
-    q2Budget: '',
-    midTermTarget: numberText(target.midTermTarget),
-    midTermDescription: '',
-    midTermBudget: '',
-    q3Target: numberText(target.q3Target),
-    q3Description: '',
-    q3Budget: '',
+    q1UnitType: performanceUnitValue(q1?.unitKind),
+    q2UnitType: performanceUnitValue(q2?.unitKind),
+    midTermUnitType: performanceUnitValue(midTerm?.unitKind),
+    q3UnitType: performanceUnitValue(q3?.unitKind),
+    q4UnitType: performanceUnitValue(q4?.unitKind),
+    annualUnitType: performanceUnitValue(annual?.unitKind),
+    q1Target: q1?.targetValue ?? '',
+    q1Description: q1?.description ?? '',
+    q1Budget: numberText(q1?.budgetValue ?? undefined),
+    q2Target: q2?.targetValue ?? '',
+    q2Description: q2?.description ?? '',
+    q2Budget: numberText(q2?.budgetValue ?? undefined),
+    midTermTarget: midTerm?.targetValue ?? '',
+    midTermDescription: midTerm?.description ?? '',
+    midTermBudget: numberText(midTerm?.budgetValue ?? undefined),
+    q3Target: q3?.targetValue ?? '',
+    q3Description: q3?.description ?? '',
+    q3Budget: numberText(q3?.budgetValue ?? undefined),
     q3RevisedTarget: '',
-    q4Target: numberText(target.q4Target),
-    q4Description: '',
-    q4Budget: '',
+    q4Target: q4?.targetValue ?? '',
+    q4Description: q4?.description ?? '',
+    q4Budget: numberText(q4?.budgetValue ?? undefined),
     q4RevisedTarget: '',
     revisedAnnualTarget: '',
     revisedAnnualBudget: '',
@@ -618,6 +626,35 @@ function ipmsFormFromTemplate(template: IpmsTargetTemplate): IpmsFormState {
   };
 }
 
+function periodTarget(
+  periodType: 1 | 2 | 3 | 4 | 5 | 6,
+  targetValue?: string,
+  unitValue?: string,
+  budgetValue?: string,
+  description?: string,
+): SaveTargetPeriodValuePayload | null {
+  if (!targetValue?.trim()) return null;
+  return canonicalPeriodTarget(periodType, targetValue, unitValue ?? 'AbsoluteCount', budgetValue ? Number(budgetValue) : null, description);
+}
+
+function targetValueInputType(value: string): 'text' | 'number' | 'date' {
+  const unit = toXafUnitType(value);
+  if (unit === 'Date') return 'date';
+  if (['None', 'QualitativeTargets', 'Binary', 'BinaryDetermination', 'Ratios'].includes(unit)) return 'text';
+  return 'number';
+}
+
+function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState): SaveTargetPeriodValuePayload[] {
+  return [
+    periodTarget(1, form.q1Target, form.q1UnitType, form.q1Budget, form.q1Description),
+    periodTarget(2, form.q2Target, form.q2UnitType, form.q2Budget, form.q2Description),
+    periodTarget(3, form.midTermTarget, form.midTermUnitType, form.midTermBudget, form.midTermDescription),
+    periodTarget(4, form.q3Target, form.q3UnitType, form.q3Budget, form.q3Description),
+    periodTarget(5, form.q4Target, form.q4UnitType, form.q4Budget, form.q4Description),
+    periodTarget(6, form.annualTarget, form.annualUnitType, '', form.annualTargetDescription),
+  ].filter((item): item is SaveTargetPeriodValuePayload => item !== null);
+}
+
 export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
   return {
     sourceTemplateId: form.sourceTemplateId || null,
@@ -639,8 +676,6 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     kpiDescription: form.kpiDescription,
     baseline: Number(form.baseline || 0),
     baselineDescription: form.baselineDescription || null,
-    annualTarget: Number(form.annualTarget || 0),
-    annualTargetDescription: form.annualTargetDescription,
     budgetSourceId: form.budgetSourceId ? Number(form.budgetSourceId) : null,
     budgetTypeId: form.budgetTypeId ? Number(form.budgetTypeId) : null,
     unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
@@ -653,28 +688,7 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     internalReference: form.internalReference || null,
     fmsLink: form.fmsLink || null,
     isRevised: form.isRevised,
-    isWithdrawn: form.isWithdrawn,
-    reasonForWithdrawal: form.reasonForWithdrawal || null,
-    targetUnitType: toApiUnitType(form.targetUnitType),
-    q1Target: form.q1Target ? Number(form.q1Target) : null,
-    q1Description: form.q1Description || null,
-    q1Budget: form.q1Budget ? Number(form.q1Budget) : null,
-    q2Target: form.q2Target ? Number(form.q2Target) : null,
-    q2Description: form.q2Description || null,
-    q2Budget: form.q2Budget ? Number(form.q2Budget) : null,
-    midTermTarget: form.midTermTarget ? Number(form.midTermTarget) : null,
-    midTermDescription: form.midTermDescription || null,
-    midTermBudget: form.midTermBudget ? Number(form.midTermBudget) : null,
-    q3Target: form.q3Target ? Number(form.q3Target) : null,
-    q3Description: form.q3Description || null,
-    q3Budget: form.q3Budget ? Number(form.q3Budget) : null,
-    q3RevisedTarget: form.q3RevisedTarget ? Number(form.q3RevisedTarget) : null,
-    q4Target: form.q4Target ? Number(form.q4Target) : null,
-    q4Description: form.q4Description || null,
-    q4Budget: form.q4Budget ? Number(form.q4Budget) : null,
-    q4RevisedTarget: form.q4RevisedTarget ? Number(form.q4RevisedTarget) : null,
-    revisedAnnualTarget: form.revisedAnnualTarget ? Number(form.revisedAnnualTarget) : null,
-    revisedAnnualBudget: form.revisedAnnualBudget ? Number(form.revisedAnnualBudget) : null,
+    periodTargets: buildCanonicalPeriodTargets(form),
   };
 }
 
@@ -697,8 +711,6 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     targetName: form.targetName,
     kpiDescription: form.kpiDescription,
     baseline: Number(form.baseline || 0),
-    annualTarget: Number(form.annualTarget || 0),
-    annualTargetDescription: form.annualTargetDescription,
     budgetSourceId: form.budgetSourceId ? Number(form.budgetSourceId) : null,
     budgetTypeId: form.budgetTypeId ? Number(form.budgetTypeId) : null,
     unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
@@ -709,26 +721,7 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     idpReference: form.idpReference || null,
     internalReference: form.internalReference || null,
     isRevised: form.isRevised,
-    targetUnitType: toApiUnitType(form.targetUnitType),
-    q1Target: form.q1Target ? Number(form.q1Target) : null,
-    q1Description: form.q1Description || null,
-    q1Budget: form.q1Budget ? Number(form.q1Budget) : null,
-    q2Target: form.q2Target ? Number(form.q2Target) : null,
-    q2Description: form.q2Description || null,
-    q2Budget: form.q2Budget ? Number(form.q2Budget) : null,
-    midTermTarget: form.midTermTarget ? Number(form.midTermTarget) : null,
-    midTermDescription: form.midTermDescription || null,
-    midTermBudget: form.midTermBudget ? Number(form.midTermBudget) : null,
-    q3Target: form.q3Target ? Number(form.q3Target) : null,
-    q3Description: form.q3Description || null,
-    q3Budget: form.q3Budget ? Number(form.q3Budget) : null,
-    q3RevisedTarget: form.q3RevisedTarget ? Number(form.q3RevisedTarget) : null,
-    q4Target: form.q4Target ? Number(form.q4Target) : null,
-    q4Description: form.q4Description || null,
-    q4Budget: form.q4Budget ? Number(form.q4Budget) : null,
-    q4RevisedTarget: form.q4RevisedTarget ? Number(form.q4RevisedTarget) : null,
-    revisedAnnualTarget: form.revisedAnnualTarget ? Number(form.revisedAnnualTarget) : null,
-    revisedAnnualBudget: form.revisedAnnualBudget ? Number(form.revisedAnnualBudget) : null,
+    periodTargets: buildCanonicalPeriodTargets(form),
   };
 }
 
@@ -1073,7 +1066,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
           <FormPanel title="Measurement Details" description="Define numeric measures, unit configuration, and performance classification." icon={<BarChart3 className="h-5 w-5" />}>
             <FormRow cols={4}>
               <Input label="Baseline" required type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
-              <Input label="Annual Target" required error={fieldError('Annual Target')} type="number" value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
+              <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
               <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
@@ -1163,7 +1156,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q1UnitType)} value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1185,7 +1178,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q2UnitType)} value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1207,7 +1200,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.midTermUnitType)} value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1229,28 +1222,13 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q3UnitType)} value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q3UnitType)}</span>
                 </div>
-                {form.isRevised && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary-600">Revised Target</span>
-                      <Input type="number" value={form.q3RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q3RevisedTarget: e.target.value }))} className="text-right font-semibold" />
-                    </div>
-                    {form.q3Budget && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-secondary-600">Revised Budget</span>
-                        <span className="font-semibold">R {form.q3Budget}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </Card>
 
@@ -1266,28 +1244,13 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q4UnitType)} value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q4UnitType)}</span>
                 </div>
-                {form.isRevised && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary-600">Revised Target</span>
-                      <Input type="number" value={form.q4RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q4RevisedTarget: e.target.value }))} className="text-right font-semibold" />
-                    </div>
-                    {form.q4Budget && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-secondary-600">Revised Budget</span>
-                        <span className="font-semibold">R {form.q4Budget}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </Card>
 
@@ -1309,21 +1272,6 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.annualUnitType)}</span>
                 </div>
-                {form.isRevised && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary-600">Revised Target</span>
-                      <Input type="number" value={form.revisedAnnualTarget} onChange={(e) => setForm(prev => ({ ...prev, revisedAnnualTarget: e.target.value }))} className="text-right font-semibold" />
-                    </div>
-                    {form.revisedAnnualBudget && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-secondary-600">Revised Budget</span>
-                        <span className="font-semibold">R {Number(form.revisedAnnualBudget).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </Card>
           </div>
@@ -1563,7 +1511,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
           <FormPanel title="Performance Measures" description="Set numeric measures, unit configuration, and classification." icon={<BarChart3 className="h-5 w-5" />}>
             <FormRow cols={4}>
               <Input label="Baseline" type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
-              <Input label="Annual Target" required error={fieldError('Annual Target')} type="number" value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
+              <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
               <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
@@ -1651,7 +1599,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q1UnitType)} value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1673,7 +1621,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q2UnitType)} value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1695,7 +1643,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.midTermUnitType)} value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1717,28 +1665,13 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q3UnitType)} value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q3UnitType)}</span>
                 </div>
-                {form.isRevised && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary-600">Revised Target</span>
-                      <Input type="number" value={form.q3RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q3RevisedTarget: e.target.value }))} className="text-right font-semibold" />
-                    </div>
-                    {form.q3Budget && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-secondary-600">Revised Budget</span>
-                        <span className="font-semibold">R {form.q3Budget}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </Card>
 
@@ -1754,28 +1687,13 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type="number" value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <Input type={targetValueInputType(form.q4UnitType)} value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
                 </div>
                 <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q4UnitType)}</span>
                 </div>
-                {form.isRevised && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary-600">Revised Target</span>
-                      <Input type="number" value={form.q4RevisedTarget} onChange={(e) => setForm(prev => ({ ...prev, q4RevisedTarget: e.target.value }))} className="text-right font-semibold" />
-                    </div>
-                    {form.q4Budget && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-secondary-600">Revised Budget</span>
-                        <span className="font-semibold">R {form.q4Budget}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </Card>
 
@@ -1797,21 +1715,6 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.annualUnitType)}</span>
                 </div>
-                {form.isRevised && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-secondary-300">
-                    <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">REVISED</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-secondary-600">Revised Target</span>
-                      <Input type="number" value={form.revisedAnnualTarget} onChange={(e) => setForm(prev => ({ ...prev, revisedAnnualTarget: e.target.value }))} className="text-right font-semibold" />
-                    </div>
-                    {form.revisedAnnualBudget && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-secondary-600">Revised Budget</span>
-                        <span className="font-semibold">R {Number(form.revisedAnnualBudget).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </Card>
           </div>

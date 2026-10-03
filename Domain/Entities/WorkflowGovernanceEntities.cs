@@ -56,6 +56,9 @@ public static class SubmissionBaseStates
 
 public partial class OpmsTarget
 {
+    [NotMapped]
+    public IReadOnlyList<PerformancePeriodTarget> CanonicalPeriodTargets { get; set; } = [];
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
     public long? MunicipalityId { get; set; }
@@ -177,6 +180,9 @@ public class OpmsTargetVoteNumber
 
 public partial class IpmsTarget
 {
+    [NotMapped]
+    public IReadOnlyList<PerformancePeriodTarget> CanonicalPeriodTargets { get; set; } = [];
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
     public long? MunicipalityId { get; set; }

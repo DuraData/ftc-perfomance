@@ -431,6 +431,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   revisedAnnualBudget?: number;
 
   targetUnitType: TargetUnitType;
+  periodTargets: PerformancePeriodTargetDto[];
   UserSubmit?: UserSubmitChild[];
   submissions: OPMSSubmission[];
   voteNumbers: VoteNumber[];
@@ -504,6 +505,7 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   revisedAnnualBudget?: number;
 
   targetUnitType: TargetUnitType;
+  periodTargets: PerformancePeriodTargetDto[];
   UserSubmit?: UserSubmitChild[];
   submissions: IPMSSubmission[];
   attachments: Attachment[];
@@ -1436,6 +1438,7 @@ export interface PerformancePeriodTargetDto {
   publicId: string;
   reportingPeriodPublicId: string;
   periodCode: string;
+  periodType: number;
   unitKind: number;
   direction: number;
   targetValue: string;
@@ -2066,8 +2069,6 @@ export interface OpmsTargetDto {
   kpiDescription: string;
   baseline: number;
   baselineDescription?: string | null;
-  annualTarget: number;
-  annualTargetDescription: string;
   budgetSourceId?: number | null;
   budgetTypeId?: number | null;
   unitOfMeasureId?: number | null;
@@ -2084,26 +2085,7 @@ export interface OpmsTargetDto {
   reasonForWithdrawal?: string | null;
   withdrawnAt?: string | null;
   withdrawnByUserId?: string | null;
-  targetUnitType: string;
-  q1Target?: number | null;
-  q1Description?: string | null;
-  q1Budget?: number | null;
-  q2Target?: number | null;
-  q2Description?: string | null;
-  q2Budget?: number | null;
-  midTermTarget?: number | null;
-  midTermDescription?: string | null;
-  midTermBudget?: number | null;
-  q3Target?: number | null;
-  q3Description?: string | null;
-  q3Budget?: number | null;
-  q3RevisedTarget?: number | null;
-  q4Target?: number | null;
-  q4Description?: string | null;
-  q4Budget?: number | null;
-  q4RevisedTarget?: number | null;
-  revisedAnnualTarget?: number | null;
-  revisedAnnualBudget?: number | null;
+  periodTargets: PerformancePeriodTargetDto[];
   createdAt: string;
 }
 
@@ -2131,8 +2113,6 @@ export interface IpmsTargetDto {
   targetName: string;
   kpiDescription: string;
   baseline: number;
-  annualTarget: number;
-  annualTargetDescription: string;
   budgetSourceId?: number | null;
   budgetTypeId?: number | null;
   unitOfMeasureId?: number | null;
@@ -2147,26 +2127,7 @@ export interface IpmsTargetDto {
   reasonForWithdrawal?: string | null;
   withdrawnAt?: string | null;
   withdrawnByUserId?: string | null;
-  targetUnitType: string;
-  q1Target?: number | null;
-  q1Description?: string | null;
-  q1Budget?: number | null;
-  q2Target?: number | null;
-  q2Description?: string | null;
-  q2Budget?: number | null;
-  midTermTarget?: number | null;
-  midTermDescription?: string | null;
-  midTermBudget?: number | null;
-  q3Target?: number | null;
-  q3Description?: string | null;
-  q3Budget?: number | null;
-  q3RevisedTarget?: number | null;
-  q4Target?: number | null;
-  q4Description?: string | null;
-  q4Budget?: number | null;
-  q4RevisedTarget?: number | null;
-  revisedAnnualTarget?: number | null;
-  revisedAnnualBudget?: number | null;
+  periodTargets: PerformancePeriodTargetDto[];
   createdAt: string;
 }
 
@@ -2490,8 +2451,6 @@ export interface SaveOpmsTargetPayload {
   kpiDescription: string;
   baseline: number;
   baselineDescription?: string | null;
-  annualTarget: number;
-  annualTargetDescription: string;
   budgetSourceId?: number | null;
   budgetTypeId?: number | null;
   unitOfMeasureId?: number | null;
@@ -2504,28 +2463,7 @@ export interface SaveOpmsTargetPayload {
   internalReference?: string | null;
   fmsLink?: string | null;
   isRevised: boolean;
-  isWithdrawn: boolean;
-  reasonForWithdrawal?: string | null;
-  targetUnitType: string;
-  q1Target?: number | null;
-  q1Description?: string | null;
-  q1Budget?: number | null;
-  q2Target?: number | null;
-  q2Description?: string | null;
-  q2Budget?: number | null;
-  midTermTarget?: number | null;
-  midTermDescription?: string | null;
-  midTermBudget?: number | null;
-  q3Target?: number | null;
-  q3Description?: string | null;
-  q3Budget?: number | null;
-  q3RevisedTarget?: number | null;
-  q4Target?: number | null;
-  q4Description?: string | null;
-  q4Budget?: number | null;
-  q4RevisedTarget?: number | null;
-  revisedAnnualTarget?: number | null;
-  revisedAnnualBudget?: number | null;
+  periodTargets: SaveTargetPeriodValuePayload[];
 }
 
 export interface SaveIpmsTargetPayload {
@@ -2546,8 +2484,6 @@ export interface SaveIpmsTargetPayload {
   targetName: string;
   kpiDescription: string;
   baseline: number;
-  annualTarget: number;
-  annualTargetDescription: string;
   budgetSourceId?: number | null;
   budgetTypeId?: number | null;
   unitOfMeasureId?: number | null;
@@ -2558,26 +2494,16 @@ export interface SaveIpmsTargetPayload {
   idpReference?: string | null;
   internalReference?: string | null;
   isRevised: boolean;
-  targetUnitType: string;
-  q1Target?: number | null;
-  q1Description?: string | null;
-  q1Budget?: number | null;
-  q2Target?: number | null;
-  q2Description?: string | null;
-  q2Budget?: number | null;
-  midTermTarget?: number | null;
-  midTermDescription?: string | null;
-  midTermBudget?: number | null;
-  q3Target?: number | null;
-  q3Description?: string | null;
-  q3Budget?: number | null;
-  q3RevisedTarget?: number | null;
-  q4Target?: number | null;
-  q4Description?: string | null;
-  q4Budget?: number | null;
-  q4RevisedTarget?: number | null;
-  revisedAnnualTarget?: number | null;
-  revisedAnnualBudget?: number | null;
+  periodTargets: SaveTargetPeriodValuePayload[];
+}
+
+export interface SaveTargetPeriodValuePayload {
+  periodType: 1 | 2 | 3 | 4 | 5 | 6;
+  unitKind: number;
+  direction: 1 | 2 | 3;
+  targetValue: string;
+  budgetValue?: number | null;
+  description?: string | null;
 }
 
 export interface SaveOpmsSubmissionPayload {

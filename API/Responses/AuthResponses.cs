@@ -1,3 +1,6 @@
+using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
+
 namespace FTCERP.Host.API.Responses;
 
 public interface IApiResponse
@@ -197,8 +200,6 @@ public record OpmsTargetResponse(
     string KpiDescription,
     decimal Baseline,
     string? BaselineDescription,
-    decimal AnnualTarget,
-    string AnnualTargetDescription,
     int? BudgetSourceId,
     int? BudgetTypeId,
     int? UnitOfMeasureId,
@@ -213,26 +214,7 @@ public record OpmsTargetResponse(
     bool IsRevised,
     bool IsWithdrawn,
     string? ReasonForWithdrawal,
-    string TargetUnitType,
-    decimal? Q1Target,
-    string? Q1Description,
-    decimal? Q1Budget,
-    decimal? Q2Target,
-    string? Q2Description,
-    decimal? Q2Budget,
-    decimal? MidTermTarget,
-    string? MidTermDescription,
-    decimal? MidTermBudget,
-    decimal? Q3Target,
-    string? Q3Description,
-    decimal? Q3Budget,
-    decimal? Q3RevisedTarget,
-    decimal? Q4Target,
-    string? Q4Description,
-    decimal? Q4Budget,
-    decimal? Q4RevisedTarget,
-    decimal? RevisedAnnualTarget,
-    decimal? RevisedAnnualBudget,
+    TargetPeriodValueResponse[] PeriodTargets,
     DateTime CreatedAt)
 {
     public Guid PublicId { get; init; }
@@ -263,8 +245,6 @@ public record IpmsTargetResponse(
     string TargetName,
     string KpiDescription,
     decimal Baseline,
-    decimal AnnualTarget,
-    string AnnualTargetDescription,
     int? BudgetSourceId,
     int? BudgetTypeId,
     int? UnitOfMeasureId,
@@ -275,26 +255,7 @@ public record IpmsTargetResponse(
     string? IdpReference,
     string? InternalReference,
     bool IsRevised,
-    string TargetUnitType,
-    decimal? Q1Target,
-    string? Q1Description,
-    decimal? Q1Budget,
-    decimal? Q2Target,
-    string? Q2Description,
-    decimal? Q2Budget,
-    decimal? MidTermTarget,
-    string? MidTermDescription,
-    decimal? MidTermBudget,
-    decimal? Q3Target,
-    string? Q3Description,
-    decimal? Q3Budget,
-    decimal? Q3RevisedTarget,
-    decimal? Q4Target,
-    string? Q4Description,
-    decimal? Q4Budget,
-    decimal? Q4RevisedTarget,
-    decimal? RevisedAnnualTarget,
-    decimal? RevisedAnnualBudget,
+    TargetPeriodValueResponse[] PeriodTargets,
     DateTime CreatedAt)
 {
     public Guid PublicId { get; init; }
@@ -304,6 +265,19 @@ public record IpmsTargetResponse(
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
 }
+
+public record TargetPeriodValueResponse(
+    Guid PublicId,
+    Guid ReportingPeriodPublicId,
+    string PeriodCode,
+    ReportingPeriodType PeriodType,
+    PerformanceUnitKind UnitKind,
+    PerformanceDirection Direction,
+    string TargetValue,
+    decimal? BudgetValue,
+    string? Description,
+    bool IsActive,
+    string RowVersion);
 
 public record OpmsSubmissionResponse(
     string Id,

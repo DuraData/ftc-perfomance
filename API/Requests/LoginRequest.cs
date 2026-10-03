@@ -1,3 +1,6 @@
+using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
+
 namespace FTCERP.Host.API.Requests;
 
 public record LoginRequest(string Email, string Password, string? TwoFactorCode = null, string? RecoveryCode = null);
@@ -149,8 +152,6 @@ public record SaveOpmsTargetRequest(
     string KpiDescription,
     decimal Baseline,
     string? BaselineDescription,
-    decimal AnnualTarget,
-    string AnnualTargetDescription,
     int? BudgetSourceId,
     int? BudgetTypeId,
     int? UnitOfMeasureId,
@@ -163,28 +164,7 @@ public record SaveOpmsTargetRequest(
     string? InternalReference,
     string? FmsLink,
     bool IsRevised,
-    bool IsWithdrawn,
-    string? ReasonForWithdrawal,
-    string TargetUnitType,
-    decimal? Q1Target,
-    string? Q1Description,
-    decimal? Q1Budget,
-    decimal? Q2Target,
-    string? Q2Description,
-    decimal? Q2Budget,
-    decimal? MidTermTarget,
-    string? MidTermDescription,
-    decimal? MidTermBudget,
-    decimal? Q3Target,
-    string? Q3Description,
-    decimal? Q3Budget,
-    decimal? Q3RevisedTarget,
-    decimal? Q4Target,
-    string? Q4Description,
-    decimal? Q4Budget,
-    decimal? Q4RevisedTarget,
-    decimal? RevisedAnnualTarget,
-    decimal? RevisedAnnualBudget);
+    SaveTargetPeriodValueRequest[] PeriodTargets);
 
 public record SaveIpmsTargetRequest(
     string? SourceTemplateId,
@@ -204,8 +184,6 @@ public record SaveIpmsTargetRequest(
     string TargetName,
     string KpiDescription,
     decimal Baseline,
-    decimal AnnualTarget,
-    string AnnualTargetDescription,
     int? BudgetSourceId,
     int? BudgetTypeId,
     int? UnitOfMeasureId,
@@ -216,26 +194,15 @@ public record SaveIpmsTargetRequest(
     string? IdpReference,
     string? InternalReference,
     bool IsRevised,
-    string TargetUnitType,
-    decimal? Q1Target,
-    string? Q1Description,
-    decimal? Q1Budget,
-    decimal? Q2Target,
-    string? Q2Description,
-    decimal? Q2Budget,
-    decimal? MidTermTarget,
-    string? MidTermDescription,
-    decimal? MidTermBudget,
-    decimal? Q3Target,
-    string? Q3Description,
-    decimal? Q3Budget,
-    decimal? Q3RevisedTarget,
-    decimal? Q4Target,
-    string? Q4Description,
-    decimal? Q4Budget,
-    decimal? Q4RevisedTarget,
-    decimal? RevisedAnnualTarget,
-    decimal? RevisedAnnualBudget);
+    SaveTargetPeriodValueRequest[] PeriodTargets);
+
+public record SaveTargetPeriodValueRequest(
+    ReportingPeriodType PeriodType,
+    PerformanceUnitKind UnitKind,
+    PerformanceDirection Direction,
+    string TargetValue,
+    decimal? BudgetValue,
+    string? Description);
 
 public record SaveOpmsSubmissionRequest(
     string OpmsTargetId,

@@ -14,6 +14,7 @@ import {
 import type { DepartmentLookupDto, OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
 import { OpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
+import { canonicalSaveRows } from '../../lib/performanceTargetContract';
 
 function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
   return {
@@ -28,9 +29,14 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
     assignedUserId: target.assignedTo?.id ?? null,
     sourceTemplateId: target.sourceTemplateId ?? null,
     sourceTemplateVersion: target.sourceTemplateVersion ?? null,
+    periodId: target.period?.id ? Number(target.period.id) : null,
+    wardIds: target.wardIds ?? [],
+    additionalAssigneeIds: target.additionalAssigneeIds ?? [],
+    voteNumberIds: target.voteNumberIds ?? [],
+    strategicGoalId: target.strategicGoal?.id ? Number(target.strategicGoal.id) : null,
+    strategicObjectiveId: target.strategicObjective?.id ? Number(target.strategicObjective.id) : null,
     baseline: target.baseline,
-    annualTarget: target.annualTarget,
-    annualTargetDescription: target.annualTargetDescription,
+    baselineDescription: target.baselineDescription ?? null,
     budgetSourceId: target.budgetSource?.id ? Number(target.budgetSource.id) : null,
     budgetTypeId: target.budgetType?.id ? Number(target.budgetType.id) : null,
     unitOfMeasureId: target.unitOfMeasure?.id ? Number(target.unitOfMeasure.id) : null,
@@ -43,9 +49,7 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
     internalReference: target.internalReference ?? null,
     fmsLink: target.fmsLink ?? null,
     isRevised: target.isRevised,
-    isWithdrawn: target.isWithdrawn,
-    reasonForWithdrawal: target.reasonForWithdrawal ?? null,
-    targetUnitType: target.targetUnitType,
+    periodTargets: canonicalSaveRows(target.periodTargets),
   };
 }
 
@@ -161,47 +165,12 @@ export function OPMSTargetList() {
     setCurrentPath('/opms/targets/new');
   };
 
-  const createMultipleFromTemplates = async (templates: OpmsTargetTemplate[]) => {
-    const results = await Promise.all(
-      templates.map(template =>
-        createOpmsTargetApi({
-          indicatorNumber: template.indicatorNumber,
-          targetName: template.targetName,
-          kpiDescription: template.kpiDescription,
-          nationalKpa: template.nationalKPA,
-          municipalKpa: template.municipalKPA,
-          performanceObjective: template.performanceObjective,
-          departmentId: template.department?.id ? Number(template.department.id) : null,
-          unitId: null,
-          assignedUserId: null,
-          sourceTemplateId: template.id,
-          sourceTemplateVersion: template.version,
-          baseline: template.baseline,
-          annualTarget: template.annualTarget,
-          annualTargetDescription: template.annualTargetDescription,
-          budgetSourceId: template.budgetSource?.id ? Number(template.budgetSource.id) : null,
-          budgetTypeId: template.budgetType?.id ? Number(template.budgetType.id) : null,
-          unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
-          weight: template.weight,
-          kpiType: template.kpiType,
-          indicatorType: template.indicatorType,
-          functionalArea: template.functionalArea ?? null,
-          standardClassification: template.standardClassification ?? null,
-          idpReference: template.idpReference ?? null,
-          internalReference: template.internalReference ?? null,
-          fmsLink: template.fmsLink ?? null,
-          isRevised: false,
-          isWithdrawn: false,
-          reasonForWithdrawal: null,
-          targetUnitType: template.targetUnitType,
-        }),
-      ),
-    );
-    const createdCount = results.filter(result => result.success).length;
-    if (createdCount > 0) {
-      pushToast('success', `${createdCount} OPMS target${createdCount === 1 ? '' : 's'} created from library`);
-      await loadTargets();
+  const createMultipleFromTemplates = (templates: OpmsTargetTemplate[]) => {
+    if (templates.length !== 1) {
+      pushToast('error', 'Select one template at a time so its financial year, assignments and canonical period targets can be confirmed.');
+      return;
     }
+    openCreateFromTemplate(templates[0]);
   };
 
   const filteredTargets = useMemo(

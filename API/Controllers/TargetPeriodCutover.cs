@@ -1,4 +1,4 @@
-using System.Globalization;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -33,7 +33,7 @@ internal sealed record TargetPeriodReconciliation(IReadOnlyList<PlannedPeriodTar
 
 internal static class TargetPeriodCutover
 {
-    public static async Task HydrateLegacyProjectionAsync(ApplicationDbContext context, IReadOnlyCollection<OpmsTarget> targets)
+    public static async Task HydrateCanonicalRowsAsync(ApplicationDbContext context, IReadOnlyCollection<OpmsTarget> targets)
     {
         if (targets.Count == 0) return;
         var ids = targets.Select(item => item.Id).ToArray();
@@ -41,10 +41,10 @@ internal static class TargetPeriodCutover
             .Where(item => item.OpmsTargetId != null && ids.Contains(item.OpmsTargetId) && item.IsActive)
             .ToArrayAsync();
         foreach (var target in targets)
-            ApplyProjection(target, rows.Where(item => item.OpmsTargetId == target.Id));
+            target.CanonicalPeriodTargets = rows.Where(item => item.OpmsTargetId == target.Id).OrderBy(item => item.ReportingPeriod.Sequence).ToArray();
     }
 
-    public static async Task HydrateLegacyProjectionAsync(ApplicationDbContext context, IReadOnlyCollection<IpmsTarget> targets)
+    public static async Task HydrateCanonicalRowsAsync(ApplicationDbContext context, IReadOnlyCollection<IpmsTarget> targets)
     {
         if (targets.Count == 0) return;
         var ids = targets.Select(item => item.Id).ToArray();
@@ -52,7 +52,7 @@ internal static class TargetPeriodCutover
             .Where(item => item.IpmsTargetId != null && ids.Contains(item.IpmsTargetId) && item.IsActive)
             .ToArrayAsync();
         foreach (var target in targets)
-            ApplyProjection(target, rows.Where(item => item.IpmsTargetId == target.Id));
+            target.CanonicalPeriodTargets = rows.Where(item => item.IpmsTargetId == target.Id).OrderBy(item => item.ReportingPeriod.Sequence).ToArray();
     }
 
     public static async Task<TargetPeriodPlan> BuildPlanAsync(
@@ -60,8 +60,7 @@ internal static class TargetPeriodCutover
         IPerformanceUnitEngine unitEngine,
         long? municipalityId,
         int? legacyPeriodId,
-        string targetUnitType,
-        IEnumerable<LegacyPeriodTargetValue> values)
+        IEnumerable<SaveTargetPeriodValueRequest>? values)
     {
         if (municipalityId is not > 0)
             return TargetPeriodPlan.Invalid("Select a municipality context before saving performance targets.");
@@ -84,13 +83,24 @@ internal static class TargetPeriodCutover
         if (municipalityYear == null)
             return TargetPeriodPlan.Invalid($"No active municipality financial year matches '{legacyPeriod.FiscalYear}'. Configure the governed financial-year master before saving targets.");
 
-        if (!TryParseUnitKind(targetUnitType, out var unitKind))
-            return TargetPeriodPlan.Invalid($"Target unit type '{targetUnitType}' is not supported by the canonical performance engine.");
+        var submittedValues = values?.ToArray() ?? [];
+        if (submittedValues.Length == 0)
+            return TargetPeriodPlan.Invalid("At least one canonical period target is required.");
+        var duplicate = submittedValues.GroupBy(item => item.PeriodType).FirstOrDefault(group => group.Count() > 1);
+        if (duplicate != null)
+            return TargetPeriodPlan.Invalid($"Only one target value may be supplied for {duplicate.Key}.");
+        if (submittedValues.All(item => item.PeriodType != ReportingPeriodType.Annual))
+            return TargetPeriodPlan.Invalid("An annual canonical period target is required.");
 
-        var direction = DefaultDirection(unitKind);
         var rows = new List<PlannedPeriodTarget>();
-        foreach (var value in values.Where(item => item.Value.HasValue))
+        foreach (var value in submittedValues)
         {
+            if (!Enum.IsDefined(value.PeriodType))
+                return TargetPeriodPlan.Invalid($"Reporting period type '{value.PeriodType}' is not supported.");
+            if (!Enum.IsDefined(value.UnitKind))
+                return TargetPeriodPlan.Invalid($"Performance unit '{value.UnitKind}' is not supported.");
+            if (!Enum.IsDefined(value.Direction))
+                return TargetPeriodPlan.Invalid($"Performance direction '{value.Direction}' is not supported.");
             var matchingPeriods = municipalityYear.ReportingPeriods
                 .Where(item => item.IsActive && item.PeriodType == value.PeriodType)
                 .OrderBy(item => item.Sequence)
@@ -98,15 +108,30 @@ internal static class TargetPeriodCutover
             if (matchingPeriods.Length != 1)
                 return TargetPeriodPlan.Invalid($"Exactly one active {value.PeriodType} reporting period is required for {municipalityYear.FinancialYear.Code}; found {matchingPeriods.Length}.");
 
-            var rawValue = value.Value!.Value.ToString(CultureInfo.InvariantCulture);
-            var normalized = unitEngine.Normalize(unitKind, rawValue);
+            var normalized = unitEngine.Normalize(value.UnitKind, value.TargetValue);
             if (!normalized.IsValid)
                 return TargetPeriodPlan.Invalid($"{value.PeriodType} target is invalid: {normalized.Error}");
             rows.Add(new PlannedPeriodTarget(
-                matchingPeriods[0], unitKind, direction, normalized.CanonicalValue!, value.BudgetValue, value.Description?.Trim()));
+                matchingPeriods[0], value.UnitKind, value.Direction, normalized.CanonicalValue!, value.BudgetValue, value.Description?.Trim()));
         }
 
         return new TargetPeriodPlan(rows, null);
+    }
+
+    public static Task<TargetPeriodPlan> BuildLegacyPlanAsync(
+        ApplicationDbContext context,
+        IPerformanceUnitEngine unitEngine,
+        long? municipalityId,
+        int? legacyPeriodId,
+        string targetUnitType,
+        IEnumerable<LegacyPeriodTargetValue> values)
+    {
+        if (!TryParseUnitKind(targetUnitType, out var unitKind))
+            return Task.FromResult(TargetPeriodPlan.Invalid($"Target unit type '{targetUnitType}' is not supported by the canonical performance engine."));
+        var direction = DefaultDirection(unitKind);
+        var canonical = values.Where(item => item.Value.HasValue).Select(item => new SaveTargetPeriodValueRequest(
+            item.PeriodType, unitKind, direction, item.Value!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), item.BudgetValue, item.Description));
+        return BuildPlanAsync(context, unitEngine, municipalityId, legacyPeriodId, canonical);
     }
 
     public static void AddNewRows(
@@ -175,7 +200,7 @@ internal static class TargetPeriodCutover
         return new(plan.Rows.Where(row => existing.All(item => item.ReportingPeriodId != row.ReportingPeriod.Id)).ToArray(), null);
     }
 
-    public static LegacyPeriodTargetValue[] Values(
+    public static LegacyPeriodTargetValue[] LegacyValues(
         decimal annualTarget,
         string? annualDescription,
         decimal? q1Target, string? q1Description, decimal? q1Budget,
@@ -192,9 +217,9 @@ internal static class TargetPeriodCutover
         new(ReportingPeriodType.Annual, annualTarget, null, annualDescription)
     ];
 
-    public static string? ValidateNoLegacyRevisionValues(decimal? q3RevisedTarget, decimal? q4RevisedTarget, decimal? revisedAnnualTarget, decimal? revisedAnnualBudget) =>
+    public static string? ValidateLegacyRevisionValues(decimal? q3RevisedTarget, decimal? q4RevisedTarget, decimal? revisedAnnualTarget, decimal? revisedAnnualBudget) =>
         q3RevisedTarget.HasValue || q4RevisedTarget.HasValue || revisedAnnualTarget.HasValue || revisedAnnualBudget.HasValue
-            ? "Legacy revised-target fields are retired. Create the base period target, then use the governed performance-period-target revision endpoint."
+            ? "Legacy revised-target fields must be reconciled manually through the governed performance-period-target revision endpoint."
             : null;
 
     private static bool TryParseUnitKind(string value, out PerformanceUnitKind unitKind)
@@ -206,11 +231,7 @@ internal static class TargetPeriodCutover
         }
         var normalized = value.Replace("_", string.Empty, StringComparison.Ordinal).Replace("-", string.Empty, StringComparison.Ordinal);
         if (Enum.TryParse(normalized, true, out unitKind)) return true;
-        unitKind = value.Trim().ToLowerInvariant() switch
-        {
-            "qualitative" => PerformanceUnitKind.QualitativeTargets,
-            _ => PerformanceUnitKind.None
-        };
+        unitKind = value.Trim().Equals("qualitative", StringComparison.OrdinalIgnoreCase) ? PerformanceUnitKind.QualitativeTargets : PerformanceUnitKind.None;
         return value.Trim().Equals("qualitative", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -221,40 +242,4 @@ internal static class TargetPeriodCutover
         _ => PerformanceDirection.HigherIsBetter
     };
 
-    private static void ApplyProjection(OpmsTarget target, IEnumerable<PerformancePeriodTarget> rows)
-    {
-        foreach (var row in rows)
-        {
-            var value = DecimalValue(row.TargetValue);
-            switch (row.ReportingPeriod.PeriodType)
-            {
-                case ReportingPeriodType.Quarter1: target.Q1Target = value; target.Q1Budget = row.BudgetValue; target.Q1Description = row.Description; break;
-                case ReportingPeriodType.Quarter2: target.Q2Target = value; target.Q2Budget = row.BudgetValue; target.Q2Description = row.Description; break;
-                case ReportingPeriodType.MidTerm: target.MidTermTarget = value; target.MidTermBudget = row.BudgetValue; target.MidTermDescription = row.Description; break;
-                case ReportingPeriodType.Quarter3: target.Q3Target = value; target.Q3Budget = row.BudgetValue; target.Q3Description = row.Description; break;
-                case ReportingPeriodType.Quarter4: target.Q4Target = value; target.Q4Budget = row.BudgetValue; target.Q4Description = row.Description; break;
-                case ReportingPeriodType.Annual: target.AnnualTarget = value ?? 0; target.AnnualTargetDescription = row.Description ?? string.Empty; break;
-            }
-        }
-    }
-
-    private static void ApplyProjection(IpmsTarget target, IEnumerable<PerformancePeriodTarget> rows)
-    {
-        foreach (var row in rows)
-        {
-            var value = DecimalValue(row.TargetValue);
-            switch (row.ReportingPeriod.PeriodType)
-            {
-                case ReportingPeriodType.Quarter1: target.Q1Target = value; target.Q1Budget = row.BudgetValue; target.Q1Description = row.Description; break;
-                case ReportingPeriodType.Quarter2: target.Q2Target = value; target.Q2Budget = row.BudgetValue; target.Q2Description = row.Description; break;
-                case ReportingPeriodType.MidTerm: target.MidTermTarget = value; target.MidTermBudget = row.BudgetValue; target.MidTermDescription = row.Description; break;
-                case ReportingPeriodType.Quarter3: target.Q3Target = value; target.Q3Budget = row.BudgetValue; target.Q3Description = row.Description; break;
-                case ReportingPeriodType.Quarter4: target.Q4Target = value; target.Q4Budget = row.BudgetValue; target.Q4Description = row.Description; break;
-                case ReportingPeriodType.Annual: target.AnnualTarget = value ?? 0; target.AnnualTargetDescription = row.Description ?? string.Empty; break;
-            }
-        }
-    }
-
-    private static decimal? DecimalValue(string value) =>
-        decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
 }

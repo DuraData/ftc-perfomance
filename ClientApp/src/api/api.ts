@@ -456,9 +456,29 @@ function toIpmsTemplateModel(dto: IpmsTargetTemplateDto): IpmsTargetTemplate {
   };
 }
 
+const targetUnitByKind: Record<number, OPMSTarget['targetUnitType']> = {
+  0: 'absolute_count', 1: 'percentage', 2: 'absolute_count', 3: 'financial', 4: 'time_based',
+  5: 'area_based', 6: 'volume_based', 7: 'index_scores', 8: 'ratios', 9: 'binary', 10: 'date',
+  11: 'readiness_scale', 12: 'binary_determination', 13: 'qualitative', 14: 'zero_based',
+  15: 'reverse_cumulative', 16: 'reverse_non_cumulative',
+};
+
+function canonicalPeriod(rows: PerformancePeriodTargetDto[], periodType: number) {
+  return rows.find(item => item.periodType === periodType && item.isActive);
+}
+
+function numericTarget(value?: string | null): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
   const department = toDepartmentReference(dto.departmentId, dto.departmentName);
   const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
+  const periods = dto.periodTargets ?? [];
+  const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
+  const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
+  const canonicalUnitType = targetUnitByKind[annual?.unitKind ?? periods[0]?.unitKind ?? 2] ?? 'absolute_count';
   return {
     id: dto.id,
     publicId: dto.publicId,
@@ -485,11 +505,11 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     kpiDescription: dto.kpiDescription,
     baseline: dto.baseline,
     baselineDescription: dto.baselineDescription ?? '',
-    annualTarget: dto.annualTarget,
-    annualTargetDescription: dto.annualTargetDescription,
+    annualTarget: numericTarget(annual?.targetValue),
+    annualTargetDescription: annual?.description ?? '',
     budgetSource: toBudgetSourceReference(dto.budgetSourceId),
     budgetType: toBudgetTypeReference(dto.budgetTypeId),
-    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, dto.targetUnitType),
+    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
     indicatorType: dto.indicatorType,
@@ -501,26 +521,27 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     isRevised: dto.isRevised,
     isWithdrawn: dto.isWithdrawn,
     reasonForWithdrawal: dto.reasonForWithdrawal ?? '',
-    targetUnitType: coerceTargetUnitType(dto.targetUnitType),
-    q1Target: dto.q1Target ?? 0,
-    q1Description: dto.q1Description ?? '',
-    q1Budget: dto.q1Budget ?? 0,
-    q2Target: dto.q2Target ?? 0,
-    q2Description: dto.q2Description ?? '',
-    q2Budget: dto.q2Budget ?? 0,
-    midTermTarget: dto.midTermTarget ?? 0,
-    midTermDescription: dto.midTermDescription ?? '',
-    midTermBudget: dto.midTermBudget ?? 0,
-    q3Target: dto.q3Target ?? 0,
-    q3Description: dto.q3Description ?? '',
-    q3Budget: dto.q3Budget ?? 0,
-    q3RevisedTarget: dto.q3RevisedTarget ?? 0,
-    q4Target: dto.q4Target ?? 0,
-    q4Description: dto.q4Description ?? '',
-    q4Budget: dto.q4Budget ?? 0,
-    q4RevisedTarget: dto.q4RevisedTarget ?? 0,
-    revisedAnnualTarget: dto.revisedAnnualTarget ?? 0,
-    revisedAnnualBudget: dto.revisedAnnualBudget ?? 0,
+    targetUnitType: canonicalUnitType,
+    periodTargets: periods,
+    q1Target: numericTarget(q1?.targetValue),
+    q1Description: q1?.description ?? '',
+    q1Budget: q1?.budgetValue ?? 0,
+    q2Target: numericTarget(q2?.targetValue),
+    q2Description: q2?.description ?? '',
+    q2Budget: q2?.budgetValue ?? 0,
+    midTermTarget: numericTarget(mid?.targetValue),
+    midTermDescription: mid?.description ?? '',
+    midTermBudget: mid?.budgetValue ?? 0,
+    q3Target: numericTarget(q3?.targetValue),
+    q3Description: q3?.description ?? '',
+    q3Budget: q3?.budgetValue ?? 0,
+    q3RevisedTarget: 0,
+    q4Target: numericTarget(q4?.targetValue),
+    q4Description: q4?.description ?? '',
+    q4Budget: q4?.budgetValue ?? 0,
+    q4RevisedTarget: 0,
+    revisedAnnualTarget: 0,
+    revisedAnnualBudget: 0,
     submissions: [],
     relatedIPMSTargets: [],
     attachments: [],
@@ -531,6 +552,10 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
 function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
   const department = toDepartmentReference(dto.departmentId, dto.departmentName);
   const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
+  const periods = dto.periodTargets ?? [];
+  const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
+  const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
+  const canonicalUnitType = targetUnitByKind[annual?.unitKind ?? periods[0]?.unitKind ?? 2] ?? 'absolute_count';
   return {
     id: dto.id,
     publicId: dto.publicId,
@@ -551,11 +576,11 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     targetName: dto.targetName,
     kpiDescription: dto.kpiDescription,
     baseline: dto.baseline,
-    annualTarget: dto.annualTarget,
-    annualTargetDescription: dto.annualTargetDescription,
+    annualTarget: numericTarget(annual?.targetValue),
+    annualTargetDescription: annual?.description ?? '',
     budgetSource: toBudgetSourceReference(dto.budgetSourceId),
     budgetType: toBudgetTypeReference(dto.budgetTypeId),
-    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, dto.targetUnitType),
+    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
     indicatorType: dto.indicatorType,
@@ -567,26 +592,27 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     reasonForWithdrawal: dto.reasonForWithdrawal ?? '',
     withdrawnAt: dto.withdrawnAt ?? undefined,
     withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
-    targetUnitType: coerceTargetUnitType(dto.targetUnitType),
-    q1Target: dto.q1Target ?? 0,
-    q1Description: dto.q1Description ?? '',
-    q1Budget: dto.q1Budget ?? 0,
-    q2Target: dto.q2Target ?? 0,
-    q2Description: dto.q2Description ?? '',
-    q2Budget: dto.q2Budget ?? 0,
-    midTermTarget: dto.midTermTarget ?? 0,
-    midTermDescription: dto.midTermDescription ?? '',
-    midTermBudget: dto.midTermBudget ?? 0,
-    q3Target: dto.q3Target ?? 0,
-    q3Description: dto.q3Description ?? '',
-    q3Budget: dto.q3Budget ?? 0,
-    q3RevisedTarget: dto.q3RevisedTarget ?? 0,
-    q4Target: dto.q4Target ?? 0,
-    q4Description: dto.q4Description ?? '',
-    q4Budget: dto.q4Budget ?? 0,
-    q4RevisedTarget: dto.q4RevisedTarget ?? 0,
-    revisedAnnualTarget: dto.revisedAnnualTarget ?? 0,
-    revisedAnnualBudget: dto.revisedAnnualBudget ?? 0,
+    targetUnitType: canonicalUnitType,
+    periodTargets: periods,
+    q1Target: numericTarget(q1?.targetValue),
+    q1Description: q1?.description ?? '',
+    q1Budget: q1?.budgetValue ?? 0,
+    q2Target: numericTarget(q2?.targetValue),
+    q2Description: q2?.description ?? '',
+    q2Budget: q2?.budgetValue ?? 0,
+    midTermTarget: numericTarget(mid?.targetValue),
+    midTermDescription: mid?.description ?? '',
+    midTermBudget: mid?.budgetValue ?? 0,
+    q3Target: numericTarget(q3?.targetValue),
+    q3Description: q3?.description ?? '',
+    q3Budget: q3?.budgetValue ?? 0,
+    q3RevisedTarget: 0,
+    q4Target: numericTarget(q4?.targetValue),
+    q4Description: q4?.description ?? '',
+    q4Budget: q4?.budgetValue ?? 0,
+    q4RevisedTarget: 0,
+    revisedAnnualTarget: 0,
+    revisedAnnualBudget: 0,
     submissions: [],
     attachments: [],
     CreatedOn: dto.createdAt,
@@ -608,14 +634,12 @@ function unresolvedOpmsTarget(id: string, targetName: string): OPMSTarget {
     targetName,
     kpiDescription: '',
     baseline: 0,
-    annualTarget: 0,
-    annualTargetDescription: '',
+    periodTargets: [],
     weight: 0,
     kpiType: '',
     indicatorType: '',
     isRevised: false,
     isWithdrawn: false,
-    targetUnitType: 'absolute_count',
     createdAt: '',
   });
 }
@@ -632,14 +656,12 @@ function unresolvedIpmsTarget(id: string, targetName: string): IPMSTarget {
     targetName,
     kpiDescription: '',
     baseline: 0,
-    annualTarget: 0,
-    annualTargetDescription: '',
+    periodTargets: [],
     weight: 0,
     kpiType: '',
     indicatorType: '',
     isRevised: false,
     isWithdrawn: false,
-    targetUnitType: 'absolute_count',
     createdAt: '',
   });
 }

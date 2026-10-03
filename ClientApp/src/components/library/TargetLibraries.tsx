@@ -21,9 +21,7 @@ import { useApp } from '../../context/AppContext';
 import {
   archiveIpmsTargetTemplate as archiveIpmsTargetTemplateApi,
   archiveOpmsTargetTemplate as archiveOpmsTargetTemplateApi,
-  createIpmsTarget as createIpmsTargetApi,
   createIpmsTargetTemplate as createIpmsTargetTemplateApi,
-  createOpmsTarget as createOpmsTargetApi,
   createOpmsTargetTemplate as createOpmsTargetTemplateApi,
   duplicateIpmsTargetTemplate as duplicateIpmsTargetTemplateApi,
   duplicateOpmsTargetTemplate as duplicateOpmsTargetTemplateApi,
@@ -40,8 +38,6 @@ import type {
   OpmsTargetTemplate,
   SaveIpmsTargetTemplatePayload,
   SaveOpmsTargetTemplatePayload,
-  SaveIpmsTargetPayload,
-  SaveOpmsTargetPayload,
   TargetUnitType,
   TemplateQuarterlyTarget,
   PerformanceLookupsDto,
@@ -599,71 +595,6 @@ function buildQuarterlyTargetsFromForm(quarterlyTargets: { quarter: string; targ
   }));
 }
 
-function buildOpmsTargetPayloadFromTemplate(template: OpmsTargetTemplate): SaveOpmsTargetPayload {
-  return {
-    indicatorNumber: template.indicatorNumber,
-    targetName: template.targetName,
-    kpiDescription: template.kpiDescription,
-    nationalKpa: template.nationalKPA,
-    municipalKpa: template.municipalKPA,
-    performanceObjective: template.performanceObjective,
-    departmentId: null,
-    unitId: null,
-    assignedUserId: null,
-    sourceTemplateId: template.id,
-    sourceTemplateVersion: template.version,
-    baseline: template.baseline,
-    annualTarget: template.annualTarget,
-    annualTargetDescription: template.annualTargetDescription,
-    budgetSourceId: template.budgetSource?.id ? Number(template.budgetSource.id) : null,
-    budgetTypeId: template.budgetType?.id ? Number(template.budgetType.id) : null,
-    unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
-    weight: template.weight,
-    kpiType: template.kpiType,
-    indicatorType: template.indicatorType,
-    functionalArea: template.functionalArea ?? null,
-    standardClassification: template.standardClassification ?? null,
-    idpReference: template.idpReference ?? null,
-    internalReference: template.internalReference ?? null,
-    fmsLink: template.fmsLink ?? null,
-    isRevised: false,
-    isWithdrawn: false,
-    reasonForWithdrawal: null,
-    targetUnitType: template.targetUnitType,
-  };
-}
-
-function buildIpmsTargetPayloadFromTemplate(template: IpmsTargetTemplate): SaveIpmsTargetPayload {
-  return {
-    indicatorNumber: template.templateCode,
-    targetName: template.targetName,
-    kpiDescription: template.kpiDescription,
-    nationalKpa: '',
-    municipalKpa: '',
-    performanceObjective: '',
-    departmentId: null,
-    unitId: null,
-    assignedUserId: null,
-    relatedOpmsTargetId: null,
-    sourceTemplateId: template.id,
-    sourceTemplateVersion: template.version,
-    baseline: 0,
-    annualTarget: template.annualTarget,
-    annualTargetDescription: template.annualTargetDescription,
-    budgetSourceId: null,
-    budgetTypeId: null,
-    unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
-    weight: template.weight,
-    kpiType: 'quantitative',
-    indicatorType: 'output',
-    functionalArea: template.functionalArea ?? null,
-    idpReference: null,
-    internalReference: null,
-    isRevised: false,
-    targetUnitType: template.targetUnitType,
-  };
-}
-
 function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form'], lookups: PerformanceLookupsDto): SaveOpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
@@ -1012,18 +943,14 @@ export function OPMSTargetLibraryList() {
     ));
   };
 
-  const createSelectedTargets = async (templates: OpmsTargetTemplate[]) => {
-    const results = await Promise.all(templates.map(template => createOpmsTargetApi(buildOpmsTargetPayloadFromTemplate(template))));
-    const successCount = results.filter(result => result.success).length;
-    const failureCount = results.length - successCount;
+  const createSelectedTargets = (templates: OpmsTargetTemplate[]) => {
+    if (templates.length !== 1) {
+      pushToast('error', 'Select one template at a time so its financial year, assignments and canonical period targets can be confirmed.');
+      return;
+    }
+    localStorage.setItem('pending_opms_template_id', templates[0].id);
     setSelectedIds([]);
-
-    if (successCount > 0) {
-      pushToast('success', `${successCount} OPMS target${successCount === 1 ? '' : 's'} created from library`);
-    }
-    if (failureCount > 0) {
-      pushToast('error', `${failureCount} OPMS target${failureCount === 1 ? '' : 's'} failed to create`);
-    }
+    setCurrentPath('/opms/targets/new');
   };
 
   return (
@@ -1646,18 +1573,14 @@ export function IPMSTargetLibraryList() {
     ));
   };
 
-  const createSelectedTargets = async (templates: IpmsTargetTemplate[]) => {
-    const results = await Promise.all(templates.map(template => createIpmsTargetApi(buildIpmsTargetPayloadFromTemplate(template))));
-    const successCount = results.filter(result => result.success).length;
-    const failureCount = results.length - successCount;
+  const createSelectedTargets = (templates: IpmsTargetTemplate[]) => {
+    if (templates.length !== 1) {
+      pushToast('error', 'Select one template at a time so its financial year, assignments and canonical period targets can be confirmed.');
+      return;
+    }
+    localStorage.setItem('pending_ipms_template_id', templates[0].id);
     setSelectedIds([]);
-
-    if (successCount > 0) {
-      pushToast('success', `${successCount} IPMS target${successCount === 1 ? '' : 's'} created from library`);
-    }
-    if (failureCount > 0) {
-      pushToast('error', `${failureCount} IPMS target${failureCount === 1 ? '' : 's'} failed to create`);
-    }
+    setCurrentPath('/ipms/targets/new');
   };
 
   return (

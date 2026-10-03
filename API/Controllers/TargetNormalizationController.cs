@@ -149,14 +149,14 @@ public sealed class TargetNormalizationController(
         return new(publicId, indicatorNumber, targetName, reconciliation.MissingRows.Count == 0 ? "Normalized" : "Ready", reconciliation.MissingRows.Count, null);
     }
 
-    private Task<TargetPeriodPlan> Plan(OpmsTarget target) => TargetPeriodCutover.BuildPlanAsync(context, unitEngine, target.MunicipalityId, target.PeriodId, target.TargetUnitType,
-        TargetPeriodCutover.Values(target.AnnualTarget, target.AnnualTargetDescription, target.Q1Target, target.Q1Description, target.Q1Budget, target.Q2Target, target.Q2Description, target.Q2Budget, target.MidTermTarget, target.MidTermDescription, target.MidTermBudget, target.Q3Target, target.Q3Description, target.Q3Budget, target.Q4Target, target.Q4Description, target.Q4Budget));
+    private Task<TargetPeriodPlan> Plan(OpmsTarget target) => TargetPeriodCutover.BuildLegacyPlanAsync(context, unitEngine, target.MunicipalityId, target.PeriodId, target.TargetUnitType,
+        TargetPeriodCutover.LegacyValues(target.AnnualTarget, target.AnnualTargetDescription, target.Q1Target, target.Q1Description, target.Q1Budget, target.Q2Target, target.Q2Description, target.Q2Budget, target.MidTermTarget, target.MidTermDescription, target.MidTermBudget, target.Q3Target, target.Q3Description, target.Q3Budget, target.Q4Target, target.Q4Description, target.Q4Budget));
 
-    private Task<TargetPeriodPlan> Plan(IpmsTarget target) => TargetPeriodCutover.BuildPlanAsync(context, unitEngine, target.MunicipalityId, target.PeriodId, target.TargetUnitType,
-        TargetPeriodCutover.Values(target.AnnualTarget, target.AnnualTargetDescription, target.Q1Target, target.Q1Description, target.Q1Budget, target.Q2Target, target.Q2Description, target.Q2Budget, target.MidTermTarget, target.MidTermDescription, target.MidTermBudget, target.Q3Target, target.Q3Description, target.Q3Budget, target.Q4Target, target.Q4Description, target.Q4Budget));
+    private Task<TargetPeriodPlan> Plan(IpmsTarget target) => TargetPeriodCutover.BuildLegacyPlanAsync(context, unitEngine, target.MunicipalityId, target.PeriodId, target.TargetUnitType,
+        TargetPeriodCutover.LegacyValues(target.AnnualTarget, target.AnnualTargetDescription, target.Q1Target, target.Q1Description, target.Q1Budget, target.Q2Target, target.Q2Description, target.Q2Budget, target.MidTermTarget, target.MidTermDescription, target.MidTermBudget, target.Q3Target, target.Q3Description, target.Q3Budget, target.Q4Target, target.Q4Description, target.Q4Budget));
 
     private static string? ValidateLegacyRevisionState(decimal? q3, decimal? q4, decimal? annual, decimal? budget, string indicatorNumber) =>
-        TargetPeriodCutover.ValidateNoLegacyRevisionValues(q3, q4, annual, budget) is { } error ? $"{indicatorNumber}: {error}" : null;
+        TargetPeriodCutover.ValidateLegacyRevisionValues(q3, q4, annual, budget) is { } error ? $"{indicatorNumber}: {error}" : null;
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);

@@ -57,7 +57,7 @@ public class IpmsTargetsController : ControllerBase
         if (!scope.Unrestricted)
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
         var targets = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
-        await TargetPeriodCutover.HydrateLegacyProjectionAsync(_context, targets);
+        await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, targets);
         return Ok(new ApiResponse<IpmsTargetResponse[]>(true, targets.Select(item => item.ToResponse()).ToArray()));
     }
 
@@ -83,7 +83,7 @@ public class IpmsTargetsController : ControllerBase
         var items = await query.Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
             .AsSplitQuery().ToListAsync();
-        await TargetPeriodCutover.HydrateLegacyProjectionAsync(_context, items);
+        await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
         return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true,
             PagedResponse<IpmsTargetResponse>.Create(items.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount)));
     }
@@ -124,10 +124,7 @@ public class IpmsTargetsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, user.Id));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
-        var revisionError = TargetPeriodCutover.ValidateNoLegacyRevisionValues(request.Q3RevisedTarget, request.Q4RevisedTarget, request.RevisedAnnualTarget, request.RevisedAnnualBudget);
-        if (revisionError != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, revisionError));
-        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.TargetUnitType,
-            TargetPeriodCutover.Values(request.AnnualTarget, request.AnnualTargetDescription, request.Q1Target, request.Q1Description, request.Q1Budget, request.Q2Target, request.Q2Description, request.Q2Budget, request.MidTermTarget, request.MidTermDescription, request.MidTermBudget, request.Q3Target, request.Q3Description, request.Q3Budget, request.Q4Target, request.Q4Description, request.Q4Budget));
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
 
         var entity = new IpmsTarget
@@ -160,7 +157,7 @@ public class IpmsTargetsController : ControllerBase
             IdpReference = request.IdpReference,
             InternalReference = request.InternalReference,
             IsRevised = request.IsRevised,
-            TargetUnitType = request.TargetUnitType,
+            TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString(),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -190,10 +187,7 @@ public class IpmsTargetsController : ControllerBase
         var before = await FindTargetAsync(id);
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
-        var revisionError = TargetPeriodCutover.ValidateNoLegacyRevisionValues(request.Q3RevisedTarget, request.Q4RevisedTarget, request.RevisedAnnualTarget, request.RevisedAnnualBudget);
-        if (revisionError != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, revisionError));
-        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.TargetUnitType,
-            TargetPeriodCutover.Values(request.AnnualTarget, request.AnnualTargetDescription, request.Q1Target, request.Q1Description, request.Q1Budget, request.Q2Target, request.Q2Description, request.Q2Budget, request.MidTermTarget, request.MidTermDescription, request.MidTermBudget, request.Q3Target, request.Q3Description, request.Q3Budget, request.Q4Target, request.Q4Description, request.Q4Budget));
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
         if (periodChangeError != null) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, periodChangeError));
@@ -225,7 +219,7 @@ public class IpmsTargetsController : ControllerBase
         entity.IdpReference = request.IdpReference;
         entity.InternalReference = request.InternalReference;
         entity.IsRevised = request.IsRevised;
-        entity.TargetUnitType = request.TargetUnitType;
+        entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
@@ -265,6 +259,7 @@ public class IpmsTargetsController : ControllerBase
         entity.ReasonForWithdrawal = reason;
         entity.WithdrawnAt = occurredAt;
         entity.WithdrawnByUserId = user.Id;
+        entity.CanonicalPeriodTargets = before?.CanonicalPeriodTargets ?? [];
         _context.GovernedRecordLifecycleEvents.Add(new GovernedRecordLifecycleEvent
         {
             MunicipalityId = entity.MunicipalityId.Value,
@@ -315,7 +310,7 @@ public class IpmsTargetsController : ControllerBase
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
             .FirstOrDefaultAsync(item => item.Id == id);
-        if (target != null) await TargetPeriodCutover.HydrateLegacyProjectionAsync(_context, [target]);
+        if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;
     }
 

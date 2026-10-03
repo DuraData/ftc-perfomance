@@ -13,6 +13,27 @@ namespace FTCERP.Tests;
 public sealed class NormalizedTargetWriteCutoverTests
 {
     [Fact]
+    public void Public_target_contracts_expose_only_canonical_period_values()
+    {
+        var retired = new[]
+        {
+            "AnnualTarget", "AnnualTargetDescription", "TargetUnitType", "Q1Target", "Q1Description", "Q1Budget",
+            "Q2Target", "Q2Description", "Q2Budget", "MidTermTarget", "MidTermDescription", "MidTermBudget",
+            "Q3Target", "Q3Description", "Q3Budget", "Q3RevisedTarget", "Q4Target", "Q4Description", "Q4Budget",
+            "Q4RevisedTarget", "RevisedAnnualTarget", "RevisedAnnualBudget"
+        };
+
+        foreach (var contract in new[] { typeof(SaveOpmsTargetRequest), typeof(SaveIpmsTargetRequest), typeof(OpmsTargetResponse), typeof(IpmsTargetResponse) })
+        {
+            Assert.NotNull(contract.GetProperty("PeriodTargets"));
+            foreach (var property in retired)
+                Assert.Null(contract.GetProperty(property));
+        }
+        Assert.Null(typeof(SaveOpmsTargetRequest).GetProperty("IsWithdrawn"));
+        Assert.Null(typeof(SaveOpmsTargetRequest).GetProperty("ReasonForWithdrawal"));
+    }
+
+    [Fact]
     public async Task Ipms_create_uses_the_same_normalized_period_write_path()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -22,7 +43,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var result = await controller.CreateTarget(IpmsRequest(seed.LegacyPeriod.Id));
 
         var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
-        Assert.Equal(100m, response.AnnualTarget);
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
         context.ChangeTracker.Clear();
         Assert.Equal(0m, (await context.IpmsTargets.SingleAsync()).AnnualTarget);
         Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync(item => item.IpmsTargetId == response.Id));
@@ -38,8 +59,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         var result = await controller.CreateTarget(Request(seed.LegacyPeriod.Id));
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
-        Assert.Equal(100m, response.AnnualTarget);
-        Assert.Equal(20m, response.Q1Target);
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Quarter1 && item.TargetValue == "20");
         context.ChangeTracker.Clear();
         var stored = await context.OpmsTargets.SingleAsync();
         Assert.Equal(0m, stored.AnnualTarget);
@@ -51,13 +72,34 @@ public sealed class NormalizedTargetWriteCutoverTests
     }
 
     [Fact]
+    public async Task Canonical_contract_preserves_period_specific_units_and_non_numeric_values()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var request = Request(seed.LegacyPeriod.Id) with
+        {
+            PeriodTargets =
+            [
+                new(ReportingPeriodType.Quarter1, PerformanceUnitKind.QualitativeTargets, PerformanceDirection.Exact, "Council approved", null, "Qualitative milestone"),
+                new(ReportingPeriodType.Annual, PerformanceUnitKind.Date, PerformanceDirection.LowerIsBetter, "2027-06-30", null, "Completion date")
+            ]
+        };
+
+        var result = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(request);
+
+        var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Quarter1 && item.UnitKind == PerformanceUnitKind.QualitativeTargets && item.TargetValue == "Council approved");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.UnitKind == PerformanceUnitKind.Date && item.TargetValue == "2027-06-30");
+    }
+
+    [Fact]
     public async Task General_target_update_cannot_bypass_governed_period_revision_history()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id))).Result).Value).Data!;
-        var changed = Request(seed.LegacyPeriod.Id) with { AnnualTarget = 90m };
+        var changed = Request(seed.LegacyPeriod.Id) with { PeriodTargets = PeriodTargets("90") };
 
         var result = await controller.UpdateTarget(created.Id, changed);
 
@@ -80,7 +122,7 @@ public sealed class NormalizedTargetWriteCutoverTests
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Equal("Updated metadata", response.TargetName);
-        Assert.Equal(100m, response.AnnualTarget);
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
         Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync());
         context.ChangeTracker.Clear();
         var stored = await context.OpmsTargets.SingleAsync();
@@ -140,10 +182,13 @@ public sealed class NormalizedTargetWriteCutoverTests
     }
 
     private static SaveOpmsTargetRequest Request(int periodId) => new(
-        null, null, periodId, null, null, null, [], [], [], "OPMS-1", "National KPA", "Municipal KPA", null, null,
-        "Objective", "Normalized target", "Description", 0m, null, 100m, "Annual target", null, null, null, 10m,
-        "Quantitative", "Output", null, null, null, null, null, false, false, null, "percentage",
-        20m, "Q1 target", 10m, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        SourceTemplateId: null, SourceTemplateVersion: null, PeriodId: periodId, DepartmentId: null, UnitId: null,
+        AssignedUserId: null, WardIds: [], AdditionalAssigneeIds: [], VoteNumberIds: [], IndicatorNumber: "OPMS-1",
+        NationalKpa: "National KPA", MunicipalKpa: "Municipal KPA", StrategicGoalId: null, StrategicObjectiveId: null,
+        PerformanceObjective: "Objective", TargetName: "Normalized target", KpiDescription: "Description", Baseline: 0m,
+        BaselineDescription: null, BudgetSourceId: null, BudgetTypeId: null, UnitOfMeasureId: null, Weight: 10m,
+        KpiType: "Quantitative", IndicatorType: "Output", FunctionalArea: null, StandardClassification: null,
+        IdpReference: null, InternalReference: null, FmsLink: null, IsRevised: false, PeriodTargets: PeriodTargets());
 
     private static SaveIpmsTargetRequest IpmsRequest(int periodId) => new(
         SourceTemplateId: null,
@@ -163,8 +208,6 @@ public sealed class NormalizedTargetWriteCutoverTests
         TargetName: "Normalized individual target",
         KpiDescription: "Description",
         Baseline: 0m,
-        AnnualTarget: 100m,
-        AnnualTargetDescription: "Annual target",
         BudgetSourceId: null,
         BudgetTypeId: null,
         UnitOfMeasureId: null,
@@ -175,26 +218,13 @@ public sealed class NormalizedTargetWriteCutoverTests
         IdpReference: null,
         InternalReference: null,
         IsRevised: false,
-        TargetUnitType: "percentage",
-        Q1Target: 20m,
-        Q1Description: "Q1 target",
-        Q1Budget: 10m,
-        Q2Target: null,
-        Q2Description: null,
-        Q2Budget: null,
-        MidTermTarget: null,
-        MidTermDescription: null,
-        MidTermBudget: null,
-        Q3Target: null,
-        Q3Description: null,
-        Q3Budget: null,
-        Q3RevisedTarget: null,
-        Q4Target: null,
-        Q4Description: null,
-        Q4Budget: null,
-        Q4RevisedTarget: null,
-        RevisedAnnualTarget: null,
-        RevisedAnnualBudget: null);
+        PeriodTargets: PeriodTargets());
+
+    private static SaveTargetPeriodValueRequest[] PeriodTargets(string annual = "100") =>
+    [
+        new(ReportingPeriodType.Quarter1, PerformanceUnitKind.PercentageBased, PerformanceDirection.HigherIsBetter, "20", 10m, "Q1 target"),
+        new(ReportingPeriodType.Annual, PerformanceUnitKind.PercentageBased, PerformanceDirection.HigherIsBetter, annual, null, "Annual target")
+    ];
 
     private static async Task<(Municipality Municipality, ApplicationUser User, Period LegacyPeriod)> SeedAsync(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context)
     {

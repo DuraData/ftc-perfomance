@@ -13,6 +13,7 @@ import {
 import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../../types';
 import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
+import { canonicalSaveRows } from '../../lib/performanceTargetContract';
 
 function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
   return {
@@ -28,9 +29,10 @@ function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
     relatedOpmsTargetId: target.relatedOPMSTarget?.id ?? null,
     sourceTemplateId: target.sourceTemplateId ?? null,
     sourceTemplateVersion: target.sourceTemplateVersion ?? null,
+    periodId: target.period?.id ? Number(target.period.id) : null,
+    strategicGoalId: target.strategicGoal?.id ? Number(target.strategicGoal.id) : null,
+    strategicObjectiveId: target.strategicObjective?.id ? Number(target.strategicObjective.id) : null,
     baseline: target.baseline,
-    annualTarget: target.annualTarget,
-    annualTargetDescription: target.annualTargetDescription,
     budgetSourceId: target.budgetSource?.id ? Number(target.budgetSource.id) : null,
     budgetTypeId: target.budgetType?.id ? Number(target.budgetType.id) : null,
     unitOfMeasureId: target.unitOfMeasure?.id ? Number(target.unitOfMeasure.id) : null,
@@ -41,7 +43,7 @@ function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
     idpReference: target.idpReference ?? null,
     internalReference: target.internalReference ?? null,
     isRevised: target.isRevised,
-    targetUnitType: target.targetUnitType,
+    periodTargets: canonicalSaveRows(target.periodTargets),
   };
 }
 
@@ -96,44 +98,12 @@ export function IPMSTargetList() {
     setCurrentPath('/ipms/targets/new');
   };
 
-  const createMultipleFromTemplates = async (templates: IpmsTargetTemplate[]) => {
-    const results = await Promise.all(
-      templates.map(template =>
-        createIpmsTargetApi({
-          indicatorNumber: template.templateCode,
-          targetName: template.targetName,
-          kpiDescription: template.kpiDescription,
-          nationalKpa: '',
-          municipalKpa: '',
-          performanceObjective: '',
-          departmentId: template.department?.id ? Number(template.department.id) : null,
-          unitId: null,
-          assignedUserId: null,
-          relatedOpmsTargetId: null,
-          sourceTemplateId: template.id,
-          sourceTemplateVersion: template.version,
-          baseline: 0,
-          annualTarget: template.annualTarget,
-          annualTargetDescription: template.annualTargetDescription,
-          budgetSourceId: null,
-          budgetTypeId: null,
-          unitOfMeasureId: template.unitOfMeasure?.id ? Number(template.unitOfMeasure.id) : null,
-          weight: template.weight,
-          kpiType: 'quantitative',
-          indicatorType: 'output',
-          functionalArea: template.functionalArea ?? null,
-          idpReference: null,
-          internalReference: null,
-          isRevised: false,
-          targetUnitType: template.targetUnitType,
-        }),
-      ),
-    );
-    const createdCount = results.filter(result => result.success).length;
-    if (createdCount > 0) {
-      pushToast('success', `${createdCount} IPMS target${createdCount === 1 ? '' : 's'} created from library`);
-      await loadTargets();
+  const createMultipleFromTemplates = (templates: IpmsTargetTemplate[]) => {
+    if (templates.length !== 1) {
+      pushToast('error', 'Select one template at a time so its financial year, assignments and canonical period targets can be confirmed.');
+      return;
     }
+    openCreateFromTemplate(templates[0]);
   };
 
   const columns = [
