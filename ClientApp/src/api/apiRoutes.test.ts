@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -207,6 +207,18 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/performance-dashboards/opms'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/performance-dashboards/ipms'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('loads a bounded workflow queue through the versioned combined route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkflowQueue('under-approval', 3, 20);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/workflow-queues?queue=under-approval&page=3&pageSize=20'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
   });
 
   it('projects OPMS API data without inheriting production fixture values', async () => {

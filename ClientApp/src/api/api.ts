@@ -129,6 +129,8 @@ import type {
   TargetNormalizationPreviewDto,
   TargetNormalizationResultDto,
   PerformanceDashboardDto,
+  WorkflowQueueDto,
+  WorkflowQueueName,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -1710,6 +1712,11 @@ export async function getOpmsPerformanceDashboard(): Promise<ApiResponse<Perform
 
 export async function getIpmsPerformanceDashboard(): Promise<ApiResponse<PerformanceDashboardDto>> {
   return get<PerformanceDashboardDto>('/v1/performance-dashboards/ipms');
+}
+
+export async function getWorkflowQueue(queue: WorkflowQueueName, page = 1, pageSize = 25): Promise<ApiResponse<WorkflowQueueDto>> {
+  const parameters = new URLSearchParams({ queue, page: String(page), pageSize: String(pageSize) });
+  return get<WorkflowQueueDto>(`/v1/workflow-queues?${parameters.toString()}`);
 }
 
 export type RegisterPageQuery = {

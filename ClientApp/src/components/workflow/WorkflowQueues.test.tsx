@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { WorkflowQueues } from './WorkflowQueues';
+import { MyWorkQueue, WorkflowQueues } from './WorkflowQueues';
 
 const apiMocks = vi.hoisted(() => ({
-  getOpmsSubmissions: vi.fn(),
-  getIpmsSubmissions: vi.fn(),
+  getWorkflowQueue: vi.fn(),
+  getOpmsSubmission: vi.fn(),
+  getIpmsSubmission: vi.fn(),
   getInternalAuditSubmission: vi.fn(),
   saveInternalAuditAssessment: vi.fn(),
 }));
@@ -23,26 +24,29 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 describe('WorkflowQueues', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    appMocks.currentPath = '/workflow/verification';
   });
 
   it('renders queue counts and rows from the authorised API response', async () => {
-    apiMocks.getOpmsSubmissions.mockResolvedValue({
+    apiMocks.getWorkflowQueue.mockResolvedValue({
       success: true,
-      data: [{
-        id: 'submission-live',
-        baseState: 'SUBMITTED',
-        rowVersion: 'AQ==',
-        target: { id: 'target-live', targetName: 'Live Water KPI', indicatorNumber: 'LIVE-001' },
-        quarter: 'Q1',
-        dueDate: '2026-10-15T00:00:00Z',
-        actual: 5,
-        status: 'pending_verification',
-        submittedByUserId: 'submitter-live',
-        submitter: { id: 'submitter-live', displayName: 'Live Submitter' },
-        attachments: [],
-        comments: [],
-        history: [],
-      }],
+      data: {
+        queue: 'verification',
+        counts: {
+          mySubmissions: 1, verification: 1, approval: 0, pms: 0, auditor: 0, returned: 0,
+          myDrafts: 0, pendingSubmission: 0, myReturned: 0, underVerification: 1, underReview: 0,
+          underApproval: 0, internalAuditReturned: 0, approvedClosed: 0,
+        },
+        page: {
+          items: [{
+            id: 'submission-live', publicId: 'submission-public', kind: 'opms', targetId: 'target-live',
+            targetPublicId: 'target-public', targetName: 'Live Water KPI', indicatorNumber: 'LIVE-001',
+            quarter: 'Q1', dueDate: '2026-10-15T00:00:00Z', status: 'pending_verification',
+            submittedByUserId: 'submitter-live', submittedByName: 'Live Submitter', createdAt: '2026-10-01T00:00:00Z',
+          }],
+          page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+        },
+      },
     });
 
     render(<WorkflowQueues />);
@@ -51,11 +55,37 @@ describe('WorkflowQueues', () => {
     expect(screen.getByText('LIVE-001')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /1\s+Pending Verification/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /0\s+Pending Approval/i })).toBeInTheDocument();
-    expect(apiMocks.getOpmsSubmissions).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1);
+
+    apiMocks.getOpmsSubmission.mockResolvedValue({ success: false });
+    fireEvent.click(screen.getByText('Live Water KPI'));
+    await waitFor(() => expect(apiMocks.getOpmsSubmission).toHaveBeenCalledWith('submission-live'));
+  });
+
+  it('loads personal returned work through the bounded combined queue', async () => {
+    appMocks.currentPath = '/workflow/returned-submissions';
+    apiMocks.getWorkflowQueue.mockResolvedValue({
+      success: true,
+      data: {
+        queue: 'my-returned',
+        counts: {
+          mySubmissions: 1, verification: 0, approval: 0, pms: 0, auditor: 0, returned: 4,
+          myDrafts: 0, pendingSubmission: 0, myReturned: 1, underVerification: 0, underReview: 0,
+          underApproval: 0, internalAuditReturned: 0, approvedClosed: 0,
+        },
+        page: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+      },
+    });
+
+    render(<MyWorkQueue />);
+
+    expect(await screen.findByText('Returned Submissions')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('my-returned', 1);
   });
 
   it('shows an explicit service error instead of fixture submissions', async () => {
-    apiMocks.getOpmsSubmissions.mockResolvedValue({ success: false, message: 'Authorised queue request failed.' });
+    apiMocks.getWorkflowQueue.mockResolvedValue({ success: false, message: 'Authorised queue request failed.' });
 
     render(<WorkflowQueues />);
 

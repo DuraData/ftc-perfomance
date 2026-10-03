@@ -1326,6 +1326,18 @@ The OPMS/IPMS dashboards no longer download complete target and submission regis
 
 The complete suites pass **311 backend tests**, with one environment-gated SQL Server test skipped, and **150/150 frontend tests across 45 files**. TypeScript, ESLint, the production frontend/Release backend build, the 67-chunk bundle budget and EF model/snapshot consistency pass with **0 warnings and 0 errors**. No migration or provider-specific implementation is introduced. The dashboard collection portion of R-45 is closed; R-41 and final area 19 remain **PARTIALLY COMPLIANT** for broader analytical/oversight workflows, and R-45 remains partial for compatibility/detail selectors plus native SQL Server load/query-plan acceptance.
 
+### 11.75 Bounded combined workflow and personal work queues
+
+The production workflow screens no longer download the complete OPMS and IPMS submission registers to derive queue counts and rows:
+
+- `/api/v1/workflow-queues` accepts an allow-listed queue identity plus bounded page/page-size values. It applies each register's dynamic `*.READ` record scope before projecting a common lightweight row, combines OPMS and IPMS in SQL, calculates queue counts in the database and pages with stable ordering before materialization.
+- Staff queues distinguish verification, approval, PMS, auditor and returned work. Personal queues separately constrain drafts, pending submission, returned, verification, review, approval, internal-audit-returned and approved/closed work to the authenticated submitter or assigned owner; personal returned counts cannot expose the broader staff count.
+- Queue rows intentionally omit protected actual, variance and audit-observation members. Selecting a row loads the existing OPMS/IPMS detail endpoint, so current member-level redaction and record authorization remain authoritative rather than being duplicated in the browser.
+- Both `WorkflowQueues` and `MyWorkQueue` use the combined endpoint, authoritative counts and explicit page controls. Neither component imports the full-register clients.
+- Relational SQLite coverage proves combined OPMS/IPMS counts, scope-before-count/page behavior, personal ownership, stable kind identity and exclusion of inaccessible records. Frontend route/component tests prove exact queue transport, OPMS detail dispatch, personal returned isolation, live rows and explicit service-error behavior.
+
+The complete suites pass **312 backend tests**, with one environment-gated SQL Server test skipped, and **152/152 frontend tests across 45 files**. TypeScript, ESLint, the production frontend/Release backend build, the 67-chunk bundle budget and SQL Server-provider model/snapshot consistency pass with **0 warnings and 0 errors**. No schema migration or provider-specific path is introduced. The workflow-collection portion of R-45 is closed; compatibility/detail selectors, other secondary collections and representative native SQL Server query-plan/load evidence remain open.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1373,10 +1385,10 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 16 | POE storage, inherited access and assessments | Compliant | Governed file metadata, content safety, authorization inheritance and assessment records are implemented and tested at repository level. |
 | 17 | Audit, history, versioning and deletion governance | Partially Compliant | Contextual append-only audit and several version ledgers exist; complete immutable history for every legacy mutable projection is not demonstrated. |
 | 18 | Imports, validation and reconciliation | Partially Compliant | Governed import capability exists in selected modules, but complete OPMS/SDBIP import and reconciliation coverage is not evidenced. |
-| 19 | Dashboards and role-scoped operational views | Partially Compliant | OPMS/IPMS headline metrics and queues now use authorization-scoped database aggregates and dynamic navigation; broader analytical drill-down and some specified operational flows remain incomplete. |
+| 19 | Dashboards and role-scoped operational views | Partially Compliant | OPMS/IPMS headline metrics use authorization-scoped database aggregates, while staff and personal workflow queues use combined scope-filtered SQL counts and paging; broader analytical drill-down and some specified operational flows remain incomplete. |
 | 20 | Official reports, exports and version history | Compliant | Municipality/FY/period-scoped approved template versions generate immutable CSV/XLSX/DOCX/PDF performance outputs from one authorized dataset; each generation pins template/version, scope/filters, actor/time, snapshot/content hashes and private blob, while regeneration preserves prior versions and downloads re-evaluate scope and integrity. |
 | 21 | Notifications, reminders and delivery operations | Compliant | Versioned municipality/FY policies inherit through stage and period scope, materialize idempotent working-day reminders/escalations for reporting windows and RFIs, support in-app/email/SMS delivery, preserve retry/terminal receipts, catch up after downtime, enforce mandatory delivery over persisted optional preferences and expose governed administration/operations. |
-| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail submissions, related IPMS KPIs and audit history are server-filtered and bounded, and dashboards use database aggregates; workflow collections and other secondary selectors plus uniform SQL Server query-plan acceptance remain. |
+| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail submissions, related IPMS KPIs and audit history are server-filtered and bounded; dashboards use aggregates and workflow queues use combined database paging. Compatibility/detail selectors, other secondary collections and uniform SQL Server query-plan acceptance remain. |
 | 23 | Technical Indicator Descriptions | Compliant | Governed configuration, versions, files, scans, register paging and authorization are implemented. |
 | 24 | Circular 88 | Compliant | Catalogue, assignments, governed reports, workflow and paged register are implemented and tested. |
 | 25 | Integrated Development Plan | Compliant | Governed IDP structures, import/report paths and repository tests are present. |
@@ -1432,14 +1444,15 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced the OPMS/IPMS wide target request/response contract with typed canonical period rows, preserved heterogeneous non-numeric values and period-specific units in the SPA, and routed template creation through the complete governed target form.
 - Removed tenant-wide target prefetches from submission response mapping and changed OPMS/IPMS target details to bounded server-filtered submission, related-KPI and audit-history queries.
 - Replaced OPMS/IPMS dashboard register downloads and browser scans with versioned, authorization-scoped database aggregates for target, submission and workflow-queue metrics.
+- Replaced staff and personal workflow register downloads with one combined OPMS/IPMS endpoint that applies dynamic scopes before SQL counts, queue filters and stable paging, then delegates protected row details to the existing member-secured APIs.
 - Re-ran every available quality gate after the fixes.
 
 ### 12.5 Final test and build evidence
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 311; Failed: 0; Skipped: 1; Total: 312.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 150/150 across 45 files.** |
+| Backend test suite | **Passed: 312; Failed: 0; Skipped: 1; Total: 313.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 152/152 across 45 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed; 2,329 modules transformed. |

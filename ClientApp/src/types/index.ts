@@ -1155,6 +1155,64 @@ export interface PerformanceDashboardDto {
   pendingApproval: number;
 }
 
+export type WorkflowQueueName =
+  | 'all'
+  | 'my-submissions'
+  | 'verification'
+  | 'approval'
+  | 'pms'
+  | 'auditor'
+  | 'returned'
+  | 'my-drafts'
+  | 'pending-submission'
+  | 'my-returned'
+  | 'under-verification'
+  | 'under-review'
+  | 'under-approval'
+  | 'internal-audit-returned'
+  | 'approved-closed';
+
+export interface WorkflowQueueCountsDto {
+  mySubmissions: number;
+  verification: number;
+  approval: number;
+  pms: number;
+  auditor: number;
+  returned: number;
+  myDrafts: number;
+  pendingSubmission: number;
+  myReturned: number;
+  underVerification: number;
+  underReview: number;
+  underApproval: number;
+  internalAuditReturned: number;
+  approvedClosed: number;
+}
+
+export interface WorkflowQueueItemDto {
+  id: string;
+  publicId: string;
+  kind: 'opms' | 'ipms';
+  targetId: string;
+  targetPublicId: string;
+  targetName: string;
+  indicatorNumber: string;
+  quarter: Quarter;
+  dueDate?: string;
+  status: SubmissionStatus;
+  submittedByUserId?: string;
+  submittedByName?: string;
+  verifierName?: string;
+  approverName?: string;
+  createdAt: string;
+}
+
+export interface WorkflowQueueDto {
+  queue: WorkflowQueueName;
+  counts: WorkflowQueueCountsDto;
+  page: PagedResult<WorkflowQueueItemDto>;
+}
+
 export interface UserProfile {
   id: string;
   userName: string;
