@@ -18,6 +18,16 @@ const api = vi.hoisted(() => ({
   createRatingScheme: vi.fn(),
   getInternalAuditConfigurations: vi.fn(),
   saveInternalAuditConfiguration: vi.fn(),
+  getNotificationPolicies: vi.fn(),
+  getWorkingCalendarHolidays: vi.fn(),
+  createNotificationPolicy: vi.fn(),
+  activateNotificationPolicy: vi.fn(),
+  setNotificationPolicyDeliveryState: vi.fn(),
+  copyNotificationPolicy: vi.fn(),
+  previewNotificationPolicy: vi.fn(),
+  runDueNotificationPolicies: vi.fn(),
+  addWorkingCalendarHoliday: vi.fn(),
+  testNotificationPolicy: vi.fn(),
 }));
 
 vi.mock('../../api/api', () => api);
@@ -26,17 +36,31 @@ vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn()
 
 describe('WorkflowGovernanceAdminPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     api.getWorkflowDefinitions.mockResolvedValue({ success: true, data: [] });
     api.getReportingWindows.mockResolvedValue({ success: true, data: [] });
     api.getReportingPeriodMasters.mockResolvedValue({ success: true, data: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: '' }] });
     api.getRatingSchemes.mockResolvedValue({ success: true, data: [{ publicId: 'scheme-1', code: 'FIVE_POINT', name: 'Five point scale', isActive: true, rowVersion: 'AQ==', values: [] }] });
     api.getInternalAuditConfigurations.mockResolvedValue({ success: true, data: [] });
+    api.getNotificationPolicies.mockResolvedValue({ success: true, data: [] });
+    api.getWorkingCalendarHolidays.mockResolvedValue({ success: true, data: [] });
     api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
     api.getUsers.mockResolvedValue({ success: true, data: [] });
     api.getDepartments.mockResolvedValue({ success: true, data: [] });
     api.getUnits.mockResolvedValue({ success: true, data: [] });
     api.compareWorkflowDefinitions.mockResolvedValue({ success: false, message: 'not configured' });
     api.retireWorkflowDefinition.mockResolvedValue({ success: true, data: null });
+  });
+
+  it('opens municipality notification policy and working-calendar administration', async () => {
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+
+    await waitFor(() => expect(api.getNotificationPolicies).toHaveBeenCalledOnce());
+    expect(screen.getByText('New notification policy draft')).toBeInTheDocument();
+    expect(screen.getByText('Working-calendar holiday')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run due now' })).toBeInTheDocument();
   });
 
   it('loads authoritative configuration and switches governance tabs', async () => {

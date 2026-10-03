@@ -97,6 +97,10 @@ import type {
   StageRatingDto,
   SecurityNavigationItemDto,
   NotificationOutboxItemDto,
+  NotificationPolicyDto,
+  WorkingCalendarHolidayDto,
+  NotificationTemplatePreviewDto,
+  NotificationPreferenceDto,
   TidConfiguration,
   TidRegisterItem,
   TidSourceDocument,
@@ -1301,6 +1305,59 @@ export async function getPendingNotificationDeliveries(query: RegisterPageQuery 
 
 export async function retryNotificationDelivery(item: NotificationOutboxItemDto, reason: string): Promise<ApiResponse<NotificationOutboxItemDto>> {
   return post<NotificationOutboxItemDto>(`/v1/notification-operations/${item.publicId}/retry`, { reason, rowVersion: item.rowVersion });
+}
+
+export async function getNotificationPolicies(): Promise<ApiResponse<NotificationPolicyDto[]>> {
+  return get<NotificationPolicyDto[]>('/v1/notification-policies');
+}
+
+export async function createNotificationPolicy(payload: {
+  municipalityFinancialYearPublicId: string; previousVersionPublicId?: string | null; code: string; name: string; scope: 1 | 2 | 3; source: 1 | 2;
+  submissionKind?: 1 | 2 | null; workflowStageCode?: string | null; reportingPeriodPublicId?: string | null; isMandatory: boolean; deliveryPaused: boolean;
+  channels: string[]; titleTemplate: string; messageTemplate: string; effectiveFrom: string; effectiveTo?: string | null;
+  rules: Array<{ code: string; workingDayOffset: number; recipientKind: 1 | 2 | 3; recipientValues: string[] }>; reason: string;
+}): Promise<ApiResponse<NotificationPolicyDto>> {
+  return post<NotificationPolicyDto>('/v1/notification-policies', payload);
+}
+
+export async function activateNotificationPolicy(item: NotificationPolicyDto, reason: string): Promise<ApiResponse<NotificationPolicyDto>> {
+  return post<NotificationPolicyDto>(`/v1/notification-policies/${item.publicId}/activate`, { rowVersion: item.rowVersion, reason });
+}
+
+export async function setNotificationPolicyDeliveryState(item: NotificationPolicyDto, paused: boolean, reason: string): Promise<ApiResponse<NotificationPolicyDto>> {
+  return post<NotificationPolicyDto>(`/v1/notification-policies/${item.publicId}/delivery-state`, { paused, rowVersion: item.rowVersion, reason });
+}
+
+export async function copyNotificationPolicy(item: NotificationPolicyDto, municipalityFinancialYearPublicId: string, reason: string): Promise<ApiResponse<NotificationPolicyDto>> {
+  return post<NotificationPolicyDto>(`/v1/notification-policies/${item.publicId}/copy-to-financial-year`, { municipalityFinancialYearPublicId, reason });
+}
+
+export async function previewNotificationPolicy(item: NotificationPolicyDto): Promise<ApiResponse<NotificationTemplatePreviewDto>> {
+  return post<NotificationTemplatePreviewDto>(`/v1/notification-policies/${item.publicId}/preview`, { item: 'Performance submission', period: item.reportingPeriodName ?? 'Quarter 1', deadlineAt: new Date().toISOString(), workingDayOffset: item.rules[0]?.workingDayOffset ?? 0 });
+}
+
+export async function testNotificationPolicy(item: NotificationPolicyDto): Promise<ApiResponse<boolean>> {
+  return post<boolean>(`/v1/notification-policies/${item.publicId}/test`, { item: 'Performance submission', period: item.reportingPeriodName ?? 'Quarter 1', deadlineAt: new Date().toISOString(), workingDayOffset: item.rules[0]?.workingDayOffset ?? 0 });
+}
+
+export async function runDueNotificationPolicies(): Promise<ApiResponse<number>> {
+  return post<number>('/v1/notification-policies/run-due', {});
+}
+
+export async function getWorkingCalendarHolidays(): Promise<ApiResponse<WorkingCalendarHolidayDto[]>> {
+  return get<WorkingCalendarHolidayDto[]>('/v1/notification-policies/holidays');
+}
+
+export async function addWorkingCalendarHoliday(payload: { municipalityFinancialYearPublicId: string; date: string; name: string; reason: string }): Promise<ApiResponse<WorkingCalendarHolidayDto>> {
+  return post<WorkingCalendarHolidayDto>('/v1/notification-policies/holidays', payload);
+}
+
+export async function getMyNotificationPreferences(): Promise<ApiResponse<NotificationPreferenceDto>> {
+  return get<NotificationPreferenceDto>('/v1/notification-policies/preferences/me');
+}
+
+export async function saveMyNotificationPreferences(payload: NotificationPreferenceDto): Promise<ApiResponse<NotificationPreferenceDto>> {
+  return put<NotificationPreferenceDto>('/v1/notification-policies/preferences/me', payload);
 }
 
 export async function createRatingScheme(payload: { code: string; name: string; values: Array<{ value: number; label: string; minimumAchievementPercent?: number; maximumAchievementPercent?: number; sortOrder: number }> }): Promise<ApiResponse<RatingSchemeDto>> {

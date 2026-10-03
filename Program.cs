@@ -183,6 +183,10 @@ builder.Services.AddHttpClient<IEvidenceMalwareScanner, HttpEvidenceMalwareScann
     client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("EvidenceScanning:TimeoutSeconds", 30), 5, 120)));
 builder.Services.AddHttpClient<INotificationChannelSender, HttpEmailNotificationSender>(client =>
     client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Notifications:Email:TimeoutSeconds", 20), 5, 120)));
+builder.Services.AddHttpClient<INotificationChannelSender, HttpSmsNotificationSender>(client =>
+    client.Timeout = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Notifications:Sms:TimeoutSeconds", 20), 5, 120)));
+builder.Services.AddSingleton<IWorkingCalendarService, WorkingCalendarService>();
+builder.Services.AddScoped<INotificationPolicyService, NotificationPolicyService>();
 builder.Services.AddScoped<IPasswordResetNotifier, PasswordResetNotifier>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<ICompromisedPasswordLookup, PwnedPasswordLookup>(client =>
@@ -200,6 +204,7 @@ builder.Services.AddScoped<IEvidenceBlobStorage>(services =>
     throw new InvalidOperationException("EvidenceStorage:Provider must be either 'Http' or 'FileSystem'.");
 });
 builder.Services.AddHostedService<NotificationOutboxWorker>();
+builder.Services.AddHostedService<NotificationScheduleWorker>();
 builder.Services.AddHostedService<PoeDisposalWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, HttpTenantContext>();

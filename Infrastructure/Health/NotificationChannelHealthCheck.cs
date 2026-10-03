@@ -13,6 +13,8 @@ public sealed class NotificationChannelHealthCheck(IConfiguration configuration,
         if (missing.Length > 0) return Task.FromResult(HealthCheckResult.Unhealthy($"No sender is registered for: {string.Join(", ", missing)}."));
         if (configured.Contains("EMAIL") && !Uri.TryCreate(configuration["Notifications:Email:Endpoint"], UriKind.Absolute, out _))
             return Task.FromResult(HealthCheckResult.Unhealthy("Email notifications are enabled but the provider endpoint is not configured."));
+        if (configured.Contains("SMS") && !Uri.TryCreate(configuration["Notifications:Sms:Endpoint"], UriKind.Absolute, out _))
+            return Task.FromResult(HealthCheckResult.Unhealthy("SMS notifications are enabled but the provider endpoint is not configured."));
         return Task.FromResult(HealthCheckResult.Healthy($"Configured notification channels: {string.Join(", ", configured)}."));
     }
 }

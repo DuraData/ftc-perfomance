@@ -1504,6 +1504,53 @@ export interface NotificationOutboxItemDto {
   deliveries: NotificationDeliveryAttemptDto[];
 }
 
+export interface NotificationScheduleRuleDto {
+  publicId: string;
+  code: string;
+  workingDayOffset: number;
+  recipientKind: 1 | 2 | 3;
+  recipientValues: string[];
+  isActive: boolean;
+}
+
+export interface NotificationPolicyDto {
+  publicId: string;
+  familyId: string;
+  version: number;
+  code: string;
+  name: string;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  scope: 1 | 2 | 3;
+  source: 1 | 2;
+  submissionKind?: 1 | 2 | null;
+  workflowStageCode?: string | null;
+  reportingPeriodPublicId?: string | null;
+  reportingPeriodName?: string | null;
+  lifecycle: 1 | 2 | 3 | 4;
+  isMandatory: boolean;
+  deliveryPaused: boolean;
+  channels: string[];
+  titleTemplate: string;
+  messageTemplate: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  rules: NotificationScheduleRuleDto[];
+  rowVersion: string;
+}
+
+export interface WorkingCalendarHolidayDto {
+  publicId: string;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  date: string;
+  name: string;
+  rowVersion: string;
+}
+
+export interface NotificationTemplatePreviewDto { title: string; message: string; channels: string[] }
+export interface NotificationPreferenceDto { emailEnabled: boolean; smsEnabled: boolean; dailyDigestEnabled: boolean; weeklySummaryEnabled: boolean; rowVersion?: string | null }
+
 export interface WorkflowDefinitionDto {
   publicId: string;
   municipalityFinancialYearPublicId: string;

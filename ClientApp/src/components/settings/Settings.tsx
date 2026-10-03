@@ -5,8 +5,8 @@ import { Button, Card, Badge } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { changePassword, disableMfa, enableMfa, getAuthSessions, getMfaStatus, revokeAllAuthSessions, revokeAuthSession, setupMfa } from '../../api/api';
-import type { AuthSessionDto, MfaSetupDto, MfaStatusDto } from '../../types';
+import { changePassword, disableMfa, enableMfa, getAuthSessions, getMfaStatus, getMyNotificationPreferences, revokeAllAuthSessions, revokeAuthSession, saveMyNotificationPreferences, setupMfa } from '../../api/api';
+import type { AuthSessionDto, MfaSetupDto, MfaStatusDto, NotificationPreferenceDto } from '../../types';
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
@@ -64,39 +64,43 @@ function ProfileSettings() {
 }
 
 function NotificationSettings() {
-  const [settings, setSettings] = useState({
-    emailSubmissions: true,
-    emailApprovals: true,
-    emailOverdue: true,
-    pushSubmissions: true,
-    pushApprovals: false,
-    pushOverdue: true,
-    digest: true,
-    weeklyReport: false,
-  });
+  const { pushToast } = useApp();
+  const [settings, setSettings] = useState<NotificationPreferenceDto>({ emailEnabled: true, smsEnabled: false, dailyDigestEnabled: true, weeklySummaryEnabled: false, rowVersion: null });
+  const [busy, setBusy] = useState(true);
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const result = await getMyNotificationPreferences();
+      if (result.success && result.data) setSettings(result.data);
+      else setMessage(result.message ?? 'Notification preferences could not be loaded.');
+      setBusy(false);
+    })();
+  }, []);
+  const save = async () => {
+    setBusy(true); setMessage(null);
+    const result = await saveMyNotificationPreferences(settings);
+    if (!result.success || !result.data) setMessage(result.message ?? 'Notification preferences could not be saved.');
+    else { setSettings(result.data); pushToast('success', 'Notification preferences saved'); setMessage(result.message ?? null); }
+    setBusy(false);
+  };
 
   return (
     <div className="space-y-3">
-      <FormSection title="Email">
+      {message && <p role="status" className="rounded-lg border border-secondary-200 p-3 text-xs text-secondary-600">{message}</p>}
+      <FormSection title="Optional delivery channels">
         <div className="space-y-2">
-          <Checkbox label="Submissions" description="New submission assignments" checked={settings.emailSubmissions} onChange={(e) => setSettings({ ...settings, emailSubmissions: e.target.checked })} />
-          <Checkbox label="Approvals" description="Pending approval items" checked={settings.emailApprovals} onChange={(e) => setSettings({ ...settings, emailApprovals: e.target.checked })} />
-          <Checkbox label="Overdue alerts" description="Overdue submission alerts" checked={settings.emailOverdue} onChange={(e) => setSettings({ ...settings, emailOverdue: e.target.checked })} />
-        </div>
-      </FormSection>
-      <FormSection title="In-App">
-        <div className="space-y-2">
-          <Checkbox label="Submission updates" description="Status changes" checked={settings.pushSubmissions} onChange={(e) => setSettings({ ...settings, pushSubmissions: e.target.checked })} />
-          <Checkbox label="Approval requests" checked={settings.pushApprovals} onChange={(e) => setSettings({ ...settings, pushApprovals: e.target.checked })} />
-          <Checkbox label="Overdue reminders" checked={settings.pushOverdue} onChange={(e) => setSettings({ ...settings, pushOverdue: e.target.checked })} />
+          <Checkbox label="Email" description="Receive optional notices by email when an address is available." checked={settings.emailEnabled} disabled={busy} onChange={(e) => setSettings({ ...settings, emailEnabled: e.target.checked })} />
+          <Checkbox label="SMS" description="Receive optional notices by SMS when a phone number is available." checked={settings.smsEnabled} disabled={busy} onChange={(e) => setSettings({ ...settings, smsEnabled: e.target.checked })} />
         </div>
       </FormSection>
       <FormSection title="Reports">
         <div className="space-y-2">
-          <Checkbox label="Daily digest" checked={settings.digest} onChange={(e) => setSettings({ ...settings, digest: e.target.checked })} />
-          <Checkbox label="Weekly summary" checked={settings.weeklyReport} onChange={(e) => setSettings({ ...settings, weeklyReport: e.target.checked })} />
+          <Checkbox label="Daily digest" checked={settings.dailyDigestEnabled} disabled={busy} onChange={(e) => setSettings({ ...settings, dailyDigestEnabled: e.target.checked })} />
+          <Checkbox label="Weekly summary" checked={settings.weeklySummaryEnabled} disabled={busy} onChange={(e) => setSettings({ ...settings, weeklySummaryEnabled: e.target.checked })} />
         </div>
       </FormSection>
+      <p className="text-xs text-secondary-500">Mandatory workflow, deadline, RFI and escalation notifications cannot be disabled. In-app operational records are always retained.</p>
+      <Button variant="primary" size="sm" icon={<Save className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>Save notification preferences</Button>
     </div>
   );
 }

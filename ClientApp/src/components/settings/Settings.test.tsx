@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Settings } from './Settings';
 
-const api = vi.hoisted(() => ({ getAuthSessions: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn(), changePassword: vi.fn() }));
+const api = vi.hoisted(() => ({ getAuthSessions: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn(), changePassword: vi.fn(), getMyNotificationPreferences: vi.fn(), saveMyNotificationPreferences: vi.fn() }));
 const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn(), userProfile: null as null | { mustChangePassword: boolean } }));
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ ...app, darkMode: false, toggleDarkMode: vi.fn() }) }));
@@ -9,6 +9,7 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 
 describe('Security session settings', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.setItem('settings_active_tab', 'security');
     api.getAuthSessions.mockResolvedValue({ success: true, data: [{ sessionId: 'session-1', createdAt: '2026-10-02T08:00:00Z', lastUsedAt: '2026-10-02T09:00:00Z', absoluteExpiresAt: '2026-10-03T08:00:00Z', userAgent: 'Test Browser', authenticationMethod: 'LOCAL', isCurrent: false }] });
     api.revokeAuthSession.mockResolvedValue({ success: true, data: true });
@@ -17,7 +18,19 @@ describe('Security session settings', () => {
     api.setupMfa.mockResolvedValue({ success: true, data: { sharedKey: 'abcd efgh', authenticatorUri: 'otpauth://totp/test' } });
     api.enableMfa.mockResolvedValue({ success: true, data: { recoveryCodes: ['recovery-one', 'recovery-two'] } });
     api.changePassword.mockResolvedValue({ success: true, data: true });
+    api.getMyNotificationPreferences.mockResolvedValue({ success: true, data: { emailEnabled: true, smsEnabled: false, dailyDigestEnabled: true, weeklySummaryEnabled: false, rowVersion: 'AQ==' } });
+    api.saveMyNotificationPreferences.mockImplementation(async (value) => ({ success: true, data: { ...value, rowVersion: 'Ag==' }, message: 'Optional preferences saved.' }));
     app.userProfile = null;
+  });
+
+  it('loads and persists notification preferences while explaining mandatory delivery', async () => {
+    localStorage.setItem('settings_active_tab', 'notifications');
+    render(<Settings />);
+    await waitFor(() => expect(api.getMyNotificationPreferences).toHaveBeenCalledOnce());
+    expect(screen.getByText(/Mandatory workflow, deadline, RFI and escalation notifications cannot be disabled/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('SMS'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save notification preferences' }));
+    await waitFor(() => expect(api.saveMyNotificationPreferences).toHaveBeenCalledWith(expect.objectContaining({ smsEnabled: true, rowVersion: 'AQ==' })));
   });
 
   it('shows real sessions and revokes a selected session', async () => {

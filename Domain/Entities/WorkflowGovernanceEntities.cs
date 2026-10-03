@@ -31,7 +31,9 @@ public enum NotificationType
     Rfi = 5,
     InternalAuditRfi = 6,
     OverdueItem = 7,
-    DueDateExtension = 8
+    DueDateExtension = 8,
+    DeadlineReminder = 9,
+    Escalation = 10
 }
 
 public enum SubmissionKind

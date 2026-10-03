@@ -135,6 +135,11 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<AuthenticationPolicy> AuthenticationPolicies { get; set; } = null!;
     public DbSet<UserAuthenticator> UserAuthenticators { get; set; } = null!;
     public DbSet<AuthenticationEvent> AuthenticationEvents { get; set; } = null!;
+    public DbSet<NotificationConfiguration> NotificationConfigurations { get; set; } = null!;
+    public DbSet<NotificationScheduleRule> NotificationScheduleRules { get; set; } = null!;
+    public DbSet<WorkingCalendarHoliday> WorkingCalendarHolidays { get; set; } = null!;
+    public DbSet<ScheduledNotification> ScheduledNotifications { get; set; } = null!;
+    public DbSet<NotificationPreference> NotificationPreferences { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -142,6 +147,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigurePerformanceConsolidation(builder);
         ConfigureInternalAuditAssessments(builder);
         ConfigureOfficialReports(builder);
+        ConfigureNotificationPolicies(builder);
 
         builder.Entity<Municipality>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<Municipality>().HasIndex(item => item.Code).IsUnique();
@@ -1908,7 +1914,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdempotencyRequest), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
             typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping),
             typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent),
-            typeof(InternalAuditAssessmentConfiguration), typeof(InternalAuditAssessment), typeof(OfficialReportTemplate), typeof(OfficialReportGeneration)
+            typeof(InternalAuditAssessmentConfiguration), typeof(InternalAuditAssessment), typeof(OfficialReportTemplate), typeof(OfficialReportGeneration),
+            typeof(NotificationConfiguration), typeof(NotificationScheduleRule), typeof(WorkingCalendarHoliday), typeof(ScheduledNotification), typeof(NotificationPreference)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1942,6 +1949,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         if (ChangeTracker.Entries<OfficialReportTemplate>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Official report templates and generated report history are append-only.");
+        if (ChangeTracker.Entries<NotificationConfiguration>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<NotificationScheduleRule>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<WorkingCalendarHoliday>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Notification policy versions, rules, and working-calendar history cannot be deleted or rewritten.");
         if (ChangeTracker.Entries<PerformanceRfiEvidence>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("RFI evidence provenance is append-only.");
         if (ChangeTracker.Entries<PoeEvidenceAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

@@ -28,8 +28,8 @@ public sealed class NotificationOutboxWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var senders = scope.ServiceProvider.GetServices<INotificationChannelSender>().ToDictionary(item => item.Channel, StringComparer.OrdinalIgnoreCase);
-        var channels = (configuration["Notifications:Channels"] ?? "IN_APP").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(item => item.ToUpperInvariant()).Distinct().ToArray();
-        if (channels.Length == 0) channels = ["IN_APP"];
+        var defaultChannels = (configuration["Notifications:Channels"] ?? "IN_APP").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(item => item.ToUpperInvariant()).Distinct().ToArray();
+        if (defaultChannels.Length == 0) defaultChannels = ["IN_APP"];
         var now = DateTime.UtcNow;
         var rows = await context.BusinessEventOutbox.IgnoreQueryFilters()
             .Where(item => item.ProcessedAt == null && item.AvailableAt <= now && item.AttemptCount < 10 && item.EventType.StartsWith("Notification."))
@@ -41,7 +41,9 @@ public sealed class NotificationOutboxWorker(
             try
             {
                 var payload = ReadPayload(row.Payload);
+                var channels = payload.Channels.Length == 0 ? defaultChannels : payload.Channels;
                 var users = await context.Users.IgnoreQueryFilters().Where(item => payload.Recipients.Contains(item.Id)).ToDictionaryAsync(item => item.Id, StringComparer.OrdinalIgnoreCase, cancellationToken);
+                var preferences = await context.NotificationPreferences.IgnoreQueryFilters().Where(item => payload.Recipients.Contains(item.UserId)).ToDictionaryAsync(item => item.UserId, StringComparer.OrdinalIgnoreCase, cancellationToken);
                 var failures = new List<string>();
                 foreach (var recipient in payload.Recipients)
                 {
@@ -58,23 +60,25 @@ public sealed class NotificationOutboxWorker(
 
                         NotificationChannelResult result;
                         if (channel == "IN_APP") result = new(true, "ApplicationDatabase", row.PublicId.ToString(), "In-app notification persisted transactionally with the outbox event.");
+                        else if (!payload.Mandatory && preferences.TryGetValue(recipient, out var preference) && ((channel == "EMAIL" && !preference.EmailEnabled) || (channel == "SMS" && !preference.SmsEnabled)))
+                            result = NotificationChannelResult.Suppressed($"Recipient disabled optional {channel} notifications.");
                         else if (!senders.TryGetValue(channel, out var sender)) result = NotificationChannelResult.Failed("Unconfigured", $"No sender is registered for channel '{channel}'.");
                         else
                         {
-                            var address = channel == "EMAIL" && users.TryGetValue(recipient, out var user) ? user.Email : null;
+                            var address = users.TryGetValue(recipient, out var user) ? channel switch { "EMAIL" => user.Email, "SMS" => user.PhoneNumber, _ => null } : null;
                             result = string.IsNullOrWhiteSpace(address)
-                                ? NotificationChannelResult.Failed(sender.GetType().Name, $"Recipient has no deliverable address for channel '{channel}'.")
+                                ? NotificationChannelResult.NotDeliverable(sender.GetType().Name, $"Recipient has no deliverable address for channel '{channel}'.")
                                 : await sender.SendAsync(new NotificationChannelMessage(recipient, address, payload.Title, payload.Message, payload.EntityName, payload.EntityId, idempotencyKey, row.CorrelationId), cancellationToken);
                         }
                         attempt.AttemptCount++;
                         attempt.AttemptedAt = DateTime.UtcNow;
-                        attempt.Status = result.Delivered ? "Delivered" : "Failed";
+                        attempt.Status = result.Delivered ? "Delivered" : result.Retryable ? "Failed" : result.TerminalStatus ?? "NotDeliverable";
                         attempt.DeliveredAt = result.Delivered ? attempt.AttemptedAt : null;
                         attempt.Error = result.Delivered ? null : Limit(result.Detail);
                         attempt.Provider = result.Provider;
                         attempt.ProviderReference = result.ProviderReference;
                         attempt.ResponseDetail = Limit(result.Detail);
-                        if (!result.Delivered) failures.Add($"{channel}/{recipient}: {result.Detail}");
+                        if (!result.Delivered && result.Retryable) failures.Add($"{channel}/{recipient}: {result.Detail}");
                     }
                 }
                 row.AttemptCount++;
@@ -109,10 +113,14 @@ public sealed class NotificationOutboxWorker(
             ReadString(root, "title") ?? "OPMS notification",
             ReadString(root, "message") ?? string.Empty,
             ReadString(root, "entityName"),
-            ReadString(root, "entityId"));
+            ReadString(root, "entityId"),
+            root.TryGetProperty("channels", out var channels) && channels.ValueKind == JsonValueKind.Array
+                ? channels.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString()?.ToUpperInvariant()).Where(item => item is "IN_APP" or "EMAIL" or "SMS").Select(item => item!).Distinct().ToArray()
+                : [],
+            !root.TryGetProperty("mandatory", out var mandatory) || mandatory.ValueKind != JsonValueKind.False);
     }
 
     private static string? ReadString(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static string? Limit(string? value) => string.IsNullOrWhiteSpace(value) ? value : value.Length > 2000 ? value[..2000] : value;
-    private sealed record NotificationPayload(string[] Recipients, string Title, string Message, string? EntityName, string? EntityId);
+    private sealed record NotificationPayload(string[] Recipients, string Title, string Message, string? EntityName, string? EntityId, string[] Channels, bool Mandatory);
 }

@@ -4,6 +4,7 @@ using FTCERP.Host.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FTCERP.Host.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003160701_V39NotificationPoliciesAndScheduling")]
+    partial class V39NotificationPoliciesAndScheduling
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4811,58 +4814,6 @@ namespace FTCERP.Host.Migrations
                         .IsUnique();
 
                     b.ToTable("NotificationDeliveryAttempts");
-                });
-
-            modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationPreference", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<bool>("DailyDigestEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("EmailEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<long>("MunicipalityId")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<bool>("SmsEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<bool>("WeeklySummaryEnabled")
-                        .HasColumnType("bit");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("MunicipalityId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("NotificationPreferences");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationScheduleRule", b =>
@@ -10860,25 +10811,6 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("BusinessEventOutbox");
 
                     b.Navigation("Municipality");
-                });
-
-            modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationPreference", b =>
-                {
-                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
-                        .WithMany()
-                        .HasForeignKey("MunicipalityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Municipality");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationScheduleRule", b =>
