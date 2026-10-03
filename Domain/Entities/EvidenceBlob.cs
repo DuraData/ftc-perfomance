@@ -26,4 +26,5 @@ public class EvidenceBlob
     public ICollection<IdpDocument> IdpDocumentAssociations { get; set; } = new List<IdpDocument>();
     public ICollection<TidSourceDocument> TidSourceDocumentAssociations { get; set; } = new List<TidSourceDocument>();
     public ICollection<StrategicDocument> StrategicDocumentAssociations { get; set; } = new List<StrategicDocument>();
+    public ICollection<OfficialReportGeneration> OfficialReportGenerations { get; set; } = new List<OfficialReportGeneration>();
 }

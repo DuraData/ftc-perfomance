@@ -1705,6 +1705,57 @@ export interface PerformanceReportSummaryDto {
   departments: DepartmentPerformanceReportDto[];
 }
 
+export type OfficialReportFormat = 1 | 2 | 3 | 4;
+
+export interface OfficialReportTemplateDto {
+  publicId: string;
+  templateFamilyPublicId: string;
+  municipalityFinancialYearPublicId?: string | null;
+  financialYearCode?: string | null;
+  submissionKind: number;
+  code: string;
+  name: string;
+  format: OfficialReportFormat;
+  versionNumber: number;
+  headingTemplate: string;
+  columns: string[];
+  isCurrent: boolean;
+  isActive: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  approvalReference: string;
+  reason: string;
+  createdAt: string;
+  rowVersion: string;
+}
+
+export interface OfficialReportGenerationDto {
+  publicId: string;
+  generationFamilyPublicId: string;
+  versionNumber: number;
+  templatePublicId: string;
+  templateCode: string;
+  templateName: string;
+  templateVersion: number;
+  format: OfficialReportFormat;
+  submissionKind: number;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  reportingPeriodPublicId: string;
+  reportingPeriodCode: string;
+  scopeJson: string;
+  filterJson: string;
+  dataVersionReference: string;
+  fileName: string;
+  contentType: string;
+  sizeInBytes: number;
+  sha256: string;
+  rowCount: number;
+  generatedBy: string;
+  generatedAt: string;
+  downloadUrl: string;
+}
+
 export type SecurityPermissionState = 'ALLOW' | 'DENY';
 
 export interface SecurityPermissionDefinition {

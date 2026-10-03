@@ -84,6 +84,9 @@ import type {
   ReportingWindowDto,
   RatingSchemeDto,
   PerformanceReportSummaryDto,
+  OfficialReportTemplateDto,
+  OfficialReportGenerationDto,
+  OfficialReportFormat,
   PerformancePeriodTargetDto,
   PerformanceTargetRevisionDto,
   ReportingWindowExceptionDto,
@@ -1321,6 +1324,51 @@ export async function downloadPerformanceReportCsv(kind: 1 | 2, reportingPeriodP
   const disposition = response.headers.get('Content-Disposition') ?? '';
   const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
   const fileName = match ? decodeURIComponent(match[1].replace(/"$/, '')) : `${kind === 1 ? 'opms' : 'ipms'}-performance.csv`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url; anchor.download = fileName; anchor.click();
+  URL.revokeObjectURL(url);
+  return { success: true, data: true };
+}
+
+export async function getOfficialReportTemplates(kind: 1 | 2, includeHistory = false): Promise<ApiResponse<OfficialReportTemplateDto[]>> {
+  return get<OfficialReportTemplateDto[]>(`/v1/reports/official/templates?kind=${kind}&includeHistory=${includeHistory}`);
+}
+
+export async function saveOfficialReportTemplate(payload: {
+  previousVersionPublicId?: string | null;
+  previousVersionRowVersion?: string | null;
+  municipalityFinancialYearPublicId?: string | null;
+  submissionKind: 1 | 2;
+  code: string;
+  name: string;
+  format: OfficialReportFormat;
+  headingTemplate: string;
+  columns: string[];
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  approvalReference: string;
+  reason: string;
+}): Promise<ApiResponse<OfficialReportTemplateDto>> {
+  return post<OfficialReportTemplateDto>('/v1/reports/official/templates', payload);
+}
+
+export async function getOfficialReportGenerations(kind: 1 | 2, reportingPeriodPublicId?: string): Promise<ApiResponse<OfficialReportGenerationDto[]>> {
+  const query = new URLSearchParams({ kind: String(kind) });
+  if (reportingPeriodPublicId) query.set('reportingPeriodPublicId', reportingPeriodPublicId);
+  return get<OfficialReportGenerationDto[]>(`/v1/reports/official/generations?${query}`);
+}
+
+export async function generateOfficialReport(payload: { templatePublicId: string; municipalityFinancialYearPublicId: string; reportingPeriodPublicId: string; previousGenerationPublicId?: string | null }): Promise<ApiResponse<OfficialReportGenerationDto>> {
+  return post<OfficialReportGenerationDto>('/v1/reports/official/generations', payload);
+}
+
+export async function downloadOfficialReport(publicId: string, fileName: string): Promise<ApiResponse<boolean>> {
+  const headers: Record<string, string> = {};
+  addTenantHeader(headers);
+  const response = await fetch(`${API_BASE_URL}/v1/reports/official/generations/${encodeURIComponent(publicId)}/content`, { headers, credentials: 'include' });
+  if (!response.ok) return readApiResponse<boolean>(response);
+  const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url; anchor.download = fileName; anchor.click();

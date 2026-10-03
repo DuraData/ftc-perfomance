@@ -4,7 +4,13 @@ import { Reports } from './Reports';
 const api = vi.hoisted(() => ({
   getPerformanceReportSummary: vi.fn(),
   getReportingPeriodMasters: vi.fn(),
+  getMunicipalityFinancialYearMasters: vi.fn(),
   downloadPerformanceReportCsv: vi.fn(),
+  getOfficialReportTemplates: vi.fn(),
+  getOfficialReportGenerations: vi.fn(),
+  generateOfficialReport: vi.fn(),
+  downloadOfficialReport: vi.fn(),
+  saveOfficialReportTemplate: vi.fn(),
 }));
 
 vi.mock('../../api/api', () => api);
@@ -19,15 +25,18 @@ vi.mock('recharts', () => ({
   Bar: () => null,
 }));
 vi.mock('../../context/AppContext', () => ({
-  useApp: () => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT'], pushToast: vi.fn() }),
+  useApp: () => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'], pushToast: vi.fn() }),
 }));
 
 describe('Reports', () => {
   beforeEach(() => {
     api.getReportingPeriodMasters.mockResolvedValue({
       success: true,
-      data: [{ publicId: 'period-1', code: 'Q1', name: 'Quarter 1' }],
+      data: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1' }],
     });
+    api.getMunicipalityFinancialYearMasters.mockResolvedValue({ success: true, data: [{ publicId: 'year-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true }] });
+    api.getOfficialReportTemplates.mockResolvedValue({ success: true, data: [{ publicId: 'template-1', templateFamilyPublicId: 'family-1', submissionKind: 1, code: 'QUARTERLY', name: 'Quarterly report', format: 4, versionNumber: 2, headingTemplate: '{FinancialYear} {Period}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-1', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'AQ==' }] });
+    api.getOfficialReportGenerations.mockResolvedValue({ success: true, data: [{ publicId: 'generation-1', generationFamilyPublicId: 'generation-family-1', versionNumber: 1, templatePublicId: 'template-1', templateCode: 'QUARTERLY', templateName: 'Quarterly report', templateVersion: 2, format: 4, submissionKind: 1, municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1', scopeJson: '{}', filterJson: '{}', dataVersionReference: 'a'.repeat(64), fileName: 'quarterly.pdf', contentType: 'application/pdf', sizeInBytes: 100, sha256: 'b'.repeat(64), rowCount: 4, generatedBy: 'auditor', generatedAt: '2026-10-01T10:00:00Z', downloadUrl: '/content' }] });
     api.getPerformanceReportSummary.mockResolvedValue({
       success: true,
       data: {
@@ -51,5 +60,7 @@ describe('Reports', () => {
     expect(screen.getByText('87.5%')).toBeInTheDocument();
     expect(screen.getByText('Finance')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Export CSV/i })).toBeEnabled();
+    expect(await screen.findByText('Official generation history')).toBeInTheDocument();
+    expect(screen.getByText('Quarterly report')).toBeInTheDocument();
   });
 });

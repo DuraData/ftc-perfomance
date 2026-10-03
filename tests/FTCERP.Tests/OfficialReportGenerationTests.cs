@@ -1,0 +1,150 @@
+using System.IO.Compression;
+using FluentAssertions;
+using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
+using FTCERP.Host.API.Responses;
+using FTCERP.Host.Application.Reporting;
+using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Persistence;
+using FTCERP.Host.Infrastructure.Security;
+using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Moq;
+using System.Security.Claims;
+
+namespace FTCERP.Tests;
+
+public sealed class OfficialReportGenerationTests
+{
+    private static readonly OfficialPerformanceReportRow[] Rows =
+    [
+        new("KPI-001", "Revenue collected", "Finance", "Revenue", "Q1", "95%", "90%", "-5", "94.74", "False", "Submitted"),
+        new("=FORMULA", "Formula-safe title", "Corporate", "Governance", "Q1", "1", "1", "0", "100", "True", "Approved")
+    ];
+
+    [Theory]
+    [InlineData(OfficialReportFormat.Csv, "csv")]
+    [InlineData(OfficialReportFormat.Xlsx, "xlsx")]
+    [InlineData(OfficialReportFormat.Docx, "docx")]
+    [InlineData(OfficialReportFormat.Pdf, "pdf")]
+    public void Renderer_ProducesEveryApprovedFormatFromTheSameDeterministicDataset(OfficialReportFormat format, string extension)
+    {
+        var request = new OfficialReportRenderRequest("Example Municipality", "2026/27", "Quarter 1", "{Municipality} · {FinancialYear} {Period}", OfficialReportRenderer.DefaultColumnsJson, format, Rows);
+
+        var first = OfficialReportRenderer.Render(request);
+        var second = OfficialReportRenderer.Render(request);
+
+        first.Extension.Should().Be(extension);
+        first.Content.Should().NotBeEmpty();
+        first.DataVersionReference.Should().HaveLength(64).And.Be(second.DataVersionReference);
+        first.Sha256.Should().HaveLength(64).And.Be(second.Sha256);
+        first.Content.Should().Equal(second.Content);
+        if (format == OfficialReportFormat.Pdf) first.Content[..5].Should().Equal("%PDF-"u8.ToArray());
+        if (format is OfficialReportFormat.Xlsx or OfficialReportFormat.Docx)
+        {
+            using var archive = new ZipArchive(new MemoryStream(first.Content), ZipArchiveMode.Read);
+            archive.GetEntry("[Content_Types].xml").Should().NotBeNull();
+        }
+        if (format == OfficialReportFormat.Csv)
+            System.Text.Encoding.UTF8.GetString(first.Content).Should().Contain("\"'=FORMULA\"");
+    }
+
+    [Fact]
+    public void Renderer_RejectsUnknownAndDuplicateColumns()
+    {
+        var unknown = () => OfficialReportRenderer.ValidateColumns("[\"indicator\",\"secretField\"]");
+        var duplicate = () => OfficialReportRenderer.ValidateColumns("[\"indicator\",\"INDICATOR\"]");
+        unknown.Should().Throw<ArgumentException>();
+        duplicate.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void PdfRenderer_PaginatesWithoutDroppingOfficialRows()
+    {
+        var rows = Enumerable.Range(1, 120).Select(index => Rows[0] with { Indicator = $"KPI-{index:D3}" }).ToArray();
+        var result = OfficialReportRenderer.Render(new("Example Municipality", "2026/27", "Annual", "Annual report", OfficialReportRenderer.DefaultColumnsJson, OfficialReportFormat.Pdf, rows));
+        var pdf = System.Text.Encoding.ASCII.GetString(result.Content);
+        pdf.Should().Contain("/Count 3");
+        pdf.Should().Contain("KPI-120");
+    }
+
+    [Fact]
+    public async Task OfficialGenerations_AreTenantFilteredVersionUniqueAndAppendOnly()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        long tenantAId;
+        long tenantBId;
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var tenantA = new Municipality { Name = "Tenant A", Code = "TA" };
+            var tenantB = new Municipality { Name = "Tenant B", Code = "TB" };
+            setup.AddRange(tenantA, tenantB);
+            await setup.SaveChangesAsync();
+            tenantAId = tenantA.Id; tenantBId = tenantB.Id;
+            await SeedGeneration(setup, tenantA, "reporter-a");
+            await SeedGeneration(setup, tenantB, "reporter-b");
+        }
+
+        await using var tenantAContext = new ApplicationDbContext(options, new FixedTenantContext(tenantAId));
+        (await tenantAContext.OfficialReportGenerations.CountAsync()).Should().Be(1);
+        (await tenantAContext.OfficialReportTemplates.CountAsync()).Should().Be(1);
+        var generation = await tenantAContext.OfficialReportGenerations.SingleAsync();
+        generation.VersionNumber = 2;
+        var update = () => tenantAContext.SaveChangesAsync();
+        await update.Should().ThrowAsync<InvalidOperationException>().WithMessage("*generated report history*append-only*");
+        tenantAContext.Entry(generation).State = EntityState.Unchanged;
+
+        var crossTenant = new OfficialReportGeneration { MunicipalityId = tenantBId };
+        tenantAContext.OfficialReportGenerations.Add(crossTenant);
+        var write = () => tenantAContext.SaveChangesAsync();
+        await write.Should().ThrowAsync<UnauthorizedAccessException>().WithMessage("*Cross-municipality writes*");
+    }
+
+    [Fact]
+    public async Task DirectGenerationCall_IsDeniedWhenTheDynamicActionPermissionIsHidden()
+    {
+        var municipalityId = 701L;
+        var tenant = new FixedTenantContext(municipalityId);
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        var municipality = new Municipality { Id = municipalityId, Code = "RPT", Name = "Reporting Municipality" };
+        var user = new ApplicationUser { Id = "restricted-reporter", UserName = "restricted-reporter", FirstName = "Restricted", LastName = "Reporter", MunicipalityId = municipalityId };
+        var template = new OfficialReportTemplate { MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Opms, Code = "QUARTERLY", Name = "Quarterly", Format = OfficialReportFormat.Pdf, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ApprovalReference = "Council", Reason = "Approved", CreatedByUserId = user.Id, ColumnConfigurationJson = OfficialReportRenderer.DefaultColumnsJson };
+        context.AddRange(municipality, user, template);
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_REPORT.GENERATE")).ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }
+        };
+
+        var response = await controller.Generate(new GenerateOfficialReportRequest(template.PublicId, Guid.NewGuid(), Guid.NewGuid(), null));
+
+        response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    private static async Task SeedGeneration(ApplicationDbContext context, Municipality municipality, string userId)
+    {
+        var user = new ApplicationUser { Id = userId, UserName = userId, NormalizedUserName = userId.ToUpperInvariant(), Email = userId + "@example.test", NormalizedEmail = (userId + "@example.test").ToUpperInvariant(), FirstName = "Report", LastName = "User", MunicipalityId = municipality.Id };
+        var year = new FinancialYear { Code = municipality.Code + "-2026", Name = "2026/27", StartDate = new(2026, 7, 1), EndDate = new(2027, 6, 30) };
+        context.AddRange(user, year); await context.SaveChangesAsync();
+        var municipalYear = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = year.Id, IsActive = true, IsCurrent = true, EffectiveFrom = year.StartDate };
+        context.Add(municipalYear); await context.SaveChangesAsync();
+        var period = new ReportingPeriod { MunicipalityFinancialYearId = municipalYear.Id, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = new(2026, 7, 1), EndDate = new(2026, 9, 30) };
+        context.Add(period); await context.SaveChangesAsync();
+        var template = new OfficialReportTemplate { MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, Code = "QUARTERLY", Name = "Quarterly report", Format = OfficialReportFormat.Pdf, EffectiveFrom = year.StartDate, ApprovalReference = "Council-1", Reason = "Approved layout", CreatedByUserId = user.Id, ColumnConfigurationJson = OfficialReportRenderer.DefaultColumnsJson };
+        var blob = new EvidenceBlob { MunicipalityId = municipality.Id, StorageKey = $"official-reports/{municipality.Id}/one/v1.pdf", ContentType = "application/pdf", SizeInBytes = 4, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "SystemGenerated" };
+        context.AddRange(template, blob); await context.SaveChangesAsync();
+        context.Add(new OfficialReportGeneration { GenerationFamilyPublicId = Guid.NewGuid(), MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, ReportingPeriodId = period.Id, ReportTemplateId = template.Id, EvidenceBlobId = blob.Id, SubmissionKind = SubmissionKind.Opms, VersionNumber = 1, ScopeJson = "{\"Unrestricted\":true,\"DepartmentIds\":[],\"UnitIds\":[],\"OwnerUserIds\":[],\"TargetIds\":[]}", FilterJson = "{}", DataVersionReference = new string('b', 64), FileName = "report-v1.pdf", ContentType = "application/pdf", SizeInBytes = 4, Sha256 = blob.Sha256, RowCount = 1, GeneratedByUserId = user.Id });
+        await context.SaveChangesAsync();
+    }
+
+    private sealed class FixedTenantContext(long municipalityId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => "test"; }
+    private sealed class SystemTenantContext : ITenantContext { public long? MunicipalityId => null; public bool IsSystem => true; public string? UserId => "system"; }
+}
