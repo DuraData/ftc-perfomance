@@ -23,8 +23,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: ClientApp/package-lock.json
-      - name: Restore backend
-        run: dotnet restore FTCERP.Host.csproj --configfile NuGet.Config
+      - name: Restore backend and tests
+        run: dotnet restore tests/FTCERP.Tests/FTCERP.Tests.csproj --configfile NuGet.Config
       - name: Build backend
         run: dotnet build FTCERP.Host.csproj --no-restore -p:SkipClientBuild=true --configuration Release
       - name: Test backend
