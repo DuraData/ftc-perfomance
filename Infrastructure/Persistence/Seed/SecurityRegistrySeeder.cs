@@ -49,6 +49,7 @@ public static class SecurityRegistrySeeder
         {
             Action("OPMS_KPI.ACTIVATE", "Activate KPI", "OPMS_KPI"), Action("OPMS_KPI.WITHDRAW", "Withdraw KPI", "OPMS_KPI"), Action("OPMS_KPI.REVISE", "Revise KPI", "OPMS_KPI"),
             Action("OPMS_KPI.NORMALIZE_LEGACY", "Normalize Legacy Target Values", "OPMS_KPI"),
+            Action("OPMS_KPI.CONFIGURE_CONSOLIDATION", "Configure Performance Consolidation", "OPMS_KPI"),
             Action("IPMS_KPI.WITHDRAW", "Withdraw KPI", "IPMS_KPI"),
             Action("OPMS_SUBMISSION.SAVE", "Save Submission", "OPMS_SUBMISSION"), Action("OPMS_SUBMISSION.SUBMIT", "Submit", "OPMS_SUBMISSION"),
             Action("OPMS_SUBMISSION.WITHDRAW", "Withdraw Submission", "OPMS_SUBMISSION"),
