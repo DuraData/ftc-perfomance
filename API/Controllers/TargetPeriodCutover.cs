@@ -26,6 +26,11 @@ internal sealed record TargetPeriodPlan(IReadOnlyList<PlannedPeriodTarget> Rows,
     public static TargetPeriodPlan Invalid(string error) => new([], error);
 }
 
+internal sealed record TargetPeriodReconciliation(IReadOnlyList<PlannedPeriodTarget> MissingRows, string? Error)
+{
+    public bool IsValid => Error == null;
+}
+
 internal static class TargetPeriodCutover
 {
     public static async Task HydrateLegacyProjectionAsync(ApplicationDbContext context, IReadOnlyCollection<OpmsTarget> targets)
@@ -136,13 +141,26 @@ internal static class TargetPeriodCutover
         string? opmsTargetId,
         string? ipmsTargetId)
     {
+        var reconciliation = await ReconcileAsync(context, plan, opmsTargetId, ipmsTargetId);
+        if (!reconciliation.IsValid) return reconciliation.Error;
+        foreach (var missing in reconciliation.MissingRows)
+            AddNewRows(context, new TargetPeriodPlan([missing], null), municipalityId, userId, opmsTargetId, ipmsTargetId);
+        return null;
+    }
+
+    public static async Task<TargetPeriodReconciliation> ReconcileAsync(
+        ApplicationDbContext context,
+        TargetPeriodPlan plan,
+        string? opmsTargetId,
+        string? ipmsTargetId)
+    {
         var existing = opmsTargetId != null
             ? await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).Where(item => item.OpmsTargetId == opmsTargetId && item.IsActive).ToArrayAsync()
             : await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).Where(item => item.IpmsTargetId == ipmsTargetId && item.IsActive).ToArrayAsync();
 
         var removed = existing.FirstOrDefault(item => plan.Rows.All(row => row.ReportingPeriod.Id != item.ReportingPeriodId));
         if (removed != null)
-            return $"{removed.ReportingPeriod.Code} target values cannot be removed or moved to another financial year through the general target form. Revise or deactivate them through /api/v1/performance-period-targets/{removed.PublicId}.";
+            return new([], $"{removed.ReportingPeriod.Code} target values cannot be removed or moved to another financial year through the general target form. Revise or deactivate them through /api/v1/performance-period-targets/{removed.PublicId}.");
 
         foreach (var row in plan.Rows)
         {
@@ -151,13 +169,10 @@ internal static class TargetPeriodCutover
 
             if (current.UnitKind != row.UnitKind || current.Direction != row.Direction || current.TargetValue != row.TargetValue ||
                 current.BudgetValue != row.BudgetValue || current.Description != row.Description)
-                return $"{row.ReportingPeriod.Code} target values are governed records. Revise them through /api/v1/performance-period-targets/{current.PublicId} with a reason, approval reference and RowVersion.";
+                return new([], $"{row.ReportingPeriod.Code} target values are governed records. Revise them through /api/v1/performance-period-targets/{current.PublicId} with a reason, approval reference and RowVersion.");
         }
 
-        foreach (var missing in plan.Rows.Where(row => existing.All(item => item.ReportingPeriodId != row.ReportingPeriod.Id)))
-            AddNewRows(context, new TargetPeriodPlan([missing], null), municipalityId, userId, opmsTargetId, ipmsTargetId);
-
-        return null;
+        return new(plan.Rows.Where(row => existing.All(item => item.ReportingPeriodId != row.ReportingPeriod.Id)).ToArray(), null);
     }
 
     public static LegacyPeriodTargetValue[] Values(
