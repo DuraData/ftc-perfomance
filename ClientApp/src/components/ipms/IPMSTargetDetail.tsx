@@ -30,42 +30,32 @@ import {
   rescanIpmsSubmissionAttachment,
   updateIpmsSubmission as updateIpmsSubmissionApi,
 } from '../../api/api';
-import {
-  mockDepartments,
-  mockDepartmentUnits,
-  mockPeriods,
-  mockStrategicGoals,
-  mockStrategicObjectives,
-  mockUnitsOfMeasure,
-  mockEmployees,
-  targetUnitTypes,
-} from '../../data/mockData';
 import type { IPMSTarget, IPMSSubmission, AuditTrailEntryDto } from '../../types';
 
 interface TargetDetailProps {
   targetId?: string;
 }
 
-function GeneralInfoTab({ target }: { target: IPMSTarget }) {
+export function GeneralInfoTab({ target }: { target: IPMSTarget }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Basic Information">
         <FormRow cols={3}>
           <Select
             label="Period"
-            options={mockPeriods.map(p => ({ value: p.id, label: p.name }))}
+            options={[{ value: target.period.id, label: target.period.name }]}
             defaultValue={target.period.id}
             disabled
           />
           <Select
             label="Department"
-            options={mockDepartments.map(d => ({ value: d.id, label: d.name }))}
+            options={[{ value: target.department.id, label: target.department.name }]}
             defaultValue={target.department.id}
             disabled
           />
           <Select
             label="Unit"
-            options={mockDepartmentUnits.map(u => ({ value: u.id, label: u.name }))}
+            options={target.unit ? [{ value: target.unit.id, label: target.unit.name }] : []}
             defaultValue={target.unit?.id}
             placeholder="Select unit"
             disabled
@@ -95,13 +85,13 @@ function GeneralInfoTab({ target }: { target: IPMSTarget }) {
         <FormRow cols={4}>
           <Select
             label="Target Unit Type"
-            options={targetUnitTypes}
+            options={[{ value: target.targetUnitType, label: target.targetUnitType }]}
             defaultValue={target.targetUnitType}
             disabled
           />
           <Select
             label="Unit of Measure"
-            options={mockUnitsOfMeasure.map(u => ({ value: u.id, label: u.name }))}
+            options={[{ value: target.unitOfMeasure.id, label: target.unitOfMeasure.name }]}
             defaultValue={target.unitOfMeasure.id}
             disabled
           />
@@ -134,7 +124,7 @@ function GeneralInfoTab({ target }: { target: IPMSTarget }) {
         <FormRow cols={2}>
           <Select
             label="Assigned To"
-            options={mockEmployees.map(e => ({ value: e.id, label: e.displayName }))}
+            options={target.assignedTo ? [{ value: target.assignedTo.id, label: target.assignedTo.displayName }] : []}
             defaultValue={target.assignedTo?.id}
             placeholder="Select employee"
             disabled
@@ -163,12 +153,12 @@ function StrategyTab({ target }: { target: IPMSTarget }) {
         <FormRow cols={2}>
           <Select
             label="Strategic Goal"
-            options={mockStrategicGoals.map(g => ({ value: g.id, label: g.name }))}
+            options={[{ value: target.strategicGoal.id, label: target.strategicGoal.name }]}
             defaultValue={target.strategicGoal.id}
           />
           <Select
             label="Strategic Objective"
-            options={mockStrategicObjectives.map(o => ({ value: o.id, label: o.name }))}
+            options={[{ value: target.strategicObjective.id, label: target.strategicObjective.name }]}
             defaultValue={target.strategicObjective.id}
           />
         </FormRow>
@@ -348,13 +338,7 @@ function SubmissionsTab({
   );
 }
 
-function AttachmentsTab({
-  target,
-  onAttachmentsChange,
-}: {
-  target: IPMSTarget;
-  onAttachmentsChange: (attachments: IPMSTarget['attachments']) => void;
-}) {
+function AttachmentsTab({ target }: { target: IPMSTarget }) {
   const existingFiles = (target.attachments ?? []).map(file => ({
     id: file.id,
     name: file.fileName,
@@ -371,23 +355,8 @@ function AttachmentsTab({
     <FileUpload
       existingFiles={existingFiles}
       maxFiles={undefined}
+      disabled
       documentTypes={[{ value: 'strategy', label: 'Strategy' }, { value: 'budget', label: 'Budget' }]}
-      onUpload={(files) =>
-        onAttachmentsChange([
-          ...(target.attachments ?? []),
-          ...files.map(file => ({
-            id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-            uploadedBy: target.assignedTo ?? mockEmployees[0],
-            uploadedAt: new Date().toISOString(),
-            documentType: 'strategy',
-            url: URL.createObjectURL(file),
-          })),
-        ])
-      }
-      onRemove={(fileId) => onAttachmentsChange((target.attachments ?? []).filter(file => file.id !== fileId))}
     />
   );
 }
@@ -529,7 +498,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
           }}
         />
       );
-      case 'attachments': return <AttachmentsTab target={target} onAttachmentsChange={(attachments) => setTarget(prev => prev ? { ...prev, attachments } : prev)} />;
+      case 'attachments': return <AttachmentsTab target={target} />;
       case 'history': return <HistoryTab entries={auditEntries} />;
       default: return <GeneralInfoTab target={target} />;
     }
