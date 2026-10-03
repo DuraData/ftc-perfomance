@@ -84,9 +84,11 @@ export function StrategicDocumentsWorkspace() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); setSelected(null); }, 300);
+    const nextSearch = searchInput.trim();
+    if (nextSearch === search) return;
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(nextSearch); setSelected(null); }, 300);
     return () => window.clearTimeout(timeout);
-  }, [searchInput]);
+  }, [search, searchInput]);
   useEffect(() => {
     setDraft(current => ({
       ...current,

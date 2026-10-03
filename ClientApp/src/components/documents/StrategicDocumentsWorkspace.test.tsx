@@ -79,7 +79,8 @@ describe('Strategic documents workspace', () => {
   it('submits approval as an action with concurrency and council reference', async () => {
     render(<StrategicDocumentsWorkspace />);
     fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
-    await screen.findByText('Version and action history');
+    await screen.findByLabelText('Strategic document action reason');
+    await new Promise(resolve => window.setTimeout(resolve, 350));
     fireEvent.change(screen.getByLabelText('Strategic document action reason'), { target: { value: 'Approved by council' } });
     fireEvent.change(screen.getByLabelText('Strategic document approval reference'), { target: { value: 'Council 1/2026' } });
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));

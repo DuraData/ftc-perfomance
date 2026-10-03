@@ -1361,6 +1361,7 @@ Production workflows no longer fetch complete OPMS/IPMS target collections to po
 - Unbounded OPMS/IPMS target and submission reads now return HTTP 410 with the replacement page/option route, preventing direct callers from bypassing the bounded contract.
 - Relational SQLite tests prove scope-before-count, search, page limits and withdrawn-target exclusion. Route/component tests prove the option query, search, paging and selected identity transport.
 - Clean Linux CI also exposed clock-dependent ZIP metadata in generated XLSX/DOCX files; archive entries now use a fixed valid timestamp so identical governed datasets produce identical bytes and SHA-256 values on every render.
+- Hosted CI exposed a mount-time search-debounce race in the strategic-document workspace that could clear a document selected during initial loading. The debounce now changes selection only when the normalized search term actually changes, and the approval test holds the selected record beyond the debounce interval before exercising its reason, council-reference and RowVersion action contract.
 
 The complete suites pass **313 backend tests**, with one environment-gated SQL Server test skipped, and **153/153 frontend tests across 46 files**. TypeScript, ESLint, the production frontend/Release backend build and the **69-chunk** bundle budget pass with **0 warnings and 0 errors**; the largest JavaScript chunk is **374.1 KiB**. R-45 remains **PARTIALLY COMPLIANT** for other secondary/fixed-limit collections and representative native SQL Server query-plan/load acceptance.
 
