@@ -126,6 +126,59 @@ public class TidsController : ControllerBase
             municipality.TidAllKpisRequired, tids.TryGetValue(target.Id, out var tid) ? ToResponse(tid) : null)).ToArray()));
     }
 
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<TidRegisterItemResponse>>>> GetRegisterPage([FromQuery] PagedQueryRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<TidRegisterItemResponse>>(false, null, "User not found."));
+        if (!TidRegisterSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<TidRegisterItemResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, targetName, department, or unit."));
+        var municipality = await CurrentMunicipalityAsync();
+        if (municipality == null || !municipality.TidEnabled)
+            return Ok(new ApiResponse<PagedResponse<TidRegisterItemResponse>>(true, PagedResponse<TidRegisterItemResponse>.Empty(request.Page, request.PageSize)));
+        var scope = await accessControl.GetQueryScopeAsync(user, "TID.READ");
+        if (!scope.PermissionGranted)
+            return Ok(new ApiResponse<PagedResponse<TidRegisterItemResponse>>(true, PagedResponse<TidRegisterItemResponse>.Empty(request.Page, request.PageSize)));
+
+        var query = ApplyScope(context.OpmsTargets.AsNoTracking().Include(item => item.Department).Include(item => item.Unit), scope)
+            .Where(item => !item.IsWithdrawn);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var targets = await ApplyTidRegisterOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var targetIds = targets.Select(item => item.Id).ToArray();
+        var tids = await context.TechnicalIndicatorDescriptions.AsNoTracking()
+            .Include(item => item.OpmsTarget)
+            .Include(item => item.ResponsibleEmployee)
+            .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
+            .Where(item => targetIds.Contains(item.OpmsTargetId) && item.IsCurrent)
+            .ToDictionaryAsync(item => item.OpmsTargetId);
+        var items = targets.Select(target => new TidRegisterItemResponse(
+            target.PublicId, target.IndicatorNumber, target.TargetName, target.Department?.Name, target.Unit?.Name,
+            municipality.TidAllKpisRequired, tids.TryGetValue(target.Id, out var tid) ? ToResponse(tid) : null));
+        return Ok(new ApiResponse<PagedResponse<TidRegisterItemResponse>>(true,
+            PagedResponse<TidRegisterItemResponse>.Create(items, request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> TidRegisterSortFields =
+        ["createdat", "indicatornumber", "targetname", "department", "unit"];
+
+    private static IOrderedQueryable<OpmsTarget> ApplyTidRegisterOrdering(IQueryable<OpmsTarget> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("indicatornumber", false) => query.OrderBy(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("targetname", false) => query.OrderBy(item => item.TargetName).ThenBy(item => item.PublicId),
+            ("targetname", true) => query.OrderByDescending(item => item.TargetName).ThenBy(item => item.PublicId),
+            ("department", false) => query.OrderBy(item => item.Department == null ? null : item.Department.Name).ThenBy(item => item.PublicId),
+            ("department", true) => query.OrderByDescending(item => item.Department == null ? null : item.Department.Name).ThenBy(item => item.PublicId),
+            ("unit", false) => query.OrderBy(item => item.Unit == null ? null : item.Unit.Name).ThenBy(item => item.PublicId),
+            ("unit", true) => query.OrderByDescending(item => item.Unit == null ? null : item.Unit.Name).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
+        };
+
     [HttpGet("targets/{targetPublicId:guid}")]
     public async Task<ActionResult<ApiResponse<TidVersionResponse[]>>> GetHistory(Guid targetPublicId)
     {

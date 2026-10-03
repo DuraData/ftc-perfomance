@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegister, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -44,13 +44,13 @@ describe('versioned API routes', () => {
 
     await getTidConfiguration();
     await updateTidConfiguration({ tidEnabled: true, allKpisRequired: true, rowVersion: 'AQ==', reason: 'Approved policy' });
-    await getTidRegister('water');
+    await getTidRegisterPage({ page: 2, pageSize: 25, search: 'water', sortBy: 'indicatorNumber', sortDirection: 'asc' });
     await getTidHistory('target-id');
     await createTidVersion('target-id', payload);
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/tids/configuration'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/tids/configuration'), expect.objectContaining({ method: 'PUT', body: expect.stringContaining('Approved policy') }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/tids?search=water'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/tids/page?page=2&pageSize=25&search=water&sortBy=indicatorNumber&sortDirection=asc'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/tids/targets/target-id'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/tids/targets/target-id/versions'), expect.objectContaining({ method: 'POST', body: JSON.stringify(payload) }));
   });

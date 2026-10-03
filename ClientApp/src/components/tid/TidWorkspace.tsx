@@ -5,7 +5,7 @@ import {
   getMunicipalEmployees,
   getTidConfiguration,
   getTidHistory,
-  getTidRegister,
+  getTidRegisterPage,
   rescanTidSourceDocument,
   updateTidConfiguration,
   uploadTidSourceDocument,
@@ -37,23 +37,41 @@ export function TidWorkspace() {
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
   const [selected, setSelected] = useState<TidRegisterItem | null>(null);
   const [history, setHistory] = useState<TidVersion[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('indicatorNumber');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [draft, setDraft] = useState<SaveTidVersionPayload>(emptyDraft);
   const [configurationReason, setConfigurationReason] = useState('');
   const [sourceTitle, setSourceTitle] = useState('');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async (term?: string) => {
+  const load = useCallback(async () => {
     if (!canRead('TID')) return;
-    const [configurationResult, registerResult] = await Promise.all([getTidConfiguration(), getTidRegister(term)]);
+    const [configurationResult, registerResult] = await Promise.all([
+      getTidConfiguration(),
+      getTidRegisterPage({ page, pageSize: 25, search, sortBy, sortDirection }),
+    ]);
     if (!configurationResult.success || !configurationResult.data) pushToast('error', configurationResult.message ?? 'Unable to load TID configuration.');
     else setConfiguration(configurationResult.data);
     if (!registerResult.success) pushToast('error', registerResult.message ?? 'Unable to load the TID register.');
-    else setItems(registerResult.data ?? []);
-  }, [canRead, pushToast]);
+    else {
+      setItems(registerResult.data?.items ?? []);
+      setTotalCount(registerResult.data?.totalCount ?? 0);
+      setTotalPages(registerResult.data?.totalPages ?? 0);
+    }
+  }, [canRead, page, pushToast, search, sortBy, sortDirection]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (searchInput.trim() === search) return;
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); setSelected(null); setHistory([]); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search, searchInput]);
   useEffect(() => {
     if (!canCreate('TID') && !canUpdate('TID')) return;
     void getMunicipalEmployees().then(result => setEmployees((result.data ?? []).filter(employee => employee.isActive)));
@@ -102,7 +120,7 @@ export function TidWorkspace() {
       setConfiguration(result.data);
       setConfigurationReason('');
       pushToast('success', 'TID configuration updated.');
-      await load(search);
+      await load();
     } finally { setBusy(false); }
   };
 
@@ -122,7 +140,7 @@ export function TidWorkspace() {
       });
       if (!result.success || !result.data) return pushToast('error', result.message ?? 'Unable to create the TID version.');
       pushToast('success', `TID version ${result.data.versionNumber} created.`);
-      await load(search);
+      await load();
       await selectItem({ ...selected, currentVersion: result.data });
     } finally { setBusy(false); }
   };
@@ -172,9 +190,10 @@ export function TidWorkspace() {
         {configuration?.tidEnabled ? (
           <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.8fr)_minmax(32rem,1.4fr)]">
             <Card>
-              <div className="flex gap-2">
-                <label className="flex-1 text-xs text-secondary-600">Search KPIs<input aria-label="Search TID KPIs" className={fieldClass} value={search} onChange={event => setSearch(event.target.value)} /></label>
-                <div className="self-end"><Button variant="outline" onClick={() => void load(search)}>Search</Button></div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-secondary-600 sm:col-span-2">Search KPIs<input aria-label="Search TID KPIs" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
+                <label className="text-xs text-secondary-600">Sort<select aria-label="Sort TID KPIs" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); setSelected(null); setHistory([]); }}><option value="indicatorNumber">Indicator number</option><option value="targetName">Target name</option><option value="department">Department</option><option value="unit">Unit</option><option value="createdAt">Created</option></select></label>
+                <label className="text-xs text-secondary-600">Direction<select aria-label="TID KPI sort direction" className={fieldClass} value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); setSelected(null); setHistory([]); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
               </div>
               <div className="mt-3 max-h-[42rem] space-y-2 overflow-auto">
                 {items.map(item => (
@@ -186,6 +205,7 @@ export function TidWorkspace() {
                 ))}
                 {!items.length ? <EmptyState title="No authorised KPIs" description="No active KPI falls within your current TID read scope." /> : null}
               </div>
+              {totalPages > 1 ? <div className="mt-3 flex items-center justify-between"><p className="text-xs text-secondary-500">Page {page} of {totalPages} · {totalCount} KPIs</p><div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy || page === 1} onClick={() => { setSelected(null); setHistory([]); setPage(value => Math.max(1, value - 1)); }}>Previous</Button><Button variant="outline" size="sm" disabled={busy || page === totalPages} onClick={() => { setSelected(null); setHistory([]); setPage(value => Math.min(totalPages, value + 1)); }}>Next</Button></div></div> : null}
             </Card>
 
             <div className="space-y-4">

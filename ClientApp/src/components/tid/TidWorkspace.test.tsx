@@ -8,7 +8,7 @@ const capabilities = vi.hoisted(() => ({
   canExecute: vi.fn(() => true), canReadField: vi.fn(() => true), canEditField: vi.fn(() => true),
 }));
 const api = vi.hoisted(() => ({
-  getTidConfiguration: vi.fn(), updateTidConfiguration: vi.fn(), getTidRegister: vi.fn(), getTidHistory: vi.fn(),
+  getTidConfiguration: vi.fn(), updateTidConfiguration: vi.fn(), getTidRegisterPage: vi.fn(), getTidHistory: vi.fn(),
   createTidVersion: vi.fn(), uploadTidSourceDocument: vi.fn(), downloadTidSourceDocument: vi.fn(), getMunicipalEmployees: vi.fn(),
 }));
 
@@ -37,7 +37,7 @@ describe('TID workspace', () => {
     capabilities.canExecute.mockReturnValue(true);
     api.getMunicipalEmployees.mockResolvedValue({ success: true, data: [] });
     api.getTidConfiguration.mockResolvedValue({ success: true, data: configuration });
-    api.getTidRegister.mockResolvedValue({ success: true, data: [item] });
+    api.getTidRegisterPage.mockResolvedValue({ success: true, data: { items: [item], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getTidHistory.mockResolvedValue({ success: true, data: [version] });
     api.updateTidConfiguration.mockResolvedValue({ success: true, data: { ...configuration, tidEnabled: false, allKpisRequired: false, rowVersion: 'Aw==' } });
     api.createTidVersion.mockResolvedValue({ success: true, data: { ...version, publicId: 'tid-2', versionNumber: 2, previousVersionPublicId: version.publicId, rowVersion: 'Aw==' } });
@@ -82,5 +82,17 @@ describe('TID workspace', () => {
     expect(await screen.findByText('Version 1')).toBeInTheDocument();
     expect(screen.queryByLabelText('TID indicator definition')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save Policy' })).not.toBeInTheDocument();
+  });
+
+  it('loads the authorised KPI register in bounded server pages', async () => {
+    api.getTidRegisterPage.mockResolvedValue({ success: true, data: { items: [item], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
+    render(<TidWorkspace />);
+
+    expect(await screen.findByText('Page 1 of 2 · 26 KPIs')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    await waitFor(() => expect(api.getTidRegisterPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'indicatorNumber', sortDirection: 'asc' }),
+    ));
   });
 });

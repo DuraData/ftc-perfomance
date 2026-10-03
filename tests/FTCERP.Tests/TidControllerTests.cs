@@ -56,6 +56,12 @@ public class TidControllerTests
         var register = Payload(await controller.GetRegister());
         register.Should().ContainSingle();
         register[0].CurrentVersion!.IndicatorDefinition.Should().Be("Revised definition");
+        var page = Payload(await controller.GetRegisterPage(new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "KPI-1", SortBy = "indicatorNumber", SortDirection = "asc"
+        }));
+        page.TotalCount.Should().Be(1);
+        page.Items.Should().ContainSingle().Which.CurrentVersion!.IndicatorDefinition.Should().Be("Revised definition");
         var configuration = Payload(await controller.GetConfiguration());
         configuration.MissingTidCount.Should().Be(0);
 
@@ -113,6 +119,18 @@ public class TidControllerTests
         association.Title = "Tampered";
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*append-only*");
+    }
+
+    [Fact]
+    public async Task Register_page_rejects_unknown_sort_fields()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, enabled: true, allRequired: false);
+        var controller = Controller(context, setup.User, setup.Municipality.Id);
+
+        var response = await controller.GetRegisterPage(new PagedQueryRequest { SortBy = "raw-sql" });
+
+        response.Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]

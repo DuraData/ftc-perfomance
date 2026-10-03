@@ -1773,6 +1773,10 @@ export async function getTidRegister(search?: string): Promise<ApiResponse<TidRe
   return get<TidRegisterItem[]>(`/v1/tids${query}`);
 }
 
+export async function getTidRegisterPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<TidRegisterItem>>> {
+  return get<PagedResult<TidRegisterItem>>(`/v1/tids/page${registerPageQuery(query)}`);
+}
+
 export async function getTidHistory(targetPublicId: string): Promise<ApiResponse<TidVersion[]>> {
   return get<TidVersion[]>(`/v1/tids/targets/${targetPublicId}`);
 }
