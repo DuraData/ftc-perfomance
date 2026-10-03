@@ -103,24 +103,17 @@ import type {
   AuthenticationConfiguration,
   UserAuthenticator,
   AuthenticationEvent,
+  Attachment,
+  BudgetSource,
+  BudgetType,
+  Department,
+  DepartmentUnit,
+  Employee,
+  Period,
+  StrategicGoal,
+  StrategicObjective,
+  UnitOfMeasure,
 } from '../types';
-import {
-  mockBudgetSources,
-  mockBudgetTypes,
-  mockDepartments,
-  mockDepartmentUnits,
-  mockEmployees,
-  mockIPMSSubmissions,
-  mockIPMSTargets,
-  mockOPMSSubmissions,
-  mockOPMSTargets,
-  mockPeriods,
-  mockStrategicGoals,
-  mockStrategicObjectives,
-  mockUnitsOfMeasure,
-  mockWards,
-  mockVoteNumbers,
-} from '../data/mockData';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -248,30 +241,108 @@ function parseJsonArray<T>(value?: string | null, fallback: T[] = []): T[] {
   }
 }
 
-function pickUnitOfMeasure(name?: string | null) {
-  return mockUnitsOfMeasure.find(unit =>
-    unit.name.toLowerCase() === (name ?? '').toLowerCase() ||
-    unit.code.toLowerCase() === (name ?? '').toLowerCase(),
-  ) ?? mockUnitsOfMeasure[0];
-}
+const NOT_SUPPLIED = 'Not supplied by API';
 
-function pickDepartment(id?: number | null, name?: string | null) {
-  return mockDepartments.find(department =>
-    (id !== null && id !== undefined && department.id === String(id)) ||
-    (!!name && department.name.toLowerCase() === name.toLowerCase()),
-  ) ?? {
-    ...mockDepartments[0],
-    id: id !== null && id !== undefined ? String(id) : mockDepartments[0]?.id ?? 'department-0',
-    name: name ?? mockDepartments[0]?.name ?? 'Unassigned Department',
+function toPeriodReference(id?: number | null): Period {
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: id === null || id === undefined ? NOT_SUPPLIED : `Reporting period ${id}`,
+    startDate: '',
+    endDate: '',
+    fiscalYear: '',
+    isActive: true,
   };
 }
 
-function pickUnit(id?: number | null, name?: string | null, departmentId?: number | null) {
-  return mockDepartmentUnits.find(unit =>
-    (id !== null && id !== undefined && unit.id === String(id)) ||
-    (!!name && unit.name.toLowerCase() === name.toLowerCase()) ||
-    (departmentId !== null && departmentId !== undefined && unit.department.id === String(departmentId)),
-  );
+function toDepartmentReference(id?: number | null, name?: string | null): Department {
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
+    code: '',
+    isActive: true,
+    units: [],
+    positions: [],
+  };
+}
+
+function toUnitReference(
+  id: number | null | undefined,
+  name: string | null | undefined,
+  department: Department,
+): DepartmentUnit | undefined {
+  if ((id === null || id === undefined) && !normalizeOptionalString(name)) return undefined;
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
+    code: '',
+    department,
+    isActive: true,
+  };
+}
+
+function toEmployeeReference(id?: string | null, name?: string | null): Employee | undefined {
+  const displayName = normalizeOptionalString(name);
+  if (!id && !displayName) return undefined;
+  return {
+    id: id ?? '',
+    firstName: '',
+    lastName: '',
+    displayName: displayName ?? NOT_SUPPLIED,
+    email: '',
+    identificationType: '',
+    isActive: true,
+  };
+}
+
+function toStrategicGoalReference(id?: number | null, name?: string | null): StrategicGoal {
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
+    code: '',
+    isActive: true,
+  };
+}
+
+function toStrategicObjectiveReference(
+  id: number | null | undefined,
+  name: string | null | undefined,
+  strategicGoal: StrategicGoal,
+): StrategicObjective {
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
+    code: '',
+    strategicGoal,
+    isActive: true,
+  };
+}
+
+function toBudgetSourceReference(id?: number | null, name?: string | null): BudgetSource {
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
+    code: '',
+    isActive: true,
+  };
+}
+
+function toBudgetTypeReference(id?: number | null, name?: string | null): BudgetType {
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
+    code: '',
+    isActive: true,
+  };
+}
+
+function toUnitOfMeasureReference(id?: number | null, name?: string | null): UnitOfMeasure {
+  const normalizedName = normalizeOptionalString(name);
+  return {
+    id: id === null || id === undefined ? '' : String(id),
+    name: normalizedName ?? NOT_SUPPLIED,
+    code: normalizedName ?? '',
+    isActive: true,
+  };
 }
 
 function resolveQuarterlyTargets(value?: string | null): TemplateQuarterlyTarget[] {
@@ -299,17 +370,29 @@ function toOpmsTemplateModel(dto: OpmsTargetTemplateDto): OpmsTargetTemplate {
     annualTarget: dto.annualTarget,
     annualTargetDescription: dto.annualTargetDescription ?? '',
     targetUnitType: coerceTargetUnitType(dto.targetUnitType),
-    unitOfMeasure: pickUnitOfMeasure(dto.unitOfMeasure),
+    unitOfMeasure: toUnitOfMeasureReference(undefined, dto.unitOfMeasure),
     nationalKPA: dto.nationalKpa ?? '',
     municipalKPA: dto.municipalKpa ?? '',
-    strategicGoal: mockStrategicGoals.find(goal => goal.name === dto.strategicGoal),
-    strategicObjective: mockStrategicObjectives.find(objective => objective.name === dto.strategicObjective),
+    strategicGoal: normalizeOptionalString(dto.strategicGoal)
+      ? toStrategicGoalReference(undefined, dto.strategicGoal)
+      : undefined,
+    strategicObjective: normalizeOptionalString(dto.strategicObjective)
+      ? toStrategicObjectiveReference(
+        undefined,
+        dto.strategicObjective,
+        toStrategicGoalReference(undefined, dto.strategicGoal),
+      )
+      : undefined,
     performanceObjective: dto.performanceObjective ?? '',
     outcome: normalizeOptionalString(dto.outcome),
     output: normalizeOptionalString(dto.output),
     priorityIssue: normalizeOptionalString(dto.priorityIssue),
-    budgetSource: mockBudgetSources.find(item => item.name === dto.budgetSource),
-    budgetType: mockBudgetTypes.find(item => item.name === dto.budgetType),
+    budgetSource: normalizeOptionalString(dto.budgetSource)
+      ? toBudgetSourceReference(undefined, dto.budgetSource)
+      : undefined,
+    budgetType: normalizeOptionalString(dto.budgetType)
+      ? toBudgetTypeReference(undefined, dto.budgetType)
+      : undefined,
     weight: dto.weight,
     kpiType: dto.kpiType ?? '',
     indicatorType: dto.indicatorType ?? '',
@@ -340,7 +423,7 @@ function toIpmsTemplateModel(dto: IpmsTargetTemplateDto): IpmsTargetTemplate {
     employeeLevel: dto.employeeLevel ?? '',
     jobGrade: dto.jobGrade ?? '',
     targetUnitType: coerceTargetUnitType(dto.targetUnitType),
-    unitOfMeasure: pickUnitOfMeasure(dto.unitOfMeasure),
+    unitOfMeasure: toUnitOfMeasureReference(undefined, dto.unitOfMeasure),
     annualTarget: dto.annualTarget,
     annualTargetDescription: dto.annualTargetDescription ?? '',
     weight: dto.weight,
@@ -359,29 +442,29 @@ function toIpmsTemplateModel(dto: IpmsTargetTemplateDto): IpmsTargetTemplate {
 }
 
 function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
-  const baseTarget = mockOPMSTargets[0];
+  const department = toDepartmentReference(dto.departmentId, dto.departmentName);
+  const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
   return {
-    ...baseTarget,
     id: dto.id,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
-    period: mockPeriods.find(p => p.id === (dto.periodId?.toString() ?? '')) ?? baseTarget.period,
-    department: pickDepartment(dto.departmentId, dto.departmentName),
-    unit: pickUnit(dto.unitId, dto.unitName, dto.departmentId),
-    assignedTo: mockEmployees.find(e => e.id === dto.assignedUserId) ?? baseTarget.assignedTo,
-    wards: dto.wardIds.map(id => mockWards.find(ward => ward.id === String(id)) ?? { id: String(id), code: String(id), name: `Ward ${id}`, municipality: '', isActive: true }),
+    period: toPeriodReference(dto.periodId),
+    department,
+    unit: toUnitReference(dto.unitId, dto.unitName, department),
+    assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
+    wards: dto.wardIds.map(id => ({ id: String(id), code: String(id), name: `Ward ${id}`, isActive: true })),
     wardIds: dto.wardIds,
-    additionalAssignees: dto.additionalAssigneeIds.map(id => mockEmployees.find(employee => employee.id === id)).filter((employee): employee is NonNullable<typeof employee> => Boolean(employee)),
+    additionalAssignees: dto.additionalAssigneeIds.map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
     additionalAssigneeIds: dto.additionalAssigneeIds,
-    voteNumbers: dto.voteNumberIds.map(id => mockVoteNumbers.find(vote => vote.id === String(id)) ?? { id: String(id), code: String(id), number: String(id), name: `Vote ${id}`, amount: 0, isActive: true }),
+    voteNumbers: dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
     voteNumberIds: dto.voteNumberIds,
     indicatorNumber: dto.indicatorNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
-    strategicGoal: mockStrategicGoals.find(sg => sg.id === (dto.strategicGoalId?.toString() ?? '')) ?? baseTarget.strategicGoal,
-    strategicObjective: mockStrategicObjectives.find(so => so.id === (dto.strategicObjectiveId?.toString() ?? '')) ?? baseTarget.strategicObjective,
+    strategicGoal,
+    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
     targetName: dto.targetName,
     kpiDescription: dto.kpiDescription,
@@ -389,9 +472,9 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     baselineDescription: dto.baselineDescription ?? '',
     annualTarget: dto.annualTarget,
     annualTargetDescription: dto.annualTargetDescription,
-    budgetSource: mockBudgetSources.find(bs => bs.id === (dto.budgetSourceId?.toString() ?? '')) ?? baseTarget.budgetSource,
-    budgetType: mockBudgetTypes.find(bt => bt.id === (dto.budgetTypeId?.toString() ?? '')) ?? baseTarget.budgetType,
-    unitOfMeasure: mockUnitsOfMeasure.find(uom => uom.id === (dto.unitOfMeasureId?.toString() ?? '')) ?? baseTarget.unitOfMeasure,
+    budgetSource: toBudgetSourceReference(dto.budgetSourceId),
+    budgetType: toBudgetTypeReference(dto.budgetTypeId),
+    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, dto.targetUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
     indicatorType: dto.indicatorType,
@@ -403,9 +486,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     isRevised: dto.isRevised,
     isWithdrawn: dto.isWithdrawn,
     reasonForWithdrawal: dto.reasonForWithdrawal ?? '',
-    withdrawnAt: dto.withdrawnAt ?? undefined,
-    withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
-    targetUnitType: dto.targetUnitType as TargetUnitType,
+    targetUnitType: coerceTargetUnitType(dto.targetUnitType),
     q1Target: dto.q1Target ?? 0,
     q1Description: dto.q1Description ?? '',
     q1Budget: dto.q1Budget ?? 0,
@@ -425,38 +506,41 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     q4RevisedTarget: dto.q4RevisedTarget ?? 0,
     revisedAnnualTarget: dto.revisedAnnualTarget ?? 0,
     revisedAnnualBudget: dto.revisedAnnualBudget ?? 0,
-    createdAt: dto.createdAt as never,
-  } as OPMSTarget;
+    submissions: [],
+    relatedIPMSTargets: [],
+    attachments: [],
+    CreatedOn: dto.createdAt,
+  };
 }
 
 function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
-  const baseTarget = mockIPMSTargets[0];
+  const department = toDepartmentReference(dto.departmentId, dto.departmentName);
+  const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
   return {
-    ...baseTarget,
     id: dto.id,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
-    relatedOPMSTarget: dto.relatedOpmsTargetId ? mockOPMSTargets.find(target => target.id === dto.relatedOpmsTargetId) : undefined,
-    period: mockPeriods.find(p => p.id === (dto.periodId?.toString() ?? '')) ?? baseTarget.period,
-    department: pickDepartment(dto.departmentId, dto.departmentName),
-    unit: pickUnit(dto.unitId, dto.unitName, dto.departmentId),
-    assignedTo: mockEmployees.find(e => e.id === dto.assignedUserId) ?? baseTarget.assignedTo,
+    relatedOPMSTarget: undefined,
+    period: toPeriodReference(dto.periodId),
+    department,
+    unit: toUnitReference(dto.unitId, dto.unitName, department),
+    assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
     indicatorNumber: dto.indicatorNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
-    strategicGoal: mockStrategicGoals.find(sg => sg.id === (dto.strategicGoalId?.toString() ?? '')) ?? baseTarget.strategicGoal,
-    strategicObjective: mockStrategicObjectives.find(so => so.id === (dto.strategicObjectiveId?.toString() ?? '')) ?? baseTarget.strategicObjective,
+    strategicGoal,
+    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
     targetName: dto.targetName,
     kpiDescription: dto.kpiDescription,
     baseline: dto.baseline,
     annualTarget: dto.annualTarget,
     annualTargetDescription: dto.annualTargetDescription,
-    budgetSource: mockBudgetSources.find(bs => bs.id === (dto.budgetSourceId?.toString() ?? '')) ?? baseTarget.budgetSource,
-    budgetType: mockBudgetTypes.find(bt => bt.id === (dto.budgetTypeId?.toString() ?? '')) ?? baseTarget.budgetType,
-    unitOfMeasure: mockUnitsOfMeasure.find(uom => uom.id === (dto.unitOfMeasureId?.toString() ?? '')) ?? baseTarget.unitOfMeasure,
+    budgetSource: toBudgetSourceReference(dto.budgetSourceId),
+    budgetType: toBudgetTypeReference(dto.budgetTypeId),
+    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, dto.targetUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
     indicatorType: dto.indicatorType,
@@ -468,7 +552,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     reasonForWithdrawal: dto.reasonForWithdrawal ?? '',
     withdrawnAt: dto.withdrawnAt ?? undefined,
     withdrawnByUserId: dto.withdrawnByUserId ?? undefined,
-    targetUnitType: dto.targetUnitType as TargetUnitType,
+    targetUnitType: coerceTargetUnitType(dto.targetUnitType),
     q1Target: dto.q1Target ?? 0,
     q1Description: dto.q1Description ?? '',
     q1Budget: dto.q1Budget ?? 0,
@@ -488,24 +572,78 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     q4RevisedTarget: dto.q4RevisedTarget ?? 0,
     revisedAnnualTarget: dto.revisedAnnualTarget ?? 0,
     revisedAnnualBudget: dto.revisedAnnualBudget ?? 0,
-    createdAt: dto.createdAt as never,
-  } as IPMSTarget;
+    submissions: [],
+    attachments: [],
+    CreatedOn: dto.createdAt,
+  };
+}
+
+function unresolvedOpmsTarget(id: string, targetName: string): OPMSTarget {
+  return toOpmsTargetModel({
+    id,
+    publicId: id,
+    rowVersion: '',
+    wardIds: [],
+    additionalAssigneeIds: [],
+    voteNumberIds: [],
+    indicatorNumber: '',
+    nationalKpa: '',
+    municipalKpa: '',
+    performanceObjective: '',
+    targetName,
+    kpiDescription: '',
+    baseline: 0,
+    annualTarget: 0,
+    annualTargetDescription: '',
+    weight: 0,
+    kpiType: '',
+    indicatorType: '',
+    isRevised: false,
+    isWithdrawn: false,
+    targetUnitType: 'absolute_count',
+    createdAt: '',
+  });
+}
+
+function unresolvedIpmsTarget(id: string, targetName: string): IPMSTarget {
+  return toIpmsTargetModel({
+    id,
+    publicId: id,
+    rowVersion: '',
+    indicatorNumber: '',
+    nationalKpa: '',
+    municipalKpa: '',
+    performanceObjective: '',
+    targetName,
+    kpiDescription: '',
+    baseline: 0,
+    annualTarget: 0,
+    annualTargetDescription: '',
+    weight: 0,
+    kpiType: '',
+    indicatorType: '',
+    isRevised: false,
+    isWithdrawn: false,
+    targetUnitType: 'absolute_count',
+    createdAt: '',
+  });
+}
+
+function toSubmissionBaseState(dto: OpmsSubmissionDto | IpmsSubmissionDto) {
+  const baseState = (dto as (OpmsSubmissionDto | IpmsSubmissionDto) & { baseState?: string }).baseState;
+  return { baseState: baseState === 'SUBMITTED' ? 'SUBMITTED' as const : 'IN_PROGRESS' as const };
 }
 
 function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): OPMSSubmission {
-  const baseSubmission = mockOPMSSubmissions[0];
-  const target = targets.find(item => item.id === dto.opmsTargetId) ?? {
-    ...(baseSubmission?.target ?? mockOPMSTargets[0]),
-    id: dto.opmsTargetId,
-    targetName: dto.targetName,
-  };
+  const target = targets.find(item => item.id === dto.opmsTargetId)
+    ?? unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName);
   return {
-    ...baseSubmission,
+    ...toSubmissionBaseState(dto),
     id: dto.id,
     rowVersion: dto.rowVersion,
     target,
     quarter: coerceQuarter(dto.quarter),
-    dueDate: dto.dueDate ?? new Date().toISOString(),
+    dueDate: dto.dueDate ?? '',
     extendedDueDate: dto.extendedDueDate ?? undefined,
     actual: dto.actual ?? 0,
     actualPerformance: dto.actualPerformance ?? undefined,
@@ -525,20 +663,20 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     pmsStatus: dto.pmsStatus ?? undefined,
     auditorStatus: dto.auditorStatus ?? undefined,
     status: coerceSubmissionStatus(dto.status),
-    submitter: dto.submittedByUserId ? mockEmployees.find(e => e.id === dto.submittedByUserId) : baseSubmission.submitter,
+    submitter: toEmployeeReference(dto.submittedByUserId, dto.submittedByName),
     submittedAt: dto.submittedAt ?? undefined,
     submittedByUserId: dto.submittedByUserId ?? undefined,
-    verifier: dto.verifierUserId ? mockEmployees.find(e => e.id === dto.verifierUserId) : baseSubmission.verifier,
+    verifier: toEmployeeReference(dto.verifierUserId, dto.verifierName),
     verifiedAt: dto.verifiedAt ?? undefined,
     verifierComments: dto.verifierComments ?? undefined,
     verifierComment: dto.verifierComment ?? undefined,
     verifierScore: dto.verifierScore ?? undefined,
-    approver: dto.approverUserId ? mockEmployees.find(e => e.id === dto.approverUserId) : baseSubmission.approver,
+    approver: toEmployeeReference(dto.approverUserId, dto.approverName),
     approvedAt: dto.approvedAt ?? undefined,
     approverComments: dto.approverComments ?? undefined,
     approverComment: dto.approverComment ?? undefined,
     approverScore: dto.approverScore ?? undefined,
-    pmsOfficer: dto.pmsOfficerUserId ? mockEmployees.find(e => e.id === dto.pmsOfficerUserId) : baseSubmission.pmsOfficer,
+    pmsOfficer: toEmployeeReference(dto.pmsOfficerUserId, dto.pmsOfficerName),
     pmsReviewedAt: dto.pmsReviewedAt ?? undefined,
     pmsComments: dto.pmsComments ?? undefined,
     pmsComment: dto.pmsComment ?? undefined,
@@ -546,7 +684,7 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     pmsScore: dto.pmsScore ?? undefined,
     pmsResponseDueDate: dto.pmsResponseDueDate ?? undefined,
     pmsRfiComment: dto.pmsRfiComment ?? undefined,
-    auditor: dto.auditorUserId ? mockEmployees.find(e => e.id === dto.auditorUserId) : baseSubmission.auditor,
+    auditor: toEmployeeReference(dto.auditorUserId, dto.auditorName),
     auditedAt: dto.auditedAt ?? undefined,
     auditorComments: dto.auditorComments ?? undefined,
     auditorComment: dto.auditorComment ?? undefined,
@@ -564,23 +702,22 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
     updatedBy: dto.updatedBy ?? undefined,
     updatedOn: dto.updatedOn ?? undefined,
     organisationId: dto.organisationId ?? undefined,
+    attachments: [],
+    comments: [],
+    history: [],
   };
 }
 
 function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): IPMSSubmission {
-  const baseSubmission = mockIPMSSubmissions[0];
-  const target = targets.find(item => item.id === dto.ipmsTargetId) ?? {
-    ...(baseSubmission?.target ?? mockIPMSTargets[0]),
-    id: dto.ipmsTargetId,
-    targetName: dto.targetName,
-  };
+  const target = targets.find(item => item.id === dto.ipmsTargetId)
+    ?? unresolvedIpmsTarget(dto.ipmsTargetId, dto.targetName);
   return {
-    ...baseSubmission,
+    ...toSubmissionBaseState(dto),
     id: dto.id,
     rowVersion: dto.rowVersion,
     target,
     quarter: coerceQuarter(dto.quarter),
-    dueDate: dto.dueDate ?? new Date().toISOString(),
+    dueDate: dto.dueDate ?? '',
     extendedDueDate: dto.extendedDueDate ?? undefined,
     actual: dto.actual ?? 0,
     actualPerformance: dto.actualPerformance ?? undefined,
@@ -600,20 +737,20 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     pmsStatus: dto.pmsStatus ?? undefined,
     auditorStatus: dto.auditorStatus ?? undefined,
     status: coerceSubmissionStatus(dto.status),
-    submitter: dto.submittedByUserId ? mockEmployees.find(e => e.id === dto.submittedByUserId) : baseSubmission.submitter,
+    submitter: toEmployeeReference(dto.submittedByUserId, dto.submittedByName),
     submittedAt: dto.submittedAt ?? undefined,
     submittedByUserId: dto.submittedByUserId ?? undefined,
-    verifier: dto.verifierUserId ? mockEmployees.find(e => e.id === dto.verifierUserId) : baseSubmission.verifier,
+    verifier: toEmployeeReference(dto.verifierUserId, dto.verifierName),
     verifiedAt: dto.verifiedAt ?? undefined,
     verifierComments: dto.verifierComments ?? undefined,
     verifierComment: dto.verifierComment ?? undefined,
     verifierScore: dto.verifierScore ?? undefined,
-    approver: dto.approverUserId ? mockEmployees.find(e => e.id === dto.approverUserId) : baseSubmission.approver,
+    approver: toEmployeeReference(dto.approverUserId, dto.approverName),
     approvedAt: dto.approvedAt ?? undefined,
     approverComments: dto.approverComments ?? undefined,
     approverComment: dto.approverComment ?? undefined,
     approverScore: dto.approverScore ?? undefined,
-    pmsOfficer: dto.pmsOfficerUserId ? mockEmployees.find(e => e.id === dto.pmsOfficerUserId) : baseSubmission.pmsOfficer,
+    pmsOfficer: toEmployeeReference(dto.pmsOfficerUserId, dto.pmsOfficerName),
     pmsReviewedAt: dto.pmsReviewedAt ?? undefined,
     pmsComments: dto.pmsComments ?? undefined,
     pmsComment: dto.pmsComment ?? undefined,
@@ -621,7 +758,7 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     pmsScore: dto.pmsScore ?? undefined,
     pmsResponseDueDate: dto.pmsResponseDueDate ?? undefined,
     pmsRfiComment: dto.pmsRfiComment ?? undefined,
-    auditor: dto.auditorUserId ? mockEmployees.find(e => e.id === dto.auditorUserId) : baseSubmission.auditor,
+    auditor: toEmployeeReference(dto.auditorUserId, dto.auditorName),
     auditedAt: dto.auditedAt ?? undefined,
     auditorComments: dto.auditorComments ?? undefined,
     auditorComment: dto.auditorComment ?? undefined,
@@ -639,14 +776,13 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): I
     updatedBy: dto.updatedBy ?? undefined,
     updatedOn: dto.updatedOn ?? undefined,
     organisationId: dto.organisationId ?? undefined,
+    attachments: [],
+    comments: [],
+    history: [],
   };
 }
 
-function toAttachmentModel(dto: PoeFileDto) {
-  const uploadedBy = mockEmployees.find(employee => employee.id === dto.uploadedByUserId)
-    ?? mockEmployees.find(employee => employee.displayName === dto.uploadedByName)
-    ?? mockEmployees[0];
-
+function toAttachmentModel(dto: PoeFileDto): Attachment {
   return {
     id: dto.id,
     publicId: dto.publicId,
@@ -654,7 +790,7 @@ function toAttachmentModel(dto: PoeFileDto) {
     fileName: dto.fileName,
     fileSize: dto.sizeInBytes,
     fileType: dto.contentType ?? 'application/octet-stream',
-    uploadedBy,
+    uploadedBy: toEmployeeReference(dto.uploadedByUserId, dto.uploadedByName)!,
     uploadedAt: dto.uploadedAt,
     documentType: 'evidence',
     url: dto.url,

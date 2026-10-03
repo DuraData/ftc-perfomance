@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -182,6 +182,71 @@ describe('versioned API routes', () => {
     await getOpmsTargets();
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-targets'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('projects OPMS API data without inheriting production fixture values', async () => {
+    const dto = {
+      id: 'target-live', publicId: 'target-live-public', rowVersion: 'AQ==', periodId: 42,
+      departmentId: 7, departmentName: 'Live Water Services', unitId: null, unitName: null,
+      assignedUserId: 'employee-live', assignedUserName: 'Live Owner', wardIds: [9],
+      additionalAssigneeIds: ['employee-two'], voteNumberIds: [12], indicatorNumber: 'LIVE-001',
+      nationalKpa: 'Infrastructure', municipalKpa: 'Water', strategicGoalId: 3,
+      strategicObjectiveId: 4, performanceObjective: 'Deliver water', targetName: 'Live KPI',
+      kpiDescription: 'Server supplied description', baseline: 10, annualTarget: 20,
+      annualTargetDescription: 'Twenty', budgetSourceId: 5, budgetTypeId: 6,
+      unitOfMeasureId: 8, weight: 15, kpiType: 'Outcome', indicatorType: 'Quantitative',
+      isRevised: false, isWithdrawn: false, targetUnitType: 'absolute_count',
+      createdAt: '2026-07-01T00:00:00Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [dto] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getOpmsTargets();
+    const target = result.data?.[0];
+
+    expect(target).toMatchObject({
+      id: 'target-live', targetName: 'Live KPI', indicatorNumber: 'LIVE-001',
+      department: { id: '7', name: 'Live Water Services' },
+      assignedTo: { id: 'employee-live', displayName: 'Live Owner' },
+      period: { id: '42', name: 'Reporting period 42' },
+      strategicGoal: { id: '3', name: 'Not supplied by API' },
+    });
+    expect(target?.submissions).toEqual([]);
+    expect(target?.relatedIPMSTargets).toEqual([]);
+    expect(target?.attachments).toEqual([]);
+    expect(target?.additionalAssignees).toEqual([expect.objectContaining({ id: 'employee-two', displayName: 'Not supplied by API' })]);
+  });
+
+  it('projects submission actors and evidence uploaders only from API DTOs', async () => {
+    const page = {
+      items: [{
+        id: 'submission-live', rowVersion: 'Ag==', baseState: 'SUBMITTED', opmsTargetId: 'target-live',
+        targetName: 'Live KPI', quarter: 'Q1', status: 'submitted', actual: 4,
+        submittedByUserId: 'submitter-live', submittedByName: 'Live Submitter',
+        verifierUserId: 'verifier-live', verifierName: 'Live Verifier', createdAt: '2026-08-01T00:00:00Z',
+      }],
+      page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+    };
+    const attachment = {
+      id: 'file-live', submissionKind: 'Opms', submissionId: 'submission-live', fileName: 'evidence.pdf',
+      sizeInBytes: 512, uploadedByUserId: 'uploader-live', uploadedByName: 'Live Uploader',
+      uploadedAt: '2026-08-01T00:00:00Z', url: '/files/file-live',
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: [attachment] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const submissions = await getOpmsSubmissionsPage();
+    const attachments = await getOpmsSubmissionAttachments('submission-live');
+
+    expect(submissions.data?.items[0]).toMatchObject({
+      target: { id: 'target-live', targetName: 'Live KPI' },
+      submitter: { id: 'submitter-live', displayName: 'Live Submitter' },
+      verifier: { id: 'verifier-live', displayName: 'Live Verifier' },
+      attachments: [], comments: [], history: [],
+    });
+    expect(attachments.data?.[0].uploadedBy).toMatchObject({ id: 'uploader-live', displayName: 'Live Uploader' });
   });
 
   it('encodes bounded register paging and allow-listed sort parameters', async () => {
