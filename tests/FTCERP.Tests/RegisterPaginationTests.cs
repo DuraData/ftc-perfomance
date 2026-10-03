@@ -3,6 +3,7 @@ using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Security;
 
 namespace FTCERP.Tests;
@@ -30,7 +31,8 @@ public sealed class RegisterPaginationTests
             IdpTestFixture.CreateUserManagerMock(user).Object,
             access.Object,
             Mock.Of<IWorkflowGovernanceService>(),
-            Mock.Of<ITenantContext>())
+            Mock.Of<ITenantContext>(),
+            new PerformanceUnitEngine())
         {
             ControllerContext = ControllerContext(user.Id)
         };
@@ -62,7 +64,8 @@ public sealed class RegisterPaginationTests
             IdpTestFixture.CreateUserManagerMock(user).Object,
             Mock.Of<IAccessControlService>(),
             Mock.Of<IWorkflowGovernanceService>(),
-            Mock.Of<ITenantContext>())
+            Mock.Of<ITenantContext>(),
+            new PerformanceUnitEngine())
         {
             ControllerContext = ControllerContext(user.Id)
         };

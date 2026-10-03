@@ -1,6 +1,7 @@
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -21,19 +22,22 @@ public class OpmsTargetsController : ControllerBase
     private readonly IAccessControlService _accessControlService;
     private readonly IWorkflowGovernanceService _workflowGovernanceService;
     private readonly ITenantContext _tenantContext;
+    private readonly IPerformanceUnitEngine _unitEngine;
 
     public OpmsTargetsController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         IAccessControlService accessControlService,
         IWorkflowGovernanceService workflowGovernanceService,
-        ITenantContext tenantContext)
+        ITenantContext tenantContext,
+        IPerformanceUnitEngine unitEngine)
     {
         _context = context;
         _userManager = userManager;
         _accessControlService = accessControlService;
         _workflowGovernanceService = workflowGovernanceService;
         _tenantContext = tenantContext;
+        _unitEngine = unitEngine;
     }
 
     [HttpGet]
@@ -56,6 +60,7 @@ public class OpmsTargetsController : ControllerBase
         if (!scope.Unrestricted)
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
         var targets = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
+        await TargetPeriodCutover.HydrateLegacyProjectionAsync(_context, targets);
         return Ok(new ApiResponse<OpmsTargetResponse[]>(true, targets.Select(item => item.ToResponse()).ToArray()));
     }
 
@@ -85,6 +90,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Wards).Include(item => item.AdditionalAssignees).Include(item => item.VoteNumbers)
             .AsSplitQuery()
             .ToListAsync();
+        await TargetPeriodCutover.HydrateLegacyProjectionAsync(_context, items);
         return Ok(new ApiResponse<PagedResponse<OpmsTargetResponse>>(true,
             PagedResponse<OpmsTargetResponse>.Create(items.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount)));
     }
@@ -127,6 +133,11 @@ public class OpmsTargetsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         var mappingError = await ValidateMappingsAsync(request);
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
+        var revisionError = TargetPeriodCutover.ValidateNoLegacyRevisionValues(request.Q3RevisedTarget, request.Q4RevisedTarget, request.RevisedAnnualTarget, request.RevisedAnnualBudget);
+        if (revisionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, revisionError));
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.TargetUnitType,
+            TargetPeriodCutover.Values(request.AnnualTarget, request.AnnualTargetDescription, request.Q1Target, request.Q1Description, request.Q1Budget, request.Q2Target, request.Q2Description, request.Q2Budget, request.MidTermTarget, request.MidTermDescription, request.MidTermBudget, request.Q3Target, request.Q3Description, request.Q3Budget, request.Q4Target, request.Q4Description, request.Q4Budget));
+        if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
 
         var entity = new OpmsTarget
         {
@@ -147,8 +158,6 @@ public class OpmsTargetsController : ControllerBase
             KpiDescription = request.KpiDescription.Trim(),
             Baseline = request.Baseline,
             BaselineDescription = request.BaselineDescription,
-            AnnualTarget = request.AnnualTarget,
-            AnnualTargetDescription = request.AnnualTargetDescription,
             BudgetSourceId = request.BudgetSourceId,
             BudgetTypeId = request.BudgetTypeId,
             UnitOfMeasureId = request.UnitOfMeasureId,
@@ -162,30 +171,12 @@ public class OpmsTargetsController : ControllerBase
             FmsLink = request.FmsLink,
             IsRevised = request.IsRevised,
             TargetUnitType = request.TargetUnitType,
-            Q1Target = request.Q1Target,
-            Q1Description = request.Q1Description,
-            Q1Budget = request.Q1Budget,
-            Q2Target = request.Q2Target,
-            Q2Description = request.Q2Description,
-            Q2Budget = request.Q2Budget,
-            MidTermTarget = request.MidTermTarget,
-            MidTermDescription = request.MidTermDescription,
-            MidTermBudget = request.MidTermBudget,
-            Q3Target = request.Q3Target,
-            Q3Description = request.Q3Description,
-            Q3Budget = request.Q3Budget,
-            Q3RevisedTarget = request.Q3RevisedTarget,
-            Q4Target = request.Q4Target,
-            Q4Description = request.Q4Description,
-            Q4Budget = request.Q4Budget,
-            Q4RevisedTarget = request.Q4RevisedTarget,
-            RevisedAnnualTarget = request.RevisedAnnualTarget,
-            RevisedAnnualBudget = request.RevisedAnnualBudget,
             CreatedAt = DateTime.UtcNow
         };
         ApplyMappings(entity, request);
 
         _context.OpmsTargets.Add(entity);
+        TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, entity.Id, null);
         await _context.SaveChangesAsync();
         entity = await FindTargetAsync(entity.Id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "Create", null, entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
@@ -216,6 +207,13 @@ public class OpmsTargetsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         var mappingError = await ValidateMappingsAsync(request);
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
+        var revisionError = TargetPeriodCutover.ValidateNoLegacyRevisionValues(request.Q3RevisedTarget, request.Q4RevisedTarget, request.RevisedAnnualTarget, request.RevisedAnnualBudget);
+        if (revisionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, revisionError));
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.TargetUnitType,
+            TargetPeriodCutover.Values(request.AnnualTarget, request.AnnualTargetDescription, request.Q1Target, request.Q1Description, request.Q1Budget, request.Q2Target, request.Q2Description, request.Q2Budget, request.MidTermTarget, request.MidTermDescription, request.MidTermBudget, request.Q3Target, request.Q3Description, request.Q3Budget, request.Q4Target, request.Q4Description, request.Q4Budget));
+        if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
+        var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, entity.Id, null);
+        if (periodChangeError != null) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, periodChangeError));
 
         entity.SourceTemplateId = request.SourceTemplateId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
@@ -233,8 +231,6 @@ public class OpmsTargetsController : ControllerBase
         entity.KpiDescription = request.KpiDescription.Trim();
         entity.Baseline = request.Baseline;
         entity.BaselineDescription = request.BaselineDescription;
-        entity.AnnualTarget = request.AnnualTarget;
-        entity.AnnualTargetDescription = request.AnnualTargetDescription;
         entity.BudgetSourceId = request.BudgetSourceId;
         entity.BudgetTypeId = request.BudgetTypeId;
         entity.UnitOfMeasureId = request.UnitOfMeasureId;
@@ -248,25 +244,6 @@ public class OpmsTargetsController : ControllerBase
         entity.FmsLink = request.FmsLink;
         entity.IsRevised = request.IsRevised;
         entity.TargetUnitType = request.TargetUnitType;
-        entity.Q1Target = request.Q1Target;
-        entity.Q1Description = request.Q1Description;
-        entity.Q1Budget = request.Q1Budget;
-        entity.Q2Target = request.Q2Target;
-        entity.Q2Description = request.Q2Description;
-        entity.Q2Budget = request.Q2Budget;
-        entity.MidTermTarget = request.MidTermTarget;
-        entity.MidTermDescription = request.MidTermDescription;
-        entity.MidTermBudget = request.MidTermBudget;
-        entity.Q3Target = request.Q3Target;
-        entity.Q3Description = request.Q3Description;
-        entity.Q3Budget = request.Q3Budget;
-        entity.Q3RevisedTarget = request.Q3RevisedTarget;
-        entity.Q4Target = request.Q4Target;
-        entity.Q4Description = request.Q4Description;
-        entity.Q4Budget = request.Q4Budget;
-        entity.Q4RevisedTarget = request.Q4RevisedTarget;
-        entity.RevisedAnnualTarget = request.RevisedAnnualTarget;
-        entity.RevisedAnnualBudget = request.RevisedAnnualBudget;
         _context.OpmsTargetWards.RemoveRange(entity.Wards);
         _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
         _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
@@ -352,9 +329,10 @@ public class OpmsTargetsController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
-    private Task<OpmsTarget?> FindTargetAsync(string id)
+    private async Task<OpmsTarget?> FindTargetAsync(string id)
     {
-        return _context.OpmsTargets
+        var target = await _context.OpmsTargets
+            .AsNoTracking()
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
@@ -362,6 +340,8 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.AdditionalAssignees)
             .Include(item => item.VoteNumbers)
             .FirstOrDefaultAsync(item => item.Id == id);
+        if (target != null) await TargetPeriodCutover.HydrateLegacyProjectionAsync(_context, [target]);
+        return target;
     }
 
     private async Task<string?> ValidateMappingsAsync(SaveOpmsTargetRequest request)

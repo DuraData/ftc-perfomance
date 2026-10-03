@@ -35,7 +35,8 @@ public sealed class GovernedWithdrawalTests
             IdpTestFixture.CreateUserManagerMock(user).Object,
             access.Object,
             audit.Object,
-            new TenantContext(municipality.Id, user.Id))
+            new TenantContext(municipality.Id, user.Id),
+            new FTCERP.Host.Domain.Services.PerformanceUnitEngine())
         {
             ControllerContext = ControllerContext(user.Id)
         };
@@ -93,7 +94,8 @@ public sealed class GovernedWithdrawalTests
             IdpTestFixture.CreateUserManagerMock(user).Object,
             AllowAccess("OPMS_KPI.WITHDRAW").Object,
             Mock.Of<IWorkflowGovernanceService>(),
-            new TenantContext(municipality.Id, user.Id))
+            new TenantContext(municipality.Id, user.Id),
+            new FTCERP.Host.Domain.Services.PerformanceUnitEngine())
         {
             ControllerContext = ControllerContext(user.Id)
         };
