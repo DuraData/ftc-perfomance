@@ -1289,7 +1289,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
-  const referenceData = usePerformanceReferenceData(false, false);
+  const referenceData = usePerformanceReferenceData(false);
   const [template, setTemplate] = useState<OpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
   const { form, setForm } = useOpmsTemplateForm(template);
@@ -1887,7 +1887,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
-  const referenceData = usePerformanceReferenceData(false, false);
+  const referenceData = usePerformanceReferenceData(false);
   const [template, setTemplate] = useState<IpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
   const { form, setForm } = useIpmsTemplateForm(template);

@@ -6,8 +6,9 @@ import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { Input, Select, FormRow, FormHero, FormPanel } from '../common/Form';
 import { submissionStatusLabels as statusLabels } from '../submissions/submissionStatus';
-import type { IPMSSubmission, OPMSSubmission, OPMSTarget, IPMSTarget } from '../../types';
+import type { IPMSSubmission, OPMSSubmission } from '../../types';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
+import { TargetPicker } from '../common/TargetPicker';
 import { useApp } from '../../context/AppContext';
 import {
   applyIpmsSubmissionWorkflowAction,
@@ -22,10 +23,8 @@ import {
   extendOpmsSubmissionDueDate,
   getIpmsSubmissionAttachments,
   getIpmsSubmissionsPage,
-  getIpmsTargets,
   getOpmsSubmissionAttachments,
   getOpmsSubmissionsPage,
-  getOpmsTargets,
   uploadIpmsSubmissionAttachment,
   uploadOpmsSubmissionAttachment,
   rescanIpmsSubmissionAttachment,
@@ -45,7 +44,6 @@ import {
 export function OPMSSubmissionsList() {
   const { pushToast } = useApp();
   const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
-  const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,16 +63,7 @@ export function OPMSSubmissionsList() {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const [targetsResult, submissionsResult] = await Promise.all([
-      getOpmsTargets(),
-      getOpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection }),
-    ]);
-
-    if (targetsResult.success && targetsResult.data) {
-      setOpmsTargets(targetsResult.data);
-    } else {
-      pushToast('error', targetsResult.message ?? 'Failed to load OPMS targets');
-    }
+    const submissionsResult = await getOpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection });
 
     if (submissionsResult.success && submissionsResult.data) {
       setOpmsSubmissions(submissionsResult.data.items);
@@ -110,7 +99,7 @@ export function OPMSSubmissionsList() {
 
   const resetForm = () => {
     setForm({
-      targetId: opmsTargets[0]?.id ?? '',
+      targetId: '',
       quarter: 'Q1',
       actualPerformance: '',
     });
@@ -335,11 +324,11 @@ export function OPMSSubmissionsList() {
               <div className="grid gap-4">
                 <FormPanel title="Submission Setup" description="Select the target and reporting period for this OPMS submission." icon={<CalendarRange className="h-5 w-5" />}>
                   <FormRow cols={2}>
-                    <Select
+                    <TargetPicker
+                      kind="opms"
                       label="Target"
-                      options={opmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
                       value={form.targetId}
-                      onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
+                      onChange={(value) => setForm(prev => ({ ...prev, targetId: value }))}
                       required
                     />
                     <Select
@@ -368,7 +357,6 @@ export function OPMSSubmissionsList() {
 export function IPMSSubmissionsList() {
   const { pushToast } = useApp();
   const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
-  const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -388,16 +376,7 @@ export function IPMSSubmissionsList() {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const [targetsResult, submissionsResult] = await Promise.all([
-      getIpmsTargets(),
-      getIpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection }),
-    ]);
-
-    if (targetsResult.success && targetsResult.data) {
-      setIpmsTargets(targetsResult.data);
-    } else {
-      pushToast('error', targetsResult.message ?? 'Failed to load IPMS targets');
-    }
+    const submissionsResult = await getIpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection });
 
     if (submissionsResult.success && submissionsResult.data) {
       setIpmsSubmissions(submissionsResult.data.items);
@@ -433,7 +412,7 @@ export function IPMSSubmissionsList() {
 
   const resetForm = () => {
     setForm({
-      targetId: ipmsTargets[0]?.id ?? '',
+      targetId: '',
       quarter: 'Q1',
       actualPerformance: '',
     });
@@ -658,11 +637,11 @@ export function IPMSSubmissionsList() {
               <div className="grid gap-4">
                 <FormPanel title="Submission Setup" description="Select the target and reporting period for this IPMS submission." icon={<CalendarRange className="h-5 w-5" />}>
                   <FormRow cols={2}>
-                    <Select
+                    <TargetPicker
+                      kind="ipms"
                       label="Target"
-                      options={ipmsTargets.map(target => ({ value: target.id, label: `${target.indicatorNumber} - ${target.targetName}` }))}
                       value={form.targetId}
-                      onChange={(e) => setForm(prev => ({ ...prev, targetId: e.target.value }))}
+                      onChange={(value) => setForm(prev => ({ ...prev, targetId: value }))}
                       required
                     />
                     <Select

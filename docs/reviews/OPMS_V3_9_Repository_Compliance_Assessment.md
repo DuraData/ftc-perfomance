@@ -316,10 +316,10 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-39 | No hard delete of governed records | **COMPLIANT** | OPMS/IPMS targets and submissions use reasoned, RowVersion-protected withdrawal; retained lifecycle events are tenant-scoped and append-only; legacy DELETE routes return 410 and evidence DELETE remains prohibited | Native SQL Server migration/constraint/`rowversion` execution remains a deployment acceptance check. |
 | R-40 | Durable notification pipeline | **COMPLIANT** | Transactional outbox, policy-specific in-app/email/SMS fan-out, versioned reminder/escalation configuration, working-calendar scheduling, idempotency, preferences, retry/terminal delivery evidence, dead-letter operations and audited replay are implemented | Provision and rehearse approved production email/SMS providers as deployment acceptance. |
 | R-41 | Real dashboards and reports | **PARTIALLY COMPLIANT** | OPMS/IPMS dashboards use authorization-scoped database aggregates, and transient CSV export is joined by governed official CSV/XLSX/DOCX/PDF templates, secure immutable output storage and regeneration history | Add asynchronous jobs, schedule/distribution and remaining analytical/oversight/evidence report families. |
-| R-42 | API `/api/v1` baseline | **PARTIALLY COMPLIANT** | Governed current surfaces use `/api/v1`, stable contracts and 410 retirement for unsafe legacy mutations | Remove remaining integer/read compatibility routes after cutover. |
+| R-42 | API `/api/v1` baseline | **PARTIALLY COMPLIANT** | Governed current surfaces use `/api/v1`, stable contracts and 410 retirement for unsafe legacy mutations plus unbounded OPMS/IPMS target/submission reads | Remove remaining secondary integer/read compatibility routes after cutover. |
 | R-43 | PublicId and optimistic concurrency | **PARTIALLY COMPLIANT** | Core governed entities expose stable PublicId and RowVersion with conflict handling | Complete conventions for secondary legacy lookup/business entities. |
 | R-44 | Standard errors and validation | **COMPLIANT** | A central adapter converts every failed controller envelope, automatic model-validation response, empty framework status, middleware rejection and mapped exception to RFC 7807 with stable codes, field errors and correlation evidence; Swagger documents the standard failure media type/statuses and the SPA normalizes them | Preserve contract tests as request DTOs evolve. |
-| R-45 | Pagination/filter/sort/search | **PARTIALLY COMPLIANT** | Primary OPMS/IPMS, TID, C88 report and strategic-document registers, user notifications and the delivery operations queue use bounded `/page` endpoints end to end, while OPMS/IPMS dashboards use purpose-specific aggregates; compatibility/detail selectors and secondary collections remain | Migrate remaining large compatibility/detail selectors to bounded purpose-specific contracts. |
+| R-45 | Pagination/filter/sort/search | **PARTIALLY COMPLIANT** | Primary OPMS/IPMS, TID, C88 report and strategic-document registers, user notifications and delivery operations use bounded endpoints; dashboards use aggregates, workflow queues use combined SQL paging, and every production target selector uses lightweight searchable paging | Migrate remaining secondary/fixed-limit collections and validate representative SQL Server query plans. |
 | R-46 | POST idempotency | **COMPLIANT** | Every authenticated business API POST requires a validated key; a tenant/user/method/route identity plus request hash ledger atomically acquires requests, replays completed results, rejects changed payload/query reuse, blocks in-flight or ambiguous failures, expires records, and preserves one key across SPA refresh retries | Execute concurrent duplicate-request acceptance against native SQL Server before deployment. |
 | R-47 | IDP non-blocking independence | **COMPLIANT** | OPMS does not require an IDP FK | Preserve this separation during migration. |
 | R-48 | IDP plan/version lineage | **COMPLIANT** | Tenant-filtered plan families, predecessor chains, effective periods, publication evidence, immutable public IDs, version lineage, concurrency tokens, migration backfill, governed forms, and relational tests are implemented | Native SQL Server execution remains an environment acceptance item. |
@@ -339,7 +339,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | **P0** | Native SQL Server acceptance has not run | SQLite cannot prove SQL Server `rowversion`, filtered indexes, migration/backfill SQL, constraint behavior or restore procedures | One native integration test is intentionally skipped; sections 11.42 and 11.51 | Apply the idempotent migrations to a positively identified local/test SQL Server database, run the native suite, and retain recovery-drill evidence. |
 | **P0** | Legacy data cutover/reconciliation is incomplete | Nullable tenant keys, wide targets, free-text periods, old actual/status/score fields and duplicate historic rows can block final constraints or produce ambiguous history | R-01, R-04, R-16-R-18, R-22, R-24-R-25, R-27, R-31, R-33 | Execute repeatable reconciliation with exception reports and business-owner sign-off before retiring compatibility fields/fallbacks. |
 | **P1** | Production enterprise federation is not deployment-certified | Repository provider registration and governed linking exist, but real tenant metadata, redirect URIs, conditional access, claim mappings and revocation have not been accepted | R-09 | Provision approved provider secrets/registrations and execute deployed Entra ID/AD federation and hybrid fallback acceptance. |
-| **P1** | Collection APIs are not uniformly bounded | Large tenants can still cause high memory/latency on compatibility, selector and secondary endpoints | R-45; primary SPA, notification, C88 report, strategic-document and TID registers use page contracts and dashboards use database aggregates, while full-data compatibility/detail selectors remain | Migrate remaining large selectors to bounded purpose-specific contracts. |
+| **P1** | Collection APIs are not uniformly bounded | Large tenants can still cause high memory/latency on secondary/fixed-limit endpoints | R-45; primary registers and every production target selector use page contracts, dashboards use aggregates, and workflow queues page a combined scoped query; secondary collections remain | Migrate remaining secondary collections to bounded purpose-specific contracts. |
 | **P1** | Production integrations and operational evidence are absent | Scanner/storage/email/password-breach readiness, metrics, paging, backup and restore behavior are not deployment-certified | R-40, R-50, R-52-R-54 | Provision providers/collectors, dashboards and schedules; rehearse failure, replay, alert and recovery procedures. |
 | **P1** | End-to-end UAT and accessibility certification remain | Unit/component/controller tests do not prove deployed browser workflows, representative roles or assistive technology | R-54-R-55 | Execute role/tenant workflow matrices, direct-API denial, keyboard/screen-reader/contrast/zoom tests and formal acceptance sign-off. |
 | **P2** | Notification/report breadth is incomplete | SMS, reminders/escalations, scheduled distribution and some analytical/oversight/evidence report families remain unavailable; official performance CSV/XLSX/DOCX/PDF generation is governed | R-40-R-41 and section 11.68 | Implement only municipality-approved channels, schedules and remaining governed report jobs. |
@@ -1351,6 +1351,18 @@ The GitHub Actions quality gate was exercised on a clean hosted runner and the r
 
 The native SQL Server and deployment/UAT limitations below are unchanged.
 
+### 11.77 Bounded target selectors and collection-route retirement
+
+Production workflows no longer fetch complete OPMS/IPMS target collections to populate selectors:
+
+- `/api/v1/opms-targets/options` and `/api/v1/ipms-targets/options` return only target identity, indicator/name, department and relationship metadata through the shared validated page contract. Permission scope and withdrawn-state exclusion are applied before count, search, ordering and paging.
+- A reusable accessible target picker provides debounced search, authoritative result counts and explicit previous/next controls. Submission creation, Circular 88 alignment mapping and IPMS-to-OPMS linking use it; the OPMS detail page separately pages its related IPMS targets.
+- The reference-data hook no longer downloads target registers. No production TypeScript source imports the former full-collection clients.
+- Unbounded OPMS/IPMS target and submission reads now return HTTP 410 with the replacement page/option route, preventing direct callers from bypassing the bounded contract.
+- Relational SQLite tests prove scope-before-count, search, page limits and withdrawn-target exclusion. Route/component tests prove the option query, search, paging and selected identity transport.
+
+The complete suites pass **313 backend tests**, with one environment-gated SQL Server test skipped, and **153/153 frontend tests across 46 files**. TypeScript, ESLint, the production frontend/Release backend build and the **69-chunk** bundle budget pass with **0 warnings and 0 errors**; the largest JavaScript chunk is **374.1 KiB**. R-45 remains **PARTIALLY COMPLIANT** for other secondary/fixed-limit collections and representative native SQL Server query-plan/load acceptance.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1401,7 +1413,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 19 | Dashboards and role-scoped operational views | Partially Compliant | OPMS/IPMS headline metrics use authorization-scoped database aggregates, while staff and personal workflow queues use combined scope-filtered SQL counts and paging; broader analytical drill-down and some specified operational flows remain incomplete. |
 | 20 | Official reports, exports and version history | Compliant | Municipality/FY/period-scoped approved template versions generate immutable CSV/XLSX/DOCX/PDF performance outputs from one authorized dataset; each generation pins template/version, scope/filters, actor/time, snapshot/content hashes and private blob, while regeneration preserves prior versions and downloads re-evaluate scope and integrity. |
 | 21 | Notifications, reminders and delivery operations | Compliant | Versioned municipality/FY policies inherit through stage and period scope, materialize idempotent working-day reminders/escalations for reporting windows and RFIs, support in-app/email/SMS delivery, preserve retry/terminal receipts, catch up after downtime, enforce mandatory delivery over persisted optional preferences and expose governed administration/operations. |
-| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail submissions, related IPMS KPIs and audit history are server-filtered and bounded; dashboards use aggregates and workflow queues use combined database paging. Compatibility/detail selectors, other secondary collections and uniform SQL Server query-plan acceptance remain. |
+| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail collections are bounded, dashboards use aggregates, workflow queues use combined database paging, and target selectors use lightweight searchable pages; unbounded OPMS/IPMS target/submission reads are retired. Other secondary collections and uniform SQL Server query-plan acceptance remain. |
 | 23 | Technical Indicator Descriptions | Compliant | Governed configuration, versions, files, scans, register paging and authorization are implemented. |
 | 24 | Circular 88 | Compliant | Catalogue, assignments, governed reports, workflow and paged register are implemented and tested. |
 | 25 | Integrated Development Plan | Compliant | Governed IDP structures, import/report paths and repository tests are present. |
@@ -1458,6 +1470,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Removed tenant-wide target prefetches from submission response mapping and changed OPMS/IPMS target details to bounded server-filtered submission, related-KPI and audit-history queries.
 - Replaced OPMS/IPMS dashboard register downloads and browser scans with versioned, authorization-scoped database aggregates for target, submission and workflow-queue metrics.
 - Replaced staff and personal workflow register downloads with one combined OPMS/IPMS endpoint that applies dynamic scopes before SQL counts, queue filters and stable paging, then delegates protected row details to the existing member-secured APIs.
+- Replaced every production full-target selector with lightweight scope-filtered search/paging, paged the OPMS related-IPMS display and retired unbounded target/submission collection routes with HTTP 410.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
 
@@ -1465,12 +1478,12 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 312; Failed: 0; Skipped: 1; Total: 313.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 152/152 across 45 files.** |
+| Backend test suite | **Passed: 313; Failed: 0; Skipped: 1; Total: 314.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 153/153 across 46 files.** Each file also passed independently to avoid local Windows worker-start contention. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
-| Frontend production build | Passed under Vite 8; 2,094 modules transformed. |
-| Bundle budget | Passed with 68 JavaScript chunks; largest chunk 374.1 KiB. |
+| Frontend production build | Passed under Vite 8; 2,095 modules transformed. |
+| Bundle budget | Passed with 69 JavaScript chunks; largest chunk 374.1 KiB. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
@@ -1485,4 +1498,4 @@ The current EF model matches the committed snapshot, the canonical submission-st
 
 ### 12.7 Release decision
 
-The completed remediation improves correctness and closes several repository-level gaps, including official OPMS/IPMS performance output generation and version history, but it does not make the product fully compliant. Release approval still requires, at minimum, normalized target cutover and successful native SQL Server plus security/performance/operational acceptance. The explicit final verdict remains **NOT FULLY COMPLIANT — NOT PRODUCTION READY**.
+The completed remediation improves correctness and closes several repository-level gaps, including official OPMS/IPMS performance output generation, version history and bounded production target selection, but it does not make the product fully compliant. Release approval still requires execution/sign-off of governed historical target reconciliation and physical legacy-column retirement, plus successful native SQL Server, security, performance and operational acceptance. The explicit final verdict remains **NOT FULLY COMPLIANT — NOT PRODUCTION READY**.

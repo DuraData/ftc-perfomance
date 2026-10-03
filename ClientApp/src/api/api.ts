@@ -1,6 +1,7 @@
 import type {
   ApiResponse,
   PagedResult,
+  PerformanceTargetOptionDto,
   AuditTrailEntryDto,
   LoginRequest,
   LoginResponse,
@@ -1701,11 +1702,6 @@ export async function duplicateIpmsTargetTemplate(id: string | number): Promise<
   return mapResponse(response, toIpmsTemplateModel);
 }
 
-export async function getOpmsTargets(): Promise<ApiResponse<OPMSTarget[]>> {
-  const response = await get<OpmsTargetDto[]>('/v1/opms-targets');
-  return mapResponse(response, items => items.map(toOpmsTargetModel));
-}
-
 export async function getOpmsPerformanceDashboard(): Promise<ApiResponse<PerformanceDashboardDto>> {
   return get<PerformanceDashboardDto>('/v1/performance-dashboards/opms');
 }
@@ -1747,6 +1743,10 @@ export async function getOpmsTargetsPage(query: RegisterPageQuery = {}): Promise
   return mapResponse(response, page => ({ ...page, items: page.items.map(toOpmsTargetModel) }));
 }
 
+export function getOpmsTargetOptions(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceTargetOptionDto>>> {
+  return get<PagedResult<PerformanceTargetOptionDto>>(`/v1/opms-targets/options${registerPageQuery(query)}`);
+}
+
 export async function getOpmsTarget(id: string): Promise<ApiResponse<OPMSTarget>> {
   const response = await get<OpmsTargetDto>(`/v1/opms-targets/${id}`);
   return mapResponse(response, toOpmsTargetModel);
@@ -1767,14 +1767,13 @@ export async function withdrawOpmsTarget(id: string, payload: { reason: string; 
   return mapResponse(response, toOpmsTargetModel);
 }
 
-export async function getIpmsTargets(): Promise<ApiResponse<IPMSTarget[]>> {
-  const response = await get<IpmsTargetDto[]>('/ipms-targets');
-  return mapResponse(response, items => items.map(toIpmsTargetModel));
-}
-
 export async function getIpmsTargetsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSTarget>>> {
   const response = await get<PagedResult<IpmsTargetDto>>(`/v1/ipms-targets/page${registerPageQuery(query)}`);
   return mapResponse(response, page => ({ ...page, items: page.items.map(toIpmsTargetModel) }));
+}
+
+export function getIpmsTargetOptions(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceTargetOptionDto>>> {
+  return get<PagedResult<PerformanceTargetOptionDto>>(`/v1/ipms-targets/options${registerPageQuery(query)}`);
 }
 
 export async function getIpmsTarget(id: string): Promise<ApiResponse<IPMSTarget>> {
@@ -1795,11 +1794,6 @@ export async function updateIpmsTarget(id: string, payload: SaveIpmsTargetPayloa
 export async function withdrawIpmsTarget(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<IPMSTarget>> {
   const response = await post<IpmsTargetDto>(`/v1/ipms-targets/${id}/withdraw`, payload);
   return mapResponse(response, toIpmsTargetModel);
-}
-
-export async function getOpmsSubmissions(): Promise<ApiResponse<OPMSSubmission[]>> {
-  const response = await get<OpmsSubmissionDto[]>('/opms-submissions');
-  return mapResponse(response, items => items.map(toOpmsSubmissionModel));
 }
 
 export async function getOpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OPMSSubmission>>> {
@@ -1893,11 +1887,6 @@ export async function releaseOpmsEvidenceLegalHold(id: string, attachmentId: str
 export async function requestOpmsEvidenceDisposal(id: string, attachmentId: string, payload: { approvalReference: string; reason: string; rowVersion: string }) {
   const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
   return mapResponse(response, toAttachmentModel);
-}
-
-export async function getIpmsSubmissions(): Promise<ApiResponse<IPMSSubmission[]>> {
-  const response = await get<IpmsSubmissionDto[]>('/ipms-submissions');
-  return mapResponse(response, items => items.map(toIpmsSubmissionModel));
 }
 
 export async function getIpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSSubmission>>> {

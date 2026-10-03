@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   configureC88: vi.fn(), createC88Assignment: vi.fn(), createC88Calendar: vi.fn(), createC88CatalogueItem: vi.fn(),
   createC88CatalogueVersion: vi.fn(), createC88ComplianceQuestion: vi.fn(), createC88Indicator: vi.fn(),
   createC88Mapping: vi.fn(), createC88ReportVersion: vi.fn(), createC88Workflow: vi.fn(), finalSubmitC88Report: vi.fn(),
-  getC88ReportsPage: vi.fn(), getC88Workspace: vi.fn(), getMunicipalEmployees: vi.fn(), getMunicipalityFinancialYearMasters: vi.fn(), getOpmsTargets: vi.fn(),
+  getC88ReportsPage: vi.fn(), getC88Workspace: vi.fn(), getMunicipalEmployees: vi.fn(), getMunicipalityFinancialYearMasters: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
   returnC88Report: vi.fn(), saveC88IndicatorPlan: vi.fn(), submitC88Report: vi.fn(), updateC88CatalogueVersion: vi.fn(), verifyC88Report: vi.fn(),
 }));
 
@@ -40,7 +40,7 @@ describe('Circular 88 workspace', () => {
     api.getC88ReportsPage.mockResolvedValue({ success: true, data: { items: workspace.reports, page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalityFinancialYearMasters.mockResolvedValue({ success: true, data: [year] });
     api.getMunicipalEmployees.mockResolvedValue({ success: true, data: [] });
-    api.getOpmsTargets.mockResolvedValue({ success: true, data: [] });
+    api.getOpmsTargetOptions.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.submitC88Report.mockResolvedValue({ success: true, data: 'report-1' });
   });
 

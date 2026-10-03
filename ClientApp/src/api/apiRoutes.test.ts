@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargets, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -189,15 +189,6 @@ describe('versioned API routes', () => {
     expect(String(fetchMock.mock.calls[1][0])).not.toContain('one-time-token');
   });
 
-  it('uses the versioned OPMS target route for relational mapping responses', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await getOpmsTargets();
-
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-targets'), expect.objectContaining({ credentials: 'include' }));
-  });
-
   it('loads OPMS and IPMS dashboard aggregates from bounded versioned routes', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
@@ -235,11 +226,11 @@ describe('versioned API routes', () => {
       isRevised: false, isWithdrawn: false, targetUnitType: 'absolute_count',
       createdAt: '2026-07-01T00:00:00Z',
     };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [dto] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [dto], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await getOpmsTargets();
-    const target = result.data?.[0];
+    const result = await getOpmsTargetsPage({ page: 1, pageSize: 25 });
+    const target = result.data?.items[0];
 
     expect(target).toMatchObject({
       id: 'target-live', targetName: 'Live KPI', indicatorNumber: 'LIVE-001',
@@ -304,6 +295,18 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/notifications/page?page=1&pageSize=8&sortBy=createdAt&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/c88/workspace?municipalityFinancialYearPublicId=year-1&includeReports=false'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining('/v1/c88/reports/page?page=2&pageSize=25&search=water&sortBy=indicatorCode&sortDirection=asc&municipalityFinancialYearPublicId=year-1'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('uses bounded searchable target-option routes for production selectors', async () => {
+    const page = { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getOpmsTargetOptions({ page: 2, pageSize: 25, search: 'water', sortBy: 'indicatorNumber', sortDirection: 'asc' });
+    await getIpmsTargetOptions({ page: 1, pageSize: 25, relatedOpmsTargetPublicId: 'f7253f30-89a2-4fa9-b0af-1ad317222ef6' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/options?page=2&pageSize=25&search=water&sortBy=indicatorNumber&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-targets/options?page=1&pageSize=25&relatedOpmsTargetPublicId=f7253f30-89a2-4fa9-b0af-1ad317222ef6'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('posts reasons and concurrency tokens to governed withdrawal routes', async () => {

@@ -13,3 +13,12 @@ public sealed record PagedResponse<T>(
         new(items.ToArray(), page, pageSize, totalCount,
             totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize));
 }
+
+public sealed record PerformanceTargetOptionResponse(
+    string Id,
+    Guid PublicId,
+    string IndicatorNumber,
+    string TargetName,
+    int? DepartmentId,
+    string? DepartmentName,
+    Guid? RelatedOpmsTargetPublicId = null);

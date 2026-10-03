@@ -66,26 +66,8 @@ public class IpmsSubmissionsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse[]>>> GetSubmissions()
-    {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse[]>(false, null, "User not found"));
-
-        var scope = await _accessControlService.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ");
-        if (!scope.PermissionGranted) return Ok(new ApiResponse<IpmsSubmissionResponse[]>(true, []));
-        var query = _context.IpmsSubmissions
-            .AsNoTracking()
-            .Include(item => item.IpmsTarget).ThenInclude(target => target.Department)
-            .Include(item => item.IpmsTarget).ThenInclude(target => target.Unit)
-            .Include(item => item.SubmittedByUser)
-            .Include(item => item.ReportingPeriod)
-            .AsQueryable();
-        if (!scope.Unrestricted)
-            query = query.Where(item => (item.IpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId.Value)) || (item.IpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.IpmsTarget.UnitId.Value)) || (item.IpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.IpmsTargetId) || scope.KpiIds.Contains(item.IpmsTargetId));
-        var items = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
-        var memberPermissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return Ok(new ApiResponse<IpmsSubmissionResponse[]>(true, items.Select(item => ToAuthorizedResponse(item, memberPermissions)).ToArray()));
-    }
+    public ActionResult<ApiResponse<object>> GetSubmissions() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null, "The unbounded IPMS submission collection is retired. Use /api/v1/ipms-submissions/page."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>> GetSubmissionsPage([FromQuery] PagedQueryRequest request)

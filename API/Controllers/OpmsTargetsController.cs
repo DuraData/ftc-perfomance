@@ -41,28 +41,8 @@ public class OpmsTargetsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<OpmsTargetResponse[]>>> GetTargets()
-    {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse[]>(false, null, "User not found"));
-
-        var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
-        if (!scope.PermissionGranted) return Ok(new ApiResponse<OpmsTargetResponse[]>(true, []));
-        var query = _context.OpmsTargets
-            .AsNoTracking()
-            .Include(item => item.Department)
-            .Include(item => item.Unit)
-            .Include(item => item.AssignedUser)
-            .Include(item => item.Wards)
-            .Include(item => item.AdditionalAssignees)
-            .Include(item => item.VoteNumbers)
-            .AsQueryable();
-        if (!scope.Unrestricted)
-            query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
-        var targets = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
-        await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, targets);
-        return Ok(new ApiResponse<OpmsTargetResponse[]>(true, targets.Select(item => item.ToResponse()).ToArray()));
-    }
+    public ActionResult<ApiResponse<object>> GetTargets() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null, "The unbounded OPMS target collection is retired. Use /api/v1/opms-targets/page for registers or /api/v1/opms-targets/options for selectors."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<OpmsTargetResponse>>>> GetTargetsPage([FromQuery] PagedQueryRequest request)
@@ -107,6 +87,33 @@ public class OpmsTargetsController : ControllerBase
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };
+
+    [HttpGet("options")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>>> GetTargetOptions([FromQuery] PagedQueryRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(false, null, "User not found"));
+        if (!TargetSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, or targetName."));
+
+        var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
+        if (!scope.PermissionGranted)
+            return Ok(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(true, PagedResponse<PerformanceTargetOptionResponse>.Empty(request.Page, request.PageSize)));
+
+        var query = _context.OpmsTargets.AsNoTracking().Where(item => !item.IsWithdrawn);
+        if (!scope.Unrestricted)
+            query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
+
+        var totalCount = await query.CountAsync();
+        var items = await ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize)
+            .Select(item => new PerformanceTargetOptionResponse(item.Id, item.PublicId, item.IndicatorNumber, item.TargetName, item.DepartmentId, item.Department != null ? item.Department.Name : null))
+            .ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(true,
+            PagedResponse<PerformanceTargetOptionResponse>.Create(items, request.Page, request.PageSize, totalCount)));
+    }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> GetTarget(string id)

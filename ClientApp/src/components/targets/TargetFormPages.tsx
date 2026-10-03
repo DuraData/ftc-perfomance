@@ -4,12 +4,14 @@ import { ArrowLeft, BarChart3, Building2, CalendarRange, Save, Target, UserSquar
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from '../common/Form';
+import { TargetPicker } from '../common/TargetPicker';
 import { useApp } from '../../context/AppContext';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
   createIpmsTarget,
   createOpmsTarget,
   getIpmsTarget,
+  getIpmsTargetOptions,
   getIpmsTargetTemplate,
   getOpmsTarget,
   getOpmsTargetTemplate,
@@ -28,6 +30,7 @@ import type {
   SaveIpmsTargetPayload,
   SaveOpmsTargetPayload,
   SaveTargetPeriodValuePayload,
+  PerformanceTargetOptionDto,
   TargetUnitType,
   VoteNumberMasterDto,
   WardMasterDto,
@@ -772,6 +775,10 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [selectedVoteNumberId, setSelectedVoteNumberId] = useState('');
   const [wardMasters, setWardMasters] = useState<WardMasterDto[]>([]);
   const [voteNumberMasters, setVoteNumberMasters] = useState<VoteNumberMasterDto[]>([]);
+  const [relatedIpmsTargets, setRelatedIpmsTargets] = useState<PerformanceTargetOptionDto[]>([]);
+  const [relatedIpmsPage, setRelatedIpmsPage] = useState(1);
+  const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
+  const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
 
   useEffect(() => {
     const loadReferenceMasters = async () => {
@@ -781,6 +788,31 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     };
     void loadReferenceMasters();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRelated = async () => {
+      if (!existingTarget?.publicId) {
+        setRelatedIpmsTargets([]);
+        setRelatedIpmsTotalCount(0);
+        setRelatedIpmsTotalPages(0);
+        return;
+      }
+      const result = await getIpmsTargetOptions({
+        page: relatedIpmsPage,
+        pageSize: 25,
+        sortBy: 'indicatorNumber',
+        sortDirection: 'asc',
+        relatedOpmsTargetPublicId: existingTarget.publicId,
+      });
+      if (cancelled || !result.success || !result.data) return;
+      setRelatedIpmsTargets(result.data.items);
+      setRelatedIpmsTotalCount(result.data.totalCount);
+      setRelatedIpmsTotalPages(result.data.totalPages);
+    };
+    void loadRelated();
+    return () => { cancelled = true; };
+  }, [existingTarget?.publicId, relatedIpmsPage]);
 
   useEffect(() => {
     const initialize = async () => {
@@ -861,7 +893,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { departments, units, employees, lookups, ipmsTargets } = referenceData;
+  const { departments, units, employees, lookups } = referenceData;
   const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedUnit = units.find(item => String(item.id) === form.unitId);
@@ -869,7 +901,6 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const selectedWardIds = parseCsvIds(form.wardIds);
   const selectedAssigneeIds = parseCsvIds(form.additionalAssigneeIds);
   const selectedVoteIds = parseCsvIds(form.voteNumberIds);
-  const relatedIpmsTargets = ipmsTargets.filter(item => item.relatedOPMSTarget?.id === existingTarget?.id);
   const fieldError = (label: string) => getFieldValidationError(validationErrors, label);
 
   return (
@@ -1313,6 +1344,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   ))}
                 </ul>
               )}
+              {relatedIpmsTotalCount > 0 && <div className="mt-2 flex items-center justify-between text-xs text-secondary-500"><span>{relatedIpmsTotalCount} linked target{relatedIpmsTotalCount === 1 ? '' : 's'}</span><span className="flex items-center gap-2"><Button type="button" size="sm" variant="ghost" disabled={relatedIpmsPage <= 1} onClick={() => setRelatedIpmsPage(value => Math.max(1, value - 1))}>Previous</Button><span>Page {relatedIpmsPage} of {Math.max(relatedIpmsTotalPages, 1)}</span><Button type="button" size="sm" variant="ghost" disabled={relatedIpmsPage >= relatedIpmsTotalPages} onClick={() => setRelatedIpmsPage(value => value + 1)}>Next</Button></span></div>}
             </div>
             <p className="text-xs text-amber-700 dark:text-amber-300">
               Archive/Cascade warning: unlinking or archiving parent OPMS targets should be validated against linked IPMS targets before save.
@@ -1344,6 +1376,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [existingTarget, setExistingTarget] = useState<IPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [linkedOpmsLabel, setLinkedOpmsLabel] = useState('');
 
   useEffect(() => {
     const initialize = async () => {
@@ -1424,11 +1457,10 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { departments, units, employees, lookups, opmsTargets } = referenceData;
+  const { departments, units, employees, lookups } = referenceData;
   const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedUnit = units.find(item => String(item.id) === form.unitId);
-  const linkedOpms = opmsTargets.find(item => item.id === form.relatedOPMSTargetId);
   const fieldError = (label: string) => getFieldValidationError(validationErrors, label);
 
   return (
@@ -1470,13 +1502,13 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Template Version" value={form.sourceTemplateVersion} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateVersion: event.target.value }))} />
             </FormRow>
             <FormRow cols={3}>
-              <Select label="Related OPMS Target" value={form.relatedOPMSTargetId} onChange={(event) => setForm(prev => ({ ...prev, relatedOPMSTargetId: event.target.value }))} options={[{ value: '', label: 'No Link' }, ...opmsTargets.map(item => ({ value: item.id, label: `${item.indicatorNumber} - ${item.targetName}` }))]} />
+              <TargetPicker kind="opms" label="Related OPMS Target" emptyLabel="No link" value={form.relatedOPMSTargetId} onChange={(value, option) => { setForm(prev => ({ ...prev, relatedOPMSTargetId: value })); setLinkedOpmsLabel(option ? `${option.indicatorNumber} - ${option.targetName}` : ''); }} />
               <div className="flex items-end">
                 <Button variant="outline" className="w-full" disabled={!form.relatedOPMSTargetId} onClick={() => setForm(prev => ({ ...prev, relatedOPMSTargetId: '' }))}>
                   Unlink
                 </Button>
               </div>
-              <Input label="Linked OPMS" value={linkedOpms ? `${linkedOpms.indicatorNumber} - ${linkedOpms.targetName}` : 'Not linked'} readOnly />
+              <Input label="Linked OPMS" value={linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not linked')} readOnly />
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
@@ -1567,7 +1599,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Related OPMS</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{linkedOpms?.indicatorNumber ?? 'Not Linked'}</p>
+                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not Linked')}</p>
               </div>
             </div>
           </FormPanel>

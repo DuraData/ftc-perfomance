@@ -58,6 +58,9 @@ public sealed class RegisterPaginationTests
         var item = Assert.Single(envelope.Data.Items);
         Assert.Equal(first.Id, item.OpmsTargetId);
         Assert.Equal("KPI-001", item.TargetIndicatorNumber);
+
+        var retired = Assert.IsType<ObjectResult>(controller.GetSubmissions().Result);
+        Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
     }
 
     [Fact]
@@ -123,6 +126,57 @@ public sealed class RegisterPaginationTests
         var result = await controller.GetTargetsPage(new PagedQueryRequest { SortBy = "raw-sql-field" });
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task Opms_target_options_are_lightweight_searchable_bounded_and_exclude_withdrawn_records()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("option-user");
+        var available = Target("available", "KPI-001", "Water reliability", Guid.NewGuid());
+        var withdrawn = Target("withdrawn", "KPI-002", "Water legacy", Guid.NewGuid());
+        withdrawn.IsWithdrawn = true;
+        withdrawn.ReasonForWithdrawal = "Superseded target";
+        withdrawn.WithdrawnAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+        var outside = Target("outside-option", "KPI-003", "Water outside", Guid.NewGuid());
+        context.AddRange(user, available, withdrawn, outside);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
+            .ReturnsAsync(new AccessQueryScopeResult(true, false, [], [], [], [available.Id, withdrawn.Id], [], []));
+        var controller = new OpmsTargetsController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            access.Object,
+            Mock.Of<IWorkflowGovernanceService>(),
+            Mock.Of<ITenantContext>(),
+            new PerformanceUnitEngine())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+        var result = await controller.GetTargetOptions(new PagedQueryRequest
+        {
+            Page = 1,
+            PageSize = 1,
+            Search = "Water",
+            SortBy = "indicatorNumber",
+            SortDirection = "asc"
+        });
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(1, envelope.Data!.TotalCount);
+        Assert.Equal(1, envelope.Data.PageSize);
+        var option = Assert.Single(envelope.Data.Items);
+        Assert.Equal(available.Id, option.Id);
+        Assert.Equal(available.PublicId, option.PublicId);
+        Assert.Equal("KPI-001", option.IndicatorNumber);
+        Assert.DoesNotContain(envelope.Data.Items, item => item.Id == withdrawn.Id || item.Id == outside.Id);
+
+        var retired = Assert.IsType<ObjectResult>(controller.GetTargets().Result);
+        Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
     }
 
     [Fact]

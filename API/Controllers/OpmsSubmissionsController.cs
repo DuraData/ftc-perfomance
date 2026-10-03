@@ -66,25 +66,8 @@ public class OpmsSubmissionsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<OpmsSubmissionResponse[]>>> GetSubmissions()
-    {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse[]>(false, null, "User not found"));
-
-        var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ");
-        if (!scope.PermissionGranted) return Ok(new ApiResponse<OpmsSubmissionResponse[]>(true, []));
-        var query = _context.OpmsSubmissions
-            .AsNoTracking()
-            .Include(item => item.OpmsTarget).ThenInclude(target => target.Department)
-            .Include(item => item.OpmsTarget).ThenInclude(target => target.Unit)
-            .Include(item => item.SubmittedByUser)
-            .AsQueryable();
-        if (!scope.Unrestricted)
-            query = query.Where(item => (item.OpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId.Value)) || (item.OpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.OpmsTarget.UnitId.Value)) || (item.OpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.OpmsTargetId) || scope.KpiIds.Contains(item.OpmsTargetId));
-        var items = await query.OrderByDescending(item => item.CreatedAt).ToListAsync();
-        var memberPermissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return Ok(new ApiResponse<OpmsSubmissionResponse[]>(true, items.Select(item => ToAuthorizedResponse(item, memberPermissions)).ToArray()));
-    }
+    public ActionResult<ApiResponse<object>> GetSubmissions() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null, "The unbounded OPMS submission collection is retired. Use /api/v1/opms-submissions/page."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>> GetSubmissionsPage([FromQuery] PagedQueryRequest request)

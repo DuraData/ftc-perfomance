@@ -1252,6 +1252,16 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface PerformanceTargetOptionDto {
+  id: string;
+  publicId: string;
+  indicatorNumber: string;
+  targetName: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  relatedOpmsTargetPublicId?: string | null;
+}
+
 export interface TargetNormalizationPreviewDto {
   targetPublicId: string;
   indicatorNumber: string;
