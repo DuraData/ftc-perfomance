@@ -5,9 +5,7 @@ import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
 import { Input, Select, FormRow, FormHero, FormPanel } from '../common/Form';
-import {
-  statusLabels,
-} from '../../data/mockData';
+import { submissionStatusLabels as statusLabels } from '../submissions/submissionStatus';
 import type { IPMSSubmission, OPMSSubmission, OPMSTarget, IPMSTarget } from '../../types';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import { useApp } from '../../context/AppContext';

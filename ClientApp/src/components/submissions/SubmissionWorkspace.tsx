@@ -18,8 +18,7 @@ import {
 import { Button, Badge, Card } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { FileUpload } from '../common/FileUpload';
-import { statusLabels } from '../../data/mockData';
-import { mockEmployees } from '../../data/mockData';
+import { submissionStatusLabels as statusLabels } from './submissionStatus';
 import type {
   Attachment,
   IPMSSubmission,
@@ -413,7 +412,15 @@ export function SubmissionWorkspace({
     fileName: file.name,
     fileSize: file.size,
     fileType: file.type,
-    uploadedBy: currentSubmission.submitter ?? getVerifier(currentSubmission) ?? getApprover(currentSubmission) ?? mockEmployees[0],
+    uploadedBy: currentSubmission.submitter ?? getVerifier(currentSubmission) ?? getApprover(currentSubmission) ?? {
+      id: '',
+      firstName: '',
+      lastName: '',
+      displayName: 'Pending server confirmation',
+      email: '',
+      identificationType: '',
+      isActive: true,
+    },
     uploadedAt: new Date().toISOString(),
     documentType: 'evidence',
     url: URL.createObjectURL(file),
