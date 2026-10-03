@@ -208,6 +208,9 @@ public static class OfficialReportRenderer
     private static void AddText(ZipArchive archive, string path, string content)
     {
         var entry = archive.CreateEntry(path, CompressionLevel.Optimal);
+        // ZIP entry timestamps otherwise default to the current clock and make
+        // identical XLSX/DOCX renders produce different bytes and hashes.
+        entry.LastWriteTime = new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
         using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
         writer.Write(content);
     }
