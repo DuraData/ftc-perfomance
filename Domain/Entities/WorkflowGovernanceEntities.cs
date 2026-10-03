@@ -40,7 +40,7 @@ public enum SubmissionKind
     Ipms = 2
 }
 
-public class OpmsTarget
+public partial class OpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
@@ -161,7 +161,7 @@ public class OpmsTargetVoteNumber
     public VoteNumber VoteNumber { get; set; } = null!;
 }
 
-public class IpmsTarget
+public partial class IpmsTarget
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
@@ -236,7 +236,7 @@ public class IpmsTarget
         public ICollection<IpmsSubmission> Submissions { get; set; } = new List<IpmsSubmission>();
 }
 
-public class OpmsSubmission
+public partial class OpmsSubmission
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
@@ -317,7 +317,7 @@ public class OpmsSubmission
     public ICollection<SubmissionScore> Scores { get; set; } = new List<SubmissionScore>();
 }
 
-public class IpmsSubmission
+public partial class IpmsSubmission
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
