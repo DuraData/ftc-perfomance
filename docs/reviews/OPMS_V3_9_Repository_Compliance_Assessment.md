@@ -1344,6 +1344,7 @@ The GitHub Actions quality gate was exercised on a clean hosted runner and the r
 
 - The backend restore step now targets the test project, transitively restoring the host and generating the test assembly assets required by the subsequent `--no-restore` build/test commands.
 - The frontend lockfile is synchronized with the manifest, so `npm ci` succeeds without modifying dependency state.
+- The Linux clean runner's case-sensitive type-check exposed and corrected the SPA entry import to match the tracked lowercase `app.tsx` filename.
 - Vite, Vitest, ESLint, React lint plugins, TypeScript and Tailwind/PostCSS were moved to supported releases. Tailwind 4 uses its dedicated PostCSS plugin and retains the existing repository theme through the explicit configuration import.
 - The React Hooks 7 preset additions that would retroactively redefine the repository's lint policy are explicitly deferred; the pre-existing hooks and refresh checks remain enforced.
 - A clean install followed by `npm audit --audit-level=high` reports **0 vulnerabilities**. TypeScript, ESLint, all **152/152 frontend tests**, accessibility automation, the Vite production build and the **68-chunk** bundle budget pass; the largest JavaScript chunk is **374.1 KiB**.
