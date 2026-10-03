@@ -1,10 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, ClipboardList, FileText, Layers } from 'lucide-react';
 import { Card, Button } from '../ui';
-import { getIpmsTargets, getIpmsSubmissions } from '../../api/api';
+import { getIpmsPerformanceDashboard } from '../../api/api';
 import { AppShell } from '../layout/AppShell';
 import { useApp } from '../../context/AppContext';
-import type { IPMSTarget, IPMSSubmission } from '../../types';
+import type { PerformanceDashboardDto } from '../../types';
+
+const emptyDashboard: PerformanceDashboardDto = {
+  totalTargets: 0,
+  activeTargets: 0,
+  completedTargets: 0,
+  overdueTargets: 0,
+  atRiskTargets: 0,
+  outstandingTargets: 0,
+  draftSubmissions: 0,
+  submittedSubmissions: 0,
+  returnedSubmissions: 0,
+  approvedSubmissions: 0,
+  pendingVerification: 0,
+  pendingApproval: 0,
+};
 
 function tile(label: string, value: string, onClick: () => void) {
   return (
@@ -17,29 +32,15 @@ function tile(label: string, value: string, onClick: () => void) {
 
 export function IPMSDashboardPage() {
   const { setCurrentPath, userProfile } = useApp();
-  const [targets, setTargets] = useState<IPMSTarget[]>([]);
-  const [submissions, setSubmissions] = useState<IPMSSubmission[]>([]);
+  const [stats, setStats] = useState<PerformanceDashboardDto>(emptyDashboard);
 
   useEffect(() => {
     const load = async () => {
-      const [targetsResult, submissionsResult] = await Promise.all([getIpmsTargets(), getIpmsSubmissions()]);
-      setTargets(targetsResult.data ?? []);
-      setSubmissions(submissionsResult.data ?? []);
+      const result = await getIpmsPerformanceDashboard();
+      setStats(result.data ?? emptyDashboard);
     };
     void load();
   }, []);
-
-  const stats = useMemo(() => {
-    const assigned = targets.length;
-    const achieved = targets.filter(t => t.submissions.some(s => s.status === 'approved')).length;
-    const atRisk = targets.filter(t => t.submissions.some(s => s.status === 'returned_for_info' || s.status === 'rejected' || s.status === 'verify_rejected')).length;
-    const outstanding = targets.filter(t => t.submissions.every(s => s.status === 'draft' || s.status === 'submitted')).length;
-    const draft = submissions.filter(s => s.status === 'draft').length;
-    const submitted = submissions.filter(s => s.status === 'submitted').length;
-    const returned = submissions.filter(s => s.status === 'returned_for_info' || s.status === 'rejected' || s.status === 'verify_rejected').length;
-    const approved = submissions.filter(s => s.status === 'approved').length;
-    return { assigned, achieved, atRisk, outstanding, draft, submitted, returned, approved };
-  }, [targets, submissions]);
 
   const quickLinks = [
     { label: 'KPIs', path: '/ipms/targets' },
@@ -51,17 +52,17 @@ export function IPMSDashboardPage() {
     <AppShell title="IPMS Dashboard" subtitle="Individual performance overview with KPI, submission and review insights">
       <div className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {tile('Assigned KPIs', String(stats.assigned), () => setCurrentPath('/ipms/targets'))}
-          {tile('Achieved KPIs', String(stats.achieved), () => setCurrentPath('/ipms/targets'))}
-          {tile('At Risk KPIs', String(stats.atRisk), () => setCurrentPath('/ipms/targets'))}
-          {tile('Outstanding KPIs', String(stats.outstanding), () => setCurrentPath('/ipms/targets'))}
+          {tile('Assigned KPIs', String(stats.totalTargets), () => setCurrentPath('/ipms/targets'))}
+          {tile('Achieved KPIs', String(stats.completedTargets), () => setCurrentPath('/ipms/targets'))}
+          {tile('At Risk KPIs', String(stats.atRiskTargets), () => setCurrentPath('/ipms/targets'))}
+          {tile('Outstanding KPIs', String(stats.outstandingTargets), () => setCurrentPath('/ipms/targets'))}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {tile('Draft', String(stats.draft), () => setCurrentPath('/ipms/submissions'))}
-          {tile('Submitted', String(stats.submitted), () => setCurrentPath('/ipms/submissions'))}
-          {tile('Returned', String(stats.returned), () => setCurrentPath('/workflow/returned-submissions'))}
-          {tile('Approved', String(stats.approved), () => setCurrentPath('/workflow/approved-closed'))}
+          {tile('Draft', String(stats.draftSubmissions), () => setCurrentPath('/ipms/submissions'))}
+          {tile('Submitted', String(stats.submittedSubmissions), () => setCurrentPath('/ipms/submissions'))}
+          {tile('Returned', String(stats.returnedSubmissions), () => setCurrentPath('/workflow/returned-submissions'))}
+          {tile('Approved', String(stats.approvedSubmissions), () => setCurrentPath('/workflow/approved-closed'))}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -90,7 +91,7 @@ export function IPMSDashboardPage() {
               <ClipboardList className="h-5 w-5 text-primary-600" />
               <h3 className="text-base font-semibold text-secondary-900">Review Queue</h3>
             </div>
-            <div className="mt-4 text-sm text-secondary-700">{submissions.filter(s => s.status === 'submitted').length} pending reviews.</div>
+            <div className="mt-4 text-sm text-secondary-700">{stats.pendingVerification} pending reviews.</div>
           </Card>
         </div>
 

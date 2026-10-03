@@ -128,6 +128,7 @@ import type {
   UnitOfMeasure,
   TargetNormalizationPreviewDto,
   TargetNormalizationResultDto,
+  PerformanceDashboardDto,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -1701,6 +1702,14 @@ export async function duplicateIpmsTargetTemplate(id: string | number): Promise<
 export async function getOpmsTargets(): Promise<ApiResponse<OPMSTarget[]>> {
   const response = await get<OpmsTargetDto[]>('/v1/opms-targets');
   return mapResponse(response, items => items.map(toOpmsTargetModel));
+}
+
+export async function getOpmsPerformanceDashboard(): Promise<ApiResponse<PerformanceDashboardDto>> {
+  return get<PerformanceDashboardDto>('/v1/performance-dashboards/opms');
+}
+
+export async function getIpmsPerformanceDashboard(): Promise<ApiResponse<PerformanceDashboardDto>> {
+  return get<PerformanceDashboardDto>('/v1/performance-dashboards/ipms');
 }
 
 export type RegisterPageQuery = {

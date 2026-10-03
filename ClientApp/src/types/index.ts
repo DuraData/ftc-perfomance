@@ -1140,6 +1140,21 @@ export interface ApiResponse<T> {
   correlationId?: string;
 }
 
+export interface PerformanceDashboardDto {
+  totalTargets: number;
+  activeTargets: number;
+  completedTargets: number;
+  overdueTargets: number;
+  atRiskTargets: number;
+  outstandingTargets: number;
+  draftSubmissions: number;
+  submittedSubmissions: number;
+  returnedSubmissions: number;
+  approvedSubmissions: number;
+  pendingVerification: number;
+  pendingApproval: number;
+}
+
 export interface UserProfile {
   id: string;
   userName: string;

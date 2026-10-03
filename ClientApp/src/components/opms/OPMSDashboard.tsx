@@ -1,10 +1,25 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ClipboardList, FileText, Layers, LineChart, Map, Shield } from 'lucide-react';
-import { getOpmsTargets, getOpmsSubmissions } from '../../api/api';
+import { getOpmsPerformanceDashboard } from '../../api/api';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card } from '../ui';
 import { useApp } from '../../context/AppContext';
-import type { OPMSTarget, OPMSSubmission } from '../../types';
+import type { PerformanceDashboardDto } from '../../types';
+
+const emptyDashboard: PerformanceDashboardDto = {
+  totalTargets: 0,
+  activeTargets: 0,
+  completedTargets: 0,
+  overdueTargets: 0,
+  atRiskTargets: 0,
+  outstandingTargets: 0,
+  draftSubmissions: 0,
+  submittedSubmissions: 0,
+  returnedSubmissions: 0,
+  approvedSubmissions: 0,
+  pendingVerification: 0,
+  pendingApproval: 0,
+};
 
 function tile(label: string, value: string, onClick: () => void) {
   return (
@@ -17,29 +32,15 @@ function tile(label: string, value: string, onClick: () => void) {
 
 export function OPMSDashboardPage() {
   const { setCurrentPath, userProfile } = useApp();
-  const [targets, setTargets] = useState<OPMSTarget[]>([]);
-  const [submissions, setSubmissions] = useState<OPMSSubmission[]>([]);
+  const [totals, setTotals] = useState<PerformanceDashboardDto>(emptyDashboard);
 
   useEffect(() => {
     const load = async () => {
-      const [targetsResult, submissionsResult] = await Promise.all([getOpmsTargets(), getOpmsSubmissions()]);
-      setTargets(targetsResult.data ?? []);
-      setSubmissions(submissionsResult.data ?? []);
+      const result = await getOpmsPerformanceDashboard();
+      setTotals(result.data ?? emptyDashboard);
     };
     void load();
   }, []);
-
-  const totals = useMemo(() => {
-    const totalTargets = targets.length;
-    const activeTargets = targets.filter(t => !t.isWithdrawn).length;
-    const completedTargets = targets.filter(t => t.submissions.some(s => s.status === 'approved')).length;
-    const overdueTargets = targets.filter(t => t.submissions.some(s => s.dueDate && new Date(s.dueDate) < new Date() && s.status !== 'approved')).length;
-    const draft = submissions.filter(s => s.status === 'draft').length;
-    const submitted = submissions.filter(s => s.status === 'submitted').length;
-    const returned = submissions.filter(s => s.status === 'returned_for_info' || s.status === 'rejected' || s.status === 'verify_rejected').length;
-    const approved = submissions.filter(s => s.status === 'approved').length;
-    return { totalTargets, activeTargets, completedTargets, overdueTargets, draft, submitted, returned, approved };
-  }, [targets, submissions]);
 
   const quickLinks = [
     { label: 'Targets', path: '/opms/targets' },
@@ -58,10 +59,10 @@ export function OPMSDashboardPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {tile('Draft Submissions', String(totals.draft), () => setCurrentPath('/opms/submissions'))}
-          {tile('Submitted', String(totals.submitted), () => setCurrentPath('/opms/submissions'))}
-          {tile('Returned', String(totals.returned), () => setCurrentPath('/workflow/returned-submissions'))}
-          {tile('Approved', String(totals.approved), () => setCurrentPath('/workflow/approved-closed'))}
+          {tile('Draft Submissions', String(totals.draftSubmissions), () => setCurrentPath('/opms/submissions'))}
+          {tile('Submitted', String(totals.submittedSubmissions), () => setCurrentPath('/opms/submissions'))}
+          {tile('Returned', String(totals.returnedSubmissions), () => setCurrentPath('/workflow/returned-submissions'))}
+          {tile('Approved', String(totals.approvedSubmissions), () => setCurrentPath('/workflow/approved-closed'))}
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -81,7 +82,7 @@ export function OPMSDashboardPage() {
               <h3 className="text-base font-semibold text-secondary-900">Verification Queue</h3>
             </div>
             <div className="mt-4 space-y-2 text-sm text-secondary-700">
-              <p>{submissions.filter(s => s.status === 'submitted').length} items awaiting verification.</p>
+              <p>{totals.pendingVerification} items awaiting verification.</p>
             </div>
           </Card>
 
@@ -91,7 +92,7 @@ export function OPMSDashboardPage() {
               <h3 className="text-base font-semibold text-secondary-900">Approval Queue</h3>
             </div>
             <div className="mt-4 space-y-2 text-sm text-secondary-700">
-              <p>{submissions.filter(s => s.status === 'verified' || s.status === 'pending_approval').length} items ready for approval review.</p>
+              <p>{totals.pendingApproval} items ready for approval review.</p>
             </div>
           </Card>
         </div>
