@@ -6,6 +6,8 @@ import { WorkflowQueues } from './WorkflowQueues';
 const apiMocks = vi.hoisted(() => ({
   getOpmsSubmissions: vi.fn(),
   getIpmsSubmissions: vi.fn(),
+  getInternalAuditSubmission: vi.fn(),
+  saveInternalAuditAssessment: vi.fn(),
 }));
 
 const appMocks = vi.hoisted(() => ({

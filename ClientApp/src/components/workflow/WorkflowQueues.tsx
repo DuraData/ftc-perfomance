@@ -16,6 +16,7 @@ import { getIpmsSubmissions, getOpmsSubmissions } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import type { OPMSSubmission, SubmissionStatus } from '../../types';
 import { submissionStatusColors as statusColors, submissionStatusLabels as statusLabels } from '../submissions/submissionStatus';
+import { InternalAuditAssessmentPanel } from './InternalAuditAssessmentPanel';
 
 function QueueCard({ title, count, icon, color, onClick }: { title: string; count: number; icon: React.ReactNode; color: string; onClick: () => void }) {
   return (
@@ -29,7 +30,7 @@ function QueueCard({ title, count, icon, color, onClick }: { title: string; coun
   );
 }
 
-function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OPMSSubmission | null; isOpen: boolean; onClose: () => void }) {
+function SubmissionDetailModal({ submission, isOpen, onClose, showAudit = false }: { submission: OPMSSubmission | null; isOpen: boolean; onClose: () => void; showAudit?: boolean }) {
   const [activeTab, setActiveTab] = useState('details');
 
   if (!submission) return null;
@@ -38,6 +39,7 @@ function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OP
     { id: 'details', label: 'Details' },
     { id: 'verification', label: 'Verification' },
     { id: 'approval', label: 'Approval' },
+    ...(showAudit ? [{ id: 'audit', label: 'Internal Audit' }] : []),
   ];
 
   return (
@@ -87,6 +89,7 @@ function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OP
               <div><p className="text-[10px] text-secondary-500">Approved At</p><p className="text-sm font-medium">{submission.approvedAt ? new Date(submission.approvedAt).toLocaleDateString() : '-'}</p></div>
             </div>
           )}
+          {activeTab === 'audit' && <InternalAuditAssessmentPanel submissionId={submission.id} canAssess={showAudit} />}
         </div>
       </div>
     </Modal>
@@ -180,7 +183,7 @@ export function WorkflowQueues() {
           </Card>
         )}
 
-        <SubmissionDetailModal submission={selectedSubmission} isOpen={!!selectedSubmission} onClose={() => setSelectedSubmission(null)} />
+        <SubmissionDetailModal submission={selectedSubmission} isOpen={!!selectedSubmission} onClose={() => setSelectedSubmission(null)} showAudit={selectedQueue === 'auditor'} />
       </div>
     </AppShell>
   );

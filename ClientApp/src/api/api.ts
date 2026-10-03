@@ -78,6 +78,9 @@ import type {
   PositionMasterDto,
   WorkflowDefinitionDto,
   WorkflowDefinitionComparisonDto,
+  InternalAuditAssessmentDto,
+  InternalAuditConfigurationDto,
+  InternalAuditSubmissionDto,
   ReportingWindowDto,
   RatingSchemeDto,
   PerformanceReportSummaryDto,
@@ -1251,6 +1254,22 @@ export async function respondPerformanceRfi(publicId: string, payload: { respons
 
 export async function closePerformanceRfi(publicId: string, payload: { comment?: string; rowVersion: string }): Promise<ApiResponse<PerformanceRfiDto>> {
   return post<PerformanceRfiDto>(`/v1/workflow/rfis/${publicId}/close`, payload);
+}
+
+export async function getInternalAuditConfigurations(): Promise<ApiResponse<InternalAuditConfigurationDto[]>> {
+  return get<InternalAuditConfigurationDto[]>('/v1/internal-audit/configurations');
+}
+
+export async function saveInternalAuditConfiguration(payload: { municipalityFinancialYearPublicId: string; model: 1 | 2; effectiveFrom: string; reason: string; currentRowVersion?: string }): Promise<ApiResponse<InternalAuditConfigurationDto>> {
+  return post<InternalAuditConfigurationDto>('/v1/internal-audit/configurations', payload);
+}
+
+export async function getInternalAuditSubmission(kind: 1 | 2, submissionId: string): Promise<ApiResponse<InternalAuditSubmissionDto>> {
+  return get<InternalAuditSubmissionDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}`);
+}
+
+export async function saveInternalAuditAssessment(kind: 1 | 2, submissionId: string, payload: { outcome: 1 | 2 | 3 | 4; detailedObservation: string; comment?: string; findings?: string; recommendation?: string; score?: number; responseDueAt?: string; previousAssessmentPublicId?: string }): Promise<ApiResponse<InternalAuditAssessmentDto>> {
+  return post<InternalAuditAssessmentDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments`, payload);
 }
 
 export async function getDepartments(): Promise<ApiResponse<DepartmentLookupDto[]>> {

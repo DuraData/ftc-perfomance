@@ -140,6 +140,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         base.OnModelCreating(builder);
         ConfigurePerformanceConsolidation(builder);
+        ConfigureInternalAuditAssessments(builder);
 
         builder.Entity<Municipality>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<Municipality>().HasIndex(item => item.Code).IsUnique();
@@ -1905,7 +1906,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
             , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdempotencyRequest), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
             typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping),
-            typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent)
+            typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent),
+            typeof(InternalAuditAssessmentConfiguration), typeof(InternalAuditAssessment)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
@@ -1933,6 +1935,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Submission workflow action history is append-only.");
         if (ChangeTracker.Entries<SubmissionStageRating>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Submission stage rating history is append-only.");
+        if (ChangeTracker.Entries<InternalAuditAssessmentConfiguration>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Internal Audit configuration and assessment history is append-only.");
         if (ChangeTracker.Entries<PerformanceRfiEvidence>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("RFI evidence provenance is append-only.");
         if (ChangeTracker.Entries<PoeEvidenceAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

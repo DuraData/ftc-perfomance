@@ -1570,6 +1570,44 @@ export interface PerformanceRfiDto {
   evidence: RfiEvidenceDto[];
 }
 
+export type InternalAuditAssessmentModel = 1 | 2;
+export type InternalAuditAssessmentOutcome = 1 | 2 | 3 | 4;
+
+export interface InternalAuditConfigurationDto {
+  publicId: string;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  model: InternalAuditAssessmentModel;
+  version: number;
+  isCurrent: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  reason: string;
+  rowVersion: string;
+}
+
+export interface InternalAuditAssessmentDto {
+  publicId: string;
+  model: InternalAuditAssessmentModel;
+  outcome: InternalAuditAssessmentOutcome;
+  detailedObservation: string;
+  comment?: string | null;
+  findings?: string | null;
+  recommendation?: string | null;
+  score?: number | null;
+  assessedByUserId: string;
+  assessedByName?: string | null;
+  assessedAt: string;
+  previousAssessmentPublicId?: string | null;
+  rfiPublicId?: string | null;
+  rfiResponseDueAt?: string | null;
+}
+
+export interface InternalAuditSubmissionDto {
+  configuration: InternalAuditConfigurationDto;
+  assessments: InternalAuditAssessmentDto[];
+}
+
 export interface RfiEvidenceDto {
   publicId: string;
   evidencePublicId: string;

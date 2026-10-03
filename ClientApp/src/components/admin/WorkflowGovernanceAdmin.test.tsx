@@ -16,6 +16,8 @@ const api = vi.hoisted(() => ({
   getDepartments: vi.fn(),
   getUnits: vi.fn(),
   createRatingScheme: vi.fn(),
+  getInternalAuditConfigurations: vi.fn(),
+  saveInternalAuditConfiguration: vi.fn(),
 }));
 
 vi.mock('../../api/api', () => api);
@@ -28,6 +30,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getReportingWindows.mockResolvedValue({ success: true, data: [] });
     api.getReportingPeriodMasters.mockResolvedValue({ success: true, data: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: '' }] });
     api.getRatingSchemes.mockResolvedValue({ success: true, data: [{ publicId: 'scheme-1', code: 'FIVE_POINT', name: 'Five point scale', isActive: true, rowVersion: 'AQ==', values: [] }] });
+    api.getInternalAuditConfigurations.mockResolvedValue({ success: true, data: [] });
     api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
     api.getUsers.mockResolvedValue({ success: true, data: [] });
     api.getDepartments.mockResolvedValue({ success: true, data: [] });
@@ -49,6 +52,9 @@ describe('WorkflowGovernanceAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Ratings' }));
     expect(screen.getByText('Create rating scheme')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Internal Audit' }));
+    expect(screen.getByText('Select Internal Audit model')).toBeInTheDocument();
   });
 
   it('opens scoped reporting-window exception administration', async () => {

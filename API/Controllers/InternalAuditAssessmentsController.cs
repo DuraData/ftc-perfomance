@@ -1,0 +1,280 @@
+using System.Text.Json;
+using System.Security.Claims;
+using FTCERP.Host.API.Responses;
+using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Persistence;
+using FTCERP.Host.Infrastructure.Security;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace FTCERP.Host.API.Controllers;
+
+[ApiController]
+[Route("api/v1/internal-audit")]
+[Authorize]
+public sealed class InternalAuditAssessmentsController(
+    ApplicationDbContext context,
+    ITenantContext tenantContext,
+    IAccessControlService accessControl,
+    IWorkflowGovernanceService governance,
+    UserManager<ApplicationUser> userManager) : ControllerBase
+{
+    [HttpGet("configurations")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<InternalAuditConfigurationDto[]>>> Configurations()
+    {
+        if (!HasTenant()) return TenantRequired<InternalAuditConfigurationDto[]>();
+        var rows = await context.InternalAuditAssessmentConfigurations.AsNoTracking()
+            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .OrderByDescending(item => item.CreatedAt).ToArrayAsync();
+        return Ok(new ApiResponse<InternalAuditConfigurationDto[]>(true, rows.Select(ToDto).ToArray()));
+    }
+
+    [HttpPost("configurations")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<InternalAuditConfigurationDto>>> Configure(SaveInternalAuditConfigurationRequest request)
+    {
+        if (!HasTenant()) return TenantRequired<InternalAuditConfigurationDto>();
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<InternalAuditConfigurationDto>("User not found."));
+        if (!Enum.IsDefined(request.Model) || request.EffectiveFrom.Kind == DateTimeKind.Unspecified)
+            return BadRequest(Fail<InternalAuditConfigurationDto>("A valid model and timezone-aware effective date are required."));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 10 or > 1000)
+            return BadRequest(Fail<InternalAuditConfigurationDto>("A governance reason of 10 to 1000 characters is required."));
+
+        var year = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear)
+            .SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId);
+        if (year == null) return BadRequest(Fail<InternalAuditConfigurationDto>("Municipality financial year not found."));
+        var current = await context.InternalAuditAssessmentConfigurations
+            .SingleOrDefaultAsync(item => item.MunicipalityFinancialYearId == year.Id && item.IsCurrent);
+        if (current != null)
+        {
+            if (string.IsNullOrWhiteSpace(request.CurrentRowVersion))
+                return Conflict(Fail<InternalAuditConfigurationDto>("Reload the current configuration before replacing it."));
+            if (!TrySetRowVersion(current, request.CurrentRowVersion))
+                return BadRequest(Fail<InternalAuditConfigurationDto>("A valid current RowVersion is required."));
+            if (request.EffectiveFrom <= current.EffectiveFrom)
+                return BadRequest(Fail<InternalAuditConfigurationDto>("A replacement must become effective after the current version."));
+            current.IsCurrent = false;
+            current.EffectiveTo = request.EffectiveFrom;
+        }
+
+        var entity = new InternalAuditAssessmentConfiguration
+        {
+            MunicipalityId = tenantContext.MunicipalityId!.Value,
+            MunicipalityFinancialYearId = year.Id,
+            MunicipalityFinancialYear = year,
+            Model = request.Model,
+            Version = (current?.Version ?? 0) + 1,
+            EffectiveFrom = request.EffectiveFrom.ToUniversalTime(),
+            Reason = reason,
+            CreatedByUserId = user.Id
+        };
+        context.InternalAuditAssessmentConfigurations.Add(entity);
+        governance.QueueAuditTrail(nameof(InternalAuditAssessmentConfiguration), entity.PublicId.ToString(), "SelectModel",
+            current == null ? null : new { current.PublicId, current.Model, current.Version },
+            new { entity.Model, entity.Version, entity.EffectiveFrom, Reason = reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        try { await context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<InternalAuditConfigurationDto>("The model configuration changed; reload and try again.")); }
+        catch (DbUpdateException) { return Conflict(Fail<InternalAuditConfigurationDto>("Another model version was selected; reload and try again.")); }
+        return Ok(new ApiResponse<InternalAuditConfigurationDto>(true, ToDto(entity)));
+    }
+
+    [HttpGet("submissions/{kind}/{submissionId}")]
+    public async Task<ActionResult<ApiResponse<InternalAuditSubmissionDto>>> Submission(SubmissionKind kind, string submissionId)
+    {
+        if (!HasTenant()) return TenantRequired<InternalAuditSubmissionDto>();
+        var loaded = await LoadSubmission(kind, submissionId);
+        if (loaded == null) return NotFound(Fail<InternalAuditSubmissionDto>("Submission not found."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<InternalAuditSubmissionDto>("User not found."));
+        var readCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
+        if (!(await accessControl.CheckPermissionAsync(user, readCode, loaded.Scope)).Allowed) return Forbid();
+        if (loaded.Instance == null) return Conflict(Fail<InternalAuditSubmissionDto>("The submission has no configured workflow instance."));
+        var configuration = await EffectiveConfiguration(loaded.Instance.WorkflowDefinition.MunicipalityFinancialYearId);
+        if (configuration == null) return Conflict(Fail<InternalAuditSubmissionDto>("No Internal Audit assessment model is configured for this financial year."));
+        var assessments = await History(loaded.Instance.Id);
+        return Ok(new ApiResponse<InternalAuditSubmissionDto>(true, new(ToDto(configuration), assessments)));
+    }
+
+    [HttpPost("submissions/{kind}/{submissionId}/assessments")]
+    public async Task<ActionResult<ApiResponse<InternalAuditAssessmentDto>>> Assess(SubmissionKind kind, string submissionId, SaveInternalAuditAssessmentRequest request)
+    {
+        if (!HasTenant()) return TenantRequired<InternalAuditAssessmentDto>();
+        var loaded = await LoadSubmission(kind, submissionId);
+        if (loaded == null) return NotFound(Fail<InternalAuditAssessmentDto>("Submission not found."));
+        if (loaded.Instance == null) return Conflict(Fail<InternalAuditAssessmentDto>("The submission has no configured workflow instance."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<InternalAuditAssessmentDto>("User not found."));
+        var permissionCode = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW.INTERNAL_AUDIT" : "IPMS_WORKFLOW.INTERNAL_AUDIT";
+        if (!(await accessControl.CheckPermissionAsync(user, permissionCode, loaded.Scope)).Allowed) return Forbid();
+
+        var configuration = await EffectiveConfiguration(loaded.Instance.WorkflowDefinition.MunicipalityFinancialYearId);
+        if (configuration == null) return Conflict(Fail<InternalAuditAssessmentDto>("No Internal Audit assessment model is configured for this financial year."));
+        var validation = Validate(configuration.Model, request);
+        if (validation != null) return BadRequest(Fail<InternalAuditAssessmentDto>(validation));
+        var auditStage = loaded.Instance.WorkflowDefinition.Stages.FirstOrDefault(item => item.IsActive && (item.Code.Equals("AUDIT", StringComparison.OrdinalIgnoreCase) || item.Code.Contains("INTERNAL_AUDIT", StringComparison.OrdinalIgnoreCase)));
+        RatingSchemeValue? ratingValue = null;
+        if (configuration.Model == InternalAuditAssessmentModel.Detailed && auditStage?.RequiresRating == true)
+        {
+            if (!request.Score.HasValue) return BadRequest(Fail<InternalAuditAssessmentDto>("The configured Internal Audit stage requires a rating."));
+            ratingValue = auditStage.RatingScheme?.Values.SingleOrDefault(item => item.Value == request.Score.Value);
+            if (ratingValue == null) return BadRequest(Fail<InternalAuditAssessmentDto>("Select a value from the configured Internal Audit rating scheme."));
+        }
+
+        var previous = await context.InternalAuditAssessments
+            .Where(item => item.SubmissionWorkflowInstanceId == loaded.Instance.Id)
+            .OrderByDescending(item => item.AssessedAt).ThenByDescending(item => item.Id).FirstOrDefaultAsync();
+        if (previous == null && request.PreviousAssessmentPublicId.HasValue)
+            return Conflict(Fail<InternalAuditAssessmentDto>("The supplied prior assessment does not exist."));
+        if (previous != null && request.PreviousAssessmentPublicId != previous.PublicId)
+            return Conflict(Fail<InternalAuditAssessmentDto>("The assessment history changed; reload before reassessing."));
+
+        var now = DateTime.UtcNow;
+        var entity = new InternalAuditAssessment
+        {
+            MunicipalityId = tenantContext.MunicipalityId!.Value,
+            SubmissionWorkflowInstanceId = loaded.Instance.Id,
+            SubmissionWorkflowInstance = loaded.Instance,
+            ConfigurationId = configuration.Id,
+            PreviousAssessmentId = previous?.Id,
+            PreviousAssessment = previous,
+            Outcome = request.Outcome,
+            DetailedObservation = request.DetailedObservation.Trim(),
+            Comment = Clean(request.Comment),
+            Findings = Clean(request.Findings),
+            Recommendation = Clean(request.Recommendation),
+            Score = request.Score,
+            AssessedByUserId = user.Id,
+            AssessedByUser = user,
+            AssessedAt = now,
+            CorrelationId = HttpContext.TraceIdentifier
+        };
+
+        var createsRfi = request.Outcome is InternalAuditAssessmentOutcome.NotAchieved or InternalAuditAssessmentOutcome.NotSatisfactory;
+        if (createsRfi)
+        {
+            var rfi = new PerformanceRfi
+            {
+                MunicipalityId = tenantContext.MunicipalityId!.Value,
+                SubmissionWorkflowInstanceId = loaded.Instance.Id,
+                SubmissionWorkflowInstance = loaded.Instance,
+                Question = entity.DetailedObservation,
+                RaisedByUserId = user.Id,
+                RaisedAt = now,
+                ResponseDueAt = request.ResponseDueAt!.Value.ToUniversalTime()
+            };
+            context.PerformanceRfis.Add(rfi);
+            entity.PerformanceRfi = rfi;
+            context.SubmissionWorkflowActions.Add(NewAction(loaded.Instance, permissionCode, WorkflowActionOutcome.RaiseRfi, user.Id, entity.DetailedObservation));
+            governance.QueueWorkflowNotifications(loaded.Recipients, NotificationType.InternalAuditRfi, "Internal Audit RFI raised", $"Internal Audit raised an RFI for {kind} submission '{submissionId}'.", kind + "Submission", submissionId);
+        }
+        context.InternalAuditAssessments.Add(entity);
+        var auditAction = NewAction(loaded.Instance, request.Outcome is InternalAuditAssessmentOutcome.Achieved or InternalAuditAssessmentOutcome.Satisfactory ? "AUDIT_ACCEPTED" : "AUDIT_REJECTED", WorkflowActionOutcome.Complete, user.Id, entity.DetailedObservation);
+        auditAction.RatingValue = request.Score;
+        context.SubmissionWorkflowActions.Add(auditAction);
+        if (ratingValue != null && auditStage?.RatingScheme != null)
+            context.SubmissionStageRatings.Add(new SubmissionStageRating
+            {
+                MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = loaded.Instance.Id, SubmissionWorkflowInstance = loaded.Instance,
+                SubmissionWorkflowAction = auditAction, WorkflowStageDefinitionId = auditStage.Id, WorkflowStageDefinition = auditStage,
+                RatingSchemeId = auditStage.RatingScheme.Id, RatingScheme = auditStage.RatingScheme, RatingSchemeValueId = ratingValue.Id, RatingSchemeValue = ratingValue,
+                Value = ratingValue.Value, LabelSnapshot = ratingValue.Label, Comment = entity.Comment, RatedByUserId = user.Id, RatedByUser = user,
+                RatedAt = now, CorrelationId = HttpContext.TraceIdentifier
+            });
+        governance.QueueAuditTrail(nameof(InternalAuditAssessment), entity.PublicId.ToString(), previous == null ? "Assess" : "Reassess", null,
+            new { configuration.Model, request.Outcome, entity.DetailedObservation, entity.Comment, entity.Findings, entity.Recommendation, entity.Score, request.ResponseDueAt, PreviousAssessmentPublicId = previous?.PublicId },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        try { await context.SaveChangesAsync(); }
+        catch (DbUpdateException) { return Conflict(Fail<InternalAuditAssessmentDto>("The assessment could not be appended because the workflow changed.")); }
+        return Ok(new ApiResponse<InternalAuditAssessmentDto>(true, ToDto(entity, configuration.Model)));
+    }
+
+    private static string? Validate(InternalAuditAssessmentModel model, SaveInternalAuditAssessmentRequest request)
+    {
+        var observation = request.DetailedObservation?.Trim();
+        if (string.IsNullOrWhiteSpace(observation) || observation.Length > 4000)
+            return "IA Detailed Observation is required and must not exceed 4000 characters.";
+        if (request.Comment?.Length > 2000 || request.Findings?.Length > 4000 || request.Recommendation?.Length > 4000)
+            return "Internal Audit narrative fields exceed their configured limits.";
+        if (model == InternalAuditAssessmentModel.SatisfactoryNotSatisfactory)
+        {
+            if (request.Outcome is not (InternalAuditAssessmentOutcome.Satisfactory or InternalAuditAssessmentOutcome.NotSatisfactory))
+                return "This municipality uses the Satisfactory / Not Satisfactory assessment model.";
+            if (request.Score.HasValue || !string.IsNullOrWhiteSpace(request.Comment) || !string.IsNullOrWhiteSpace(request.Findings) || !string.IsNullOrWhiteSpace(request.Recommendation))
+                return "The Satisfactory / Not Satisfactory model contains exactly Status and Detailed Observation.";
+        }
+        else if (request.Outcome is not (InternalAuditAssessmentOutcome.Achieved or InternalAuditAssessmentOutcome.NotAchieved))
+            return "This municipality uses the Detailed Internal Audit assessment model.";
+        if (request.Outcome is InternalAuditAssessmentOutcome.NotAchieved or InternalAuditAssessmentOutcome.NotSatisfactory)
+        {
+            if (!request.ResponseDueAt.HasValue || request.ResponseDueAt.Value.ToUniversalTime() <= DateTime.UtcNow)
+                return "A future IA RFI Due Date is required for an adverse assessment.";
+        }
+        else if (request.ResponseDueAt.HasValue)
+            return "An IA RFI Due Date is only valid when an Internal Audit RFI is raised.";
+        return null;
+    }
+
+    private async Task<InternalAuditAssessmentConfiguration?> EffectiveConfiguration(long yearId) =>
+        await context.InternalAuditAssessmentConfigurations.AsNoTracking().Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .Where(item => item.MunicipalityFinancialYearId == yearId && item.IsCurrent && item.EffectiveFrom <= DateTime.UtcNow && (!item.EffectiveTo.HasValue || item.EffectiveTo > DateTime.UtcNow))
+            .OrderByDescending(item => item.Version).FirstOrDefaultAsync();
+
+    private async Task<InternalAuditAssessmentDto[]> History(long instanceId)
+    {
+        var rows = await context.InternalAuditAssessments.AsNoTracking().Include(item => item.Configuration).Include(item => item.AssessedByUser).Include(item => item.PreviousAssessment).Include(item => item.PerformanceRfi)
+            .Where(item => item.SubmissionWorkflowInstanceId == instanceId).OrderBy(item => item.AssessedAt).ThenBy(item => item.Id).ToArrayAsync();
+        return rows.Select(ToDto).ToArray();
+    }
+
+    private async Task<SubmissionAccess?> LoadSubmission(SubmissionKind kind, string submissionId)
+    {
+        int? department; int? unit; string? owner; string? submitter;
+        if (kind == SubmissionKind.Opms)
+        {
+            var row = await context.OpmsSubmissions.AsNoTracking().Include(item => item.OpmsTarget).SingleOrDefaultAsync(item => item.Id == submissionId);
+            if (row == null) return null;
+            department = row.OpmsTarget.DepartmentId; unit = row.OpmsTarget.UnitId; owner = row.OpmsTarget.AssignedUserId; submitter = row.SubmittedByUserId ?? row.CreatedBy;
+        }
+        else if (kind == SubmissionKind.Ipms)
+        {
+            var row = await context.IpmsSubmissions.AsNoTracking().Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == submissionId);
+            if (row == null) return null;
+            department = row.IpmsTarget.DepartmentId; unit = row.IpmsTarget.UnitId; owner = row.IpmsTarget.AssignedUserId; submitter = row.SubmittedByUserId ?? row.CreatedBy;
+        }
+        else return null;
+        var instance = await context.SubmissionWorkflowInstances
+            .Include(item => item.WorkflowDefinition).ThenInclude(item => item.Stages).ThenInclude(item => item.RatingScheme).ThenInclude(item => item!.Values)
+            .SingleOrDefaultAsync(item => item.SubmissionKind == kind && item.SubmissionId == submissionId);
+        return new(new(department, unit, owner, TargetId: submissionId, MunicipalityId: tenantContext.MunicipalityId), instance,
+            new[] { owner, submitter }.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    private SubmissionWorkflowAction NewAction(SubmissionWorkflowInstance instance, string code, WorkflowActionOutcome outcome, string userId, string comment) => new()
+    {
+        MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
+        Sequence = instance.NextSequence++, FromStageId = instance.CurrentStageId, ToStageId = instance.CurrentStageId, ActionCode = code,
+        Outcome = outcome, ActorUserId = userId, Comment = comment, CorrelationId = HttpContext.TraceIdentifier
+    };
+
+    private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
+    private bool HasTenant() => tenantContext.MunicipalityId is > 0;
+    private bool TrySetRowVersion(InternalAuditAssessmentConfiguration entity, string encoded) { try { context.Entry(entity).Property(item => item.RowVersion).OriginalValue = Convert.FromBase64String(encoded); return true; } catch (FormatException) { return false; } }
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
+    private ActionResult<ApiResponse<T>> TenantRequired<T>() => StatusCode(StatusCodes.Status409Conflict, Fail<T>("Select a municipality context before using Internal Audit."));
+    private static InternalAuditConfigurationDto ToDto(InternalAuditAssessmentConfiguration item) => new(item.PublicId, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.Model, item.Version, item.IsCurrent, item.EffectiveFrom, item.EffectiveTo, item.Reason, Convert.ToBase64String(item.RowVersion));
+    private static InternalAuditAssessmentDto ToDto(InternalAuditAssessment item) => new(item.PublicId, item.Configuration.Model, item.Outcome, item.DetailedObservation, item.Comment, item.Findings, item.Recommendation, item.Score, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.PreviousAssessment?.PublicId, item.PerformanceRfi?.PublicId, item.PerformanceRfi?.ResponseDueAt);
+    private static InternalAuditAssessmentDto ToDto(InternalAuditAssessment item, InternalAuditAssessmentModel model) => new(item.PublicId, model, item.Outcome, item.DetailedObservation, item.Comment, item.Findings, item.Recommendation, item.Score, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.PreviousAssessment?.PublicId, item.PerformanceRfi?.PublicId, item.PerformanceRfi?.ResponseDueAt);
+    private sealed record SubmissionAccess(AccessScopeContext Scope, SubmissionWorkflowInstance? Instance, string[] Recipients);
+}
+
+public sealed record SaveInternalAuditConfigurationRequest(Guid MunicipalityFinancialYearPublicId, InternalAuditAssessmentModel Model, DateTime EffectiveFrom, string Reason, string? CurrentRowVersion);
+public sealed record InternalAuditConfigurationDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, InternalAuditAssessmentModel Model, int Version, bool IsCurrent, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string RowVersion);
+public sealed record SaveInternalAuditAssessmentRequest(InternalAuditAssessmentOutcome Outcome, string DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, DateTime? ResponseDueAt, Guid? PreviousAssessmentPublicId);
+public sealed record InternalAuditAssessmentDto(Guid PublicId, InternalAuditAssessmentModel Model, InternalAuditAssessmentOutcome Outcome, string DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, string AssessedByUserId, string? AssessedByName, DateTime AssessedAt, Guid? PreviousAssessmentPublicId, Guid? RfiPublicId, DateTime? RfiResponseDueAt);
+public sealed record InternalAuditSubmissionDto(InternalAuditConfigurationDto Configuration, InternalAuditAssessmentDto[] Assessments);

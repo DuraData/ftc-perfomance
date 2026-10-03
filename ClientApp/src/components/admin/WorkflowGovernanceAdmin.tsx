@@ -17,13 +17,15 @@ import {
   getUnits,
   getUsers,
   getWorkflowDefinitions,
+  getInternalAuditConfigurations,
   retireWorkflowDefinition,
+  saveInternalAuditConfiguration,
 } from '../../api/api';
-import type { AdminUserDetail, DepartmentLookupDto, RatingSchemeDto, ReportingPeriodMasterDto, ReportingWindowDto, ReportingWindowExceptionDto, UnitLookupDto, WorkflowDefinitionComparisonDto, WorkflowDefinitionDto } from '../../types';
+import type { AdminUserDetail, DepartmentLookupDto, InternalAuditConfigurationDto, RatingSchemeDto, ReportingPeriodMasterDto, ReportingWindowDto, ReportingWindowExceptionDto, UnitLookupDto, WorkflowDefinitionComparisonDto, WorkflowDefinitionDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NotificationDeliveryOperations } from './NotificationDeliveryOperations';
 
-type Tab = 'definitions' | 'windows' | 'ratings' | 'delivery';
+type Tab = 'definitions' | 'windows' | 'ratings' | 'audit' | 'delivery';
 type StageDraft = {
   code: string;
   name: string;
@@ -62,6 +64,7 @@ export function WorkflowGovernanceAdminPage() {
   const [windows, setWindows] = useState<ReportingWindowDto[]>([]);
   const [periods, setPeriods] = useState<ReportingPeriodMasterDto[]>([]);
   const [ratings, setRatings] = useState<RatingSchemeDto[]>([]);
+  const [auditConfigurations, setAuditConfigurations] = useState<InternalAuditConfigurationDto[]>([]);
   const [exceptionWindow, setExceptionWindow] = useState<ReportingWindowDto | null>(null);
   const [exceptions, setExceptions] = useState<ReportingWindowExceptionDto[]>([]);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
@@ -78,21 +81,23 @@ export function WorkflowGovernanceAdminPage() {
   const [exceptionDraft, setExceptionDraft] = useState({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(Date.now() + 8 * 86400000)), reason: '' });
   const [rating, setRating] = useState({ code: '', name: '' });
   const [ratingValues, setRatingValues] = useState([{ value: '1', label: 'Not achieved', minimum: '0', maximum: '49.99' }, { value: '2', label: 'Achieved', minimum: '50', maximum: '100' }]);
+  const [auditDraft, setAuditDraft] = useState({ municipalityFinancialYearPublicId: '', model: 1 as 1 | 2, effectiveFrom: localDate(), reason: '' });
 
   const years = useMemo(() => Array.from(new Map(periods.map(period => [period.municipalityFinancialYearPublicId, period])).values()), [periods]);
 
   const load = async () => {
     setBusy(true);
     setError(null);
-    const [definitionResult, windowResult, periodResult, ratingResult] = await Promise.all([
-      getWorkflowDefinitions(), getReportingWindows(), getReportingPeriodMasters(), getRatingSchemes(),
+    const [definitionResult, windowResult, periodResult, ratingResult, auditResult] = await Promise.all([
+      getWorkflowDefinitions(), getReportingWindows(), getReportingPeriodMasters(), getRatingSchemes(), getInternalAuditConfigurations(),
     ]);
-    const failed = [definitionResult, windowResult, periodResult, ratingResult].find(result => !result.success);
+    const failed = [definitionResult, windowResult, periodResult, ratingResult, auditResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Workflow configuration could not be loaded.');
     setDefinitions(definitionResult.data ?? []);
     setWindows(windowResult.data ?? []);
     setPeriods(periodResult.data ?? []);
     setRatings(ratingResult.data ?? []);
+    setAuditConfigurations(auditResult.data ?? []);
     setBusy(false);
   };
 
@@ -210,12 +215,29 @@ export function WorkflowGovernanceAdminPage() {
     setBusy(false);
   };
 
+  const saveAuditModel = async () => {
+    const yearId = auditDraft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId;
+    if (!yearId) { setError('Create a municipality financial year before selecting an Internal Audit model.'); return; }
+    const current = auditConfigurations.find(item => item.municipalityFinancialYearPublicId === yearId && item.isCurrent);
+    setBusy(true); setError(null);
+    const result = await saveInternalAuditConfiguration({
+      municipalityFinancialYearPublicId: yearId,
+      model: auditDraft.model,
+      effectiveFrom: new Date(auditDraft.effectiveFrom).toISOString(),
+      reason: auditDraft.reason.trim(),
+      currentRowVersion: current?.rowVersion,
+    });
+    if (!result.success) setError(result.message ?? 'Internal Audit model could not be selected.');
+    else { pushToast('success', 'Internal Audit model version selected'); setAuditDraft(value => ({ ...value, municipalityFinancialYearPublicId: yearId, reason: '', effectiveFrom: localDate() })); await load(); }
+    setBusy(false);
+  };
+
   return (
     <AppShell title="Workflow Governance" subtitle="Tenant and financial-year configuration">
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-2">
-            {(['definitions', 'windows', 'ratings', 'delivery'] as Tab[]).map(value => <Button key={value} size="sm" variant={tab === value ? 'primary' : 'outline'} onClick={() => setTab(value)}>{value[0].toUpperCase() + value.slice(1)}</Button>)}
+            {(['definitions', 'windows', 'ratings', 'audit', 'delivery'] as Tab[]).map(value => <Button key={value} size="sm" variant={tab === value ? 'primary' : 'outline'} onClick={() => setTab(value)}>{value === 'audit' ? 'Internal Audit' : value[0].toUpperCase() + value.slice(1)}</Button>)}
           </div>
           <Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button>
         </div>
@@ -273,6 +295,17 @@ export function WorkflowGovernanceAdminPage() {
             <div className="flex justify-between"><Button size="sm" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setRatingValues(current => [...current, { value: String(current.length + 1), label: '', minimum: '', maximum: '' }])}>Add value</Button><Button size="sm" variant="primary" onClick={() => void saveRating()} disabled={busy}>Create scheme</Button></div>
           </FormPanel>
           <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Rating schemes</h3><div className="mt-3 space-y-3">{ratings.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.values.length} values</Badge></div><div className="mt-2 flex flex-wrap gap-1">{item.values.map(value => <Badge key={value.publicId} variant="default">{value.value}: {value.label}</Badge>)}</div></div>)}</div></Card>
+        </div>}
+
+        {tab === 'audit' && <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+          <FormPanel title="Select Internal Audit model" description="The selection is tenant and financial-year specific. Replacing it creates an audited version." icon={<ShieldCheck className="h-5 w-5" />}>
+            <Select label="Municipality financial year" value={auditDraft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId || ''} options={years.map((item, index) => ({ value: item.municipalityFinancialYearPublicId, label: `Financial year ${index + 1} · ${item.municipalityFinancialYearPublicId.slice(0, 8)}` }))} onChange={event => setAuditDraft(value => ({ ...value, municipalityFinancialYearPublicId: event.target.value }))} />
+            <Select label="Assessment model" value={auditDraft.model} options={[{ value: 1, label: 'Detailed IA Assessment' }, { value: 2, label: 'Satisfactory / Not Satisfactory' }]} onChange={event => setAuditDraft(value => ({ ...value, model: Number(event.target.value) as 1 | 2 }))} />
+            <Input label="Effective from" type="datetime-local" value={auditDraft.effectiveFrom} onChange={event => setAuditDraft(value => ({ ...value, effectiveFrom: event.target.value }))} />
+            <Textarea label="Governance reason" value={auditDraft.reason} maxLength={1000} onChange={event => setAuditDraft(value => ({ ...value, reason: event.target.value }))} required />
+            <Button variant="primary" onClick={() => void saveAuditModel()} disabled={busy}>Create model version</Button>
+          </FormPanel>
+          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Model selection history</h3><div className="mt-3 space-y-3">{auditConfigurations.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-medium">{item.model === 1 ? 'Detailed IA Assessment' : 'Satisfactory / Not Satisfactory'}</p><p className="text-xs text-secondary-500">{item.financialYearCode} · version {item.version}</p></div><Badge variant={item.isCurrent ? 'success' : 'default'}>{item.isCurrent ? 'Current' : 'Superseded'}</Badge></div><p className="mt-2 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleString()}{item.effectiveTo ? ` — ${new Date(item.effectiveTo).toLocaleString()}` : ''}</p><p className="mt-1 text-xs">{item.reason}</p></div>)}{!auditConfigurations.length && <p className="text-sm text-secondary-500">No Internal Audit model has been selected.</p>}</div></Card>
         </div>}
 
         {tab === 'delivery' && <NotificationDeliveryOperations />}
