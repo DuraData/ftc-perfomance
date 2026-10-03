@@ -2137,6 +2137,7 @@ export interface OpmsSubmissionDto {
   baseState: string;
   opmsTargetId: string;
   targetName: string;
+  targetIndicatorNumber: string;
   quarter: string;
   status: string;
   submitterStatus?: string | null;
@@ -2213,6 +2214,7 @@ export interface IpmsSubmissionDto {
   baseState: string;
   ipmsTargetId: string;
   targetName: string;
+  targetIndicatorNumber: string;
   quarter: string;
   status: string;
   submitterStatus?: string | null;

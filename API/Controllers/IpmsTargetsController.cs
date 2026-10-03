@@ -75,6 +75,8 @@ public class IpmsTargetsController : ControllerBase
         var query = _context.IpmsTargets.AsNoTracking().AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        if (request.RelatedOpmsTargetPublicId.HasValue)
+            query = query.Where(item => item.RelatedOpmsTarget != null && item.RelatedOpmsTarget.PublicId == request.RelatedOpmsTargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
 

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using FTCERP.Host.Application.Services;
 using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
@@ -10,6 +11,55 @@ namespace FTCERP.Tests;
 
 public sealed class RegisterPaginationTests
 {
+    [Fact]
+    public async Task Opms_submission_page_filters_by_target_before_count_and_projects_target_identity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("submission-page-user");
+        var first = Target("target-a", "KPI-001", "First", Guid.NewGuid());
+        var second = Target("target-b", "KPI-002", "Second", Guid.NewGuid());
+        context.AddRange(user, first, second);
+        context.OpmsSubmissions.AddRange(
+            new OpmsSubmission { Id = "submission-a", OpmsTargetId = first.Id, Quarter = "Q1", Status = "draft" },
+            new OpmsSubmission { Id = "submission-b", OpmsTargetId = second.Id, Quarter = "Q1", Status = "draft" });
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ"))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        access.Setup(service => service.GetEffectiveAccessAsync(user))
+            .ReturnsAsync(new EffectiveAccessResult([], [], [], [], [], []));
+        var controller = new OpmsSubmissionsController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            access.Object,
+            Mock.Of<IWorkflowGovernanceService>(),
+            Mock.Of<IEvidenceBlobStorage>(),
+            Mock.Of<ISubmissionValueService>(),
+            Mock.Of<IConfigurableWorkflowService>(),
+            Mock.Of<IReportingWindowService>(),
+            Mock.Of<IEvidenceInspectionService>(),
+            Mock.Of<IEvidenceMalwareScanner>(),
+            Mock.Of<IPerformanceSuggestionService>())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+        var result = await controller.GetSubmissionsPage(new PagedQueryRequest
+        {
+            Page = 1,
+            PageSize = 25,
+            TargetPublicId = first.PublicId
+        });
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(1, envelope.Data!.TotalCount);
+        var item = Assert.Single(envelope.Data.Items);
+        Assert.Equal(first.Id, item.OpmsTargetId);
+        Assert.Equal("KPI-001", item.TargetIndicatorNumber);
+    }
+
     [Fact]
     public async Task Opms_target_page_applies_authorized_scope_before_count_and_uses_stable_server_paging()
     {

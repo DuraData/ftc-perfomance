@@ -101,6 +101,8 @@ public class IpmsSubmissionsController : ControllerBase
         var query = _context.IpmsSubmissions.AsNoTracking().AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.IpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId.Value)) || (item.IpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.IpmsTarget.UnitId.Value)) || (item.IpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.IpmsTargetId) || scope.KpiIds.Contains(item.IpmsTargetId));
+        if (request.TargetPublicId.HasValue)
+            query = query.Where(item => item.IpmsTarget.PublicId == request.TargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.IpmsTarget.TargetName.Contains(request.NormalizedSearch) || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
 

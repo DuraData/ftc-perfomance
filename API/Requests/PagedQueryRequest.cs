@@ -16,6 +16,10 @@ public sealed class PagedQueryRequest
     [StringLength(50)]
     public string? SortBy { get; init; }
 
+    public Guid? TargetPublicId { get; init; }
+
+    public Guid? RelatedOpmsTargetPublicId { get; init; }
+
     [RegularExpression("^(?i:asc|desc)$", ErrorMessage = "SortDirection must be 'asc' or 'desc'.")]
     public string SortDirection { get; init; } = "desc";
 

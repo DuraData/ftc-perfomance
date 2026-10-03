@@ -28,8 +28,8 @@ import {
   getAuditTrails,
   withdrawOpmsSubmission as withdrawOpmsSubmissionApi,
   getOpmsSubmissionAttachments,
-  getIpmsTargets as getIpmsTargetsApi,
-  getOpmsSubmissions as getOpmsSubmissionsApi,
+  getIpmsTargetsPage as getIpmsTargetsApi,
+  getOpmsSubmissionsPage as getOpmsSubmissionsApi,
   getOpmsTarget as getOpmsTargetApi,
   uploadOpmsSubmissionAttachment,
   rescanOpmsSubmissionAttachment,
@@ -522,8 +522,8 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       setIsLoading(true);
       const [targetResult, submissionsResult, ipmsTargetsResult] = await Promise.all([
         getOpmsTargetApi(targetId),
-        getOpmsSubmissionsApi(),
-        getIpmsTargetsApi(),
+        getOpmsSubmissionsApi({ page: 1, pageSize: 100, targetPublicId: targetId }),
+        getIpmsTargetsApi({ page: 1, pageSize: 100, relatedOpmsTargetPublicId: targetId }),
       ]);
 
       if (targetResult.success && targetResult.data) {
@@ -533,11 +533,11 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       }
 
       if (submissionsResult.success && submissionsResult.data) {
-        setOpmsSubmissions(submissionsResult.data);
+        setOpmsSubmissions(submissionsResult.data.items);
       }
 
       if (ipmsTargetsResult.success && ipmsTargetsResult.data) {
-        setIpmsTargets(ipmsTargetsResult.data);
+        setIpmsTargets(ipmsTargetsResult.data.items);
       }
       setIsLoading(false);
     };
@@ -547,12 +547,9 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
   useEffect(() => {
     const loadAudit = async () => {
-      const auditResult = await getAuditTrails(250);
+      const auditResult = await getAuditTrails(250, { entityName: 'OpmsTarget', entityId: targetId });
       if (auditResult.success && auditResult.data) {
-        setAuditEntries(auditResult.data.filter(entry =>
-          entry.entityId === targetId &&
-          entry.entityName.toLowerCase().includes('opmstarget'),
-        ));
+        setAuditEntries(auditResult.data);
       }
     };
 

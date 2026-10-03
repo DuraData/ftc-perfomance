@@ -619,7 +619,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
   };
 }
 
-function unresolvedOpmsTarget(id: string, targetName: string): OPMSTarget {
+function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = ''): OPMSTarget {
   return toOpmsTargetModel({
     id,
     publicId: id,
@@ -627,7 +627,7 @@ function unresolvedOpmsTarget(id: string, targetName: string): OPMSTarget {
     wardIds: [],
     additionalAssigneeIds: [],
     voteNumberIds: [],
-    indicatorNumber: '',
+    indicatorNumber,
     nationalKpa: '',
     municipalKpa: '',
     performanceObjective: '',
@@ -644,12 +644,12 @@ function unresolvedOpmsTarget(id: string, targetName: string): OPMSTarget {
   });
 }
 
-function unresolvedIpmsTarget(id: string, targetName: string): IPMSTarget {
+function unresolvedIpmsTarget(id: string, targetName: string, indicatorNumber = ''): IPMSTarget {
   return toIpmsTargetModel({
     id,
     publicId: id,
     rowVersion: '',
-    indicatorNumber: '',
+    indicatorNumber,
     nationalKpa: '',
     municipalKpa: '',
     performanceObjective: '',
@@ -677,9 +677,8 @@ function numericActualProjection(value?: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): OPMSSubmission {
-  const target = targets.find(item => item.id === dto.opmsTargetId)
-    ?? unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName);
+function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
+  const target = unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName, dto.targetIndicatorNumber);
   return {
     ...toSubmissionBaseState(dto),
     id: dto.id,
@@ -755,9 +754,8 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto, targets: OPMSTarget[]): O
   };
 }
 
-function toIpmsSubmissionModel(dto: IpmsSubmissionDto, targets: IPMSTarget[]): IPMSSubmission {
-  const target = targets.find(item => item.id === dto.ipmsTargetId)
-    ?? unresolvedIpmsTarget(dto.ipmsTargetId, dto.targetName);
+function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
+  const target = unresolvedIpmsTarget(dto.ipmsTargetId, dto.targetName, dto.targetIndicatorNumber);
   return {
     ...toSubmissionBaseState(dto),
     id: dto.id,
@@ -1711,6 +1709,8 @@ export type RegisterPageQuery = {
   search?: string;
   sortBy?: string;
   sortDirection?: 'asc' | 'desc';
+  targetPublicId?: string;
+  relatedOpmsTargetPublicId?: string;
 };
 
 function registerPageQuery(query: RegisterPageQuery): string {
@@ -1720,6 +1720,8 @@ function registerPageQuery(query: RegisterPageQuery): string {
   if (query.search?.trim()) parameters.set('search', query.search.trim());
   if (query.sortBy?.trim()) parameters.set('sortBy', query.sortBy.trim());
   if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
+  if (query.targetPublicId?.trim()) parameters.set('targetPublicId', query.targetPublicId.trim());
+  if (query.relatedOpmsTargetPublicId?.trim()) parameters.set('relatedOpmsTargetPublicId', query.relatedOpmsTargetPublicId.trim());
   const value = parameters.toString();
   return value ? `?${value}` : '';
 }
@@ -1780,45 +1782,36 @@ export async function withdrawIpmsTarget(id: string, payload: { reason: string; 
 }
 
 export async function getOpmsSubmissions(): Promise<ApiResponse<OPMSSubmission[]>> {
-  const targetsResult = await getOpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await get<OpmsSubmissionDto[]>('/opms-submissions');
-  return mapResponse(response, items => items.map(item => toOpmsSubmissionModel(item, targets)));
+  return mapResponse(response, items => items.map(toOpmsSubmissionModel));
 }
 
 export async function getOpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OPMSSubmission>>> {
   const response = await get<PagedResult<OpmsSubmissionDto>>(`/v1/opms-submissions/page${registerPageQuery(query)}`);
   return mapResponse(response, page => ({
     ...page,
-    items: page.items.map(item => toOpmsSubmissionModel(item, [])),
+    items: page.items.map(toOpmsSubmissionModel),
   }));
 }
 
 export async function getOpmsSubmission(id: string): Promise<ApiResponse<OPMSSubmission>> {
-  const targetsResult = await getOpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await get<OpmsSubmissionDto>(`/opms-submissions/${id}`);
-  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+  return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function createOpmsSubmission(payload: SaveOpmsSubmissionPayload): Promise<ApiResponse<OPMSSubmission>> {
-  const targetsResult = await getOpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await post<OpmsSubmissionDto>('/opms-submissions', payload);
-  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+  return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function updateOpmsSubmission(id: string, payload: SaveOpmsSubmissionPayload): Promise<ApiResponse<OPMSSubmission>> {
-  const targetsResult = await getOpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await put<OpmsSubmissionDto>(`/opms-submissions/${id}`, payload);
-  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+  return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function withdrawOpmsSubmission(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<OPMSSubmission>> {
-  const targetsResult = await getOpmsTargets();
   const response = await post<OpmsSubmissionDto>(`/v1/opms-submissions/${id}/withdraw`, payload);
-  return mapResponse(response, item => toOpmsSubmissionModel(item, targetsResult.data ?? []));
+  return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export const generateOpmsConsolidationSuggestion = (id: string): Promise<ApiResponse<PerformanceSuggestionResult>> =>
@@ -1835,17 +1828,13 @@ export async function applyOpmsSubmissionWorkflowAction(
   action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
   payload: SubmissionWorkflowActionPayload,
 ): Promise<ApiResponse<OPMSSubmission>> {
-  const targetsResult = await getOpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await post<OpmsSubmissionDto>(`/opms-submissions/${id}/${action}`, payload);
-  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+  return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function extendOpmsSubmissionDueDate(id: string, payload: DueDateExtensionPayload): Promise<ApiResponse<OPMSSubmission>> {
-  const targetsResult = await getOpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await post<OpmsSubmissionDto>(`/opms-submissions/${id}/extend-due-date`, payload);
-  return mapResponse(response, item => toOpmsSubmissionModel(item, targets));
+  return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function getOpmsSubmissionAttachments(id: string) {
@@ -1891,45 +1880,36 @@ export async function requestOpmsEvidenceDisposal(id: string, attachmentId: stri
 }
 
 export async function getIpmsSubmissions(): Promise<ApiResponse<IPMSSubmission[]>> {
-  const targetsResult = await getIpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await get<IpmsSubmissionDto[]>('/ipms-submissions');
-  return mapResponse(response, items => items.map(item => toIpmsSubmissionModel(item, targets)));
+  return mapResponse(response, items => items.map(toIpmsSubmissionModel));
 }
 
 export async function getIpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSSubmission>>> {
   const response = await get<PagedResult<IpmsSubmissionDto>>(`/v1/ipms-submissions/page${registerPageQuery(query)}`);
   return mapResponse(response, page => ({
     ...page,
-    items: page.items.map(item => toIpmsSubmissionModel(item, [])),
+    items: page.items.map(toIpmsSubmissionModel),
   }));
 }
 
 export async function getIpmsSubmission(id: string): Promise<ApiResponse<IPMSSubmission>> {
-  const targetsResult = await getIpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await get<IpmsSubmissionDto>(`/ipms-submissions/${id}`);
-  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+  return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function createIpmsSubmission(payload: SaveIpmsSubmissionPayload): Promise<ApiResponse<IPMSSubmission>> {
-  const targetsResult = await getIpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await post<IpmsSubmissionDto>('/ipms-submissions', payload);
-  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+  return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function updateIpmsSubmission(id: string, payload: SaveIpmsSubmissionPayload): Promise<ApiResponse<IPMSSubmission>> {
-  const targetsResult = await getIpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await put<IpmsSubmissionDto>(`/ipms-submissions/${id}`, payload);
-  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+  return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function withdrawIpmsSubmission(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<IPMSSubmission>> {
-  const targetsResult = await getIpmsTargets();
   const response = await post<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}/withdraw`, payload);
-  return mapResponse(response, item => toIpmsSubmissionModel(item, targetsResult.data ?? []));
+  return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export const generateIpmsConsolidationSuggestion = (id: string): Promise<ApiResponse<PerformanceSuggestionResult>> =>
@@ -1946,17 +1926,13 @@ export async function applyIpmsSubmissionWorkflowAction(
   action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
   payload: SubmissionWorkflowActionPayload,
 ): Promise<ApiResponse<IPMSSubmission>> {
-  const targetsResult = await getIpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await post<IpmsSubmissionDto>(`/ipms-submissions/${id}/${action}`, payload);
-  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+  return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function extendIpmsSubmissionDueDate(id: string, payload: DueDateExtensionPayload): Promise<ApiResponse<IPMSSubmission>> {
-  const targetsResult = await getIpmsTargets();
-  const targets = targetsResult.data ?? [];
   const response = await post<IpmsSubmissionDto>(`/ipms-submissions/${id}/extend-due-date`, payload);
-  return mapResponse(response, item => toIpmsSubmissionModel(item, targets));
+  return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function getIpmsSubmissionAttachments(id: string) {
@@ -2011,8 +1987,11 @@ export async function markNotificationRead(id: string): Promise<ApiResponse<bool
   return patch<boolean>(`/notifications/${id}/read`);
 }
 
-export async function getAuditTrails(take = 200): Promise<ApiResponse<AuditTrailEntryDto[]>> {
-  return get<AuditTrailEntryDto[]>(`/v1/audit/trails?take=${take}`);
+export async function getAuditTrails(take = 200, filter: { entityName?: string; entityId?: string } = {}): Promise<ApiResponse<AuditTrailEntryDto[]>> {
+  const parameters = new URLSearchParams({ take: String(take) });
+  if (filter.entityName?.trim()) parameters.set('entityName', filter.entityName.trim());
+  if (filter.entityId?.trim()) parameters.set('entityId', filter.entityId.trim());
+  return get<AuditTrailEntryDto[]>(`/v1/audit/trails?${parameters.toString()}`);
 }
 
 export async function getIdpPlans(): Promise<ApiResponse<IdpPlanSummary[]>> {

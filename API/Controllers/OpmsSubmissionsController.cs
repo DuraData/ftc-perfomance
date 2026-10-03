@@ -100,6 +100,8 @@ public class OpmsSubmissionsController : ControllerBase
         var query = _context.OpmsSubmissions.AsNoTracking().AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.OpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId.Value)) || (item.OpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.OpmsTarget.UnitId.Value)) || (item.OpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.OpmsTargetId) || scope.KpiIds.Contains(item.OpmsTargetId));
+        if (request.TargetPublicId.HasValue)
+            query = query.Where(item => item.OpmsTarget.PublicId == request.TargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.OpmsTarget.TargetName.Contains(request.NormalizedSearch) || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
 

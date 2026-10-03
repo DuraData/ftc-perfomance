@@ -7,8 +7,22 @@ describe('versioned API routes', () => {
   it('uses the permission-protected versioned audit route', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
-    await getAuditTrails(250);
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/audit/trails?take=250'), expect.objectContaining({ credentials: 'include' }));
+    await getAuditTrails(250, { entityName: 'OpmsTarget', entityId: 'target-public-id' });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/audit/trails?take=250&entityName=OpmsTarget&entityId=target-public-id'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('transports bounded target-detail filters to submission and related-KPI pages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getOpmsSubmissionsPage({ page: 1, pageSize: 100, targetPublicId: 'target-public-id' });
+    await getIpmsTargetsPage({ page: 1, pageSize: 100, relatedOpmsTargetPublicId: 'target-public-id' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-submissions/page?page=1&pageSize=100&targetPublicId=target-public-id'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-targets/page?page=1&pageSize=100&relatedOpmsTargetPublicId=target-public-id'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('uses versioned IDP reconciliation routes and transports idempotency plus concurrency', async () => {
@@ -272,7 +286,6 @@ describe('versioned API routes', () => {
   it('posts reasons and concurrency tokens to governed withdrawal routes', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -283,7 +296,7 @@ describe('versioned API routes', () => {
       method: 'POST',
       body: JSON.stringify({ reason: 'Approved plan superseded it', rowVersion: 'AQ==' }),
     }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/opms-submissions/submission-1/withdraw'), expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/opms-submissions/submission-1/withdraw'), expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ reason: 'Submission entered in error', rowVersion: 'Ag==' }),
     }));

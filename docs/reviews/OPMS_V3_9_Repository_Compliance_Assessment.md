@@ -1303,6 +1303,18 @@ The active OPMS/IPMS target path now uses normalized period values from browser 
 
 The complete suites now pass **308 backend tests**, with one environment-gated SQL Server test skipped, and **148/148 frontend tests across 45 files**. TypeScript, ESLint, the production build and the **67-chunk** bundle budget pass; the build transforms 2,329 modules and the largest JavaScript chunk remains 379.2 KiB. The canonical target-value contract is **COMPLIANT at repository level** for active behavior. Areas 6 and 7 remain **PARTIALLY COMPLIANT** only for execution/verification of historic target reconciliation and subsequent physical retirement of legacy database columns.
 
+### 11.73 Bounded target-detail queries and self-contained submission projections
+
+The OPMS/IPMS target-detail path no longer expands one record into several tenant-wide compatibility reads:
+
+- Submission responses now carry the target indicator number alongside the target public identity and name. The SPA can therefore map list, detail, create, edit, withdrawal and workflow-action responses without first downloading the complete OPMS/IPMS target register.
+- The shared bounded page request accepts an optional target public ID. Both submission page endpoints apply the authorized record scope first, then the target predicate, count and page. OPMS/IPMS target-detail screens request only the selected KPI's submissions with a maximum page size of 100.
+- The IPMS target page accepts an optional related-OPMS target public ID. The OPMS detail screen uses that server-side predicate instead of downloading every IPMS KPI and filtering in the browser.
+- Target audit history now sends exact entity type and identity predicates to `/api/v1/audit/trails`; the database filters before its existing bounded take rather than returning 250 unrelated events for client-side filtering.
+- Relational coverage proves the target predicate runs before the authoritative submission count and that the response carries the target indicator identity. Frontend route coverage proves exact bounded submission, related-KPI and audit-filter transport, and the removal of the redundant target-register request from governed submission mutations.
+
+The complete suites pass **309 backend tests**, with one environment-gated SQL Server test skipped, and **149/149 frontend tests across 45 files**. TypeScript, ESLint, the production frontend build and backend build pass with no warnings or errors. No schema or provider-specific code is introduced. R-45 remains **PARTIALLY COMPLIANT** because dashboard/workflow collections and other secondary selectors still require bounded, purpose-specific contracts and native SQL Server load/query-plan acceptance.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1353,7 +1365,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 19 | Dashboards and role-scoped operational views | Partially Compliant | Dynamic navigation and several scoped views exist, while some dashboard data and operational flows remain incomplete. |
 | 20 | Official reports, exports and version history | Compliant | Municipality/FY/period-scoped approved template versions generate immutable CSV/XLSX/DOCX/PDF performance outputs from one authorized dataset; each generation pins template/version, scope/filters, actor/time, snapshot/content hashes and private blob, while regeneration preserves prior versions and downloads re-evaluate scope and integrity. |
 | 21 | Notifications, reminders and delivery operations | Compliant | Versioned municipality/FY policies inherit through stage and period scope, materialize idempotent working-day reminders/escalations for reporting windows and RFIs, support in-app/email/SMS delivery, preserve retry/terminal receipts, catch up after downtime, enforce mandatory delivery over persisted optional preferences and expose governed administration/operations. |
-| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented; compatibility/detail selectors and uniform bounded-query acceptance remain. |
+| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail submissions, related IPMS KPIs and audit history are now server-filtered and bounded; dashboard/workflow collections and other secondary selectors plus uniform SQL Server query-plan acceptance remain. |
 | 23 | Technical Indicator Descriptions | Compliant | Governed configuration, versions, files, scans, register paging and authorization are implemented. |
 | 24 | Circular 88 | Compliant | Catalogue, assignments, governed reports, workflow and paged register are implemented and tested. |
 | 25 | Integrated Development Plan | Compliant | Governed IDP structures, import/report paths and repository tests are present. |
@@ -1407,14 +1419,15 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Added an administrator-facing OPMS/IPMS Data Cutover console over the governed target-normalization API, with bounded paging, explicit ready-record selection, blocked-state explanations, permission-aware execution and mandatory reconciliation reasons.
 - Retired competing OPMS/IPMS actual request, response, entity and UI fields; added a lossless append-only archive/backfill/drop migration so runtime behavior and public contracts use only canonical `ActualPerformance`.
 - Replaced the OPMS/IPMS wide target request/response contract with typed canonical period rows, preserved heterogeneous non-numeric values and period-specific units in the SPA, and routed template creation through the complete governed target form.
+- Removed tenant-wide target prefetches from submission response mapping and changed OPMS/IPMS target details to bounded server-filtered submission, related-KPI and audit-history queries.
 - Re-ran every available quality gate after the fixes.
 
 ### 12.5 Final test and build evidence
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 308; Failed: 0; Skipped: 1; Total: 309.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 148/148 across 45 files.** |
+| Backend test suite | **Passed: 309; Failed: 0; Skipped: 1; Total: 310.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 149/149 across 45 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed; 2,329 modules transformed. |

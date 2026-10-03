@@ -24,7 +24,7 @@ import {
   getAuditTrails,
   withdrawIpmsSubmission as withdrawIpmsSubmissionApi,
   getIpmsSubmissionAttachments,
-  getIpmsSubmissions as getIpmsSubmissionsApi,
+  getIpmsSubmissionsPage as getIpmsSubmissionsApi,
   getIpmsTarget as getIpmsTargetApi,
   uploadIpmsSubmissionAttachment,
   rescanIpmsSubmissionAttachment,
@@ -400,7 +400,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       setIsLoading(true);
       const [targetResult, submissionsResult] = await Promise.all([
         getIpmsTargetApi(targetId),
-        getIpmsSubmissionsApi(),
+        getIpmsSubmissionsApi({ page: 1, pageSize: 100, targetPublicId: targetId }),
       ]);
 
       if (targetResult.success && targetResult.data) {
@@ -410,7 +410,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       }
 
       if (submissionsResult.success && submissionsResult.data) {
-        setIpmsSubmissions(submissionsResult.data);
+        setIpmsSubmissions(submissionsResult.data.items);
       }
 
       setIsLoading(false);
@@ -421,12 +421,9 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
   useEffect(() => {
     const loadAudit = async () => {
-      const auditResult = await getAuditTrails(250);
+      const auditResult = await getAuditTrails(250, { entityName: 'IpmsTarget', entityId: targetId });
       if (auditResult.success && auditResult.data) {
-        setAuditEntries(auditResult.data.filter(entry =>
-          entry.entityId === targetId &&
-          entry.entityName.toLowerCase().includes('ipmstarget'),
-        ));
+        setAuditEntries(auditResult.data);
       }
     };
 
