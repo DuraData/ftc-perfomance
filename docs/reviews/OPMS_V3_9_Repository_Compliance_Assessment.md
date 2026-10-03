@@ -328,7 +328,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-51 | C88 independent subsystem | **COMPLIANT** | Municipality/FY enablement, immutable catalogue editions, controlled calculations, planning/calendars, versioned indicator reports, typed data/compliance responses, effective assignments, pinned configurable workflow versions, alignment-only OPMS mappings, audit, concurrency, assignment scope and governed UI are independently implemented | Native SQL Server migration/filtered-index/`rowversion` execution remains a deployment acceptance check. |
 | R-52 | Health, monitoring, correlation | **PARTIALLY COMPLIANT** | Liveness/readiness checks, safe JSON readiness output, validated correlation propagation, structured request logging, bounded .NET metrics/tracing, configurable degradation thresholds and browser security headers are implemented and tested | Provision a production collector, durable log/trace/metric sink, dashboards and external paging rules, then rehearse alert response. |
 | R-53 | Backup, restore, DR | **PARTIALLY COMPLIANT** | Safety-gated local SQL Server backup, checksum verification, isolated restore, DBCC integrity verification, RPO/RTO evaluation, cleanup and JSON evidence are executable; CI validates the drill contract | Schedule encrypted/off-site production backups and execute witnessed restore/failover exercises in approved environments. |
-| R-54 | Automated quality gate | **PARTIALLY COMPLIANT** | CI enforces backend/frontend build and tests, type-check, lint, accessibility, migration generation, recovery-script validation, dependency/secret scans and a frontend bundle budget | Add native SQL Server acceptance/UAT jobs and resolve or formally risk-accept outstanding dependency advisories before release. |
+| R-54 | Automated quality gate | **PARTIALLY COMPLIANT** | CI enforces backend/frontend build and tests, type-check, lint, accessibility, migration generation, recovery-script validation, dependency/secret scans and a frontend bundle budget; the reproducible frontend install now audits with zero known vulnerabilities | Add native SQL Server acceptance/UAT jobs before release. |
 | R-55 | Accessibility | **PARTIALLY COMPLIANT** | Shared shell/forms provide keyboard skip navigation, landmarks, stable label/help/error relationships and live announcements; axe-core automation is a required CI gate | Complete whole-application browser/keyboard, rendered contrast, zoom/reflow and assistive-technology acceptance with representative users before production. |
 
 ## 7. Priority gap register
@@ -1338,6 +1338,18 @@ The production workflow screens no longer download the complete OPMS and IPMS su
 
 The complete suites pass **312 backend tests**, with one environment-gated SQL Server test skipped, and **152/152 frontend tests across 45 files**. TypeScript, ESLint, the production frontend/Release backend build, the 67-chunk bundle budget and SQL Server-provider model/snapshot consistency pass with **0 warnings and 0 errors**. No schema migration or provider-specific path is introduced. The workflow-collection portion of R-45 is closed; compatibility/detail selectors, other secondary collections and representative native SQL Server query-plan/load evidence remain open.
 
+### 11.76 Clean-runner CI and frontend dependency repair
+
+The GitHub Actions quality gate was exercised on a clean hosted runner and the resulting reproducibility failures were corrected:
+
+- The backend restore step now targets the test project, transitively restoring the host and generating the test assembly assets required by the subsequent `--no-restore` build/test commands.
+- The frontend lockfile is synchronized with the manifest, so `npm ci` succeeds without modifying dependency state.
+- Vite, Vitest, ESLint, React lint plugins, TypeScript and Tailwind/PostCSS were moved to supported releases. Tailwind 4 uses its dedicated PostCSS plugin and retains the existing repository theme through the explicit configuration import.
+- The React Hooks 7 preset additions that would retroactively redefine the repository's lint policy are explicitly deferred; the pre-existing hooks and refresh checks remain enforced.
+- A clean install followed by `npm audit --audit-level=high` reports **0 vulnerabilities**. TypeScript, ESLint, all **152/152 frontend tests**, accessibility automation, the Vite production build and the **68-chunk** bundle budget pass; the largest JavaScript chunk is **374.1 KiB**.
+
+The native SQL Server and deployment/UAT limitations below are unchanged.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1445,6 +1457,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Removed tenant-wide target prefetches from submission response mapping and changed OPMS/IPMS target details to bounded server-filtered submission, related-KPI and audit-history queries.
 - Replaced OPMS/IPMS dashboard register downloads and browser scans with versioned, authorization-scoped database aggregates for target, submission and workflow-queue metrics.
 - Replaced staff and personal workflow register downloads with one combined OPMS/IPMS endpoint that applies dynamic scopes before SQL counts, queue filters and stable paging, then delegates protected row details to the existing member-secured APIs.
+- Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
 
 ### 12.5 Final test and build evidence
@@ -1455,8 +1468,9 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Frontend Vitest suite | **Passed: 152/152 across 45 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
-| Frontend production build | Passed; 2,329 modules transformed. |
-| Bundle budget | Passed with 67 JavaScript chunks; largest chunk 379.2 KiB. |
+| Frontend production build | Passed under Vite 8; 2,094 modules transformed. |
+| Bundle budget | Passed with 68 JavaScript chunks; largest chunk 374.1 KiB. |
+| Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
 | SQL Server migration artifact | Idempotent migration script generation passed at **461,184 bytes** and includes the notification policy plus canonical-actual archive/backfill/drop migrations. Inspection confirms archive/backfill SQL precedes every retired-column drop. This proves generation only, not native application. |

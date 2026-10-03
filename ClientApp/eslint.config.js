@@ -19,6 +19,11 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // React Hooks 7 adds this advisory to the recommended preset. Existing
+      // data-loading effects intentionally update local request state; retain
+      // the project's previous lint contract until those flows are refactored.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
