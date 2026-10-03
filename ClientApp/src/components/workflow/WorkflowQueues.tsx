@@ -5,7 +5,6 @@ import {
   Users,
   Eye,
   CheckSquare,
-  MessageSquare,
   RotateCcw,
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
@@ -15,8 +14,37 @@ import { Modal } from '../common/Modal';
 import { Tabs } from '../common/Tabs';
 import { getIpmsSubmissions, getOpmsSubmissions } from '../../api/api';
 import { useApp } from '../../context/AppContext';
-import { mockOPMSSubmissions, statusLabels, statusColors } from '../../data/mockData';
-import type { OPMSSubmission } from '../../types';
+import type { OPMSSubmission, SubmissionStatus } from '../../types';
+
+const statusLabels: Record<SubmissionStatus, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  pending_verification: 'Pending Verification',
+  verified: 'Verified',
+  verify_rejected: 'Verification Rejected',
+  pending_approval: 'Pending Approval',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  reviewed: 'Reviewed',
+  returned_for_info: 'Returned for Information',
+  audited: 'Audited',
+  completed: 'Completed',
+};
+
+const statusColors: Record<SubmissionStatus, string> = {
+  draft: 'bg-secondary-100 text-secondary-800',
+  submitted: 'bg-blue-100 text-blue-800',
+  pending_verification: 'bg-amber-100 text-amber-800',
+  verified: 'bg-cyan-100 text-cyan-800',
+  verify_rejected: 'bg-rose-100 text-rose-800',
+  pending_approval: 'bg-orange-100 text-orange-800',
+  approved: 'bg-green-100 text-green-800',
+  rejected: 'bg-red-100 text-red-800',
+  reviewed: 'bg-indigo-100 text-indigo-800',
+  returned_for_info: 'bg-yellow-100 text-yellow-800',
+  audited: 'bg-violet-100 text-violet-800',
+  completed: 'bg-emerald-100 text-emerald-800',
+};
 
 function QueueCard({ title, count, icon, color, onClick }: { title: string; count: number; icon: React.ReactNode; color: string; onClick: () => void }) {
   return (
@@ -37,12 +65,8 @@ function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OP
 
   const tabs = [
     { id: 'details', label: 'Details' },
-    { id: 'proof', label: 'Evidence' },
     { id: 'verification', label: 'Verification' },
     { id: 'approval', label: 'Approval' },
-    { id: 'pms', label: 'PMS' },
-    { id: 'auditor', label: 'Auditor' },
-    { id: 'comments', label: 'Comments' },
   ];
 
   return (
@@ -79,7 +103,6 @@ function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OP
               {submission.varianceReason && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Variance Reason</p><p className="text-xs">{submission.varianceReason}</p></div>}
             </div>
           )}
-          {activeTab === 'proof' && <EmptyState icon={<FileText className="w-6 h-6" />} title="No documents" action={<Button variant="outline" size="sm">Upload</Button>} />}
           {activeTab === 'verification' && (
             <div className="grid grid-cols-2 gap-3">
               <div><p className="text-[10px] text-secondary-500">Verified By</p><p className="text-sm font-medium">{submission.verifier?.displayName ?? 'Pending'}</p></div>
@@ -93,19 +116,6 @@ function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OP
               <div><p className="text-[10px] text-secondary-500">Approved At</p><p className="text-sm font-medium">{submission.approvedAt ? new Date(submission.approvedAt).toLocaleDateString() : '-'}</p></div>
             </div>
           )}
-          {activeTab === 'comments' && <div className="text-center text-secondary-500 py-6 text-xs">No comments yet</div>}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center justify-between pt-3 border-t border-secondary-200">
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" icon={<RotateCcw className="w-3.5 h-3.5" />}>Return</Button>
-            <Button variant="ghost" size="sm" icon={<MessageSquare className="w-3.5 h-3.5" />}>Comment</Button>
-          </div>
-          <div className="flex items-center gap-1">
-            {submission.status === 'pending_verification' && <Button variant="success" size="sm" icon={<CheckSquare className="w-3.5 h-3.5" />}>Verify</Button>}
-            {submission.status === 'verified' && <Button variant="primary" size="sm" icon={<CheckSquare className="w-3.5 h-3.5" />}>Approve</Button>}
-          </div>
         </div>
       </div>
     </Modal>
@@ -113,17 +123,58 @@ function SubmissionDetailModal({ submission, isOpen, onClose }: { submission: OP
 }
 
 export function WorkflowQueues() {
-  const [selectedQueue, setSelectedQueue] = useState<string | null>(null);
+  const { currentPath, userProfile, pushToast } = useApp();
+  const routeQueue: Record<string, string> = {
+    '/workflow/verification': 'verification',
+    '/workflow/approval': 'approval',
+    '/workflow/pms-review': 'pms',
+    '/workflow/auditor-review': 'auditor',
+  };
+  const [selectedQueue, setSelectedQueue] = useState<string | null>(routeQueue[currentPath] ?? null);
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
+  const [submissions, setSubmissions] = useState<OPMSSubmission[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const queues = [
-    { id: 'my-submissions', title: 'My Submissions', count: 3, icon: <FileText className="w-5 h-5 text-white" />, color: 'bg-blue-500', submissions: mockOPMSSubmissions.slice(0, 3) },
-    { id: 'verification', title: 'Pending Verification', count: mockOPMSSubmissions.filter(s => s.status === 'pending_verification').length, icon: <Users className="w-5 h-5 text-white" />, color: 'bg-amber-500', submissions: mockOPMSSubmissions.filter(s => s.status === 'pending_verification') },
-    { id: 'approval', title: 'Pending Approval', count: 8, icon: <CheckSquare className="w-5 h-5 text-white" />, color: 'bg-orange-500', submissions: mockOPMSSubmissions.filter(s => s.status === 'verified') },
-    { id: 'pms', title: 'PMS Review', count: 4, icon: <Clock className="w-5 h-5 text-white" />, color: 'bg-primary-500', submissions: mockOPMSSubmissions.filter(s => s.status === 'approved') },
-    { id: 'auditor', title: 'Auditor Queue', count: 2, icon: <Eye className="w-5 h-5 text-white" />, color: 'bg-violet-500', submissions: [] },
-    { id: 'returned', title: 'Returned Items', count: mockOPMSSubmissions.filter(s => s.status === 'returned_for_info').length, icon: <RotateCcw className="w-5 h-5 text-white" />, color: 'bg-rose-500', submissions: mockOPMSSubmissions.filter(s => s.status === 'returned_for_info') },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setLoadError(null);
+    void getOpmsSubmissions().then(result => {
+      if (cancelled) return;
+      if (!result.success) {
+        const message = result.message ?? 'Failed to load the workflow queue.';
+        setLoadError(message);
+        pushToast('error', message);
+        setSubmissions([]);
+        return;
+      }
+      setSubmissions(result.data ?? []);
+    }).catch(() => {
+      if (cancelled) return;
+      const message = 'The workflow service is unavailable.';
+      setLoadError(message);
+      pushToast('error', message);
+      setSubmissions([]);
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [pushToast]);
+
+  const queues = useMemo(() => {
+    const matching = (statuses: SubmissionStatus[]) => submissions.filter(item => statuses.includes(item.status));
+    const own = submissions.filter(item => item.submittedByUserId === userProfile?.id || item.submitter?.id === userProfile?.id);
+    const definitions = [
+      { id: 'my-submissions', title: 'My Submissions', icon: <FileText className="w-5 h-5 text-white" />, color: 'bg-blue-500', submissions: own },
+      { id: 'verification', title: 'Pending Verification', icon: <Users className="w-5 h-5 text-white" />, color: 'bg-amber-500', submissions: matching(['pending_verification']) },
+      { id: 'approval', title: 'Pending Approval', icon: <CheckSquare className="w-5 h-5 text-white" />, color: 'bg-orange-500', submissions: matching(['verified', 'pending_approval']) },
+      { id: 'pms', title: 'PMS Review', icon: <Clock className="w-5 h-5 text-white" />, color: 'bg-primary-500', submissions: matching(['approved']) },
+      { id: 'auditor', title: 'Auditor Queue', icon: <Eye className="w-5 h-5 text-white" />, color: 'bg-violet-500', submissions: matching(['reviewed']) },
+      { id: 'returned', title: 'Returned Items', icon: <RotateCcw className="w-5 h-5 text-white" />, color: 'bg-rose-500', submissions: matching(['returned_for_info', 'verify_rejected', 'rejected']) },
+    ];
+    return definitions.map(queue => ({ ...queue, count: queue.submissions.length }));
+  }, [submissions, userProfile?.id]);
 
   const columns = [
     { id: 'target', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium text-secondary-900 dark:text-white">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
@@ -138,12 +189,14 @@ export function WorkflowQueues() {
   return (
     <AppShell title="Workflow Queues" subtitle="Manage work items">
       <div className="space-y-4">
+        {isLoading && <Card><p className="py-6 text-center text-sm text-secondary-500">Loading authorised workflow items…</p></Card>}
+        {!isLoading && loadError && <EmptyState icon={<FileText className="w-6 h-6" />} title="Workflow queue unavailable" description={loadError} />}
         {/* Queue cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {!isLoading && !loadError && <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
           {queues.map(queue => (
             <QueueCard key={queue.id} {...queue} onClick={() => setSelectedQueue(queue.id === selectedQueue ? null : queue.id)} />
           ))}
-        </div>
+        </div>}
 
         {/* Queue details */}
         {selectedQueue && currentQueue && (
