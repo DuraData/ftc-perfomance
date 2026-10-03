@@ -1586,6 +1586,35 @@ export interface UnitLookupDto {
   name: string;
 }
 
+export interface PerformanceLookupItemDto {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export interface PerformancePeriodLookupDto extends PerformanceLookupItemDto {
+  startDate: string;
+  endDate: string;
+  fiscalYear: string;
+}
+
+export interface StrategicObjectiveLookupDto extends PerformanceLookupItemDto {
+  strategicGoalId: number;
+}
+
+export interface UnitOfMeasureLookupDto extends PerformanceLookupItemDto {
+  symbol?: string | null;
+}
+
+export interface PerformanceLookupsDto {
+  periods: PerformancePeriodLookupDto[];
+  strategicGoals: PerformanceLookupItemDto[];
+  strategicObjectives: StrategicObjectiveLookupDto[];
+  budgetSources: PerformanceLookupItemDto[];
+  budgetTypes: PerformanceLookupItemDto[];
+  unitsOfMeasure: UnitOfMeasureLookupDto[];
+}
+
 export interface RatingValueDto {
   publicId: string;
   value: number;

@@ -34,15 +34,7 @@ import {
   updateIpmsTargetTemplate as updateIpmsTargetTemplateApi,
   updateOpmsTargetTemplate as updateOpmsTargetTemplateApi,
 } from '../../api/api';
-import {
-  mockBudgetSources,
-  mockBudgetTypes,
-  mockDepartments,
-  mockStrategicGoals,
-  mockStrategicObjectives,
-  mockUnitsOfMeasure,
-  targetUnitTypes,
-} from '../../data/mockData';
+import { usePerformanceReferenceData } from '../../hooks/usePerformanceReferenceData';
 import type {
   IpmsTargetTemplate,
   OpmsTargetTemplate,
@@ -52,9 +44,29 @@ import type {
   SaveOpmsTargetPayload,
   TargetUnitType,
   TemplateQuarterlyTarget,
+  PerformanceLookupsDto,
 } from '../../types';
 
 type LibraryStatusFilter = 'all' | 'active' | 'archived';
+
+const targetUnitTypes: { value: TargetUnitType; label: string }[] = [
+  { value: 'percentage', label: 'Percentage' },
+  { value: 'absolute_count', label: 'Absolute Count' },
+  { value: 'financial', label: 'Financial' },
+  { value: 'area_based', label: 'Area Based' },
+  { value: 'volume_based', label: 'Volume Based' },
+  { value: 'index_scores', label: 'Index Scores' },
+  { value: 'ratios', label: 'Ratios' },
+  { value: 'time_based', label: 'Time Based' },
+  { value: 'binary', label: 'Binary' },
+  { value: 'date', label: 'Date' },
+  { value: 'readiness_scale', label: 'Readiness Scale' },
+  { value: 'qualitative', label: 'Qualitative' },
+  { value: 'zero_based', label: 'Zero Based' },
+  { value: 'reverse_cumulative', label: 'Reverse Cumulative' },
+  { value: 'reverse_non_cumulative', label: 'Reverse Non-Cumulative' },
+  { value: 'binary_determination', label: 'Binary Determination' },
+];
 
 interface TemplateRowAction {
   label: string;
@@ -652,7 +664,7 @@ function buildIpmsTargetPayloadFromTemplate(template: IpmsTargetTemplate): SaveI
   };
 }
 
-function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form']): SaveOpmsTargetTemplatePayload {
+function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form'], lookups: PerformanceLookupsDto): SaveOpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
     templateName: form.templateName,
@@ -663,17 +675,17 @@ function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['
     annualTarget: Number(form.annualTarget || 0),
     annualTargetDescription: form.annualTargetDescription || null,
     targetUnitType: form.targetUnitType,
-    unitOfMeasure: mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId)?.name ?? null,
+    unitOfMeasure: lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId)?.name ?? null,
     nationalKpa: form.nationalKPA || null,
     municipalKpa: form.municipalKPA || null,
-    strategicGoal: mockStrategicGoals.find(item => item.id === form.strategicGoalId)?.name ?? null,
-    strategicObjective: mockStrategicObjectives.find(item => item.id === form.strategicObjectiveId)?.name ?? null,
+    strategicGoal: lookups.strategicGoals.find(item => String(item.id) === form.strategicGoalId)?.name ?? null,
+    strategicObjective: lookups.strategicObjectives.find(item => String(item.id) === form.strategicObjectiveId)?.name ?? null,
     performanceObjective: form.performanceObjective || null,
     outcome: form.outcome || null,
     output: form.output || null,
     priorityIssue: form.priorityIssue || null,
-    budgetSource: mockBudgetSources.find(item => item.id === form.budgetSourceId)?.name ?? null,
-    budgetType: mockBudgetTypes.find(item => item.id === form.budgetTypeId)?.name ?? null,
+    budgetSource: lookups.budgetSources.find(item => String(item.id) === form.budgetSourceId)?.name ?? null,
+    budgetType: lookups.budgetTypes.find(item => String(item.id) === form.budgetTypeId)?.name ?? null,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType || null,
     indicatorType: form.indicatorType || null,
@@ -689,7 +701,7 @@ function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['
   };
 }
 
-function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['form']): SaveIpmsTargetTemplatePayload {
+function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['form'], lookups: PerformanceLookupsDto): SaveIpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
     templateName: form.templateName,
@@ -699,7 +711,7 @@ function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['
     employeeLevel: form.employeeLevel || null,
     jobGrade: form.jobGrade || null,
     targetUnitType: form.targetUnitType,
-    unitOfMeasure: mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId)?.name ?? null,
+    unitOfMeasure: lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId)?.name ?? null,
     annualTarget: Number(form.annualTarget || 0),
     annualTargetDescription: form.annualTargetDescription || null,
     weight: Number(form.weight || 0),
@@ -766,7 +778,7 @@ function useOpmsTemplateForm(template?: OpmsTargetTemplate | null) {
         annualTarget: '0',
         annualTargetDescription: '',
         targetUnitType: 'absolute_count',
-        unitOfMeasureId: mockUnitsOfMeasure[0]?.id ?? '',
+        unitOfMeasureId: '',
         nationalKPA: '',
         municipalKPA: '',
         strategicGoalId: '',
@@ -886,7 +898,7 @@ function useIpmsTemplateForm(template?: IpmsTargetTemplate | null) {
         employeeLevel: '',
         jobGrade: '',
         targetUnitType: 'percentage',
-        unitOfMeasureId: mockUnitsOfMeasure[0]?.id ?? '',
+        unitOfMeasureId: '',
         annualTarget: '0',
         annualTargetDescription: '',
         weight: '0',
@@ -1350,6 +1362,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const referenceData = usePerformanceReferenceData(false, false);
   const [template, setTemplate] = useState<OpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
   const { form, setForm } = useOpmsTemplateForm(template);
@@ -1376,7 +1389,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   }, [templateId, pushToast]);
 
   const handleSave = async () => {
-    const payload = buildOpmsTemplatePayload(form);
+    const payload = buildOpmsTemplatePayload(form, referenceData.lookups);
 
     if (template) {
       const result = await updateOpmsTargetTemplateApi(template.id, payload);
@@ -1398,7 +1411,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     }
   };
 
-  if (isLoading) {
+  if (isLoading || referenceData.isLoading) {
     return (
       <AppShell title={templateId ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
         <Card>
@@ -1407,6 +1420,16 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
       </AppShell>
     );
   }
+
+  if (referenceData.error) {
+    return (
+      <AppShell title={templateId ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
+        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
+      </AppShell>
+    );
+  }
+
+  const { departments, lookups } = referenceData;
 
   return (
     <AppShell title={template ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
@@ -1425,7 +1448,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <Input label="Template Name" required value={form.templateName} onChange={(event) => setForm(prev => ({ ...prev, templateName: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Department" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={[{ value: '', label: 'General Template' }, ...mockDepartments.map(item => ({ value: item.id, label: item.name }))]} />
+              <Select label="Department" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={[{ value: '', label: 'General Template' }, ...departments.map(item => ({ value: String(item.id), label: item.name }))]} />
               <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
@@ -1452,8 +1475,8 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <Input label="Municipal KPA" required value={form.municipalKPA} onChange={(event) => setForm(prev => ({ ...prev, municipalKPA: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value }))} options={[{ value: '', label: 'Select Goal' }, ...mockStrategicGoals.map(item => ({ value: item.id, label: item.name }))]} />
-              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={[{ value: '', label: 'Select Objective' }, ...mockStrategicObjectives.map(item => ({ value: item.id, label: item.name }))]} />
+              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value, strategicObjectiveId: '' }))} options={[{ value: '', label: 'Select Goal' }, ...lookups.strategicGoals.map(item => ({ value: String(item.id), label: item.name }))]} />
+              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={[{ value: '', label: 'Select Objective' }, ...lookups.strategicObjectives.filter(item => !form.strategicGoalId || String(item.strategicGoalId) === form.strategicGoalId).map(item => ({ value: String(item.id), label: item.name }))]} />
             </FormRow>
             <Input label="Performance Objective" required value={form.performanceObjective} onChange={(event) => setForm(prev => ({ ...prev, performanceObjective: event.target.value }))} />
             <FormRow cols={3}>
@@ -1472,7 +1495,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
             <FormRow cols={4}>
               <Select label="Target Unit Type" required value={form.targetUnitType} onChange={(event) => setForm(prev => ({ ...prev, targetUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypes} />
-              <Select label="Unit of Measure" required value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={mockUnitsOfMeasure.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Unit of Measure" required value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
               <Input label="KPI Type" required value={form.kpiType} onChange={(event) => setForm(prev => ({ ...prev, kpiType: event.target.value }))} />
               <Input label="Indicator Type" required value={form.indicatorType} onChange={(event) => setForm(prev => ({ ...prev, indicatorType: event.target.value }))} />
             </FormRow>
@@ -1527,8 +1550,8 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
         <div className="grid gap-4 xl:grid-cols-2">
           <FormPanel title="Budget Defaults" description="Reusable budget and classification references." icon={<Target className="h-5 w-5" />}>
             <FormRow cols={2}>
-              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={[{ value: '', label: 'Select Budget Source' }, ...mockBudgetSources.map(item => ({ value: item.id, label: item.name }))]} />
-              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={[{ value: '', label: 'Select Budget Type' }, ...mockBudgetTypes.map(item => ({ value: item.id, label: item.name }))]} />
+              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={[{ value: '', label: 'Select Budget Source' }, ...lookups.budgetSources.map(item => ({ value: String(item.id), label: item.name }))]} />
+              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={[{ value: '', label: 'Select Budget Type' }, ...lookups.budgetTypes.map(item => ({ value: String(item.id), label: item.name }))]} />
             </FormRow>
             <Input label="Standard Classification" value={form.standardClassification} onChange={(event) => setForm(prev => ({ ...prev, standardClassification: event.target.value }))} />
             <Textarea label="Default Budget Information" rows={4} value={form.defaultBudgetInformation} onChange={(event) => setForm(prev => ({ ...prev, defaultBudgetInformation: event.target.value }))} />
@@ -1941,6 +1964,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const referenceData = usePerformanceReferenceData(false, false);
   const [template, setTemplate] = useState<IpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
   const { form, setForm } = useIpmsTemplateForm(template);
@@ -1967,7 +1991,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   }, [templateId, pushToast]);
 
   const handleSave = async () => {
-    const payload = buildIpmsTemplatePayload(form);
+    const payload = buildIpmsTemplatePayload(form, referenceData.lookups);
 
     if (template) {
       const result = await updateIpmsTargetTemplateApi(template.id, payload);
@@ -1989,7 +2013,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     }
   };
 
-  if (isLoading) {
+  if (isLoading || referenceData.isLoading) {
     return (
       <AppShell title={templateId ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
         <Card>
@@ -1998,6 +2022,16 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
       </AppShell>
     );
   }
+
+  if (referenceData.error) {
+    return (
+      <AppShell title={templateId ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
+        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
+      </AppShell>
+    );
+  }
+
+  const { departments, lookups } = referenceData;
 
   return (
     <AppShell title={template ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
@@ -2016,7 +2050,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <Input label="Template Name" required value={form.templateName} onChange={(event) => setForm(prev => ({ ...prev, templateName: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Department" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={[{ value: '', label: 'General Template' }, ...mockDepartments.map(item => ({ value: item.id, label: item.name }))]} />
+              <Select label="Department" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={[{ value: '', label: 'General Template' }, ...departments.map(item => ({ value: String(item.id), label: item.name }))]} />
               <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
@@ -2046,7 +2080,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
             </FormRow>
             <FormRow cols={3}>
               <Select label="Target Unit Type" required value={form.targetUnitType} onChange={(event) => setForm(prev => ({ ...prev, targetUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypes} />
-              <Select label="Unit of Measure" required value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={mockUnitsOfMeasure.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Unit of Measure" required value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
               <Input label="Annual Target" required type="number" value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
             </FormRow>
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />

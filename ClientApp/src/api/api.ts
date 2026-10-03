@@ -84,6 +84,7 @@ import type {
   ReportingWindowExceptionDto,
   DepartmentLookupDto,
   UnitLookupDto,
+  PerformanceLookupsDto,
   PerformanceRfiDto,
   StageRatingDto,
   SecurityNavigationItemDto,
@@ -1244,6 +1245,10 @@ export async function getDepartments(): Promise<ApiResponse<DepartmentLookupDto[
 
 export async function getUnits(): Promise<ApiResponse<UnitLookupDto[]>> {
   return get<UnitLookupDto[]>('/units');
+}
+
+export async function getPerformanceLookups(): Promise<ApiResponse<PerformanceLookupsDto>> {
+  return get<PerformanceLookupsDto>('/v1/performance-lookups');
 }
 
 export async function getRatingSchemes(): Promise<ApiResponse<RatingSchemeDto[]>> {

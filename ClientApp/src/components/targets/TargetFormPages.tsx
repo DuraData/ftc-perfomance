@@ -18,19 +18,7 @@ import {
   updateIpmsTarget,
   updateOpmsTarget,
 } from '../../api/api';
-import {
-  mockBudgetSources,
-  mockBudgetTypes,
-  mockDepartmentUnits,
-  mockDepartments,
-  mockEmployees,
-  mockIPMSTargets,
-  mockOPMSTargets,
-  mockPeriods,
-  mockStrategicGoals,
-  mockStrategicObjectives,
-  mockUnitsOfMeasure,
-} from '../../data/mockData';
+import { usePerformanceReferenceData } from '../../hooks/usePerformanceReferenceData';
 import type {
   IPMSTarget,
   IpmsTargetTemplate,
@@ -284,22 +272,21 @@ function removeCsvId(value: string, id: string) {
 }
 
 function createDefaultOpmsFormState(): OpmsFormState {
-  const baseTarget = mockOPMSTargets[0];
   return {
     sourceTemplateId: '',
     sourceTemplateVersion: '',
-    periodId: mockPeriods[0]?.id ?? baseTarget.period.id,
-    departmentId: mockDepartments[0]?.id ?? baseTarget.department.id,
+    periodId: '',
+    departmentId: '',
     unitId: '',
     assignedToId: '',
     wardIds: '',
     additionalAssigneeIds: '',
     voteNumberIds: '',
     indicatorNumber: '',
-    nationalKPA: baseTarget.nationalKPA,
-    municipalKPA: baseTarget.municipalKPA,
-    strategicGoalId: baseTarget.strategicGoal.id,
-    strategicObjectiveId: baseTarget.strategicObjective.id,
+    nationalKPA: '',
+    municipalKPA: '',
+    strategicGoalId: '',
+    strategicObjectiveId: '',
     performanceObjective: '',
     targetName: '',
     kpiDescription: '',
@@ -307,27 +294,27 @@ function createDefaultOpmsFormState(): OpmsFormState {
     baselineDescription: '',
     annualTarget: '0',
     annualTargetDescription: '',
-    budgetSourceId: baseTarget.budgetSource.id,
-    budgetTypeId: baseTarget.budgetType.id,
-    unitOfMeasureId: baseTarget.unitOfMeasure.id,
+    budgetSourceId: '',
+    budgetTypeId: '',
+    unitOfMeasureId: '',
     weight: '0',
-    kpiType: baseTarget.kpiType,
-    indicatorType: baseTarget.indicatorType,
-    functionalArea: baseTarget.functionalArea ?? '',
-    standardClassification: baseTarget.standardClassification ?? '',
-    idpReference: baseTarget.idpReference ?? '',
-    internalReference: baseTarget.internalReference ?? '',
-    fmsLink: baseTarget.fmsLink ?? '',
+    kpiType: '',
+    indicatorType: '',
+    functionalArea: '',
+    standardClassification: '',
+    idpReference: '',
+    internalReference: '',
+    fmsLink: '',
     isRevised: false,
     isWithdrawn: false,
     reasonForWithdrawal: '',
-    targetUnitType: toXafUnitType(baseTarget.targetUnitType),
-    q1UnitType: toXafUnitType(baseTarget.targetUnitType),
-    q2UnitType: toXafUnitType(baseTarget.targetUnitType),
-    midTermUnitType: toXafUnitType(baseTarget.targetUnitType),
-    q3UnitType: toXafUnitType(baseTarget.targetUnitType),
-    q4UnitType: toXafUnitType(baseTarget.targetUnitType),
-    annualUnitType: toXafUnitType(baseTarget.targetUnitType),
+    targetUnitType: 'AbsoluteCount',
+    q1UnitType: 'AbsoluteCount',
+    q2UnitType: 'AbsoluteCount',
+    midTermUnitType: 'AbsoluteCount',
+    q3UnitType: 'AbsoluteCount',
+    q4UnitType: 'AbsoluteCount',
+    annualUnitType: 'AbsoluteCount',
     q1Target: '',
     q1Description: '',
     q1Budget: '',
@@ -355,44 +342,43 @@ function createDefaultOpmsFormState(): OpmsFormState {
 }
 
 function createDefaultIpmsFormState(): IpmsFormState {
-  const baseTarget = mockIPMSTargets[0];
   return {
     sourceTemplateId: '',
     sourceTemplateVersion: '',
     relatedOPMSTargetId: '',
-    periodId: mockPeriods[0]?.id ?? baseTarget.period.id,
-    departmentId: mockDepartments[0]?.id ?? baseTarget.department.id,
+    periodId: '',
+    departmentId: '',
     unitId: '',
     assignedToId: '',
     supervisorId: '',
     indicatorNumber: '',
-    nationalKPA: baseTarget.nationalKPA,
-    municipalKPA: baseTarget.municipalKPA,
-    strategicGoalId: baseTarget.strategicGoal.id,
-    strategicObjectiveId: baseTarget.strategicObjective.id,
+    nationalKPA: '',
+    municipalKPA: '',
+    strategicGoalId: '',
+    strategicObjectiveId: '',
     performanceObjective: '',
     targetName: '',
     kpiDescription: '',
     baseline: '0',
     annualTarget: '0',
     annualTargetDescription: '',
-    budgetSourceId: baseTarget.budgetSource.id,
-    budgetTypeId: baseTarget.budgetType.id,
-    unitOfMeasureId: baseTarget.unitOfMeasure.id,
+    budgetSourceId: '',
+    budgetTypeId: '',
+    unitOfMeasureId: '',
     weight: '0',
-    kpiType: baseTarget.kpiType,
-    indicatorType: baseTarget.indicatorType,
-    functionalArea: baseTarget.functionalArea ?? '',
-    idpReference: baseTarget.idpReference ?? '',
-    internalReference: baseTarget.internalReference ?? '',
+    kpiType: '',
+    indicatorType: '',
+    functionalArea: '',
+    idpReference: '',
+    internalReference: '',
     isRevised: false,
-    targetUnitType: toXafUnitType(baseTarget.targetUnitType),
-    q1UnitType: toXafUnitType(baseTarget.targetUnitType),
-    q2UnitType: toXafUnitType(baseTarget.targetUnitType),
-    midTermUnitType: toXafUnitType(baseTarget.targetUnitType),
-    q3UnitType: toXafUnitType(baseTarget.targetUnitType),
-    q4UnitType: toXafUnitType(baseTarget.targetUnitType),
-    annualUnitType: toXafUnitType(baseTarget.targetUnitType),
+    targetUnitType: 'AbsoluteCount',
+    q1UnitType: 'AbsoluteCount',
+    q2UnitType: 'AbsoluteCount',
+    midTermUnitType: 'AbsoluteCount',
+    q3UnitType: 'AbsoluteCount',
+    q4UnitType: 'AbsoluteCount',
+    annualUnitType: 'AbsoluteCount',
     q1Target: '',
     q1Description: '',
     q1Budget: '',
@@ -783,6 +769,7 @@ function validateIpmsForm(form: IpmsFormState) {
 
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<OpmsFormState>(createDefaultOpmsFormState());
   const [existingTarget, setExistingTarget] = useState<OPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
@@ -863,7 +850,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     pushToast('error', result.message ?? `Failed to ${targetId ? 'update' : 'create'} OPMS target`);
   };
 
-  if (isLoading) {
+  if (isLoading || referenceData.isLoading) {
     return (
       <AppShell title={targetId ? 'Edit OPMS Target' : 'Create OPMS Target'} subtitle="Full OPMS target workspace">
         <Card>
@@ -873,14 +860,23 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const selectedDepartment = mockDepartments.find(item => item.id === form.departmentId);
-  const selectedPeriod = mockPeriods.find(item => item.id === form.periodId);
-  const selectedUnit = mockDepartmentUnits.find(item => item.id === form.unitId);
-  const selectedUom = mockUnitsOfMeasure.find(item => item.id === form.unitOfMeasureId);
+  if (referenceData.error) {
+    return (
+      <AppShell title={targetId ? 'Edit OPMS Target' : 'Create OPMS Target'} subtitle="Full OPMS target workspace">
+        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
+      </AppShell>
+    );
+  }
+
+  const { departments, units, employees, lookups, ipmsTargets } = referenceData;
+  const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
+  const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
+  const selectedUnit = units.find(item => String(item.id) === form.unitId);
+  const selectedUom = lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId);
   const selectedWardIds = parseCsvIds(form.wardIds);
   const selectedAssigneeIds = parseCsvIds(form.additionalAssigneeIds);
   const selectedVoteIds = parseCsvIds(form.voteNumberIds);
-  const relatedIpmsTargets = mockIPMSTargets.filter(item => item.relatedOPMSTarget?.id === existingTarget?.id);
+  const relatedIpmsTargets = ipmsTargets.filter(item => item.relatedOPMSTarget?.id === existingTarget?.id);
   const fieldError = (label: string) => getFieldValidationError(validationErrors, label);
 
   return (
@@ -922,12 +918,12 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Template Version" value={form.sourceTemplateVersion} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateVersion: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={mockPeriods.map(item => ({ value: item.id, label: item.name }))} />
-              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={mockDepartments.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...mockDepartmentUnits.filter(item => !form.departmentId || item.department.id === form.departmentId).map(item => ({ value: item.id, label: item.name }))]} />
-              <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...mockEmployees.filter(item => !form.departmentId || item.department?.id === form.departmentId).map(item => ({ value: item.id, label: item.displayName }))]} />
+              <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
+              <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
             </FormRow>
             <FormRow cols={3}>
               <Select
@@ -976,9 +972,9 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 onChange={(event) => setSelectedAssigneeId(event.target.value)}
                 options={[
                   { value: '', label: 'Select Employee' },
-                  ...mockEmployees
-                    .filter(item => !form.departmentId || item.department?.id === form.departmentId)
-                    .map(item => ({ value: item.id, label: item.displayName })),
+                  ...employees
+                    .filter(item => item.identityUserId)
+                    .map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` })),
                 ]}
               />
               <div className="flex items-end">
@@ -999,7 +995,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="flex flex-wrap gap-2">
               {selectedAssigneeIds.length === 0 ? <p className="text-xs text-secondary-500">No additional assignees linked.</p> : null}
               {selectedAssigneeIds.map(assigneeId => {
-                const assignee = mockEmployees.find(item => item.id === assigneeId);
+                const assignee = employees.find(item => item.identityUserId === assigneeId);
                 return (
                   <button
                     key={assigneeId}
@@ -1008,7 +1004,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                     className="rounded-full border border-secondary-300 px-3 py-1 text-xs text-secondary-700 hover:bg-secondary-100 dark:border-secondary-700 dark:text-secondary-200 dark:hover:bg-secondary-800"
                     title="Remove assignee"
                   >
-                    {assignee?.displayName ?? assigneeId} x
+                    {assignee ? `${assignee.firstName} ${assignee.lastName}` : assigneeId} x
                   </button>
                 );
               })}
@@ -1065,8 +1061,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Municipal KPA" required value={form.municipalKPA} onChange={(event) => setForm(prev => ({ ...prev, municipalKPA: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value }))} options={mockStrategicGoals.map(item => ({ value: item.id, label: item.name }))} />
-              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={mockStrategicObjectives.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value, strategicObjectiveId: '' }))} options={lookups.strategicGoals.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={lookups.strategicObjectives.filter(item => !form.strategicGoalId || String(item.strategicGoalId) === form.strategicGoalId).map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <Input label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjective} onChange={(event) => setForm(prev => ({ ...prev, performanceObjective: event.target.value }))} />
             <Textarea label="KPI Description" required error={fieldError('KPI Description')} rows={4} value={form.kpiDescription} onChange={(event) => setForm(prev => ({ ...prev, kpiDescription: event.target.value }))} />
@@ -1079,7 +1075,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Baseline" required type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
               <Input label="Annual Target" required error={fieldError('Annual Target')} type="number" value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
-              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={mockUnitsOfMeasure.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <Textarea label="Baseline Description" rows={3} value={form.baselineDescription} onChange={(event) => setForm(prev => ({ ...prev, baselineDescription: event.target.value }))} />
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
@@ -1112,8 +1108,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 
           <FormPanel title="Budget And References" description="Capture budget linkage, identifiers, and external references." icon={<Building2 className="h-5 w-5" />}>
             <FormRow cols={2}>
-              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={mockBudgetSources.map(item => ({ value: item.id, label: item.name }))} />
-              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={mockBudgetTypes.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={lookups.budgetSources.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={lookups.budgetTypes.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
@@ -1395,6 +1391,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 
 export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
   const [existingTarget, setExistingTarget] = useState<IPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
@@ -1461,7 +1458,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     pushToast('error', result.message ?? `Failed to ${targetId ? 'update' : 'create'} IPMS target`);
   };
 
-  if (isLoading) {
+  if (isLoading || referenceData.isLoading) {
     return (
       <AppShell title={targetId ? 'Edit IPMS Target' : 'Create IPMS Target'} subtitle="Full IPMS target workspace">
         <Card>
@@ -1471,10 +1468,19 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const selectedDepartment = mockDepartments.find(item => item.id === form.departmentId);
-  const selectedPeriod = mockPeriods.find(item => item.id === form.periodId);
-  const selectedUnit = mockDepartmentUnits.find(item => item.id === form.unitId);
-  const linkedOpms = mockOPMSTargets.find(item => item.id === form.relatedOPMSTargetId);
+  if (referenceData.error) {
+    return (
+      <AppShell title={targetId ? 'Edit IPMS Target' : 'Create IPMS Target'} subtitle="Full IPMS target workspace">
+        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
+      </AppShell>
+    );
+  }
+
+  const { departments, units, employees, lookups, opmsTargets } = referenceData;
+  const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
+  const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
+  const selectedUnit = units.find(item => String(item.id) === form.unitId);
+  const linkedOpms = opmsTargets.find(item => item.id === form.relatedOPMSTargetId);
   const fieldError = (label: string) => getFieldValidationError(validationErrors, label);
 
   return (
@@ -1516,7 +1522,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Template Version" value={form.sourceTemplateVersion} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateVersion: event.target.value }))} />
             </FormRow>
             <FormRow cols={3}>
-              <Select label="Related OPMS Target" value={form.relatedOPMSTargetId} onChange={(event) => setForm(prev => ({ ...prev, relatedOPMSTargetId: event.target.value }))} options={[{ value: '', label: 'No Link' }, ...mockOPMSTargets.map(item => ({ value: item.id, label: `${item.indicatorNumber} - ${item.targetName}` }))]} />
+              <Select label="Related OPMS Target" value={form.relatedOPMSTargetId} onChange={(event) => setForm(prev => ({ ...prev, relatedOPMSTargetId: event.target.value }))} options={[{ value: '', label: 'No Link' }, ...opmsTargets.map(item => ({ value: item.id, label: `${item.indicatorNumber} - ${item.targetName}` }))]} />
               <div className="flex items-end">
                 <Button variant="outline" className="w-full" disabled={!form.relatedOPMSTargetId} onClick={() => setForm(prev => ({ ...prev, relatedOPMSTargetId: '' }))}>
                   Unlink
@@ -1525,14 +1531,14 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Linked OPMS" value={linkedOpms ? `${linkedOpms.indicatorNumber} - ${linkedOpms.targetName}` : 'Not linked'} readOnly />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={mockPeriods.map(item => ({ value: item.id, label: item.name }))} />
-              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={mockDepartments.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...mockDepartmentUnits.filter(item => !form.departmentId || item.department.id === form.departmentId).map(item => ({ value: item.id, label: item.name }))]} />
-              <Select label="Employee" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...mockEmployees.filter(item => !form.departmentId || item.department?.id === form.departmentId).map(item => ({ value: item.id, label: item.displayName }))]} />
+              <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
+              <Select label="Employee" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
             </FormRow>
-            <Select label="Supervisor" value={form.supervisorId} onChange={(event) => setForm(prev => ({ ...prev, supervisorId: event.target.value }))} options={[{ value: '', label: 'Select Supervisor' }, ...mockEmployees.filter(item => !form.departmentId || item.department?.id === form.departmentId).map(item => ({ value: item.id, label: item.displayName }))]} />
+            <Select label="Supervisor" value={form.supervisorId} onChange={(event) => setForm(prev => ({ ...prev, supervisorId: event.target.value }))} options={[{ value: '', label: 'Select Supervisor' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
           </FormPanel>
 
           <FormPanel title="Target Definition" description="Define strategic alignment and the employee-level performance target." icon={<UserSquare2 className="h-5 w-5" />}>
@@ -1545,8 +1551,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Municipal KPA" required value={form.municipalKPA} onChange={(event) => setForm(prev => ({ ...prev, municipalKPA: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value }))} options={mockStrategicGoals.map(item => ({ value: item.id, label: item.name }))} />
-              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={mockStrategicObjectives.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value, strategicObjectiveId: '' }))} options={lookups.strategicGoals.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={lookups.strategicObjectives.filter(item => !form.strategicGoalId || String(item.strategicGoalId) === form.strategicGoalId).map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <Input label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjective} onChange={(event) => setForm(prev => ({ ...prev, performanceObjective: event.target.value }))} />
             <Textarea label="KPI Description" required error={fieldError('KPI Description')} rows={4} value={form.kpiDescription} onChange={(event) => setForm(prev => ({ ...prev, kpiDescription: event.target.value }))} />
@@ -1559,7 +1565,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Baseline" type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
               <Input label="Annual Target" required error={fieldError('Annual Target')} type="number" value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
-              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={mockUnitsOfMeasure.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
             <FormRow cols={4}>
@@ -1587,8 +1593,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={mockBudgetSources.map(item => ({ value: item.id, label: item.name }))} />
-              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={mockBudgetTypes.map(item => ({ value: item.id, label: item.name }))} />
+              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={lookups.budgetSources.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={lookups.budgetTypes.map(item => ({ value: String(item.id), label: item.name }))} />
             </FormRow>
           </FormPanel>
 
