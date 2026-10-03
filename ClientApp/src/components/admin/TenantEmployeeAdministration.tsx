@@ -63,7 +63,7 @@ export function TenantEmployeeAdministration() {
   const saveEmployee = async () => {
     if (!employee.employeeNumber.trim() || !employee.firstName.trim() || !employee.lastName.trim()) { setError('Employee number, first name, and last name are required.'); return; }
     setBusy(true); setError(null);
-    const result = await createMunicipalEmployee({ ...employee, emailAddress: employee.emailAddress || null, identityUserId: employee.identityUserId || null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
+    const result = await createMunicipalEmployee({ ...employee, emailAddress: security.canEditField('EMPLOYEE', 'EmailAddress') ? employee.emailAddress || null : null, identityUserId: employee.identityUserId || null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
     if (!result.success) setError(result.message ?? 'Employee could not be created.');
     else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() }); await load(); }
     setBusy(false);
@@ -72,7 +72,7 @@ export function TenantEmployeeAdministration() {
   const deactivateEmployee = async () => {
     if (!selected) return;
     setBusy(true); setError(null);
-    const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, emailAddress: selected.emailAddress, identityUserId: selected.identityUserId, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
+    const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, emailAddress: null, emailAddressSpecified: false, identityUserId: selected.identityUserId, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
     if (!result.success) setError(result.message ?? 'Employee could not be deactivated.');
     else { pushToast('success', 'Employee deactivated without deleting placement history'); setSelectedId(''); setAssignments([]); await load(); }
     setBusy(false);
@@ -104,12 +104,12 @@ export function TenantEmployeeAdministration() {
         {security.canCreate('EMPLOYEE') && <FormPanel title="Create employee" description="Identity linkage is optional and does not replace the municipal employee record." icon={<UserRound className="h-5 w-5" />}>
           <Input label="Employee number" value={employee.employeeNumber} onChange={event => setEmployee(current => ({ ...current, employeeNumber: event.target.value }))} required />
           <div className="grid grid-cols-2 gap-2"><Input label="First name" value={employee.firstName} onChange={event => setEmployee(current => ({ ...current, firstName: event.target.value }))} required /><Input label="Last name" value={employee.lastName} onChange={event => setEmployee(current => ({ ...current, lastName: event.target.value }))} required /></div>
-          <Input label="Email" type="email" value={employee.emailAddress} onChange={event => setEmployee(current => ({ ...current, emailAddress: event.target.value }))} />
+          {security.canReadField('EMPLOYEE', 'EmailAddress') && <Input label="Email" type="email" value={employee.emailAddress} disabled={!security.canEditField('EMPLOYEE', 'EmailAddress')} onChange={event => setEmployee(current => ({ ...current, emailAddress: event.target.value }))} />}
           <Select label="Linked login" value={employee.identityUserId} placeholder="No linked login" options={users.filter(item => item.user.isActive).map(item => ({ value: item.user.id, label: `${item.user.fullName} · ${item.user.email}` }))} onChange={event => setEmployee(current => ({ ...current, identityUserId: event.target.value }))} />
           <Input label="Effective from" type="date" value={employee.effectiveFrom} onChange={event => setEmployee(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => void saveEmployee()} disabled={busy}>Create employee</Button>
         </FormPanel>}
-        <Card className="p-4"><h3 className="font-semibold">Employee register</h3><div className="mt-3 space-y-2">{employees.map(item => <button type="button" key={item.publicId} onClick={() => void selectEmployee(item.publicId)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left ${selectedId === item.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}><div><p className="font-medium">{item.firstName} {item.lastName}</p><p className="text-xs text-secondary-500">{item.employeeNumber} · {item.emailAddress || 'No email'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}</div></Card>
+        <Card className="p-4"><h3 className="font-semibold">Employee register</h3><div className="mt-3 space-y-2">{employees.map(item => <button type="button" key={item.publicId} onClick={() => void selectEmployee(item.publicId)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left ${selectedId === item.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}><div><p className="font-medium">{item.firstName} {item.lastName}</p><p className="text-xs text-secondary-500">{item.employeeNumber}{security.canReadField('EMPLOYEE', 'EmailAddress') ? ` · ${item.emailAddress || 'No email'}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}</div></Card>
       </div>
       {selected && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE_ASSIGNMENT') && selected.isActive && <FormPanel title={`New placement · ${selected.firstName} ${selected.lastName}`} description="Overlapping effective dates are rejected by the server." icon={<Briefcase className="h-5 w-5" />}>

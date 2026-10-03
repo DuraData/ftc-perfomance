@@ -26,138 +26,6 @@ interface ToastItem {
   message: string;
 }
 
-const buildFullMenu = (): MenuItem[] => [
-  { label: 'Dashboard', path: '/dashboard', icon: 'dashboard', isDivider: false },
-  {
-    label: 'OPMS',
-    icon: 'target',
-    isDivider: false,
-    children: [
-      { label: 'OPMS Dashboard', path: '/opms/dashboard', icon: 'dashboard', isDivider: false },
-      { label: 'OPMS Targets', path: '/opms/targets', icon: 'target', isDivider: false },
-      { label: 'OPMS Submissions', path: '/opms/submissions', icon: 'target', isDivider: false },
-      { label: 'Vote Numbers', path: '/opms/vote-numbers', icon: 'layers', isDivider: false },
-    ],
-  },
-  {
-    label: 'IPMS',
-    icon: 'target',
-    isDivider: false,
-    children: [
-      { label: 'IPMS Dashboard', path: '/ipms/dashboard', icon: 'dashboard', isDivider: false },
-      { label: 'IPMS Targets', path: '/ipms/targets', icon: 'target', isDivider: false },
-      { label: 'IPMS Submissions', path: '/ipms/submissions', icon: 'target', isDivider: false },
-    ],
-  },
-  {
-    label: 'IDP',
-    icon: 'map',
-    isDivider: false,
-    children: [
-      { label: 'IDP Dashboard', path: '/idp/dashboard', icon: 'dashboard', isDivider: false },
-      { label: 'IDP Plans', path: '/idp/plans', icon: 'map', isDivider: false },
-      { label: 'Planning Hierarchy', path: '/idp/hierarchy', icon: 'target', isDivider: false },
-      { label: 'Community Participation', path: '/idp/community', icon: 'users', isDivider: false },
-      { label: 'Alignment Matrix', path: '/idp/alignment', icon: 'layers', isDivider: false },
-      { label: 'IDP Reports', path: '/idp/reports', icon: 'reports', isDivider: false },
-    ],
-  },
-  {    label: 'Risk Management',
-    icon: 'shield-alert',
-    isDivider: false,
-    children: [
-      { label: 'Risk Dashboard', path: '/risk/dashboard', icon: 'shield-alert', isDivider: false },
-      { label: 'Risk Register', path: '/risk/register', icon: 'clipboard-list', isDivider: false },
-      { label: 'Assessments', path: '/risk/assessments', icon: 'file-search', isDivider: false },
-      { label: 'Treatment Plans', path: '/risk/treatment-plans', icon: 'heart-pulse', isDivider: false },
-      { label: 'Reviews', path: '/risk/reviews', icon: 'refresh-cw', isDivider: false },
-      { label: 'Heatmap', path: '/risk/heatmap', icon: 'thermometer', isDivider: false },
-      { label: 'Reports', path: '/risk/reports', icon: 'reports', isDivider: false },
-    ],
-  },
-  {    label: 'Workflow',
-    icon: 'workflow',
-    isDivider: false,
-    children: [
-      { label: 'My Queue', path: '/workflow/my-queue', icon: 'workflow', isDivider: false },
-      { label: 'Verification', path: '/workflow/verification', icon: 'workflow', isDivider: false },
-      { label: 'Approval', path: '/workflow/approval', icon: 'workflow', isDivider: false },
-      { label: 'PMS Review', path: '/workflow/pms-review', icon: 'workflow', isDivider: false },
-      { label: 'Auditor Review', path: '/workflow/auditor-review', icon: 'workflow', isDivider: false },
-    ],
-  },
-  {
-    label: 'HR',
-    icon: 'users',
-    isDivider: false,
-    children: [
-      { label: 'Employees', path: '/hr/employees', icon: 'users', isDivider: false },
-      { label: 'Departments', path: '/hr/departments', icon: 'users', isDivider: false },
-      { label: 'Units', path: '/hr/units', icon: 'users', isDivider: false },
-      { label: 'Positions', path: '/hr/positions', icon: 'users', isDivider: false },
-      { label: 'Contacts', path: '/hr/contacts', icon: 'users', isDivider: false },
-      { label: 'Resumes', path: '/hr/resumes', icon: 'users', isDivider: false },
-    ],
-  },
-  { label: 'Projects & Tasks', icon: 'layers', isDivider: false, children: [{ label: 'Tasks', path: '/tasks', icon: 'layers', isDivider: false }] },
-  {
-    label: 'Location',
-    icon: 'globe',
-    isDivider: false,
-    children: [
-      { label: 'Countries', path: '/location/countries', icon: 'globe', isDivider: false },
-      { label: 'Provinces', path: '/location/provinces', icon: 'globe', isDivider: false },
-      { label: 'Cities', path: '/location/cities', icon: 'globe', isDivider: false },
-      { label: 'Suburbs', path: '/location/suburbs', icon: 'globe', isDivider: false },
-      { label: 'Addresses', path: '/location/addresses', icon: 'globe', isDivider: false },
-    ],
-  },
-  { label: 'Reports', path: '/reports', icon: 'reports', isDivider: false },
-  { label: 'Strategic Documents', path: '/strategic-documents', icon: 'file-text', isDivider: false },
-  { label: 'Circular 88', path: '/c88/planning', icon: 'layers', isDivider: false },
-  { label: 'Divider', isDivider: true },
-  {
-    label: 'System Administration',
-    icon: 'settings',
-    isDivider: false,
-    children: [
-      { label: 'Users', path: '/system-administration/users', icon: 'users', isDivider: false },
-      { label: 'Roles', path: '/system-administration/roles', icon: 'users-group', isDivider: false },
-      { label: 'Permissions', path: '/system-administration/permissions', icon: 'key', isDivider: false },
-      { label: 'Audit Logs', path: '/system-administration/audit-logs', icon: 'history', isDivider: false },
-      { label: 'Role Implementation Audit', path: '/system-administration/role-implementation-audit', icon: 'history', isDivider: false },
-      { label: 'Role Access Matrix', path: '/system-administration/role-access-matrix', icon: 'history', isDivider: false },
-      { label: 'Permission Simulation', path: '/system-administration/permission-simulation', icon: 'history', isDivider: false },
-      { label: 'System Coverage Audit', path: '/system-administration/system-coverage-audit', icon: 'history', isDivider: false },
-      { label: 'Role Permission & CRUD Audit', path: '/system-administration/role-permission-crud-audit', icon: 'history', isDivider: false },
-    ],
-  },
-  {
-    label: 'Configuration',
-    icon: 'settings',
-    isDivider: false,
-    children: [
-      { label: 'Periods', path: '/admin/periods', icon: 'settings', isDivider: false },
-      { label: 'Organisations', path: '/admin/organisations', icon: 'settings', isDivider: false },
-      { label: 'Approval Setup', path: '/admin/approval-setup', icon: 'settings', isDivider: false },
-      { label: 'Lookup Tables', path: '/admin/lookups', icon: 'settings', isDivider: false },
-      { label: 'Wards', path: '/admin/wards', icon: 'map', isDivider: false },
-      { label: 'Budget Types', path: '/admin/budget-types', icon: 'settings', isDivider: false },
-      { label: 'Strategic Goals', path: '/admin/strategic-goals', icon: 'settings', isDivider: false },
-      { label: 'Strategic Objectives', path: '/admin/strategic-objectives', icon: 'settings', isDivider: false },
-      { label: 'Units of Measure', path: '/admin/units-measure', icon: 'settings', isDivider: false },
-      { label: 'KPAs', path: '/admin/kpas', icon: 'settings', isDivider: false },
-      { label: 'Municipal KPAs', path: '/admin/municipal-kpas', icon: 'settings', isDivider: false },
-      { label: 'Departmental Objectives', path: '/admin/departmental-objectives', icon: 'settings', isDivider: false },
-      { label: 'Outputs', path: '/admin/outputs', icon: 'settings', isDivider: false },
-      { label: 'Performance Objectives', path: '/admin/performance-objectives', icon: 'settings', isDivider: false },
-      { label: 'Priority Issues', path: '/admin/priority-issues', icon: 'settings', isDivider: false },
-      { label: 'Occupations', path: '/admin/occupations', icon: 'settings', isDivider: false },
-      { label: 'Industries', path: '/admin/industries', icon: 'settings', isDivider: false },
-    ],
-  },
-  { label: 'Settings', path: '/settings', icon: 'settings', isDivider: false },
-];
 
 interface AppContextType {
   userProfile: UserProfile | null;
@@ -216,14 +84,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizePath(window.location.pathname || '/dashboard') : '/login');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const resolveMenuItems = (incomingRoles: string[], incomingMenu: MenuItem[]) => {
-    // Role names never grant navigation. Keep the legacy builder referenced only until its
-    // remaining route definitions have been migrated to the database registry.
-    void incomingRoles;
-    void buildFullMenu;
-    return incomingMenu;
-  };
-
   const refreshTenantAccess = useCallback(async (municipalityId: number) => {
     setCurrentMunicipalityId(municipalityId);
     setCurrentMunicipalityIdState(municipalityId);
@@ -302,7 +162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const parsedRoles = storedRoles ? JSON.parse(storedRoles) : [];
       setRoles(parsedRoles);
       setPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
-      setMenuItems(storedMenu ? resolveMenuItems(parsedRoles, JSON.parse(storedMenu)) : []);
+      setMenuItems(storedMenu ? JSON.parse(storedMenu) as MenuItem[] : []);
       setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
       void loadTenantContexts();
     }

@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
-vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreate: () => true, canUpdate: () => true }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreate: () => true, canUpdate: () => true, canReadField: () => true, canEditField: () => true }) }));
 
 describe('TenantEmployeeAdministration', () => {
   beforeEach(() => {

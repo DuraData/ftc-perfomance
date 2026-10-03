@@ -13,7 +13,7 @@ namespace FTCERP.Host.API.Controllers;
 [ApiController]
 [Route("api/v1/masters")]
 [Authorize]
-public sealed class TenantMastersController(ApplicationDbContext context, ITenantContext tenantContext) : ControllerBase
+public sealed class TenantMastersController(ApplicationDbContext context, ITenantContext tenantContext, IAccessControlService? accessControl = null) : ControllerBase
 {
     [HttpGet("financial-years")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
@@ -136,8 +136,9 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     public async Task<ActionResult<ApiResponse<EmployeeDto[]>>> GetEmployees()
     {
         if (!HasTenant()) return TenantRequired<EmployeeDto[]>();
+        var canReadEmail = await CanAccessEmployeeEmailAsync(SecurityOperation.Read);
         var rows = await context.MunicipalEmployees.AsNoTracking().OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
-            .Select(x => new EmployeeDto(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, x.EmailAddress, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
+            .Select(x => new EmployeeDto(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, canReadEmail ? x.EmailAddress : null, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<EmployeeDto[]>(true, rows));
     }
 
@@ -147,11 +148,12 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     {
         if (!HasTenant()) return TenantRequired<EmployeeDto>();
         if (!ValidDates(request.EffectiveFrom, request.EffectiveTo)) return BadRequest(Fail<EmployeeDto>("Effective-to must be on or after effective-from."));
+        if (!string.IsNullOrWhiteSpace(request.EmailAddress) && !await CanAccessEmployeeEmailAsync(SecurityOperation.Update)) return Forbid();
         var number = request.EmployeeNumber.Trim().ToUpperInvariant();
         if (await context.MunicipalEmployees.AnyAsync(x => x.EmployeeNumber == number)) return Conflict(Fail<EmployeeDto>("Employee number already exists."));
         var entity = new MunicipalEmployee { MunicipalityId = tenantContext.MunicipalityId!.Value, EmployeeNumber = number, FirstName = request.FirstName.Trim(), LastName = request.LastName.Trim(), EmailAddress = request.EmailAddress?.Trim(), IdentityUserId = request.IdentityUserId, EffectiveFrom = request.EffectiveFrom, EffectiveTo = request.EffectiveTo };
         context.MunicipalEmployees.Add(entity); await context.SaveChangesAsync();
-        return Ok(new ApiResponse<EmployeeDto>(true, ToDto(entity)));
+        return Ok(new ApiResponse<EmployeeDto>(true, ToDto(entity, await CanAccessEmployeeEmailAsync(SecurityOperation.Read))));
     }
 
     [HttpPut("employees/{publicId:guid}")]
@@ -161,12 +163,16 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         if (!HasTenant()) return TenantRequired<EmployeeDto>();
         var entity = await context.MunicipalEmployees.SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<EmployeeDto>("Employee not found."));
+        if (request.EmailAddressSpecified
+            && !string.Equals(entity.EmailAddress?.Trim(), request.EmailAddress?.Trim(), StringComparison.OrdinalIgnoreCase)
+            && !await CanAccessEmployeeEmailAsync(SecurityOperation.Update)) return Forbid();
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<EmployeeDto>("A valid row version is required."));
         if (!ValidDates(request.EffectiveFrom, request.EffectiveTo)) return BadRequest(Fail<EmployeeDto>("Effective-to must be on or after effective-from."));
         if (!request.IsActive && await context.EmployeeAssignments.AnyAsync(x => x.MunicipalEmployeeId == entity.Id && x.IsActive))
             return Conflict(Fail<EmployeeDto>("End all active employee assignments before deactivating the employee."));
-        entity.FirstName = request.FirstName.Trim(); entity.LastName = request.LastName.Trim(); entity.EmailAddress = request.EmailAddress?.Trim(); entity.IdentityUserId = request.IdentityUserId; entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
-        return await SaveVersioned(entity, ToDto, "Employee was changed by another user.");
+        entity.FirstName = request.FirstName.Trim(); entity.LastName = request.LastName.Trim(); if (request.EmailAddressSpecified) entity.EmailAddress = request.EmailAddress?.Trim(); entity.IdentityUserId = request.IdentityUserId; entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
+        var canReadEmail = await CanAccessEmployeeEmailAsync(SecurityOperation.Read);
+        return await SaveVersioned(entity, item => ToDto(item, canReadEmail), "Employee was changed by another user.");
     }
 
     [HttpGet("employees/{employeePublicId:guid}/assignments")]
@@ -239,6 +245,17 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     }
 
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
+    private async Task<bool> CanAccessEmployeeEmailAsync(SecurityOperation operation)
+    {
+        if (accessControl == null || string.IsNullOrWhiteSpace(tenantContext.UserId)) return false;
+        var user = await context.Users.SingleOrDefaultAsync(item => item.Id == tenantContext.UserId);
+        if (user == null) return false;
+        var decision = await accessControl.CheckPermissionAsync(
+            user,
+            $"EMPLOYEE.EmailAddress.{operation.ToString().ToUpperInvariant()}",
+            new AccessScopeContext(MunicipalityId: tenantContext.MunicipalityId));
+        return decision.Allowed;
+    }
     private static bool ValidDates(DateTime from, DateTime? to) => !to.HasValue || to.Value >= from;
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ActionResult<ApiResponse<T>> TenantRequired<T>() => StatusCode(StatusCodes.Status409Conflict, Fail<T>("Select a municipality context before using tenant master data."));
@@ -249,7 +266,7 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     private static FinancialYearDto ToDto(FinancialYear x) => new(x.PublicId, x.Code, x.Name, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion));
     private static MunicipalityFinancialYearDto ToDto(MunicipalityFinancialYear x) => new(x.PublicId, x.FinancialYear.PublicId, x.FinancialYear.Code, x.FinancialYear.Name, x.IsCurrent, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static ReportingPeriodDto ToDto(ReportingPeriod x) => new(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.Code, x.Name, x.PeriodType, x.Sequence, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion));
-    private static EmployeeDto ToDto(MunicipalEmployee x) => new(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, x.EmailAddress, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
+    private static EmployeeDto ToDto(MunicipalEmployee x, bool includeEmail = false) => new(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, includeEmail ? x.EmailAddress : null, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static EmployeeAssignmentDto ToDto(EmployeeAssignment x) => new(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Position?.PublicId);
 }
 
@@ -263,7 +280,7 @@ public sealed record SaveReportingPeriodRequest(Guid MunicipalityFinancialYearPu
 public sealed record UpdateReportingPeriodRequest(string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
 public sealed record EmployeeDto(Guid PublicId, string EmployeeNumber, string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SaveEmployeeRequest(string EmployeeNumber, string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, DateTime EffectiveFrom, DateTime? EffectiveTo);
-public sealed record UpdateEmployeeRequest(string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record UpdateEmployeeRequest(string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, bool EmailAddressSpecified = true);
 public sealed record EmployeeAssignmentDto(Guid PublicId, Guid EmployeePublicId, Guid DepartmentPublicId, string DepartmentName, Guid? UnitPublicId, string? UnitName, string PositionCode, string PositionName, DateTime EffectiveFrom, DateTime? EffectiveTo, bool IsPrimary, bool IsActive, string RowVersion, Guid? PositionPublicId = null);
 public sealed record SaveEmployeeAssignmentRequest(Guid EmployeePublicId, Guid DepartmentPublicId, Guid? UnitPublicId, string? PositionCode, string? PositionName, DateTime EffectiveFrom, DateTime? EffectiveTo, bool IsPrimary, Guid? PositionPublicId = null);
 public sealed record CloseEmployeeAssignmentRequest(DateTime EffectiveTo, string Reason, string RowVersion);

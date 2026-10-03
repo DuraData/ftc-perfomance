@@ -146,7 +146,8 @@ public static class SecurityRegistrySeeder
             Nav("NAV.RISK", "Risk Management", null, "shield-alert", 80, null), Nav("NAV.C88", "Circular 88", null, "layers", 90, null),
             Nav("NAV.ORGANISATION", "Organisation", null, "users", 100, null), Nav("NAV.CONFIGURATION", "Configuration", null, "settings", 110, null),
             Nav("NAV.ADMIN", "Administration", null, "settings", 120, null), Nav("NAV.NOTIFICATIONS", "Notifications", "/notifications", "bell", 130, "NAV.NOTIFICATIONS"),
-            Nav("NAV.PROFILE", "My Profile", "/my-profile", "user", 140, "NAV.PROFILE")
+            Nav("NAV.PROFILE", "My Profile", "/my-profile", "user", 140, "NAV.PROFILE"),
+            Nav("NAV.SETTINGS", "Settings", "/settings", "settings", 150, "NAV.SETTINGS")
         };
         var existingCodes = await context.SecurityNavigationItems.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
         context.SecurityNavigationItems.AddRange(roots.Where(item => !existingCodes.Contains(item.Code)));
@@ -234,7 +235,7 @@ public static class SecurityRegistrySeeder
     {
         var mappings = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE"],
+            ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE", "NAV.SETTINGS"],
             ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
             ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.VOTE_NUMBERS", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "NAV.STRATEGIC_DOCUMENTS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
             ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],

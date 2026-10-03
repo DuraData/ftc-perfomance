@@ -4,89 +4,33 @@ import { ShieldAlert } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card } from '../ui';
 import { useApp } from '../../context/AppContext';
-
-const routePermissionMap: Array<{ match: (path: string) => boolean; permissions: string[] }> = [
-  { match: (path) => path === '/dashboard', permissions: ['NAV.DASHBOARD', 'Dashboard.View'] },
-  { match: (path) => path.startsWith('/opms/library'), permissions: ['OPMS.Library.View', 'OPMS.Library.Create', 'OPMS.Library.Edit', 'OPMS.Library.UseTemplate'] },
-  { match: (path) => path.startsWith('/ipms/library'), permissions: ['IPMS.Library.View', 'IPMS.Library.Create', 'IPMS.Library.Edit', 'IPMS.Library.UseTemplate'] },
-  { match: (path) => path === '/opms/targets/new', permissions: ['OPMS_KPI.CREATE'] },
-  { match: (path) => /^\/opms\/targets\/[^/]+\/edit$/i.test(path), permissions: ['OPMS_KPI.UPDATE'] },
-  { match: (path) => path === '/ipms/targets/new', permissions: ['IPMS.Targets.Create'] },
-  { match: (path) => /^\/ipms\/targets\/[^/]+\/edit$/i.test(path), permissions: ['IPMS.Targets.Edit'] },
-  { match: (path) => path.startsWith('/idp/dashboard'), permissions: ['IDP.Dashboard.View'] },
-  { match: (path) => path.startsWith('/idp/overview'), permissions: ['IDP.Plan.View'] },
-  { match: (path) => path.startsWith('/idp/strategic-objectives'), permissions: ['IDP.Plan.View', 'IDP.Alignment.View'] },
-  { match: (path) => path.startsWith('/idp/projects'), permissions: ['IDP.Plan.View'] },
-  { match: (path) => path.startsWith('/idp/kpis'), permissions: ['IDP.Plan.View'] },
-  { match: (path) => path.startsWith('/idp/plans'), permissions: ['IDP.Plan.View', 'IDP.Plan.Manage'] },
-  { match: (path) => path.startsWith('/idp/hierarchy'), permissions: ['IDP.Hierarchy.Manage'] },
-  { match: (path) => path.startsWith('/idp/community'), permissions: ['IDP.Participation.View', 'IDP.Participation.Manage'] },
-  { match: (path) => path.startsWith('/idp/alignment'), permissions: ['IDP.Alignment.View', 'IDP.Alignment.Manage'] },
-  { match: (path) => path.startsWith('/opms/dashboard'), permissions: ['OPMS_KPI.READ'] },
-  { match: (path) => path.startsWith('/ipms/dashboard'), permissions: ['IPMS.View', 'IPMS.Targets.View'] },
-  { match: (path) => path.startsWith('/risk'), permissions: ['IDP.Risk.Manage'] },
-  { match: (path) => path.startsWith('/idp/reports'), permissions: ['IDP.Reports.Generate'] },
-  { match: (path) => /\/idp\/.+\/create/i.test(path), permissions: ['IDP.Plan.Manage', 'IDP.Hierarchy.Manage', 'IDP.Project.Manage', 'IDP.Kpi.Manage'] },
-  { match: (path) => /\/idp\/.+\/[^/]+\/edit/i.test(path), permissions: ['IDP.Plan.Manage', 'IDP.Hierarchy.Manage', 'IDP.Project.Manage', 'IDP.Kpi.Manage'] },
-  { match: (path) => path.startsWith('/opms/targets'), permissions: ['OPMS_KPI.READ', 'OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE'] },
-  { match: (path) => path === '/opms/vote-numbers', permissions: ['VOTE_NUMBER.READ', 'VOTE_NUMBER.CREATE', 'VOTE_NUMBER.UPDATE'] },
-  { match: (path) => path === '/opms/tids', permissions: ['TID.READ', 'NAV.SDBIP.TIDS'] },
-  { match: (path) => path === '/strategic-documents', permissions: ['STRATEGIC_DOCUMENT.READ', 'NAV.STRATEGIC_DOCUMENTS'] },
-  { match: (path) => path === '/c88/planning', permissions: ['C88_INDICATOR.READ', 'NAV.C88.PLANNING'] },
-  { match: (path) => path === '/c88/reporting', permissions: ['C88_REPORT.READ', 'NAV.C88.REPORTING'] },
-  { match: (path) => path === '/c88/compliance', permissions: ['C88_REPORT.READ', 'NAV.C88.COMPLIANCE'] },
-  { match: (path) => path === '/c88/mapping', permissions: ['C88_INDICATOR.READ', 'NAV.C88.MAPPING'] },
-  { match: (path) => path === '/c88/reports', permissions: ['C88_REPORT.READ', 'NAV.C88.REPORTS'] },
-  { match: (path) => path.startsWith('/ipms/targets'), permissions: ['IPMS.View', 'Targets.View', 'Targets.Manage'] },
-  { match: (path) => path === '/opms/submissions', permissions: ['OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.CREATE', 'OPMS_SUBMISSION.UPDATE'] },
-  { match: (path) => path === '/ipms/submissions', permissions: ['IPMS.View', 'Workflow.Submit.View', 'Workflow.Verify.View', 'Workflow.Approve.View', 'Workflow.Review.View', 'Workflow.Audit.View'] },
-  { match: (path) => path.startsWith('/workflow/my-drafts'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/pending-submission'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/returned-submissions'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/under-verification'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/under-review'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/under-approval'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/internal-audit-returned'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/approved-closed'), permissions: ['Workflow.Submit.View'] },
-  { match: (path) => path.startsWith('/workflow/verification'), permissions: ['Workflow.Verify.View'] },
-  { match: (path) => path.startsWith('/workflow/approval'), permissions: ['Workflow.Approve.View'] },
-  { match: (path) => path.startsWith('/workflow/pms-review'), permissions: ['Workflow.Review.View'] },
-  { match: (path) => path.startsWith('/workflow/auditor-review'), permissions: ['Workflow.Audit.View'] },
-  { match: (path) => path.startsWith('/admin/approval-setup'), permissions: ['WORKFLOW.CONFIGURE', 'Configuration.Manage'] },
-  { match: (path) => path.startsWith('/admin/wards'), permissions: ['WARD.READ', 'WARD.CREATE', 'WARD.UPDATE'] },
-  { match: (path) => path.startsWith('/admin/'), permissions: ['Configuration.Manage', 'Admin.Users.Manage', 'Admin.Roles.Manage', 'Admin.Permissions.Manage'] },
-  { match: (path) => path.startsWith('/hr/departments'), permissions: ['Departments.View', 'Departments.Manage'] },
-  { match: (path) => path.startsWith('/hr/units'), permissions: ['Units.View', 'Units.Manage'] },
-  { match: (path) => path.startsWith('/hr/employees'), permissions: ['Admin.Users.Manage', 'UserDirectory.View'] },
-  { match: (path) => path.startsWith('/hr/'), permissions: ['Departments.View', 'Departments.Manage', 'Units.View', 'Units.Manage', 'Admin.Users.Manage', 'UserDirectory.View'] },
-  { match: (path) => path.startsWith('/users/'), permissions: ['Admin.Users.Manage'] },
-  { match: (path) => path.startsWith('/roles/'), permissions: ['Admin.Roles.Manage'] },
-  { match: (path) => path.startsWith('/system-administration/users'), permissions: ['Admin.Users.Manage'] },
-  { match: (path) => path.startsWith('/system-administration/roles'), permissions: ['Admin.Roles.Manage'] },
-  { match: (path) => path.startsWith('/system-administration/permissions'), permissions: ['Admin.Permissions.Manage'] },
-  { match: (path) => path.startsWith('/system-administration/security'), permissions: ['SECURITY.VIEW'] },
-  { match: (path) => path.startsWith('/system-administration/audit-logs'), permissions: ['Audit.LoginLogs.View', 'Audit.Logs.View'] },
-  { match: (path) => path.startsWith('/system-administration/role-implementation-audit'), permissions: ['RoleImplementationAudit.View'] },
-  { match: (path) => path.startsWith('/system-administration/role-access-matrix'), permissions: ['SystemAdministration.RoleAccessMatrix.View'] },
-  { match: (path) => path.startsWith('/system-administration/permission-simulation'), permissions: ['SystemAdministration.PermissionSimulation.View', 'Admin.Users.Manage'] },
-  { match: (path) => path.startsWith('/system-administration/system-coverage-audit'), permissions: ['SystemAdministration.SystemCoverageAudit.View'] },
-  { match: (path) => path.startsWith('/system-administration/role-permission-crud-audit'), permissions: ['SystemAdministration.RoleAccessMatrix.View', 'SystemAdministration.SystemCoverageAudit.View'] },
-  { match: (path) => path.startsWith('/reports'), permissions: ['OPMS_REPORT.READ', 'IPMS_REPORT.READ', 'OPMS_REPORT.GENERATE', 'IPMS_REPORT.GENERATE', 'OPMS_REPORT.EXPORT', 'IPMS_REPORT.EXPORT', 'Reports.View', 'Reports.Department.View', 'Reports.Approval.View', 'Reports.Verification.View', 'Reports.InternalAudit.View', 'Audit.Reports.View'] },
-  { match: (path) => path.startsWith('/notifications'), permissions: ['Notifications.View', 'Notifications.Manage'] },
-  { match: (path) => path.startsWith('/my-profile'), permissions: ['Dashboard.View'] },
-  { match: (path) => path.startsWith('/settings'), permissions: ['Notifications.View', 'Notifications.Manage'] },
-  { match: (path) => path.startsWith('/location/'), permissions: ['Configuration.Manage', 'Configuration.View'] },
-];
+import type { MenuItem } from '../../types';
 
 export function hasPermissionCode(permissionCodes: string[], granted: string[]) {
   return permissionCodes.some(code => granted.some(grantedCode => grantedCode.toLowerCase() === code.toLowerCase()));
 }
 
-export function canAccessPath(path: string, permissions: string[], _legacySuperAdminFlag = false) {
-  void _legacySuperAdminFlag;
-  const rule = routePermissionMap.find(item => item.match(path));
-  if (!rule) return false;
-  return hasPermissionCode(rule.permissions, permissions);
+function normalizePath(path: string) {
+  const normalized = path.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+  return normalized || '/';
+}
+
+function collectAuthorizedPaths(items: MenuItem[]): string[] {
+  return items.flatMap(item => [
+    ...(item.path ? [normalizePath(item.path)] : []),
+    ...collectAuthorizedPaths(item.children ?? []),
+  ]);
+}
+
+/**
+ * Page access is derived from the tenant-filtered menu returned by the API.
+ * Nested detail routes inherit access from their nearest authorized menu route;
+ * operation buttons and the API still enforce their specific CRUD permission.
+ */
+export function canAccessPath(path: string, menuItems: MenuItem[]) {
+  const requested = normalizePath(path);
+  return collectAuthorizedPaths(menuItems).some(authorized =>
+    requested === authorized || requested.startsWith(`${authorized}/`));
 }
 
 export function useHasPermission(code: string) {
@@ -100,8 +44,8 @@ export function useHasAnyPermission(codes: string[]) {
 }
 
 export function useCanAccessPath(path: string) {
-  const { permissions } = useApp();
-  return useMemo(() => canAccessPath(path, permissions), [path, permissions]);
+  const { menuItems } = useApp();
+  return useMemo(() => canAccessPath(path, menuItems), [path, menuItems]);
 }
 
 export function AccessDeniedPage() {

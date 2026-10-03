@@ -1,68 +1,38 @@
+import type { MenuItem } from '../../types';
 import { canAccessPath, hasPermissionCode } from './AccessControl';
 
+const menu: MenuItem[] = [
+  { label: 'Dashboard', path: '/dashboard', isDivider: false },
+  {
+    label: 'Performance',
+    isDivider: false,
+    children: [
+      { label: 'OPMS targets', path: '/opms/targets', isDivider: false },
+      { label: 'Verification', path: '/workflow/verification', isDivider: false },
+    ],
+  },
+];
+
 describe('AccessControl helpers', () => {
-  it('does not allow a role-name flag to bypass permissions', () => {
-    expect(canAccessPath('/opms/targets', ['anything'], true)).toBe(false);
-    expect(canAccessPath('/system-administration/users', [], true)).toBe(false);
+  it('derives route access from the backend-filtered navigation tree', () => {
+    expect(canAccessPath('/dashboard', menu)).toBe(true);
+    expect(canAccessPath('/workflow/verification', menu)).toBe(true);
   });
 
-  it('requires a registered dashboard permission', () => {
-    expect(canAccessPath('/dashboard', [], false)).toBe(false);
-    expect(canAccessPath('/dashboard', ['NAV.DASHBOARD'], false)).toBe(true);
+  it('lets detail and edit pages inherit their authorized parent route', () => {
+    expect(canAccessPath('/opms/targets/target-1', menu)).toBe(true);
+    expect(canAccessPath('/opms/targets/target-1/edit', menu)).toBe(true);
   });
 
-  it('denies unknown routes by default', () => {
-    expect(canAccessPath('/unregistered-feature', ['anything'], false)).toBe(false);
+  it('denies routes absent from the filtered menu', () => {
+    expect(canAccessPath('/system-administration/users', menu)).toBe(false);
+    expect(canAccessPath('/unregistered-feature', menu)).toBe(false);
+    expect(canAccessPath('/dashboard', [])).toBe(false);
   });
 
-  it('denies access when required permissions are missing', () => {
-    expect(canAccessPath('/opms/targets', ['Some.Other.Permission'], false)).toBe(false);
-    expect(canAccessPath('/workflow/verification', ['Some.Other.Permission'], false)).toBe(false);
-  });
-
-  it('allows access when required permission is present', () => {
-    expect(canAccessPath('/opms/targets', ['OPMS_KPI.READ'], false)).toBe(true);
-    expect(canAccessPath('/workflow/verification', ['Workflow.Verify.View'], false)).toBe(true);
-  });
-
-  it('protects workflow governance with its stable action permission', () => {
-    expect(canAccessPath('/admin/approval-setup', [], false)).toBe(false);
-    expect(canAccessPath('/admin/approval-setup', ['WORKFLOW.CONFIGURE'], false)).toBe(true);
-  });
-
-  it('protects the TID workspace with dynamic resource or navigation permission', () => {
-    expect(canAccessPath('/opms/tids', [], false)).toBe(false);
-    expect(canAccessPath('/opms/tids', ['TID.READ'], false)).toBe(true);
-    expect(canAccessPath('/opms/tids', ['NAV.SDBIP.TIDS'], false)).toBe(true);
-  });
-
-  it('protects strategic documents with dynamic resource or navigation permission', () => {
-    expect(canAccessPath('/strategic-documents', [], false)).toBe(false);
-    expect(canAccessPath('/strategic-documents', ['STRATEGIC_DOCUMENT.READ'], false)).toBe(true);
-    expect(canAccessPath('/strategic-documents', ['NAV.STRATEGIC_DOCUMENTS'], false)).toBe(true);
-  });
-
-  it('protects each Circular 88 workspace with its resource or navigation permission', () => {
-    expect(canAccessPath('/c88/planning', [], false)).toBe(false);
-    expect(canAccessPath('/c88/planning', ['C88_INDICATOR.READ'], false)).toBe(true);
-    expect(canAccessPath('/c88/reporting', ['NAV.C88.REPORTING'], false)).toBe(true);
-    expect(canAccessPath('/c88/compliance', ['C88_REPORT.READ'], false)).toBe(true);
-    expect(canAccessPath('/c88/mapping', ['NAV.C88.MAPPING'], false)).toBe(true);
-    expect(canAccessPath('/c88/reports', ['NAV.C88.REPORTS'], false)).toBe(true);
-  });
-
-  it('allows reporting routes through stable report permissions', () => {
-    expect(canAccessPath('/reports', [], false)).toBe(false);
-    expect(canAccessPath('/reports', ['OPMS_REPORT.READ'], false)).toBe(true);
-    expect(canAccessPath('/reports/performance', ['IPMS_REPORT.EXPORT'], false)).toBe(true);
-  });
-
-  it('allows access when permission matches case-insensitively', () => {
+  it('matches operation permission codes case-insensitively', () => {
     expect(hasPermissionCode(['OPMS.View'], ['opms.view'])).toBe(true);
     expect(hasPermissionCode(['Workflow.Submit.View'], ['WORKFLOW.SUBMIT.VIEW'])).toBe(true);
-  });
-
-  it('allows access when one of the required permissions is granted', () => {
     expect(hasPermissionCode(['OPMS.View', 'Targets.View'], ['targets.view'])).toBe(true);
   });
 });

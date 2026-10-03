@@ -3,9 +3,72 @@ namespace FTCERP.Tests;
 public class DynamicSecurityTests
 {
     [Fact]
+    public async Task DynamicallyConfiguredKpiViewerAndDepartmentSubmitter_EnforceMenusCrudAndScope()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var viewer = IdpTestFixture.CreateUser("dynamic-viewer");
+        var submitter = IdpTestFixture.CreateUser("dynamic-submitter");
+        var viewerRole = Role("dynamic-viewer-role", "KPI_VIEWER");
+        var submitterRole = Role("dynamic-submitter-role", "DEPARTMENT_SUBMITTER");
+        var read = new Permission
+        {
+            Code = "OPMS_KPI.READ",
+            Module = "Resource",
+            Feature = "OPMS_KPI",
+            Action = "Read",
+            Kind = SecurityPermissionKind.Resource,
+            ResourceCode = "OPMS_KPI",
+            Operation = SecurityOperation.Read
+        };
+        var update = new Permission
+        {
+            Code = "OPMS_KPI.UPDATE",
+            Module = "Resource",
+            Feature = "OPMS_KPI",
+            Action = "Update",
+            Kind = SecurityPermissionKind.Resource,
+            ResourceCode = "OPMS_KPI",
+            Operation = SecurityOperation.Update
+        };
+        var navigation = new Permission
+        {
+            Code = "NAV.SDBIP",
+            Module = "Navigation",
+            Feature = "SDBIP",
+            Action = "View",
+            Kind = SecurityPermissionKind.Navigation,
+            NavigationCode = "NAV.SDBIP"
+        };
+        var department = new Department { Id = 10, Code = "FIN", Name = "Finance", IsActive = true };
+        context.AddRange(viewer, submitter, viewerRole, submitterRole, read, update, navigation, department);
+        await context.SaveChangesAsync();
+
+        context.SecurityUserRoleAssignments.AddRange(Assignment(viewer, viewerRole), Assignment(submitter, submitterRole));
+        context.RolePermissions.AddRange(
+            new RolePermission { RoleId = viewerRole.Id, PermissionId = read.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = viewerRole.Id, PermissionId = navigation.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = submitterRole.Id, PermissionId = read.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ScopeType = ScopeType.DepartmentScope },
+            new RolePermission { RoleId = submitterRole.Id, PermissionId = update.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ScopeType = ScopeType.DepartmentScope },
+            new RolePermission { RoleId = submitterRole.Id, PermissionId = navigation.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        context.UserScopes.Add(new UserScope { UserId = submitter.Id, ScopeType = ScopeType.DepartmentScope, DepartmentId = department.Id, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        context.SecurityNavigationItems.Add(new SecurityNavigationItem { Code = "NAV.SDBIP.ITEM", Name = "SDBIP", Route = "/opms", RequiredPermissionCode = navigation.Code, DisplayOrder = 1 });
+        await context.SaveChangesAsync();
+
+        var viewerSecurity = CreateService(context, viewer);
+        (await viewerSecurity.CheckPermissionAsync(viewer, read.Code)).Allowed.Should().BeTrue();
+        (await viewerSecurity.CheckPermissionAsync(viewer, update.Code, new AccessScopeContext(DepartmentId: department.Id))).Allowed.Should().BeFalse();
+        (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Should().ContainSingle(item => item.Path == "/opms");
+
+        var submitterSecurity = CreateService(context, submitter);
+        (await submitterSecurity.CheckPermissionAsync(submitter, update.Code, new AccessScopeContext(DepartmentId: department.Id))).Allowed.Should().BeTrue();
+        (await submitterSecurity.CheckPermissionAsync(submitter, update.Code, new AccessScopeContext(DepartmentId: 11))).Allowed.Should().BeFalse();
+        (await submitterSecurity.GetAuthorizedNavigationAsync(submitter)).Should().ContainSingle(item => item.Path == "/opms");
+    }
+
+    [Fact]
     public async Task NoApplicablePermission_IsDeniedByDefault()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         context.Users.Add(user);
         await context.SaveChangesAsync();
@@ -20,7 +83,7 @@ public class DynamicSecurityTests
     [Fact]
     public async Task ExplicitDeny_OverridesAllowAcrossMultipleRoles()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var allowRole = Role("allow", "KPI_VIEWER");
         var denyRole = Role("deny", "KPI_RESTRICTED");
@@ -42,7 +105,7 @@ public class DynamicSecurityTests
     [Fact]
     public async Task ExplicitRoleDeny_CannotBeBypassedByUserAllowOverride()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var role = Role("deny", "KPI_RESTRICTED");
         var permission = new Permission { Code = "OPMS_KPI.UPDATE", Module = "Resource", Feature = "OPMS_KPI", Action = "Update", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Update };
@@ -61,7 +124,7 @@ public class DynamicSecurityTests
     [Fact]
     public async Task LegacyUserAllowOverride_CannotCreatePermissionWithoutRoleGrant()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var permission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action };
         context.AddRange(user, permission);
@@ -77,11 +140,12 @@ public class DynamicSecurityTests
     [Fact]
     public async Task RecordPermission_RequiresMatchingScope()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var role = Role("submitter", "DEPARTMENT_SUBMITTER");
         var permission = new Permission { Code = "OPMS_SUBMISSION.READ", Module = "Resource", Feature = "OPMS_SUBMISSION", Action = "Read", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_SUBMISSION", Operation = SecurityOperation.Read };
-        context.AddRange(user, role, permission);
+        var department = new Department { Id = 10, Code = "FIN", Name = "Finance", IsActive = true };
+        context.AddRange(user, role, permission, department);
         await context.SaveChangesAsync();
         context.SecurityUserRoleAssignments.Add(Assignment(user, role));
         context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ScopeType = ScopeType.DepartmentScope });
@@ -99,11 +163,13 @@ public class DynamicSecurityTests
     [Fact]
     public async Task PermissionScope_CannotBeSatisfiedByDifferentUserScopeType()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var role = Role("scoped", "SCOPED_READER");
         var permission = new Permission { Code = "OPMS_KPI.READ", Module = "Resource", Feature = "OPMS_KPI", Action = "Read", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Read };
-        context.AddRange(user, role, permission);
+        var department = new Department { Id = 10, Code = "FIN", Name = "Finance", IsActive = true };
+        var unit = new Unit { Id = 20, DepartmentId = department.Id, Code = "REV", Name = "Revenue", IsActive = true };
+        context.AddRange(user, role, permission, department, unit);
         await context.SaveChangesAsync();
         context.SecurityUserRoleAssignments.Add(Assignment(user, role));
         context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ScopeType = ScopeType.DepartmentScope });
@@ -118,7 +184,7 @@ public class DynamicSecurityTests
     [Fact]
     public async Task EffectiveDatedRoleAssignmentScope_ConstrainsRecordAccess()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var role = Role("department-role", "DEPARTMENT_READER");
         var permission = new Permission { Code = "OPMS_KPI.READ", Module = "Resource", Feature = "OPMS_KPI", Action = "Read", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Read };
@@ -141,7 +207,7 @@ public class DynamicSecurityTests
     [Fact]
     public async Task Navigation_ExcludesUnauthorizedLeavesAndEmptyParents()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser();
         var role = Role("viewer", "KPI_VIEWER");
         var permission = new Permission { Code = "NAV.DASHBOARD", Module = "Navigation", Feature = "Dashboard", Action = "View", Kind = SecurityPermissionKind.Navigation, NavigationCode = "NAV.DASHBOARD" };
@@ -165,7 +231,7 @@ public class DynamicSecurityTests
     [Fact]
     public async Task NavigationRegistry_CreateUsesPublicHierarchyAndRejectsCycles()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser("system-admin");
         var role = Role("system-role", "SYSTEM_ADMIN");
         var systemPermission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action };

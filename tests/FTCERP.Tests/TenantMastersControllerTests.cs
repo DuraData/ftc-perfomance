@@ -13,6 +13,43 @@ namespace FTCERP.Tests;
 public sealed class TenantMastersControllerTests
 {
     [Fact]
+    public async Task EmployeeEmail_member_permission_redacts_reads_and_rejects_direct_updates()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new TestTenantContext(81, "employee-reader");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Id = 81, Code = "M81", Name = "Municipality 81" };
+        var user = IdpTestFixture.CreateUser(tenant.UserId!);
+        user.MunicipalityId = municipality.Id;
+        var employee = new MunicipalEmployee { MunicipalityId = municipality.Id, EmployeeNumber = "E081", FirstName = "Protected", LastName = "Employee", EmailAddress = "private@example.test", EffectiveFrom = DateTime.UtcNow.AddYears(-1) };
+        context.AddRange(municipality, user, employee);
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmailAddress.READ", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmailAddress.UPDATE", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        var controller = new TenantMastersController(context, tenant, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var readResult = await controller.GetEmployees();
+        var readEnvelope = Assert.IsType<ApiResponse<EmployeeDto[]>>(Assert.IsType<OkObjectResult>(readResult.Result).Value);
+        Assert.Null(Assert.Single(readEnvelope.Data!).EmailAddress);
+
+        var updateResult = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
+            employee.FirstName, employee.LastName, "exfiltration@example.test", null, true,
+            employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion)));
+
+        Assert.IsType<ForbidResult>(updateResult.Result);
+        Assert.Equal("private@example.test", (await context.MunicipalEmployees.SingleAsync()).EmailAddress);
+    }
+
+    [Fact]
     public async Task Sqlite_relational_constraints_and_tenant_filters_match_provider_neutral_contract()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
