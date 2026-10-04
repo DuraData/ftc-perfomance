@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({
   getMunicipalityFinancialYearMasters: vi.fn(),
   downloadPerformanceReportCsv: vi.fn(),
   getOfficialReportTemplates: vi.fn(),
-  getOfficialReportGenerations: vi.fn(),
+  getOfficialReportGenerationsPage: vi.fn(),
   getOfficialReportJobsPage: vi.fn(),
   getOfficialReportSchedulesPage: vi.fn(),
   generateOfficialReport: vi.fn(),
@@ -46,7 +46,7 @@ describe('Reports', () => {
     });
     api.getMunicipalityFinancialYearMasters.mockResolvedValue({ success: true, data: [{ publicId: 'year-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true }] });
     api.getOfficialReportTemplates.mockResolvedValue({ success: true, data: [{ publicId: 'template-1', templateFamilyPublicId: 'family-1', submissionKind: 1, reportType: 1, code: 'QUARTERLY', name: 'Quarterly report', format: 4, versionNumber: 2, headingTemplate: '{FinancialYear} {Period}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-1', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'AQ==' }] });
-    api.getOfficialReportGenerations.mockResolvedValue({ success: true, data: [{ publicId: 'generation-1', generationFamilyPublicId: 'generation-family-1', versionNumber: 1, templatePublicId: 'template-1', templateCode: 'QUARTERLY', templateName: 'Quarterly report', templateVersion: 2, reportType: 1, format: 4, submissionKind: 1, municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1', scopeJson: '{}', filterJson: '{}', dataVersionReference: 'a'.repeat(64), fileName: 'quarterly.pdf', contentType: 'application/pdf', sizeInBytes: 100, sha256: 'b'.repeat(64), rowCount: 4, generatedBy: 'auditor', generatedAt: '2026-10-01T10:00:00Z', downloadUrl: '/content' }] });
+    api.getOfficialReportGenerationsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'generation-1', generationFamilyPublicId: 'generation-family-1', versionNumber: 1, templatePublicId: 'template-1', templateCode: 'QUARTERLY', templateName: 'Quarterly report', templateVersion: 2, reportType: 1, format: 4, submissionKind: 1, municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1', scopeJson: '{}', filterJson: '{}', dataVersionReference: 'a'.repeat(64), fileName: 'quarterly.pdf', contentType: 'application/pdf', sizeInBytes: 100, sha256: 'b'.repeat(64), rowCount: 4, generatedBy: 'auditor', generatedAt: '2026-10-01T10:00:00Z', downloadUrl: '/content' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getOfficialReportJobsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getOfficialReportSchedulesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getDepartments.mockResolvedValue({ success: true, data: [] });
@@ -89,6 +89,20 @@ describe('Reports', () => {
       page: 1,
       pageSize: 25,
       search: 'failed',
+    })));
+  });
+
+  it('loads generation history through scope-safe authoritative server paging and search', async () => {
+    api.getOfficialReportGenerationsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 29, totalPages: 2 } });
+    render(<Reports />);
+
+    expect(await screen.findByText('29 generations')).toBeInTheDocument();
+    expect(api.getOfficialReportGenerationsPage).toHaveBeenCalledWith(1, undefined, expect.objectContaining({ page: 1, pageSize: 25 }));
+    fireEvent.change(screen.getByLabelText('Search official generations'), { target: { value: 'annual' } });
+    await waitFor(() => expect(api.getOfficialReportGenerationsPage).toHaveBeenLastCalledWith(1, undefined, expect.objectContaining({
+      page: 1,
+      pageSize: 25,
+      search: 'annual',
     })));
   });
 

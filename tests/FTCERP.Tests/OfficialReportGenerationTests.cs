@@ -136,12 +136,19 @@ public sealed class OfficialReportGenerationTests
 
         await using var tenantAContext = new ApplicationDbContext(options, new FixedTenantContext(tenantAId));
         (await tenantAContext.OfficialReportGenerations.CountAsync()).Should().Be(1);
+        (await tenantAContext.OfficialReportGenerationScopeGrants.CountAsync()).Should().Be(1);
         (await tenantAContext.OfficialReportTemplates.CountAsync()).Should().Be(1);
         var generation = await tenantAContext.OfficialReportGenerations.SingleAsync();
         generation.VersionNumber = 2;
         var update = () => tenantAContext.SaveChangesAsync();
         await update.Should().ThrowAsync<InvalidOperationException>().WithMessage("*generated report history*append-only*");
         tenantAContext.Entry(generation).State = EntityState.Unchanged;
+
+        var scopeGrant = await tenantAContext.OfficialReportGenerationScopeGrants.SingleAsync();
+        scopeGrant.Value = "2";
+        var rewriteScope = () => tenantAContext.SaveChangesAsync();
+        await rewriteScope.Should().ThrowAsync<InvalidOperationException>().WithMessage("*generated report history*append-only*");
+        tenantAContext.Entry(scopeGrant).State = EntityState.Unchanged;
 
         var crossTenant = new OfficialReportGeneration { MunicipalityId = tenantBId };
         tenantAContext.OfficialReportGenerations.Add(crossTenant);
@@ -201,6 +208,86 @@ public sealed class OfficialReportGenerationTests
         response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
+    [Fact]
+    public async Task GenerationsPage_AppliesNormalizedStoredScopeBeforeCountAndPaging()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var municipality = new Municipality { Name = "Paged Municipality", Code = "PAGE" };
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.Add(municipality);
+            await setup.SaveChangesAsync();
+            await SeedGeneration(setup, municipality, "paged-reporter");
+        }
+
+        var tenant = new FixedTenantContext(municipality.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var template = await context.OfficialReportTemplates.SingleAsync();
+        var year = await context.MunicipalityFinancialYears.SingleAsync();
+        var period = await context.ReportingPeriods.SingleAsync();
+        var blob = await context.EvidenceBlobs.SingleAsync();
+        var user = await context.Users.SingleAsync();
+        var start = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        var accessible = Enumerable.Range(1, 31).Select(index => NewScopedGeneration(index, "10", 1, start.AddMinutes(index))).ToArray();
+        var denied = Enumerable.Range(32, 2).Select(index => NewScopedGeneration(index, "20", 1, start.AddMinutes(index))).ToArray();
+        var unnormalized = NewScopedGeneration(34, "10", 0, start.AddMinutes(34));
+        context.AddRange(accessible.Concat(denied).Append(unnormalized));
+        await context.SaveChangesAsync();
+
+        var permittedScope = new AccessQueryScopeResult(true, false, [10], [], [], [], [], []);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_REPORT.READ")).ReturnsAsync(permittedScope);
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_KPI.READ")).ReturnsAsync(permittedScope);
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_SUBMISSION.READ")).ReturnsAsync(permittedScope);
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "Audit.Trails.View")).ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }
+        };
+
+        var result = await controller.GenerationsPage(SubmissionKind.Opms, null, new PagedQueryRequest
+        {
+            Page = 2,
+            PageSize = 10,
+            Search = "Quarterly",
+            SortBy = "generatedAt",
+            SortDirection = "asc"
+        });
+
+        var page = Assert.IsType<ApiResponse<PagedResponse<OfficialReportGenerationResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        page.TotalCount.Should().Be(31);
+        page.TotalPages.Should().Be(4);
+        page.Items.Should().HaveCount(10);
+        page.Items[0].VersionNumber.Should().Be(11);
+        page.Items.Should().OnlyContain(item => item.VersionNumber >= 11 && item.VersionNumber <= 20);
+
+        OfficialReportGeneration NewScopedGeneration(int index, string departmentId, int scopeSchemaVersion, DateTime generatedAt) => new()
+        {
+            GenerationFamilyPublicId = Guid.NewGuid(), MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id,
+            ReportingPeriodId = period.Id, ReportTemplateId = template.Id, EvidenceBlobId = blob.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.QuarterlyPerformance, VersionNumber = index, ScopeSchemaVersion = scopeSchemaVersion,
+            ScopeJson = $"{{\"Unrestricted\":false,\"DepartmentIds\":[{departmentId}],\"UnitIds\":[],\"OwnerUserIds\":[],\"TargetIds\":[]}}",
+            FilterJson = "{}", DataVersionReference = new string('c', 64), FileName = $"report-{index}.pdf", ContentType = "application/pdf",
+            SizeInBytes = 4, Sha256 = blob.Sha256, RowCount = index, GeneratedByUserId = user.Id, GeneratedAt = generatedAt,
+            ScopeGrants = [new OfficialReportGenerationScopeGrant { MunicipalityId = municipality.Id, Dimension = OfficialReportScopeDimension.Department, Value = departmentId }]
+        };
+    }
+
+    [Fact]
+    public async Task GenerationsPage_RejectsUnknownSort()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock().Object, Mock.Of<IAccessControlService>(), IdpTestFixture.Tenant(1, "reader"), Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>());
+
+        var result = await controller.GenerationsPage(SubmissionKind.Opms, null, new PagedQueryRequest { SortBy = "raw-sql" });
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
     private static async Task SeedGeneration(ApplicationDbContext context, Municipality municipality, string userId)
     {
         var user = new ApplicationUser { Id = userId, UserName = userId, NormalizedUserName = userId.ToUpperInvariant(), Email = userId + "@example.test", NormalizedEmail = (userId + "@example.test").ToUpperInvariant(), FirstName = "Report", LastName = "User", MunicipalityId = municipality.Id };
@@ -213,7 +300,7 @@ public sealed class OfficialReportGenerationTests
         var template = new OfficialReportTemplate { MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, Code = "QUARTERLY", Name = "Quarterly report", Format = OfficialReportFormat.Pdf, EffectiveFrom = year.StartDate, ApprovalReference = "Council-1", Reason = "Approved layout", CreatedByUserId = user.Id, ColumnConfigurationJson = OfficialReportRenderer.DefaultColumnsJson };
         var blob = new EvidenceBlob { MunicipalityId = municipality.Id, StorageKey = $"official-reports/{municipality.Id}/one/v1.pdf", ContentType = "application/pdf", SizeInBytes = 4, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "SystemGenerated" };
         context.AddRange(template, blob); await context.SaveChangesAsync();
-        context.Add(new OfficialReportGeneration { GenerationFamilyPublicId = Guid.NewGuid(), MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, ReportingPeriodId = period.Id, ReportTemplateId = template.Id, EvidenceBlobId = blob.Id, SubmissionKind = SubmissionKind.Opms, VersionNumber = 1, ScopeJson = "{\"Unrestricted\":true,\"DepartmentIds\":[],\"UnitIds\":[],\"OwnerUserIds\":[],\"TargetIds\":[]}", FilterJson = "{}", DataVersionReference = new string('b', 64), FileName = "report-v1.pdf", ContentType = "application/pdf", SizeInBytes = 4, Sha256 = blob.Sha256, RowCount = 1, GeneratedByUserId = user.Id });
+        context.Add(new OfficialReportGeneration { GenerationFamilyPublicId = Guid.NewGuid(), MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, ReportingPeriodId = period.Id, ReportTemplateId = template.Id, EvidenceBlobId = blob.Id, SubmissionKind = SubmissionKind.Opms, VersionNumber = 1, ScopeJson = "{\"Unrestricted\":false,\"DepartmentIds\":[1],\"UnitIds\":[],\"OwnerUserIds\":[],\"TargetIds\":[]}", ScopeSchemaVersion = 1, ScopeIsUnrestricted = false, FilterJson = "{}", DataVersionReference = new string('b', 64), FileName = "report-v1.pdf", ContentType = "application/pdf", SizeInBytes = 4, Sha256 = blob.Sha256, RowCount = 1, GeneratedByUserId = user.Id, ScopeGrants = [new OfficialReportGenerationScopeGrant { MunicipalityId = municipality.Id, Dimension = OfficialReportScopeDimension.Department, Value = "1" }] });
         await context.SaveChangesAsync();
     }
 

@@ -132,15 +132,73 @@ public sealed class OfficialReportsController(
                 await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
             await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
         if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse[]>("Official report history requires report, KPI and submission READ permission.");
-        var query = context.OfficialReportGenerations.AsNoTracking()
-            .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
-            .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).Where(item => item.SubmissionKind == kind);
-        if (reportingPeriodPublicId.HasValue) query = query.Where(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId);
-        var candidates = await query.OrderByDescending(item => item.GeneratedAt).Take(500).ToArrayAsync();
         var canReadAuditTrail = await Granted(user, "Audit.Trails.View");
-        return Ok(new ApiResponse<OfficialReportGenerationResponse[]>(true, candidates
-            .Where(item => item.ReportType != OfficialReportType.AuditTrail || canReadAuditTrail)
-            .Where(item => CanReadStoredScope(item.ScopeJson, scope)).Select(Map).ToArray()));
+        var query = ApplyStoredScope(context.OfficialReportGenerations.AsNoTracking()
+            .Where(item => item.SubmissionKind == kind && (item.ReportType != OfficialReportType.AuditTrail || canReadAuditTrail)), scope);
+        if (reportingPeriodPublicId.HasValue) query = query.Where(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId);
+        var items = await query
+            .OrderByDescending(item => item.GeneratedAt).ThenByDescending(item => item.Id).Take(100)
+            .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).ToArrayAsync();
+        return Ok(new ApiResponse<OfficialReportGenerationResponse[]>(true, items.Select(Map).ToArray()));
+    }
+
+    [HttpGet("generations/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OfficialReportGenerationResponse>>>> GenerationsPage(
+        [FromQuery] SubmissionKind kind,
+        [FromQuery] Guid? reportingPeriodPublicId,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("generatedat" or "templatename" or "versionnumber" or "rowcount" or "financialyear" or "reportingperiod"))
+            return BadRequest(Fail<PagedResponse<OfficialReportGenerationResponse>>(
+                "SortBy must be generatedAt, templateName, versionNumber, rowCount, financialYear, or reportingPeriod."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<OfficialReportGenerationResponse>>("User not found."));
+        var scope = IntersectScopes(
+            IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(kind)),
+                await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
+            await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
+        if (!scope.PermissionGranted)
+            return ForbidResponse<PagedResponse<OfficialReportGenerationResponse>>("Official report history requires report, KPI and submission READ permission.");
+
+        var canReadAuditTrail = await Granted(user, "Audit.Trails.View");
+        var query = ApplyStoredScope(context.OfficialReportGenerations.AsNoTracking()
+            .Where(item => item.SubmissionKind == kind && (item.ReportType != OfficialReportType.AuditTrail || canReadAuditTrail)), scope);
+        if (reportingPeriodPublicId.HasValue) query = query.Where(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(item =>
+                item.ReportTemplate.Code.Contains(search) ||
+                item.ReportTemplate.Name.Contains(search) ||
+                item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
+                item.ReportingPeriod.Code.Contains(search) ||
+                item.FileName.Contains(search) ||
+                (item.GeneratedByUser.UserName != null && item.GeneratedByUser.UserName.Contains(search)) ||
+                (item.GeneratedByUser.Email != null && item.GeneratedByUser.Email.Contains(search)));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("templatename", false) => query.OrderBy(item => item.ReportTemplate.Name).ThenBy(item => item.Id),
+            ("templatename", true) => query.OrderByDescending(item => item.ReportTemplate.Name).ThenByDescending(item => item.Id),
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.Id),
+            ("versionnumber", true) => query.OrderByDescending(item => item.VersionNumber).ThenByDescending(item => item.Id),
+            ("rowcount", false) => query.OrderBy(item => item.RowCount).ThenBy(item => item.Id),
+            ("rowcount", true) => query.OrderByDescending(item => item.RowCount).ThenByDescending(item => item.Id),
+            ("financialyear", false) => query.OrderBy(item => item.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(item => item.Id),
+            ("financialyear", true) => query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.Code).ThenByDescending(item => item.Id),
+            ("reportingperiod", false) => query.OrderBy(item => item.ReportingPeriod.Code).ThenBy(item => item.Id),
+            ("reportingperiod", true) => query.OrderByDescending(item => item.ReportingPeriod.Code).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.GeneratedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.GeneratedAt).ThenByDescending(item => item.Id)
+        };
+        var items = await query.Skip(request.Offset).Take(request.PageSize)
+            .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<OfficialReportGenerationResponse>>(true,
+            PagedResponse<OfficialReportGenerationResponse>.Create(items.Select(Map), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("generations")]
@@ -219,6 +277,7 @@ public sealed class OfficialReportsController(
             GenerationFamilyPublicId = family, MunicipalityId = tenantContext.MunicipalityId.Value,
             MunicipalityFinancialYearId = year.Id, ReportingPeriodId = period.Id, ReportTemplateId = template.Id,
             Blob = blob, SubmissionKind = template.SubmissionKind, VersionNumber = version, ScopeJson = storedScope,
+            ScopeSchemaVersion = 1, ScopeIsUnrestricted = scope.Unrestricted, ScopeGrants = CreateScopeGrants(tenantContext.MunicipalityId.Value, scope),
             ReportType = template.ReportType,
             FilterJson = filterJson, DataVersionReference = rendered.DataVersionReference, FileName = fileName,
             ContentType = rendered.ContentType, SizeInBytes = rendered.Content.LongLength, Sha256 = rendered.Sha256,
@@ -247,7 +306,7 @@ public sealed class OfficialReportsController(
             IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(generation.SubmissionKind)),
                 await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
             await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
-        if (!scope.PermissionGranted || !CanReadStoredScope(generation.ScopeJson, scope)) return ForbidResponse<object>("Official report download is denied for the stored generation scope.");
+        if (!scope.PermissionGranted || generation.ScopeSchemaVersion != 1 || !CanReadStoredScope(generation.ScopeJson, scope)) return ForbidResponse<object>("Official report download is denied for the stored generation scope.");
         if (generation.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View")) return ForbidResponse<object>("Audit-trail read permission has been revoked.");
         if (generation.Blob.IsContentDeleted || generation.Blob.IsQuarantined) return Conflict(Fail<object>("The official report content is unavailable."));
         var content = await storage.ReadAsync(generation.Blob.StorageKey, HttpContext.RequestAborted);
@@ -527,6 +586,31 @@ public sealed class OfficialReportsController(
     private static string GeneratePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.GENERATE" : "IPMS_REPORT.GENERATE";
     private static string ConfigurePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.CONFIGURE" : "IPMS_REPORT.CONFIGURE";
     private static string SerializeScope(AccessQueryScopeResult scope) => JsonSerializer.Serialize(new StoredScope(scope.Unrestricted, scope.DepartmentIds.Order().ToArray(), scope.UnitIds.Order().ToArray(), scope.OwnerUserIds.Order(StringComparer.Ordinal).ToArray(), scope.TargetIds.Order(StringComparer.Ordinal).ToArray()));
+    private static List<OfficialReportGenerationScopeGrant> CreateScopeGrants(long municipalityId, AccessQueryScopeResult scope)
+    {
+        if (scope.Unrestricted) return [];
+        var grants = new List<OfficialReportGenerationScopeGrant>();
+        grants.AddRange(scope.DepartmentIds.Distinct().Select(value => NewScopeGrant(municipalityId, OfficialReportScopeDimension.Department, value.ToString(CultureInfo.InvariantCulture))));
+        grants.AddRange(scope.UnitIds.Distinct().Select(value => NewScopeGrant(municipalityId, OfficialReportScopeDimension.Unit, value.ToString(CultureInfo.InvariantCulture))));
+        grants.AddRange(scope.OwnerUserIds.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).Distinct().Select(value => NewScopeGrant(municipalityId, OfficialReportScopeDimension.OwnerUser, value)));
+        grants.AddRange(scope.TargetIds.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).Distinct().Select(value => NewScopeGrant(municipalityId, OfficialReportScopeDimension.Target, value)));
+        return grants;
+    }
+    private static OfficialReportGenerationScopeGrant NewScopeGrant(long municipalityId, OfficialReportScopeDimension dimension, string value) => new() { MunicipalityId = municipalityId, Dimension = dimension, Value = value };
+    private static IQueryable<OfficialReportGeneration> ApplyStoredScope(IQueryable<OfficialReportGeneration> query, AccessQueryScopeResult current)
+    {
+        query = query.Where(item => item.ScopeSchemaVersion == 1);
+        if (current.Unrestricted) return query;
+        var departmentValues = current.DepartmentIds.Select(value => value.ToString(CultureInfo.InvariantCulture)).ToArray();
+        var unitValues = current.UnitIds.Select(value => value.ToString(CultureInfo.InvariantCulture)).ToArray();
+        var ownerValues = current.OwnerUserIds.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).ToArray();
+        var targetValues = current.TargetIds.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).ToArray();
+        return query.Where(item => !item.ScopeIsUnrestricted && !item.ScopeGrants.Any(grant =>
+            grant.Dimension == OfficialReportScopeDimension.Department && !departmentValues.Contains(grant.Value) ||
+            grant.Dimension == OfficialReportScopeDimension.Unit && !unitValues.Contains(grant.Value) ||
+            grant.Dimension == OfficialReportScopeDimension.OwnerUser && !ownerValues.Contains(grant.Value) ||
+            grant.Dimension == OfficialReportScopeDimension.Target && !targetValues.Contains(grant.Value)));
+    }
     private static bool CanReadStoredScope(string json, AccessQueryScopeResult current)
     {
         StoredScope? stored;

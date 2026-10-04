@@ -7,6 +7,7 @@ public partial class ApplicationDbContext
 {
     public DbSet<OfficialReportTemplate> OfficialReportTemplates { get; set; } = null!;
     public DbSet<OfficialReportGeneration> OfficialReportGenerations { get; set; } = null!;
+    public DbSet<OfficialReportGenerationScopeGrant> OfficialReportGenerationScopeGrants { get; set; } = null!;
     public DbSet<OfficialReportSchedule> OfficialReportSchedules { get; set; } = null!;
     public DbSet<OfficialReportJob> OfficialReportJobs { get; set; } = null!;
 
@@ -48,6 +49,7 @@ public partial class ApplicationDbContext
         {
             table.HasCheckConstraint("CK_OfficialReportGenerations_Version", "[VersionNumber] >= 1 AND [RowCount] >= 0 AND [SizeInBytes] >= 0");
             table.HasCheckConstraint("CK_OfficialReportGenerations_ReportType", "[ReportType] >= 1 AND [ReportType] <= 16");
+            table.HasCheckConstraint("CK_OfficialReportGenerations_ScopeSchema", "[ScopeSchemaVersion] >= 0 AND [ScopeSchemaVersion] <= 1");
         });
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.MunicipalityFinancialYear).WithMany().HasForeignKey(item => item.MunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
@@ -56,6 +58,15 @@ public partial class ApplicationDbContext
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.Blob).WithMany(item => item.OfficialReportGenerations).HasForeignKey(item => item.EvidenceBlobId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.GeneratedByUser).WithMany().HasForeignKey(item => item.GeneratedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OfficialReportGeneration>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+
+        builder.Entity<OfficialReportGenerationScopeGrant>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OfficialReportGenerationScopeGrant>().HasIndex(item => new { item.MunicipalityId, item.OfficialReportGenerationId, item.Dimension, item.Value }).IsUnique();
+        builder.Entity<OfficialReportGenerationScopeGrant>().Property(item => item.Value).HasMaxLength(450);
+        builder.Entity<OfficialReportGenerationScopeGrant>().ToTable(table =>
+            table.HasCheckConstraint("CK_OfficialReportGenerationScopeGrants_Dimension", "[Dimension] >= 1 AND [Dimension] <= 4"));
+        builder.Entity<OfficialReportGenerationScopeGrant>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OfficialReportGenerationScopeGrant>().HasOne(item => item.OfficialReportGeneration).WithMany(item => item.ScopeGrants).HasForeignKey(item => item.OfficialReportGenerationId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OfficialReportGenerationScopeGrant>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<OfficialReportSchedule>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<OfficialReportSchedule>().HasIndex(item => new { item.MunicipalityId, item.ScheduleFamilyPublicId, item.VersionNumber }).IsUnique();

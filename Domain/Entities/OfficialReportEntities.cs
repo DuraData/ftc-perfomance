@@ -42,6 +42,14 @@ public enum OfficialReportRecipientKind
     Role = 2
 }
 
+public enum OfficialReportScopeDimension
+{
+    Department = 1,
+    Unit = 2,
+    OwnerUser = 3,
+    Target = 4
+}
+
 public enum OfficialReportJobState
 {
     Queued = 1,
@@ -105,6 +113,8 @@ public sealed class OfficialReportGeneration
     public OfficialReportType ReportType { get; set; } = OfficialReportType.QuarterlyPerformance;
     public int VersionNumber { get; set; }
     public string ScopeJson { get; set; } = "{}";
+    public int ScopeSchemaVersion { get; set; }
+    public bool ScopeIsUnrestricted { get; set; }
     public string FilterJson { get; set; } = "{}";
     public string DataVersionReference { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
@@ -121,6 +131,21 @@ public sealed class OfficialReportGeneration
     public OfficialReportTemplate ReportTemplate { get; set; } = null!;
     public EvidenceBlob Blob { get; set; } = null!;
     public ApplicationUser GeneratedByUser { get; set; } = null!;
+    public ICollection<OfficialReportGenerationScopeGrant> ScopeGrants { get; set; } = new List<OfficialReportGenerationScopeGrant>();
+}
+
+/// <summary>Immutable normalized scope evidence used to authorize and page stored official generations in SQL.</summary>
+public sealed class OfficialReportGenerationScopeGrant
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public long OfficialReportGenerationId { get; set; }
+    public OfficialReportScopeDimension Dimension { get; set; }
+    public string Value { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public OfficialReportGeneration OfficialReportGeneration { get; set; } = null!;
 }
 
 /// <summary>A versioned, municipality-approved instruction for generating and distributing an official report.</summary>

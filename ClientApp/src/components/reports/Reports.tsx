@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
 import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
@@ -45,6 +45,13 @@ export function Reports() {
   const [yearId, setYearId] = useState('');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [generations, setGenerations] = useState<OfficialReportGenerationDto[]>([]);
+  const [generationPage, setGenerationPage] = useState(1);
+  const [generationTotalCount, setGenerationTotalCount] = useState(0);
+  const [generationTotalPages, setGenerationTotalPages] = useState(0);
+  const [generationSearchInput, setGenerationSearchInput] = useState('');
+  const [generationSearch, setGenerationSearch] = useState('');
+  const [generationSortBy, setGenerationSortBy] = useState('generatedAt');
+  const [generationSortDirection, setGenerationSortDirection] = useState<'asc' | 'desc'>('desc');
   const [jobs, setJobs] = useState<OfficialReportJobDto[]>([]);
   const [jobPage, setJobPage] = useState(1);
   const [jobTotalCount, setJobTotalCount] = useState(0);
@@ -84,12 +91,11 @@ export function Reports() {
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, templateResult, generationResult, departmentResult, unitResult] = await Promise.all([
+    const [periodResult, yearResult, summaryResult, templateResult, departmentResult, unitResult] = await Promise.all([
       getReportingPeriodMasters(),
       getMunicipalityFinancialYearMasters(),
       getPerformanceReportSummary(kind, periodId || undefined),
       canReadOfficial ? getOfficialReportTemplates(kind) : Promise.resolve({ success: true, data: [] as OfficialReportTemplateDto[], message: undefined }),
-      canReadOfficial ? getOfficialReportGenerations(kind, periodId || undefined) : Promise.resolve({ success: true, data: [] as OfficialReportGenerationDto[], message: undefined }),
       getDepartments(),
       getUnits(),
     ]);
@@ -99,7 +105,6 @@ export function Reports() {
     setYearId(current => current || loadedYears.find(year => year.isCurrent)?.publicId || loadedYears[0]?.publicId || '');
     setTemplates(templateResult.data ?? []);
     setTemplateId(current => (templateResult.data ?? []).some(template => template.publicId === current) ? current : templateResult.data?.[0]?.publicId ?? '');
-    setGenerations(generationResult.data ?? []);
     setDepartments(departmentResult.data ?? []);
     setUnits(unitResult.data ?? []);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
@@ -107,7 +112,6 @@ export function Reports() {
     if (!periodResult.success) setError(periodResult.message ?? 'Reporting periods could not be loaded.');
     else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
     else if (!templateResult.success) setError(templateResult.message ?? 'Official report templates could not be loaded.');
-    else if (!generationResult.success) setError(generationResult.message ?? 'Official report history could not be loaded.');
     else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
   }, [canReadOfficial, kind, periodId]);
@@ -123,6 +127,17 @@ export function Reports() {
     if (!result.success) setError(result.message ?? 'Official report jobs could not be loaded.');
   }, [canReadOfficial, jobPage, jobSearch, jobSortBy, jobSortDirection, kind]);
 
+  const loadGenerations = useCallback(async () => {
+    if (!canReadOfficial) {
+      setGenerations([]); setGenerationTotalCount(0); setGenerationTotalPages(0); return;
+    }
+    const result = await getOfficialReportGenerationsPage(kind, periodId || undefined, { page: generationPage, pageSize: 25, search: generationSearch, sortBy: generationSortBy, sortDirection: generationSortDirection });
+    setGenerations(result.data?.items ?? []);
+    setGenerationTotalCount(result.data?.totalCount ?? 0);
+    setGenerationTotalPages(result.data?.totalPages ?? 0);
+    if (!result.success) setError(result.message ?? 'Official report history could not be loaded.');
+  }, [canReadOfficial, generationPage, generationSearch, generationSortBy, generationSortDirection, kind, periodId]);
+
   const loadSchedules = useCallback(async () => {
     if (!canConfigureOfficial) {
       setSchedules([]); setScheduleTotalCount(0); setScheduleTotalPages(0); return;
@@ -135,8 +150,13 @@ export function Reports() {
   }, [canConfigureOfficial, kind, schedulePage, scheduleSearch, scheduleSortBy, scheduleSortDirection]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadGenerations(); }, [loadGenerations]);
   useEffect(() => { void loadJobs(); }, [loadJobs]);
   useEffect(() => { void loadSchedules(); }, [loadSchedules]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setGenerationPage(1); setGenerationSearch(generationSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [generationSearchInput]);
   useEffect(() => {
     const timeout = window.setTimeout(() => { setJobPage(1); setJobSearch(jobSearchInput.trim()); }, 300);
     return () => window.clearTimeout(timeout);
@@ -166,7 +186,7 @@ export function Reports() {
     setBusy(true); setError(null);
     const result = await generateOfficialReport({ templatePublicId: effectiveTemplateId, municipalityFinancialYearPublicId: effectiveYearId, reportingPeriodPublicId: effectivePeriodId, previousGenerationPublicId: previous?.publicId, departmentPublicId: previous ? priorFilters.departmentPublicId : departmentId || undefined, unitPublicId: previous ? priorFilters.unitPublicId : unitId || undefined });
     if (!result.success) setError(result.message ?? 'Official report generation failed.');
-    else { pushToast('success', previous ? 'New immutable official report version generated' : 'Official report generated'); await load(); }
+    else { pushToast('success', previous ? 'New immutable official report version generated' : 'Official report generated'); await loadGenerations(); }
     setBusy(false);
   };
 
@@ -270,12 +290,12 @@ export function Reports() {
         <Card className="p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-3">
-              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setJobPage(1); setSchedulePage(1); }} />
+              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setGenerationPage(1); setJobPage(1); setSchedulePage(1); }} />
               <Select label="Financial year" value={yearId} options={years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · Current' : ''}` }))} onChange={event => { setYearId(event.target.value); setPeriodId(''); }} />
-              <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...availablePeriods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => setPeriodId(event.target.value)} />
+              <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...availablePeriods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => { setPeriodId(event.target.value); setGenerationPage(1); }} />
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void load(); void loadJobs(); }} disabled={busy}>Refresh</Button>
+              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void load(); void loadGenerations(); void loadJobs(); void loadSchedules(); }} disabled={busy}>Refresh</Button>
               <Button size="sm" variant="primary" icon={<Download className="h-4 w-4" />} onClick={() => void exportCsv()} disabled={busy || !canExport}>Export CSV</Button>
             </div>
           </div>
@@ -313,9 +333,15 @@ export function Reports() {
         </div>
 
         {canReadOfficial && <Card className="p-4">
-          <div className="mb-4 flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official generation history</h2><p className="text-xs text-secondary-500">Previous official files remain retrievable after corrections or regeneration.</p></div></div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official generation history</h2><p className="text-xs text-secondary-500">Previous official files remain retrievable after corrections or regeneration.</p></div></div><Badge variant="primary">{generationTotalCount} generations</Badge></div>
+          <div className="mb-4 grid gap-2 md:grid-cols-[1fr_11rem_9rem]">
+            <input aria-label="Search official generations" placeholder="Template, year, period, file, or generator" className="rounded border border-secondary-300 p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={generationSearchInput} onChange={event => setGenerationSearchInput(event.target.value)} />
+            <select aria-label="Sort official generations" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={generationSortBy} onChange={event => { setGenerationSortBy(event.target.value); setGenerationPage(1); }}><option value="generatedAt">Generated date</option><option value="templateName">Template name</option><option value="versionNumber">Version</option><option value="rowCount">Rows</option><option value="financialYear">Financial year</option><option value="reportingPeriod">Reporting period</option></select>
+            <select aria-label="Official generation sort direction" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={generationSortDirection} onChange={event => { setGenerationSortDirection(event.target.value as 'asc' | 'desc'); setGenerationPage(1); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select>
+          </div>
           <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-secondary-200 text-xs text-secondary-500 dark:border-secondary-700"><th className="px-2 py-2">Template</th><th className="px-2 py-2">Period</th><th className="px-2 py-2">Version</th><th className="px-2 py-2">Generated</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Snapshot</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{generations.map(generation => <tr key={generation.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-3"><strong>{generation.templateName}</strong><div className="text-xs text-secondary-500">{reportTypeLabel(generation.reportType)} · Template v{generation.templateVersion} · {['', 'CSV', 'Excel', 'Word', 'PDF'][generation.format]}</div></td><td className="px-2 py-3">{generation.financialYearCode} · {generation.reportingPeriodCode}</td><td className="px-2 py-3">v{generation.versionNumber}</td><td className="px-2 py-3">{new Date(generation.generatedAt).toLocaleString()}<div className="text-xs text-secondary-500">{generation.generatedBy}</div></td><td className="px-2 py-3">{generation.rowCount}</td><td className="px-2 py-3 font-mono text-xs" title={generation.dataVersionReference}>{generation.dataVersionReference.slice(0, 12)}…</td><td className="px-2 py-3"><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void downloadOfficial(generation)} disabled={busy}>Download</Button><Button size="sm" variant="outline" onClick={() => void generate(generation)} disabled={busy || !canGenerateOfficial}>Regenerate now</Button><Button size="sm" variant="outline" onClick={() => void queueGeneration(generation)} disabled={busy || !canGenerateOfficial}>Queue version</Button></div></td></tr>)}</tbody></table></div>
           {!generations.length && <p className="py-5 text-center text-sm text-secondary-500">No official report versions exist for this selection.</p>}
+          {generationTotalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Generation page {generationPage} of {generationTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || generationPage <= 1} onClick={() => setGenerationPage(value => Math.max(1, value - 1))}>Previous generations</Button><Button size="sm" variant="outline" disabled={busy || generationPage >= generationTotalPages} onClick={() => setGenerationPage(value => value + 1)}>Next generations</Button></div></div>}
         </Card>}
 
         {canReadOfficial && <Card className="p-4">
