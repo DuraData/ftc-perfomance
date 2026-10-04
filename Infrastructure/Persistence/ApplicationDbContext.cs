@@ -98,6 +98,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<EmployeeAssignment> EmployeeAssignments { get; set; } = null!;
     public DbSet<PerformancePeriodTarget> PerformancePeriodTargets { get; set; } = null!;
     public DbSet<PerformanceTargetRevision> PerformanceTargetRevisions { get; set; } = null!;
+    public DbSet<KpiFieldRevision> KpiFieldRevisions { get; set; } = null!;
     public DbSet<LegacySubmissionValueArchive> LegacySubmissionValueArchives { get; set; } = null!;
     public DbSet<WorkflowDefinition> WorkflowDefinitions { get; set; } = null!;
     public DbSet<WorkflowStageDefinition> WorkflowStageDefinitions { get; set; } = null!;
@@ -250,6 +251,20 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<PerformancePeriodTarget>().HasOne(item => item.IpmsTarget).WithMany().HasForeignKey(item => item.IpmsTargetId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<PerformancePeriodTarget>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<PerformancePeriodTarget>().ToTable(table => table.HasCheckConstraint("CK_PerformancePeriodTargets_OneKpi", "CASE WHEN [OpmsTargetId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsTargetId] IS NULL THEN 0 ELSE 1 END = 1"));
+        builder.Entity<OpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.OriginalOrderNumber });
+        builder.Entity<OpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.RevisedOrderNumber });
+        builder.Entity<OpmsTarget>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_OpmsTargets_OriginalOrderNumber", "[OriginalOrderNumber] > 0");
+            table.HasCheckConstraint("CK_OpmsTargets_RevisedOrderNumber", "[RevisedOrderNumber] > 0");
+        });
+        builder.Entity<IpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.OriginalOrderNumber });
+        builder.Entity<IpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.RevisedOrderNumber });
+        builder.Entity<IpmsTarget>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_IpmsTargets_OriginalOrderNumber", "[OriginalOrderNumber] > 0");
+            table.HasCheckConstraint("CK_IpmsTargets_RevisedOrderNumber", "[RevisedOrderNumber] > 0");
+        });
         builder.Entity<PerformanceTargetRevision>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<PerformanceTargetRevision>().HasIndex(item => new { item.PerformancePeriodTargetId, item.RecordedAt });
         builder.Entity<PerformanceTargetRevision>().Property(item => item.FieldName).HasMaxLength(100);
@@ -258,6 +273,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<PerformanceTargetRevision>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<PerformanceTargetRevision>().HasOne(item => item.PerformancePeriodTarget).WithMany(item => item.Revisions).HasForeignKey(item => item.PerformancePeriodTargetId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<PerformanceTargetRevision>().HasOne(item => item.RevisedByUser).WithMany().HasForeignKey(item => item.RevisedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<KpiFieldRevision>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<KpiFieldRevision>().HasIndex(item => new { item.OpmsTargetId, item.RecordedAt });
+        builder.Entity<KpiFieldRevision>().HasIndex(item => new { item.IpmsTargetId, item.RecordedAt });
+        builder.Entity<KpiFieldRevision>().Property(item => item.FieldName).HasMaxLength(100);
+        builder.Entity<KpiFieldRevision>().Property(item => item.OriginalValue).HasMaxLength(2048);
+        builder.Entity<KpiFieldRevision>().Property(item => item.RevisedValue).HasMaxLength(2048);
+        builder.Entity<KpiFieldRevision>().Property(item => item.Reason).HasMaxLength(2000);
+        builder.Entity<KpiFieldRevision>().Property(item => item.ApprovalReference).HasMaxLength(500);
+        builder.Entity<KpiFieldRevision>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<KpiFieldRevision>().HasOne(item => item.OpmsTarget).WithMany().HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<KpiFieldRevision>().HasOne(item => item.IpmsTarget).WithMany().HasForeignKey(item => item.IpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<KpiFieldRevision>().HasOne(item => item.RevisedByUser).WithMany().HasForeignKey(item => item.RevisedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<KpiFieldRevision>().ToTable(table => table.HasCheckConstraint("CK_KpiFieldRevisions_OneKpi", "CASE WHEN [OpmsTargetId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsTargetId] IS NULL THEN 0 ELSE 1 END = 1"));
 
         builder.Entity<LegacySubmissionValueArchive>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<LegacySubmissionValueArchive>().HasIndex(item => item.OpmsSubmissionId).IsUnique().HasFilter("[OpmsSubmissionId] IS NOT NULL");
@@ -370,6 +398,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<ReportingPeriod>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityFinancialYear.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<PerformancePeriodTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<PerformanceTargetRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<KpiFieldRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<LegacySubmissionValueArchive>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<WorkflowDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<WorkflowStageDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -1919,7 +1948,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         {
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear),
-            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(LegacySubmissionValueArchive)
+            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
@@ -1949,6 +1978,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         if (ChangeTracker.Entries<PerformanceTargetRevision>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Performance target revision history is append-only.");
+        if (ChangeTracker.Entries<KpiFieldRevision>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("KPI field revision history is append-only.");
         if (ChangeTracker.Entries<PerformanceSuggestionEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Performance suggestion history is append-only.");
         if (ChangeTracker.Entries<SubmissionWorkflowAction>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

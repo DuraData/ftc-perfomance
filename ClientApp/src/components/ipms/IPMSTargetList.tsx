@@ -18,6 +18,7 @@ import { canonicalSaveRows } from '../../lib/performanceTargetContract';
 function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
   return {
     indicatorNumber: target.indicatorNumber,
+    originalOrderNumber: target.originalOrderNumber,
     targetName: target.targetName,
     kpiDescription: target.kpiDescription,
     nationalKpa: target.nationalKPA,

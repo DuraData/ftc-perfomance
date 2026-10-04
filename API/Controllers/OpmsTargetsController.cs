@@ -50,7 +50,9 @@ public class OpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "User not found"));
         if (!TargetSortFields.Contains(request.NormalizedSortBy))
-            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, or targetName."));
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, targetName, or effectiveOrder."));
+        if (request.NormalizedSortBy == "effectiveorder" && !request.ReportingPeriodType.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "ReportingPeriodType is required for effectiveOrder sorting."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
         if (!scope.PermissionGranted)
@@ -63,7 +65,7 @@ public class OpmsTargetsController : ControllerBase
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
 
         var totalCount = await query.CountAsync();
-        query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending);
+        query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType);
         var items = await query
             .Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
@@ -75,11 +77,15 @@ public class OpmsTargetsController : ControllerBase
             PagedResponse<OpmsTargetResponse>.Create(items.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount)));
     }
 
-    private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname"];
+    private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname", "effectiveorder"];
 
-    private static IQueryable<OpmsTarget> ApplyTargetOrdering(IQueryable<OpmsTarget> query, string sortBy, bool descending) =>
+    private static IQueryable<OpmsTarget> ApplyTargetOrdering(IQueryable<OpmsTarget> query, string sortBy, bool descending, ReportingPeriodType? periodType) =>
         (sortBy, descending) switch
         {
+            ("effectiveorder", false) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderBy(item => item.RevisedOrderNumber).ThenBy(item => item.PublicId),
+            ("effectiveorder", true) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderByDescending(item => item.RevisedOrderNumber).ThenBy(item => item.PublicId),
+            ("effectiveorder", false) => query.OrderBy(item => item.OriginalOrderNumber).ThenBy(item => item.PublicId),
+            ("effectiveorder", true) => query.OrderByDescending(item => item.OriginalOrderNumber).ThenBy(item => item.PublicId),
             ("indicatornumber", false) => query.OrderBy(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
             ("indicatornumber", true) => query.OrderByDescending(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
             ("targetname", false) => query.OrderBy(item => item.TargetName).ThenBy(item => item.PublicId),
@@ -94,7 +100,9 @@ public class OpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(false, null, "User not found"));
         if (!TargetSortFields.Contains(request.NormalizedSortBy))
-            return BadRequest(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, or targetName."));
+            return BadRequest(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, targetName, or effectiveOrder."));
+        if (request.NormalizedSortBy == "effectiveorder" && !request.ReportingPeriodType.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(false, null, "ReportingPeriodType is required for effectiveOrder sorting."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
         if (!scope.PermissionGranted)
@@ -107,7 +115,7 @@ public class OpmsTargetsController : ControllerBase
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
 
         var totalCount = await query.CountAsync();
-        var items = await ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending)
+        var items = await ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType)
             .Skip(request.Offset).Take(request.PageSize)
             .Select(item => new PerformanceTargetOptionResponse(item.Id, item.PublicId, item.IndicatorNumber, item.TargetName, item.DepartmentId, item.Department != null ? item.Department.Name : null))
             .ToArrayAsync();
@@ -138,6 +146,8 @@ public class OpmsTargetsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        if (request.OriginalOrderNumber <= 0)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
         var mappingError = await ValidateMappingsAsync(request);
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
@@ -153,6 +163,8 @@ public class OpmsTargetsController : ControllerBase
             AssignedUserId = request.AssignedUserId,
             MunicipalityId = _tenantContext.MunicipalityId,
             IndicatorNumber = request.IndicatorNumber.Trim(),
+            OriginalOrderNumber = request.OriginalOrderNumber,
+            RevisedOrderNumber = request.OriginalOrderNumber,
             NationalKpa = request.NationalKpa,
             MunicipalKpa = request.MunicipalKpa,
             StrategicGoalId = request.StrategicGoalId,
@@ -256,6 +268,54 @@ public class OpmsTargetsController : ControllerBase
         return Ok(new ApiResponse<OpmsTargetResponse>(true, after.ToResponse()));
     }
 
+    [HttpPut("{id}/ordering")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> ReviseOrdering(string id, [FromBody] ReviseKpiOrderingRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
+        if (request.OriginalOrderNumber <= 0 || request.RevisedOrderNumber <= 0)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Original and revised order numbers must be positive integers."));
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 2000 || string.IsNullOrWhiteSpace(request.ApprovalReference) || request.ApprovalReference.Trim().Length > 500 || request.EffectiveAt == default)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Reason, approval reference and effective date are required."));
+
+        var entity = await _context.OpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
+        if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        if (!TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A valid RowVersion is required."));
+        if (entity.OriginalOrderNumber == request.OriginalOrderNumber && entity.RevisedOrderNumber == request.RevisedOrderNumber)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "At least one order number must change."));
+
+        var before = new { entity.OriginalOrderNumber, entity.RevisedOrderNumber };
+        AddOrderRevision(entity, nameof(entity.OriginalOrderNumber), entity.OriginalOrderNumber, request.OriginalOrderNumber, request, user.Id);
+        AddOrderRevision(entity, nameof(entity.RevisedOrderNumber), entity.RevisedOrderNumber, request.RevisedOrderNumber, request, user.Id);
+        entity.OriginalOrderNumber = request.OriginalOrderNumber;
+        entity.RevisedOrderNumber = request.RevisedOrderNumber;
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI ordering changed since it was loaded. Refresh and try again.")); }
+
+        var after = await FindTargetAsync(id) ?? entity;
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, after.ToResponse()));
+    }
+
+    [HttpGet("{id}/ordering-revisions")]
+    public async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetOrderingRevisions(string id)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<KpiFieldRevisionResponse[]>(false, null, "User not found"));
+        var entity = await _context.OpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<KpiFieldRevisionResponse[]>(false, null, "OPMS target not found"));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", BuildScope(entity));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<KpiFieldRevisionResponse[]>(false, null, decision.Reason));
+        var rows = await _context.KpiFieldRevisions.AsNoTracking().Where(item => item.OpmsTargetId == entity.Id)
+            .OrderBy(item => item.RecordedAt).ThenBy(item => item.Id)
+            .Select(item => new KpiFieldRevisionResponse(item.PublicId, item.FieldName, item.OriginalValue, item.RevisedValue, item.Reason, item.ApprovalReference, item.EffectiveAt, item.RevisedByUserId, item.RecordedAt)).ToArrayAsync();
+        return Ok(new ApiResponse<KpiFieldRevisionResponse[]>(true, rows));
+    }
+
     [HttpDelete("{id}")]
     public ActionResult<ApiResponse<bool>> DeleteTarget(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed targets are never deleted. Use POST /api/v1/opms-targets/{id}/withdraw with a reason and RowVersion."));
@@ -323,6 +383,23 @@ public class OpmsTargetsController : ControllerBase
             return true;
         }
         catch (FormatException) { return false; }
+    }
+
+    private void AddOrderRevision(OpmsTarget entity, string fieldName, int originalValue, int revisedValue, ReviseKpiOrderingRequest request, string userId)
+    {
+        if (originalValue == revisedValue) return;
+        _context.KpiFieldRevisions.Add(new KpiFieldRevision
+        {
+            MunicipalityId = entity.MunicipalityId!.Value,
+            OpmsTargetId = entity.Id,
+            FieldName = fieldName,
+            OriginalValue = originalValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            RevisedValue = revisedValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Reason = request.Reason.Trim(),
+            ApprovalReference = request.ApprovalReference.Trim(),
+            EffectiveAt = request.EffectiveAt,
+            RevisedByUserId = userId
+        });
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()

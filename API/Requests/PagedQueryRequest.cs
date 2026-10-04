@@ -20,6 +20,8 @@ public sealed class PagedQueryRequest
 
     public Guid? RelatedOpmsTargetPublicId { get; init; }
 
+    public FTCERP.Host.Domain.Entities.ReportingPeriodType? ReportingPeriodType { get; init; }
+
     [RegularExpression("^(?i:asc|desc)$", ErrorMessage = "SortDirection must be 'asc' or 'desc'.")]
     public string SortDirection { get; init; } = "desc";
 

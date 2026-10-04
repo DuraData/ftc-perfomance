@@ -164,7 +164,10 @@ public record SaveOpmsTargetRequest(
     string? InternalReference,
     string? FmsLink,
     bool IsRevised,
-    SaveTargetPeriodValueRequest[] PeriodTargets);
+    SaveTargetPeriodValueRequest[] PeriodTargets)
+{
+    public int OriginalOrderNumber { get; init; } = 1;
+}
 
 public record SaveIpmsTargetRequest(
     string? SourceTemplateId,
@@ -194,7 +197,10 @@ public record SaveIpmsTargetRequest(
     string? IdpReference,
     string? InternalReference,
     bool IsRevised,
-    SaveTargetPeriodValueRequest[] PeriodTargets);
+    SaveTargetPeriodValueRequest[] PeriodTargets)
+{
+    public int OriginalOrderNumber { get; init; } = 1;
+}
 
 public record SaveTargetPeriodValueRequest(
     ReportingPeriodType PeriodType,
@@ -238,6 +244,14 @@ public record SubmissionWorkflowActionRequest(
 public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason, int? ExtendedByDays = null);
 
 public record WithdrawGovernedRecordRequest(string Reason, string RowVersion);
+
+public sealed record ReviseKpiOrderingRequest(
+    int OriginalOrderNumber,
+    int RevisedOrderNumber,
+    string Reason,
+    string ApprovalReference,
+    DateTime EffectiveAt,
+    string RowVersion);
 
 public sealed record SaveConsolidatedActualRequest(string ActualPerformance, string? EditReason, string RowVersion);
 

@@ -51,6 +51,27 @@ public class PerformanceTargetRevision
     public ApplicationUser RevisedByUser { get; set; } = null!;
 }
 
+public sealed class KpiFieldRevision
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public string? OpmsTargetId { get; set; }
+    public string? IpmsTargetId { get; set; }
+    public string FieldName { get; set; } = string.Empty;
+    public string? OriginalValue { get; set; }
+    public string? RevisedValue { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string ApprovalReference { get; set; } = string.Empty;
+    public DateTime EffectiveAt { get; set; }
+    public string RevisedByUserId { get; set; } = string.Empty;
+    public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
+    public Municipality Municipality { get; set; } = null!;
+    public OpmsTarget? OpmsTarget { get; set; }
+    public IpmsTarget? IpmsTarget { get; set; }
+    public ApplicationUser RevisedByUser { get; set; } = null!;
+}
+
 /// <summary>
 /// Immutable preservation record created during the V3.9 canonical-actual cutover.
 /// It is not an operational value source; runtime behavior uses ActualPerformance only.

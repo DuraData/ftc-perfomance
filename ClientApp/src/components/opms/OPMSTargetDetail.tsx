@@ -10,6 +10,7 @@ import {
   Paperclip,
   History,
   Layers,
+  ListOrdered,
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
@@ -36,6 +37,7 @@ import {
   updateOpmsSubmission as updateOpmsSubmissionApi,
 } from '../../api/api';
 import type { OPMSTarget, IPMSTarget, OPMSSubmission, Employee, AuditTrailEntryDto } from '../../types';
+import { KpiOrderingEditor } from '../targets/KpiOrderingEditor';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -581,6 +583,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     { id: 'strategy', label: 'Strategy', icon: <Target className="w-3.5 h-3.5" /> },
     { id: 'quarterly', label: 'Quarterly', icon: <TrendingUp className="w-3.5 h-3.5" /> },
     { id: 'budget', label: 'Budget', icon: <DollarSign className="w-3.5 h-3.5" /> },
+    { id: 'ordering', label: 'Ordering', icon: <ListOrdered className="w-3.5 h-3.5" /> },
     { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: opmsSubmissions.filter(s => s.target.id === target.id).length },
     { id: 'votes', label: 'Votes', icon: <Layers className="w-3.5 h-3.5" /> },
     { id: 'ipms', label: 'IPMS', icon: <Link2 className="w-3.5 h-3.5" />, badge: ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id).length },
@@ -595,6 +598,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'strategy': return <StrategyTab target={target} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
       case 'budget': return <BudgetTab target={target} />;
+      case 'ordering': return <KpiOrderingEditor kind="opms" targetId={target.id} originalOrderNumber={target.originalOrderNumber} revisedOrderNumber={target.revisedOrderNumber} rowVersion={target.rowVersion ?? ''} onUpdated={value => setTarget(current => current ? { ...current, ...value } : current)} />;
       case 'submissions': return (
         <SubmissionsTab
           submissions={opmsSubmissions.filter(s => s.target.id === target.id)}

@@ -72,6 +72,8 @@ public partial class OpmsTarget
     [Column("AdditionalAssigneeIds")] public string? LegacyAdditionalAssigneeIds { get; set; }
     [Column("VoteNumberIds")] public string? LegacyVoteNumberIds { get; set; }
     public string IndicatorNumber { get; set; } = string.Empty;
+    public int OriginalOrderNumber { get; set; } = 1;
+    public int RevisedOrderNumber { get; set; } = 1;
     public string NationalKpa { get; set; } = string.Empty;
     public string MunicipalKpa { get; set; } = string.Empty;
     public int? StrategicGoalId { get; set; }
@@ -195,6 +197,8 @@ public partial class IpmsTarget
     public string? AssignedUserId { get; set; }
     public string? SupervisorId { get; set; }
     public string IndicatorNumber { get; set; } = string.Empty;
+    public int OriginalOrderNumber { get; set; } = 1;
+    public int RevisedOrderNumber { get; set; } = 1;
     public string NationalKpa { get; set; } = string.Empty;
     public string MunicipalKpa { get; set; } = string.Empty;
     public int? StrategicGoalId { get; set; }

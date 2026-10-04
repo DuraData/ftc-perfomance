@@ -141,6 +141,8 @@ public static class PerformanceApiSupport
         {
             PublicId = target.PublicId,
             RowVersion = Convert.ToBase64String(target.RowVersion),
+            OriginalOrderNumber = target.OriginalOrderNumber,
+            RevisedOrderNumber = target.RevisedOrderNumber,
             WithdrawnAt = target.WithdrawnAt,
             WithdrawnByUserId = target.WithdrawnByUserId
         };
@@ -183,6 +185,8 @@ public static class PerformanceApiSupport
         {
             PublicId = target.PublicId,
             RowVersion = Convert.ToBase64String(target.RowVersion),
+            OriginalOrderNumber = target.OriginalOrderNumber,
+            RevisedOrderNumber = target.RevisedOrderNumber,
             IsWithdrawn = target.IsWithdrawn,
             ReasonForWithdrawal = target.ReasonForWithdrawal,
             WithdrawnAt = target.WithdrawnAt,

@@ -58,13 +58,19 @@ public sealed class PerformanceReportsController(ApplicationDbContext context, U
         {
             var query = ApplyScope(context.OpmsSubmissions.AsNoTracking(), scope);
             if (reportingPeriodPublicId.HasValue) query = query.Where(x => x.ReportingPeriod != null && x.ReportingPeriod.PublicId == reportingPeriodPublicId);
-            rows = await query.OrderBy(x => x.OpmsTarget.IndicatorNumber).Select(x => new ReportRow(x.OpmsTarget.IndicatorNumber, x.OpmsTarget.TargetName, x.OpmsTarget.Department != null ? x.OpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
+            rows = await query
+                .OrderBy(x => x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) ? x.OpmsTarget.RevisedOrderNumber : x.OpmsTarget.OriginalOrderNumber)
+                .ThenBy(x => x.OpmsTarget.PublicId)
+                .Select(x => new ReportRow(x.OpmsTarget.IndicatorNumber, x.OpmsTarget.TargetName, x.OpmsTarget.Department != null ? x.OpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
         }
         else
         {
             var query = ApplyScope(context.IpmsSubmissions.AsNoTracking(), scope);
             if (reportingPeriodPublicId.HasValue) query = query.Where(x => x.ReportingPeriod != null && x.ReportingPeriod.PublicId == reportingPeriodPublicId);
-            rows = await query.OrderBy(x => x.IpmsTarget.IndicatorNumber).Select(x => new ReportRow(x.IpmsTarget.IndicatorNumber, x.IpmsTarget.TargetName, x.IpmsTarget.Department != null ? x.IpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
+            rows = await query
+                .OrderBy(x => x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) ? x.IpmsTarget.RevisedOrderNumber : x.IpmsTarget.OriginalOrderNumber)
+                .ThenBy(x => x.IpmsTarget.PublicId)
+                .Select(x => new ReportRow(x.IpmsTarget.IndicatorNumber, x.IpmsTarget.TargetName, x.IpmsTarget.Department != null ? x.IpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
         }
         if (rows.Length > 100000) return StatusCode(StatusCodes.Status413PayloadTooLarge, Fail<object>("Export exceeds 100,000 rows; select a reporting period."));
         var csv = new StringBuilder("Indicator,Target,Department,Period,Actual Performance,Variance,Achievement Percent,Target Achieved,Status\r\n");

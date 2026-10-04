@@ -383,6 +383,8 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   wardIds?: number[];
   assignedTo?: Employee;
   indicatorNumber: string;
+  originalOrderNumber: number;
+  revisedOrderNumber: number;
   nationalKPA: string;
   municipalKPA: string;
   strategicGoal: StrategicGoal;
@@ -458,6 +460,8 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   unit?: DepartmentUnit;
   assignedTo?: Employee;
   indicatorNumber: string;
+  originalOrderNumber: number;
+  revisedOrderNumber: number;
   nationalKPA: string;
   municipalKPA: string;
   strategicGoal: StrategicGoal;
@@ -1543,6 +1547,18 @@ export interface PerformanceTargetRevisionDto {
   recordedAt: string;
 }
 
+export interface KpiFieldRevisionDto {
+  publicId: string;
+  fieldName: string;
+  originalValue?: string | null;
+  revisedValue?: string | null;
+  reason: string;
+  approvalReference: string;
+  effectiveAt: string;
+  revisedByUserId: string;
+  recordedAt: string;
+}
+
 export interface WorkflowStageDefinitionDto {
   publicId: string;
   code: string;
@@ -2143,6 +2159,8 @@ export interface OpmsTargetDto {
   additionalAssigneeIds: string[];
   voteNumberIds: number[];
   indicatorNumber: string;
+  originalOrderNumber: number;
+  revisedOrderNumber: number;
   nationalKpa: string;
   municipalKpa: string;
   strategicGoalId?: number | null;
@@ -2188,6 +2206,8 @@ export interface IpmsTargetDto {
   assignedUserName?: string | null;
   supervisorId?: string | null;
   indicatorNumber: string;
+  originalOrderNumber: number;
+  revisedOrderNumber: number;
   nationalKpa: string;
   municipalKpa: string;
   strategicGoalId?: number | null;
@@ -2527,6 +2547,7 @@ export interface SaveOpmsTargetPayload {
   additionalAssigneeIds?: string[];
   voteNumberIds?: number[];
   indicatorNumber: string;
+  originalOrderNumber?: number;
   nationalKpa: string;
   municipalKpa: string;
   strategicGoalId?: number | null;
@@ -2561,6 +2582,7 @@ export interface SaveIpmsTargetPayload {
   assignedUserId?: string | null;
   supervisorId?: string | null;
   indicatorNumber: string;
+  originalOrderNumber?: number;
   nationalKpa: string;
   municipalKpa: string;
   strategicGoalId?: number | null;

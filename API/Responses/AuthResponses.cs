@@ -219,6 +219,8 @@ public record OpmsTargetResponse(
 {
     public Guid PublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
+    public int OriginalOrderNumber { get; init; }
+    public int RevisedOrderNumber { get; init; }
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
 }
@@ -260,6 +262,8 @@ public record IpmsTargetResponse(
 {
     public Guid PublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
+    public int OriginalOrderNumber { get; init; }
+    public int RevisedOrderNumber { get; init; }
     public bool IsWithdrawn { get; init; }
     public string? ReasonForWithdrawal { get; init; }
     public DateTime? WithdrawnAt { get; init; }
@@ -278,6 +282,17 @@ public record TargetPeriodValueResponse(
     string? Description,
     bool IsActive,
     string RowVersion);
+
+public sealed record KpiFieldRevisionResponse(
+    Guid PublicId,
+    string FieldName,
+    string? OriginalValue,
+    string? RevisedValue,
+    string Reason,
+    string ApprovalReference,
+    DateTime EffectiveAt,
+    string RevisedByUserId,
+    DateTime RecordedAt);
 
 public record OpmsSubmissionResponse(
     string Id,

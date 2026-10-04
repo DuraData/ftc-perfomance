@@ -90,6 +90,7 @@ import type {
   OfficialReportFormat,
   PerformancePeriodTargetDto,
   PerformanceTargetRevisionDto,
+  KpiFieldRevisionDto,
   ReportingWindowExceptionDto,
   DepartmentLookupDto,
   UnitLookupDto,
@@ -500,6 +501,8 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     voteNumbers: dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
     voteNumberIds: dto.voteNumberIds,
     indicatorNumber: dto.indicatorNumber,
+    originalOrderNumber: dto.originalOrderNumber,
+    revisedOrderNumber: dto.revisedOrderNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
     strategicGoal,
@@ -572,6 +575,8 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     unit: toUnitReference(dto.unitId, dto.unitName, department),
     assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
     indicatorNumber: dto.indicatorNumber,
+    originalOrderNumber: dto.originalOrderNumber,
+    revisedOrderNumber: dto.revisedOrderNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
     strategicGoal,
@@ -632,6 +637,8 @@ function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = 
     additionalAssigneeIds: [],
     voteNumberIds: [],
     indicatorNumber,
+    originalOrderNumber: 1,
+    revisedOrderNumber: 1,
     nationalKpa: '',
     municipalKpa: '',
     performanceObjective: '',
@@ -654,6 +661,8 @@ function unresolvedIpmsTarget(id: string, targetName: string, indicatorNumber = 
     publicId: id,
     rowVersion: '',
     indicatorNumber,
+    originalOrderNumber: 1,
+    revisedOrderNumber: 1,
     nationalKpa: '',
     municipalKpa: '',
     performanceObjective: '',
@@ -1725,6 +1734,7 @@ export type RegisterPageQuery = {
   sortDirection?: 'asc' | 'desc';
   targetPublicId?: string;
   relatedOpmsTargetPublicId?: string;
+  reportingPeriodType?: 1 | 2 | 3 | 4 | 5 | 6;
 };
 
 function registerPageQuery(query: RegisterPageQuery): string {
@@ -1736,6 +1746,7 @@ function registerPageQuery(query: RegisterPageQuery): string {
   if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
   if (query.targetPublicId?.trim()) parameters.set('targetPublicId', query.targetPublicId.trim());
   if (query.relatedOpmsTargetPublicId?.trim()) parameters.set('relatedOpmsTargetPublicId', query.relatedOpmsTargetPublicId.trim());
+  if (query.reportingPeriodType !== undefined) parameters.set('reportingPeriodType', String(query.reportingPeriodType));
   const value = parameters.toString();
   return value ? `?${value}` : '';
 }
@@ -1769,6 +1780,15 @@ export async function withdrawOpmsTarget(id: string, payload: { reason: string; 
   return mapResponse(response, toOpmsTargetModel);
 }
 
+export async function reviseOpmsTargetOrdering(id: string, payload: { originalOrderNumber: number; revisedOrderNumber: number; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<OPMSTarget>> {
+  const response = await put<OpmsTargetDto>(`/v1/opms-targets/${id}/ordering`, payload);
+  return mapResponse(response, toOpmsTargetModel);
+}
+
+export function getOpmsTargetOrderingRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
+  return get<KpiFieldRevisionDto[]>(`/v1/opms-targets/${id}/ordering-revisions`);
+}
+
 export async function getIpmsTargetsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSTarget>>> {
   const response = await get<PagedResult<IpmsTargetDto>>(`/v1/ipms-targets/page${registerPageQuery(query)}`);
   return mapResponse(response, page => ({ ...page, items: page.items.map(toIpmsTargetModel) }));
@@ -1796,6 +1816,15 @@ export async function updateIpmsTarget(id: string, payload: SaveIpmsTargetPayloa
 export async function withdrawIpmsTarget(id: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<IPMSTarget>> {
   const response = await post<IpmsTargetDto>(`/v1/ipms-targets/${id}/withdraw`, payload);
   return mapResponse(response, toIpmsTargetModel);
+}
+
+export async function reviseIpmsTargetOrdering(id: string, payload: { originalOrderNumber: number; revisedOrderNumber: number; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<IPMSTarget>> {
+  const response = await put<IpmsTargetDto>(`/v1/ipms-targets/${id}/ordering`, payload);
+  return mapResponse(response, toIpmsTargetModel);
+}
+
+export function getIpmsTargetOrderingRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
+  return get<KpiFieldRevisionDto[]>(`/v1/ipms-targets/${id}/ordering-revisions`);
 }
 
 export async function getOpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OPMSSubmission>>> {
