@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
 import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
@@ -44,6 +44,14 @@ export function Reports() {
   const [years, setYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [yearId, setYearId] = useState('');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
+  const [templateOptions, setTemplateOptions] = useState<OfficialReportTemplateDto[]>([]);
+  const [templatePage, setTemplatePage] = useState(1);
+  const [templateTotalCount, setTemplateTotalCount] = useState(0);
+  const [templateTotalPages, setTemplateTotalPages] = useState(0);
+  const [templateSearchInput, setTemplateSearchInput] = useState('');
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateSortBy, setTemplateSortBy] = useState('code');
+  const [templateSortDirection, setTemplateSortDirection] = useState<'asc' | 'desc'>('asc');
   const [generations, setGenerations] = useState<OfficialReportGenerationDto[]>([]);
   const [generationPage, setGenerationPage] = useState(1);
   const [generationTotalCount, setGenerationTotalCount] = useState(0);
@@ -85,17 +93,16 @@ export function Reports() {
   const canGenerateOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.GENERATE' : 'IPMS_REPORT.GENERATE') || permissionSet.has('REPORTS.GENERATE');
   const canConfigureOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.CONFIGURE' : 'IPMS_REPORT.CONFIGURE');
   const availablePeriods = useMemo(() => periods.filter(period => !yearId || period.municipalityFinancialYearPublicId === yearId), [periods, yearId]);
-  const selectedTemplate = templates.find(template => template.publicId === templateId);
+  const selectedTemplate = templateOptions.find(template => template.publicId === templateId);
   const selectedDepartment = departments.find(department => department.publicId === departmentId);
   const filteredUnits = units.filter(unit => !selectedDepartment || unit.departmentId === selectedDepartment.id);
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, templateResult, departmentResult, unitResult] = await Promise.all([
+    const [periodResult, yearResult, summaryResult, departmentResult, unitResult] = await Promise.all([
       getReportingPeriodMasters(),
       getMunicipalityFinancialYearMasters(),
       getPerformanceReportSummary(kind, periodId || undefined),
-      canReadOfficial ? getOfficialReportTemplates(kind) : Promise.resolve({ success: true, data: [] as OfficialReportTemplateDto[], message: undefined }),
       getDepartments(),
       getUnits(),
     ]);
@@ -103,18 +110,33 @@ export function Reports() {
     const loadedYears = yearResult.data ?? [];
     setYears(loadedYears);
     setYearId(current => current || loadedYears.find(year => year.isCurrent)?.publicId || loadedYears[0]?.publicId || '');
-    setTemplates(templateResult.data ?? []);
-    setTemplateId(current => (templateResult.data ?? []).some(template => template.publicId === current) ? current : templateResult.data?.[0]?.publicId ?? '');
     setDepartments(departmentResult.data ?? []);
     setUnits(unitResult.data ?? []);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
     else setSummary(summaryResult.data);
     if (!periodResult.success) setError(periodResult.message ?? 'Reporting periods could not be loaded.');
     else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
-    else if (!templateResult.success) setError(templateResult.message ?? 'Official report templates could not be loaded.');
     else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
-  }, [canReadOfficial, kind, periodId]);
+  }, [kind, periodId]);
+
+  const loadTemplateOptions = useCallback(async () => {
+    if (!canReadOfficial) { setTemplateOptions([]); setTemplateId(''); return; }
+    const result = await getOfficialReportTemplatesPage(kind, false, yearId || undefined, { page: 1, pageSize: 100, sortBy: 'reportType', sortDirection: 'asc' });
+    const items = result.data?.items ?? [];
+    setTemplateOptions(items);
+    setTemplateId(current => items.some(template => template.publicId === current) ? current : items[0]?.publicId ?? '');
+    if (!result.success) setError(result.message ?? 'Official report template options could not be loaded.');
+  }, [canReadOfficial, kind, yearId]);
+
+  const loadTemplates = useCallback(async () => {
+    if (!canReadOfficial) { setTemplates([]); setTemplateTotalCount(0); setTemplateTotalPages(0); return; }
+    const result = await getOfficialReportTemplatesPage(kind, false, undefined, { page: templatePage, pageSize: 25, search: templateSearch, sortBy: templateSortBy, sortDirection: templateSortDirection });
+    setTemplates(result.data?.items ?? []);
+    setTemplateTotalCount(result.data?.totalCount ?? 0);
+    setTemplateTotalPages(result.data?.totalPages ?? 0);
+    if (!result.success) setError(result.message ?? 'Official report templates could not be loaded.');
+  }, [canReadOfficial, kind, templatePage, templateSearch, templateSortBy, templateSortDirection]);
 
   const loadJobs = useCallback(async () => {
     if (!canReadOfficial) {
@@ -150,9 +172,15 @@ export function Reports() {
   }, [canConfigureOfficial, kind, schedulePage, scheduleSearch, scheduleSortBy, scheduleSortDirection]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadTemplateOptions(); }, [loadTemplateOptions]);
+  useEffect(() => { void loadTemplates(); }, [loadTemplates]);
   useEffect(() => { void loadGenerations(); }, [loadGenerations]);
   useEffect(() => { void loadJobs(); }, [loadJobs]);
   useEffect(() => { void loadSchedules(); }, [loadSchedules]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setTemplatePage(1); setTemplateSearch(templateSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [templateSearchInput]);
   useEffect(() => {
     const timeout = window.setTimeout(() => { setGenerationPage(1); setGenerationSearch(generationSearchInput.trim()); }, 300);
     return () => window.clearTimeout(timeout);
@@ -179,7 +207,7 @@ export function Reports() {
     const effectiveYearId = previous?.municipalityFinancialYearPublicId ?? yearId;
     const effectivePeriodId = previous?.reportingPeriodPublicId ?? periodId;
     if (!effectiveTemplateId || !effectiveYearId || !effectivePeriodId) { setError('Select a financial year, reporting period and approved template.'); return; }
-    const effectiveTemplate = templates.find(template => template.publicId === effectiveTemplateId);
+    const effectiveTemplate = templateOptions.find(template => template.publicId === effectiveTemplateId);
     if (!previous && effectiveTemplate?.reportType === 4 && !departmentId) { setError('Select a department for the departmental report.'); return; }
     if (!previous && effectiveTemplate?.reportType === 5 && !unitId) { setError('Select a unit for the unit report.'); return; }
     const priorFilters = storedGenerationFilters(previous);
@@ -201,7 +229,7 @@ export function Reports() {
     const effectiveTemplateId = previous?.templatePublicId ?? templateId;
     const effectiveYearId = previous?.municipalityFinancialYearPublicId ?? yearId;
     const effectivePeriodId = previous?.reportingPeriodPublicId ?? periodId;
-    const effectiveTemplate = templates.find(template => template.publicId === effectiveTemplateId);
+    const effectiveTemplate = templateOptions.find(template => template.publicId === effectiveTemplateId);
     if (!effectiveTemplateId || !effectiveYearId || !effectivePeriodId) { setError('Select a financial year, reporting period and approved template.'); return; }
     if (!previous && effectiveTemplate?.reportType === 4 && !departmentId) { setError('Select a department for the departmental report.'); return; }
     if (!previous && effectiveTemplate?.reportType === 5 && !unitId) { setError('Select a unit for the unit report.'); return; }
@@ -271,7 +299,7 @@ export function Reports() {
       reason: templateDraft.reason,
     });
     if (!result.success) setError(result.message ?? 'Official report template could not be saved.');
-    else { pushToast('success', previous ? 'Official template version created' : 'Official template created'); setTemplateDraft(value => ({ ...value, approvalReference: '', reason: '', previousVersionPublicId: '' })); await load(); }
+    else { pushToast('success', previous ? 'Official template version created' : 'Official template created'); setTemplateDraft(value => ({ ...value, approvalReference: '', reason: '', previousVersionPublicId: '' })); await Promise.all([loadTemplateOptions(), loadTemplates()]); }
     setBusy(false);
   };
 
@@ -290,12 +318,12 @@ export function Reports() {
         <Card className="p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-3">
-              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setGenerationPage(1); setJobPage(1); setSchedulePage(1); }} />
+              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setTemplatePage(1); setGenerationPage(1); setJobPage(1); setSchedulePage(1); }} />
               <Select label="Financial year" value={yearId} options={years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · Current' : ''}` }))} onChange={event => { setYearId(event.target.value); setPeriodId(''); }} />
               <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...availablePeriods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => { setPeriodId(event.target.value); setGenerationPage(1); }} />
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void load(); void loadGenerations(); void loadJobs(); void loadSchedules(); }} disabled={busy}>Refresh</Button>
+              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void load(); void loadTemplateOptions(); void loadTemplates(); void loadGenerations(); void loadJobs(); void loadSchedules(); }} disabled={busy}>Refresh</Button>
               <Button size="sm" variant="primary" icon={<Download className="h-4 w-4" />} onClick={() => void exportCsv()} disabled={busy || !canExport}>Export CSV</Button>
             </div>
           </div>
@@ -304,7 +332,7 @@ export function Reports() {
         {canReadOfficial && <Card className="p-4">
           <div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official municipality report</h2><p className="text-xs text-secondary-500">Generate a retained, immutable output from the latest authorised data. Regeneration appends a version.</p></div></div>
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[18rem] flex-1"><Select label="Approved template" value={templateId} options={[{ value: '', label: templates.length ? 'Select a template' : 'No approved template configured' }, ...templates.filter(template => !template.municipalityFinancialYearPublicId || template.municipalityFinancialYearPublicId === yearId).map(template => ({ value: template.publicId, label: `${reportTypeLabel(template.reportType)} · ${template.name} · v${template.versionNumber} · ${['', 'CSV', 'Excel', 'Word', 'PDF'][template.format]}` }))]} onChange={event => { setTemplateId(event.target.value); setDepartmentId(''); setUnitId(''); }} /></div>
+            <div className="min-w-[18rem] flex-1"><Select label="Approved template" value={templateId} options={[{ value: '', label: templateOptions.length ? 'Select a template' : 'No approved template configured' }, ...templateOptions.map(template => ({ value: template.publicId, label: `${reportTypeLabel(template.reportType)} · ${template.name} · v${template.versionNumber} · ${['', 'CSV', 'Excel', 'Word', 'PDF'][template.format]}` }))]} onChange={event => { setTemplateId(event.target.value); setDepartmentId(''); setUnitId(''); }} /></div>
             {selectedTemplate?.reportType === 4 && <div className="min-w-[14rem]"><Select label="Department" value={departmentId} options={[{ value: '', label: 'Select a department' }, ...departments.map(department => ({ value: department.publicId, label: department.name }))]} onChange={event => { setDepartmentId(event.target.value); setUnitId(''); }} /></div>}
             {selectedTemplate?.reportType === 5 && <div className="min-w-[14rem]"><Select label="Unit" value={unitId} options={[{ value: '', label: 'Select a unit' }, ...filteredUnits.map(unit => ({ value: unit.publicId, label: unit.name }))]} onChange={event => setUnitId(event.target.value)} /></div>}
             <Button size="sm" variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Generate now</Button>
@@ -357,8 +385,13 @@ export function Reports() {
         </Card>}
 
         {canConfigureOfficial && <Card className="p-4">
-          <h2 className="font-semibold text-secondary-900 dark:text-white">Approved template administration</h2>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-secondary-900 dark:text-white">Approved template administration</h2><Badge variant="primary">{templateTotalCount} templates</Badge></div>
           <p className="mb-4 text-xs text-secondary-500">Create a template or select a current template to append a successor version. Existing versions are retained.</p>
+          <div className="mb-4 grid gap-2 md:grid-cols-[1fr_11rem_9rem]">
+            <input aria-label="Search report templates" placeholder="Code, name, financial year, or approval" className="rounded border border-secondary-300 p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={templateSearchInput} onChange={event => setTemplateSearchInput(event.target.value)} />
+            <select aria-label="Sort report templates" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={templateSortBy} onChange={event => { setTemplateSortBy(event.target.value); setTemplatePage(1); }}><option value="code">Code</option><option value="name">Name</option><option value="reportType">Report class</option><option value="versionNumber">Version</option><option value="effectiveFrom">Effective date</option><option value="createdAt">Created date</option></select>
+            <select aria-label="Report template sort direction" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={templateSortDirection} onChange={event => { setTemplateSortDirection(event.target.value as 'asc' | 'desc'); setTemplatePage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select>
+          </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="text-sm">Version lineage<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.previousVersionPublicId} onChange={event => { const previous = templates.find(item => item.publicId === event.target.value); setTemplateDraft(value => ({ ...value, previousVersionPublicId: event.target.value, reportType: previous?.reportType ?? value.reportType, code: previous?.code ?? value.code, name: previous?.name ?? value.name, format: previous?.format ?? value.format, headingTemplate: previous?.headingTemplate ?? value.headingTemplate })); }}><option value="">New template family</option>{templates.map(template => <option key={template.publicId} value={template.publicId}>{reportTypeLabel(template.reportType)} · {template.code} · v{template.versionNumber}</option>)}</select></label>
             <label className="text-sm">Report class<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.reportType} disabled={Boolean(templateDraft.previousVersionPublicId)} onChange={event => { const definition = reportTypes.find(item => item.value === Number(event.target.value) as OfficialReportType)!; setTemplateDraft(value => ({ ...value, reportType: definition.value, code: definition.code, name: definition.label, headingTemplate: `{Municipality} · {FinancialYear} {Period} · ${definition.label.toUpperCase()}` })); }}>{reportTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
@@ -370,6 +403,7 @@ export function Reports() {
             <label className="text-sm">Reason<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.reason} onChange={event => setTemplateDraft(value => ({ ...value, reason: event.target.value }))} /></label>
           </div>
           <div className="mt-3 flex justify-end"><Button size="sm" variant="primary" onClick={() => void saveTemplate()} disabled={busy || !yearId}>{templateDraft.previousVersionPublicId ? 'Create template version' : 'Create approved template'}</Button></div>
+          {templateTotalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Template page {templatePage} of {templateTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || templatePage <= 1} onClick={() => setTemplatePage(value => Math.max(1, value - 1))}>Previous templates</Button><Button size="sm" variant="outline" disabled={busy || templatePage >= templateTotalPages} onClick={() => setTemplatePage(value => value + 1)}>Next templates</Button></div></div>}
         </Card>}
 
         {canConfigureOfficial && <Card className="p-4">

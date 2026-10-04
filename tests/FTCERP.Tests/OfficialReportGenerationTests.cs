@@ -157,6 +157,70 @@ public sealed class OfficialReportGenerationTests
     }
 
     [Fact]
+    public async Task TemplatesPage_IsTenantFilteredSearchableAndStablyPaged()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        long tenantAId;
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var tenantA = new Municipality { Name = "Template Tenant A", Code = "TTA" };
+            var tenantB = new Municipality { Name = "Template Tenant B", Code = "TTB" };
+            setup.AddRange(tenantA, tenantB);
+            await setup.SaveChangesAsync();
+            tenantAId = tenantA.Id;
+            await SeedGeneration(setup, tenantA, "template-reporter-a");
+            await SeedGeneration(setup, tenantB, "template-reporter-b");
+        }
+
+        var tenant = new FixedTenantContext(tenantAId);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var user = await context.Users.SingleAsync(item => item.Id == "template-reporter-a");
+        var year = await context.MunicipalityFinancialYears.SingleAsync();
+        context.OfficialReportTemplates.AddRange(Enumerable.Range(1, 30).Select(index => new OfficialReportTemplate
+        {
+            MunicipalityId = tenantAId, MunicipalityFinancialYearId = year.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.QuarterlyPerformance, Code = $"TPL-{index:00}", Name = $"Quarterly template {index:00}",
+            Format = OfficialReportFormat.Pdf, EffectiveFrom = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+            ApprovalReference = $"Council-{index:00}", Reason = "Approved template", CreatedByUserId = user.Id,
+            ColumnConfigurationJson = OfficialReportRenderer.DefaultColumnsJson
+        }));
+        await context.SaveChangesAsync();
+        var granted = new AccessQueryScopeResult(true, true, [], [], [], [], [], []);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_REPORT.READ")).ReturnsAsync(granted);
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }
+        };
+
+        var result = await controller.TemplatesPage(SubmissionKind.Opms, false, year.PublicId, new PagedQueryRequest
+        {
+            Page = 2, PageSize = 10, Search = "Quarterly", SortBy = "code", SortDirection = "asc"
+        });
+
+        var page = Assert.IsType<ApiResponse<PagedResponse<OfficialReportTemplateResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        page.TotalCount.Should().Be(31);
+        page.TotalPages.Should().Be(4);
+        page.Items.Should().HaveCount(10);
+        page.Items[0].Code.Should().Be("TPL-10");
+    }
+
+    [Fact]
+    public async Task TemplatesPage_RejectsUnknownSort()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock().Object, Mock.Of<IAccessControlService>(), IdpTestFixture.Tenant(1, "reader"), Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>());
+
+        var result = await controller.TemplatesPage(SubmissionKind.Opms, false, null, new PagedQueryRequest { SortBy = "raw-sql" });
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
     public async Task DirectGenerationCall_IsDeniedWhenTheDynamicActionPermissionIsHidden()
     {
         var municipalityId = 701L;

@@ -1496,6 +1496,14 @@ export async function getOfficialReportTemplates(kind: 1 | 2, includeHistory = f
   return get<OfficialReportTemplateDto[]>(`/v1/reports/official/templates?kind=${kind}&includeHistory=${includeHistory}`);
 }
 
+export async function getOfficialReportTemplatesPage(kind: 1 | 2, includeHistory = false, municipalityFinancialYearPublicId?: string, page: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OfficialReportTemplateDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(page).slice(1));
+  parameters.set('kind', String(kind));
+  parameters.set('includeHistory', String(includeHistory));
+  if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
+  return get<PagedResult<OfficialReportTemplateDto>>(`/v1/reports/official/templates/page?${parameters.toString()}`);
+}
+
 export async function saveOfficialReportTemplate(payload: {
   previousVersionPublicId?: string | null;
   previousVersionRowVersion?: string | null;

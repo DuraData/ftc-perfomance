@@ -44,8 +44,60 @@ public sealed class OfficialReportsController(
             var now = DateTime.UtcNow;
             query = query.Where(item => item.IsCurrent && item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now));
         }
-        var items = await query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ToArrayAsync();
+        var items = await query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id).Take(100).ToArrayAsync();
         return Ok(new ApiResponse<OfficialReportTemplateResponse[]>(true, items.Select(Map).ToArray()));
+    }
+
+    [HttpGet("templates/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OfficialReportTemplateResponse>>>> TemplatesPage(
+        [FromQuery] SubmissionKind kind,
+        [FromQuery] bool includeHistory,
+        [FromQuery] Guid? municipalityFinancialYearPublicId,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("code" or "name" or "reporttype" or "versionnumber" or "effectivefrom" or "createdat"))
+            return BadRequest(Fail<PagedResponse<OfficialReportTemplateResponse>>(
+                "SortBy must be code, name, reportType, versionNumber, effectiveFrom, or createdAt."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<OfficialReportTemplateResponse>>("User not found."));
+        if (!await Granted(user, ReadPermission(kind)))
+            return ForbidResponse<PagedResponse<OfficialReportTemplateResponse>>("Official report access is denied.");
+
+        var query = context.OfficialReportTemplates.AsNoTracking().Where(item => item.SubmissionKind == kind);
+        if (!includeHistory)
+        {
+            var now = DateTime.UtcNow;
+            query = query.Where(item => item.IsCurrent && item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now));
+        }
+        if (municipalityFinancialYearPublicId.HasValue)
+            query = query.Where(item => !item.MunicipalityFinancialYearId.HasValue || item.MunicipalityFinancialYear!.PublicId == municipalityFinancialYearPublicId);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(search) || item.Name.Contains(search) || item.ApprovalReference.Contains(search)
+                || item.MunicipalityFinancialYear != null && item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.Id),
+            ("reporttype", false) => query.OrderBy(item => item.ReportType).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("reporttype", true) => query.OrderByDescending(item => item.ReportType).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("versionnumber", true) => query.OrderByDescending(item => item.VersionNumber).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.Id),
+            ("createdat", false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            ("createdat", true) => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id),
+            (_, true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenByDescending(item => item.Id),
+            _ => query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id)
+        };
+        var items = await query.Skip(request.Offset).Take(request.PageSize)
+            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<OfficialReportTemplateResponse>>(true,
+            PagedResponse<OfficialReportTemplateResponse>.Create(items.Select(Map), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("templates")]
