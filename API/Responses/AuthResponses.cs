@@ -221,6 +221,12 @@ public record OpmsTargetResponse(
     public string RowVersion { get; init; } = string.Empty;
     public int OriginalOrderNumber { get; init; }
     public int RevisedOrderNumber { get; init; }
+    public bool IsIndicatorNumberRevised { get; init; }
+    public string? RevisedIndicatorNumber { get; init; }
+    public bool IsTargetNameRevised { get; init; }
+    public string? RevisedTargetName { get; init; }
+    public bool IsKpiDescriptionRevised { get; init; }
+    public string? RevisedKpiDescription { get; init; }
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
 }
@@ -264,6 +270,12 @@ public record IpmsTargetResponse(
     public string RowVersion { get; init; } = string.Empty;
     public int OriginalOrderNumber { get; init; }
     public int RevisedOrderNumber { get; init; }
+    public bool IsIndicatorNumberRevised { get; init; }
+    public string? RevisedIndicatorNumber { get; init; }
+    public bool IsTargetNameRevised { get; init; }
+    public string? RevisedTargetName { get; init; }
+    public bool IsKpiDescriptionRevised { get; init; }
+    public string? RevisedKpiDescription { get; init; }
     public bool IsWithdrawn { get; init; }
     public string? ReasonForWithdrawal { get; init; }
     public DateTime? WithdrawnAt { get; init; }
@@ -281,7 +293,17 @@ public record TargetPeriodValueResponse(
     decimal? BudgetValue,
     string? Description,
     bool IsActive,
-    string RowVersion);
+    string RowVersion)
+{
+    public PerformanceUnitKind OriginalUnitKind { get; init; }
+    public string OriginalTargetValue { get; init; } = string.Empty;
+    public decimal? OriginalBudgetValue { get; init; }
+    public bool IsTargetRevised { get; init; }
+    public PerformanceUnitKind? RevisedUnitKind { get; init; }
+    public string? RevisedTargetValue { get; init; }
+    public bool IsBudgetRevised { get; init; }
+    public decimal? RevisedBudgetValue { get; init; }
+}
 
 public sealed record KpiFieldRevisionResponse(
     Guid PublicId,

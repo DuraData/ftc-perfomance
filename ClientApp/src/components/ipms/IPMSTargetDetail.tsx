@@ -33,6 +33,7 @@ import {
 } from '../../api/api';
 import type { IPMSTarget, IPMSSubmission, AuditTrailEntryDto } from '../../types';
 import { KpiOrderingEditor } from '../targets/KpiOrderingEditor';
+import { KpiDefinitionRevisionEditor } from '../targets/KpiDefinitionRevisionEditor';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -457,6 +458,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     { id: 'strategy', label: 'Strategy', icon: <Target className="w-3.5 h-3.5" /> },
     { id: 'quarterly', label: 'Quarterly', icon: <TrendingUp className="w-3.5 h-3.5" /> },
     { id: 'ordering', label: 'Ordering', icon: <ListOrdered className="w-3.5 h-3.5" /> },
+    { id: 'revisions', label: 'Revisions', icon: <History className="w-3.5 h-3.5" /> },
     { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: ipmsSubmissions.filter(s => s.target.id === target.id).length },
     { id: 'attachments', label: 'Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
     { id: 'history', label: 'Audit', icon: <History className="w-3.5 h-3.5" /> },
@@ -468,6 +470,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'strategy': return <StrategyTab target={target} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
       case 'ordering': return <KpiOrderingEditor kind="ipms" targetId={target.id} originalOrderNumber={target.originalOrderNumber} revisedOrderNumber={target.revisedOrderNumber} rowVersion={target.rowVersion ?? ''} onUpdated={value => setTarget(current => current ? { ...current, ...value } : current)} />;
+      case 'revisions': return <KpiDefinitionRevisionEditor kind="ipms" target={target} onUpdated={value => setTarget(value as IPMSTarget)} />;
       case 'submissions': return (
         <SubmissionsTab
           submissions={ipmsSubmissions.filter(s => s.target.id === target.id)}

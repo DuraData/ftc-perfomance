@@ -63,7 +63,7 @@ public class IpmsTargetsController : ControllerBase
         if (request.RelatedOpmsTargetPublicId.HasValue)
             query = query.Where(item => item.RelatedOpmsTarget != null && item.RelatedOpmsTarget.PublicId == request.RelatedOpmsTargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
+            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || (item.RevisedIndicatorNumber != null && item.RevisedIndicatorNumber.Contains(request.NormalizedSearch)) || item.TargetName.Contains(request.NormalizedSearch) || (item.RevisedTargetName != null && item.RevisedTargetName.Contains(request.NormalizedSearch)) || item.KpiDescription.Contains(request.NormalizedSearch) || (item.RevisedKpiDescription != null && item.RevisedKpiDescription.Contains(request.NormalizedSearch)));
 
         var totalCount = await query.CountAsync();
         query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType);
@@ -72,7 +72,7 @@ public class IpmsTargetsController : ControllerBase
             .AsSplitQuery().ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
         return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true,
-            PagedResponse<IpmsTargetResponse>.Create(items.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IpmsTargetResponse>.Create(items.Select(item => item.ToResponse(request.ReportingPeriodType)), request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname", "effectiveorder"];
@@ -84,8 +84,12 @@ public class IpmsTargetsController : ControllerBase
             ("effectiveorder", true) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderByDescending(item => item.RevisedOrderNumber).ThenBy(item => item.PublicId),
             ("effectiveorder", false) => query.OrderBy(item => item.OriginalOrderNumber).ThenBy(item => item.PublicId),
             ("effectiveorder", true) => query.OrderByDescending(item => item.OriginalOrderNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", false) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderBy(item => item.IsIndicatorNumberRevised ? item.RevisedIndicatorNumber ?? item.IndicatorNumber : item.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderByDescending(item => item.IsIndicatorNumberRevised ? item.RevisedIndicatorNumber ?? item.IndicatorNumber : item.IndicatorNumber).ThenBy(item => item.PublicId),
             ("indicatornumber", false) => query.OrderBy(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
             ("indicatornumber", true) => query.OrderByDescending(item => item.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("targetname", false) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderBy(item => item.IsTargetNameRevised ? item.RevisedTargetName ?? item.TargetName : item.TargetName).ThenBy(item => item.PublicId),
+            ("targetname", true) when periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual => query.OrderByDescending(item => item.IsTargetNameRevised ? item.RevisedTargetName ?? item.TargetName : item.TargetName).ThenBy(item => item.PublicId),
             ("targetname", false) => query.OrderBy(item => item.TargetName).ThenBy(item => item.PublicId),
             ("targetname", true) => query.OrderByDescending(item => item.TargetName).ThenBy(item => item.PublicId),
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
@@ -112,12 +116,16 @@ public class IpmsTargetsController : ControllerBase
         if (request.RelatedOpmsTargetPublicId.HasValue)
             query = query.Where(item => item.RelatedOpmsTarget != null && item.RelatedOpmsTarget.PublicId == request.RelatedOpmsTargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || item.TargetName.Contains(request.NormalizedSearch) || item.KpiDescription.Contains(request.NormalizedSearch));
+            query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || (item.RevisedIndicatorNumber != null && item.RevisedIndicatorNumber.Contains(request.NormalizedSearch)) || item.TargetName.Contains(request.NormalizedSearch) || (item.RevisedTargetName != null && item.RevisedTargetName.Contains(request.NormalizedSearch)) || item.KpiDescription.Contains(request.NormalizedSearch) || (item.RevisedKpiDescription != null && item.RevisedKpiDescription.Contains(request.NormalizedSearch)));
 
         var totalCount = await query.CountAsync();
+        var useRevised = request.ReportingPeriodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual;
         var items = await ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType)
             .Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new PerformanceTargetOptionResponse(item.Id, item.PublicId, item.IndicatorNumber, item.TargetName, item.DepartmentId, item.Department != null ? item.Department.Name : null, item.RelatedOpmsTarget != null ? item.RelatedOpmsTarget.PublicId : null))
+            .Select(item => new PerformanceTargetOptionResponse(item.Id, item.PublicId,
+                useRevised && item.IsIndicatorNumberRevised && item.RevisedIndicatorNumber != null ? item.RevisedIndicatorNumber : item.IndicatorNumber,
+                useRevised && item.IsTargetNameRevised && item.RevisedTargetName != null ? item.RevisedTargetName : item.TargetName,
+                item.DepartmentId, item.Department != null ? item.Department.Name : null, item.RelatedOpmsTarget != null ? item.RelatedOpmsTarget.PublicId : null))
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(true,
             PagedResponse<PerformanceTargetOptionResponse>.Create(items, request.Page, request.PageSize, totalCount)));
@@ -182,7 +190,7 @@ public class IpmsTargetsController : ControllerBase
             FunctionalArea = request.FunctionalArea,
             IdpReference = request.IdpReference,
             InternalReference = request.InternalReference,
-            IsRevised = request.IsRevised,
+            IsRevised = false,
             TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString(),
             CreatedAt = DateTime.UtcNow
         };
@@ -217,6 +225,10 @@ public class IpmsTargetsController : ControllerBase
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
         if (periodChangeError != null) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, periodChangeError));
+        if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
+            !string.Equals(entity.TargetName, request.TargetName.Trim(), StringComparison.Ordinal) ||
+            !string.Equals(entity.KpiDescription, request.KpiDescription.Trim(), StringComparison.Ordinal))
+            return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "KPI number, target name and KPI wording are governed originals. Record approved changes through the field-revision endpoint."));
 
         entity.SourceTemplateId = request.SourceTemplateId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
@@ -226,14 +238,11 @@ public class IpmsTargetsController : ControllerBase
         entity.UnitId = request.UnitId;
         entity.AssignedUserId = request.AssignedUserId;
         entity.SupervisorId = request.SupervisorId;
-        entity.IndicatorNumber = request.IndicatorNumber.Trim();
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
         entity.StrategicGoalId = request.StrategicGoalId;
         entity.StrategicObjectiveId = request.StrategicObjectiveId;
         entity.PerformanceObjective = request.PerformanceObjective;
-        entity.TargetName = request.TargetName.Trim();
-        entity.KpiDescription = request.KpiDescription.Trim();
         entity.Baseline = request.Baseline;
         entity.BudgetSourceId = request.BudgetSourceId;
         entity.BudgetTypeId = request.BudgetTypeId;
@@ -244,7 +253,6 @@ public class IpmsTargetsController : ControllerBase
         entity.FunctionalArea = request.FunctionalArea;
         entity.IdpReference = request.IdpReference;
         entity.InternalReference = request.InternalReference;
-        entity.IsRevised = request.IsRevised;
         entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
         await _context.SaveChangesAsync();
 
@@ -266,7 +274,7 @@ public class IpmsTargetsController : ControllerBase
         var entity = await _context.IpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.REVISE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
         if (!TrySetExpectedVersion(entity, request.RowVersion))
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A valid RowVersion is required."));
@@ -286,8 +294,65 @@ public class IpmsTargetsController : ControllerBase
         return Ok(new ApiResponse<IpmsTargetResponse>(true, after.ToResponse()));
     }
 
+    [HttpPut("{id}/field-revisions")]
+    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> ReviseDefinitionFields(string id, [FromBody] ReviseKpiDefinitionRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
+        var validation = ValidateDefinitionRevision(request);
+        if (validation != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, validation));
+
+        var entity = await _context.IpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
+        if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
+        if ((request.IsIndicatorNumberRevised && string.Equals(request.RevisedIndicatorNumber!.Trim(), entity.IndicatorNumber, StringComparison.Ordinal))
+            || (request.IsTargetNameRevised && string.Equals(request.RevisedTargetName!.Trim(), entity.TargetName, StringComparison.Ordinal))
+            || (request.IsKpiDescriptionRevised && string.Equals(request.RevisedKpiDescription!.Trim(), entity.KpiDescription, StringComparison.Ordinal)))
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Each flagged revised value must differ from its original value."));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.REVISE", BuildScope(entity));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
+        if (!TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A valid RowVersion is required."));
+
+        var revisedIndicator = request.IsIndicatorNumberRevised ? request.RevisedIndicatorNumber!.Trim() : null;
+        var revisedName = request.IsTargetNameRevised ? request.RevisedTargetName!.Trim() : null;
+        var revisedKpi = request.IsKpiDescriptionRevised ? request.RevisedKpiDescription!.Trim() : null;
+        var oldIndicator = entity.IsIndicatorNumberRevised ? entity.RevisedIndicatorNumber : entity.IndicatorNumber;
+        var oldName = entity.IsTargetNameRevised ? entity.RevisedTargetName : entity.TargetName;
+        var oldKpi = entity.IsKpiDescriptionRevised ? entity.RevisedKpiDescription : entity.KpiDescription;
+        var newIndicator = revisedIndicator ?? entity.IndicatorNumber;
+        var newName = revisedName ?? entity.TargetName;
+        var newKpi = revisedKpi ?? entity.KpiDescription;
+        if (oldIndicator == newIndicator && oldName == newName && oldKpi == newKpi)
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "At least one field-specific revision must change."));
+
+        AddDefinitionRevision(entity, nameof(entity.IndicatorNumber), oldIndicator, newIndicator, request, user.Id);
+        AddDefinitionRevision(entity, nameof(entity.TargetName), oldName, newName, request, user.Id);
+        AddDefinitionRevision(entity, nameof(entity.KpiDescription), oldKpi, newKpi, request, user.Id);
+        entity.IsIndicatorNumberRevised = request.IsIndicatorNumberRevised;
+        entity.RevisedIndicatorNumber = revisedIndicator;
+        entity.IsTargetNameRevised = request.IsTargetNameRevised;
+        entity.RevisedTargetName = revisedName;
+        entity.IsKpiDescriptionRevised = request.IsKpiDescriptionRevised;
+        entity.RevisedKpiDescription = revisedKpi;
+        entity.IsRevised = request.IsIndicatorNumberRevised || request.IsTargetNameRevised || request.IsKpiDescriptionRevised;
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "The KPI definition changed since it was loaded. Refresh and try again.")); }
+
+        var after = await FindTargetAsync(id) ?? entity;
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, after.ToResponse()));
+    }
+
     [HttpGet("{id}/ordering-revisions")]
     public async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetOrderingRevisions(string id)
+        => await GetRevisions(id, [nameof(IpmsTarget.OriginalOrderNumber), nameof(IpmsTarget.RevisedOrderNumber)]);
+
+    [HttpGet("{id}/field-revisions")]
+    public async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetFieldRevisions(string id)
+        => await GetRevisions(id, [nameof(IpmsTarget.IndicatorNumber), nameof(IpmsTarget.TargetName), nameof(IpmsTarget.KpiDescription)]);
+
+    private async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetRevisions(string id, string[] fieldNames)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<KpiFieldRevisionResponse[]>(false, null, "User not found"));
@@ -295,7 +360,7 @@ public class IpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<KpiFieldRevisionResponse[]>(false, null, "IPMS target not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.READ", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<KpiFieldRevisionResponse[]>(false, null, decision.Reason));
-        var rows = await _context.KpiFieldRevisions.AsNoTracking().Where(item => item.IpmsTargetId == entity.Id)
+        var rows = await _context.KpiFieldRevisions.AsNoTracking().Where(item => item.IpmsTargetId == entity.Id && fieldNames.Contains(item.FieldName))
             .OrderBy(item => item.RecordedAt).ThenBy(item => item.Id)
             .Select(item => new KpiFieldRevisionResponse(item.PublicId, item.FieldName, item.OriginalValue, item.RevisedValue, item.Reason, item.ApprovalReference, item.EffectiveAt, item.RevisedByUserId, item.RecordedAt)).ToArrayAsync();
         return Ok(new ApiResponse<KpiFieldRevisionResponse[]>(true, rows));
@@ -385,6 +450,36 @@ public class IpmsTargetsController : ControllerBase
             EffectiveAt = request.EffectiveAt,
             RevisedByUserId = userId
         });
+    }
+
+    private void AddDefinitionRevision(IpmsTarget entity, string fieldName, string? originalValue, string? revisedValue, ReviseKpiDefinitionRequest request, string userId)
+    {
+        if (string.Equals(originalValue, revisedValue, StringComparison.Ordinal)) return;
+        _context.KpiFieldRevisions.Add(new KpiFieldRevision
+        {
+            MunicipalityId = entity.MunicipalityId!.Value,
+            IpmsTargetId = entity.Id,
+            FieldName = fieldName,
+            OriginalValue = originalValue,
+            RevisedValue = revisedValue,
+            Reason = request.Reason.Trim(),
+            ApprovalReference = request.ApprovalReference.Trim(),
+            EffectiveAt = request.EffectiveAt,
+            RevisedByUserId = userId
+        });
+    }
+
+    private static string? ValidateDefinitionRevision(ReviseKpiDefinitionRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 2000 || string.IsNullOrWhiteSpace(request.ApprovalReference) || request.ApprovalReference.Trim().Length > 500 || request.EffectiveAt == default)
+            return "Reason, approval reference and effective date are required.";
+        if (request.IsIndicatorNumberRevised && (string.IsNullOrWhiteSpace(request.RevisedIndicatorNumber) || request.RevisedIndicatorNumber.Trim().Length > 100))
+            return "A revised KPI number of at most 100 characters is required when its revision flag is active.";
+        if (request.IsTargetNameRevised && (string.IsNullOrWhiteSpace(request.RevisedTargetName) || request.RevisedTargetName.Trim().Length > 1000))
+            return "A revised target name of at most 1000 characters is required when its revision flag is active.";
+        if (request.IsKpiDescriptionRevised && (string.IsNullOrWhiteSpace(request.RevisedKpiDescription) || request.RevisedKpiDescription.Trim().Length > 2000))
+            return "Revised KPI wording of at most 2000 characters is required when its revision flag is active.";
+        return null;
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()

@@ -86,7 +86,14 @@ public class IpmsSubmissionsController : ControllerBase
         if (request.TargetPublicId.HasValue)
             query = query.Where(item => item.IpmsTarget.PublicId == request.TargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.IpmsTarget.TargetName.Contains(request.NormalizedSearch) || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
+            query = query.Where(item =>
+                item.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
+                || item.IpmsTarget.TargetName.Contains(request.NormalizedSearch)
+                || (item.ReportingPeriod != null
+                    && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                    && ((item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null && item.IpmsTarget.RevisedIndicatorNumber.Contains(request.NormalizedSearch))
+                        || (item.IpmsTarget.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null && item.IpmsTarget.RevisedTargetName.Contains(request.NormalizedSearch))))
+                || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
 
         var totalCount = await query.CountAsync();
         query = ApplySubmissionOrdering(query, request.NormalizedSortBy, request.Descending);
@@ -109,8 +116,12 @@ public class IpmsSubmissionsController : ControllerBase
             ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.PublicId),
             ("quarter", false) => query.OrderBy(item => item.Quarter).ThenBy(item => item.PublicId),
             ("quarter", true) => query.OrderByDescending(item => item.Quarter).ThenBy(item => item.PublicId),
-            ("indicatornumber", false) => query.OrderBy(item => item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
-            ("indicatornumber", true) => query.OrderByDescending(item => item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", false) => query.OrderBy(item => item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };

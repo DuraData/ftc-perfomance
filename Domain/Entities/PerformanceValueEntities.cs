@@ -13,7 +13,12 @@ public class PerformancePeriodTarget
     public PerformanceUnitKind UnitKind { get; set; }
     public PerformanceDirection Direction { get; set; } = PerformanceDirection.HigherIsBetter;
     public string TargetValue { get; set; } = string.Empty;
+    public bool IsTargetRevised { get; set; }
+    public string? RevisedTargetValue { get; set; }
+    public PerformanceUnitKind? RevisedUnitKind { get; set; }
     public decimal? BudgetValue { get; set; }
+    public bool IsBudgetRevised { get; set; }
+    public decimal? RevisedBudgetValue { get; set; }
     public string? Description { get; set; }
     public bool IsSystemDerivedTarget { get; set; }
     public string? DerivedFromPeriods { get; set; }

@@ -17,6 +17,7 @@ describe('canonical performance target contract', () => {
     const rows = canonicalSaveRows([{
       publicId: 'target-value', reportingPeriodPublicId: 'period', periodCode: 'Q1', periodType: 1,
       unitKind: 8, direction: 1, targetValue: '2:1', budgetValue: 10, description: 'Ratio', isActive: true, rowVersion: 'AQ==',
+      originalUnitKind: 8, originalTargetValue: '2:1', originalBudgetValue: 10, isTargetRevised: false, isBudgetRevised: false,
     }]);
     expect(rows).toEqual([{ periodType: 1, unitKind: 8, direction: 1, targetValue: '2:1', budgetValue: 10, description: 'Ratio' }]);
     expect(performanceUnitValue(8)).toBe('Ratios');

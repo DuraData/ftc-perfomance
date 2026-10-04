@@ -37,7 +37,7 @@ public sealed class SubmissionValueService(ApplicationDbContext context, IPerfor
             .FirstOrDefaultAsync()
             ?? throw new InvalidOperationException("The reporting period is not configured for the selected municipality.");
 
-        var target = await targetFilter(context.PerformancePeriodTargets)
+        var target = await targetFilter(context.PerformancePeriodTargets.Include(item => item.ReportingPeriod))
             .SingleOrDefaultAsync(item => item.ReportingPeriodId == period.Id && item.IsActive)
             ?? throw new InvalidOperationException("An authoritative KPI target value is not configured for this reporting period.");
 
@@ -45,7 +45,11 @@ public sealed class SubmissionValueService(ApplicationDbContext context, IPerfor
             ? actualPerformance
             : legacyActual?.ToString(CultureInfo.InvariantCulture);
         if (string.IsNullOrWhiteSpace(input)) return new(period, target, null);
-        return new(period, target, unitEngine.Calculate(target.UnitKind, target.TargetValue, input, target.Direction));
+        return new(period, target, unitEngine.Calculate(
+            PerformanceRevisionResolver.EffectiveUnitKind(target),
+            PerformanceRevisionResolver.EffectiveTargetValue(target),
+            input,
+            target.Direction));
     }
 
     private static string NormalizePeriodCode(string value)

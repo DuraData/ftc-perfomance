@@ -86,13 +86,21 @@ public class OpmsSubmissionsController : ControllerBase
         if (request.TargetPublicId.HasValue)
             query = query.Where(item => item.OpmsTarget.PublicId == request.TargetPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.OpmsTarget.TargetName.Contains(request.NormalizedSearch) || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
+            query = query.Where(item =>
+                item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
+                || item.OpmsTarget.TargetName.Contains(request.NormalizedSearch)
+                || (item.ReportingPeriod != null
+                    && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                    && ((item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null && item.OpmsTarget.RevisedIndicatorNumber.Contains(request.NormalizedSearch))
+                        || (item.OpmsTarget.IsTargetNameRevised && item.OpmsTarget.RevisedTargetName != null && item.OpmsTarget.RevisedTargetName.Contains(request.NormalizedSearch))))
+                || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
 
         var totalCount = await query.CountAsync();
         query = ApplySubmissionOrdering(query, request.NormalizedSortBy, request.Descending);
         var items = await query.Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Department)
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Unit)
+            .Include(item => item.ReportingPeriod)
             .Include(item => item.SubmittedByUser)
             .AsSplitQuery().ToListAsync();
         var memberPermissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -109,8 +117,12 @@ public class OpmsSubmissionsController : ControllerBase
             ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.PublicId),
             ("quarter", false) => query.OrderBy(item => item.Quarter).ThenBy(item => item.PublicId),
             ("quarter", true) => query.OrderByDescending(item => item.Quarter).ThenBy(item => item.PublicId),
-            ("indicatornumber", false) => query.OrderBy(item => item.OpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
-            ("indicatornumber", true) => query.OrderByDescending(item => item.OpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", false) => query.OrderBy(item => item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };

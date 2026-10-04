@@ -296,7 +296,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-19 | UOM display-only distinction | **COMPLIANT** | Display UOM remains separate from the executable period PerformanceUnitKind in domain, API and UI | Preserve during legacy cutover. |
 | R-20 | Full unit validation/calculation engine | **COMPLIANT** | Central server engine parses, normalizes, compares and formats the complete unit catalogue with boundary tests | Validate production data during backfill. |
 | R-21 | Ratio 2-4 segment rule | **COMPLIANT** | Ratios require 2-4 non-negative segments and persist canonical colon-delimited values | Preserve during import/backfill. |
-| R-22 | Field-specific revisions | **PARTIALLY COMPLIANT** | Canonical target revisions preserve field/original/new/reason/approval/effective/actor evidence | Extend equivalent revision ledgers to remaining governed legacy mutable fields. |
+| R-22 | Field-specific revisions | **COMPLIANT** | KPI number, target name, KPI wording, period target/unit, applicable budget and ordering each retain independent original/revised state; dedicated scoped actions append immutable reason/approval/effective/actor history with RowVersion protection, and period-aware consumers select originals for Q1/Q2/Mid-Term and flagged revisions for Q3/Q4/Annual | Execute the native SQL Server migration/concurrency acceptance required by area 31. |
 | R-23 | One logical KPI-period submission | **COMPLIANT** | Filtered unique keys enforce one OPMS/IPMS submission per KPI/period and repeated POST returns the logical record | Rehearse duplicate reconciliation on SQL Server. |
 | R-24 | Base submission state model | **COMPLIANT** | OPMS/IPMS submissions now persist a constrained `IN_PROGRESS`/`SUBMITTED` base state separately from configured workflow stages; the migration reconciles legacy rows | Retire the remaining display-status compatibility projection after downstream consumers migrate. |
 | R-25 | One authoritative ActualPerformance | **PARTIALLY COMPLIANT** | Current writes canonicalize ActualPerformance against the period unit; legacy actual columns remain mapped | Complete backfill and compatibility retirement. |
@@ -337,13 +337,13 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 |---|---|---|---|---|
 | **P0** | Previously exposed credentials require owner action | Historic values may remain valid even though the current tree is clean | R-13 and section 11.53 | Rotate every exposed credential/signing secret, verify revocation, and purge repository history only under an approved coordinated procedure. |
 | **P0** | Native SQL Server acceptance has not run | SQLite cannot prove SQL Server `rowversion`, filtered indexes, migration/backfill SQL, constraint behavior or restore procedures | One native integration test is intentionally skipped; sections 11.42 and 11.51 | Apply the idempotent migrations to a positively identified local/test SQL Server database, run the native suite, and retain recovery-drill evidence. |
-| **P0** | Legacy data cutover/reconciliation is incomplete | Nullable tenant keys, wide targets, free-text periods, old actual/status/score fields and duplicate historic rows can block final constraints or produce ambiguous history | R-01, R-04, R-16-R-18, R-22, R-24-R-25, R-27, R-31, R-33 | Execute repeatable reconciliation with exception reports and business-owner sign-off before retiring compatibility fields/fallbacks. |
+| **P0** | Legacy data cutover/reconciliation is incomplete | Nullable tenant keys, wide targets, free-text periods, old actual/status/score fields and duplicate historic rows can block final constraints or produce ambiguous history | R-01, R-04, R-16-R-18, R-24-R-25, R-27, R-31, R-33 | Execute repeatable reconciliation with exception reports and business-owner sign-off before retiring compatibility fields/fallbacks. |
 | **P1** | Production enterprise federation is not deployment-certified | Repository provider registration and governed linking exist, but real tenant metadata, redirect URIs, conditional access, claim mappings and revocation have not been accepted | R-09 | Provision approved provider secrets/registrations and execute deployed Entra ID/AD federation and hybrid fallback acceptance. |
 | **P1** | Collection APIs are not uniformly bounded | Large tenants can still cause high memory/latency on secondary/fixed-limit endpoints | R-45; primary registers and every production target selector use page contracts, dashboards use aggregates, and workflow queues page a combined scoped query; secondary collections remain | Migrate remaining secondary collections to bounded purpose-specific contracts. |
 | **P1** | Production integrations and operational evidence are absent | Scanner/storage/email/password-breach readiness, metrics, paging, backup and restore behavior are not deployment-certified | R-40, R-50, R-52-R-54 | Provision providers/collectors, dashboards and schedules; rehearse failure, replay, alert and recovery procedures. |
 | **P1** | End-to-end UAT and accessibility certification remain | Unit/component/controller tests do not prove deployed browser workflows, representative roles or assistive technology | R-54-R-55 | Execute role/tenant workflow matrices, direct-API denial, keyboard/screen-reader/contrast/zoom tests and formal acceptance sign-off. |
 | **P2** | Notification/report breadth is incomplete | SMS, reminders/escalations, scheduled distribution and some analytical/oversight/evidence report families remain unavailable; official performance CSV/XLSX/DOCX/PDF generation is governed | R-40-R-41 and section 11.68 | Implement only municipality-approved channels, schedules and remaining governed report jobs. |
-| **P2** | Member/revision/concurrency coverage is not universal | Secondary modules may not expose the same field-level controls, revision depth and stable PublicId/RowVersion behavior | R-08, R-22, R-43 | Complete the registry/member catalogue, revision coverage and PublicId/RowVersion conventions across remaining secondary entities. |
+| **P2** | Member/concurrency coverage is not universal | Secondary modules may not expose the same field-level controls and stable PublicId/RowVersion behavior | R-08, R-43 | Complete the registry/member catalogue and PublicId/RowVersion conventions across remaining secondary entities. |
 | **P3** | Representative load/index evidence is absent | Capacity and slow-query risk remain unknown despite client bundle improvement | Section 11.52 | Establish browser/API load baselines against SQL Server, capture query plans and tune indexes from measured workloads. |
 
 ## 8. Migration impact assessment
@@ -1413,11 +1413,27 @@ The V3.9 SDBIP sequencing rule is now persisted and enforced rather than inferre
 
 The complete suites pass **326 backend tests**, with one environment-gated SQL Server test skipped, and **157/157 frontend tests across 49 files**. TypeScript, ESLint, the Release/backend and production/frontend builds, model consistency and idempotent SQL generation pass. Area 10 remains **PARTIALLY COMPLIANT** only because equivalent field-specific governed revision ledgers are not yet complete for every independently revisable KPI metadata field; the period-based ordering requirement itself is repository-complete.
 
+### 11.82 Independent KPI-definition and period-value revisions
+
+The remaining repository-level V3.9 revision gap is closed without reusing the ambiguous generic `IsRevised` switch:
+
+- OPMS and IPMS KPIs persist independent flags and revised values for KPI number, target name and KPI wording while retaining each original. Canonical period rows independently persist revised target/unit and revised applicable budget state.
+- A central resolver applies originals to Q1, Q2 and Mid-Term and only independently flagged values to Q3, Q4 and Annual. Registers, selectors, submission pages, workflow queues, consolidation calculations, transient exports and immutable official report generation use the same period-aware rule.
+- General KPI edits cannot overwrite original KPI number/name/wording or canonical period values. Dedicated OPMS/IPMS revision endpoints require the dynamic `*.REVISE` action, record external approval metadata, apply tenant/record scope, reject meaningless revised-equals-original values, protect writes with RowVersion and append immutable field history. Ordering and definition histories are returned separately.
+- Q1/Q2/Mid-Term target/unit/budget revision flags are rejected server-side. Late-period target and budget flags remain independent, original values are never overwritten, and removing a flag returns the effective value to its original through another auditable revision event.
+- The KPI detail UI exposes the independent controls only when the effective revision action is granted, clearly explains the period rule, preserves original/revised display and shows immutable approval history. Hidden controls do not replace server authorization.
+- Additive migration `20261004144941_V39FieldSpecificKpiRevisions` introduces only bounded nullable revised values and false-default flags; it does not manufacture revision history or overwrite administrator data.
+- Relational tests prove independent OPMS/IPMS field persistence, filtered immutable history, stale-writer rejection and early/late resolution. Component tests prove the independently flagged payload, action-driven UI and history experience.
+
+With full-suite verification recorded below, R-22 and assessment area 10 are **COMPLIANT** at repository level. Native SQL Server application and concurrency evidence remains explicitly isolated under area 31 rather than inferred from SQLite.
+
+The complete suites pass **330 backend tests**, with one environment-gated SQL Server test skipped, and **158/158 frontend tests across 50 files**. TypeScript, ESLint, the Release/backend and production/frontend builds, bundle budget, model consistency and idempotent SQL generation pass.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
 
-- clean and upgrade application of every committed migration, including `20261002204550_V39CanonicalSubmissionBaseState`, its legacy-state backfill, `20261003145227_V39InternalAuditAssessmentModels`, `20261003152131_V39OfficialReportGeneration`, `20261003160701_V39NotificationPoliciesAndScheduling`, `20261003161402_V39NotificationPreferences`, `20261003170339_V39CanonicalActualPerformanceCutover`, `20261003230747_V39TenantScopedPagedAudit` and `20261004031802_V39PeriodBasedKpiOrdering`;
+- clean and upgrade application of every committed migration, including `20261002204550_V39CanonicalSubmissionBaseState`, its legacy-state backfill, `20261003145227_V39InternalAuditAssessmentModels`, `20261003152131_V39OfficialReportGeneration`, `20261003160701_V39NotificationPoliciesAndScheduling`, `20261003161402_V39NotificationPreferences`, `20261003170339_V39CanonicalActualPerformanceCutover`, `20261003230747_V39TenantScopedPagedAudit`, `20261004031802_V39PeriodBasedKpiOrdering` and `20261004144941_V39FieldSpecificKpiRevisions`;
 - native generated `rowversion`, stale-writer conflicts and all filtered/unique/check indexes;
 - decimal precision, UTC/date behavior, restricted cascades and workflow/audit transaction rollback;
 - tenant/security query plans, bounded register load behavior, locking and concurrency under representative volume;
@@ -1451,7 +1467,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 7 | Canonical target value and actual performance | Partially Compliant | Submission persistence/contracts use only canonical `ActualPerformance`, with legacy values losslessly archived before the competing columns are removed. Target save/response contracts now likewise use only canonical typed period rows, including non-numeric and period-specific units. Historic target reconciliation and physical legacy-column retirement remain deployment cutover work. |
 | 8 | Dynamic unit, variance and performance engine | Compliant | Configurable unit/calculation handling and automated engine coverage are present. |
 | 9 | Mid-term and annual consolidation suggestions and history | Compliant | The central engine implements all nine calculation types and fail-closed unit/missing-value behavior. OPMS/IPMS APIs generate from exact submitted source quarters, preserve suggested versus final values, require reasons for edits, recalculate metrics and append generated/accepted/edited history; member permissions protect direct calls and the SPA exposes the governed workflow. |
-| 10 | Target revisions, ordering and withdrawal | Partially Compliant | Independent original/revised order values, period-effective register/report ordering, governed RowVersion-protected resequencing, field-specific immutable history and withdrawal are implemented and tested end to end. Equivalent field-specific governed revision coverage is not yet complete for every independently revisable KPI metadata field. |
+| 10 | Target revisions, ordering and withdrawal | Compliant | KPI number, target name, KPI wording, period target/unit, applicable budget and ordering retain independent original/revised state; Q1/Q2/Mid-Term versus Q3/Q4/Annual resolution, governed scoped revision actions, RowVersion, immutable field history and withdrawal are implemented and tested end to end. |
 | 11 | Canonical submission identity and base state | Compliant | Constrained `IN_PROGRESS`/`SUBMITTED` base state, migration backfill and regression tests are present. |
 | 12 | Configurable workflow, ledger and optional verifier | Compliant | Effective tenant/year/type workflows, fail-closed behavior and append-only transition evidence are implemented and tested. |
 | 13 | Two configurable Internal Audit assessment models | Compliant | Detailed IA and exact two-field Satisfactory/Not Satisfactory models now have versioned tenant/year selection, model-specific validation/UI, scoped IA RFI generation, workflow actions, audit and immutable reassessment history. |
@@ -1477,8 +1493,8 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 **Final counts (32 assessed areas):**
 
-- Compliant: **14**
-- Partially Compliant: **15**
+- Compliant: **15**
+- Partially Compliant: **14**
 - Non-Compliant: **0**
 - Not Implemented: **0**
 - Not Verifiable: **3**
@@ -1525,6 +1541,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced broad legacy user-administration authority with tenant-scoped dynamic resource/action checks, protected user email/phone member reads and writes, audited mutations, cross-tenant role/scope guards and capability-driven SPA controls.
 - Retired legacy role and permission-definition mutation endpoints with HTTP 410, tenant-scoped their compatibility reads, and routed old administration pages to the audited RowVersion-protected security workspace.
 - Implemented V3.9 original/revised KPI sequence persistence, deterministic historic backfill, Q1/Q2/Mid-Term versus Q3/Q4/Annual effective ordering in registers and reports, governed RowVersion-protected resequencing and immutable field-level history with production UI/tests.
+- Implemented independent original/revised KPI number, target name, KPI wording, period target/unit and applicable-budget state with external-approval history, dedicated dynamic revision actions and consistent period-aware resolution across capture, queues, calculations and reports.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
 
@@ -1532,16 +1549,16 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 326; Failed: 0; Skipped: 1; Total: 327.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 157/157 across 49 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
+| Backend test suite | **Passed: 330; Failed: 0; Skipped: 1; Total: 331.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 158/158 across 50 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
-| Frontend production build | Passed under Vite 8; 2,095 modules transformed. |
+| Frontend production build | Passed under Vite 8; 2,097 modules transformed. |
 | Bundle budget | Passed with 69 JavaScript chunks; largest chunk 383.0 KiB. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
-| SQL Server migration artifact | Idempotent migration script generation passed at **471,063 bytes** and includes the notification policy, canonical-actual archive/backfill/drop, tenant-scoped login-audit ownership and period-based KPI-ordering migrations. Inspection confirms `OriginalOrderNumber`/`RevisedOrderNumber` default to 1, deterministic `ROW_NUMBER` backfill precedes positive-value constraints, and the immutable `KpiFieldRevisions` table is present. This proves generation only, not native application. |
+| SQL Server migration artifact | Idempotent migration script generation passed at **475,495 bytes** and includes the notification policy, canonical-actual archive/backfill/drop, tenant-scoped login-audit ownership, period-based KPI ordering and field-specific KPI revision migrations. Inspection confirms deterministic ordering backfill, immutable `KpiFieldRevisions`, bounded revised text values, nullable revised target/unit/budget values and false-default independent flags. This proves generation only, not native application. |
 | Diff hygiene | `git diff --check` passed; line-ending conversion warnings are informational and no whitespace errors were reported. |
 
 No complete browser E2E suite, native SQL Server execution, representative load test, penetration test, backup/restore exercise or formal UAT was available; none is inferred from the passing repository suites.

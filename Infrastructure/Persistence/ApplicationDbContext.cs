@@ -243,7 +243,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<PerformancePeriodTarget>().HasIndex(item => new { item.OpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[OpmsTargetId] IS NOT NULL");
         builder.Entity<PerformancePeriodTarget>().HasIndex(item => new { item.IpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[IpmsTargetId] IS NOT NULL");
         builder.Entity<PerformancePeriodTarget>().Property(item => item.TargetValue).HasMaxLength(1024);
+        builder.Entity<PerformancePeriodTarget>().Property(item => item.RevisedTargetValue).HasMaxLength(1024);
         builder.Entity<PerformancePeriodTarget>().Property(item => item.BudgetValue).HasPrecision(18, 2);
+        builder.Entity<PerformancePeriodTarget>().Property(item => item.RevisedBudgetValue).HasPrecision(18, 2);
         ConfigureRowVersion(builder.Entity<PerformancePeriodTarget>().Property(item => item.RowVersion));
         builder.Entity<PerformancePeriodTarget>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<PerformancePeriodTarget>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
@@ -253,6 +255,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<PerformancePeriodTarget>().ToTable(table => table.HasCheckConstraint("CK_PerformancePeriodTargets_OneKpi", "CASE WHEN [OpmsTargetId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsTargetId] IS NULL THEN 0 ELSE 1 END = 1"));
         builder.Entity<OpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.OriginalOrderNumber });
         builder.Entity<OpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.RevisedOrderNumber });
+        builder.Entity<OpmsTarget>().Property(item => item.RevisedIndicatorNumber).HasMaxLength(100);
+        builder.Entity<OpmsTarget>().Property(item => item.RevisedTargetName).HasMaxLength(500);
+        builder.Entity<OpmsTarget>().Property(item => item.RevisedKpiDescription).HasMaxLength(2000);
         builder.Entity<OpmsTarget>().ToTable(table =>
         {
             table.HasCheckConstraint("CK_OpmsTargets_OriginalOrderNumber", "[OriginalOrderNumber] > 0");
@@ -260,6 +265,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         });
         builder.Entity<IpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.OriginalOrderNumber });
         builder.Entity<IpmsTarget>().HasIndex(item => new { item.MunicipalityId, item.RevisedOrderNumber });
+        builder.Entity<IpmsTarget>().Property(item => item.RevisedIndicatorNumber).HasMaxLength(100);
+        builder.Entity<IpmsTarget>().Property(item => item.RevisedTargetName).HasMaxLength(500);
+        builder.Entity<IpmsTarget>().Property(item => item.RevisedKpiDescription).HasMaxLength(2000);
         builder.Entity<IpmsTarget>().ToTable(table =>
         {
             table.HasCheckConstraint("CK_IpmsTargets_OriginalOrderNumber", "[OriginalOrderNumber] > 0");

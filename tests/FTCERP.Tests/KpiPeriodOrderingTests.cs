@@ -16,6 +16,167 @@ namespace FTCERP.Tests;
 public sealed class KpiPeriodOrderingTests
 {
     [Fact]
+    public async Task Definition_revision_is_independent_filtered_append_only_and_rowversion_protected()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "FIELD-A", Name = "Field revision municipality" };
+        var user = IdpTestFixture.CreateUser("field-revision-user");
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        var target = Target("field-target", municipality.Id, "KPI-ORIGINAL", 1, 1);
+        target.TargetName = "Original target";
+        target.KpiDescription = "Original wording";
+        context.OpmsTargets.Add(target);
+        await context.SaveChangesAsync();
+        var staleVersion = Convert.ToBase64String(target.RowVersion);
+        var controller = OpmsController(context, municipality.Id, user);
+
+        var result = await controller.ReviseDefinitionFields(target.Id, new ReviseKpiDefinitionRequest(
+            true, "KPI-REVISED", false, null, false, null,
+            "Externally approved KPI number", "COUNCIL-FIELD-1", new DateTime(2026, 10, 3), staleVersion));
+
+        var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.Equal("KPI-ORIGINAL", response.IndicatorNumber);
+        Assert.True(response.IsIndicatorNumberRevised);
+        Assert.Equal("KPI-REVISED", response.RevisedIndicatorNumber);
+        Assert.False(response.IsTargetNameRevised);
+        Assert.False(response.IsKpiDescriptionRevised);
+        var revision = Assert.Single(await context.KpiFieldRevisions.ToArrayAsync());
+        Assert.Equal(nameof(OpmsTarget.IndicatorNumber), revision.FieldName);
+        Assert.Equal("KPI-ORIGINAL", revision.OriginalValue);
+        Assert.Equal("KPI-REVISED", revision.RevisedValue);
+
+        var fieldHistory = Assert.IsType<ApiResponse<KpiFieldRevisionResponse[]>>(Assert.IsType<OkObjectResult>((await controller.GetFieldRevisions(target.Id)).Result).Value).Data!;
+        Assert.Single(fieldHistory);
+        var orderingHistory = Assert.IsType<ApiResponse<KpiFieldRevisionResponse[]>>(Assert.IsType<OkObjectResult>((await controller.GetOrderingRevisions(target.Id)).Result).Value).Data!;
+        Assert.Empty(orderingHistory);
+
+        revision.Reason = "Rewritten";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        context.ChangeTracker.Clear();
+        var stale = await controller.ReviseDefinitionFields(target.Id, new ReviseKpiDefinitionRequest(
+            false, null, true, "Revised name", false, null,
+            "Second approved field", "COUNCIL-FIELD-2", new DateTime(2026, 10, 4), staleVersion));
+        Assert.IsType<ConflictObjectResult>(stale.Result);
+        Assert.Equal(1, await context.KpiFieldRevisions.CountAsync());
+    }
+
+    [Fact]
+    public async Task Ipms_definition_revision_persists_only_the_independently_flagged_field()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "FIELD-IPMS", Name = "IPMS field revision" };
+        var user = IdpTestFixture.CreateUser("ipms-field-user");
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        var target = new IpmsTarget
+        {
+            Id = "ipms-field-target", MunicipalityId = municipality.Id, IndicatorNumber = "I-1",
+            TargetName = "Original name", KpiDescription = "Original wording", AnnualTargetDescription = "Annual"
+        };
+        context.IpmsTargets.Add(target);
+        await context.SaveChangesAsync();
+        var controller = IpmsController(context, municipality.Id, user);
+
+        var result = await controller.ReviseDefinitionFields(target.Id, new ReviseKpiDefinitionRequest(
+            false, null, false, null, true, "Revised individual wording",
+            "Approved individual revision", "IPMS-FIELD-1", new DateTime(2026, 10, 3), Convert.ToBase64String(target.RowVersion)));
+
+        var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.True(response.IsKpiDescriptionRevised);
+        Assert.Equal("Revised individual wording", response.RevisedKpiDescription);
+        Assert.False(response.IsIndicatorNumberRevised);
+        Assert.False(response.IsTargetNameRevised);
+        var revision = Assert.Single(await context.KpiFieldRevisions.ToArrayAsync());
+        Assert.Equal(nameof(IpmsTarget.KpiDescription), revision.FieldName);
+        Assert.Equal(target.Id, revision.IpmsTargetId);
+    }
+
+    [Fact]
+    public void Effective_values_use_each_flag_independently_and_only_in_late_periods()
+    {
+        var target = Target("effective-fields", 1, "KPI-ORIGINAL", 1, 2);
+        target.TargetName = "Original name";
+        target.KpiDescription = "Original wording";
+        target.IsIndicatorNumberRevised = true;
+        target.RevisedIndicatorNumber = "KPI-REVISED";
+        target.IsTargetNameRevised = false;
+        target.RevisedTargetName = "Ignored revised name";
+        target.IsKpiDescriptionRevised = true;
+        target.RevisedKpiDescription = "Revised wording";
+        var q1 = new PerformancePeriodTarget
+        {
+            ReportingPeriod = new ReportingPeriod { PeriodType = ReportingPeriodType.Quarter1 },
+            UnitKind = PerformanceUnitKind.AbsoluteCount, TargetValue = "10", BudgetValue = 100,
+            IsTargetRevised = true, RevisedUnitKind = PerformanceUnitKind.PercentageBased, RevisedTargetValue = "75",
+            IsBudgetRevised = true, RevisedBudgetValue = 250
+        };
+        var annual = new PerformancePeriodTarget
+        {
+            ReportingPeriod = new ReportingPeriod { PeriodType = ReportingPeriodType.Annual },
+            UnitKind = q1.UnitKind, TargetValue = q1.TargetValue, BudgetValue = q1.BudgetValue,
+            IsTargetRevised = true, RevisedUnitKind = q1.RevisedUnitKind, RevisedTargetValue = q1.RevisedTargetValue,
+            IsBudgetRevised = true, RevisedBudgetValue = q1.RevisedBudgetValue
+        };
+
+        Assert.Equal("KPI-ORIGINAL", PerformanceRevisionResolver.EffectiveIndicatorNumber(target, ReportingPeriodType.Quarter1));
+        Assert.Equal("KPI-REVISED", PerformanceRevisionResolver.EffectiveIndicatorNumber(target, ReportingPeriodType.Annual));
+        Assert.Equal("Original name", PerformanceRevisionResolver.EffectiveTargetName(target, ReportingPeriodType.Annual));
+        Assert.Equal("Revised wording", PerformanceRevisionResolver.EffectiveKpiDescription(target, ReportingPeriodType.Annual));
+        Assert.Equal("10", PerformanceRevisionResolver.EffectiveTargetValue(q1));
+        Assert.Equal(PerformanceUnitKind.AbsoluteCount, PerformanceRevisionResolver.EffectiveUnitKind(q1));
+        Assert.Equal(100, PerformanceRevisionResolver.EffectiveBudgetValue(q1));
+        Assert.Equal("75", PerformanceRevisionResolver.EffectiveTargetValue(annual));
+        Assert.Equal(PerformanceUnitKind.PercentageBased, PerformanceRevisionResolver.EffectiveUnitKind(annual));
+        Assert.Equal(250, PerformanceRevisionResolver.EffectiveBudgetValue(annual));
+    }
+
+    [Fact]
+    public async Task Period_revision_preserves_originals_and_rejects_revised_values_for_early_periods()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "FIELD-PERIOD", Name = "Period revision" };
+        var user = IdpTestFixture.CreateUser("period-field-user");
+        var year = new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new(2026, 7, 1), EndDate = new(2027, 6, 30), IsActive = true };
+        context.AddRange(municipality, user, year);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = year.Id, IsCurrent = true, IsActive = true, EffectiveFrom = year.StartDate };
+        context.Add(municipalityYear);
+        await context.SaveChangesAsync();
+        var q1 = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = year.StartDate, EndDate = new(2026, 9, 30), IsActive = true };
+        var annual = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANN", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
+        var target = Target("period-field-target", municipality.Id, "PERIOD-1", 1, 1);
+        context.AddRange(q1, annual, target);
+        await context.SaveChangesAsync();
+        var q1Value = new PerformancePeriodTarget { MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = target.Id, UnitKind = PerformanceUnitKind.AbsoluteCount, Direction = PerformanceDirection.HigherIsBetter, TargetValue = "10", BudgetValue = 100, CreatedByUserId = user.Id };
+        var annualValue = new PerformancePeriodTarget { MunicipalityId = municipality.Id, ReportingPeriodId = annual.Id, OpmsTargetId = target.Id, UnitKind = PerformanceUnitKind.AbsoluteCount, Direction = PerformanceDirection.HigherIsBetter, TargetValue = "40", BudgetValue = 400, CreatedByUserId = user.Id };
+        context.AddRange(q1Value, annualValue);
+        await context.SaveChangesAsync();
+        var controller = PeriodController(context, municipality.Id, user);
+
+        var early = await controller.Revise(q1Value.PublicId, new RevisePerformancePeriodTargetRequest(
+            PerformanceUnitKind.PercentageBased, PerformanceDirection.HigherIsBetter, "75", 150, null, true,
+            "Not applicable early", "EARLY-1", new DateTime(2026, 10, 4), Convert.ToBase64String(q1Value.RowVersion)));
+        Assert.IsType<BadRequestObjectResult>(early.Result);
+
+        var late = await controller.Revise(annualValue.PublicId, new RevisePerformancePeriodTargetRequest(
+            PerformanceUnitKind.PercentageBased, PerformanceDirection.HigherIsBetter, "75", 500, "Approved annual revision", true,
+            "Approved annual target and budget", "ANNUAL-1", new DateTime(2026, 10, 4), Convert.ToBase64String(annualValue.RowVersion)));
+        var response = Assert.IsType<ApiResponse<PerformancePeriodTargetDto>>(Assert.IsType<OkObjectResult>(late.Result).Value).Data!;
+
+        Assert.Equal("40", response.OriginalTargetValue);
+        Assert.Equal(PerformanceUnitKind.AbsoluteCount, response.OriginalUnitKind);
+        Assert.Equal(400, response.OriginalBudgetValue);
+        Assert.Equal("75", response.TargetValue);
+        Assert.Equal(PerformanceUnitKind.PercentageBased, response.UnitKind);
+        Assert.Equal(500, response.BudgetValue);
+        Assert.True(response.IsTargetRevised);
+        Assert.True(response.IsBudgetRevised);
+        Assert.Contains(await context.PerformanceTargetRevisions.ToArrayAsync(), item => item.FieldName == nameof(PerformancePeriodTarget.RevisedTargetValue));
+        Assert.Contains(await context.PerformanceTargetRevisions.ToArrayAsync(), item => item.FieldName == nameof(PerformancePeriodTarget.RevisedBudgetValue));
+    }
+
+    [Fact]
     public async Task Ordering_revision_is_field_specific_audited_append_only_and_rowversion_protected()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -259,6 +420,17 @@ public sealed class KpiPeriodOrderingTests
         var governance = new Mock<IWorkflowGovernanceService>();
         governance.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>())).Returns(Task.CompletedTask);
         return new IpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance.Object, new TenantContext(municipalityId, user.Id), new PerformanceUnitEngine())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+    }
+
+    private static PerformancePeriodTargetsController PeriodController(ApplicationDbContext context, long municipalityId, ApplicationUser user)
+    {
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+        return new PerformancePeriodTargetsController(context, new TenantContext(municipalityId, user.Id), new PerformanceUnitEngine(), access.Object, IdpTestFixture.CreateUserManagerMock(user).Object)
         {
             ControllerContext = ControllerContext(user.Id)
         };

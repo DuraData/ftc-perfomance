@@ -6,6 +6,7 @@ using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Application.Reporting;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -226,17 +227,28 @@ public sealed class OfficialReportsController(
 
     private async Task<List<OfficialPerformanceReportRow>> BuildRows(SubmissionKind kind, ReportingPeriod period, AccessQueryScopeResult scope)
     {
+        var useRevised = PerformanceRevisionResolver.UsesRevisedValues(period.PeriodType);
         if (kind == SubmissionKind.Opms)
         {
             var targetQuery = ApplyScope(context.PerformancePeriodTargets.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id && item.OpmsTargetId != null), scope, true);
             var submissionQuery = ApplyScope(context.OpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
-            var targets = await targetQuery.Select(item => new TargetProjection(item.OpmsTargetId!, item.OpmsTarget!.IndicatorNumber, item.OpmsTarget.TargetName, item.OpmsTarget.Department != null ? item.OpmsTarget.Department.Name : "", item.OpmsTarget.Unit != null ? item.OpmsTarget.Unit.Name : "", item.TargetValue, item.OpmsTarget.IsWithdrawn)).ToArrayAsync();
+            var targets = await targetQuery.Select(item => new TargetProjection(item.OpmsTargetId!,
+                useRevised && item.OpmsTarget!.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget!.IndicatorNumber,
+                useRevised && item.OpmsTarget!.IsTargetNameRevised && item.OpmsTarget.RevisedTargetName != null ? item.OpmsTarget.RevisedTargetName : item.OpmsTarget!.TargetName,
+                item.OpmsTarget!.Department != null ? item.OpmsTarget.Department.Name : "", item.OpmsTarget.Unit != null ? item.OpmsTarget.Unit.Name : "",
+                useRevised && item.IsTargetRevised && item.RevisedTargetValue != null ? item.RevisedTargetValue : item.TargetValue,
+                item.OpmsTarget.IsWithdrawn)).ToArrayAsync();
             var submissions = await submissionQuery.Select(item => new SubmissionProjection(item.OpmsTargetId, item.ActualPerformance, item.Variance, item.AchievementPercent, item.TargetAchieved, item.Status)).ToArrayAsync();
             return Merge(targets, submissions, period);
         }
         var ipmsTargets = ApplyScope(context.PerformancePeriodTargets.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id && item.IpmsTargetId != null), scope, false);
         var ipmsSubmissions = ApplyScope(context.IpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
-        var targetRows = await ipmsTargets.Select(item => new TargetProjection(item.IpmsTargetId!, item.IpmsTarget!.IndicatorNumber, item.IpmsTarget.TargetName, item.IpmsTarget.Department != null ? item.IpmsTarget.Department.Name : "", item.IpmsTarget.Unit != null ? item.IpmsTarget.Unit.Name : "", item.TargetValue, item.IpmsTarget.IsWithdrawn)).ToArrayAsync();
+        var targetRows = await ipmsTargets.Select(item => new TargetProjection(item.IpmsTargetId!,
+            useRevised && item.IpmsTarget!.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget!.IndicatorNumber,
+            useRevised && item.IpmsTarget!.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null ? item.IpmsTarget.RevisedTargetName : item.IpmsTarget!.TargetName,
+            item.IpmsTarget!.Department != null ? item.IpmsTarget.Department.Name : "", item.IpmsTarget.Unit != null ? item.IpmsTarget.Unit.Name : "",
+            useRevised && item.IsTargetRevised && item.RevisedTargetValue != null ? item.RevisedTargetValue : item.TargetValue,
+            item.IpmsTarget.IsWithdrawn)).ToArrayAsync();
         var submissionRows = await ipmsSubmissions.Select(item => new SubmissionProjection(item.IpmsTargetId, item.ActualPerformance, item.Variance, item.AchievementPercent, item.TargetAchieved, item.Status)).ToArrayAsync();
         return Merge(targetRows, submissionRows, period);
     }

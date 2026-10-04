@@ -253,6 +253,18 @@ public sealed record ReviseKpiOrderingRequest(
     DateTime EffectiveAt,
     string RowVersion);
 
+public sealed record ReviseKpiDefinitionRequest(
+    bool IsIndicatorNumberRevised,
+    string? RevisedIndicatorNumber,
+    bool IsTargetNameRevised,
+    string? RevisedTargetName,
+    bool IsKpiDescriptionRevised,
+    string? RevisedKpiDescription,
+    string Reason,
+    string ApprovalReference,
+    DateTime EffectiveAt,
+    string RowVersion);
+
 public sealed record SaveConsolidatedActualRequest(string ActualPerformance, string? EditReason, string RowVersion);
 
 public record CreateIdpPlanRequest(

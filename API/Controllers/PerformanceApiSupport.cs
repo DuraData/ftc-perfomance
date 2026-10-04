@@ -1,5 +1,6 @@
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -143,8 +144,22 @@ public static class PerformanceApiSupport
             RowVersion = Convert.ToBase64String(target.RowVersion),
             OriginalOrderNumber = target.OriginalOrderNumber,
             RevisedOrderNumber = target.RevisedOrderNumber,
+            IsIndicatorNumberRevised = target.IsIndicatorNumberRevised,
+            RevisedIndicatorNumber = target.RevisedIndicatorNumber,
+            IsTargetNameRevised = target.IsTargetNameRevised,
+            RevisedTargetName = target.RevisedTargetName,
+            IsKpiDescriptionRevised = target.IsKpiDescriptionRevised,
+            RevisedKpiDescription = target.RevisedKpiDescription,
             WithdrawnAt = target.WithdrawnAt,
             WithdrawnByUserId = target.WithdrawnByUserId
+        };
+
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
+        !periodType.HasValue ? target.ToResponse() : target.ToResponse() with
+        {
+            IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
+            TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),
+            KpiDescription = PerformanceRevisionResolver.EffectiveKpiDescription(target, periodType.Value)
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target) =>
@@ -187,10 +202,24 @@ public static class PerformanceApiSupport
             RowVersion = Convert.ToBase64String(target.RowVersion),
             OriginalOrderNumber = target.OriginalOrderNumber,
             RevisedOrderNumber = target.RevisedOrderNumber,
+            IsIndicatorNumberRevised = target.IsIndicatorNumberRevised,
+            RevisedIndicatorNumber = target.RevisedIndicatorNumber,
+            IsTargetNameRevised = target.IsTargetNameRevised,
+            RevisedTargetName = target.RevisedTargetName,
+            IsKpiDescriptionRevised = target.IsKpiDescriptionRevised,
+            RevisedKpiDescription = target.RevisedKpiDescription,
             IsWithdrawn = target.IsWithdrawn,
             ReasonForWithdrawal = target.ReasonForWithdrawal,
             WithdrawnAt = target.WithdrawnAt,
             WithdrawnByUserId = target.WithdrawnByUserId
+        };
+
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>
+        !periodType.HasValue ? target.ToResponse() : target.ToResponse() with
+        {
+            IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
+            TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),
+            KpiDescription = PerformanceRevisionResolver.EffectiveKpiDescription(target, periodType.Value)
         };
 
     private static TargetPeriodValueResponse ToResponse(PerformancePeriodTarget target) =>
@@ -199,20 +228,30 @@ public static class PerformanceApiSupport
             target.ReportingPeriod.PublicId,
             target.ReportingPeriod.Code,
             target.ReportingPeriod.PeriodType,
-            target.UnitKind,
+            PerformanceRevisionResolver.EffectiveUnitKind(target),
             target.Direction,
-            target.TargetValue,
-            target.BudgetValue,
+            PerformanceRevisionResolver.EffectiveTargetValue(target),
+            PerformanceRevisionResolver.EffectiveBudgetValue(target),
             target.Description,
             target.IsActive,
-            Convert.ToBase64String(target.RowVersion));
+            Convert.ToBase64String(target.RowVersion))
+        {
+            OriginalUnitKind = target.UnitKind,
+            OriginalTargetValue = target.TargetValue,
+            OriginalBudgetValue = target.BudgetValue,
+            IsTargetRevised = target.IsTargetRevised,
+            RevisedUnitKind = target.RevisedUnitKind,
+            RevisedTargetValue = target.RevisedTargetValue,
+            IsBudgetRevised = target.IsBudgetRevised,
+            RevisedBudgetValue = target.RevisedBudgetValue
+        };
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>
         new(
             submission.Id,
             submission.OpmsTargetId,
-            submission.OpmsTarget.TargetName,
-            submission.OpmsTarget.IndicatorNumber,
+            PerformanceRevisionResolver.EffectiveTargetName(submission.OpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
+            PerformanceRevisionResolver.EffectiveIndicatorNumber(submission.OpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             submission.Quarter,
             submission.Status,
             submission.SubmitterStatus,
@@ -290,8 +329,8 @@ public static class PerformanceApiSupport
         new(
             submission.Id,
             submission.IpmsTargetId,
-            submission.IpmsTarget.TargetName,
-            submission.IpmsTarget.IndicatorNumber,
+            PerformanceRevisionResolver.EffectiveTargetName(submission.IpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
+            PerformanceRevisionResolver.EffectiveIndicatorNumber(submission.IpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             submission.Quarter,
             submission.Status,
             submission.SubmitterStatus,

@@ -103,8 +103,8 @@ public sealed class PerformanceSuggestionService(
         sourcePeriods = requiredTypes.Select(type => sourcePeriods.Single(item => item.PeriodType == type)).ToArray();
         var periodIds = sourcePeriods.Select(item => item.Id).Append(period.Id).ToArray();
         var targets = kind == SubmissionKind.Opms
-            ? await context.PerformancePeriodTargets.AsNoTracking().Where(item => item.OpmsTargetId == targetId && periodIds.Contains(item.ReportingPeriodId) && item.IsActive).ToArrayAsync()
-            : await context.PerformancePeriodTargets.AsNoTracking().Where(item => item.IpmsTargetId == targetId && periodIds.Contains(item.ReportingPeriodId) && item.IsActive).ToArrayAsync();
+            ? await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).Where(item => item.OpmsTargetId == targetId && periodIds.Contains(item.ReportingPeriodId) && item.IsActive).ToArrayAsync()
+            : await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).Where(item => item.IpmsTargetId == targetId && periodIds.Contains(item.ReportingPeriodId) && item.IsActive).ToArrayAsync();
         var destinationTarget = targets.SingleOrDefault(item => item.ReportingPeriodId == period.Id);
         if (destinationTarget == null) return Manual("DESTINATION_TARGET_REQUIRED", "The consolidation period has no active governed period target.");
 
@@ -119,10 +119,10 @@ public sealed class PerformanceSuggestionService(
             var actual = actuals.SingleOrDefault(item => item.ReportingPeriodId == sourcePeriod.Id);
             return sourceTarget == null || actual == null
                 ? null
-                : new PerformanceConsolidationSource(sourcePeriod.Code, sourceTarget.UnitKind, actual.Value, true, true);
+                : new PerformanceConsolidationSource(sourcePeriod.Code, PerformanceRevisionResolver.EffectiveUnitKind(sourceTarget), actual.Value, true, true);
         }).Where(item => item != null).Cast<PerformanceConsolidationSource>().ToArray();
         var consolidation = consolidationEngine.Consolidate(new PerformanceConsolidationRequest(
-            calculationType, destinationTarget.UnitKind, sourcePeriods.Select(item => item.Code).ToArray(), sources,
+            calculationType, PerformanceRevisionResolver.EffectiveUnitKind(destinationTarget), sourcePeriods.Select(item => item.Code).ToArray(), sources,
             policy?.ConsolidationRule, policy?.MissingValuePolicy ?? ConsolidationMissingValuePolicy.Block));
         if (!consolidation.CanSuggest)
             return new(false, true, consolidation.Code, consolidation.Explanation, null, GetActual(current), false, consolidation.SourcePeriods);
@@ -132,7 +132,7 @@ public sealed class PerformanceSuggestionService(
         var edited = !string.IsNullOrWhiteSpace(existingActual) && !string.Equals(existingActual, consolidation.SuggestedValue, StringComparison.Ordinal);
         var finalActual = existingActual ?? consolidation.SuggestedValue!;
         PerformanceCalculationResult calculation;
-        try { calculation = unitEngine.Calculate(destinationTarget.UnitKind, destinationTarget.TargetValue, finalActual, destinationTarget.Direction); }
+        try { calculation = unitEngine.Calculate(PerformanceRevisionResolver.EffectiveUnitKind(destinationTarget), PerformanceRevisionResolver.EffectiveTargetValue(destinationTarget), finalActual, destinationTarget.Direction); }
         catch (ArgumentException exception) { return Manual("INVALID_DESTINATION_TARGET", exception.Message); }
         SetGenerated(current, consolidation.SuggestedValue!, calculation, edited, definition.Id, now, actorUserId,
             edited ? actorUserId : null, edited ? now : null, edited ? "Existing actual retained when the system suggestion was generated." : null);
@@ -164,10 +164,11 @@ public sealed class PerformanceSuggestionService(
         if (reportingPeriodId is not > 0) return Manual("REPORTING_PERIOD_REQUIRED", "A governed reporting period is required.");
         if (!TrySetVersion(current, rowVersion)) return Manual("ROW_VERSION_REQUIRED", "A valid RowVersion is required.");
         var target = kind == SubmissionKind.Opms
-            ? await context.PerformancePeriodTargets.SingleOrDefaultAsync(item => item.OpmsTargetId == targetId && item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive)
-            : await context.PerformancePeriodTargets.SingleOrDefaultAsync(item => item.IpmsTargetId == targetId && item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive);
+            ? await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).SingleOrDefaultAsync(item => item.OpmsTargetId == targetId && item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive)
+            : await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).SingleOrDefaultAsync(item => item.IpmsTargetId == targetId && item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive);
         if (target == null) return Manual("DESTINATION_TARGET_REQUIRED", "The consolidation period has no active governed period target.");
-        var normalized = unitEngine.Normalize(target.UnitKind, actualPerformance);
+        var effectiveUnit = PerformanceRevisionResolver.EffectiveUnitKind(target);
+        var normalized = unitEngine.Normalize(effectiveUnit, actualPerformance);
         if (!normalized.IsValid) return Manual("INVALID_ACTUAL_PERFORMANCE", normalized.Error!);
         var edited = !string.Equals(suggestion, normalized.CanonicalValue, StringComparison.Ordinal);
         if (edited && string.IsNullOrWhiteSpace(editReason)) return Manual("EDIT_REASON_REQUIRED", "A reason is required when changing the system suggestion.");
@@ -175,7 +176,7 @@ public sealed class PerformanceSuggestionService(
 
         var now = DateTime.UtcNow;
         PerformanceCalculationResult calculation;
-        try { calculation = unitEngine.Calculate(target.UnitKind, target.TargetValue, normalized.CanonicalValue!, target.Direction); }
+        try { calculation = unitEngine.Calculate(effectiveUnit, PerformanceRevisionResolver.EffectiveTargetValue(target), normalized.CanonicalValue!, target.Direction); }
         catch (ArgumentException exception) { return Manual("INVALID_DESTINATION_TARGET", exception.Message); }
         SetFinal(current, calculation, edited, actorUserId, now, edited ? actorUserId : null, edited ? now : null, edited ? editReason!.Trim() : null);
         var submissionId = GetId(current);

@@ -80,8 +80,12 @@ public sealed class WorkflowQueuesController(
             Kind = "opms",
             TargetId = item.OpmsTargetId,
             TargetPublicId = item.OpmsTarget.PublicId,
-            TargetName = item.OpmsTarget.TargetName,
-            IndicatorNumber = item.OpmsTarget.IndicatorNumber,
+            TargetName = item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.OpmsTarget.IsTargetNameRevised && item.OpmsTarget.RevisedTargetName != null ? item.OpmsTarget.RevisedTargetName : item.OpmsTarget.TargetName,
+            IndicatorNumber = item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber,
             Quarter = item.Quarter,
             DueDate = item.DueDate,
             Status = item.Status,
@@ -113,8 +117,12 @@ public sealed class WorkflowQueuesController(
             Kind = "ipms",
             TargetId = item.IpmsTargetId,
             TargetPublicId = item.IpmsTarget.PublicId,
-            TargetName = item.IpmsTarget.TargetName,
-            IndicatorNumber = item.IpmsTarget.IndicatorNumber,
+            TargetName = item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.IpmsTarget.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null ? item.IpmsTarget.RevisedTargetName : item.IpmsTarget.TargetName,
+            IndicatorNumber = item.ReportingPeriod != null
+                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber,
             Quarter = item.Quarter,
             DueDate = item.DueDate,
             Status = item.Status,

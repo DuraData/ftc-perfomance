@@ -501,6 +501,8 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     voteNumbers: dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
     voteNumberIds: dto.voteNumberIds,
     indicatorNumber: dto.indicatorNumber,
+    isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
+    revisedIndicatorNumber: dto.revisedIndicatorNumber ?? undefined,
     originalOrderNumber: dto.originalOrderNumber,
     revisedOrderNumber: dto.revisedOrderNumber,
     nationalKPA: dto.nationalKpa,
@@ -509,7 +511,11 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
     targetName: dto.targetName,
+    isTargetNameRevised: dto.isTargetNameRevised,
+    revisedTargetName: dto.revisedTargetName ?? undefined,
     kpiDescription: dto.kpiDescription,
+    isKpiDescriptionRevised: dto.isKpiDescriptionRevised,
+    revisedKpiDescription: dto.revisedKpiDescription ?? undefined,
     baseline: dto.baseline,
     baselineDescription: dto.baselineDescription ?? '',
     annualTarget: numericTarget(annual?.targetValue),
@@ -575,6 +581,8 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     unit: toUnitReference(dto.unitId, dto.unitName, department),
     assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
     indicatorNumber: dto.indicatorNumber,
+    isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
+    revisedIndicatorNumber: dto.revisedIndicatorNumber ?? undefined,
     originalOrderNumber: dto.originalOrderNumber,
     revisedOrderNumber: dto.revisedOrderNumber,
     nationalKPA: dto.nationalKpa,
@@ -583,7 +591,11 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
     targetName: dto.targetName,
+    isTargetNameRevised: dto.isTargetNameRevised,
+    revisedTargetName: dto.revisedTargetName ?? undefined,
     kpiDescription: dto.kpiDescription,
+    isKpiDescriptionRevised: dto.isKpiDescriptionRevised,
+    revisedKpiDescription: dto.revisedKpiDescription ?? undefined,
     baseline: dto.baseline,
     annualTarget: numericTarget(annual?.targetValue),
     annualTargetDescription: annual?.description ?? '',
@@ -637,13 +649,16 @@ function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = 
     additionalAssigneeIds: [],
     voteNumberIds: [],
     indicatorNumber,
+    isIndicatorNumberRevised: false,
     originalOrderNumber: 1,
     revisedOrderNumber: 1,
     nationalKpa: '',
     municipalKpa: '',
     performanceObjective: '',
     targetName,
+    isTargetNameRevised: false,
     kpiDescription: '',
+    isKpiDescriptionRevised: false,
     baseline: 0,
     periodTargets: [],
     weight: 0,
@@ -661,13 +676,16 @@ function unresolvedIpmsTarget(id: string, targetName: string, indicatorNumber = 
     publicId: id,
     rowVersion: '',
     indicatorNumber,
+    isIndicatorNumberRevised: false,
     originalOrderNumber: 1,
     revisedOrderNumber: 1,
     nationalKpa: '',
     municipalKpa: '',
     performanceObjective: '',
     targetName,
+    isTargetNameRevised: false,
     kpiDescription: '',
+    isKpiDescriptionRevised: false,
     baseline: 0,
     periodTargets: [],
     weight: 0,
@@ -1235,7 +1253,7 @@ export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2
   return post<PerformancePeriodTargetDto>('/v1/performance-period-targets', payload);
 }
 
-export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string; isTargetRevised: boolean; isBudgetRevised: boolean; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
   return put<PerformancePeriodTargetDto>(`/v1/performance-period-targets/${publicId}`, payload);
 }
 
@@ -1785,6 +1803,28 @@ export async function reviseOpmsTargetOrdering(id: string, payload: { originalOr
   return mapResponse(response, toOpmsTargetModel);
 }
 
+export type ReviseKpiDefinitionPayload = {
+  isIndicatorNumberRevised: boolean;
+  revisedIndicatorNumber?: string;
+  isTargetNameRevised: boolean;
+  revisedTargetName?: string;
+  isKpiDescriptionRevised: boolean;
+  revisedKpiDescription?: string;
+  reason: string;
+  approvalReference: string;
+  effectiveAt: string;
+  rowVersion: string;
+};
+
+export async function reviseOpmsTargetDefinition(id: string, payload: ReviseKpiDefinitionPayload): Promise<ApiResponse<OPMSTarget>> {
+  const response = await put<OpmsTargetDto>(`/v1/opms-targets/${id}/field-revisions`, payload);
+  return mapResponse(response, toOpmsTargetModel);
+}
+
+export function getOpmsTargetFieldRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
+  return get<KpiFieldRevisionDto[]>(`/v1/opms-targets/${id}/field-revisions`);
+}
+
 export function getOpmsTargetOrderingRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
   return get<KpiFieldRevisionDto[]>(`/v1/opms-targets/${id}/ordering-revisions`);
 }
@@ -1821,6 +1861,15 @@ export async function withdrawIpmsTarget(id: string, payload: { reason: string; 
 export async function reviseIpmsTargetOrdering(id: string, payload: { originalOrderNumber: number; revisedOrderNumber: number; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<IPMSTarget>> {
   const response = await put<IpmsTargetDto>(`/v1/ipms-targets/${id}/ordering`, payload);
   return mapResponse(response, toIpmsTargetModel);
+}
+
+export async function reviseIpmsTargetDefinition(id: string, payload: ReviseKpiDefinitionPayload): Promise<ApiResponse<IPMSTarget>> {
+  const response = await put<IpmsTargetDto>(`/v1/ipms-targets/${id}/field-revisions`, payload);
+  return mapResponse(response, toIpmsTargetModel);
+}
+
+export function getIpmsTargetFieldRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
+  return get<KpiFieldRevisionDto[]>(`/v1/ipms-targets/${id}/field-revisions`);
 }
 
 export function getIpmsTargetOrderingRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {

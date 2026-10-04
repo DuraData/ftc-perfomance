@@ -72,6 +72,8 @@ public partial class OpmsTarget
     [Column("AdditionalAssigneeIds")] public string? LegacyAdditionalAssigneeIds { get; set; }
     [Column("VoteNumberIds")] public string? LegacyVoteNumberIds { get; set; }
     public string IndicatorNumber { get; set; } = string.Empty;
+    public bool IsIndicatorNumberRevised { get; set; }
+    public string? RevisedIndicatorNumber { get; set; }
     public int OriginalOrderNumber { get; set; } = 1;
     public int RevisedOrderNumber { get; set; } = 1;
     public string NationalKpa { get; set; } = string.Empty;
@@ -80,7 +82,11 @@ public partial class OpmsTarget
     public int? StrategicObjectiveId { get; set; }
     public string PerformanceObjective { get; set; } = string.Empty;
     public string TargetName { get; set; } = string.Empty;
+    public bool IsTargetNameRevised { get; set; }
+    public string? RevisedTargetName { get; set; }
     public string KpiDescription { get; set; } = string.Empty;
+    public bool IsKpiDescriptionRevised { get; set; }
+    public string? RevisedKpiDescription { get; set; }
     public decimal Baseline { get; set; }
     public string? BaselineDescription { get; set; }
     public decimal AnnualTarget { get; set; }
@@ -197,6 +203,8 @@ public partial class IpmsTarget
     public string? AssignedUserId { get; set; }
     public string? SupervisorId { get; set; }
     public string IndicatorNumber { get; set; } = string.Empty;
+    public bool IsIndicatorNumberRevised { get; set; }
+    public string? RevisedIndicatorNumber { get; set; }
     public int OriginalOrderNumber { get; set; } = 1;
     public int RevisedOrderNumber { get; set; } = 1;
     public string NationalKpa { get; set; } = string.Empty;
@@ -205,7 +213,11 @@ public partial class IpmsTarget
     public int? StrategicObjectiveId { get; set; }
     public string PerformanceObjective { get; set; } = string.Empty;
     public string TargetName { get; set; } = string.Empty;
+    public bool IsTargetNameRevised { get; set; }
+    public string? RevisedTargetName { get; set; }
     public string KpiDescription { get; set; } = string.Empty;
+    public bool IsKpiDescriptionRevised { get; set; }
+    public string? RevisedKpiDescription { get; set; }
     public decimal Baseline { get; set; }
     public decimal AnnualTarget { get; set; }
     public string AnnualTargetDescription { get; set; } = string.Empty;

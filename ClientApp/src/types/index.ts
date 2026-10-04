@@ -383,6 +383,8 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   wardIds?: number[];
   assignedTo?: Employee;
   indicatorNumber: string;
+  isIndicatorNumberRevised: boolean;
+  revisedIndicatorNumber?: string;
   originalOrderNumber: number;
   revisedOrderNumber: number;
   nationalKPA: string;
@@ -391,7 +393,11 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   strategicObjective: StrategicObjective;
   performanceObjective: string;
   targetName: string;
+  isTargetNameRevised: boolean;
+  revisedTargetName?: string;
   kpiDescription: string;
+  isKpiDescriptionRevised: boolean;
+  revisedKpiDescription?: string;
   baseline: number;
   baselineDescription?: string;
   annualTarget: number;
@@ -460,6 +466,8 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   unit?: DepartmentUnit;
   assignedTo?: Employee;
   indicatorNumber: string;
+  isIndicatorNumberRevised: boolean;
+  revisedIndicatorNumber?: string;
   originalOrderNumber: number;
   revisedOrderNumber: number;
   nationalKPA: string;
@@ -468,7 +476,11 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   strategicObjective: StrategicObjective;
   performanceObjective: string;
   targetName: string;
+  isTargetNameRevised: boolean;
+  revisedTargetName?: string;
   kpiDescription: string;
+  isKpiDescriptionRevised: boolean;
+  revisedKpiDescription?: string;
   baseline: number;
   annualTarget: number;
   annualTargetDescription: string;
@@ -1533,6 +1545,14 @@ export interface PerformancePeriodTargetDto {
   description?: string | null;
   isActive: boolean;
   rowVersion: string;
+  originalUnitKind: number;
+  originalTargetValue: string;
+  originalBudgetValue?: number | null;
+  isTargetRevised: boolean;
+  revisedUnitKind?: number | null;
+  revisedTargetValue?: string | null;
+  isBudgetRevised: boolean;
+  revisedBudgetValue?: number | null;
 }
 
 export interface PerformanceTargetRevisionDto {
@@ -2159,6 +2179,8 @@ export interface OpmsTargetDto {
   additionalAssigneeIds: string[];
   voteNumberIds: number[];
   indicatorNumber: string;
+  isIndicatorNumberRevised: boolean;
+  revisedIndicatorNumber?: string | null;
   originalOrderNumber: number;
   revisedOrderNumber: number;
   nationalKpa: string;
@@ -2167,7 +2189,11 @@ export interface OpmsTargetDto {
   strategicObjectiveId?: number | null;
   performanceObjective: string;
   targetName: string;
+  isTargetNameRevised: boolean;
+  revisedTargetName?: string | null;
   kpiDescription: string;
+  isKpiDescriptionRevised: boolean;
+  revisedKpiDescription?: string | null;
   baseline: number;
   baselineDescription?: string | null;
   budgetSourceId?: number | null;
@@ -2206,6 +2232,8 @@ export interface IpmsTargetDto {
   assignedUserName?: string | null;
   supervisorId?: string | null;
   indicatorNumber: string;
+  isIndicatorNumberRevised: boolean;
+  revisedIndicatorNumber?: string | null;
   originalOrderNumber: number;
   revisedOrderNumber: number;
   nationalKpa: string;
@@ -2214,7 +2242,11 @@ export interface IpmsTargetDto {
   strategicObjectiveId?: number | null;
   performanceObjective: string;
   targetName: string;
+  isTargetNameRevised: boolean;
+  revisedTargetName?: string | null;
   kpiDescription: string;
+  isKpiDescriptionRevised: boolean;
+  revisedKpiDescription?: string | null;
   baseline: number;
   budgetSourceId?: number | null;
   budgetTypeId?: number | null;

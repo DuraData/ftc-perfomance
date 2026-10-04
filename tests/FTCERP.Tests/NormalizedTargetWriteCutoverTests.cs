@@ -111,22 +111,24 @@ public sealed class NormalizedTargetWriteCutoverTests
     }
 
     [Fact]
-    public async Task General_target_update_keeps_unchanged_normalized_values_and_updates_only_metadata()
+    public async Task General_target_update_keeps_governed_values_and_updates_only_non_revision_metadata()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id))).Result).Value).Data!;
 
-        var result = await controller.UpdateTarget(created.Id, Request(seed.LegacyPeriod.Id) with { TargetName = "Updated metadata" });
+        var result = await controller.UpdateTarget(created.Id, Request(seed.LegacyPeriod.Id) with { InternalReference = "Updated metadata" });
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
-        Assert.Equal("Updated metadata", response.TargetName);
+        Assert.Equal("Updated metadata", response.InternalReference);
+        Assert.Equal("Normalized target", response.TargetName);
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
         Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync());
         context.ChangeTracker.Clear();
         var stored = await context.OpmsTargets.SingleAsync();
-        Assert.Equal("Updated metadata", stored.TargetName);
+        Assert.Equal("Updated metadata", stored.InternalReference);
+        Assert.Equal("Normalized target", stored.TargetName);
         Assert.Equal(0m, stored.AnnualTarget);
     }
 

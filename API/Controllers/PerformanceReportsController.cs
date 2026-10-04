@@ -61,7 +61,10 @@ public sealed class PerformanceReportsController(ApplicationDbContext context, U
             rows = await query
                 .OrderBy(x => x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) ? x.OpmsTarget.RevisedOrderNumber : x.OpmsTarget.OriginalOrderNumber)
                 .ThenBy(x => x.OpmsTarget.PublicId)
-                .Select(x => new ReportRow(x.OpmsTarget.IndicatorNumber, x.OpmsTarget.TargetName, x.OpmsTarget.Department != null ? x.OpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
+                .Select(x => new ReportRow(
+                    x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) && x.OpmsTarget.IsIndicatorNumberRevised && x.OpmsTarget.RevisedIndicatorNumber != null ? x.OpmsTarget.RevisedIndicatorNumber : x.OpmsTarget.IndicatorNumber,
+                    x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) && x.OpmsTarget.IsTargetNameRevised && x.OpmsTarget.RevisedTargetName != null ? x.OpmsTarget.RevisedTargetName : x.OpmsTarget.TargetName,
+                    x.OpmsTarget.Department != null ? x.OpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
         }
         else
         {
@@ -70,7 +73,10 @@ public sealed class PerformanceReportsController(ApplicationDbContext context, U
             rows = await query
                 .OrderBy(x => x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) ? x.IpmsTarget.RevisedOrderNumber : x.IpmsTarget.OriginalOrderNumber)
                 .ThenBy(x => x.IpmsTarget.PublicId)
-                .Select(x => new ReportRow(x.IpmsTarget.IndicatorNumber, x.IpmsTarget.TargetName, x.IpmsTarget.Department != null ? x.IpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
+                .Select(x => new ReportRow(
+                    x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) && x.IpmsTarget.IsIndicatorNumberRevised && x.IpmsTarget.RevisedIndicatorNumber != null ? x.IpmsTarget.RevisedIndicatorNumber : x.IpmsTarget.IndicatorNumber,
+                    x.ReportingPeriod != null && (x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || x.ReportingPeriod.PeriodType == ReportingPeriodType.Annual) && x.IpmsTarget.IsTargetNameRevised && x.IpmsTarget.RevisedTargetName != null ? x.IpmsTarget.RevisedTargetName : x.IpmsTarget.TargetName,
+                    x.IpmsTarget.Department != null ? x.IpmsTarget.Department.Name : "", x.ReportingPeriod != null ? x.ReportingPeriod.Code : x.Quarter, x.ActualPerformance, x.Variance, x.AchievementPercent, x.TargetAchieved, x.Status)).Take(100001).ToArrayAsync();
         }
         if (rows.Length > 100000) return StatusCode(StatusCodes.Status413PayloadTooLarge, Fail<object>("Export exceeds 100,000 rows; select a reporting period."));
         var csv = new StringBuilder("Indicator,Target,Department,Period,Actual Performance,Variance,Achievement Percent,Target Achieved,Status\r\n");
