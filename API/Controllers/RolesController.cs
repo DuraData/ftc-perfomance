@@ -4,7 +4,6 @@ using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,22 +11,22 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/roles")]
-[Authorize(Policy = "Permission:SECURITY.MANAGE_ROLES")]
+[Authorize(Policy = "Permission:SECURITY.VIEW")]
 public class RolesController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
-    private readonly RoleManager<ApplicationRole> _roleManager;
+    private readonly ITenantContext _tenantContext;
 
-    public RolesController(ApplicationDbContext context, RoleManager<ApplicationRole> roleManager)
+    public RolesController(ApplicationDbContext context, ITenantContext tenantContext)
     {
         _context = context;
-        _roleManager = roleManager;
+        _tenantContext = tenantContext;
     }
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<RoleResponse[]>>> GetRoles()
     {
-        var roles = await _context.Roles.AsNoTracking().Where(r => r.IsActive).OrderBy(r => r.Name).ToListAsync();
+        var roles = await TenantRoles().AsNoTracking().Where(r => r.IsActive).OrderBy(r => r.Name).ToListAsync();
         var result = roles.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
         return Ok(new ApiResponse<RoleResponse[]>(true, result));
     }
@@ -35,7 +34,7 @@ public class RolesController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<ApiResponse<RoleResponse>>> GetRole(string id)
     {
-        var role = await _roleManager.FindByIdAsync(id);
+        var role = await TenantRoles().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
         if (role == null) return NotFound(new ApiResponse<RoleResponse>(false, null, "Role not found"));
         return Ok(new ApiResponse<RoleResponse>(true, new RoleResponse(role.Id, role.Name!, role.Description, role.IsSystemRole, role.IsActive)));
     }
@@ -43,81 +42,31 @@ public class RolesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ApiResponse<RoleResponse>>> CreateRole([FromBody] CreateRoleRequest request)
     {
-        var existing = await _roleManager.FindByNameAsync(request.Name);
-        if (existing != null) return Conflict(new ApiResponse<RoleResponse>(false, null, "Role already exists"));
-
-        var role = new ApplicationRole
-        {
-            Name = request.Name,
-            NormalizedName = request.Name.ToUpperInvariant(),
-            Description = request.Description,
-            RoleCode = string.Concat(request.Name.Trim().ToUpperInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '_')),
-            IsSystemRole = false,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var result = await _roleManager.CreateAsync(role);
-        if (!result.Succeeded)
-        {
-            return BadRequest(new ApiResponse<RoleResponse>(false, null, "Failed to create role", result.Errors.Select(e => e.Description).ToArray()));
-        }
-
-        return Ok(new ApiResponse<RoleResponse>(true, new RoleResponse(role.Id, role.Name!, role.Description, role.IsSystemRole, role.IsActive)));
+        await Task.CompletedTask;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse>(false, null,
+            "Use POST /api/v1/security/roles. The legacy role mutation contract is disabled."));
     }
 
     [HttpPut("{id}")]
     public async Task<ActionResult<ApiResponse<RoleResponse>>> UpdateRole(string id, [FromBody] UpdateRoleRequest request)
     {
-        var role = await _roleManager.FindByIdAsync(id);
-        if (role == null) return NotFound(new ApiResponse<RoleResponse>(false, null, "Role not found"));
-
-        if (role.IsSystemRole)
-        {
-            return BadRequest(new ApiResponse<RoleResponse>(false, null, "System roles cannot be edited"));
-        }
-
-        role.Name = request.Name;
-        role.NormalizedName = request.Name.ToUpperInvariant();
-        role.Description = request.Description;
-        role.UpdatedAt = DateTime.UtcNow;
-
-        var result = await _roleManager.UpdateAsync(role);
-        if (!result.Succeeded)
-        {
-            return BadRequest(new ApiResponse<RoleResponse>(false, null, "Failed to update role", result.Errors.Select(e => e.Description).ToArray()));
-        }
-
-        return Ok(new ApiResponse<RoleResponse>(true, new RoleResponse(role.Id, role.Name!, role.Description, role.IsSystemRole, role.IsActive)));
+        await Task.CompletedTask;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse>(false, null,
+            "Use PUT /api/v1/security/roles/{roleId} with RowVersion. The legacy role mutation contract is disabled."));
     }
 
     [HttpDelete("{id}")]
     public async Task<ActionResult<ApiResponse<bool>>> DeleteRole(string id)
     {
-        var role = await _roleManager.FindByIdAsync(id);
-        if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
-
-        if (role.IsSystemRole)
-        {
-            return BadRequest(new ApiResponse<bool>(false, false, "System roles cannot be deleted"));
-        }
-
-        role.IsActive = false;
-        role.EffectiveTo = DateTime.UtcNow;
-        role.UpdatedAt = DateTime.UtcNow;
-        var result = await _roleManager.UpdateAsync(role);
-        if (!result.Succeeded)
-        {
-            return BadRequest(new ApiResponse<bool>(false, false, "Failed to disable role", result.Errors.Select(e => e.Description).ToArray()));
-        }
-
-        return Ok(new ApiResponse<bool>(true, true));
+        await Task.CompletedTask;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false,
+            "Use PUT /api/v1/security/roles/{roleId} with RowVersion to deactivate a role. The legacy mutation contract is disabled."));
     }
 
     [HttpGet("{id}/permissions")]
     public async Task<ActionResult<ApiResponse<RolePermissionResponse[]>>> GetRolePermissions(string id)
     {
-        var role = await _roleManager.FindByIdAsync(id);
+        var role = await TenantRoles().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
         if (role == null) return NotFound(new ApiResponse<RolePermissionResponse[]>(false, null, "Role not found"));
 
         var permissions = await _context.RolePermissions
@@ -134,5 +83,12 @@ public class RolesController : ControllerBase
     {
         await Task.CompletedTask;
         return StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Use PUT /api/v1/security/roles/{roleId}/permissions with RowVersion. The legacy mutation contract is disabled."));
+    }
+
+    private IQueryable<ApplicationRole> TenantRoles()
+    {
+        var query = _context.Roles.AsQueryable();
+        if (_tenantContext.MunicipalityId is > 0) return query.Where(item => item.MunicipalityId == _tenantContext.MunicipalityId);
+        return _tenantContext.IsSystem ? query : query.Where(_ => false);
     }
 }

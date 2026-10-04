@@ -17,8 +17,6 @@ const TenantOrganizationAdministration = lazy(() => import('./components/admin/T
 const TenantReferenceAdministration = lazy(() => import('./components/admin/TenantReferenceAdministration').then(module => ({ default: module.TenantReferenceAdministration })));
 const LookupTables = lazy(() => import('./components/admin/AdminManagement').then(module => ({ default: module.LookupTables })));
 const AdminAuditLogsPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminAuditLogsPage })));
-const AdminPermissionsPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminPermissionsPage })));
-const AdminRolesPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminRolesPage })));
 const AdminUsersPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminUsersPage })));
 const RoleImplementationAuditPage = lazy(() => import('./components/admin/RoleImplementationAuditPage').then(module => ({ default: module.RoleImplementationAuditPage })));
 const PermissionSimulationPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.PermissionSimulationPage })));
@@ -225,17 +223,17 @@ function AppContent() {
       case '/admin/users':
         return <AdminUsersPage />;
       case '/admin/roles':
-        return <AdminRolesPage />;
+        return <SecurityAdministrationPage />;
       case '/admin/permissions':
-        return <AdminPermissionsPage />;
+        return <SecurityAdministrationPage />;
       case '/admin/audit':
         return <AdminAuditLogsPage />;
       case '/system-administration/users':
         return <AdminUsersPage />;
       case '/system-administration/roles':
-        return <AdminRolesPage />;
+        return <SecurityAdministrationPage />;
       case '/system-administration/permissions':
-        return <AdminPermissionsPage />;
+        return <SecurityAdministrationPage />;
       case '/system-administration/security':
         return <SecurityAdministrationPage />;
       case '/system-administration/authentication':
