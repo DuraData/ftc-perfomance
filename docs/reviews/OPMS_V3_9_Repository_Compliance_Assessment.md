@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete remaining analytical/oversight/evidence report breadth and report scheduling/distribution, representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **308 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **148 frontend tests pass** across 45 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **332 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **158 frontend tests pass** across 50 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -282,7 +282,7 @@ Coverage omits the highest-risk V3.9 invariants: tenant isolation, permission/sc
 | R-05 | Employee separate from identity | **COMPLIANT** | MunicipalEmployee is separate from optional identity linkage and is governed through tenant administration | Rehearse identity-link changes in UAT. |
 | R-06 | Effective-dated employee placement | **COMPLIANT** | EmployeeAssignment preserves effective-dated department/unit/position placement with overlap prevention | Execute concurrent overlap acceptance on SQL Server. |
 | R-07 | Effective-dated KPI workflow assignments | **PARTIALLY COMPLIANT** | Tenant/effective assignment and scope models cover governed workflows and C88; some legacy assignment projections remain | Reconcile legacy assignment rows and retire compatibility fields. |
-| R-08 | Dynamic permissions and overrides | **PARTIALLY COMPLIANT** | Central default-deny evaluation, explicit-DENY precedence, role scope, restriction-only user overrides and database navigation/actions are tested | Finish member catalog/enforcement across every secondary resource and perform HTTP bypass testing. |
+| R-08 | Dynamic permissions and overrides | **PARTIALLY COMPLIANT** | Central default-deny evaluation, explicit-DENY precedence, role scope, restriction-only user overrides and database navigation/actions are tested; the real HTTP pipeline rejects cross-tenant header and resource bypass attempts | Finish member catalog/enforcement across every secondary resource and complete deployed privilege-escalation acceptance. |
 | R-09 | Configurable local/Entra/AD/hybrid auth | **COMPLIANT** | Municipality mode/configuration, deployment-registered OIDC providers, governed pre-provisioned identity binding, local-mode enforcement, audit events and administration UI are implemented | Provision real providers and execute deployed federation/conditional-access acceptance. |
 | R-10 | MFA for privileged users | **COMPLIANT** | TOTP enrollment/challenge, recovery codes, privileged-permission enforcement, session claims and audit-aware reset/revocation behavior are implemented and tested | Confirm municipal MFA enrollment/support procedures during UAT. |
 | R-11 | Secure session/token storage | **COMPLIANT** | Access/rotating refresh tokens use Secure production, HttpOnly, SameSite=Strict scoped cookies; browser-readable legacy tokens are removed and governed server sessions can be revoked | Verify proxy TLS/cookie behavior in the deployment environment. |
@@ -1429,6 +1429,18 @@ With full-suite verification recorded below, R-22 and assessment area 10 are **C
 
 The complete suites pass **330 backend tests**, with one environment-gated SQL Server test skipped, and **158/158 frontend tests across 50 files**. TypeScript, ESLint, the Release/backend and production/frontend builds, bundle budget, model consistency and idempotent SQL generation pass.
 
+### 11.83 End-to-end HTTP tenant-isolation matrix
+
+The missing single-scenario repository proof now runs through the real ASP.NET Core test host rather than invoking controllers directly:
+
+- A disposable relational SQLite database creates two municipalities, their departments, users, targets, submissions, canonical period targets, POE metadata and audit rows. The Municipality A operator, tenant role and permissions are created dynamically in the database.
+- The authenticated request traverses CSRF, authentication, tenant resolution, dynamic permission evaluation, global EF query filters, controllers, formatters and idempotency. The test proves Municipality A's target register excludes Municipality B, direct target fetch returns not found, and direct submission edit and approval attempts cannot resolve the Municipality B record.
+- Multipart POE upload and protected content-download attempts against Municipality B return not found before storage access. The performance summary contains exactly Municipality A's target, submission and department, and the paged audit response contains Municipality A evidence without Municipality B evidence.
+- A second HTTP test supplies Municipality B through `X-Municipality-Id`; tenant resolution rejects the forged selection with 403 `TENANT_CONTEXT_DENIED` before controller execution.
+- `Microsoft.AspNetCore.Mvc.Testing` hosts the actual application entry point. Test-only authentication changes no production authentication path, the database and evidence directory are unique per test and removed after connection-pool release, and all application queries remain provider-neutral for SQL Server deployment.
+
+The focused HTTP suite passes **2/2** and the complete backend suite passes **332 tests**, with one environment-gated native SQL Server test skipped. R-02 and final assessment area 2 are now **COMPLIANT** at repository level. Native SQL Server execution remains separately classified as Not Verifiable under area 31, and deployed penetration/UAT evidence remains under areas 4 and 32.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1459,7 +1471,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | # | V3.9 requirement area | Final status | Decisive evidence or remaining gap |
 |---:|---|---|---|
 | 1 | Tenant root and municipal master data | Partially Compliant | Tenant-owned masters, filters and administration exist; complete production master-data migration and acceptance evidence is absent. |
-| 2 | Tenant isolation across reads, writes, files, reports and audit | Partially Compliant | Query filters, write guards and controller tests are strong, but the required single end-to-end cross-tenant scenario spanning list/fetch/edit/approve/upload/download/report/audit was not found and native SQL Server evidence is absent. |
+| 2 | Tenant isolation across reads, writes, files, reports and audit | Compliant | A relational test-host scenario dynamically creates two municipalities and proves Municipality A cannot list, fetch, edit, approve, upload to, download from, report on or audit Municipality B records; forged tenant-header selection is rejected before controller execution. Native provider evidence is tracked separately under area 31. |
 | 3 | Employee identity, placement and organisation model | Compliant | Governed employee/organisation administration, placement scope and protected employee email member access are implemented and tested. |
 | 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and three protected member paths are tested. User administration enforces tenant-bounded dynamic CRUD/actions plus protected email/phone reads and writes, and legacy role/permission mutations can no longer bypass the single audited versioned security API; the sensitive-member catalogue is not exhaustive and deployment-level HTTP privilege-escalation testing remains outstanding. |
 | 5 | Authentication, municipality policy, sessions, MFA and federation | Partially Compliant | Local policy/session/MFA and configurable enterprise-provider code exist; live Entra/AD federation, conditional-access and recovery acceptance are external and unverified. |
@@ -1493,8 +1505,8 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 **Final counts (32 assessed areas):**
 
-- Compliant: **15**
-- Partially Compliant: **14**
+- Compliant: **16**
+- Partially Compliant: **13**
 - Non-Compliant: **0**
 - Not Implemented: **0**
 - Not Verifiable: **3**
@@ -1504,6 +1516,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Previous or newly confirmed priority gap | Final disposition | Evidence / remaining action |
 |---|---|---|
 | Dynamic role/menu/CRUD/scope repository enforcement | Repository portion closed | Added a relational integration test that creates `KPI_VIEWER` and `DEPARTMENT_SUBMITTER` dynamically and proves menu, read/update and department scope behavior. HTTP penetration and catalogue completion remain under area 4. |
+| Cross-tenant HTTP list/fetch/edit/approve/upload/download/report/audit | Closed at repository level | A real in-process HTTP host with relational SQLite, dynamic role permissions and two municipalities proves isolation across every required surface and rejects a forged municipality header. Native SQL Server and deployed penetration evidence remain under areas 31 and 32. |
 | Canonical submission base state and fail-closed workflow | Closed at repository level | Constrained base state, backfill migration and regression coverage pass. |
 | Primary register paging and TID fixed-limit collection | Substantially closed | Main registers and TID are server-paged; compatibility/detail selectors and SQL Server query-plan evidence remain open. |
 | Frontend use of mock business data | Closed at repository level | Removed production `mockData` imports and API fixture overlays. Target capture and target-template forms use persisted performance catalogues, tenant organization/employee endpoints and real related-target APIs with explicit loading/error/empty behavior. |
@@ -1542,6 +1555,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Retired legacy role and permission-definition mutation endpoints with HTTP 410, tenant-scoped their compatibility reads, and routed old administration pages to the audited RowVersion-protected security workspace.
 - Implemented V3.9 original/revised KPI sequence persistence, deterministic historic backfill, Q1/Q2/Mid-Term versus Q3/Q4/Annual effective ordering in registers and reports, governed RowVersion-protected resequencing and immutable field-level history with production UI/tests.
 - Implemented independent original/revised KPI number, target name, KPI wording, period target/unit and applicable-budget state with external-approval history, dedicated dynamic revision actions and consistent period-aware resolution across capture, queues, calculations and reports.
+- Added a real ASP.NET Core HTTP tenant-isolation matrix covering list, fetch, edit, approve, POE upload/download, performance reporting and audit, plus forged municipality-header rejection, using dynamically persisted permissions and two relational tenants.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
 
@@ -1549,7 +1563,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 330; Failed: 0; Skipped: 1; Total: 331.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Backend test suite | **Passed: 332; Failed: 0; Skipped: 1; Total: 333.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
 | Frontend Vitest suite | **Passed: 158/158 across 50 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |

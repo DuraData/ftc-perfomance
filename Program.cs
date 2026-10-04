@@ -431,3 +431,6 @@ public sealed class PermissionPolicyProvider : IAuthorizationPolicyProvider
         return _fallback.GetPolicyAsync(policyName);
     }
 }
+
+// Exposes the top-level application entry point to the in-process HTTP test host.
+public partial class Program { }
