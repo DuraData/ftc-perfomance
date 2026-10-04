@@ -4,9 +4,36 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, saveOfficialReportTemplate } from '../../api/api';
-import type { MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportTemplateDto, PerformanceReportSummaryDto, ReportingPeriodMasterDto } from '../../types';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, saveOfficialReportTemplate } from '../../api/api';
+import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
+
+const reportTypes: { value: OfficialReportType; label: string; code: string; columns: string[] }[] = [
+  { value: 1, label: 'Quarterly OPMS/IPMS performance', code: 'QUARTERLY', columns: ['indicator', 'targetName', 'department', 'unit', 'period', 'targetValue', 'actualPerformance', 'variance', 'achievementPercent', 'targetAchieved', 'status'] },
+  { value: 2, label: 'Mid-Term performance', code: 'MID_TERM', columns: ['indicator', 'targetName', 'department', 'unit', 'period', 'targetValue', 'actualPerformance', 'variance', 'achievementPercent', 'targetAchieved', 'status'] },
+  { value: 3, label: 'Annual performance', code: 'ANNUAL', columns: ['indicator', 'targetName', 'department', 'unit', 'period', 'targetValue', 'actualPerformance', 'variance', 'achievementPercent', 'targetAchieved', 'status'] },
+  { value: 4, label: 'Departmental performance', code: 'DEPARTMENTAL', columns: ['indicator', 'targetName', 'department', 'unit', 'period', 'targetValue', 'actualPerformance', 'variance', 'achievementPercent', 'targetAchieved', 'status'] },
+  { value: 5, label: 'Unit performance', code: 'UNIT', columns: ['indicator', 'targetName', 'department', 'unit', 'period', 'targetValue', 'actualPerformance', 'variance', 'achievementPercent', 'targetAchieved', 'status'] },
+  { value: 6, label: 'Performance summary', code: 'PERFORMANCE_SUMMARY', columns: ['group', 'configuredTargets', 'submissions', 'achieved', 'atRisk', 'pending', 'averageAchievementPercent'] },
+  { value: 7, label: 'Workflow status', code: 'WORKFLOW_STATUS', columns: ['submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'workflow', 'status', 'currentStage', 'startedAt', 'completedAt'] },
+  { value: 8, label: 'Submission register', code: 'SUBMISSIONS', columns: ['submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'actualPerformance', 'achievementPercent', 'submittedBy', 'submittedAt', 'status'] },
+  { value: 9, label: 'Verification register', code: 'VERIFICATION', columns: ['submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'action', 'actor', 'occurredAt', 'comment', 'rating'] },
+  { value: 10, label: 'Approval register', code: 'APPROVAL', columns: ['submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'action', 'actor', 'occurredAt', 'comment', 'rating'] },
+  { value: 11, label: 'PMS review', code: 'PMS', columns: ['submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'action', 'actor', 'occurredAt', 'comment', 'rating'] },
+  { value: 12, label: 'Internal Audit assessment', code: 'INTERNAL_AUDIT', columns: ['submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'outcome', 'observation', 'findings', 'recommendation', 'score', 'actor', 'occurredAt'] },
+  { value: 13, label: 'Outstanding RFI', code: 'OUTSTANDING_RFI', columns: ['rfiId', 'submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'question', 'status', 'raisedBy', 'raisedAt', 'responseDueAt', 'response', 'respondedBy', 'respondedAt'] },
+  { value: 14, label: 'POE / evidence register', code: 'EVIDENCE', columns: ['evidenceId', 'submissionId', 'indicator', 'targetName', 'department', 'unit', 'period', 'fileName', 'contentType', 'sizeInBytes', 'sha256', 'scanStatus', 'uploadedBy', 'uploadedAt', 'retainUntil'] },
+  { value: 15, label: 'Audit trail', code: 'AUDIT_TRAIL', columns: ['entityName', 'entityId', 'action', 'changedBy', 'changedAt', 'reason', 'correlationId'] },
+  { value: 16, label: 'Version trail', code: 'VERSION_TRAIL', columns: ['source', 'entityId', 'field', 'originalValue', 'revisedValue', 'versionNumber', 'actor', 'effectiveAt', 'reason', 'approvalReference'] },
+];
+const reportTypeLabel = (value: OfficialReportType) => reportTypes.find(item => item.value === value)?.label ?? 'Official report';
+const storedGenerationFilters = (generation?: OfficialReportGenerationDto) => {
+  if (!generation) return {};
+  try {
+    const value = JSON.parse(generation.filterJson) as { departmentPublicId?: string | null; unitPublicId?: string | null };
+    return { departmentPublicId: value.departmentPublicId ?? undefined, unitPublicId: value.unitPublicId ?? undefined };
+  } catch { return {}; }
+};
 
 export function Reports() {
   const { permissions, pushToast } = useApp();
@@ -18,7 +45,11 @@ export function Reports() {
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [generations, setGenerations] = useState<OfficialReportGenerationDto[]>([]);
   const [templateId, setTemplateId] = useState('');
-  const [templateDraft, setTemplateDraft] = useState({ code: 'QUARTERLY', name: 'Quarterly performance report', format: 4 as OfficialReportFormat, headingTemplate: '{Municipality} · {FinancialYear} {Period} PERFORMANCE REPORT', approvalReference: '', reason: '', previousVersionPublicId: '' });
+  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
+  const [units, setUnits] = useState<UnitLookupDto[]>([]);
+  const [departmentId, setDepartmentId] = useState('');
+  const [unitId, setUnitId] = useState('');
+  const [templateDraft, setTemplateDraft] = useState({ reportType: 1 as OfficialReportType, code: 'QUARTERLY', name: 'Quarterly performance report', format: 4 as OfficialReportFormat, headingTemplate: '{Municipality} · {FinancialYear} {Period} PERFORMANCE REPORT', approvalReference: '', reason: '', previousVersionPublicId: '' });
   const [summary, setSummary] = useState<PerformanceReportSummaryDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,15 +59,20 @@ export function Reports() {
   const canGenerateOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.GENERATE' : 'IPMS_REPORT.GENERATE') || permissionSet.has('REPORTS.GENERATE');
   const canConfigureOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.CONFIGURE' : 'IPMS_REPORT.CONFIGURE');
   const availablePeriods = useMemo(() => periods.filter(period => !yearId || period.municipalityFinancialYearPublicId === yearId), [periods, yearId]);
+  const selectedTemplate = templates.find(template => template.publicId === templateId);
+  const selectedDepartment = departments.find(department => department.publicId === departmentId);
+  const filteredUnits = units.filter(unit => !selectedDepartment || unit.departmentId === selectedDepartment.id);
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, templateResult, generationResult] = await Promise.all([
+    const [periodResult, yearResult, summaryResult, templateResult, generationResult, departmentResult, unitResult] = await Promise.all([
       getReportingPeriodMasters(),
       getMunicipalityFinancialYearMasters(),
       getPerformanceReportSummary(kind, periodId || undefined),
       canReadOfficial ? getOfficialReportTemplates(kind) : Promise.resolve({ success: true, data: [] as OfficialReportTemplateDto[], message: undefined }),
       canReadOfficial ? getOfficialReportGenerations(kind, periodId || undefined) : Promise.resolve({ success: true, data: [] as OfficialReportGenerationDto[], message: undefined }),
+      getDepartments(),
+      getUnits(),
     ]);
     setPeriods(periodResult.data ?? []);
     const loadedYears = yearResult.data ?? [];
@@ -45,12 +81,15 @@ export function Reports() {
     setTemplates(templateResult.data ?? []);
     setTemplateId(current => (templateResult.data ?? []).some(template => template.publicId === current) ? current : templateResult.data?.[0]?.publicId ?? '');
     setGenerations(generationResult.data ?? []);
+    setDepartments(departmentResult.data ?? []);
+    setUnits(unitResult.data ?? []);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
     else setSummary(summaryResult.data);
     if (!periodResult.success) setError(periodResult.message ?? 'Reporting periods could not be loaded.');
     else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
     else if (!templateResult.success) setError(templateResult.message ?? 'Official report templates could not be loaded.');
     else if (!generationResult.success) setError(generationResult.message ?? 'Official report history could not be loaded.');
+    else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
   }, [canReadOfficial, kind, periodId]);
 
@@ -69,8 +108,12 @@ export function Reports() {
     const effectiveYearId = previous?.municipalityFinancialYearPublicId ?? yearId;
     const effectivePeriodId = previous?.reportingPeriodPublicId ?? periodId;
     if (!effectiveTemplateId || !effectiveYearId || !effectivePeriodId) { setError('Select a financial year, reporting period and approved template.'); return; }
+    const effectiveTemplate = templates.find(template => template.publicId === effectiveTemplateId);
+    if (!previous && effectiveTemplate?.reportType === 4 && !departmentId) { setError('Select a department for the departmental report.'); return; }
+    if (!previous && effectiveTemplate?.reportType === 5 && !unitId) { setError('Select a unit for the unit report.'); return; }
+    const priorFilters = storedGenerationFilters(previous);
     setBusy(true); setError(null);
-    const result = await generateOfficialReport({ templatePublicId: effectiveTemplateId, municipalityFinancialYearPublicId: effectiveYearId, reportingPeriodPublicId: effectivePeriodId, previousGenerationPublicId: previous?.publicId });
+    const result = await generateOfficialReport({ templatePublicId: effectiveTemplateId, municipalityFinancialYearPublicId: effectiveYearId, reportingPeriodPublicId: effectivePeriodId, previousGenerationPublicId: previous?.publicId, departmentPublicId: previous ? priorFilters.departmentPublicId : departmentId || undefined, unitPublicId: previous ? priorFilters.unitPublicId : unitId || undefined });
     if (!result.success) setError(result.message ?? 'Official report generation failed.');
     else { pushToast('success', previous ? 'New immutable official report version generated' : 'Official report generated'); await load(); }
     setBusy(false);
@@ -86,17 +129,19 @@ export function Reports() {
   const saveTemplate = async () => {
     if (!templateDraft.code.trim() || !templateDraft.name.trim() || !templateDraft.approvalReference.trim() || !templateDraft.reason.trim()) { setError('Template code, name, approval reference and reason are required.'); return; }
     const previous = templates.find(template => template.publicId === templateDraft.previousVersionPublicId);
+    const definition = reportTypes.find(item => item.value === templateDraft.reportType)!;
     setBusy(true); setError(null);
     const result = await saveOfficialReportTemplate({
       previousVersionPublicId: previous?.publicId,
       previousVersionRowVersion: previous?.rowVersion,
       municipalityFinancialYearPublicId: yearId || null,
       submissionKind: kind,
+      reportType: templateDraft.reportType,
       code: templateDraft.code,
       name: templateDraft.name,
       format: templateDraft.format,
       headingTemplate: templateDraft.headingTemplate,
-      columns: ['indicator', 'targetName', 'department', 'unit', 'period', 'targetValue', 'actualPerformance', 'variance', 'achievementPercent', 'targetAchieved', 'status'],
+      columns: definition.columns,
       effectiveFrom: new Date().toISOString(),
       approvalReference: templateDraft.approvalReference,
       reason: templateDraft.reason,
@@ -135,7 +180,9 @@ export function Reports() {
         {canReadOfficial && <Card className="p-4">
           <div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official municipality report</h2><p className="text-xs text-secondary-500">Generate a retained, immutable output from the latest authorised data. Regeneration appends a version.</p></div></div>
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[18rem] flex-1"><Select label="Approved template" value={templateId} options={[{ value: '', label: templates.length ? 'Select a template' : 'No approved template configured' }, ...templates.filter(template => !template.municipalityFinancialYearPublicId || template.municipalityFinancialYearPublicId === yearId).map(template => ({ value: template.publicId, label: `${template.name} · v${template.versionNumber} · ${['', 'CSV', 'Excel', 'Word', 'PDF'][template.format]}` }))]} onChange={event => setTemplateId(event.target.value)} /></div>
+            <div className="min-w-[18rem] flex-1"><Select label="Approved template" value={templateId} options={[{ value: '', label: templates.length ? 'Select a template' : 'No approved template configured' }, ...templates.filter(template => !template.municipalityFinancialYearPublicId || template.municipalityFinancialYearPublicId === yearId).map(template => ({ value: template.publicId, label: `${reportTypeLabel(template.reportType)} · ${template.name} · v${template.versionNumber} · ${['', 'CSV', 'Excel', 'Word', 'PDF'][template.format]}` }))]} onChange={event => { setTemplateId(event.target.value); setDepartmentId(''); setUnitId(''); }} /></div>
+            {selectedTemplate?.reportType === 4 && <div className="min-w-[14rem]"><Select label="Department" value={departmentId} options={[{ value: '', label: 'Select a department' }, ...departments.map(department => ({ value: department.publicId, label: department.name }))]} onChange={event => { setDepartmentId(event.target.value); setUnitId(''); }} /></div>}
+            {selectedTemplate?.reportType === 5 && <div className="min-w-[14rem]"><Select label="Unit" value={unitId} options={[{ value: '', label: 'Select a unit' }, ...filteredUnits.map(unit => ({ value: unit.publicId, label: unit.name }))]} onChange={event => setUnitId(event.target.value)} /></div>}
             <Button size="sm" variant="primary" icon={<FileText className="h-4 w-4" />} onClick={() => void generate()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Generate official version</Button>
           </div>
           {!periodId && <p className="mt-2 text-xs text-warning-700">Choose one reporting period before generating an official output.</p>}
@@ -162,7 +209,7 @@ export function Reports() {
 
         {canReadOfficial && <Card className="p-4">
           <div className="mb-4 flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official generation history</h2><p className="text-xs text-secondary-500">Previous official files remain retrievable after corrections or regeneration.</p></div></div>
-          <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-secondary-200 text-xs text-secondary-500 dark:border-secondary-700"><th className="px-2 py-2">Template</th><th className="px-2 py-2">Period</th><th className="px-2 py-2">Version</th><th className="px-2 py-2">Generated</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Snapshot</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{generations.map(generation => <tr key={generation.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-3"><strong>{generation.templateName}</strong><div className="text-xs text-secondary-500">Template v{generation.templateVersion} · {['', 'CSV', 'Excel', 'Word', 'PDF'][generation.format]}</div></td><td className="px-2 py-3">{generation.financialYearCode} · {generation.reportingPeriodCode}</td><td className="px-2 py-3">v{generation.versionNumber}</td><td className="px-2 py-3">{new Date(generation.generatedAt).toLocaleString()}<div className="text-xs text-secondary-500">{generation.generatedBy}</div></td><td className="px-2 py-3">{generation.rowCount}</td><td className="px-2 py-3 font-mono text-xs" title={generation.dataVersionReference}>{generation.dataVersionReference.slice(0, 12)}…</td><td className="px-2 py-3"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void downloadOfficial(generation)} disabled={busy}>Download</Button><Button size="sm" variant="outline" onClick={() => void generate(generation)} disabled={busy || !canGenerateOfficial}>Regenerate</Button></div></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-secondary-200 text-xs text-secondary-500 dark:border-secondary-700"><th className="px-2 py-2">Template</th><th className="px-2 py-2">Period</th><th className="px-2 py-2">Version</th><th className="px-2 py-2">Generated</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Snapshot</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{generations.map(generation => <tr key={generation.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-3"><strong>{generation.templateName}</strong><div className="text-xs text-secondary-500">{reportTypeLabel(generation.reportType)} · Template v{generation.templateVersion} · {['', 'CSV', 'Excel', 'Word', 'PDF'][generation.format]}</div></td><td className="px-2 py-3">{generation.financialYearCode} · {generation.reportingPeriodCode}</td><td className="px-2 py-3">v{generation.versionNumber}</td><td className="px-2 py-3">{new Date(generation.generatedAt).toLocaleString()}<div className="text-xs text-secondary-500">{generation.generatedBy}</div></td><td className="px-2 py-3">{generation.rowCount}</td><td className="px-2 py-3 font-mono text-xs" title={generation.dataVersionReference}>{generation.dataVersionReference.slice(0, 12)}…</td><td className="px-2 py-3"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void downloadOfficial(generation)} disabled={busy}>Download</Button><Button size="sm" variant="outline" onClick={() => void generate(generation)} disabled={busy || !canGenerateOfficial}>Regenerate</Button></div></td></tr>)}</tbody></table></div>
           {!generations.length && <p className="py-5 text-center text-sm text-secondary-500">No official report versions exist for this selection.</p>}
         </Card>}
 
@@ -170,7 +217,8 @@ export function Reports() {
           <h2 className="font-semibold text-secondary-900 dark:text-white">Approved template administration</h2>
           <p className="mb-4 text-xs text-secondary-500">Create a template or select a current template to append a successor version. Existing versions are retained.</p>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <label className="text-sm">Version lineage<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.previousVersionPublicId} onChange={event => { const previous = templates.find(item => item.publicId === event.target.value); setTemplateDraft(value => ({ ...value, previousVersionPublicId: event.target.value, code: previous?.code ?? value.code, name: previous?.name ?? value.name, format: previous?.format ?? value.format, headingTemplate: previous?.headingTemplate ?? value.headingTemplate })); }}><option value="">New template family</option>{templates.map(template => <option key={template.publicId} value={template.publicId}>{template.code} · v{template.versionNumber}</option>)}</select></label>
+            <label className="text-sm">Version lineage<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.previousVersionPublicId} onChange={event => { const previous = templates.find(item => item.publicId === event.target.value); setTemplateDraft(value => ({ ...value, previousVersionPublicId: event.target.value, reportType: previous?.reportType ?? value.reportType, code: previous?.code ?? value.code, name: previous?.name ?? value.name, format: previous?.format ?? value.format, headingTemplate: previous?.headingTemplate ?? value.headingTemplate })); }}><option value="">New template family</option>{templates.map(template => <option key={template.publicId} value={template.publicId}>{reportTypeLabel(template.reportType)} · {template.code} · v{template.versionNumber}</option>)}</select></label>
+            <label className="text-sm">Report class<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.reportType} disabled={Boolean(templateDraft.previousVersionPublicId)} onChange={event => { const definition = reportTypes.find(item => item.value === Number(event.target.value) as OfficialReportType)!; setTemplateDraft(value => ({ ...value, reportType: definition.value, code: definition.code, name: definition.label, headingTemplate: `{Municipality} · {FinancialYear} {Period} · ${definition.label.toUpperCase()}` })); }}>{reportTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
             <label className="text-sm">Template code<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.code} onChange={event => setTemplateDraft(value => ({ ...value, code: event.target.value }))} /></label>
             <label className="text-sm">Template name<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.name} onChange={event => setTemplateDraft(value => ({ ...value, name: event.target.value }))} /></label>
             <label className="text-sm">Output format<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.format} onChange={event => setTemplateDraft(value => ({ ...value, format: Number(event.target.value) as OfficialReportFormat }))}><option value={1}>CSV</option><option value={2}>Excel (.xlsx)</option><option value={3}>Word (.docx)</option><option value={4}>PDF</option></select></label>
@@ -181,7 +229,7 @@ export function Reports() {
           <div className="mt-3 flex justify-end"><Button size="sm" variant="primary" onClick={() => void saveTemplate()} disabled={busy || !yearId}>{templateDraft.previousVersionPublicId ? 'Create template version' : 'Create approved template'}</Button></div>
         </Card>}
 
-        <div className="flex items-center gap-2 text-xs text-secondary-500"><Target className="h-4 w-4" /><span>Generated from tenant-filtered canonical targets and submissions{summary ? ` at ${new Date(summary.generatedAt).toLocaleString()}` : ''}.</span></div>
+        <div className="flex items-center gap-2 text-xs text-secondary-500"><Target className="h-4 w-4" /><span>Official report classes are generated from tenant-filtered authoritative performance, workflow, assurance, evidence, audit and version datasets{summary ? `; summary refreshed at ${new Date(summary.generatedAt).toLocaleString()}` : ''}.</span></div>
       </div>
     </AppShell>
   );

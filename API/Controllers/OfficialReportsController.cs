@@ -30,6 +30,7 @@ public sealed class OfficialReportsController(
     private sealed record StoredScope(bool Unrestricted, int[] DepartmentIds, int[] UnitIds, string[] OwnerUserIds, string[] TargetIds);
     private sealed record TargetProjection(string TargetId, string Indicator, string TargetName, string Department, string Unit, string TargetValue, bool IsWithdrawn);
     private sealed record SubmissionProjection(string TargetId, string? ActualPerformance, decimal? Variance, decimal? AchievementPercent, bool? TargetAchieved, string Status);
+    private sealed record SubmissionSubject(string SubmissionId, string TargetId, string Indicator, string TargetName, int? DepartmentId, string Department, int? UnitId, string Unit, string Period, string? ActualPerformance, decimal? AchievementPercent, bool? TargetAchieved, string Status, string SubmittedBy, DateTime? SubmittedAt);
 
     [HttpGet("templates")]
     public async Task<ActionResult<ApiResponse<OfficialReportTemplateResponse[]>>> Templates([FromQuery] SubmissionKind kind, [FromQuery] bool includeHistory = false)
@@ -56,12 +57,13 @@ public sealed class OfficialReportsController(
         if (!await Granted(user, ConfigurePermission(request.SubmissionKind))) return ForbidResponse<OfficialReportTemplateResponse>("Official report template configuration is denied.");
         if (request.SubmissionKind is not (SubmissionKind.Opms or SubmissionKind.Ipms)) return BadRequest(Fail<OfficialReportTemplateResponse>("Unsupported performance framework."));
         if (!Enum.IsDefined(request.Format)) return BadRequest(Fail<OfficialReportTemplateResponse>("Unsupported official report format."));
+        if (!Enum.IsDefined(request.ReportType)) return BadRequest(Fail<OfficialReportTemplateResponse>("Unsupported official report class."));
         if (string.IsNullOrWhiteSpace(request.Code) || request.Code.Trim().Length > 80 || string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 240) return BadRequest(Fail<OfficialReportTemplateResponse>("Code and name are required and must fit their configured limits."));
         if (!string.IsNullOrWhiteSpace(request.HeadingTemplate) && request.HeadingTemplate.Trim().Length > 500) return BadRequest(Fail<OfficialReportTemplateResponse>("Heading template cannot exceed 500 characters."));
         if (string.IsNullOrWhiteSpace(request.ApprovalReference) || string.IsNullOrWhiteSpace(request.Reason)) return BadRequest(Fail<OfficialReportTemplateResponse>("Approval reference and reason are required."));
         if (request.EffectiveTo.HasValue && request.EffectiveTo < request.EffectiveFrom) return BadRequest(Fail<OfficialReportTemplateResponse>("Effective-to cannot precede effective-from."));
         string columns;
-        try { columns = JsonSerializer.Serialize(OfficialReportRenderer.ValidateColumns(JsonSerializer.Serialize(request.Columns ?? []))); }
+        try { columns = JsonSerializer.Serialize(OfficialReportCatalog.ValidateColumns(request.ReportType, JsonSerializer.Serialize(request.Columns ?? []))); }
         catch (ArgumentException exception) { return BadRequest(Fail<OfficialReportTemplateResponse>(exception.Message)); }
 
         MunicipalityFinancialYear? year = null;
@@ -79,6 +81,7 @@ public sealed class OfficialReportsController(
             previous = await context.OfficialReportTemplates.SingleOrDefaultAsync(item => item.PublicId == request.PreviousVersionPublicId);
             if (previous == null || !previous.IsCurrent) return Conflict(Fail<OfficialReportTemplateResponse>("The selected template is no longer the current version."));
             if (previous.SubmissionKind != request.SubmissionKind) return BadRequest(Fail<OfficialReportTemplateResponse>("A template lineage cannot change performance framework."));
+            if (previous.ReportType != request.ReportType) return BadRequest(Fail<OfficialReportTemplateResponse>("A template lineage cannot change report class."));
             if (!TryRowVersion(request.PreviousVersionRowVersion, out var rowVersion)) return BadRequest(Fail<OfficialReportTemplateResponse>("The prior template RowVersion is required."));
             context.Entry(previous).Property(item => item.RowVersion).OriginalValue = rowVersion;
             previous.IsCurrent = false;
@@ -98,6 +101,7 @@ public sealed class OfficialReportsController(
             PreviousVersionId = previous?.Id,
             TemplateFamilyPublicId = family,
             SubmissionKind = request.SubmissionKind,
+            ReportType = request.ReportType,
             Code = request.Code.Trim().ToUpperInvariant(),
             Name = request.Name.Trim(),
             Format = request.Format,
@@ -123,14 +127,20 @@ public sealed class OfficialReportsController(
     {
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<OfficialReportGenerationResponse[]>("User not found."));
-        var scope = await accessControl.GetQueryScopeAsync(user, ReadPermission(kind));
-        if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse[]>("Official report access is denied.");
+        var scope = IntersectScopes(
+            IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(kind)),
+                await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
+            await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
+        if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse[]>("Official report history requires report, KPI and submission READ permission.");
         var query = context.OfficialReportGenerations.AsNoTracking()
             .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).Where(item => item.SubmissionKind == kind);
         if (reportingPeriodPublicId.HasValue) query = query.Where(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId);
         var candidates = await query.OrderByDescending(item => item.GeneratedAt).Take(500).ToArrayAsync();
-        return Ok(new ApiResponse<OfficialReportGenerationResponse[]>(true, candidates.Where(item => CanReadStoredScope(item.ScopeJson, scope)).Select(Map).ToArray()));
+        var canReadAuditTrail = await Granted(user, "Audit.Trails.View");
+        return Ok(new ApiResponse<OfficialReportGenerationResponse[]>(true, candidates
+            .Where(item => item.ReportType != OfficialReportType.AuditTrail || canReadAuditTrail)
+            .Where(item => CanReadStoredScope(item.ScopeJson, scope)).Select(Map).ToArray()));
     }
 
     [HttpPost("generations")]
@@ -144,18 +154,42 @@ public sealed class OfficialReportsController(
         var now = DateTime.UtcNow;
         if (!request.PreviousGenerationPublicId.HasValue && (!template.IsCurrent || template.EffectiveFrom > now || template.EffectiveTo.HasValue && template.EffectiveTo < now))
             return Conflict(Fail<OfficialReportGenerationResponse>("Only the current effective template can start a new official report lineage."));
-        var scope = await accessControl.GetQueryScopeAsync(user, GeneratePermission(template.SubmissionKind));
-        if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse>("Official report generation is denied.");
+        var reportScope = await accessControl.GetQueryScopeAsync(user, GeneratePermission(template.SubmissionKind));
+        if (!reportScope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse>("Official report generation is denied.");
+        var kpiScope = await accessControl.GetQueryScopeAsync(user, template.SubmissionKind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ");
+        var submissionScope = await accessControl.GetQueryScopeAsync(user, template.SubmissionKind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ");
+        var scope = IntersectScopes(IntersectScopes(reportScope, kpiScope), submissionScope);
+        if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse>("The report requires both KPI and submission READ permission in addition to report generation permission.");
+        if (template.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View"))
+            return ForbidResponse<OfficialReportGenerationResponse>("The audit-trail report also requires audit-trail read permission.");
         var year = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId && item.IsActive);
         if (year == null) return BadRequest(Fail<OfficialReportGenerationResponse>("Municipality financial year was not found in this tenant."));
         if (template.MunicipalityFinancialYearId.HasValue && template.MunicipalityFinancialYearId != year.Id) return BadRequest(Fail<OfficialReportGenerationResponse>("This template is not approved for the selected financial year."));
         var period = await context.ReportingPeriods.SingleOrDefaultAsync(item => item.PublicId == request.ReportingPeriodPublicId && item.MunicipalityFinancialYearId == year.Id && item.IsActive);
         if (period == null) return BadRequest(Fail<OfficialReportGenerationResponse>("Reporting period was not found in the selected financial year."));
+        var periodError = ValidatePeriod(template.ReportType, period.PeriodType);
+        if (periodError != null) return BadRequest(Fail<OfficialReportGenerationResponse>(periodError));
+        int? departmentId = null;
+        int? unitId = null;
+        if (request.DepartmentPublicId.HasValue)
+        {
+            departmentId = await context.Departments.Where(item => item.PublicId == request.DepartmentPublicId && item.IsActive).Select(item => (int?)item.Id).SingleOrDefaultAsync();
+            if (!departmentId.HasValue) return BadRequest(Fail<OfficialReportGenerationResponse>("The selected department was not found in this tenant."));
+        }
+        if (request.UnitPublicId.HasValue)
+        {
+            unitId = await context.Units.Where(item => item.PublicId == request.UnitPublicId && item.IsActive).Select(item => (int?)item.Id).SingleOrDefaultAsync();
+            if (!unitId.HasValue) return BadRequest(Fail<OfficialReportGenerationResponse>("The selected unit was not found in this tenant."));
+        }
+        if (template.ReportType == OfficialReportType.DepartmentalPerformance && !departmentId.HasValue)
+            return BadRequest(Fail<OfficialReportGenerationResponse>("A department filter is required for a departmental report."));
+        if (template.ReportType == OfficialReportType.UnitPerformance && !unitId.HasValue)
+            return BadRequest(Fail<OfficialReportGenerationResponse>("A unit filter is required for a unit report."));
 
-        var rows = await BuildRows(template.SubmissionKind, period, scope);
-        var rendered = OfficialReportRenderer.Render(new(template.Municipality.Name, year.FinancialYear.Code, period.Name, template.HeadingTemplate, template.ColumnConfigurationJson, template.Format, rows));
+        var rows = await BuildRows(template.SubmissionKind, template.ReportType, period, scope, departmentId, unitId);
+        var rendered = OfficialReportRenderer.RenderTabular(new(template.Municipality.Name, year.FinancialYear.Code, period.Name, template.HeadingTemplate, template.ColumnConfigurationJson, template.Format, template.ReportType, rows));
         var storedScope = SerializeScope(scope);
-        var filterJson = JsonSerializer.Serialize(new { municipalityFinancialYearPublicId = year.PublicId, reportingPeriodPublicId = period.PublicId });
+        var filterJson = JsonSerializer.Serialize(new { municipalityFinancialYearPublicId = year.PublicId, reportingPeriodPublicId = period.PublicId, reportType = template.ReportType, request.DepartmentPublicId, request.UnitPublicId });
         var family = Guid.NewGuid();
         var version = 1;
         if (request.PreviousGenerationPublicId.HasValue)
@@ -185,6 +219,7 @@ public sealed class OfficialReportsController(
             GenerationFamilyPublicId = family, MunicipalityId = tenantContext.MunicipalityId.Value,
             MunicipalityFinancialYearId = year.Id, ReportingPeriodId = period.Id, ReportTemplateId = template.Id,
             Blob = blob, SubmissionKind = template.SubmissionKind, VersionNumber = version, ScopeJson = storedScope,
+            ReportType = template.ReportType,
             FilterJson = filterJson, DataVersionReference = rendered.DataVersionReference, FileName = fileName,
             ContentType = rendered.ContentType, SizeInBytes = rendered.Content.LongLength, Sha256 = rendered.Sha256,
             RowCount = rows.Count, GeneratedByUserId = user.Id
@@ -208,8 +243,12 @@ public sealed class OfficialReportsController(
         if (user == null) return Unauthorized(Fail<object>("User not found."));
         var generation = await context.OfficialReportGenerations.AsNoTracking().Include(item => item.Blob).SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (generation == null) return NotFound(Fail<object>("Official report generation was not found."));
-        var scope = await accessControl.GetQueryScopeAsync(user, ReadPermission(generation.SubmissionKind));
+        var scope = IntersectScopes(
+            IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(generation.SubmissionKind)),
+                await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
+            await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
         if (!scope.PermissionGranted || !CanReadStoredScope(generation.ScopeJson, scope)) return ForbidResponse<object>("Official report download is denied for the stored generation scope.");
+        if (generation.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View")) return ForbidResponse<object>("Audit-trail read permission has been revoked.");
         if (generation.Blob.IsContentDeleted || generation.Blob.IsQuarantined) return Conflict(Fail<object>("The official report content is unavailable."));
         var content = await storage.ReadAsync(generation.Blob.StorageKey, HttpContext.RequestAborted);
         if (!content.Found) return StatusCode(content.Available ? StatusCodes.Status404NotFound : StatusCodes.Status503ServiceUnavailable, Fail<object>(content.Detail));
@@ -225,13 +264,136 @@ public sealed class OfficialReportsController(
         return File(content.Content, generation.ContentType, generation.FileName);
     }
 
-    private async Task<List<OfficialPerformanceReportRow>> BuildRows(SubmissionKind kind, ReportingPeriod period, AccessQueryScopeResult scope)
+    private async Task<List<OfficialReportDataRow>> BuildRows(SubmissionKind kind, OfficialReportType reportType, ReportingPeriod period, AccessQueryScopeResult scope, int? departmentId, int? unitId)
+    {
+        if (reportType is OfficialReportType.QuarterlyPerformance or OfficialReportType.MidTermPerformance or OfficialReportType.AnnualPerformance or OfficialReportType.DepartmentalPerformance or OfficialReportType.UnitPerformance)
+            return (await BuildPerformanceRows(kind, period, scope, departmentId, unitId)).Select(PerformanceRow).ToList();
+
+        if (reportType == OfficialReportType.PerformanceSummary)
+        {
+            var performance = await BuildPerformanceRows(kind, period, scope, departmentId, unitId);
+            return performance.GroupBy(item => string.IsNullOrWhiteSpace(item.Department) ? "Unassigned" : item.Department, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => Row(
+                    ("group", group.Key), ("configuredTargets", group.Count().ToString(CultureInfo.InvariantCulture)),
+                    ("submissions", group.Count(item => item.Status != "Not submitted" && item.Status != "Withdrawn").ToString(CultureInfo.InvariantCulture)),
+                    ("achieved", group.Count(item => bool.TryParse(item.TargetAchieved, out var achieved) && achieved).ToString(CultureInfo.InvariantCulture)),
+                    ("atRisk", group.Count(item => bool.TryParse(item.TargetAchieved, out var achieved) && !achieved).ToString(CultureInfo.InvariantCulture)),
+                    ("pending", group.Count(item => string.IsNullOrWhiteSpace(item.TargetAchieved)).ToString(CultureInfo.InvariantCulture)),
+                    ("averageAchievementPercent", Format(group.Select(item => decimal.TryParse(item.AchievementPercent, NumberStyles.Any, CultureInfo.InvariantCulture, out var value) ? (decimal?)value : null).Where(item => item.HasValue).Select(item => item!.Value).DefaultIfEmpty().Average()))))
+                .ToList();
+        }
+
+        var subjects = await BuildSubmissionSubjects(kind, period, scope, departmentId, unitId);
+        var subjectIds = subjects.Select(item => item.SubmissionId).ToArray();
+        var bySubmission = subjects.ToDictionary(item => item.SubmissionId, StringComparer.Ordinal);
+        if (reportType == OfficialReportType.SubmissionRegister) return subjects.Select(SubmissionRow).ToList();
+
+        if (reportType == OfficialReportType.WorkflowStatus)
+        {
+            var instances = await context.SubmissionWorkflowInstances.AsNoTracking()
+                .Include(item => item.WorkflowDefinition).Include(item => item.CurrentStage)
+                .Where(item => item.SubmissionKind == kind && subjectIds.Contains(item.SubmissionId))
+                .OrderBy(item => item.StartedAt).ToArrayAsync();
+            return instances.Select(item =>
+            {
+                var subject = bySubmission[item.SubmissionId];
+                return SubjectRow(subject, ("workflow", $"{item.WorkflowDefinition.Name} v{item.WorkflowDefinition.Version}"), ("status", item.State.ToString()),
+                    ("currentStage", item.CurrentStage?.Name ?? "Complete"), ("startedAt", Date(item.StartedAt)), ("completedAt", Date(item.CompletedAt)));
+            }).ToList();
+        }
+
+        if (reportType is OfficialReportType.VerificationRegister or OfficialReportType.ApprovalRegister or OfficialReportType.PmsReview)
+        {
+            var actions = await context.SubmissionWorkflowActions.AsNoTracking().Include(item => item.SubmissionWorkflowInstance).Include(item => item.ActorUser)
+                .Where(item => item.SubmissionWorkflowInstance.SubmissionKind == kind && subjectIds.Contains(item.SubmissionWorkflowInstance.SubmissionId))
+                .OrderBy(item => item.OccurredAt).ToArrayAsync();
+            actions = actions.Where(item => ActionBelongsTo(reportType, item.ActionCode)).ToArray();
+            return actions.Select(item =>
+            {
+                var subject = bySubmission[item.SubmissionWorkflowInstance.SubmissionId];
+                return SubjectRow(subject, ("action", item.ActionCode), ("actor", UserName(item.ActorUser)), ("occurredAt", Date(item.OccurredAt)),
+                    ("comment", item.Comment ?? string.Empty), ("rating", Format(item.RatingValue)));
+            }).ToList();
+        }
+
+        if (reportType == OfficialReportType.InternalAudit)
+        {
+            var assessments = await context.InternalAuditAssessments.AsNoTracking().Include(item => item.SubmissionWorkflowInstance).Include(item => item.AssessedByUser)
+                .Where(item => item.SubmissionWorkflowInstance.SubmissionKind == kind && subjectIds.Contains(item.SubmissionWorkflowInstance.SubmissionId))
+                .OrderBy(item => item.AssessedAt).ToArrayAsync();
+            return assessments.Select(item =>
+            {
+                var subject = bySubmission[item.SubmissionWorkflowInstance.SubmissionId];
+                return SubjectRow(subject, ("outcome", item.Outcome.ToString()), ("observation", item.DetailedObservation), ("findings", item.Findings ?? string.Empty),
+                    ("recommendation", item.Recommendation ?? string.Empty), ("score", Format(item.Score)), ("actor", UserName(item.AssessedByUser)), ("occurredAt", Date(item.AssessedAt)));
+            }).ToList();
+        }
+
+        if (reportType == OfficialReportType.OutstandingRfi)
+        {
+            var rfis = await context.PerformanceRfis.AsNoTracking().Include(item => item.SubmissionWorkflowInstance)
+                .Where(item => item.SubmissionWorkflowInstance.SubmissionKind == kind && subjectIds.Contains(item.SubmissionWorkflowInstance.SubmissionId) && !item.ClosedAt.HasValue)
+                .OrderBy(item => item.ResponseDueAt).ToArrayAsync();
+            return rfis.Select(item =>
+            {
+                var subject = bySubmission[item.SubmissionWorkflowInstance.SubmissionId];
+                var status = item.ClosedAt.HasValue ? "Closed" : item.RespondedAt.HasValue ? "Responded" : item.ResponseDueAt < DateTime.UtcNow ? "Overdue" : "Outstanding";
+                return SubjectRow(subject, ("rfiId", item.PublicId.ToString()), ("question", item.Question), ("status", status), ("raisedBy", item.RaisedByUserId),
+                    ("raisedAt", Date(item.RaisedAt)), ("responseDueAt", Date(item.ResponseDueAt)), ("response", item.Response ?? string.Empty),
+                    ("respondedBy", item.RespondedByUserId ?? string.Empty), ("respondedAt", Date(item.RespondedAt)));
+            }).ToList();
+        }
+
+        if (reportType == OfficialReportType.EvidenceRegister)
+        {
+            var evidence = await context.PoeFiles.AsNoTracking().Include(item => item.Blob).Include(item => item.UploadedByUser)
+                .Where(item => item.SubmissionKind == kind && subjectIds.Contains(item.SubmissionId)).OrderBy(item => item.UploadedAt).ToArrayAsync();
+            return evidence.Select(item => SubjectRow(bySubmission[item.SubmissionId], ("evidenceId", item.PublicId.ToString()), ("fileName", item.FileName),
+                ("contentType", item.Blob.ContentType ?? string.Empty), ("sizeInBytes", item.Blob.SizeInBytes.ToString(CultureInfo.InvariantCulture)), ("sha256", item.Blob.Sha256),
+                ("scanStatus", item.Blob.IsQuarantined ? $"Quarantined ({item.Blob.ScanStatus})" : item.Blob.ScanStatus), ("uploadedBy", UserName(item.UploadedByUser)),
+                ("uploadedAt", Date(item.UploadedAt)), ("retainUntil", Date(item.RetainUntil)))).ToList();
+        }
+
+        if (reportType == OfficialReportType.AuditTrail)
+        {
+            var entityIds = subjectIds.Concat(subjects.Select(item => item.TargetId)).Distinct(StringComparer.Ordinal).ToArray();
+            return (await context.AuditTrails.AsNoTracking().Where(item => entityIds.Contains(item.EntityId)).OrderBy(item => item.ChangedAt).ToArrayAsync())
+                .Select(item => Row(("entityName", item.EntityName), ("entityId", item.EntityId), ("action", item.Action), ("changedBy", item.ChangedBy),
+                    ("changedAt", Date(item.ChangedAt)), ("reason", item.Reason ?? string.Empty), ("correlationId", item.CorrelationId ?? string.Empty))).ToList();
+        }
+
+        if (reportType == OfficialReportType.VersionTrail)
+        {
+            var targetIds = subjects.Select(item => item.TargetId).Distinct(StringComparer.Ordinal).ToArray();
+            var rows = new List<OfficialReportDataRow>();
+            var fields = await context.KpiFieldRevisions.AsNoTracking().Include(item => item.RevisedByUser)
+                .Where(item => kind == SubmissionKind.Opms ? item.OpmsTargetId != null && targetIds.Contains(item.OpmsTargetId) : item.IpmsTargetId != null && targetIds.Contains(item.IpmsTargetId))
+                .OrderBy(item => item.RecordedAt).ToArrayAsync();
+            rows.AddRange(fields.Select(item => Row(("source", "KPI field revision"), ("entityId", item.OpmsTargetId ?? item.IpmsTargetId ?? string.Empty), ("field", item.FieldName),
+                ("originalValue", item.OriginalValue ?? string.Empty), ("revisedValue", item.RevisedValue ?? string.Empty), ("versionNumber", string.Empty),
+                ("actor", UserName(item.RevisedByUser)), ("effectiveAt", Date(item.EffectiveAt)), ("reason", item.Reason), ("approvalReference", item.ApprovalReference))));
+            var periodRevisions = await context.PerformanceTargetRevisions.AsNoTracking().Include(item => item.PerformancePeriodTarget).Include(item => item.RevisedByUser)
+                .Where(item => item.PerformancePeriodTarget.ReportingPeriodId == period.Id && (kind == SubmissionKind.Opms ? item.PerformancePeriodTarget.OpmsTargetId != null && targetIds.Contains(item.PerformancePeriodTarget.OpmsTargetId) : item.PerformancePeriodTarget.IpmsTargetId != null && targetIds.Contains(item.PerformancePeriodTarget.IpmsTargetId)))
+                .OrderBy(item => item.RecordedAt).ToArrayAsync();
+            rows.AddRange(periodRevisions.Select(item => Row(("source", "Period value revision"), ("entityId", item.PerformancePeriodTarget.OpmsTargetId ?? item.PerformancePeriodTarget.IpmsTargetId ?? string.Empty),
+                ("field", item.FieldName), ("originalValue", item.OriginalValue ?? string.Empty), ("revisedValue", item.RevisedValue ?? string.Empty), ("versionNumber", string.Empty),
+                ("actor", UserName(item.RevisedByUser)), ("effectiveAt", Date(item.EffectiveAt)), ("reason", item.Reason), ("approvalReference", item.ApprovalReference))));
+            return rows;
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(reportType));
+    }
+
+    private async Task<List<OfficialPerformanceReportRow>> BuildPerformanceRows(SubmissionKind kind, ReportingPeriod period, AccessQueryScopeResult scope, int? departmentId, int? unitId)
     {
         var useRevised = PerformanceRevisionResolver.UsesRevisedValues(period.PeriodType);
         if (kind == SubmissionKind.Opms)
         {
             var targetQuery = ApplyScope(context.PerformancePeriodTargets.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id && item.OpmsTargetId != null), scope, true);
             var submissionQuery = ApplyScope(context.OpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
+            if (departmentId.HasValue) { targetQuery = targetQuery.Where(item => item.OpmsTarget!.DepartmentId == departmentId); submissionQuery = submissionQuery.Where(item => item.OpmsTarget.DepartmentId == departmentId); }
+            if (unitId.HasValue) { targetQuery = targetQuery.Where(item => item.OpmsTarget!.UnitId == unitId); submissionQuery = submissionQuery.Where(item => item.OpmsTarget.UnitId == unitId); }
             var targets = await targetQuery.Select(item => new TargetProjection(item.OpmsTargetId!,
                 useRevised && item.OpmsTarget!.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget!.IndicatorNumber,
                 useRevised && item.OpmsTarget!.IsTargetNameRevised && item.OpmsTarget.RevisedTargetName != null ? item.OpmsTarget.RevisedTargetName : item.OpmsTarget!.TargetName,
@@ -243,6 +405,8 @@ public sealed class OfficialReportsController(
         }
         var ipmsTargets = ApplyScope(context.PerformancePeriodTargets.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id && item.IpmsTargetId != null), scope, false);
         var ipmsSubmissions = ApplyScope(context.IpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
+        if (departmentId.HasValue) { ipmsTargets = ipmsTargets.Where(item => item.IpmsTarget!.DepartmentId == departmentId); ipmsSubmissions = ipmsSubmissions.Where(item => item.IpmsTarget.DepartmentId == departmentId); }
+        if (unitId.HasValue) { ipmsTargets = ipmsTargets.Where(item => item.IpmsTarget!.UnitId == unitId); ipmsSubmissions = ipmsSubmissions.Where(item => item.IpmsTarget.UnitId == unitId); }
         var targetRows = await ipmsTargets.Select(item => new TargetProjection(item.IpmsTargetId!,
             useRevised && item.IpmsTarget!.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget!.IndicatorNumber,
             useRevised && item.IpmsTarget!.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null ? item.IpmsTarget.RevisedTargetName : item.IpmsTarget!.TargetName,
@@ -267,6 +431,90 @@ public sealed class OfficialReportsController(
         }).ToList();
     }
 
+    private async Task<SubmissionSubject[]> BuildSubmissionSubjects(SubmissionKind kind, ReportingPeriod period, AccessQueryScopeResult scope, int? departmentId, int? unitId)
+    {
+        var useRevised = PerformanceRevisionResolver.UsesRevisedValues(period.PeriodType);
+        if (kind == SubmissionKind.Opms)
+        {
+            var query = ApplyScope(context.OpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
+            if (departmentId.HasValue) query = query.Where(item => item.OpmsTarget.DepartmentId == departmentId);
+            if (unitId.HasValue) query = query.Where(item => item.OpmsTarget.UnitId == unitId);
+            return await query.OrderBy(item => item.OpmsTarget.OriginalOrderNumber).ThenBy(item => item.PublicId).Select(item => new SubmissionSubject(
+                item.Id, item.OpmsTargetId,
+                useRevised && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber,
+                useRevised && item.OpmsTarget.IsTargetNameRevised && item.OpmsTarget.RevisedTargetName != null ? item.OpmsTarget.RevisedTargetName : item.OpmsTarget.TargetName,
+                item.OpmsTarget.DepartmentId, item.OpmsTarget.Department != null ? item.OpmsTarget.Department.Name : string.Empty,
+                item.OpmsTarget.UnitId, item.OpmsTarget.Unit != null ? item.OpmsTarget.Unit.Name : string.Empty, period.Code,
+                item.ActualPerformance, item.AchievementPercent, item.TargetAchieved, item.Status,
+                item.SubmittedByUser != null ? item.SubmittedByUser.UserName ?? item.SubmittedByUser.Email ?? item.SubmittedByUser.Id : item.SubmittedByUserId ?? string.Empty,
+                item.SubmittedAt)).ToArrayAsync();
+        }
+        var ipms = ApplyScope(context.IpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
+        if (departmentId.HasValue) ipms = ipms.Where(item => item.IpmsTarget.DepartmentId == departmentId);
+        if (unitId.HasValue) ipms = ipms.Where(item => item.IpmsTarget.UnitId == unitId);
+        return await ipms.OrderBy(item => item.IpmsTarget.OriginalOrderNumber).ThenBy(item => item.PublicId).Select(item => new SubmissionSubject(
+            item.Id, item.IpmsTargetId,
+            useRevised && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber,
+            useRevised && item.IpmsTarget.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null ? item.IpmsTarget.RevisedTargetName : item.IpmsTarget.TargetName,
+            item.IpmsTarget.DepartmentId, item.IpmsTarget.Department != null ? item.IpmsTarget.Department.Name : string.Empty,
+            item.IpmsTarget.UnitId, item.IpmsTarget.Unit != null ? item.IpmsTarget.Unit.Name : string.Empty, period.Code,
+            item.ActualPerformance, item.AchievementPercent, item.TargetAchieved, item.Status,
+            item.SubmittedByUser != null ? item.SubmittedByUser.UserName ?? item.SubmittedByUser.Email ?? item.SubmittedByUser.Id : item.SubmittedByUserId ?? string.Empty,
+            item.SubmittedAt)).ToArrayAsync();
+    }
+
+    private static OfficialReportDataRow PerformanceRow(OfficialPerformanceReportRow item) => Row(
+        ("indicator", item.Indicator), ("targetName", item.TargetName), ("department", item.Department), ("unit", item.Unit), ("period", item.Period),
+        ("targetValue", item.TargetValue), ("actualPerformance", item.ActualPerformance), ("variance", item.Variance),
+        ("achievementPercent", item.AchievementPercent), ("targetAchieved", item.TargetAchieved), ("status", item.Status));
+
+    private static OfficialReportDataRow SubmissionRow(SubmissionSubject item) => SubjectRow(item,
+        ("actualPerformance", item.ActualPerformance ?? string.Empty), ("achievementPercent", Format(item.AchievementPercent)),
+        ("targetAchieved", item.TargetAchieved?.ToString() ?? string.Empty), ("submittedBy", item.SubmittedBy), ("submittedAt", Date(item.SubmittedAt)), ("status", item.Status));
+
+    private static OfficialReportDataRow SubjectRow(SubmissionSubject item, params (string Key, string Value)[] extra) => Row(
+        [("submissionId", item.SubmissionId), ("indicator", item.Indicator), ("targetName", item.TargetName), ("department", item.Department),
+         ("unit", item.Unit), ("period", item.Period), .. extra]);
+
+    private static OfficialReportDataRow Row(params (string Key, string Value)[] values) =>
+        new(values.ToDictionary(item => item.Key, item => item.Value ?? string.Empty, StringComparer.OrdinalIgnoreCase));
+
+    private static bool ActionBelongsTo(OfficialReportType type, string code)
+    {
+        var normalized = code.ToUpperInvariant();
+        return type switch
+        {
+            OfficialReportType.VerificationRegister => normalized.Contains("VERIFY", StringComparison.Ordinal),
+            OfficialReportType.ApprovalRegister => normalized.Contains("APPROV", StringComparison.Ordinal) || normalized.Contains("REJECT", StringComparison.Ordinal),
+            OfficialReportType.PmsReview => normalized.Contains("PMS", StringComparison.Ordinal) || normalized.Contains("REVIEW", StringComparison.Ordinal) || normalized.Contains("SCORE", StringComparison.Ordinal),
+            _ => false
+        };
+    }
+
+    private static string? ValidatePeriod(OfficialReportType type, ReportingPeriodType periodType) => type switch
+    {
+        OfficialReportType.QuarterlyPerformance when periodType is not (ReportingPeriodType.Quarter1 or ReportingPeriodType.Quarter2 or ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4) => "A quarterly report requires Q1, Q2, Q3 or Q4.",
+        OfficialReportType.MidTermPerformance when periodType != ReportingPeriodType.MidTerm => "A Mid-Term report requires the governed Mid-Term period.",
+        OfficialReportType.AnnualPerformance when periodType != ReportingPeriodType.Annual => "An Annual report requires the governed Annual period.",
+        _ => null
+    };
+
+    private static AccessQueryScopeResult IntersectScopes(AccessQueryScopeResult left, AccessQueryScopeResult right)
+    {
+        if (!left.PermissionGranted || !right.PermissionGranted) return new(false, false, [], [], [], [], [], []);
+        if (left.Unrestricted) return right;
+        if (right.Unrestricted) return left;
+        return new(true, false,
+            left.DepartmentIds.Intersect(right.DepartmentIds).ToArray(), left.UnitIds.Intersect(right.UnitIds).ToArray(),
+            left.OwnerUserIds.Intersect(right.OwnerUserIds, StringComparer.OrdinalIgnoreCase).ToArray(),
+            left.TargetIds.Intersect(right.TargetIds, StringComparer.OrdinalIgnoreCase).ToArray(),
+            left.KpiIds.Intersect(right.KpiIds, StringComparer.OrdinalIgnoreCase).ToArray(), left.MunicipalityIds.Intersect(right.MunicipalityIds).ToArray());
+    }
+
+    private static string Date(DateTime value) => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
+    private static string Date(DateTime? value) => value.HasValue ? Date(value.Value) : string.Empty;
+    private static string UserName(ApplicationUser user) => user.UserName ?? user.Email ?? user.Id;
+
     private static string Format(decimal? value) => value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     private static IQueryable<PerformancePeriodTarget> ApplyScope(IQueryable<PerformancePeriodTarget> query, AccessQueryScopeResult scope, bool opms) => scope.Unrestricted ? query : opms
         ? query.Where(item => item.OpmsTarget != null && (scope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId ?? -1) || scope.UnitIds.Contains(item.OpmsTarget.UnitId ?? -1) || scope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId!) || scope.TargetIds.Contains(item.OpmsTargetId!)))
@@ -289,8 +537,8 @@ public sealed class OfficialReportsController(
         return stored.DepartmentIds.All(current.DepartmentIds.Contains) && stored.UnitIds.All(current.UnitIds.Contains) && stored.OwnerUserIds.All(current.OwnerUserIds.Contains) && stored.TargetIds.All(current.TargetIds.Contains);
     }
     private static bool TryRowVersion(string? value, out byte[] bytes) { try { bytes = Convert.FromBase64String(value ?? ""); return bytes.Length > 0; } catch (FormatException) { bytes = []; return false; } }
-    private static OfficialReportTemplateResponse Map(OfficialReportTemplate item) => new(item.PublicId, item.TemplateFamilyPublicId, item.MunicipalityFinancialYear?.PublicId, item.MunicipalityFinancialYear?.FinancialYear.Code, item.SubmissionKind, item.Code, item.Name, item.Format, item.VersionNumber, item.HeadingTemplate, OfficialReportRenderer.ValidateColumns(item.ColumnConfigurationJson), item.IsCurrent, item.IsActive, item.EffectiveFrom, item.EffectiveTo, item.ApprovalReference, item.Reason, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
-    private static OfficialReportGenerationResponse Map(OfficialReportGeneration item) => new(item.PublicId, item.GenerationFamilyPublicId, item.VersionNumber, item.ReportTemplate.PublicId, item.ReportTemplate.Code, item.ReportTemplate.Name, item.ReportTemplate.VersionNumber, item.ReportTemplate.Format, item.SubmissionKind, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.ScopeJson, item.FilterJson, item.DataVersionReference, item.FileName, item.ContentType, item.SizeInBytes, item.Sha256, item.RowCount, item.GeneratedByUser.UserName ?? item.GeneratedByUser.Email ?? item.GeneratedByUser.Id, item.GeneratedAt, $"/api/v1/reports/official/generations/{item.PublicId}/content");
+    private static OfficialReportTemplateResponse Map(OfficialReportTemplate item) => new(item.PublicId, item.TemplateFamilyPublicId, item.MunicipalityFinancialYear?.PublicId, item.MunicipalityFinancialYear?.FinancialYear.Code, item.SubmissionKind, item.ReportType, item.Code, item.Name, item.Format, item.VersionNumber, item.HeadingTemplate, OfficialReportCatalog.ValidateColumns(item.ReportType, item.ColumnConfigurationJson), item.IsCurrent, item.IsActive, item.EffectiveFrom, item.EffectiveTo, item.ApprovalReference, item.Reason, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
+    private static OfficialReportGenerationResponse Map(OfficialReportGeneration item) => new(item.PublicId, item.GenerationFamilyPublicId, item.VersionNumber, item.ReportTemplate.PublicId, item.ReportTemplate.Code, item.ReportTemplate.Name, item.ReportTemplate.VersionNumber, item.ReportTemplate.Format, item.SubmissionKind, item.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.ScopeJson, item.FilterJson, item.DataVersionReference, item.FileName, item.ContentType, item.SizeInBytes, item.Sha256, item.RowCount, item.GeneratedByUser.UserName ?? item.GeneratedByUser.Email ?? item.GeneratedByUser.Id, item.GeneratedAt, $"/api/v1/reports/official/generations/{item.PublicId}/content");
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ObjectResult ForbidResponse<T>(string message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message));
 }

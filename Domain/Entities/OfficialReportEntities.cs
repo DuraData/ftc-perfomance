@@ -8,6 +8,26 @@ public enum OfficialReportFormat
     Pdf = 4
 }
 
+public enum OfficialReportType
+{
+    QuarterlyPerformance = 1,
+    MidTermPerformance = 2,
+    AnnualPerformance = 3,
+    DepartmentalPerformance = 4,
+    UnitPerformance = 5,
+    PerformanceSummary = 6,
+    WorkflowStatus = 7,
+    SubmissionRegister = 8,
+    VerificationRegister = 9,
+    ApprovalRegister = 10,
+    PmsReview = 11,
+    InternalAudit = 12,
+    OutstandingRfi = 13,
+    EvidenceRegister = 14,
+    AuditTrail = 15,
+    VersionTrail = 16
+}
+
 /// <summary>
 /// An approved municipality report layout. Published versions are immutable; a change creates
 /// another row in the same TemplateFamilyPublicId lineage.
@@ -21,6 +41,7 @@ public sealed class OfficialReportTemplate
     public long? MunicipalityFinancialYearId { get; set; }
     public long? PreviousVersionId { get; set; }
     public SubmissionKind SubmissionKind { get; set; }
+    public OfficialReportType ReportType { get; set; } = OfficialReportType.QuarterlyPerformance;
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public OfficialReportFormat Format { get; set; }
@@ -57,6 +78,7 @@ public sealed class OfficialReportGeneration
     public long ReportTemplateId { get; set; }
     public string EvidenceBlobId { get; set; } = string.Empty;
     public SubmissionKind SubmissionKind { get; set; }
+    public OfficialReportType ReportType { get; set; } = OfficialReportType.QuarterlyPerformance;
     public int VersionNumber { get; set; }
     public string ScopeJson { get; set; } = "{}";
     public string FilterJson { get; set; } = "{}";

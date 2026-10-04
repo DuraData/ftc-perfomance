@@ -1890,6 +1890,7 @@ export interface PerformanceReportSummaryDto {
 }
 
 export type OfficialReportFormat = 1 | 2 | 3 | 4;
+export type OfficialReportType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
 
 export interface OfficialReportTemplateDto {
   publicId: string;
@@ -1897,6 +1898,7 @@ export interface OfficialReportTemplateDto {
   municipalityFinancialYearPublicId?: string | null;
   financialYearCode?: string | null;
   submissionKind: number;
+  reportType: OfficialReportType;
   code: string;
   name: string;
   format: OfficialReportFormat;
@@ -1923,6 +1925,7 @@ export interface OfficialReportGenerationDto {
   templateVersion: number;
   format: OfficialReportFormat;
   submissionKind: number;
+  reportType: OfficialReportType;
   municipalityFinancialYearPublicId: string;
   financialYearCode: string;
   reportingPeriodPublicId: string;

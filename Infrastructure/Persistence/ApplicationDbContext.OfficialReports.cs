@@ -24,6 +24,7 @@ public partial class ApplicationDbContext
         builder.Entity<OfficialReportTemplate>().ToTable(table =>
         {
             table.HasCheckConstraint("CK_OfficialReportTemplates_Version", "[VersionNumber] >= 1");
+            table.HasCheckConstraint("CK_OfficialReportTemplates_ReportType", "[ReportType] >= 1 AND [ReportType] <= 16");
             table.HasCheckConstraint("CK_OfficialReportTemplates_Dates", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]");
         });
         builder.Entity<OfficialReportTemplate>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
@@ -41,7 +42,11 @@ public partial class ApplicationDbContext
         builder.Entity<OfficialReportGeneration>().Property(item => item.FileName).HasMaxLength(260);
         builder.Entity<OfficialReportGeneration>().Property(item => item.ContentType).HasMaxLength(160);
         builder.Entity<OfficialReportGeneration>().Property(item => item.Sha256).HasMaxLength(64);
-        builder.Entity<OfficialReportGeneration>().ToTable(table => table.HasCheckConstraint("CK_OfficialReportGenerations_Version", "[VersionNumber] >= 1 AND [RowCount] >= 0 AND [SizeInBytes] >= 0"));
+        builder.Entity<OfficialReportGeneration>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_OfficialReportGenerations_Version", "[VersionNumber] >= 1 AND [RowCount] >= 0 AND [SizeInBytes] >= 0");
+            table.HasCheckConstraint("CK_OfficialReportGenerations_ReportType", "[ReportType] >= 1 AND [ReportType] <= 16");
+        });
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.MunicipalityFinancialYear).WithMany().HasForeignKey(item => item.MunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OfficialReportGeneration>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);

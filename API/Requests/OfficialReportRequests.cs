@@ -7,6 +7,7 @@ public sealed record SaveOfficialReportTemplateRequest(
     string? PreviousVersionRowVersion,
     Guid? MunicipalityFinancialYearPublicId,
     SubmissionKind SubmissionKind,
+    OfficialReportType ReportType,
     string Code,
     string Name,
     OfficialReportFormat Format,
@@ -21,4 +22,6 @@ public sealed record GenerateOfficialReportRequest(
     Guid TemplatePublicId,
     Guid MunicipalityFinancialYearPublicId,
     Guid ReportingPeriodPublicId,
-    Guid? PreviousGenerationPublicId);
+    Guid? PreviousGenerationPublicId,
+    Guid? DepartmentPublicId = null,
+    Guid? UnitPublicId = null);

@@ -61,6 +61,50 @@ public sealed class OfficialReportGenerationTests
     }
 
     [Fact]
+    public void Catalog_DefinesAndRestrictsEveryRequiredReportClass()
+    {
+        var reportTypes = Enum.GetValues<OfficialReportType>();
+
+        reportTypes.Should().HaveCount(16);
+        foreach (var reportType in reportTypes)
+        {
+            var defaults = OfficialReportCatalog.DefaultColumnKeys(reportType);
+            defaults.Should().NotBeEmpty($"{reportType} must have an approved default layout");
+            OfficialReportCatalog.ValidateColumns(reportType, OfficialReportCatalog.DefaultColumnsJson(reportType)).Should().Equal(defaults);
+        }
+
+        var invalid = () => OfficialReportCatalog.ValidateColumns(OfficialReportType.AuditTrail, "[\"indicator\"]");
+        invalid.Should().Throw<ArgumentException>().WithMessage("*unsupported by the selected report class*");
+    }
+
+    [Fact]
+    public void TabularRenderer_UsesTheSelectedReportClassHeadingsAndStableSnapshot()
+    {
+        var rows = new[]
+        {
+            new OfficialReportDataRow(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["entityName"] = "OpmsSubmission",
+                ["entityId"] = "submission-1",
+                ["action"] = "Approve",
+                ["changedBy"] = "auditor",
+                ["changedAt"] = "2026-10-04T10:00:00.0000000Z",
+                ["reason"] = "Governed approval",
+                ["correlationId"] = "correlation-1"
+            })
+        };
+        var request = new OfficialTabularReportRenderRequest("Example Municipality", "2026/27", "Quarter 1", "Audit trail", OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.AuditTrail), OfficialReportFormat.Csv, OfficialReportType.AuditTrail, rows);
+
+        var first = OfficialReportRenderer.RenderTabular(request);
+        var second = OfficialReportRenderer.RenderTabular(request);
+        var csv = System.Text.Encoding.UTF8.GetString(first.Content);
+
+        csv.Should().Contain("Entity").And.Contain("Correlation ID").And.Contain("OpmsSubmission");
+        first.DataVersionReference.Should().Be(second.DataVersionReference);
+        first.Content.Should().Equal(second.Content);
+    }
+
+    [Fact]
     public void PdfRenderer_PaginatesWithoutDroppingOfficialRows()
     {
         var rows = Enumerable.Range(1, 120).Select(index => Rows[0] with { Indicator = $"KPI-{index:D3}" }).ToArray();
@@ -119,6 +163,34 @@ public sealed class OfficialReportGenerationTests
         await context.SaveChangesAsync();
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_REPORT.GENERATE")).ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }
+        };
+
+        var response = await controller.Generate(new GenerateOfficialReportRequest(template.PublicId, Guid.NewGuid(), Guid.NewGuid(), null));
+
+        response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task DirectGenerationCall_IsDeniedWhenUnderlyingResourceReadPermissionIsMissing()
+    {
+        var municipalityId = 702L;
+        var tenant = new FixedTenantContext(municipalityId);
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        var municipality = new Municipality { Id = municipalityId, Code = "RPR", Name = "Resource Permission Municipality" };
+        var user = new ApplicationUser { Id = "resource-reporter", UserName = "resource-reporter", FirstName = "Resource", LastName = "Reporter", MunicipalityId = municipalityId };
+        var template = new OfficialReportTemplate { MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Opms, ReportType = OfficialReportType.QuarterlyPerformance, Code = "QUARTERLY", Name = "Quarterly", Format = OfficialReportFormat.Pdf, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ApprovalReference = "Council", Reason = "Approved", CreatedByUserId = user.Id, ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.QuarterlyPerformance) };
+        context.AddRange(municipality, user, template);
+        await context.SaveChangesAsync();
+        var granted = new AccessQueryScopeResult(true, true, [], [], [], [], [], []);
+        var denied = new AccessQueryScopeResult(false, false, [], [], [], [], [], []);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_REPORT.GENERATE")).ReturnsAsync(granted);
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ")).ReturnsAsync(denied);
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ")).ReturnsAsync(granted);
         var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }

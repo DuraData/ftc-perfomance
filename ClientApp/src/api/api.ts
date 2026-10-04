@@ -88,6 +88,7 @@ import type {
   OfficialReportTemplateDto,
   OfficialReportGenerationDto,
   OfficialReportFormat,
+  OfficialReportType,
   PerformancePeriodTargetDto,
   PerformanceTargetRevisionDto,
   KpiFieldRevisionDto,
@@ -1463,6 +1464,7 @@ export async function saveOfficialReportTemplate(payload: {
   code: string;
   name: string;
   format: OfficialReportFormat;
+  reportType: OfficialReportType;
   headingTemplate: string;
   columns: string[];
   effectiveFrom: string;
@@ -1479,7 +1481,7 @@ export async function getOfficialReportGenerations(kind: 1 | 2, reportingPeriodP
   return get<OfficialReportGenerationDto[]>(`/v1/reports/official/generations?${query}`);
 }
 
-export async function generateOfficialReport(payload: { templatePublicId: string; municipalityFinancialYearPublicId: string; reportingPeriodPublicId: string; previousGenerationPublicId?: string | null }): Promise<ApiResponse<OfficialReportGenerationDto>> {
+export async function generateOfficialReport(payload: { templatePublicId: string; municipalityFinancialYearPublicId: string; reportingPeriodPublicId: string; previousGenerationPublicId?: string | null; departmentPublicId?: string | null; unitPublicId?: string | null }): Promise<ApiResponse<OfficialReportGenerationDto>> {
   return post<OfficialReportGenerationDto>('/v1/reports/official/generations', payload);
 }
 

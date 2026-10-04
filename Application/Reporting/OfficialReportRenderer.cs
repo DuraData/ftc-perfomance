@@ -32,24 +32,34 @@ public sealed record OfficialReportRenderRequest(
 
 public sealed record OfficialReportRenderResult(byte[] Content, string ContentType, string Extension, string DataVersionReference, string Sha256);
 
+public sealed record OfficialTabularReportRenderRequest(
+    string Municipality,
+    string FinancialYear,
+    string Period,
+    string HeadingTemplate,
+    string ColumnConfigurationJson,
+    OfficialReportFormat Format,
+    OfficialReportType ReportType,
+    IReadOnlyList<OfficialReportDataRow> Rows);
+
 /// <summary>Renders every official format from one canonical report dataset.</summary>
 public static class OfficialReportRenderer
 {
-    private sealed record Column(string Key, string Heading, Func<OfficialPerformanceReportRow, string> Value);
+    private sealed record Column(string Key, string Heading);
 
     private static readonly Column[] AllColumns =
     [
-        new("indicator", "Indicator", row => row.Indicator),
-        new("targetName", "Target", row => row.TargetName),
-        new("department", "Department", row => row.Department),
-        new("unit", "Unit", row => row.Unit),
-        new("period", "Period", row => row.Period),
-        new("targetValue", "Target Value", row => row.TargetValue),
-        new("actualPerformance", "Actual Performance", row => row.ActualPerformance),
-        new("variance", "Variance", row => row.Variance),
-        new("achievementPercent", "Achievement Percent", row => row.AchievementPercent),
-        new("targetAchieved", "Target Achieved", row => row.TargetAchieved),
-        new("status", "Status", row => row.Status)
+        new("indicator", "Indicator"),
+        new("targetName", "Target"),
+        new("department", "Department"),
+        new("unit", "Unit"),
+        new("period", "Period"),
+        new("targetValue", "Target Value"),
+        new("actualPerformance", "Actual Performance"),
+        new("variance", "Variance"),
+        new("achievementPercent", "Achievement Percent"),
+        new("targetAchieved", "Target Achieved"),
+        new("status", "Status")
     ];
 
     public static readonly string DefaultColumnsJson = JsonSerializer.Serialize(AllColumns.Select(column => column.Key));
@@ -57,30 +67,43 @@ public static class OfficialReportRenderer
     public static OfficialReportRenderResult Render(OfficialReportRenderRequest request)
     {
         var columns = ResolveColumns(request.ColumnConfigurationJson);
-        var heading = (request.HeadingTemplate ?? string.Empty)
-            .Replace("{Municipality}", request.Municipality, StringComparison.OrdinalIgnoreCase)
-            .Replace("{FinancialYear}", request.FinancialYear, StringComparison.OrdinalIgnoreCase)
-            .Replace("{Period}", request.Period, StringComparison.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(heading)) heading = $"{request.FinancialYear} {request.Period} PERFORMANCE REPORT";
+        var rows = request.Rows.Select(ToDataRow).ToArray();
+        return RenderCore(request.Municipality, request.FinancialYear, request.Period, request.HeadingTemplate, request.Format, columns, rows);
+    }
+
+    public static OfficialReportRenderResult RenderTabular(OfficialTabularReportRenderRequest request)
+    {
+        var columns = OfficialReportCatalog.ResolveColumns(request.ReportType, request.ColumnConfigurationJson)
+            .Select(item => new Column(item.Key, item.Heading)).ToArray();
+        return RenderCore(request.Municipality, request.FinancialYear, request.Period, request.HeadingTemplate, request.Format, columns, request.Rows);
+    }
+
+    private static OfficialReportRenderResult RenderCore(string municipality, string financialYear, string period, string headingTemplate, OfficialReportFormat format, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
+    {
+        var heading = (headingTemplate ?? string.Empty)
+            .Replace("{Municipality}", municipality, StringComparison.OrdinalIgnoreCase)
+            .Replace("{FinancialYear}", financialYear, StringComparison.OrdinalIgnoreCase)
+            .Replace("{Period}", period, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(heading)) heading = $"{financialYear} {period} PERFORMANCE REPORT";
 
         var canonical = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            request.Municipality,
-            request.FinancialYear,
-            request.Period,
+            Municipality = municipality,
+            FinancialYear = financialYear,
+            Period = period,
             Heading = heading,
             Columns = columns.Select(item => item.Key),
-            request.Rows
+            Rows = rows.Select(row => columns.ToDictionary(column => column.Key, column => row.Value(column.Key), StringComparer.OrdinalIgnoreCase))
         });
         var dataVersion = Convert.ToHexString(SHA256.HashData(canonical)).ToLowerInvariant();
 
-        var rendered = request.Format switch
+        var rendered = format switch
         {
-            OfficialReportFormat.Csv => (RenderCsv(heading, columns, request.Rows), "text/csv; charset=utf-8", "csv"),
-            OfficialReportFormat.Xlsx => (RenderXlsx(heading, columns, request.Rows), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
-            OfficialReportFormat.Docx => (RenderDocx(heading, columns, request.Rows), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
-            OfficialReportFormat.Pdf => (RenderPdf(heading, columns, request.Rows), "application/pdf", "pdf"),
-            _ => throw new ArgumentOutOfRangeException(nameof(request.Format), "Unsupported official report format.")
+            OfficialReportFormat.Csv => (RenderCsv(heading, columns, rows), "text/csv; charset=utf-8", "csv"),
+            OfficialReportFormat.Xlsx => (RenderXlsx(heading, columns, rows), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+            OfficialReportFormat.Docx => (RenderDocx(heading, columns, rows), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"),
+            OfficialReportFormat.Pdf => (RenderPdf(heading, columns, rows), "application/pdf", "pdf"),
+            _ => throw new ArgumentOutOfRangeException(nameof(format), "Unsupported official report format.")
         };
         return new(rendered.Item1, rendered.Item2, rendered.Item3, dataVersion, Convert.ToHexString(SHA256.HashData(rendered.Item1)).ToLowerInvariant());
     }
@@ -103,12 +126,12 @@ public static class OfficialReportRenderer
         return requested.Select(key => lookup[key]).ToArray();
     }
 
-    private static byte[] RenderCsv(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialPerformanceReportRow> rows)
+    private static byte[] RenderCsv(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
     {
         var value = new StringBuilder();
         value.AppendLine(Csv(heading));
         value.AppendLine(string.Join(',', columns.Select(column => Csv(column.Heading))));
-        foreach (var row in rows) value.AppendLine(string.Join(',', columns.Select(column => Csv(column.Value(row)))));
+        foreach (var row in rows) value.AppendLine(string.Join(',', columns.Select(column => Csv(row.Value(column.Key)))));
         return new UTF8Encoding(true).GetBytes(value.ToString());
     }
 
@@ -119,7 +142,7 @@ public static class OfficialReportRenderer
         return '"' + safe.Replace("\"", "\"\"") + '"';
     }
 
-    private static byte[] RenderXlsx(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialPerformanceReportRow> rows)
+    private static byte[] RenderXlsx(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
     {
         using var result = new MemoryStream();
         using (var archive = new ZipArchive(result, ZipArchiveMode.Create, true))
@@ -131,7 +154,7 @@ public static class OfficialReportRenderer
             var sheet = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
             AppendSheetRow(sheet, [heading]);
             AppendSheetRow(sheet, columns.Select(column => column.Heading));
-            foreach (var row in rows) AppendSheetRow(sheet, columns.Select(column => column.Value(row)));
+            foreach (var row in rows) AppendSheetRow(sheet, columns.Select(column => row.Value(column.Key)));
             sheet.Append("</sheetData></worksheet>");
             AddText(archive, "xl/worksheets/sheet1.xml", sheet.ToString());
         }
@@ -145,7 +168,7 @@ public static class OfficialReportRenderer
         xml.Append("</row>");
     }
 
-    private static byte[] RenderDocx(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialPerformanceReportRow> rows)
+    private static byte[] RenderDocx(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
     {
         using var result = new MemoryStream();
         using (var archive = new ZipArchive(result, ZipArchiveMode.Create, true))
@@ -155,7 +178,7 @@ public static class OfficialReportRenderer
             var document = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>");
             document.Append("<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>").Append(Xml(heading)).Append("</w:t></w:r></w:p><w:tbl>");
             AppendWordRow(document, columns.Select(column => column.Heading));
-            foreach (var row in rows) AppendWordRow(document, columns.Select(column => column.Value(row)));
+            foreach (var row in rows) AppendWordRow(document, columns.Select(column => row.Value(column.Key)));
             document.Append("</w:tbl><w:sectPr><w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/></w:sectPr></w:body></w:document>");
             AddText(archive, "word/document.xml", document.ToString());
         }
@@ -169,9 +192,9 @@ public static class OfficialReportRenderer
         xml.Append("</w:tr>");
     }
 
-    private static byte[] RenderPdf(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialPerformanceReportRow> rows)
+    private static byte[] RenderPdf(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
     {
-        var dataLines = rows.Select(row => string.Join(" | ", columns.Select(column => column.Value(row)))).ToArray();
+        var dataLines = rows.Select(row => string.Join(" | ", columns.Select(column => row.Value(column.Key)))).ToArray();
         var pageData = dataLines.Chunk(55).Select(chunk => chunk.ToArray()).ToList();
         if (pageData.Count == 0) pageData.Add([]);
         var fontObjectId = 3 + pageData.Count * 2;
@@ -222,4 +245,11 @@ public static class OfficialReportRenderer
     }
     private static string Pdf(string value) => string.Concat(value.Select(character => character is >= ' ' and <= '~' ? character : '?')).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
     private static string Trim(string value, int maximum) => value.Length <= maximum ? value : value[..(maximum - 1)] + "…";
+
+    private static OfficialReportDataRow ToDataRow(OfficialPerformanceReportRow row) => new(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["indicator"] = row.Indicator, ["targetName"] = row.TargetName, ["department"] = row.Department, ["unit"] = row.Unit,
+        ["period"] = row.Period, ["targetValue"] = row.TargetValue, ["actualPerformance"] = row.ActualPerformance,
+        ["variance"] = row.Variance, ["achievementPercent"] = row.AchievementPercent, ["targetAchieved"] = row.TargetAchieved, ["status"] = row.Status
+    });
 }
