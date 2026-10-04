@@ -208,6 +208,7 @@ builder.Services.AddHostedService<NotificationScheduleWorker>();
 builder.Services.AddHostedService<PoeDisposalWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
+builder.Services.AddHostedService<OfficialReportJobWorker>();
 builder.Services.AddSingleton<OperationalTelemetry>();
 builder.Services.Configure<IdempotencyOptions>(builder.Configuration.GetSection(IdempotencyOptions.SectionName));
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
@@ -263,7 +264,7 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels").AddCheck<CompromisedPasswordHealthCheck>("compromised-passwords").AddCheck<OperationalTelemetryHealthCheck>("operational-telemetry");
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database").AddCheck<OutboxHealthCheck>("outbox").AddCheck<OfficialReportJobHealthCheck>("official-report-jobs").AddCheck<EvidenceScannerHealthCheck>("evidence-scanner").AddCheck<EvidenceStorageHealthCheck>("evidence-storage").AddCheck<NotificationChannelHealthCheck>("notification-channels").AddCheck<CompromisedPasswordHealthCheck>("compromised-passwords").AddCheck<OperationalTelemetryHealthCheck>("operational-telemetry");
 
 var app = builder.Build();
 

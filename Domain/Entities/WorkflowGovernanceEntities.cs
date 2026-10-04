@@ -33,7 +33,8 @@ public enum NotificationType
     OverdueItem = 7,
     DueDateExtension = 8,
     DeadlineReminder = 9,
-    Escalation = 10
+    Escalation = 10,
+    ReportReady = 11
 }
 
 public enum SubmissionKind

@@ -89,6 +89,10 @@ import type {
   OfficialReportGenerationDto,
   OfficialReportFormat,
   OfficialReportType,
+  OfficialReportJobDto,
+  OfficialReportScheduleDto,
+  OfficialReportScheduleCadence,
+  OfficialReportRecipientKind,
   PerformancePeriodTargetDto,
   PerformanceTargetRevisionDto,
   KpiFieldRevisionDto,
@@ -1483,6 +1487,51 @@ export async function getOfficialReportGenerations(kind: 1 | 2, reportingPeriodP
 
 export async function generateOfficialReport(payload: { templatePublicId: string; municipalityFinancialYearPublicId: string; reportingPeriodPublicId: string; previousGenerationPublicId?: string | null; departmentPublicId?: string | null; unitPublicId?: string | null }): Promise<ApiResponse<OfficialReportGenerationDto>> {
   return post<OfficialReportGenerationDto>('/v1/reports/official/generations', payload);
+}
+
+export async function getOfficialReportJobs(kind: 1 | 2): Promise<ApiResponse<OfficialReportJobDto[]>> {
+  return get<OfficialReportJobDto[]>(`/v1/reports/official/jobs?kind=${kind}`);
+}
+
+export async function queueOfficialReportJob(payload: { templatePublicId: string; municipalityFinancialYearPublicId: string; reportingPeriodPublicId: string; previousGenerationPublicId?: string | null; departmentPublicId?: string | null; unitPublicId?: string | null }): Promise<ApiResponse<OfficialReportJobDto>> {
+  return post<OfficialReportJobDto>('/v1/reports/official/jobs', payload);
+}
+
+export async function retryOfficialReportJob(publicId: string, reason: string, rowVersion: string): Promise<ApiResponse<OfficialReportJobDto>> {
+  return post<OfficialReportJobDto>(`/v1/reports/official/jobs/${encodeURIComponent(publicId)}/retry`, { reason, rowVersion });
+}
+
+export async function getOfficialReportSchedules(kind: 1 | 2, includeHistory = false): Promise<ApiResponse<OfficialReportScheduleDto[]>> {
+  return get<OfficialReportScheduleDto[]>(`/v1/reports/official/schedules?kind=${kind}&includeHistory=${includeHistory}`);
+}
+
+export async function saveOfficialReportSchedule(payload: {
+  previousVersionPublicId?: string | null;
+  previousVersionRowVersion?: string | null;
+  templatePublicId: string;
+  municipalityFinancialYearPublicId: string;
+  reportingPeriodPublicId: string;
+  departmentPublicId?: string | null;
+  unitPublicId?: string | null;
+  code: string;
+  name: string;
+  cadence: OfficialReportScheduleCadence;
+  interval: number;
+  nextRunAt?: string | null;
+  effectiveTo?: string | null;
+  recipientKind: OfficialReportRecipientKind;
+  recipientValues: string[];
+  channels: string[];
+  isMandatory: boolean;
+  isActive: boolean;
+  approvalReference: string;
+  reason: string;
+}): Promise<ApiResponse<OfficialReportScheduleDto>> {
+  return post<OfficialReportScheduleDto>('/v1/reports/official/schedules', payload);
+}
+
+export async function runOfficialReportSchedule(publicId: string): Promise<ApiResponse<OfficialReportJobDto>> {
+  return post<OfficialReportJobDto>(`/v1/reports/official/schedules/${encodeURIComponent(publicId)}/run`, {});
 }
 
 export async function downloadOfficialReport(publicId: string, fileName: string): Promise<ApiResponse<boolean>> {

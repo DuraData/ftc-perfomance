@@ -4,8 +4,8 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, saveOfficialReportTemplate } from '../../api/api';
-import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportJobs, getOfficialReportSchedules, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
 const reportTypes: { value: OfficialReportType; label: string; code: string; columns: string[] }[] = [
@@ -27,6 +27,7 @@ const reportTypes: { value: OfficialReportType; label: string; code: string; col
   { value: 16, label: 'Version trail', code: 'VERSION_TRAIL', columns: ['source', 'entityId', 'field', 'originalValue', 'revisedValue', 'versionNumber', 'actor', 'effectiveAt', 'reason', 'approvalReference'] },
 ];
 const reportTypeLabel = (value: OfficialReportType) => reportTypes.find(item => item.value === value)?.label ?? 'Official report';
+const jobStateLabel = (value: number) => ['', 'Queued', 'Processing', 'Retry pending', 'Completed', 'Failed', 'Cancelled'][value] ?? 'Unknown';
 const storedGenerationFilters = (generation?: OfficialReportGenerationDto) => {
   if (!generation) return {};
   try {
@@ -44,12 +45,16 @@ export function Reports() {
   const [yearId, setYearId] = useState('');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [generations, setGenerations] = useState<OfficialReportGenerationDto[]>([]);
+  const [jobs, setJobs] = useState<OfficialReportJobDto[]>([]);
+  const [schedules, setSchedules] = useState<OfficialReportScheduleDto[]>([]);
   const [templateId, setTemplateId] = useState('');
   const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
   const [units, setUnits] = useState<UnitLookupDto[]>([]);
   const [departmentId, setDepartmentId] = useState('');
   const [unitId, setUnitId] = useState('');
   const [templateDraft, setTemplateDraft] = useState({ reportType: 1 as OfficialReportType, code: 'QUARTERLY', name: 'Quarterly performance report', format: 4 as OfficialReportFormat, headingTemplate: '{Municipality} · {FinancialYear} {Period} PERFORMANCE REPORT', approvalReference: '', reason: '', previousVersionPublicId: '' });
+  const [scheduleDraft, setScheduleDraft] = useState({ previousVersionPublicId: '', code: 'REPORT-DISTRIBUTION', name: 'Official report distribution', cadence: 1 as OfficialReportScheduleCadence, interval: 1, nextRunAt: '', recipientKind: 1 as OfficialReportRecipientKind, recipientValues: '', channels: 'IN_APP', isMandatory: true, isActive: true, approvalReference: '', reason: '' });
+  const [retryReasons, setRetryReasons] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<PerformanceReportSummaryDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,12 +70,14 @@ export function Reports() {
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, templateResult, generationResult, departmentResult, unitResult] = await Promise.all([
+    const [periodResult, yearResult, summaryResult, templateResult, generationResult, jobResult, scheduleResult, departmentResult, unitResult] = await Promise.all([
       getReportingPeriodMasters(),
       getMunicipalityFinancialYearMasters(),
       getPerformanceReportSummary(kind, periodId || undefined),
       canReadOfficial ? getOfficialReportTemplates(kind) : Promise.resolve({ success: true, data: [] as OfficialReportTemplateDto[], message: undefined }),
       canReadOfficial ? getOfficialReportGenerations(kind, periodId || undefined) : Promise.resolve({ success: true, data: [] as OfficialReportGenerationDto[], message: undefined }),
+      canReadOfficial ? getOfficialReportJobs(kind) : Promise.resolve({ success: true, data: [] as OfficialReportJobDto[], message: undefined }),
+      canConfigureOfficial ? getOfficialReportSchedules(kind) : Promise.resolve({ success: true, data: [] as OfficialReportScheduleDto[], message: undefined }),
       getDepartments(),
       getUnits(),
     ]);
@@ -81,6 +88,8 @@ export function Reports() {
     setTemplates(templateResult.data ?? []);
     setTemplateId(current => (templateResult.data ?? []).some(template => template.publicId === current) ? current : templateResult.data?.[0]?.publicId ?? '');
     setGenerations(generationResult.data ?? []);
+    setJobs(jobResult.data ?? []);
+    setSchedules(scheduleResult.data ?? []);
     setDepartments(departmentResult.data ?? []);
     setUnits(unitResult.data ?? []);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
@@ -89,9 +98,11 @@ export function Reports() {
     else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
     else if (!templateResult.success) setError(templateResult.message ?? 'Official report templates could not be loaded.');
     else if (!generationResult.success) setError(generationResult.message ?? 'Official report history could not be loaded.');
+    else if (!jobResult.success) setError(jobResult.message ?? 'Official report jobs could not be loaded.');
+    else if (!scheduleResult.success) setError(scheduleResult.message ?? 'Official report schedules could not be loaded.');
     else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
-  }, [canReadOfficial, kind, periodId]);
+  }, [canConfigureOfficial, canReadOfficial, kind, periodId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -123,6 +134,59 @@ export function Reports() {
     setBusy(true); setError(null);
     const result = await downloadOfficialReport(generation.publicId, generation.fileName);
     if (!result.success) setError(result.message ?? 'Official report download failed.');
+    setBusy(false);
+  };
+
+  const queueGeneration = async (previous?: OfficialReportGenerationDto) => {
+    const effectiveTemplateId = previous?.templatePublicId ?? templateId;
+    const effectiveYearId = previous?.municipalityFinancialYearPublicId ?? yearId;
+    const effectivePeriodId = previous?.reportingPeriodPublicId ?? periodId;
+    const effectiveTemplate = templates.find(template => template.publicId === effectiveTemplateId);
+    if (!effectiveTemplateId || !effectiveYearId || !effectivePeriodId) { setError('Select a financial year, reporting period and approved template.'); return; }
+    if (!previous && effectiveTemplate?.reportType === 4 && !departmentId) { setError('Select a department for the departmental report.'); return; }
+    if (!previous && effectiveTemplate?.reportType === 5 && !unitId) { setError('Select a unit for the unit report.'); return; }
+    const priorFilters = storedGenerationFilters(previous);
+    setBusy(true); setError(null);
+    const result = await queueOfficialReportJob({ templatePublicId: effectiveTemplateId, municipalityFinancialYearPublicId: effectiveYearId, reportingPeriodPublicId: effectivePeriodId, previousGenerationPublicId: previous?.publicId, departmentPublicId: previous ? priorFilters.departmentPublicId : departmentId || undefined, unitPublicId: previous ? priorFilters.unitPublicId : unitId || undefined });
+    if (!result.success) setError(result.message ?? 'Official report job could not be queued.');
+    else { pushToast('success', 'Official report generation queued'); await load(); }
+    setBusy(false);
+  };
+
+  const saveSchedule = async () => {
+    if (!templateId || !yearId || !periodId) { setError('Select a template, financial year and reporting period before configuring a schedule.'); return; }
+    const previous = schedules.find(schedule => schedule.publicId === scheduleDraft.previousVersionPublicId);
+    const values = scheduleDraft.recipientValues.split(',').map(value => value.trim()).filter(Boolean);
+    const channels = scheduleDraft.channels.split(',').map(value => value.trim().toUpperCase()).filter(Boolean);
+    if (!scheduleDraft.code.trim() || !scheduleDraft.name.trim() || !scheduleDraft.approvalReference.trim() || scheduleDraft.reason.trim().length < 5 || !values.length || !channels.length || scheduleDraft.isActive && !scheduleDraft.nextRunAt) { setError('Complete the schedule identity, next run, recipients, channels, approval reference and audit reason.'); return; }
+    setBusy(true); setError(null);
+    const result = await saveOfficialReportSchedule({
+      previousVersionPublicId: previous?.publicId, previousVersionRowVersion: previous?.rowVersion,
+      templatePublicId: templateId, municipalityFinancialYearPublicId: yearId, reportingPeriodPublicId: periodId,
+      departmentPublicId: departmentId || undefined, unitPublicId: unitId || undefined,
+      code: scheduleDraft.code, name: scheduleDraft.name, cadence: scheduleDraft.cadence, interval: scheduleDraft.interval,
+      nextRunAt: scheduleDraft.nextRunAt ? new Date(scheduleDraft.nextRunAt).toISOString() : undefined,
+      recipientKind: scheduleDraft.recipientKind, recipientValues: values, channels, isMandatory: scheduleDraft.isMandatory, isActive: scheduleDraft.isActive,
+      approvalReference: scheduleDraft.approvalReference, reason: scheduleDraft.reason,
+    });
+    if (!result.success) setError(result.message ?? 'Official report schedule could not be saved.');
+    else { pushToast('success', previous ? 'Report schedule version created' : 'Report schedule created'); setScheduleDraft(value => ({ ...value, previousVersionPublicId: '', approvalReference: '', reason: '' })); await load(); }
+    setBusy(false);
+  };
+
+  const runSchedule = async (schedule: OfficialReportScheduleDto) => {
+    setBusy(true); setError(null);
+    const result = await runOfficialReportSchedule(schedule.publicId);
+    if (!result.success) setError(result.message ?? 'Scheduled report run could not be queued.'); else { pushToast('success', 'Scheduled report run queued'); await load(); }
+    setBusy(false);
+  };
+
+  const retryJob = async (job: OfficialReportJobDto) => {
+    const reason = retryReasons[job.publicId]?.trim() ?? '';
+    if (reason.length < 5) { setError('Enter a retry reason of at least five characters.'); return; }
+    setBusy(true); setError(null);
+    const result = await retryOfficialReportJob(job.publicId, reason, job.rowVersion);
+    if (!result.success) setError(result.message ?? 'Report job could not be retried.'); else { pushToast('success', 'Report job queued for retry'); await load(); }
     setBusy(false);
   };
 
@@ -183,7 +247,8 @@ export function Reports() {
             <div className="min-w-[18rem] flex-1"><Select label="Approved template" value={templateId} options={[{ value: '', label: templates.length ? 'Select a template' : 'No approved template configured' }, ...templates.filter(template => !template.municipalityFinancialYearPublicId || template.municipalityFinancialYearPublicId === yearId).map(template => ({ value: template.publicId, label: `${reportTypeLabel(template.reportType)} · ${template.name} · v${template.versionNumber} · ${['', 'CSV', 'Excel', 'Word', 'PDF'][template.format]}` }))]} onChange={event => { setTemplateId(event.target.value); setDepartmentId(''); setUnitId(''); }} /></div>
             {selectedTemplate?.reportType === 4 && <div className="min-w-[14rem]"><Select label="Department" value={departmentId} options={[{ value: '', label: 'Select a department' }, ...departments.map(department => ({ value: department.publicId, label: department.name }))]} onChange={event => { setDepartmentId(event.target.value); setUnitId(''); }} /></div>}
             {selectedTemplate?.reportType === 5 && <div className="min-w-[14rem]"><Select label="Unit" value={unitId} options={[{ value: '', label: 'Select a unit' }, ...filteredUnits.map(unit => ({ value: unit.publicId, label: unit.name }))]} onChange={event => setUnitId(event.target.value)} /></div>}
-            <Button size="sm" variant="primary" icon={<FileText className="h-4 w-4" />} onClick={() => void generate()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Generate official version</Button>
+            <Button size="sm" variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Generate now</Button>
+            <Button size="sm" variant="primary" icon={<History className="h-4 w-4" />} onClick={() => void queueGeneration()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Queue generation</Button>
           </div>
           {!periodId && <p className="mt-2 text-xs text-warning-700">Choose one reporting period before generating an official output.</p>}
         </Card>}
@@ -209,8 +274,14 @@ export function Reports() {
 
         {canReadOfficial && <Card className="p-4">
           <div className="mb-4 flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official generation history</h2><p className="text-xs text-secondary-500">Previous official files remain retrievable after corrections or regeneration.</p></div></div>
-          <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-secondary-200 text-xs text-secondary-500 dark:border-secondary-700"><th className="px-2 py-2">Template</th><th className="px-2 py-2">Period</th><th className="px-2 py-2">Version</th><th className="px-2 py-2">Generated</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Snapshot</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{generations.map(generation => <tr key={generation.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-3"><strong>{generation.templateName}</strong><div className="text-xs text-secondary-500">{reportTypeLabel(generation.reportType)} · Template v{generation.templateVersion} · {['', 'CSV', 'Excel', 'Word', 'PDF'][generation.format]}</div></td><td className="px-2 py-3">{generation.financialYearCode} · {generation.reportingPeriodCode}</td><td className="px-2 py-3">v{generation.versionNumber}</td><td className="px-2 py-3">{new Date(generation.generatedAt).toLocaleString()}<div className="text-xs text-secondary-500">{generation.generatedBy}</div></td><td className="px-2 py-3">{generation.rowCount}</td><td className="px-2 py-3 font-mono text-xs" title={generation.dataVersionReference}>{generation.dataVersionReference.slice(0, 12)}…</td><td className="px-2 py-3"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => void downloadOfficial(generation)} disabled={busy}>Download</Button><Button size="sm" variant="outline" onClick={() => void generate(generation)} disabled={busy || !canGenerateOfficial}>Regenerate</Button></div></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-secondary-200 text-xs text-secondary-500 dark:border-secondary-700"><th className="px-2 py-2">Template</th><th className="px-2 py-2">Period</th><th className="px-2 py-2">Version</th><th className="px-2 py-2">Generated</th><th className="px-2 py-2">Rows</th><th className="px-2 py-2">Snapshot</th><th className="px-2 py-2">Actions</th></tr></thead><tbody>{generations.map(generation => <tr key={generation.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-3"><strong>{generation.templateName}</strong><div className="text-xs text-secondary-500">{reportTypeLabel(generation.reportType)} · Template v{generation.templateVersion} · {['', 'CSV', 'Excel', 'Word', 'PDF'][generation.format]}</div></td><td className="px-2 py-3">{generation.financialYearCode} · {generation.reportingPeriodCode}</td><td className="px-2 py-3">v{generation.versionNumber}</td><td className="px-2 py-3">{new Date(generation.generatedAt).toLocaleString()}<div className="text-xs text-secondary-500">{generation.generatedBy}</div></td><td className="px-2 py-3">{generation.rowCount}</td><td className="px-2 py-3 font-mono text-xs" title={generation.dataVersionReference}>{generation.dataVersionReference.slice(0, 12)}…</td><td className="px-2 py-3"><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void downloadOfficial(generation)} disabled={busy}>Download</Button><Button size="sm" variant="outline" onClick={() => void generate(generation)} disabled={busy || !canGenerateOfficial}>Regenerate now</Button><Button size="sm" variant="outline" onClick={() => void queueGeneration(generation)} disabled={busy || !canGenerateOfficial}>Queue version</Button></div></td></tr>)}</tbody></table></div>
           {!generations.length && <p className="py-5 text-center text-sm text-secondary-500">No official report versions exist for this selection.</p>}
+        </Card>}
+
+        {canReadOfficial && <Card className="p-4">
+          <div className="mb-4 flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Asynchronous report jobs</h2><p className="text-xs text-secondary-500">Durable jobs re-evaluate live permissions before generation. Scheduled deliveries continue through the notification receipt ledger.</p></div></div>
+          <div className="space-y-2">{jobs.map(job => <div key={job.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium text-secondary-900 dark:text-white">{job.templateName} · {reportTypeLabel(job.reportType)}</p><p className="text-xs text-secondary-500">{job.financialYearCode} · {job.reportingPeriodCode} · requested by {job.requestedBy} · attempt {job.attemptCount}</p></div><Badge variant={job.state === 4 ? 'success' : job.state === 5 ? 'error' : job.state === 3 ? 'warning' : 'default'}>{jobStateLabel(job.state)}</Badge></div>{job.fileName && <p className="mt-2 text-xs text-secondary-600">Generated: {job.fileName}{job.distributionOutboxPublicId ? ' · distribution queued' : ''}</p>}{job.lastError && <p className="mt-2 text-xs text-error-600">{job.lastError}</p>}{job.state === 5 && canConfigureOfficial && <div className="mt-2 flex flex-wrap items-end gap-2"><label className="min-w-[18rem] flex-1 text-xs">Retry reason<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={retryReasons[job.publicId] ?? ''} onChange={event => setRetryReasons(current => ({ ...current, [job.publicId]: event.target.value }))} /></label><Button size="sm" variant="outline" onClick={() => void retryJob(job)} disabled={busy}>Retry</Button></div>}</div>)}</div>
+          {!jobs.length && <p className="py-4 text-center text-sm text-secondary-500">No asynchronous report jobs exist.</p>}
         </Card>}
 
         {canConfigureOfficial && <Card className="p-4">
@@ -227,6 +298,27 @@ export function Reports() {
             <label className="text-sm">Reason<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={templateDraft.reason} onChange={event => setTemplateDraft(value => ({ ...value, reason: event.target.value }))} /></label>
           </div>
           <div className="mt-3 flex justify-end"><Button size="sm" variant="primary" onClick={() => void saveTemplate()} disabled={busy || !yearId}>{templateDraft.previousVersionPublicId ? 'Create template version' : 'Create approved template'}</Button></div>
+        </Card>}
+
+        {canConfigureOfficial && <Card className="p-4">
+          <h2 className="font-semibold text-secondary-900 dark:text-white">Governed report scheduling and distribution</h2>
+          <p className="mb-4 text-xs text-secondary-500">Schedules are versioned and bind the selected template, year, period, filters, recipients and approved delivery channels.</p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-sm">Schedule lineage<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.previousVersionPublicId} onChange={event => { const previous = schedules.find(item => item.publicId === event.target.value); setScheduleDraft(value => previous ? ({ ...value, previousVersionPublicId: previous.publicId, code: previous.code, name: previous.name, cadence: previous.cadence, interval: previous.interval, nextRunAt: previous.nextRunAt?.slice(0, 16) ?? '', recipientKind: previous.recipientKind, recipientValues: previous.recipientValues.join(','), channels: previous.channels.join(','), isMandatory: previous.isMandatory, isActive: previous.isActive }) : ({ ...value, previousVersionPublicId: '' })); }}><option value="">New schedule family</option>{schedules.map(schedule => <option key={schedule.publicId} value={schedule.publicId}>{schedule.code} · v{schedule.versionNumber}</option>)}</select></label>
+            <label className="text-sm">Schedule code<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.code} onChange={event => setScheduleDraft(value => ({ ...value, code: event.target.value }))} /></label>
+            <label className="text-sm">Schedule name<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.name} onChange={event => setScheduleDraft(value => ({ ...value, name: event.target.value }))} /></label>
+            <label className="text-sm">Cadence<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.cadence} onChange={event => setScheduleDraft(value => ({ ...value, cadence: Number(event.target.value) as OfficialReportScheduleCadence }))}><option value={1}>Once</option><option value={2}>Daily</option><option value={3}>Weekly</option><option value={4}>Monthly</option></select></label>
+            <label className="text-sm">Interval<input type="number" min={1} max={365} className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.interval} onChange={event => setScheduleDraft(value => ({ ...value, interval: Math.max(1, Number(event.target.value)) }))} /></label>
+            <label className="text-sm">Next run (local time)<input type="datetime-local" className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.nextRunAt} onChange={event => setScheduleDraft(value => ({ ...value, nextRunAt: event.target.value }))} /></label>
+            <label className="text-sm">Recipient source<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.recipientKind} onChange={event => setScheduleDraft(value => ({ ...value, recipientKind: Number(event.target.value) as OfficialReportRecipientKind }))}><option value={1}>Specific user IDs</option><option value={2}>Dynamic role codes</option></select></label>
+            <label className="text-sm">{scheduleDraft.recipientKind === 1 ? 'User IDs' : 'Role codes'}<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.recipientValues} onChange={event => setScheduleDraft(value => ({ ...value, recipientValues: event.target.value }))} /><span className="text-xs text-secondary-500">Comma-separated; roles resolve when each job is materialized.</span></label>
+            <label className="text-sm">Channels<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.channels} onChange={event => setScheduleDraft(value => ({ ...value, channels: event.target.value }))} /><span className="text-xs text-secondary-500">IN_APP, EMAIL, SMS</span></label>
+            <label className="text-sm">Approval reference<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.approvalReference} onChange={event => setScheduleDraft(value => ({ ...value, approvalReference: event.target.value }))} /></label>
+            <label className="text-sm md:col-span-2">Audit reason<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.reason} onChange={event => setScheduleDraft(value => ({ ...value, reason: event.target.value }))} /></label>
+            <div className="flex items-center gap-4 text-sm"><label><input type="checkbox" checked={scheduleDraft.isActive} onChange={event => setScheduleDraft(value => ({ ...value, isActive: event.target.checked }))} /> Active</label><label><input type="checkbox" checked={scheduleDraft.isMandatory} onChange={event => setScheduleDraft(value => ({ ...value, isMandatory: event.target.checked }))} /> Mandatory delivery</label></div>
+          </div>
+          <div className="mt-3 flex justify-end"><Button size="sm" variant="primary" onClick={() => void saveSchedule()} disabled={busy || !templateId || !yearId || !periodId}>{scheduleDraft.previousVersionPublicId ? 'Create schedule version' : 'Create schedule'}</Button></div>
+          <div className="mt-4 space-y-2">{schedules.map(schedule => <div key={schedule.publicId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div><strong>{schedule.name}</strong><div className="text-xs text-secondary-500">{reportTypeLabel(schedule.reportType)} · {schedule.financialYearCode} {schedule.reportingPeriodCode} · v{schedule.versionNumber} · {schedule.nextRunAt ? new Date(schedule.nextRunAt).toLocaleString() : 'No next run'} · {schedule.channels.join(', ')}</div></div><Button size="sm" variant="outline" onClick={() => void runSchedule(schedule)} disabled={busy}>Run now</Button></div>)}</div>
         </Card>}
 
         <div className="flex items-center gap-2 text-xs text-secondary-500"><Target className="h-4 w-4" /><span>Official report classes are generated from tenant-filtered authoritative performance, workflow, assurance, evidence, audit and version datasets{summary ? `; summary refreshed at ${new Date(summary.generatedAt).toLocaleString()}` : ''}.</span></div>

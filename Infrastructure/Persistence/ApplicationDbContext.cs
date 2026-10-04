@@ -1963,7 +1963,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdempotencyRequest), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
             typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping),
             typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent),
-            typeof(InternalAuditAssessmentConfiguration), typeof(InternalAuditAssessment), typeof(OfficialReportTemplate), typeof(OfficialReportGeneration),
+            typeof(InternalAuditAssessmentConfiguration), typeof(InternalAuditAssessment), typeof(OfficialReportTemplate), typeof(OfficialReportGeneration), typeof(OfficialReportSchedule), typeof(OfficialReportJob),
             typeof(NotificationConfiguration), typeof(NotificationScheduleRule), typeof(WorkingCalendarHoliday), typeof(ScheduledNotification), typeof(NotificationPreference)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
@@ -2000,6 +2000,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         if (ChangeTracker.Entries<OfficialReportTemplate>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Official report templates and generated report history are append-only.");
+        if (ChangeTracker.Entries<OfficialReportSchedule>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Official report schedule versions cannot be deleted.");
         if (ChangeTracker.Entries<NotificationConfiguration>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<NotificationScheduleRule>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<WorkingCalendarHoliday>().Any(entry => entry.State == EntityState.Deleted))

@@ -1943,6 +1943,79 @@ export interface OfficialReportGenerationDto {
   downloadUrl: string;
 }
 
+export type OfficialReportScheduleCadence = 1 | 2 | 3 | 4;
+export type OfficialReportRecipientKind = 1 | 2;
+export type OfficialReportJobState = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface OfficialReportScheduleDto {
+  publicId: string;
+  scheduleFamilyPublicId: string;
+  versionNumber: number;
+  previousVersionPublicId?: string | null;
+  templatePublicId: string;
+  templateName: string;
+  reportType: OfficialReportType;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  reportingPeriodPublicId: string;
+  reportingPeriodCode: string;
+  departmentPublicId?: string | null;
+  departmentName?: string | null;
+  unitPublicId?: string | null;
+  unitName?: string | null;
+  code: string;
+  name: string;
+  cadence: OfficialReportScheduleCadence;
+  interval: number;
+  nextRunAt?: string | null;
+  effectiveTo?: string | null;
+  recipientKind: OfficialReportRecipientKind;
+  recipientValues: string[];
+  channels: string[];
+  isMandatory: boolean;
+  isCurrent: boolean;
+  isActive: boolean;
+  approvalReference: string;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+  rowVersion: string;
+}
+
+export interface OfficialReportJobDto {
+  publicId: string;
+  schedulePublicId?: string | null;
+  scheduleName?: string | null;
+  state: OfficialReportJobState;
+  templatePublicId: string;
+  templateName: string;
+  reportType: OfficialReportType;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  reportingPeriodPublicId: string;
+  reportingPeriodCode: string;
+  departmentPublicId?: string | null;
+  departmentName?: string | null;
+  unitPublicId?: string | null;
+  unitName?: string | null;
+  scheduledFor: string;
+  availableAt: string;
+  attemptCount: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  lastError?: string | null;
+  requestedBy: string;
+  requestedAt: string;
+  generationPublicId?: string | null;
+  fileName?: string | null;
+  distributionOutboxPublicId?: string | null;
+  recipientUserIds: string[];
+  channels: string[];
+  isMandatoryDistribution: boolean;
+  retryReason?: string | null;
+  rowVersion: string;
+}
+
 export type SecurityPermissionState = 'ALLOW' | 'DENY';
 
 export interface SecurityPermissionDefinition {
