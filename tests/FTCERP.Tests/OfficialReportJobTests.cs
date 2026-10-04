@@ -49,6 +49,7 @@ public sealed class OfficialReportJobTests
             ChannelsCsv = "IN_APP"
         }));
         await context.SaveChangesAsync();
+        await SeedForeignSchedule(options);
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
@@ -86,6 +87,84 @@ public sealed class OfficialReportJobTests
             Mock.Of<IWorkflowGovernanceService>());
 
         var result = await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "raw-sql" });
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task SchedulesPage_IsBoundedSearchableAndStablySorted()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var seeded = await SeedDueSchedule(options);
+        var tenant = new FixedTenantContext(seeded.Schedule.MunicipalityId, seeded.User.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var template = await context.OfficialReportTemplates.SingleAsync();
+        var year = await context.MunicipalityFinancialYears.SingleAsync();
+        var period = await context.ReportingPeriods.SingleAsync();
+        var start = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        context.OfficialReportSchedules.AddRange(Enumerable.Range(1, 30).Select(index => new OfficialReportSchedule
+        {
+            MunicipalityId = tenant.MunicipalityId!.Value,
+            ReportTemplateId = template.Id,
+            MunicipalityFinancialYearId = year.Id,
+            ReportingPeriodId = period.Id,
+            Code = $"SCHED-{index:00}",
+            Name = $"Governed schedule {index:00}",
+            Cadence = OfficialReportScheduleCadence.Monthly,
+            Interval = 1,
+            NextRunAt = start.AddDays(index),
+            RecipientKind = OfficialReportRecipientKind.User,
+            RecipientValuesCsv = seeded.User.Id,
+            ChannelsCsv = "IN_APP",
+            IsMandatory = true,
+            IsCurrent = true,
+            IsActive = true,
+            ApprovalReference = $"Council-{index:00}",
+            Reason = "Approved governed distribution",
+            CreatedByUserId = seeded.User.Id,
+            CreatedAt = start.AddMinutes(index)
+        }));
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_REPORT.CONFIGURE"))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        var controller = new OfficialReportJobsController(context, IdpTestFixture.CreateUserManagerMock(seeded.User).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seeded.User.Id) } }
+        };
+
+        var result = await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest
+        {
+            Page = 2,
+            PageSize = 10,
+            Search = "Quarterly",
+            SortBy = "code",
+            SortDirection = "asc"
+        });
+
+        var page = Assert.IsType<ApiResponse<PagedResponse<OfficialReportScheduleResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        page.TotalCount.Should().Be(31);
+        page.TotalPages.Should().Be(4);
+        page.Items.Should().HaveCount(10);
+        page.Items[0].Code.Should().Be("SCHED-10");
+        page.Items.Should().NotContain(item => item.Code == "FOREIGN-SCHEDULE");
+    }
+
+    [Fact]
+    public async Task SchedulesPage_RejectsUnknownSort()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var controller = new OfficialReportJobsController(
+            context,
+            IdpTestFixture.CreateUserManagerMock().Object,
+            Mock.Of<IAccessControlService>(),
+            IdpTestFixture.Tenant(1, "reader"),
+            Mock.Of<IWorkflowGovernanceService>());
+
+        var result = await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
     }
@@ -262,6 +341,39 @@ public sealed class OfficialReportJobTests
             NormalizedEmail = user.NormalizedEmail, FirstName = user.FirstName, LastName = user.LastName,
             MunicipalityId = municipality.Id, IsActive = true
         }, schedule);
+    }
+
+    private static async Task SeedForeignSchedule(DbContextOptions<ApplicationDbContext> options)
+    {
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        var municipality = new Municipality { Code = "FOREIGN", Name = "Foreign Municipality" };
+        var user = new ApplicationUser { Id = "foreign-report-scheduler", UserName = "foreign-report-scheduler", NormalizedUserName = "FOREIGN-REPORT-SCHEDULER", Email = "foreign-reports@example.test", NormalizedEmail = "FOREIGN-REPORTS@EXAMPLE.TEST", FirstName = "Foreign", LastName = "Scheduler", Municipality = municipality, IsActive = true };
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        var year = await context.FinancialYears.SingleAsync();
+        var municipalYear = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = year.Id, IsActive = true, IsCurrent = true, EffectiveFrom = year.StartDate };
+        context.Add(municipalYear);
+        await context.SaveChangesAsync();
+        var period = new ReportingPeriod { MunicipalityFinancialYearId = municipalYear.Id, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = year.StartDate, EndDate = year.StartDate.AddMonths(3).AddDays(-1), IsActive = true };
+        context.Add(period);
+        await context.SaveChangesAsync();
+        var template = new OfficialReportTemplate
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.QuarterlyPerformance, Code = "QUARTERLY", Name = "Quarterly report", Format = OfficialReportFormat.Csv,
+            ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.QuarterlyPerformance), EffectiveFrom = DateTime.UtcNow.AddDays(-1),
+            ApprovalReference = "Foreign-Council", Reason = "Approved", CreatedByUserId = user.Id
+        };
+        context.Add(template);
+        await context.SaveChangesAsync();
+        context.Add(new OfficialReportSchedule
+        {
+            MunicipalityId = municipality.Id, ReportTemplateId = template.Id, MunicipalityFinancialYearId = municipalYear.Id, ReportingPeriodId = period.Id,
+            Code = "FOREIGN-SCHEDULE", Name = "Quarterly governed foreign schedule", Cadence = OfficialReportScheduleCadence.Monthly, Interval = 1,
+            NextRunAt = DateTime.UtcNow.AddDays(1), RecipientKind = OfficialReportRecipientKind.User, RecipientValuesCsv = user.Id, ChannelsCsv = "IN_APP",
+            IsMandatory = true, IsCurrent = true, IsActive = true, ApprovalReference = "Foreign-Council", Reason = "Approved distribution", CreatedByUserId = user.Id
+        });
+        await context.SaveChangesAsync();
     }
 
     private sealed class SystemTenantContext : ITenantContext { public long? MunicipalityId => null; public bool IsSystem => true; public string? UserId => "system"; }

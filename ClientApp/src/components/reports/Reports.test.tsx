@@ -9,7 +9,7 @@ const api = vi.hoisted(() => ({
   getOfficialReportTemplates: vi.fn(),
   getOfficialReportGenerations: vi.fn(),
   getOfficialReportJobsPage: vi.fn(),
-  getOfficialReportSchedules: vi.fn(),
+  getOfficialReportSchedulesPage: vi.fn(),
   generateOfficialReport: vi.fn(),
   queueOfficialReportJob: vi.fn(),
   retryOfficialReportJob: vi.fn(),
@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
   getDepartments: vi.fn(),
   getUnits: vi.fn(),
 }));
+const app = vi.hoisted(() => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'] as string[] }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -33,11 +34,12 @@ vi.mock('recharts', () => ({
   Bar: () => null,
 }));
 vi.mock('../../context/AppContext', () => ({
-  useApp: () => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'], pushToast: vi.fn() }),
+  useApp: () => ({ permissions: app.permissions, pushToast: vi.fn() }),
 }));
 
 describe('Reports', () => {
   beforeEach(() => {
+    app.permissions = ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'];
     api.getReportingPeriodMasters.mockResolvedValue({
       success: true,
       data: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1' }],
@@ -46,7 +48,7 @@ describe('Reports', () => {
     api.getOfficialReportTemplates.mockResolvedValue({ success: true, data: [{ publicId: 'template-1', templateFamilyPublicId: 'family-1', submissionKind: 1, reportType: 1, code: 'QUARTERLY', name: 'Quarterly report', format: 4, versionNumber: 2, headingTemplate: '{FinancialYear} {Period}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-1', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'AQ==' }] });
     api.getOfficialReportGenerations.mockResolvedValue({ success: true, data: [{ publicId: 'generation-1', generationFamilyPublicId: 'generation-family-1', versionNumber: 1, templatePublicId: 'template-1', templateCode: 'QUARTERLY', templateName: 'Quarterly report', templateVersion: 2, reportType: 1, format: 4, submissionKind: 1, municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1', scopeJson: '{}', filterJson: '{}', dataVersionReference: 'a'.repeat(64), fileName: 'quarterly.pdf', contentType: 'application/pdf', sizeInBytes: 100, sha256: 'b'.repeat(64), rowCount: 4, generatedBy: 'auditor', generatedAt: '2026-10-01T10:00:00Z', downloadUrl: '/content' }] });
     api.getOfficialReportJobsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
-    api.getOfficialReportSchedules.mockResolvedValue({ success: true, data: [] });
+    api.getOfficialReportSchedulesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getDepartments.mockResolvedValue({ success: true, data: [] });
     api.getUnits.mockResolvedValue({ success: true, data: [] });
     api.getPerformanceReportSummary.mockResolvedValue({
@@ -87,6 +89,21 @@ describe('Reports', () => {
       page: 1,
       pageSize: 25,
       search: 'failed',
+    })));
+  });
+
+  it('loads the governed schedule register through authoritative server paging and search', async () => {
+    app.permissions = [...app.permissions, 'OPMS_REPORT.CONFIGURE'];
+    api.getOfficialReportSchedulesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 28, totalPages: 2 } });
+    render(<Reports />);
+
+    expect(await screen.findByText('28 schedules')).toBeInTheDocument();
+    expect(api.getOfficialReportSchedulesPage).toHaveBeenCalledWith(1, false, expect.objectContaining({ page: 1, pageSize: 25 }));
+    fireEvent.change(screen.getByLabelText('Search report schedules'), { target: { value: 'quarterly' } });
+    await waitFor(() => expect(api.getOfficialReportSchedulesPage).toHaveBeenLastCalledWith(1, false, expect.objectContaining({
+      page: 1,
+      pageSize: 25,
+      search: 'quarterly',
     })));
   });
 });

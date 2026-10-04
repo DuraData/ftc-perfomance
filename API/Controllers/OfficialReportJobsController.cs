@@ -131,8 +131,59 @@ public sealed class OfficialReportJobsController(
         if (!await Granted(user, ConfigurePermission(kind))) return ForbidResponse<OfficialReportScheduleResponse[]>("Official report schedule configuration is denied.");
         var query = context.OfficialReportSchedules.AsNoTracking().IncludeAll().Where(item => item.ReportTemplate.SubmissionKind == kind);
         if (!includeHistory) query = query.Where(item => item.IsCurrent);
-        var rows = await query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ToArrayAsync();
+        var rows = await query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id).Take(100).ToArrayAsync();
         return Ok(new ApiResponse<OfficialReportScheduleResponse[]>(true, rows.Select(Map).ToArray()));
+    }
+
+    [HttpGet("schedules/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OfficialReportScheduleResponse>>>> SchedulesPage(
+        [FromQuery] SubmissionKind kind,
+        [FromQuery] bool includeHistory,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("code" or "name" or "templatename" or "nextrunat" or "createdat" or "versionnumber"))
+            return BadRequest(Fail<PagedResponse<OfficialReportScheduleResponse>>(
+                "SortBy must be code, name, templateName, nextRunAt, createdAt, or versionNumber."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<OfficialReportScheduleResponse>>("User not found."));
+        if (!await Granted(user, ConfigurePermission(kind)))
+            return ForbidResponse<PagedResponse<OfficialReportScheduleResponse>>("Official report schedule configuration is denied.");
+
+        var query = context.OfficialReportSchedules.AsNoTracking()
+            .Where(item => item.ReportTemplate.SubmissionKind == kind);
+        if (!includeHistory) query = query.Where(item => item.IsCurrent);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(item =>
+                item.Code.Contains(search) ||
+                item.Name.Contains(search) ||
+                item.ReportTemplate.Code.Contains(search) ||
+                item.ReportTemplate.Name.Contains(search) ||
+                item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
+                item.ReportingPeriod.Code.Contains(search) ||
+                item.ApprovalReference.Contains(search));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.Id),
+            ("templatename", false) => query.OrderBy(item => item.ReportTemplate.Name).ThenBy(item => item.Id),
+            ("templatename", true) => query.OrderByDescending(item => item.ReportTemplate.Name).ThenByDescending(item => item.Id),
+            ("nextrunat", false) => query.OrderBy(item => item.NextRunAt).ThenBy(item => item.Id),
+            ("nextrunat", true) => query.OrderByDescending(item => item.NextRunAt).ThenByDescending(item => item.Id),
+            ("createdat", false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            ("createdat", true) => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id),
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("versionnumber", true) => query.OrderByDescending(item => item.VersionNumber).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            (_, true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenByDescending(item => item.Id),
+            _ => query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id)
+        };
+        var rows = await query.IncludeAll().Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<OfficialReportScheduleResponse>>(true,
+            PagedResponse<OfficialReportScheduleResponse>.Create(rows.Select(Map), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("schedules")]

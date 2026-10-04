@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportJobsPage, getOfficialReportSchedules, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
 import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
@@ -54,6 +54,13 @@ export function Reports() {
   const [jobSortBy, setJobSortBy] = useState('requestedAt');
   const [jobSortDirection, setJobSortDirection] = useState<'asc' | 'desc'>('desc');
   const [schedules, setSchedules] = useState<OfficialReportScheduleDto[]>([]);
+  const [schedulePage, setSchedulePage] = useState(1);
+  const [scheduleTotalCount, setScheduleTotalCount] = useState(0);
+  const [scheduleTotalPages, setScheduleTotalPages] = useState(0);
+  const [scheduleSearchInput, setScheduleSearchInput] = useState('');
+  const [scheduleSearch, setScheduleSearch] = useState('');
+  const [scheduleSortBy, setScheduleSortBy] = useState('code');
+  const [scheduleSortDirection, setScheduleSortDirection] = useState<'asc' | 'desc'>('asc');
   const [templateId, setTemplateId] = useState('');
   const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
   const [units, setUnits] = useState<UnitLookupDto[]>([]);
@@ -77,13 +84,12 @@ export function Reports() {
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, templateResult, generationResult, scheduleResult, departmentResult, unitResult] = await Promise.all([
+    const [periodResult, yearResult, summaryResult, templateResult, generationResult, departmentResult, unitResult] = await Promise.all([
       getReportingPeriodMasters(),
       getMunicipalityFinancialYearMasters(),
       getPerformanceReportSummary(kind, periodId || undefined),
       canReadOfficial ? getOfficialReportTemplates(kind) : Promise.resolve({ success: true, data: [] as OfficialReportTemplateDto[], message: undefined }),
       canReadOfficial ? getOfficialReportGenerations(kind, periodId || undefined) : Promise.resolve({ success: true, data: [] as OfficialReportGenerationDto[], message: undefined }),
-      canConfigureOfficial ? getOfficialReportSchedules(kind) : Promise.resolve({ success: true, data: [] as OfficialReportScheduleDto[], message: undefined }),
       getDepartments(),
       getUnits(),
     ]);
@@ -94,7 +100,6 @@ export function Reports() {
     setTemplates(templateResult.data ?? []);
     setTemplateId(current => (templateResult.data ?? []).some(template => template.publicId === current) ? current : templateResult.data?.[0]?.publicId ?? '');
     setGenerations(generationResult.data ?? []);
-    setSchedules(scheduleResult.data ?? []);
     setDepartments(departmentResult.data ?? []);
     setUnits(unitResult.data ?? []);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
@@ -103,10 +108,9 @@ export function Reports() {
     else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
     else if (!templateResult.success) setError(templateResult.message ?? 'Official report templates could not be loaded.');
     else if (!generationResult.success) setError(generationResult.message ?? 'Official report history could not be loaded.');
-    else if (!scheduleResult.success) setError(scheduleResult.message ?? 'Official report schedules could not be loaded.');
     else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
-  }, [canConfigureOfficial, canReadOfficial, kind, periodId]);
+  }, [canReadOfficial, kind, periodId]);
 
   const loadJobs = useCallback(async () => {
     if (!canReadOfficial) {
@@ -119,12 +123,28 @@ export function Reports() {
     if (!result.success) setError(result.message ?? 'Official report jobs could not be loaded.');
   }, [canReadOfficial, jobPage, jobSearch, jobSortBy, jobSortDirection, kind]);
 
+  const loadSchedules = useCallback(async () => {
+    if (!canConfigureOfficial) {
+      setSchedules([]); setScheduleTotalCount(0); setScheduleTotalPages(0); return;
+    }
+    const result = await getOfficialReportSchedulesPage(kind, false, { page: schedulePage, pageSize: 25, search: scheduleSearch, sortBy: scheduleSortBy, sortDirection: scheduleSortDirection });
+    setSchedules(result.data?.items ?? []);
+    setScheduleTotalCount(result.data?.totalCount ?? 0);
+    setScheduleTotalPages(result.data?.totalPages ?? 0);
+    if (!result.success) setError(result.message ?? 'Official report schedules could not be loaded.');
+  }, [canConfigureOfficial, kind, schedulePage, scheduleSearch, scheduleSortBy, scheduleSortDirection]);
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadJobs(); }, [loadJobs]);
+  useEffect(() => { void loadSchedules(); }, [loadSchedules]);
   useEffect(() => {
     const timeout = window.setTimeout(() => { setJobPage(1); setJobSearch(jobSearchInput.trim()); }, 300);
     return () => window.clearTimeout(timeout);
   }, [jobSearchInput]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setSchedulePage(1); setScheduleSearch(scheduleSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [scheduleSearchInput]);
 
   const exportCsv = async () => {
     setBusy(true); setError(null);
@@ -190,7 +210,7 @@ export function Reports() {
       approvalReference: scheduleDraft.approvalReference, reason: scheduleDraft.reason,
     });
     if (!result.success) setError(result.message ?? 'Official report schedule could not be saved.');
-    else { pushToast('success', previous ? 'Report schedule version created' : 'Report schedule created'); setScheduleDraft(value => ({ ...value, previousVersionPublicId: '', approvalReference: '', reason: '' })); await load(); }
+    else { pushToast('success', previous ? 'Report schedule version created' : 'Report schedule created'); setScheduleDraft(value => ({ ...value, previousVersionPublicId: '', approvalReference: '', reason: '' })); await loadSchedules(); }
     setBusy(false);
   };
 
@@ -250,7 +270,7 @@ export function Reports() {
         <Card className="p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-3">
-              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setJobPage(1); }} />
+              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setJobPage(1); setSchedulePage(1); }} />
               <Select label="Financial year" value={yearId} options={years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · Current' : ''}` }))} onChange={event => { setYearId(event.target.value); setPeriodId(''); }} />
               <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...availablePeriods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => setPeriodId(event.target.value)} />
             </div>
@@ -327,7 +347,7 @@ export function Reports() {
         </Card>}
 
         {canConfigureOfficial && <Card className="p-4">
-          <h2 className="font-semibold text-secondary-900 dark:text-white">Governed report scheduling and distribution</h2>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold text-secondary-900 dark:text-white">Governed report scheduling and distribution</h2><Badge variant="primary">{scheduleTotalCount} schedules</Badge></div>
           <p className="mb-4 text-xs text-secondary-500">Schedules are versioned and bind the selected template, year, period, filters, recipients and approved delivery channels.</p>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="text-sm">Schedule lineage<select className="mt-1 w-full rounded border border-secondary-300 bg-white p-2 dark:border-secondary-700 dark:bg-secondary-900" value={scheduleDraft.previousVersionPublicId} onChange={event => { const previous = schedules.find(item => item.publicId === event.target.value); setScheduleDraft(value => previous ? ({ ...value, previousVersionPublicId: previous.publicId, code: previous.code, name: previous.name, cadence: previous.cadence, interval: previous.interval, nextRunAt: previous.nextRunAt?.slice(0, 16) ?? '', recipientKind: previous.recipientKind, recipientValues: previous.recipientValues.join(','), channels: previous.channels.join(','), isMandatory: previous.isMandatory, isActive: previous.isActive }) : ({ ...value, previousVersionPublicId: '' })); }}><option value="">New schedule family</option>{schedules.map(schedule => <option key={schedule.publicId} value={schedule.publicId}>{schedule.code} · v{schedule.versionNumber}</option>)}</select></label>
@@ -344,7 +364,14 @@ export function Reports() {
             <div className="flex items-center gap-4 text-sm"><label><input type="checkbox" checked={scheduleDraft.isActive} onChange={event => setScheduleDraft(value => ({ ...value, isActive: event.target.checked }))} /> Active</label><label><input type="checkbox" checked={scheduleDraft.isMandatory} onChange={event => setScheduleDraft(value => ({ ...value, isMandatory: event.target.checked }))} /> Mandatory delivery</label></div>
           </div>
           <div className="mt-3 flex justify-end"><Button size="sm" variant="primary" onClick={() => void saveSchedule()} disabled={busy || !templateId || !yearId || !periodId}>{scheduleDraft.previousVersionPublicId ? 'Create schedule version' : 'Create schedule'}</Button></div>
+          <div className="mt-4 grid gap-2 md:grid-cols-[1fr_11rem_9rem]">
+            <input aria-label="Search report schedules" placeholder="Code, name, template, period, or approval" className="rounded border border-secondary-300 p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={scheduleSearchInput} onChange={event => setScheduleSearchInput(event.target.value)} />
+            <select aria-label="Sort report schedules" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={scheduleSortBy} onChange={event => { setScheduleSortBy(event.target.value); setSchedulePage(1); }}><option value="code">Code</option><option value="name">Name</option><option value="templateName">Template name</option><option value="nextRunAt">Next run</option><option value="createdAt">Created date</option><option value="versionNumber">Version</option></select>
+            <select aria-label="Report schedule sort direction" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={scheduleSortDirection} onChange={event => { setScheduleSortDirection(event.target.value as 'asc' | 'desc'); setSchedulePage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select>
+          </div>
           <div className="mt-4 space-y-2">{schedules.map(schedule => <div key={schedule.publicId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div><strong>{schedule.name}</strong><div className="text-xs text-secondary-500">{reportTypeLabel(schedule.reportType)} · {schedule.financialYearCode} {schedule.reportingPeriodCode} · v{schedule.versionNumber} · {schedule.nextRunAt ? new Date(schedule.nextRunAt).toLocaleString() : 'No next run'} · {schedule.channels.join(', ')}</div></div><Button size="sm" variant="outline" onClick={() => void runSchedule(schedule)} disabled={busy}>Run now</Button></div>)}</div>
+          {!schedules.length && <p className="py-5 text-center text-sm text-secondary-500">No current report schedules match this search.</p>}
+          {scheduleTotalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Schedule page {schedulePage} of {scheduleTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || schedulePage <= 1} onClick={() => setSchedulePage(value => Math.max(1, value - 1))}>Previous schedules</Button><Button size="sm" variant="outline" disabled={busy || schedulePage >= scheduleTotalPages} onClick={() => setSchedulePage(value => value + 1)}>Next schedules</Button></div></div>}
         </Card>}
 
         <div className="flex items-center gap-2 text-xs text-secondary-500"><Target className="h-4 w-4" /><span>Official report classes are generated from tenant-filtered authoritative performance, workflow, assurance, evidence, audit and version datasets{summary ? `; summary refreshed at ${new Date(summary.generatedAt).toLocaleString()}` : ''}.</span></div>

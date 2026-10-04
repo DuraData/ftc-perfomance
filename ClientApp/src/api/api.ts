@@ -1543,6 +1543,13 @@ export async function getOfficialReportSchedules(kind: 1 | 2, includeHistory = f
   return get<OfficialReportScheduleDto[]>(`/v1/reports/official/schedules?kind=${kind}&includeHistory=${includeHistory}`);
 }
 
+export async function getOfficialReportSchedulesPage(kind: 1 | 2, includeHistory = false, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OfficialReportScheduleDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  parameters.set('kind', String(kind));
+  parameters.set('includeHistory', String(includeHistory));
+  return get<PagedResult<OfficialReportScheduleDto>>(`/v1/reports/official/schedules/page?${parameters.toString()}`);
+}
+
 export async function saveOfficialReportSchedule(payload: {
   previousVersionPublicId?: string | null;
   previousVersionRowVersion?: string | null;
