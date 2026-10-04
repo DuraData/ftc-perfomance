@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TenantOrganizationAdministration } from './TenantOrganizationAdministration';
 
 const api = vi.hoisted(() => ({
-  getDepartmentMasters: vi.fn(), getUnitMasters: vi.fn(), getPositionMasters: vi.fn(),
+  getDepartmentMasters: vi.fn(), getUnitMasters: vi.fn(), getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(),
   saveDepartmentMaster: vi.fn(), saveUnitMaster: vi.fn(), savePositionMaster: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -14,7 +14,9 @@ describe('TenantOrganizationAdministration', () => {
   beforeEach(() => {
     api.getDepartmentMasters.mockResolvedValue({ success: true, data: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }] });
     api.getUnitMasters.mockResolvedValue({ success: true, data: [{ publicId: 'unit-1', departmentPublicId: 'department-1', departmentName: 'Finance', code: 'BUD', name: 'Budget', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }] });
-    api.getPositionMasters.mockResolvedValue({ success: true, data: [{ publicId: 'position-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', code: 'CFO', name: 'Chief Financial Officer', grade: 'T20', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Aw==' }] });
+    api.getPositionMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'position-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', code: 'CFO', name: 'Chief Financial Officer', grade: 'T20', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Aw==' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.savePositionMaster.mockResolvedValue({ success: true, data: {} });
   });
 
@@ -29,5 +31,14 @@ describe('TenantOrganizationAdministration', () => {
     await waitFor(() => expect(api.savePositionMaster).toHaveBeenCalledWith('position-1', expect.objectContaining({
       departmentPublicId: 'department-1', unitPublicId: 'unit-1', code: 'CFO', rowVersion: 'Aw==', reason: 'Council approved establishment change',
     })));
+  });
+
+  it('searches and pages the authoritative organization register', async () => {
+    render(<TenantOrganizationAdministration kind="positions" />);
+    expect(await screen.findByText('31')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search positions'), { target: { value: 'chief' } });
+    await waitFor(() => expect(api.getPositionMastersPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'chief', page: 1, pageSize: 25, sortBy: 'name' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(api.getPositionMastersPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'chief', page: 2 })));
   });
 });

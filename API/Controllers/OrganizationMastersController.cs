@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -14,11 +15,35 @@ namespace FTCERP.Host.API.Controllers;
 [Authorize]
 public sealed class OrganizationMastersController(ApplicationDbContext context, ITenantContext tenantContext) : ControllerBase
 {
+    private static readonly HashSet<string> CommonSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "status", "effectivefrom" };
+    private static readonly HashSet<string> PositionSortFields = new(CommonSortFields, StringComparer.OrdinalIgnoreCase) { "department", "unit", "grade" };
+    private static readonly HashSet<string> VoteSortFields = new(CommonSortFields, StringComparer.OrdinalIgnoreCase) { "department", "number", "amount" };
+
     [HttpGet("departments")]
     [Authorize(Policy = "Permission:DEPARTMENT.READ")]
     public async Task<ActionResult<ApiResponse<DepartmentMasterDto[]>>> GetDepartments() =>
-        Ok(new ApiResponse<DepartmentMasterDto[]>(true, await context.Departments.AsNoTracking().OrderBy(x => x.Name).Select(x =>
+        Ok(new ApiResponse<DepartmentMasterDto[]>(true, await context.Departments.AsNoTracking().OrderBy(x => x.Name).ThenBy(x => x.Id).Select(x =>
             new DepartmentMasterDto(x.PublicId, x.Code, x.Name, x.Description, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+
+    [HttpGet("departments/page")]
+    [Authorize(Policy = "Permission:DEPARTMENT.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<DepartmentMasterDto>>>> GetDepartmentsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<DepartmentMasterDto>>();
+        if (!CommonSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<DepartmentMasterDto>("createdAt, code, name, status, or effectiveFrom");
+        var query = context.Departments.AsNoTracking().AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term) || (item.Description != null && item.Description.Contains(term)));
+        }
+        var total = await query.CountAsync();
+        query = OrderDepartments(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new DepartmentMasterDto(item.PublicId, item.Code, item.Name, item.Description, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<DepartmentMasterDto>>(true, PagedResponse<DepartmentMasterDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
 
     [HttpPost("departments")]
     [Authorize(Policy = "Permission:DEPARTMENT.CREATE")]
@@ -58,8 +83,29 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     [HttpGet("units")]
     [Authorize(Policy = "Permission:UNIT.READ")]
     public async Task<ActionResult<ApiResponse<UnitMasterDto[]>>> GetUnits() =>
-        Ok(new ApiResponse<UnitMasterDto[]>(true, await context.Units.AsNoTracking().Include(x => x.Department).OrderBy(x => x.Department.Name).ThenBy(x => x.Name).Select(x =>
+        Ok(new ApiResponse<UnitMasterDto[]>(true, await context.Units.AsNoTracking().Include(x => x.Department).OrderBy(x => x.Department.Name).ThenBy(x => x.Name).ThenBy(x => x.Id).Select(x =>
             new UnitMasterDto(x.PublicId, x.Department.PublicId, x.Department.Name, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+
+    [HttpGet("units/page")]
+    [Authorize(Policy = "Permission:UNIT.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UnitMasterDto>>>> GetUnitsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] Guid? departmentPublicId = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<UnitMasterDto>>();
+        if (!PositionSortFields.Contains(request.NormalizedSortBy) || request.NormalizedSortBy is "unit" or "grade") return InvalidSort<UnitMasterDto>("createdAt, code, name, department, status, or effectiveFrom");
+        var query = context.Units.AsNoTracking().Include(item => item.Department).AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (departmentPublicId.HasValue) query = query.Where(item => item.Department.PublicId == departmentPublicId.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term) || item.Department.Code.Contains(term) || item.Department.Name.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderUnits(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new UnitMasterDto(item.PublicId, item.Department.PublicId, item.Department.Name, item.Code, item.Name, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<UnitMasterDto>>(true, PagedResponse<UnitMasterDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
 
     [HttpPost("units")]
     [Authorize(Policy = "Permission:UNIT.CREATE")]
@@ -101,8 +147,31 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     [HttpGet("positions")]
     [Authorize(Policy = "Permission:POSITION.READ")]
     public async Task<ActionResult<ApiResponse<PositionMasterDto[]>>> GetPositions() =>
-        Ok(new ApiResponse<PositionMasterDto[]>(true, await context.Positions.AsNoTracking().Include(x => x.Department).Include(x => x.Unit).OrderBy(x => x.Name).Select(x =>
+        Ok(new ApiResponse<PositionMasterDto[]>(true, await context.Positions.AsNoTracking().Include(x => x.Department).Include(x => x.Unit).OrderBy(x => x.Name).ThenBy(x => x.Id).Select(x =>
             new PositionMasterDto(x.PublicId, x.Department.PublicId, x.Department.Name, x.Unit == null ? null : x.Unit.PublicId, x.Unit == null ? null : x.Unit.Name, x.Code, x.Name, x.Grade, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+
+    [HttpGet("positions/page")]
+    [Authorize(Policy = "Permission:POSITION.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<PositionMasterDto>>>> GetPositionsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] Guid? departmentPublicId = null, [FromQuery] Guid? unitPublicId = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<PositionMasterDto>>();
+        if (!PositionSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<PositionMasterDto>("createdAt, code, name, department, unit, grade, status, or effectiveFrom");
+        var query = context.Positions.AsNoTracking().Include(item => item.Department).Include(item => item.Unit).AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (departmentPublicId.HasValue) query = query.Where(item => item.Department.PublicId == departmentPublicId.Value);
+        if (unitPublicId.HasValue) query = query.Where(item => item.Unit != null && item.Unit.PublicId == unitPublicId.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term) || (item.Grade != null && item.Grade.Contains(term))
+                || item.Department.Code.Contains(term) || item.Department.Name.Contains(term) || (item.Unit != null && (item.Unit.Code.Contains(term) || item.Unit.Name.Contains(term))));
+        }
+        var total = await query.CountAsync();
+        query = OrderPositions(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new PositionMasterDto(item.PublicId, item.Department.PublicId, item.Department.Name, item.Unit == null ? null : item.Unit.PublicId, item.Unit == null ? null : item.Unit.Name, item.Code, item.Name, item.Grade, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<PositionMasterDto>>(true, PagedResponse<PositionMasterDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
 
     [HttpPost("positions")]
     [Authorize(Policy = "Permission:POSITION.CREATE")]
@@ -144,8 +213,28 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     [HttpGet("wards")]
     [Authorize(Policy = "Permission:WARD.READ")]
     public async Task<ActionResult<ApiResponse<WardMasterDto[]>>> GetWards() =>
-        Ok(new ApiResponse<WardMasterDto[]>(true, await context.Wards.AsNoTracking().OrderBy(x => x.Code).Select(x =>
+        Ok(new ApiResponse<WardMasterDto[]>(true, await context.Wards.AsNoTracking().OrderBy(x => x.Code).ThenBy(x => x.Id).Select(x =>
             new WardMasterDto(x.PublicId, x.Id, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+
+    [HttpGet("wards/page")]
+    [Authorize(Policy = "Permission:WARD.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<WardMasterDto>>>> GetWardsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<WardMasterDto>>();
+        if (!CommonSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<WardMasterDto>("createdAt, code, name, status, or effectiveFrom");
+        var query = context.Wards.AsNoTracking().AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderWards(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new WardMasterDto(item.PublicId, item.Id, item.Code, item.Name, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<WardMasterDto>>(true, PagedResponse<WardMasterDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
 
     [HttpPost("wards")]
     [Authorize(Policy = "Permission:WARD.CREATE")]
@@ -185,8 +274,30 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     [HttpGet("vote-numbers")]
     [Authorize(Policy = "Permission:VOTE_NUMBER.READ")]
     public async Task<ActionResult<ApiResponse<VoteNumberMasterDto[]>>> GetVoteNumbers() =>
-        Ok(new ApiResponse<VoteNumberMasterDto[]>(true, await context.VoteNumbers.AsNoTracking().Include(x => x.Department).OrderBy(x => x.Code).Select(x =>
+        Ok(new ApiResponse<VoteNumberMasterDto[]>(true, await context.VoteNumbers.AsNoTracking().Include(x => x.Department).OrderBy(x => x.Code).ThenBy(x => x.Id).Select(x =>
             new VoteNumberMasterDto(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+
+    [HttpGet("vote-numbers/page")]
+    [Authorize(Policy = "Permission:VOTE_NUMBER.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<VoteNumberMasterDto>>>> GetVoteNumbersPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] Guid? departmentPublicId = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<VoteNumberMasterDto>>();
+        if (!VoteSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<VoteNumberMasterDto>("createdAt, code, name, department, number, amount, status, or effectiveFrom");
+        var query = context.VoteNumbers.AsNoTracking().Include(item => item.Department).AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (departmentPublicId.HasValue) query = query.Where(item => item.Department.PublicId == departmentPublicId.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Number.Contains(term) || item.Name.Contains(term)
+                || item.Department.Code.Contains(term) || item.Department.Name.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderVoteNumbers(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new VoteNumberMasterDto(item.PublicId, item.Id, item.Department.PublicId, item.Department.Name, item.Code, item.Number, item.Name, item.Amount, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<VoteNumberMasterDto>>(true, PagedResponse<VoteNumberMasterDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
 
     [HttpPost("vote-numbers")]
     [Authorize(Policy = "Permission:VOTE_NUMBER.CREATE")]
@@ -224,6 +335,93 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         AddAudit(nameof(VoteNumber), entity.PublicId, "Update", before, Snapshot(entity), request.Reason);
         return await SaveVersioned(entity, ToDto, "Vote number was changed by another user.");
     }
+
+    private ActionResult<ApiResponse<PagedResponse<T>>> InvalidSort<T>(string fields) =>
+        BadRequest(Fail<PagedResponse<T>>($"SortBy must be {fields}."));
+
+    private static IQueryable<Department> OrderDepartments(IQueryable<Department> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<Unit> OrderUnits(IQueryable<Unit> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("department", false) => query.OrderBy(item => item.Department.Name).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("department", true) => query.OrderByDescending(item => item.Department.Name).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<Position> OrderPositions(IQueryable<Position> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("department", false) => query.OrderBy(item => item.Department.Name).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("department", true) => query.OrderByDescending(item => item.Department.Name).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("unit", false) => query.OrderBy(item => item.Unit == null ? "" : item.Unit.Name).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("unit", true) => query.OrderByDescending(item => item.Unit == null ? "" : item.Unit.Name).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("grade", false) => query.OrderBy(item => item.Grade).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("grade", true) => query.OrderByDescending(item => item.Grade).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+        ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<Ward> OrderWards(IQueryable<Ward> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<VoteNumber> OrderVoteNumbers(IQueryable<VoteNumber> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("department", false) => query.OrderBy(item => item.Department.Name).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("department", true) => query.OrderByDescending(item => item.Department.Name).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("number", false) => query.OrderBy(item => item.Number).ThenBy(item => item.Id),
+        ("number", true) => query.OrderByDescending(item => item.Number).ThenBy(item => item.Id),
+        ("amount", false) => query.OrderBy(item => (double)item.Amount).ThenBy(item => item.Id),
+        ("amount", true) => query.OrderByDescending(item => (double)item.Amount).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
 
     private async Task<(Department? Department, Unit? Unit, string? Error)> ResolveOrganization(Guid departmentPublicId, Guid? unitPublicId)
     {

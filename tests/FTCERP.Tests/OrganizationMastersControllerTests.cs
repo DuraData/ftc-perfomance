@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -13,6 +14,79 @@ namespace FTCERP.Tests;
 
 public sealed class OrganizationMastersControllerTests
 {
+    [Fact]
+    public async Task Organization_and_reference_pages_filter_before_count_and_stay_tenant_scoped()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.Municipalities.AddRange(new Municipality { Id = 101, Code = "PAGE-A", Name = "Paging A" }, new Municipality { Id = 102, Code = "PAGE-B", Name = "Paging B" });
+            await setup.SaveChangesAsync();
+            var departments = Enumerable.Range(1, 31).Select(index => new Department
+            {
+                MunicipalityId = 101, Code = $"D{index:000}", Name = $"Department {index:000}", IsActive = index != 30, EffectiveFrom = DateTime.UtcNow.AddYears(-1)
+            }).ToArray();
+            setup.Departments.AddRange(departments);
+            setup.Departments.Add(new Department { MunicipalityId = 102, Code = "FOREIGN", Name = "Foreign department", EffectiveFrom = DateTime.UtcNow.AddYears(-1) });
+            await setup.SaveChangesAsync();
+            var parent = departments[0];
+            setup.Units.AddRange(Enumerable.Range(1, 31).Select(index => new Unit { MunicipalityId = 101, DepartmentId = parent.Id, Code = $"U{index:000}", Name = $"Unit {index:000}", EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
+            setup.Positions.AddRange(Enumerable.Range(1, 31).Select(index => new Position { MunicipalityId = 101, DepartmentId = parent.Id, Code = $"P{index:000}", Name = $"Position {index:000}", Grade = index == 7 ? "SEARCH-GRADE" : null, EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
+            setup.Wards.AddRange(Enumerable.Range(1, 31).Select(index => new Ward { MunicipalityId = 101, LegacyMunicipality = "Paging A", Code = $"W{index:000}", Name = $"Ward {index:000}", EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
+            setup.VoteNumbers.AddRange(Enumerable.Range(1, 31).Select(index => new VoteNumber { MunicipalityId = 101, DepartmentId = parent.Id, Code = $"V{index:000}", Number = $"{index:000}", Name = $"Vote {index:000}", Amount = index, EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
+            await setup.SaveChangesAsync();
+        }
+
+        var tenant = new TenantContext(101, "master-reader");
+        await using var context = new ApplicationDbContext(options, tenant);
+        var controller = CreateController(context, tenant);
+        var departmentsResult = await controller.GetDepartmentsPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "Department", SortBy = "code", SortDirection = "asc" });
+        var departmentsPage = Assert.IsType<ApiResponse<PagedResponse<DepartmentMasterDto>>>(Assert.IsType<OkObjectResult>(departmentsResult.Result).Value).Data!;
+        Assert.Equal(31, departmentsPage.TotalCount);
+        Assert.Equal(10, departmentsPage.Items.Length);
+        Assert.Equal("D011", departmentsPage.Items[0].Code);
+        Assert.DoesNotContain(departmentsPage.Items, item => item.Code == "FOREIGN");
+
+        var inactiveResult = await controller.GetDepartmentsPage(new PagedQueryRequest { SortBy = "name", SortDirection = "asc" }, false);
+        var inactivePage = Assert.IsType<ApiResponse<PagedResponse<DepartmentMasterDto>>>(Assert.IsType<OkObjectResult>(inactiveResult.Result).Value).Data!;
+        Assert.Equal(1, inactivePage.TotalCount);
+        Assert.Equal("D030", Assert.Single(inactivePage.Items).Code);
+
+        var unitsResult = await controller.GetUnitsPage(new PagedQueryRequest { PageSize = 5, Search = "Unit", SortBy = "department", SortDirection = "asc" }, null, departmentsPage.Items[0].PublicId);
+        var unitsPage = Assert.IsType<ApiResponse<PagedResponse<UnitMasterDto>>>(Assert.IsType<OkObjectResult>(unitsResult.Result).Value).Data!;
+        Assert.Equal(0, unitsPage.TotalCount);
+        var positionsResult = await controller.GetPositionsPage(new PagedQueryRequest { Search = "SEARCH-GRADE", SortBy = "grade", SortDirection = "asc" });
+        Assert.Equal(1, Assert.IsType<ApiResponse<PagedResponse<PositionMasterDto>>>(Assert.IsType<OkObjectResult>(positionsResult.Result).Value).Data!.TotalCount);
+        var wardsResult = await controller.GetWardsPage(new PagedQueryRequest { PageSize = 7, Search = "Ward", SortBy = "code", SortDirection = "desc" });
+        Assert.Equal(31, Assert.IsType<ApiResponse<PagedResponse<WardMasterDto>>>(Assert.IsType<OkObjectResult>(wardsResult.Result).Value).Data!.TotalCount);
+        var votesResult = await controller.GetVoteNumbersPage(new PagedQueryRequest { PageSize = 5, SortBy = "amount", SortDirection = "desc" });
+        var votesPage = Assert.IsType<ApiResponse<PagedResponse<VoteNumberMasterDto>>>(Assert.IsType<OkObjectResult>(votesResult.Result).Value).Data!;
+        Assert.Equal(31m, votesPage.Items[0].Amount);
+        Assert.Equal(31, votesPage.TotalCount);
+    }
+
+    [Fact]
+    public async Task Organization_pages_reject_unknown_sort_and_compatibility_reads_preserve_existing_consumers()
+    {
+        var tenant = new TenantContext(103, "master-reader");
+        await using var context = NewContext(tenant);
+        context.Municipalities.Add(new Municipality { Id = 103, Code = "CAP", Name = "Capped" });
+        context.Wards.AddRange(Enumerable.Range(1, 105).Select(index => new Ward { MunicipalityId = 103, LegacyMunicipality = "Capped", Code = $"W{index:000}", Name = $"Ward {index:000}" }));
+        await context.SaveChangesAsync();
+        var controller = CreateController(context, tenant);
+
+        Assert.IsType<BadRequestObjectResult>((await controller.GetDepartmentsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetUnitsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetPositionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetWardsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetVoteNumbersPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
+        var legacy = Assert.IsType<ApiResponse<WardMasterDto[]>>(Assert.IsType<OkObjectResult>((await controller.GetWards()).Result).Value).Data!;
+        Assert.Equal(105, legacy.Length);
+    }
+
     [Fact]
     public async Task Sqlite_enforces_tenant_scoped_ward_and_vote_number_uniqueness_and_filters()
     {

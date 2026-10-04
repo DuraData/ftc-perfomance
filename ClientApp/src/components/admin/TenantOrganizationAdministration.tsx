@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, Plus, RefreshCw } from 'lucide-react';
-import { getDepartmentMasters, getPositionMasters, getUnitMasters, saveDepartmentMaster, savePositionMaster, saveUnitMaster } from '../../api/api';
+import { getDepartmentMasters, getDepartmentMastersPage, getPositionMastersPage, getUnitMasters, getUnitMastersPage, saveDepartmentMaster, savePositionMaster, saveUnitMaster } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import type { DepartmentMasterDto, PositionMasterDto, UnitMasterDto } from '../../types';
@@ -23,20 +23,44 @@ export function TenantOrganizationAdministration({ kind }: { kind: MasterKind })
   const [selected, setSelected] = useState<MasterRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [sort, setSort] = useState('name:asc');
   const [form, setForm] = useState({ departmentPublicId: '', unitPublicId: '', code: '', name: '', description: '', grade: '', isActive: 'true', effectiveFrom: today(), effectiveTo: '', reason: '' });
   const resource = kind === 'departments' ? 'DEPARTMENT' : kind === 'units' ? 'UNIT' : 'POSITION';
   const title = kind === 'departments' ? 'Departments' : kind === 'units' ? 'Department Units' : 'Positions';
   const rows = kind === 'departments' ? departments : kind === 'units' ? units : positions;
   const availableUnits = useMemo(() => units.filter(item => item.departmentPublicId === form.departmentPublicId && item.isActive), [form.departmentPublicId, units]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [departmentResult, unitResult, positionResult] = await Promise.all([getDepartmentMasters(), getUnitMasters(), getPositionMasters()]);
-    const failed = [departmentResult, unitResult, positionResult].find(item => !item.success);
+    const [sortBy, direction] = sort.split(':');
+    const sortDirection: 'asc' | 'desc' = direction === 'asc' ? 'asc' : 'desc';
+    const query = { page, pageSize: 25, search: search || undefined, sortBy, sortDirection, active: status === 'all' ? undefined : status === 'active' };
+    const pagePromise = kind === 'departments' ? getDepartmentMastersPage(query) : kind === 'units' ? getUnitMastersPage(query) : getPositionMastersPage(query);
+    const [pageResult, departmentResult, unitResult] = await Promise.all([
+      pagePromise,
+      kind === 'departments' ? Promise.resolve(null) : getDepartmentMasters(),
+      kind === 'positions' ? getUnitMasters() : Promise.resolve(null),
+    ]);
+    const failed = [pageResult, departmentResult, unitResult].find(item => item && !item.success);
     if (failed) setError(failed.message ?? 'Organization masters could not be loaded.');
-    setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []); setBusy(false);
-  };
-  useEffect(() => { void load(); }, []);
+    const pageData = pageResult.data;
+    if (kind === 'departments') setDepartments((pageData?.items ?? []) as DepartmentMasterDto[]);
+    else if (kind === 'units') setUnits((pageData?.items ?? []) as UnitMasterDto[]);
+    else setPositions((pageData?.items ?? []) as PositionMasterDto[]);
+    if (departmentResult) setDepartments(departmentResult.data ?? []);
+    if (unitResult) setUnits(unitResult.data ?? []);
+    setTotalCount(pageData?.totalCount ?? 0); setTotalPages(pageData?.totalPages ?? 0);
+    if (pageData && pageData.items.length === 0 && page > 1) setPage(current => Math.max(1, current - 1));
+    setBusy(false);
+  }, [kind, page, search, sort, status]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { const timer = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 250); return () => window.clearTimeout(timer); }, [searchInput]);
 
   const clear = () => { setSelected(null); setForm({ departmentPublicId: '', unitPublicId: '', code: '', name: '', description: '', grade: '', isActive: 'true', effectiveFrom: today(), effectiveTo: '', reason: '' }); };
   const edit = (item: MasterRow) => {
@@ -68,7 +92,14 @@ export function TenantOrganizationAdministration({ kind }: { kind: MasterKind })
 
   return <AppShell title={title} subtitle="Tenant-scoped, effective-dated organization masters">
     <div className="space-y-5">
-      <div className="flex justify-end"><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button></div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="grid flex-1 gap-2 sm:grid-cols-3">
+          <Input label={`Search ${title.toLowerCase()}`} value={searchInput} onChange={event => setSearchInput(event.target.value)} />
+          <Select label="Status" value={status} options={[{ value: 'all', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} onChange={event => { setStatus(event.target.value); setPage(1); }} />
+          <Select label="Sort" value={sort} options={[{ value: 'name:asc', label: 'Name A-Z' }, { value: 'name:desc', label: 'Name Z-A' }, { value: 'code:asc', label: 'Code A-Z' }, ...(kind === 'departments' ? [] : [{ value: 'department:asc', label: 'Department A-Z' }]), { value: 'effectiveFrom:desc', label: 'Newest effective date' }]} onChange={event => { setSort(event.target.value); setPage(1); }} />
+        </div>
+        <Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button>
+      </div>
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {(selected ? security.canUpdate(resource) : security.canCreate(resource)) && <FormPanel title={selected ? `Edit ${title.slice(0, -1).toLowerCase()}` : `Create ${title.slice(0, -1).toLowerCase()}`} description="All changes require a reason and use optimistic concurrency." icon={<Building2 className="h-5 w-5" />}>
@@ -82,7 +113,7 @@ export function TenantOrganizationAdministration({ kind }: { kind: MasterKind })
           <Textarea label="Governance reason" value={form.reason} onChange={event => setForm(current => ({ ...current, reason: event.target.value }))} required />
           <div className="flex gap-2"><Button icon={<Plus className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{selected ? 'Save changes' : 'Create'}</Button>{selected && <Button variant="outline" onClick={clear}>Cancel</Button>}</div>
         </FormPanel>}
-        <Card className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{title} register</h3><Badge variant="primary">{rows.length}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className="flex w-full items-center justify-between rounded-lg border border-secondary-200 p-3 text-left dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}{'departmentName' in item ? ` · ${item.departmentName}` : ''}{'unitName' in item && item.unitName ? ` / ${item.unitName}` : ''}</p><p className="mt-1 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open-ended'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div></Card>
+        <Card className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{title} register</h3><Badge variant="primary">{totalCount}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className="flex w-full items-center justify-between rounded-lg border border-secondary-200 p-3 text-left dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}{'departmentName' in item ? ` · ${item.departmentName}` : ''}{'unitName' in item && item.unitName ? ` / ${item.unitName}` : ''}</p><p className="mt-1 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open-ended'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages} · {totalCount} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(current => current + 1)}>Next</Button></div></div>}</Card>
       </div>
     </div>
   </AppShell>;
