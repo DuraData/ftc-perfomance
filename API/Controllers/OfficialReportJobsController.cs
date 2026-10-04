@@ -27,14 +27,69 @@ public sealed class OfficialReportJobsController(
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<OfficialReportJobResponse[]>("User not found."));
         if (!await HasReportResourceAccess(user, kind, "READ")) return ForbidResponse<OfficialReportJobResponse[]>("Official report job history requires report, KPI and submission READ permission.");
+        var canReadAudit = await Granted(user, "Audit.Trails.View");
         var rows = await context.OfficialReportJobs.AsNoTracking()
             .Include(item => item.OfficialReportSchedule).Include(item => item.ReportTemplate)
             .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.ReportingPeriod).Include(item => item.Department).Include(item => item.Unit)
             .Include(item => item.RequestedByUser).Include(item => item.OfficialReportGeneration).Include(item => item.DistributionOutbox)
-            .Where(item => item.ReportTemplate.SubmissionKind == kind).OrderByDescending(item => item.RequestedAt).Take(200).ToArrayAsync();
+            .Where(item => item.ReportTemplate.SubmissionKind == kind && (item.ReportTemplate.ReportType != OfficialReportType.AuditTrail || canReadAudit))
+            .OrderByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id).Take(200).ToArrayAsync();
+        return Ok(new ApiResponse<OfficialReportJobResponse[]>(true, rows.Select(Map).ToArray()));
+    }
+
+    [HttpGet("jobs/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OfficialReportJobResponse>>>> JobsPage(
+        [FromQuery] SubmissionKind kind,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("requestedat" or "availableat" or "state" or "templatename" or "attemptcount"))
+            return BadRequest(Fail<PagedResponse<OfficialReportJobResponse>>(
+                "SortBy must be requestedAt, availableAt, state, templateName, or attemptCount."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<OfficialReportJobResponse>>("User not found."));
+        if (!await HasReportResourceAccess(user, kind, "READ"))
+            return ForbidResponse<PagedResponse<OfficialReportJobResponse>>("Official report job history requires report, KPI and submission READ permission.");
+
         var canReadAudit = await Granted(user, "Audit.Trails.View");
-        return Ok(new ApiResponse<OfficialReportJobResponse[]>(true, rows.Where(item => item.ReportTemplate.ReportType != OfficialReportType.AuditTrail || canReadAudit).Select(Map).ToArray()));
+        var query = context.OfficialReportJobs.AsNoTracking()
+            .Where(item => item.ReportTemplate.SubmissionKind == kind
+                && (item.ReportTemplate.ReportType != OfficialReportType.AuditTrail || canReadAudit));
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(item =>
+                item.ReportTemplate.Code.Contains(search) ||
+                item.ReportTemplate.Name.Contains(search) ||
+                item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
+                item.ReportingPeriod.Code.Contains(search) ||
+                item.RequestedByUser.FirstName.Contains(search) ||
+                item.RequestedByUser.LastName.Contains(search) ||
+                (item.LastError != null && item.LastError.Contains(search)));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("availableat", false) => query.OrderBy(item => item.AvailableAt).ThenBy(item => item.Id),
+            ("availableat", true) => query.OrderByDescending(item => item.AvailableAt).ThenByDescending(item => item.Id),
+            ("state", false) => query.OrderBy(item => item.State).ThenByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id),
+            ("state", true) => query.OrderByDescending(item => item.State).ThenByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id),
+            ("templatename", false) => query.OrderBy(item => item.ReportTemplate.Name).ThenBy(item => item.Id),
+            ("templatename", true) => query.OrderByDescending(item => item.ReportTemplate.Name).ThenByDescending(item => item.Id),
+            ("attemptcount", false) => query.OrderBy(item => item.AttemptCount).ThenByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id),
+            ("attemptcount", true) => query.OrderByDescending(item => item.AttemptCount).ThenByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.RequestedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await query
+            .Include(item => item.OfficialReportSchedule).Include(item => item.ReportTemplate)
+            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .Include(item => item.ReportingPeriod).Include(item => item.Department).Include(item => item.Unit)
+            .Include(item => item.RequestedByUser).Include(item => item.OfficialReportGeneration).Include(item => item.DistributionOutbox)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<OfficialReportJobResponse>>(true,
+            PagedResponse<OfficialReportJobResponse>.Create(rows.Select(Map), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("jobs")]

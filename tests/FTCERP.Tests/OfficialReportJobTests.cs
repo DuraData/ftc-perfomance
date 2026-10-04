@@ -20,6 +20,77 @@ namespace FTCERP.Tests;
 public sealed class OfficialReportJobTests
 {
     [Fact]
+    public async Task JobsPage_IsBoundedSearchableAndStablySorted()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var seeded = await SeedDueSchedule(options);
+        var tenant = new FixedTenantContext(seeded.Schedule.MunicipalityId, seeded.User.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var schedule = await context.OfficialReportSchedules.SingleAsync();
+        var template = await context.OfficialReportTemplates.SingleAsync();
+        var year = await context.MunicipalityFinancialYears.SingleAsync();
+        var period = await context.ReportingPeriods.SingleAsync();
+        var start = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        context.OfficialReportJobs.AddRange(Enumerable.Range(1, 31).Select(index => new OfficialReportJob
+        {
+            MunicipalityId = tenant.MunicipalityId!.Value,
+            OfficialReportScheduleId = schedule.Id,
+            ReportTemplateId = template.Id,
+            MunicipalityFinancialYearId = year.Id,
+            ReportingPeriodId = period.Id,
+            State = index % 2 == 0 ? OfficialReportJobState.Completed : OfficialReportJobState.Queued,
+            ScheduledFor = start.AddMinutes(index),
+            AvailableAt = start.AddMinutes(index),
+            AttemptCount = index,
+            RequestedByUserId = seeded.User.Id,
+            RequestedAt = start.AddMinutes(index),
+            ChannelsCsv = "IN_APP"
+        }));
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        var controller = new OfficialReportJobsController(context, IdpTestFixture.CreateUserManagerMock(seeded.User).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seeded.User.Id) } }
+        };
+
+        var result = await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest
+        {
+            Page = 2,
+            PageSize = 10,
+            Search = "Quarterly",
+            SortBy = "requestedAt",
+            SortDirection = "asc"
+        });
+
+        var page = Assert.IsType<ApiResponse<PagedResponse<OfficialReportJobResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        page.TotalCount.Should().Be(31);
+        page.TotalPages.Should().Be(4);
+        page.Items.Should().HaveCount(10);
+        page.Items[0].AttemptCount.Should().Be(11);
+    }
+
+    [Fact]
+    public async Task JobsPage_RejectsUnknownSort()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var controller = new OfficialReportJobsController(
+            context,
+            IdpTestFixture.CreateUserManagerMock().Object,
+            Mock.Of<IAccessControlService>(),
+            IdpTestFixture.Tenant(1, "reader"),
+            Mock.Of<IWorkflowGovernanceService>());
+
+        var result = await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "raw-sql" });
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
     public async Task DirectQueueCall_IsDeniedWithoutUnderlyingResourceReadPermission()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

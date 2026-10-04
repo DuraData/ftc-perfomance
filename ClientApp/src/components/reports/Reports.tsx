@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportJobs, getOfficialReportSchedules, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerations, getOfficialReportJobsPage, getOfficialReportSchedules, getOfficialReportTemplates, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
 import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
@@ -46,6 +46,13 @@ export function Reports() {
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [generations, setGenerations] = useState<OfficialReportGenerationDto[]>([]);
   const [jobs, setJobs] = useState<OfficialReportJobDto[]>([]);
+  const [jobPage, setJobPage] = useState(1);
+  const [jobTotalCount, setJobTotalCount] = useState(0);
+  const [jobTotalPages, setJobTotalPages] = useState(0);
+  const [jobSearchInput, setJobSearchInput] = useState('');
+  const [jobSearch, setJobSearch] = useState('');
+  const [jobSortBy, setJobSortBy] = useState('requestedAt');
+  const [jobSortDirection, setJobSortDirection] = useState<'asc' | 'desc'>('desc');
   const [schedules, setSchedules] = useState<OfficialReportScheduleDto[]>([]);
   const [templateId, setTemplateId] = useState('');
   const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
@@ -70,13 +77,12 @@ export function Reports() {
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, templateResult, generationResult, jobResult, scheduleResult, departmentResult, unitResult] = await Promise.all([
+    const [periodResult, yearResult, summaryResult, templateResult, generationResult, scheduleResult, departmentResult, unitResult] = await Promise.all([
       getReportingPeriodMasters(),
       getMunicipalityFinancialYearMasters(),
       getPerformanceReportSummary(kind, periodId || undefined),
       canReadOfficial ? getOfficialReportTemplates(kind) : Promise.resolve({ success: true, data: [] as OfficialReportTemplateDto[], message: undefined }),
       canReadOfficial ? getOfficialReportGenerations(kind, periodId || undefined) : Promise.resolve({ success: true, data: [] as OfficialReportGenerationDto[], message: undefined }),
-      canReadOfficial ? getOfficialReportJobs(kind) : Promise.resolve({ success: true, data: [] as OfficialReportJobDto[], message: undefined }),
       canConfigureOfficial ? getOfficialReportSchedules(kind) : Promise.resolve({ success: true, data: [] as OfficialReportScheduleDto[], message: undefined }),
       getDepartments(),
       getUnits(),
@@ -88,7 +94,6 @@ export function Reports() {
     setTemplates(templateResult.data ?? []);
     setTemplateId(current => (templateResult.data ?? []).some(template => template.publicId === current) ? current : templateResult.data?.[0]?.publicId ?? '');
     setGenerations(generationResult.data ?? []);
-    setJobs(jobResult.data ?? []);
     setSchedules(scheduleResult.data ?? []);
     setDepartments(departmentResult.data ?? []);
     setUnits(unitResult.data ?? []);
@@ -98,13 +103,28 @@ export function Reports() {
     else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
     else if (!templateResult.success) setError(templateResult.message ?? 'Official report templates could not be loaded.');
     else if (!generationResult.success) setError(generationResult.message ?? 'Official report history could not be loaded.');
-    else if (!jobResult.success) setError(jobResult.message ?? 'Official report jobs could not be loaded.');
     else if (!scheduleResult.success) setError(scheduleResult.message ?? 'Official report schedules could not be loaded.');
     else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
   }, [canConfigureOfficial, canReadOfficial, kind, periodId]);
 
+  const loadJobs = useCallback(async () => {
+    if (!canReadOfficial) {
+      setJobs([]); setJobTotalCount(0); setJobTotalPages(0); return;
+    }
+    const result = await getOfficialReportJobsPage(kind, { page: jobPage, pageSize: 25, search: jobSearch, sortBy: jobSortBy, sortDirection: jobSortDirection });
+    setJobs(result.data?.items ?? []);
+    setJobTotalCount(result.data?.totalCount ?? 0);
+    setJobTotalPages(result.data?.totalPages ?? 0);
+    if (!result.success) setError(result.message ?? 'Official report jobs could not be loaded.');
+  }, [canReadOfficial, jobPage, jobSearch, jobSortBy, jobSortDirection, kind]);
+
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadJobs(); }, [loadJobs]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setJobPage(1); setJobSearch(jobSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [jobSearchInput]);
 
   const exportCsv = async () => {
     setBusy(true); setError(null);
@@ -149,7 +169,7 @@ export function Reports() {
     setBusy(true); setError(null);
     const result = await queueOfficialReportJob({ templatePublicId: effectiveTemplateId, municipalityFinancialYearPublicId: effectiveYearId, reportingPeriodPublicId: effectivePeriodId, previousGenerationPublicId: previous?.publicId, departmentPublicId: previous ? priorFilters.departmentPublicId : departmentId || undefined, unitPublicId: previous ? priorFilters.unitPublicId : unitId || undefined });
     if (!result.success) setError(result.message ?? 'Official report job could not be queued.');
-    else { pushToast('success', 'Official report generation queued'); await load(); }
+    else { pushToast('success', 'Official report generation queued'); await loadJobs(); }
     setBusy(false);
   };
 
@@ -177,7 +197,7 @@ export function Reports() {
   const runSchedule = async (schedule: OfficialReportScheduleDto) => {
     setBusy(true); setError(null);
     const result = await runOfficialReportSchedule(schedule.publicId);
-    if (!result.success) setError(result.message ?? 'Scheduled report run could not be queued.'); else { pushToast('success', 'Scheduled report run queued'); await load(); }
+    if (!result.success) setError(result.message ?? 'Scheduled report run could not be queued.'); else { pushToast('success', 'Scheduled report run queued'); await loadJobs(); }
     setBusy(false);
   };
 
@@ -186,7 +206,7 @@ export function Reports() {
     if (reason.length < 5) { setError('Enter a retry reason of at least five characters.'); return; }
     setBusy(true); setError(null);
     const result = await retryOfficialReportJob(job.publicId, reason, job.rowVersion);
-    if (!result.success) setError(result.message ?? 'Report job could not be retried.'); else { pushToast('success', 'Report job queued for retry'); await load(); }
+    if (!result.success) setError(result.message ?? 'Report job could not be retried.'); else { pushToast('success', 'Report job queued for retry'); await loadJobs(); }
     setBusy(false);
   };
 
@@ -230,12 +250,12 @@ export function Reports() {
         <Card className="p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-3">
-              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); }} />
+              <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setJobPage(1); }} />
               <Select label="Financial year" value={yearId} options={years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · Current' : ''}` }))} onChange={event => { setYearId(event.target.value); setPeriodId(''); }} />
               <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...availablePeriods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => setPeriodId(event.target.value)} />
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button>
+              <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void load(); void loadJobs(); }} disabled={busy}>Refresh</Button>
               <Button size="sm" variant="primary" icon={<Download className="h-4 w-4" />} onClick={() => void exportCsv()} disabled={busy || !canExport}>Export CSV</Button>
             </div>
           </div>
@@ -279,9 +299,15 @@ export function Reports() {
         </Card>}
 
         {canReadOfficial && <Card className="p-4">
-          <div className="mb-4 flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Asynchronous report jobs</h2><p className="text-xs text-secondary-500">Durable jobs re-evaluate live permissions before generation. Scheduled deliveries continue through the notification receipt ledger.</p></div></div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><History className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Asynchronous report jobs</h2><p className="text-xs text-secondary-500">Durable jobs re-evaluate live permissions before generation. Scheduled deliveries continue through the notification receipt ledger.</p></div></div><Badge variant="primary">{jobTotalCount} jobs</Badge></div>
+          <div className="mb-4 grid gap-2 md:grid-cols-[1fr_11rem_9rem]">
+            <input aria-label="Search report jobs" placeholder="Template, year, period, requester, or error" className="rounded border border-secondary-300 p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={jobSearchInput} onChange={event => setJobSearchInput(event.target.value)} />
+            <select aria-label="Sort report jobs" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={jobSortBy} onChange={event => { setJobSortBy(event.target.value); setJobPage(1); }}><option value="requestedAt">Requested date</option><option value="availableAt">Available date</option><option value="state">State</option><option value="templateName">Template name</option><option value="attemptCount">Attempts</option></select>
+            <select aria-label="Report job sort direction" className="rounded border border-secondary-300 bg-white p-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={jobSortDirection} onChange={event => { setJobSortDirection(event.target.value as 'asc' | 'desc'); setJobPage(1); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select>
+          </div>
           <div className="space-y-2">{jobs.map(job => <div key={job.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-medium text-secondary-900 dark:text-white">{job.templateName} · {reportTypeLabel(job.reportType)}</p><p className="text-xs text-secondary-500">{job.financialYearCode} · {job.reportingPeriodCode} · requested by {job.requestedBy} · attempt {job.attemptCount}</p></div><Badge variant={job.state === 4 ? 'success' : job.state === 5 ? 'error' : job.state === 3 ? 'warning' : 'default'}>{jobStateLabel(job.state)}</Badge></div>{job.fileName && <p className="mt-2 text-xs text-secondary-600">Generated: {job.fileName}{job.distributionOutboxPublicId ? ' · distribution queued' : ''}</p>}{job.lastError && <p className="mt-2 text-xs text-error-600">{job.lastError}</p>}{job.state === 5 && canConfigureOfficial && <div className="mt-2 flex flex-wrap items-end gap-2"><label className="min-w-[18rem] flex-1 text-xs">Retry reason<input className="mt-1 w-full rounded border border-secondary-300 p-2 dark:border-secondary-700 dark:bg-secondary-900" value={retryReasons[job.publicId] ?? ''} onChange={event => setRetryReasons(current => ({ ...current, [job.publicId]: event.target.value }))} /></label><Button size="sm" variant="outline" onClick={() => void retryJob(job)} disabled={busy}>Retry</Button></div>}</div>)}</div>
           {!jobs.length && <p className="py-4 text-center text-sm text-secondary-500">No asynchronous report jobs exist.</p>}
+          {jobTotalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Page {jobPage} of {jobTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || jobPage <= 1} onClick={() => setJobPage(value => Math.max(1, value - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || jobPage >= jobTotalPages} onClick={() => setJobPage(value => value + 1)}>Next</Button></div></div>}
         </Card>}
 
         {canConfigureOfficial && <Card className="p-4">

@@ -1525,8 +1525,10 @@ export async function generateOfficialReport(payload: { templatePublicId: string
   return post<OfficialReportGenerationDto>('/v1/reports/official/generations', payload);
 }
 
-export async function getOfficialReportJobs(kind: 1 | 2): Promise<ApiResponse<OfficialReportJobDto[]>> {
-  return get<OfficialReportJobDto[]>(`/v1/reports/official/jobs?kind=${kind}`);
+export async function getOfficialReportJobsPage(kind: 1 | 2, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OfficialReportJobDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  parameters.set('kind', String(kind));
+  return get<PagedResult<OfficialReportJobDto>>(`/v1/reports/official/jobs/page?${parameters.toString()}`);
 }
 
 export async function queueOfficialReportJob(payload: { templatePublicId: string; municipalityFinancialYearPublicId: string; reportingPeriodPublicId: string; previousGenerationPublicId?: string | null; departmentPublicId?: string | null; unitPublicId?: string | null }): Promise<ApiResponse<OfficialReportJobDto>> {

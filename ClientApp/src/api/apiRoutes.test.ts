@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getLoginAuditLogs, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getLoginAuditLogs, getMfaStatus, getNotifications, getOfficialReportJobsPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -61,6 +61,21 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/idp/plans/page?page=2&pageSize=25&search=five+year&sortBy=planCode&sortDirection=asc'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('transports bounded official-report job search, sorting, and pages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getOfficialReportJobsPage(2, { page: 2, pageSize: 25, search: 'failed', sortBy: 'state', sortDirection: 'asc' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/reports/official/jobs/page?page=2&pageSize=25&search=failed&sortBy=state&sortDirection=asc&kind=2'),
       expect.objectContaining({ credentials: 'include' }),
     );
   });
