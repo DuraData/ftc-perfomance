@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TenantReferenceAdministration } from './TenantReferenceAdministration';
 
 const api = vi.hoisted(() => ({
-  getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getDepartmentMasters: vi.fn(),
+  getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(),
   saveWardMaster: vi.fn(), saveVoteNumberMaster: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -12,7 +12,7 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreat
 
 describe('TenantReferenceAdministration', () => {
   beforeEach(() => {
-    api.getDepartmentMasters.mockResolvedValue({ success: true, data: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }] });
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getVoteNumberMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'vote-1', id: 1, departmentPublicId: 'department-1', departmentName: 'Finance', code: 'V01', number: '001', name: 'Operating Vote', amount: 1250, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 27, totalPages: 2 } });
     api.getWardMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.saveVoteNumberMaster.mockResolvedValue({ success: true, data: {} });

@@ -4,24 +4,23 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormPanel, Input, Select, Textarea } from '../common/Form';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import {
   createReportingWindowException,
   createRatingScheme,
   createReportingWindow,
   createWorkflowDefinition,
   compareWorkflowDefinitions,
-  getDepartments,
   getRatingSchemes,
   getReportingWindowExceptions,
   getReportingWindows,
-  getUnits,
   getUsersPage,
   getWorkflowDefinitions,
   getInternalAuditConfigurations,
   retireWorkflowDefinition,
   saveInternalAuditConfiguration,
 } from '../../api/api';
-import type { AdminUserDetail, DepartmentLookupDto, InternalAuditConfigurationDto, RatingSchemeDto, ReportingWindowDto, ReportingWindowExceptionDto, UnitLookupDto, WorkflowDefinitionComparisonDto, WorkflowDefinitionDto } from '../../types';
+import type { AdminUserDetail, InternalAuditConfigurationDto, RatingSchemeDto, ReportingWindowDto, ReportingWindowExceptionDto, WorkflowDefinitionComparisonDto, WorkflowDefinitionDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NotificationDeliveryOperations } from './NotificationDeliveryOperations';
 import { NotificationPolicyAdministration } from './NotificationPolicyAdministration';
@@ -69,8 +68,6 @@ export function WorkflowGovernanceAdminPage() {
   const [exceptionWindow, setExceptionWindow] = useState<ReportingWindowDto | null>(null);
   const [exceptions, setExceptions] = useState<ReportingWindowExceptionDto[]>([]);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
-  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
-  const [units, setUnits] = useState<UnitLookupDto[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [comparison, setComparison] = useState<WorkflowDefinitionComparisonDto | null>(null);
@@ -167,20 +164,16 @@ export function WorkflowGovernanceAdminPage() {
   const openExceptions = async (window: ReportingWindowDto) => {
     setBusy(true); setError(null); setExceptionWindow(window);
     setExceptionDraft({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(new Date(window.closesAt).getTime() + 86400000)), reason: '' });
-    const [exceptionResult, userResult, departmentResult, unitResult] = await Promise.all([
-      getReportingWindowExceptions(window.publicId), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }), getDepartments(), getUnits(),
+    const [exceptionResult, userResult] = await Promise.all([
+      getReportingWindowExceptions(window.publicId), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }),
     ]);
-    const failed = [exceptionResult, userResult, departmentResult, unitResult].find(result => !result.success);
+    const failed = [exceptionResult, userResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Window exception data could not be loaded.');
-    setExceptions(exceptionResult.data ?? []); setUsers(userResult.data?.items ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []);
+    setExceptions(exceptionResult.data ?? []); setUsers(userResult.data?.items ?? []);
     setBusy(false);
   };
 
-  const exceptionOptions = exceptionDraft.scopeType === 'user'
-    ? users.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: item.user.fullName }))
-    : exceptionDraft.scopeType === 'unit'
-      ? units.map(item => ({ value: item.publicId, label: `${item.departmentName} · ${item.name}` }))
-      : departments.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }));
+  const exceptionUserOptions = users.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: item.user.fullName }));
 
   const saveException = async () => {
     if (!exceptionWindow || !exceptionDraft.scopePublicId || !exceptionDraft.reason.trim()) { setError('Scope and reason are required.'); return; }
@@ -282,7 +275,7 @@ export function WorkflowGovernanceAdminPage() {
           </FormPanel>
           <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Configured windows</h3><div className="mt-3 space-y-2">{windows.map(item => <div key={item.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.periodCode} · {kindName(item.submissionKind)}</p><p className="text-xs text-secondary-500">{new Date(item.opensAt).toLocaleString()} — {new Date(item.closesAt).toLocaleString()}</p></div><div className="flex items-center gap-2"><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge><Button size="sm" variant="outline" onClick={() => void openExceptions(item)}>Manage exceptions</Button></div></div>)}</div></Card>
           {exceptionWindow && <div className="xl:col-span-2"><FormPanel title={`Scoped exceptions · ${exceptionWindow.periodCode} ${kindName(exceptionWindow.submissionKind)}`} description="An approved exception extends only one user, department, or unit beyond the normal close time." icon={<Clock3 className="h-5 w-5" />}>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select label="Scope type" value={exceptionDraft.scopeType} options={[{ value: 'department', label: 'Department' }, { value: 'unit', label: 'Unit' }, { value: 'user', label: 'User' }]} onChange={event => setExceptionDraft(current => ({ ...current, scopeType: event.target.value, scopePublicId: '' }))} /><Select label="Scoped record" value={exceptionDraft.scopePublicId} placeholder="Select one scope" options={exceptionOptions} onChange={event => setExceptionDraft(current => ({ ...current, scopePublicId: event.target.value }))} /><Input label="Extended close" type="datetime-local" value={exceptionDraft.extendedClosesAt} onChange={event => setExceptionDraft(current => ({ ...current, extendedClosesAt: event.target.value }))} /><Textarea label="Approval reason" value={exceptionDraft.reason} onChange={event => setExceptionDraft(current => ({ ...current, reason: event.target.value }))} required /></div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select label="Scope type" value={exceptionDraft.scopeType} options={[{ value: 'department', label: 'Department' }, { value: 'unit', label: 'Unit' }, { value: 'user', label: 'User' }]} onChange={event => setExceptionDraft(current => ({ ...current, scopeType: event.target.value, scopePublicId: '' }))} />{exceptionDraft.scopeType === 'user' ? <Select label="Scoped record" value={exceptionDraft.scopePublicId} placeholder="Select one scope" options={exceptionUserOptions} onChange={event => setExceptionDraft(current => ({ ...current, scopePublicId: event.target.value }))} /> : <OrganizationMasterPicker kind={exceptionDraft.scopeType === 'unit' ? 'unit' : 'department'} label="Scoped record" value={exceptionDraft.scopePublicId} emptyLabel="Select one scope" onChange={value => setExceptionDraft(current => ({ ...current, scopePublicId: value }))} />}<Input label="Extended close" type="datetime-local" value={exceptionDraft.extendedClosesAt} onChange={event => setExceptionDraft(current => ({ ...current, extendedClosesAt: event.target.value }))} /><Textarea label="Approval reason" value={exceptionDraft.reason} onChange={event => setExceptionDraft(current => ({ ...current, reason: event.target.value }))} required /></div>
             <div className="flex justify-end"><Button variant="primary" onClick={() => void saveException()} disabled={busy}>Approve exception</Button></div>
             <div className="space-y-2">{exceptions.map(item => <div key={item.publicId} className="rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><span>{item.userId ? `User ${item.userId}` : item.departmentId ? `Department #${item.departmentId}` : `Unit #${item.unitId}`}</span><Badge variant="default">until {new Date(item.extendedClosesAt).toLocaleString()}</Badge></div><p className="mt-1 text-xs text-secondary-500">{item.reason}</p></div>)}{!exceptions.length && <p className="text-sm text-secondary-500">No scoped exceptions for this window.</p>}</div>
           </FormPanel></div>}

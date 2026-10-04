@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Building2, Plus, RefreshCw } from 'lucide-react';
-import { getDepartmentMasters, getDepartmentMastersPage, getPositionMastersPage, getUnitMasters, getUnitMastersPage, saveDepartmentMaster, savePositionMaster, saveUnitMaster } from '../../api/api';
+import { getDepartmentMastersPage, getPositionMastersPage, getUnitMastersPage, saveDepartmentMaster, savePositionMaster, saveUnitMaster } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import type { DepartmentMasterDto, PositionMasterDto, UnitMasterDto } from '../../types';
 import { AppShell } from '../layout/AppShell';
 import { FormPanel, Input, Select, Textarea } from '../common/Form';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { Badge, Button, Card } from '../ui';
 
 type MasterKind = 'departments' | 'units' | 'positions';
@@ -34,27 +35,17 @@ export function TenantOrganizationAdministration({ kind }: { kind: MasterKind })
   const resource = kind === 'departments' ? 'DEPARTMENT' : kind === 'units' ? 'UNIT' : 'POSITION';
   const title = kind === 'departments' ? 'Departments' : kind === 'units' ? 'Department Units' : 'Positions';
   const rows = kind === 'departments' ? departments : kind === 'units' ? units : positions;
-  const availableUnits = useMemo(() => units.filter(item => item.departmentPublicId === form.departmentPublicId && item.isActive), [form.departmentPublicId, units]);
-
   const load = useCallback(async () => {
     setBusy(true); setError(null);
     const [sortBy, direction] = sort.split(':');
     const sortDirection: 'asc' | 'desc' = direction === 'asc' ? 'asc' : 'desc';
     const query = { page, pageSize: 25, search: search || undefined, sortBy, sortDirection, active: status === 'all' ? undefined : status === 'active' };
-    const pagePromise = kind === 'departments' ? getDepartmentMastersPage(query) : kind === 'units' ? getUnitMastersPage(query) : getPositionMastersPage(query);
-    const [pageResult, departmentResult, unitResult] = await Promise.all([
-      pagePromise,
-      kind === 'departments' ? Promise.resolve(null) : getDepartmentMasters(),
-      kind === 'positions' ? getUnitMasters() : Promise.resolve(null),
-    ]);
-    const failed = [pageResult, departmentResult, unitResult].find(item => item && !item.success);
-    if (failed) setError(failed.message ?? 'Organization masters could not be loaded.');
+    const pageResult = await (kind === 'departments' ? getDepartmentMastersPage(query) : kind === 'units' ? getUnitMastersPage(query) : getPositionMastersPage(query));
+    if (!pageResult.success) setError(pageResult.message ?? 'Organization masters could not be loaded.');
     const pageData = pageResult.data;
     if (kind === 'departments') setDepartments((pageData?.items ?? []) as DepartmentMasterDto[]);
     else if (kind === 'units') setUnits((pageData?.items ?? []) as UnitMasterDto[]);
     else setPositions((pageData?.items ?? []) as PositionMasterDto[]);
-    if (departmentResult) setDepartments(departmentResult.data ?? []);
-    if (unitResult) setUnits(unitResult.data ?? []);
     setTotalCount(pageData?.totalCount ?? 0); setTotalPages(pageData?.totalPages ?? 0);
     if (pageData && pageData.items.length === 0 && page > 1) setPage(current => Math.max(1, current - 1));
     setBusy(false);
@@ -103,8 +94,8 @@ export function TenantOrganizationAdministration({ kind }: { kind: MasterKind })
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {(selected ? security.canUpdate(resource) : security.canCreate(resource)) && <FormPanel title={selected ? `Edit ${title.slice(0, -1).toLowerCase()}` : `Create ${title.slice(0, -1).toLowerCase()}`} description="All changes require a reason and use optimistic concurrency." icon={<Building2 className="h-5 w-5" />}>
-          {kind !== 'departments' && <Select label="Department" value={form.departmentPublicId} placeholder="Select department" options={departments.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setForm(current => ({ ...current, departmentPublicId: event.target.value, unitPublicId: '' }))} required />}
-          {kind === 'positions' && <Select label="Unit" value={form.unitPublicId} placeholder="Department-level position" options={availableUnits.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setForm(current => ({ ...current, unitPublicId: event.target.value }))} />}
+          {kind !== 'departments' && <OrganizationMasterPicker kind="department" label="Department" value={form.departmentPublicId} selectedLabel={selected && 'departmentName' in selected ? selected.departmentName : undefined} onChange={value => setForm(current => ({ ...current, departmentPublicId: value, unitPublicId: '' }))} required />}
+          {kind === 'positions' && <OrganizationMasterPicker kind="unit" label="Unit" value={form.unitPublicId} departmentPublicId={form.departmentPublicId || undefined} selectedLabel={selected && 'unitName' in selected ? selected.unitName ?? undefined : undefined} emptyLabel="Department-level position" disabled={!form.departmentPublicId} onChange={value => setForm(current => ({ ...current, unitPublicId: value }))} />}
           <div className="grid grid-cols-2 gap-2"><Input label="Code" value={form.code} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} required /><Input label="Name" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} required /></div>
           {kind === 'departments' && <Textarea label="Description" value={form.description} onChange={event => setForm(current => ({ ...current, description: event.target.value }))} />}
           {kind === 'positions' && <Input label="Grade" value={form.grade} onChange={event => setForm(current => ({ ...current, grade: event.target.value }))} />}

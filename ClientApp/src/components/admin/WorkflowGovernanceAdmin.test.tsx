@@ -14,8 +14,11 @@ const api = vi.hoisted(() => ({
   getReportingWindowExceptions: vi.fn(),
   createReportingWindowException: vi.fn(),
   getUsersPage: vi.fn(),
-  getDepartments: vi.fn(),
-  getUnits: vi.fn(),
+  getDepartmentMastersPage: vi.fn(),
+  getUnitMastersPage: vi.fn(),
+  getPositionMastersPage: vi.fn(),
+  getWardMastersPage: vi.fn(),
+  getVoteNumberMastersPage: vi.fn(),
   createRatingScheme: vi.fn(),
   getInternalAuditConfigurations: vi.fn(),
   saveInternalAuditConfiguration: vi.fn(),
@@ -51,8 +54,8 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
     api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
-    api.getDepartments.mockResolvedValue({ success: true, data: [] });
-    api.getUnits.mockResolvedValue({ success: true, data: [] });
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.compareWorkflowDefinitions.mockResolvedValue({ success: false, message: 'not configured' });
     api.retireWorkflowDefinition.mockResolvedValue({ success: true, data: null });
   });
@@ -92,7 +95,7 @@ describe('WorkflowGovernanceAdminPage', () => {
 
   it('opens scoped reporting-window exception administration', async () => {
     api.getReportingWindows.mockResolvedValue({ success: true, data: [{ publicId: 'window-1', reportingPeriodPublicId: 'period-1', periodCode: 'Q1', submissionKind: 1, opensAt: '2026-07-01T00:00:00Z', closesAt: '2026-07-31T00:00:00Z', isActive: true, rowVersion: 'AQ==' }] });
-    api.getDepartments.mockResolvedValue({ success: true, data: [{ id: 7, publicId: 'department-1', code: 'FIN', name: 'Finance' }] });
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     render(<WorkflowGovernanceAdminPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Windows' }));

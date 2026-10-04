@@ -17,8 +17,11 @@ const api = vi.hoisted(() => ({
   downloadOfficialReport: vi.fn(),
   saveOfficialReportTemplate: vi.fn(),
   saveOfficialReportSchedule: vi.fn(),
-  getDepartments: vi.fn(),
-  getUnits: vi.fn(),
+  getDepartmentMastersPage: vi.fn(),
+  getUnitMastersPage: vi.fn(),
+  getPositionMastersPage: vi.fn(),
+  getWardMastersPage: vi.fn(),
+  getVoteNumberMastersPage: vi.fn(),
 }));
 const app = vi.hoisted(() => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'] as string[] }));
 
@@ -49,8 +52,11 @@ describe('Reports', () => {
     api.getOfficialReportGenerationsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'generation-1', generationFamilyPublicId: 'generation-family-1', versionNumber: 1, templatePublicId: 'template-1', templateCode: 'QUARTERLY', templateName: 'Quarterly report', templateVersion: 2, reportType: 1, format: 4, submissionKind: 1, municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1', scopeJson: '{}', filterJson: '{}', dataVersionReference: 'a'.repeat(64), fileName: 'quarterly.pdf', contentType: 'application/pdf', sizeInBytes: 100, sha256: 'b'.repeat(64), rowCount: 4, generatedBy: 'auditor', generatedAt: '2026-10-01T10:00:00Z', downloadUrl: '/content' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getOfficialReportJobsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getOfficialReportSchedulesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
-    api.getDepartments.mockResolvedValue({ success: true, data: [] });
-    api.getUnits.mockResolvedValue({ success: true, data: [] });
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getPositionMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getWardMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getVoteNumberMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getPerformanceReportSummary.mockResolvedValue({
       success: true,
       data: {
@@ -154,5 +160,27 @@ describe('Reports', () => {
       pageSize: 25,
       search: 'annual',
     })));
+  });
+
+  it('loads departmental report scope through the bounded organization master picker', async () => {
+    api.getOfficialReportTemplatesPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ publicId: 'template-department', templateFamilyPublicId: 'family-department', submissionKind: 1, reportType: 4, code: 'DEPARTMENTAL', name: 'Departmental report', format: 4, versionNumber: 1, headingTemplate: '{Department}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-2', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    api.getDepartmentMastersPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', description: null, managerUserPublicId: null, managerDisplayName: null, effectiveFrom: '2026-07-01', effectiveTo: null, isActive: true, createdAt: '2026-07-01', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+
+    render(<Reports />);
+
+    expect(await screen.findByLabelText('Department search')).toBeInTheDocument();
+    await waitFor(() => expect(api.getDepartmentMastersPage).toHaveBeenCalledWith(expect.objectContaining({
+      page: 1,
+      pageSize: 25,
+      active: true,
+      sortBy: 'name',
+    })));
+    expect(await screen.findByRole('option', { name: 'FIN · Finance' })).toBeInTheDocument();
   });
 });

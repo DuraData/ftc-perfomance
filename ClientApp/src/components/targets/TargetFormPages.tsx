@@ -6,6 +6,7 @@ import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from '../common/Form';
 import { TargetPicker } from '../common/TargetPicker';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { useApp } from '../../context/AppContext';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
@@ -16,8 +17,6 @@ import {
   getIpmsTargetTemplate,
   getOpmsTarget,
   getOpmsTargetTemplate,
-  getVoteNumberMasters,
-  getWardMasters,
   updateIpmsTarget,
   updateOpmsTarget,
 } from '../../api/api';
@@ -776,24 +775,14 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [existingTarget, setExistingTarget] = useState<OPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [selectedWardId, setSelectedWardId] = useState('');
+  const [selectedWard, setSelectedWard] = useState<WardMasterDto>();
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
-  const [selectedVoteNumberId, setSelectedVoteNumberId] = useState('');
-  const [wardMasters, setWardMasters] = useState<WardMasterDto[]>([]);
-  const [voteNumberMasters, setVoteNumberMasters] = useState<VoteNumberMasterDto[]>([]);
+  const [selectedVoteNumber, setSelectedVoteNumber] = useState<VoteNumberMasterDto>();
+  const [referenceLabels, setReferenceLabels] = useState<Record<string, string>>({});
   const [relatedIpmsTargets, setRelatedIpmsTargets] = useState<PerformanceTargetOptionDto[]>([]);
   const [relatedIpmsPage, setRelatedIpmsPage] = useState(1);
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
   const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
-
-  useEffect(() => {
-    const loadReferenceMasters = async () => {
-      const [wardResult, voteResult] = await Promise.all([getWardMasters(), getVoteNumberMasters()]);
-      if (wardResult.success) setWardMasters((wardResult.data ?? []).filter(item => item.isActive));
-      if (voteResult.success) setVoteNumberMasters((voteResult.data ?? []).filter(item => item.isActive));
-    };
-    void loadReferenceMasters();
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -959,20 +948,17 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <Input label="Search employees" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} />
             <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...(form.assignedToId && !employeeIdentityOptions.some(item => item.value === form.assignedToId) ? [{ value: form.assignedToId, label: 'Current assigned employee' }] : []), ...employeeIdentityOptions]} />
             <FormRow cols={3}>
-              <Select
-                label="Wards"
-                value={selectedWardId}
-                onChange={(event) => setSelectedWardId(event.target.value)}
-                options={[{ value: '', label: 'Select Ward' }, ...wardMasters.map(item => ({ value: String(item.id), label: `${item.code} · ${item.name}` }))]}
-              />
+              <OrganizationMasterPicker kind="ward" label="Wards" value={selectedWard?.publicId ?? ''} emptyLabel="Select Ward" onChange={(_, option) => setSelectedWard(option as WardMasterDto | undefined)} />
               <div className="flex items-end">
                 <Button
                   variant="outline"
                   className="w-full"
                   onClick={() => {
-                    if (!selectedWardId) return;
-                    setForm(prev => ({ ...prev, wardIds: appendCsvId(prev.wardIds, selectedWardId) }));
-                    setSelectedWardId('');
+                    if (!selectedWard) return;
+                    const id = String(selectedWard.id);
+                    setForm(prev => ({ ...prev, wardIds: appendCsvId(prev.wardIds, id) }));
+                    setReferenceLabels(current => ({ ...current, [`ward:${id}`]: selectedWard.name }));
+                    setSelectedWard(undefined);
                   }}
                 >
                   Add Ward
@@ -983,7 +969,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="flex flex-wrap gap-2">
               {selectedWardIds.length === 0 ? <p className="text-xs text-secondary-500">No wards linked.</p> : null}
               {selectedWardIds.map(wardId => {
-                const ward = wardMasters.find(item => String(item.id) === wardId);
+                const wardName = referenceLabels[`ward:${wardId}`] ?? existingTarget?.wards?.find(item => String(item.id) === wardId)?.name;
                 return (
                   <button
                     key={wardId}
@@ -992,7 +978,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                     className="rounded-full border border-secondary-300 px-3 py-1 text-xs text-secondary-700 hover:bg-secondary-100 dark:border-secondary-700 dark:text-secondary-200 dark:hover:bg-secondary-800"
                     title="Remove ward"
                   >
-                    {ward?.name ?? wardId} x
+                    {wardName ?? wardId} x
                   </button>
                 );
               })}
@@ -1043,20 +1029,17 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             {employeeTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div>}
 
             <FormRow cols={3}>
-              <Select
-                label="Vote Numbers"
-                value={selectedVoteNumberId}
-                onChange={(event) => setSelectedVoteNumberId(event.target.value)}
-                options={[{ value: '', label: 'Select Vote Number' }, ...voteNumberMasters.map(item => ({ value: String(item.id), label: `${item.number} · ${item.name} · ${item.departmentName}` }))]}
-              />
+              <OrganizationMasterPicker kind="vote-number" label="Vote Numbers" value={selectedVoteNumber?.publicId ?? ''} emptyLabel="Select Vote Number" onChange={(_, option) => setSelectedVoteNumber(option as VoteNumberMasterDto | undefined)} />
               <div className="flex items-end">
                 <Button
                   variant="outline"
                   className="w-full"
                   onClick={() => {
-                    if (!selectedVoteNumberId) return;
-                    setForm(prev => ({ ...prev, voteNumberIds: appendCsvId(prev.voteNumberIds, selectedVoteNumberId) }));
-                    setSelectedVoteNumberId('');
+                    if (!selectedVoteNumber) return;
+                    const id = String(selectedVoteNumber.id);
+                    setForm(prev => ({ ...prev, voteNumberIds: appendCsvId(prev.voteNumberIds, id) }));
+                    setReferenceLabels(current => ({ ...current, [`vote:${id}`]: `${selectedVoteNumber.number} - ${selectedVoteNumber.name}` }));
+                    setSelectedVoteNumber(undefined);
                   }}
                 >
                   Add Vote Number
@@ -1067,7 +1050,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="flex flex-wrap gap-2">
               {selectedVoteIds.length === 0 ? <p className="text-xs text-secondary-500">No vote numbers linked.</p> : null}
               {selectedVoteIds.map(voteId => {
-                const vote = voteNumberMasters.find(item => String(item.id) === voteId);
+                const existingVote = existingTarget?.voteNumbers?.find(item => String(item.id) === voteId);
+                const voteLabel = referenceLabels[`vote:${voteId}`] ?? (existingVote ? `${existingVote.number} - ${existingVote.name}` : undefined);
                 return (
                   <button
                     key={voteId}
@@ -1076,7 +1060,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                     className="rounded-full border border-secondary-300 px-3 py-1 text-xs text-secondary-700 hover:bg-secondary-100 dark:border-secondary-700 dark:text-secondary-200 dark:hover:bg-secondary-800"
                     title="Remove vote number"
                   >
-                    {vote ? `${vote.number} - ${vote.name}` : voteId} x
+                    {voteLabel ?? voteId} x
                   </button>
                 );
               })}

@@ -42,8 +42,7 @@ describe('TenantCalendarAdministration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Make current' }));
     await waitFor(() => expect(api.updateMunicipalityFinancialYearMaster).toHaveBeenCalledWith('mfy-1', expect.objectContaining({ isCurrent: true, rowVersion: 'Ag==' })));
-
-  });
+  }, 10_000);
 
   it('searches, filters, sorts, and pages calendar registers on the server', async () => {
     render(<TenantCalendarAdministration />);

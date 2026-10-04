@@ -1,23 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Briefcase, Plus, RefreshCw, UserRound } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormPanel, Input, Select } from '../common/Form';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import {
   closeEmployeeAssignment,
   createEmployeeAssignment,
   createMunicipalEmployee,
-  getDepartments,
   getEmployeeAssignments,
   getMunicipalEmployeesPage,
-  getPositionMasters,
-  getUnits,
   getUsersPage,
   updateMunicipalEmployee,
 } from '../../api/api';
-import type { AdminUserDetail, DepartmentLookupDto, EmployeeAssignmentMasterDto, MunicipalEmployeeDto, PositionMasterDto, UnitLookupDto } from '../../types';
+import type { AdminUserDetail, EmployeeAssignmentMasterDto, MunicipalEmployeeDto } from '../../types';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const atUtc = (value: string) => new Date(`${value}T00:00:00Z`).toISOString();
@@ -32,9 +30,6 @@ export function TenantEmployeeAdministration() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
-  const [units, setUnits] = useState<UnitLookupDto[]>([]);
-  const [positions, setPositions] = useState<PositionMasterDto[]>([]);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
   const [userPage, setUserPage] = useState(1);
   const [userTotalPages, setUserTotalPages] = useState(0);
@@ -47,10 +42,6 @@ export function TenantEmployeeAdministration() {
   const [assignment, setAssignment] = useState({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true });
   const [closure, setClosure] = useState({ effectiveTo: today(), reason: '' });
   const selected = employees.find(item => item.publicId === selectedId) ?? null;
-  const selectedDepartmentId = departments.find(item => item.publicId === assignment.departmentPublicId)?.id;
-  const availableUnits = useMemo(() => units.filter(item => !selectedDepartmentId || item.departmentId === selectedDepartmentId), [selectedDepartmentId, units]);
-  const availablePositions = useMemo(() => positions.filter(item => item.isActive && item.departmentPublicId === assignment.departmentPublicId && (item.unitPublicId ?? '') === assignment.unitPublicId), [assignment.departmentPublicId, assignment.unitPublicId, positions]);
-
   const loadEmployees = useCallback(async () => {
     setBusy(true); setError(null);
     const employeeResult = await getMunicipalEmployeesPage({ page, pageSize: 25, search, sortBy, sortDirection });
@@ -62,15 +53,6 @@ export function TenantEmployeeAdministration() {
     setBusy(false);
   }, [page, search, sortBy, sortDirection]);
 
-  const loadReferences = useCallback(async () => {
-    setBusy(true); setError(null);
-    const [departmentResult, unitResult, positionResult] = await Promise.all([getDepartments(), getUnits(), getPositionMasters()]);
-    const failed = [departmentResult, unitResult, positionResult].find(result => !result.success);
-    if (failed) setError(failed.message ?? 'Employee masters could not be loaded.');
-    setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []);
-    setBusy(false);
-  }, []);
-
   const loadUsers = useCallback(async () => {
     const result = await getUsersPage({ page: userPage, pageSize: 25, search: userSearch, sortBy: 'name', sortDirection: 'asc' });
     if (!result.success) setError(result.message ?? 'Login directory could not be loaded.');
@@ -79,7 +61,6 @@ export function TenantEmployeeAdministration() {
   }, [userPage, userSearch]);
 
   useEffect(() => { void loadEmployees(); }, [loadEmployees]);
-  useEffect(() => { void loadReferences(); }, [loadReferences]);
   useEffect(() => { void loadUsers(); }, [loadUsers]);
 
   const selectEmployee = async (publicId: string) => {
@@ -127,7 +108,7 @@ export function TenantEmployeeAdministration() {
 
   return <AppShell title="Municipal Employees" subtitle="Tenant-owned people and effective-dated organizational placements">
     <div className="space-y-5">
-      <div className="flex justify-end"><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void loadEmployees(); void loadReferences(); void loadUsers(); }} disabled={busy}>Refresh</Button></div>
+      <div className="flex justify-end"><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void loadEmployees(); void loadUsers(); }} disabled={busy}>Refresh</Button></div>
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE') && <FormPanel title="Create employee" description="Identity linkage is optional and does not replace the municipal employee record." icon={<UserRound className="h-5 w-5" />}>
@@ -144,9 +125,9 @@ export function TenantEmployeeAdministration() {
       </div>
       {selected && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE_ASSIGNMENT') && selected.isActive && <FormPanel title={`New placement · ${selected.firstName} ${selected.lastName}`} description="Overlapping effective dates are rejected by the server." icon={<Briefcase className="h-5 w-5" />}>
-          <Select label="Department" value={assignment.departmentPublicId} placeholder="Select department" options={departments.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setAssignment(current => ({ ...current, departmentPublicId: event.target.value, unitPublicId: '', positionPublicId: '' }))} />
-          <Select label="Unit" value={assignment.unitPublicId} placeholder="No unit" options={availableUnits.map(item => ({ value: item.publicId, label: item.name }))} onChange={event => setAssignment(current => ({ ...current, unitPublicId: event.target.value, positionPublicId: '' }))} />
-          <Select label="Position" value={assignment.positionPublicId} placeholder="Select governed position" options={availablePositions.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setAssignment(current => ({ ...current, positionPublicId: event.target.value }))} />
+          <OrganizationMasterPicker kind="department" label="Department" value={assignment.departmentPublicId} onChange={value => setAssignment(current => ({ ...current, departmentPublicId: value, unitPublicId: '', positionPublicId: '' }))} required />
+          <OrganizationMasterPicker kind="unit" label="Unit" value={assignment.unitPublicId} departmentPublicId={assignment.departmentPublicId || undefined} emptyLabel="No unit" disabled={!assignment.departmentPublicId} onChange={value => setAssignment(current => ({ ...current, unitPublicId: value, positionPublicId: '' }))} />
+          <OrganizationMasterPicker kind="position" label="Position" value={assignment.positionPublicId} departmentPublicId={assignment.departmentPublicId || undefined} unitPublicId={assignment.unitPublicId || undefined} emptyLabel="Select governed position" disabled={!assignment.departmentPublicId} onChange={value => setAssignment(current => ({ ...current, positionPublicId: value }))} required />
           <div className="grid grid-cols-2 gap-2"><Input label="Effective from" type="date" value={assignment.effectiveFrom} onChange={event => setAssignment(current => ({ ...current, effectiveFrom: event.target.value }))} /><Input label="Effective to" type="date" value={assignment.effectiveTo} onChange={event => setAssignment(current => ({ ...current, effectiveTo: event.target.value }))} /></div>
           <Checkbox label="Primary placement" checked={assignment.isPrimary} onChange={event => setAssignment(current => ({ ...current, isPrimary: event.target.checked }))} />
           <Button onClick={() => void saveAssignment()} disabled={busy}>Create placement</Button>

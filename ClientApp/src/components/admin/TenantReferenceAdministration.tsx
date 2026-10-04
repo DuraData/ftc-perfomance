@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Landmark, Plus, RefreshCw } from 'lucide-react';
-import { getDepartmentMasters, getVoteNumberMastersPage, getWardMastersPage, saveVoteNumberMaster, saveWardMaster } from '../../api/api';
+import { getVoteNumberMastersPage, getWardMastersPage, saveVoteNumberMaster, saveWardMaster } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { DepartmentMasterDto, VoteNumberMasterDto, WardMasterDto } from '../../types';
+import type { VoteNumberMasterDto, WardMasterDto } from '../../types';
 import { FormPanel, Input, Select, Textarea } from '../common/Form';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 
@@ -20,7 +21,6 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
   const security = useSecurity();
   const [wards, setWards] = useState<WardMasterDto[]>([]);
   const [voteNumbers, setVoteNumbers] = useState<VoteNumberMasterDto[]>([]);
-  const [departments, setDepartments] = useState<DepartmentMasterDto[]>([]);
   const [selected, setSelected] = useState<ReferenceRow | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);
@@ -43,10 +43,9 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
     const sortDirection: 'asc' | 'desc' = direction === 'asc' ? 'asc' : 'desc';
     const query = { page, pageSize: 25, search: search || undefined, sortBy, sortDirection, active: status === 'all' ? undefined : status === 'active' };
     if (isVote) {
-      const [voteResult, departmentResult] = await Promise.all([getVoteNumberMastersPage(query), getDepartmentMasters()]);
-      const failed = [voteResult, departmentResult].find(item => !item.success);
-      if (failed) setError(failed.message ?? `${title} could not be loaded.`);
-      setVoteNumbers(voteResult.data?.items ?? []); setDepartments(departmentResult.data ?? []);
+      const voteResult = await getVoteNumberMastersPage(query);
+      if (!voteResult.success) setError(voteResult.message ?? `${title} could not be loaded.`);
+      setVoteNumbers(voteResult.data?.items ?? []);
       setTotalCount(voteResult.data?.totalCount ?? 0); setTotalPages(voteResult.data?.totalPages ?? 0);
       if (voteResult.data && voteResult.data.items.length === 0 && page > 1) setPage(current => Math.max(1, current - 1));
     } else {
@@ -106,7 +105,7 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {(selected ? security.canUpdate(resource) : security.canCreate(resource)) && <FormPanel title={selected ? `Edit ${title.slice(0, -1).toLowerCase()}` : `Create ${title.slice(0, -1).toLowerCase()}`} description="Updates are audited, reasoned, and protected by optimistic concurrency." icon={<Landmark className="h-5 w-5" />}>
-          {isVote && <Select label="Department" value={form.departmentPublicId} placeholder="Select department" options={departments.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setForm(current => ({ ...current, departmentPublicId: event.target.value }))} required />}
+          {isVote && <OrganizationMasterPicker kind="department" label="Department" value={form.departmentPublicId} selectedLabel={selected && 'departmentName' in selected ? selected.departmentName : undefined} onChange={value => setForm(current => ({ ...current, departmentPublicId: value }))} required />}
           <div className="grid grid-cols-2 gap-2"><Input label="Code" value={form.code} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} required />{isVote && <Input label="Vote number" value={form.number} onChange={event => setForm(current => ({ ...current, number: event.target.value }))} required />}</div>
           <Input label="Name" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} required />
           {isVote && <Input label="Amount (R)" type="number" min="0" step="0.01" value={form.amount} onChange={event => setForm(current => ({ ...current, amount: event.target.value }))} required />}

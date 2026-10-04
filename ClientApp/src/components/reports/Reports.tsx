@@ -5,8 +5,9 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getPerformanceReportSummary, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
-import type { DepartmentLookupDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, UnitLookupDto } from '../../types';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getPerformanceReportSummary, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import type { OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
 const reportTypes: { value: OfficialReportType; label: string; code: string; columns: string[] }[] = [
@@ -76,8 +77,6 @@ export function Reports() {
   const [scheduleSortBy, setScheduleSortBy] = useState('code');
   const [scheduleSortDirection, setScheduleSortDirection] = useState<'asc' | 'desc'>('asc');
   const [templateId, setTemplateId] = useState('');
-  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
-  const [units, setUnits] = useState<UnitLookupDto[]>([]);
   const [departmentId, setDepartmentId] = useState('');
   const [unitId, setUnitId] = useState('');
   const [templateDraft, setTemplateDraft] = useState({ reportType: 1 as OfficialReportType, code: 'QUARTERLY', name: 'Quarterly performance report', format: 4 as OfficialReportFormat, headingTemplate: '{Municipality} · {FinancialYear} {Period} PERFORMANCE REPORT', approvalReference: '', reason: '', previousVersionPublicId: '' });
@@ -92,21 +91,12 @@ export function Reports() {
   const canGenerateOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.GENERATE' : 'IPMS_REPORT.GENERATE') || permissionSet.has('REPORTS.GENERATE');
   const canConfigureOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.CONFIGURE' : 'IPMS_REPORT.CONFIGURE');
   const selectedTemplate = templateOptions.find(template => template.publicId === templateId);
-  const selectedDepartment = departments.find(department => department.publicId === departmentId);
-  const filteredUnits = units.filter(unit => !selectedDepartment || unit.departmentId === selectedDepartment.id);
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [summaryResult, departmentResult, unitResult] = await Promise.all([
-      getPerformanceReportSummary(kind, periodId || undefined),
-      getDepartments(),
-      getUnits(),
-    ]);
-    setDepartments(departmentResult.data ?? []);
-    setUnits(unitResult.data ?? []);
+    const summaryResult = await getPerformanceReportSummary(kind, periodId || undefined);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
     else setSummary(summaryResult.data);
-    if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
   }, [kind, periodId]);
 
@@ -323,8 +313,8 @@ export function Reports() {
           <div className="mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-primary-600" /><div><h2 className="font-semibold text-secondary-900 dark:text-white">Official municipality report</h2><p className="text-xs text-secondary-500">Generate a retained, immutable output from the latest authorised data. Regeneration appends a version.</p></div></div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[18rem] flex-1"><Select label="Approved template" value={templateId} options={[{ value: '', label: templateOptions.length ? 'Select a template' : 'No approved template configured' }, ...templateOptions.map(template => ({ value: template.publicId, label: `${reportTypeLabel(template.reportType)} · ${template.name} · v${template.versionNumber} · ${['', 'CSV', 'Excel', 'Word', 'PDF'][template.format]}` }))]} onChange={event => { setTemplateId(event.target.value); setDepartmentId(''); setUnitId(''); }} /></div>
-            {selectedTemplate?.reportType === 4 && <div className="min-w-[14rem]"><Select label="Department" value={departmentId} options={[{ value: '', label: 'Select a department' }, ...departments.map(department => ({ value: department.publicId, label: department.name }))]} onChange={event => { setDepartmentId(event.target.value); setUnitId(''); }} /></div>}
-            {selectedTemplate?.reportType === 5 && <div className="min-w-[14rem]"><Select label="Unit" value={unitId} options={[{ value: '', label: 'Select a unit' }, ...filteredUnits.map(unit => ({ value: unit.publicId, label: unit.name }))]} onChange={event => setUnitId(event.target.value)} /></div>}
+            {selectedTemplate?.reportType === 4 && <div className="min-w-[14rem]"><OrganizationMasterPicker kind="department" label="Department" value={departmentId} emptyLabel="Select a department" onChange={value => { setDepartmentId(value); setUnitId(''); }} /></div>}
+            {selectedTemplate?.reportType === 5 && <div className="min-w-[14rem]"><OrganizationMasterPicker kind="unit" label="Unit" value={unitId} departmentPublicId={departmentId || undefined} emptyLabel="Select a unit" onChange={setUnitId} /></div>}
             <Button size="sm" variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Generate now</Button>
             <Button size="sm" variant="primary" icon={<History className="h-4 w-4" />} onClick={() => void queueGeneration()} disabled={busy || !canGenerateOfficial || !templateId || !yearId || !periodId}>Queue generation</Button>
           </div>
