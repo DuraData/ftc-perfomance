@@ -151,6 +151,9 @@ public class OpmsTargetsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
+        var definitionError = OpmsTargetDefinitionPolicy.Validate(request.IndicatorNumber, request.OriginalOrderNumber, request.TargetName,
+            request.KpiDescription, request.NationalKpa, request.MunicipalKpa, request.PerformanceObjective, request.Weight, request.KpiType, request.IndicatorType);
+        if (definitionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, definitionError));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
@@ -220,6 +223,9 @@ public class OpmsTargetsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
+        var definitionError = OpmsTargetDefinitionPolicy.Validate(request.IndicatorNumber, request.OriginalOrderNumber, request.TargetName,
+            request.KpiDescription, request.NationalKpa, request.MunicipalKpa, request.PerformanceObjective, request.Weight, request.KpiType, request.IndicatorType);
+        if (definitionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, definitionError));
 
         var entity = await _context.OpmsTargets
             .Include(item => item.Wards)

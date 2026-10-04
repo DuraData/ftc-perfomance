@@ -37,6 +37,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<Ward> Wards { get; set; } = null!;
     public DbSet<VoteNumber> VoteNumbers { get; set; } = null!;
     public DbSet<OpmsTarget> OpmsTargets { get; set; } = null!;
+    public DbSet<OpmsImportBatch> OpmsImportBatches { get; set; } = null!;
+    public DbSet<OpmsImportRow> OpmsImportRows { get; set; } = null!;
     public DbSet<OpmsTargetWard> OpmsTargetWards { get; set; } = null!;
     public DbSet<OpmsTargetAdditionalAssignee> OpmsTargetAdditionalAssignees { get; set; } = null!;
     public DbSet<OpmsTargetVoteNumber> OpmsTargetVoteNumbers { get; set; } = null!;
@@ -1103,6 +1105,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IdpKpi>().HasQueryFilter(item => TenantFilterBypass || item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpImportBatch>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpImportRow>().HasQueryFilter(item => TenantFilterBypass || item.IdpImportBatch.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<OpmsImportBatch>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<OpmsImportRow>().HasQueryFilter(item => TenantFilterBypass || item.OpmsImportBatch.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpAnnualTarget>().HasQueryFilter(item => TenantFilterBypass || item.IdpKpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpAlignmentLink>().HasQueryFilter(item => TenantFilterBypass || item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IdpCommunitySession>().HasQueryFilter(item => TenantFilterBypass || item.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -1479,6 +1483,31 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IdpImportRow>().Property(row => row.SuppliedValue).HasMaxLength(1000);
         builder.Entity<IdpImportRow>().Property(row => row.ErrorMessage).HasMaxLength(2000);
         builder.Entity<IdpImportRow>().HasOne(row => row.IdpImportBatch).WithMany(batch => batch.Rows).HasForeignKey(row => row.IdpImportBatchId).OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<OpmsImportBatch>().HasIndex(x => x.PublicId).IsUnique();
+        builder.Entity<OpmsImportBatch>().HasIndex(x => new { x.MunicipalityId, x.ClientRequestId }).IsUnique();
+        builder.Entity<OpmsImportBatch>().HasIndex(x => new { x.SdbipLayerId, x.CreatedAt });
+        builder.Entity<OpmsImportBatch>().Property(x => x.SourceFileName).HasMaxLength(260);
+        builder.Entity<OpmsImportBatch>().Property(x => x.SourceSha256).HasMaxLength(64);
+        builder.Entity<OpmsImportBatch>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_OpmsImportBatches_RowCounts", "[TotalRows] > 0 AND [TotalRows] = [NewRows] + [UnchangedRows] + [ChangedRows] + [InvalidRows]");
+            table.HasCheckConstraint("CK_OpmsImportBatches_CommitMetadata", "[Status] <> 1 OR ([CommittedAt] IS NOT NULL AND [CommittedByUserId] IS NOT NULL)");
+        });
+        ConfigureRowVersion(builder.Entity<OpmsImportBatch>().Property(x => x.RowVersion));
+        builder.Entity<OpmsImportBatch>().HasOne(x => x.Municipality).WithMany().HasForeignKey(x => x.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsImportBatch>().HasOne(x => x.SdbipLayer).WithMany().HasForeignKey(x => x.SdbipLayerId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsImportBatch>().HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsImportBatch>().HasOne(x => x.CommittedByUser).WithMany().HasForeignKey(x => x.CommittedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsImportRow>().HasIndex(x => x.PublicId).IsUnique();
+        builder.Entity<OpmsImportRow>().HasIndex(x => new { x.OpmsImportBatchId, x.SourceRowNumber }).IsUnique();
+        builder.Entity<OpmsImportRow>().Property(x => x.Reference).HasMaxLength(240);
+        builder.Entity<OpmsImportRow>().Property(x => x.ErrorCode).HasMaxLength(80);
+        builder.Entity<OpmsImportRow>().Property(x => x.ErrorPeriod).HasMaxLength(80);
+        builder.Entity<OpmsImportRow>().Property(x => x.ErrorField).HasMaxLength(120);
+        builder.Entity<OpmsImportRow>().Property(x => x.SuppliedValue).HasMaxLength(1000);
+        builder.Entity<OpmsImportRow>().Property(x => x.ErrorMessage).HasMaxLength(2000);
+        builder.Entity<OpmsImportRow>().HasOne(x => x.OpmsImportBatch).WithMany(x => x.Rows).HasForeignKey(x => x.OpmsImportBatchId).OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<IdpAnnualTarget>()
             .HasIndex(annualTarget => new { annualTarget.IdpKpiId, annualTarget.FinancialYear })
@@ -1976,7 +2005,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         var protectedTypes = new HashSet<Type>
         {
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
-            typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer),
+            typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
@@ -2045,6 +2074,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Login audit history is append-only.");
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
+        if (ChangeTracker.Entries<OpmsImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("OPMS import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<LegacySubmissionValueArchive>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Legacy submission-value archives are append-only.");
         if (ChangeTracker.Entries<GovernedRecordLifecycleEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

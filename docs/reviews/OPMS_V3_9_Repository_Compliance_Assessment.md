@@ -1496,6 +1496,18 @@ Successful SQLite tests do not certify these SQL Server behaviors. Provider cuto
 
 This section is the final independent verification against the complete authoritative `OPMS Requirements V3.9.docx` supplied with the repository (1,144 paragraphs and 133 tables were extracted and reviewed). It supersedes the status counts and any repository-complete claims in earlier sections where they conflict. Earlier sections remain as implementation history and test chronology; they are not the final acceptance decision.
 
+### 11.87 Governed OPMS/SDBIP import and reconciliation
+
+Status: **SUBSTANTIALLY IMPLEMENTED — native SQL Server acceptance and downloadable template remain**
+
+- Added tenant- and SDBIP-layer-scoped staged import batches with unique client request IDs, source hashes, immutable row evidence and RowVersion-protected commit.
+- Reconciliation classifies each spreadsheet row as `NEW`, `UNCHANGED`, `CHANGED` or `INVALID`; diagnostics retain source row, KPI reference, reporting period, field, supplied value, code and reason.
+- The wide CSV parser maps Q1, Q2, Mid-Term, Q3, Q4 and Annual target/unit/budget columns into canonical period rows and rejects unknown units instead of silently defaulting them.
+- Business department/unit codes are resolved inside the active tenant; duplicate KPI references, cross-layer/year ambiguity, unreconciled legacy periods and attempts to rewrite original fields fail during preview.
+- Commit is all-or-nothing. New rows create canonical `PerformancePeriodTarget` records; changed rows require reason, approval reference and effective date, preserve originals, and append KPI-field and Q3/Q4/Annual target/budget revision history.
+- The protected API and navigation require dynamic `OPMS_KPI.IMPORT` / `NAV.SDBIP.IMPORT` permission, so hiding the UI does not authorize direct calls.
+- Remaining acceptance: provide a downloadable governed template and execute the migration/import constraint and concurrency matrix on native SQL Server.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -1525,7 +1537,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 15 | Ratings and evidence-based assessment | Compliant | Independent workflow ratings, POE assessments and both IA model paths are implemented; configured IA-stage rating values are validated against the selected scheme and appended to rating history. |
 | 16 | POE storage, inherited access and assessments | Compliant | Governed file metadata, content safety, authorization inheritance and assessment records are implemented and tested at repository level. |
 | 17 | Audit, history, versioning and deletion governance | Partially Compliant | Contextual append-only audit and several version ledgers exist. Login audit is now tenant-owned, migration-backfilled and append-only, but complete immutable history for every legacy mutable projection is not demonstrated. |
-| 18 | Imports, validation and reconciliation | Partially Compliant | Governed import capability exists in selected modules, but complete OPMS/SDBIP import and reconciliation coverage is not evidenced. |
+| 18 | Imports, validation and reconciliation | Partially Compliant | OPMS/SDBIP now has tenant/layer-scoped staged reconciliation, all-or-nothing commit, row/KPI/period/field diagnostics, dynamic import permission, immutable preview rows, idempotency, RowVersion checks and original/revised enforcement. A downloadable governed template and native SQL Server execution evidence remain. |
 | 19 | Dashboards and role-scoped operational views | Partially Compliant | OPMS/IPMS headline metrics use authorization-scoped database aggregates, while staff and personal workflow queues use combined scope-filtered SQL counts and paging; broader analytical drill-down and some specified operational flows remain incomplete. |
 | 20 | Official reports, exports and version history | Compliant | Municipality/FY/period-scoped approved template versions cover all 16 required report classes in CSV/XLSX/DOCX/PDF; durable jobs and immutable schedule versions govern queueing, recurrence, dynamic recipients and channel snapshots; every execution re-evaluates report plus resource permissions/scope, links its immutable generation and distribution evidence, while downloads re-evaluate scope and integrity. |
 | 21 | Notifications, reminders and delivery operations | Compliant | Versioned municipality/FY policies inherit through stage and period scope, materialize idempotent working-day reminders/escalations for reporting windows and RFIs, support in-app/email/SMS delivery, preserve retry/terminal receipts, catch up after downtime, enforce mandatory delivery over persisted optional preferences and expose governed administration/operations. |
@@ -1563,6 +1575,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Configurable IA assessment models | **Closed at repository level** | Both models, tenant/year configuration, model-specific validation, IA RFI/workflow/rating integration, immutable history and SPA capture are implemented and tested. Official formatted reports remain under area 20. |
 | Official reports, asynchronous jobs and governed distribution | **Closed at repository level** | Approved municipality/FY templates cover all 16 required report classes with deterministic CSV/XLSX/DOCX/PDF output, immutable stored generations, durable retryable jobs, immutable schedule versions, dynamic user/role recipients, in-app/email/SMS channel snapshots, outbox receipt linkage, execution-time re-authorization, migration and production UI/tests. |
 | Municipality/year-configurable SDBIP layers | **Closed at repository level** | Governed ordered masters, dynamic CRUD permissions, audit, RowVersion, composite tenant/year FKs and exact-year OPMS target enforcement are implemented. Historic layer reconciliation and native SQL Server execution remain deployment work. |
+| OPMS/SDBIP bulk import and reconciliation | **Substantially closed at repository level** | Wide CSV parsing, exact unit rejection, business-code mapping, NEW/UNCHANGED/CHANGED/INVALID preview, immutable diagnostics, atomic commit, stale-preview protection and approved Q3/Q4/Annual revision history are implemented. A downloadable template and native SQL Server acceptance remain. |
 | SQL Server clean/upgrade/concurrency acceptance | **Open — P0 deployment blocker** | Execute the committed migration chain and acceptance suite on a positively identified SQL Server/Azure SQL instance. |
 | Legacy data cutover/reconciliation | Open | Rehearse and reconcile target, submission, permission, workflow and file data before removing compatibility fields. |
 | Enterprise federation and production integrations | Open | Validate live providers, secrets, callbacks, conditional access, notification delivery and outage behavior. |
@@ -1595,6 +1608,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Retired legacy role and permission-definition mutation endpoints with HTTP 410, tenant-scoped their compatibility reads, and routed old administration pages to the audited RowVersion-protected security workspace.
 - Implemented V3.9 original/revised KPI sequence persistence, deterministic historic backfill, Q1/Q2/Mid-Term versus Q3/Q4/Annual effective ordering in registers and reports, governed RowVersion-protected resequencing and immutable field-level history with production UI/tests.
 - Implemented independent original/revised KPI number, target name, KPI wording, period target/unit and applicable-budget state with external-approval history, dedicated dynamic revision actions and consistent period-aware resolution across capture, queues, calculations and reports.
+- Implemented governed SDBIP bulk import with a municipality-friendly wide CSV parser, tenant/year/layer reconciliation preview, deterministic row diagnostics, idempotent staged batches, atomic commit, business-code lookups, dynamic import/navigation permissions, stale-preview detection and approval-backed original/revised history.
 - Added a real ASP.NET Core HTTP tenant-isolation matrix covering list, fetch, edit, approve, POE upload/download, performance reporting and audit, plus forged municipality-header rejection, using dynamically persisted permissions and two relational tenants.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
@@ -1604,7 +1618,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Gate | Result |
 |---|---|
 | Backend test suite | **Passed: 341; Failed: 0; Skipped: 1; Total: 342.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 158/158 across 50 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
+| Frontend Vitest suite | **Passed: 160/160 across 51 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,097 modules transformed. |
@@ -1612,7 +1626,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
-| SQL Server migration artifact | Idempotent migration script generation passed at **494,705 bytes** and includes the notification policy, canonical-actual archive/backfill/drop, tenant-scoped login-audit ownership, period-based KPI ordering, field-specific KPI revisions, constrained official-report-family identity, durable official-report job/schedule tables, and governed SDBIP layers with composite tenant/year relationships. Inspection confirms existing report rows backfill to class 1 before the 1-16 constraints are added. This proves generation only, not native application. |
+| SQL Server migration artifact | Idempotent migration script generation passed at **500,018 bytes** and includes the notification policy, canonical-actual archive/backfill/drop, tenant-scoped login-audit ownership, period-based KPI ordering, field-specific KPI revisions, constrained official-report-family identity, durable official-report job/schedule tables, governed SDBIP layers and OPMS import reconciliation tables. This proves generation only, not native application. |
 | Diff hygiene | `git diff --check` passed; line-ending conversion warnings are informational and no whitespace errors were reported. |
 
 No complete browser E2E suite, native SQL Server execution, representative load test, penetration test, backup/restore exercise or formal UAT was available; none is inferred from the passing repository suites.

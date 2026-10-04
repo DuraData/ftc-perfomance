@@ -1440,6 +1440,9 @@ export interface SdbipLayerMasterDto {
   rowVersion: string;
 }
 
+export interface OpmsImportRowDto { publicId: string; sourceRowNumber: number; reference: string; status: string; existingValueJson?: string | null; normalizedJson?: string | null; errorCode?: string | null; errorPeriod?: string | null; errorField?: string | null; suppliedValue?: string | null; errorMessage?: string | null }
+export interface OpmsImportBatchDto { publicId: string; clientRequestId: string; sdbipLayerPublicId: string; sourceFileName: string; sourceSha256: string; status: string; totalRows: number; newRows: number; unchangedRows: number; changedRows: number; invalidRows: number; createdAt: string; committedAt?: string | null; rowVersion: string; rows: OpmsImportRowDto[] }
+
 export interface MunicipalEmployeeDto {
   publicId: string;
   employeeNumber: string;

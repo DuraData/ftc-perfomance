@@ -69,6 +69,7 @@ import type {
   FinancialYearMasterDto,
   MunicipalityFinancialYearMasterDto,
   SdbipLayerMasterDto,
+  OpmsImportBatchDto,
   MunicipalEmployeeDto,
   EmployeeAssignmentMasterDto,
   AuthSessionDto,
@@ -1189,6 +1190,9 @@ export async function getSdbipLayerMasters(municipalityFinancialYearPublicId?: s
   if (includeInactive) query.set('includeInactive', 'true');
   return get<SdbipLayerMasterDto[]>(`/v1/masters/sdbip-layers${query.size ? `?${query.toString()}` : ''}`);
 }
+
+export const stageOpmsImport = (layerPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/layers/${layerPublicId}/stage`, payload);
+export const commitOpmsImport = (batchPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/${batchPublicId}/commit`, payload);
 
 export async function createSdbipLayerMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; description?: string | null; displayOrder: number; reason: string }): Promise<ApiResponse<SdbipLayerMasterDto>> {
   return post<SdbipLayerMasterDto>('/v1/masters/sdbip-layers', payload);

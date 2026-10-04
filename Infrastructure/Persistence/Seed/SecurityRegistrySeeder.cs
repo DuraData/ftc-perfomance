@@ -52,6 +52,7 @@ public static class SecurityRegistrySeeder
         var actions = new[]
         {
             Action("OPMS_KPI.ACTIVATE", "Activate KPI", "OPMS_KPI"), Action("OPMS_KPI.WITHDRAW", "Withdraw KPI", "OPMS_KPI"), Action("OPMS_KPI.REVISE", "Revise KPI", "OPMS_KPI"),
+            Action("OPMS_KPI.IMPORT", "Import and reconcile SDBIP KPIs", "OPMS_KPI"),
             Action("OPMS_KPI.NORMALIZE_LEGACY", "Normalize Legacy Target Values", "OPMS_KPI"),
             Action("OPMS_KPI.CONFIGURE_CONSOLIDATION", "Configure Performance Consolidation", "OPMS_KPI"),
             Action("IPMS_KPI.WITHDRAW", "Withdraw KPI", "IPMS_KPI"), Action("IPMS_KPI.REVISE", "Revise KPI", "IPMS_KPI"),
@@ -167,6 +168,7 @@ public static class SecurityRegistrySeeder
         var children = new[]
         {
             Nav("NAV.SDBIP.REGISTER", "SDBIP Register", "/opms/targets", "target", 10, "NAV.SDBIP.REGISTER", rootIds["NAV.SDBIP"]),
+            Nav("NAV.SDBIP.IMPORT", "SDBIP Import", "/opms/import", "file-text", 15, "NAV.SDBIP.IMPORT", rootIds["NAV.SDBIP"]),
             Nav("NAV.SDBIP.CAPTURE", "Performance Reporting", "/opms/submissions", "file-text", 20, "NAV.SDBIP.CAPTURE", rootIds["NAV.SDBIP"]),
             Nav("NAV.SDBIP.LIBRARY", "OPMS Target Library", "/opms/library", "library", 30, "NAV.SDBIP.LIBRARY", rootIds["NAV.SDBIP"]),
             Nav("NAV.SDBIP.VOTE_NUMBERS", "Vote Numbers", "/opms/vote-numbers", "layers", 40, "NAV.SDBIP.VOTE_NUMBERS", rootIds["NAV.SDBIP"]),
@@ -246,8 +248,8 @@ public static class SecurityRegistrySeeder
         var mappings = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE", "NAV.SETTINGS"],
-            ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "SDBIP_LAYER.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
-            ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.VOTE_NUMBERS", "SDBIP_LAYER.READ", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "NAV.STRATEGIC_DOCUMENTS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
+            ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "SDBIP_LAYER.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE", "OPMS_KPI.IMPORT"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
+            ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.IMPORT", "NAV.SDBIP.VOTE_NUMBERS", "SDBIP_LAYER.READ", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "NAV.STRATEGIC_DOCUMENTS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
             ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
             ["Workflow.Submit.View"] = ["NAV.SDBIP.CAPTURE", "NAV.WORKFLOW.MY_QUEUE"], ["Workflow.Verify.View"] = ["NAV.WORKFLOW.VERIFY"], ["Workflow.Review.View"] = ["NAV.WORKFLOW.REVIEW"], ["Workflow.Approve.View"] = ["NAV.WORKFLOW.APPROVE"], ["Workflow.Audit.View"] = ["NAV.WORKFLOW.AUDIT"],
             ["OPMS.Submissions.Submit"] = ["OPMS_SUBMISSION.SUBMIT"], ["OPMS.Submissions.Verify"] = ["OPMS_SUBMISSION.VERIFY"], ["OPMS.Submissions.VerifyReject"] = ["OPMS_SUBMISSION.VERIFY_REJECT"],
