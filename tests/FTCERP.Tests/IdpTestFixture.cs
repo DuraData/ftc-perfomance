@@ -13,7 +13,7 @@ public static class IdpTestFixture
         return context;
     }
 
-    public static ApplicationDbContext CreateRelationalContext()
+    public static ApplicationDbContext CreateRelationalContext(ITenantContext? tenantContext = null)
     {
         var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
@@ -22,7 +22,7 @@ public static class IdpTestFixture
             .UseSqlite(connection)
             .Options;
 
-        var context = new ApplicationDbContext(options);
+        var context = new ApplicationDbContext(options, tenantContext);
         context.Database.EnsureCreated();
         return context;
     }
@@ -89,9 +89,10 @@ public static class IdpTestFixture
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         IWorkflowGovernanceService workflow,
-        string userId)
+        string userId,
+        ITenantContext? tenantContext = null)
     {
-        var controller = new IdpController(context, userManager, workflow)
+        var controller = new IdpController(context, userManager, workflow, tenantContext)
         {
             ControllerContext = new ControllerContext
             {
@@ -103,5 +104,15 @@ public static class IdpTestFixture
         };
 
         return controller;
+    }
+
+    public static ITenantContext Tenant(long? municipalityId, string userId, bool isSystem = false) =>
+        new TestTenantContext(municipalityId, userId, isSystem);
+
+    private sealed class TestTenantContext(long? municipalityId, string userId, bool isSystem) : ITenantContext
+    {
+        public long? MunicipalityId => municipalityId;
+        public string? UserId => userId;
+        public bool IsSystem => isSystem;
     }
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getLoginAuditLogs, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getLoginAuditLogs, getMfaStatus, getNotifications, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getWardMasters, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -48,6 +48,21 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans/plan-public-id/imports'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/plans/plan-public-id/imports/kpis/stage'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('"clientRequestId":"request-id"') }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/idp/imports/batch-public-id/commit'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'AQ==', reason: 'Approved reconciliation' }) }));
+  });
+
+  it('transports bounded IDP plan search, sorting, and pages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getIdpPlansPage({ page: 2, pageSize: 25, search: 'five year', sortBy: 'planCode', sortDirection: 'asc' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/idp/plans/page?page=2&pageSize=25&search=five+year&sortBy=planCode&sortDirection=asc'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
   });
 
   it('uses separately authorized hierarchy stage and commit routes', async () => {

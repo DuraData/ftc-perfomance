@@ -3,6 +3,89 @@ namespace FTCERP.Tests;
 public class IdpControllerFunctionalityTests
 {
     [Fact]
+    public async Task GetPlansPage_IsBoundedSearchableSortedAndTenantScoped()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var systemTenant = IdpTestFixture.Tenant(null, "system", true);
+        await using (var setup = new ApplicationDbContext(options, systemTenant))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var user = IdpTestFixture.CreateUser("idp-reader");
+            setup.AddRange(
+                user,
+                new Municipality { Id = 71, Code = "M71", Name = "Municipality 71" },
+                new Municipality { Id = 72, Code = "M72", Name = "Municipality 72" });
+            setup.IdpPlans.AddRange(Enumerable.Range(1, 31).Select(index => new IdpPlan
+            {
+                MunicipalityId = 71,
+                MunicipalityName = "Municipality 71",
+                PlanCode = $"IDP-{index:000}",
+                PlanTitle = $"Local plan {index:000}",
+                StartFinancialYear = 2025 + index,
+                EndFinancialYear = 2030 + index,
+                EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(index),
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(index),
+                CreatedByUserId = user.Id
+            }));
+            setup.IdpPlans.Add(new IdpPlan
+            {
+                MunicipalityId = 72,
+                MunicipalityName = "Municipality 72",
+                PlanCode = "IDP-FOREIGN",
+                PlanTitle = "Foreign plan",
+                StartFinancialYear = 2026,
+                EndFinancialYear = 2031,
+                CreatedByUserId = user.Id
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        var tenant = IdpTestFixture.Tenant(71, "idp-reader");
+        await using var context = new ApplicationDbContext(options, tenant);
+        var controller = IdpTestFixture.CreateController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(IdpTestFixture.CreateUser("idp-reader")).Object,
+            Mock.Of<IWorkflowGovernanceService>(),
+            "idp-reader",
+            tenant);
+
+        var result = await controller.GetPlansPage(new PagedQueryRequest
+        {
+            Page = 2,
+            PageSize = 10,
+            Search = "Local plan",
+            SortBy = "planCode",
+            SortDirection = "asc"
+        });
+
+        var page = Assert.IsType<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.Equal(31, page.TotalCount);
+        Assert.Equal(4, page.TotalPages);
+        Assert.Equal(10, page.Items.Length);
+        Assert.Equal("IDP-011", page.Items[0].PlanCode);
+        Assert.DoesNotContain(page.Items, item => item.PlanCode == "IDP-FOREIGN");
+    }
+
+    [Fact]
+    public async Task GetPlansPage_RejectsUnknownSort()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var user = IdpTestFixture.CreateUser("idp-reader");
+        var controller = IdpTestFixture.CreateController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            Mock.Of<IWorkflowGovernanceService>(),
+            user.Id);
+
+        var result = await controller.GetPlansPage(new PagedQueryRequest { SortBy = "raw-sql" });
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
     public async Task CreatePlan_ShouldCreatePlanAndInitialVersionAndAudit()
     {
         await using var context = IdpTestFixture.CreateContext();

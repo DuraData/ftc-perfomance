@@ -2182,8 +2182,8 @@ export async function getAuditTrailsPage(query: RegisterPageQuery = {}, filter: 
   return get<PagedResult<AuditTrailEntryDto>>(`/v1/audit/trails/page${value ? `?${value}` : ''}`);
 }
 
-export async function getIdpPlans(): Promise<ApiResponse<IdpPlanSummary[]>> {
-  return get<IdpPlanSummary[]>('/idp/plans');
+export async function getIdpPlansPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IdpPlanSummary>>> {
+  return get<PagedResult<IdpPlanSummary>>(`/idp/plans/page${registerPageQuery(query)}`);
 }
 
 export async function createIdpPlan(payload: CreateIdpPlanPayload): Promise<ApiResponse<IdpPlanSummary>> {

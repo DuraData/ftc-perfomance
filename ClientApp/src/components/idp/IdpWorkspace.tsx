@@ -9,7 +9,7 @@ import {
   getIdpImportBatches,
   getIdpAlignmentMatrix,
   getIdpDashboard,
-  getIdpPlans,
+  getIdpPlansPage,
   getIdpPlanHierarchy,
   getIdpReport,
   stageIdpHierarchyImport,
@@ -55,8 +55,8 @@ export function IdpPlanningDashboardPage() {
   const load = async () => {
     setBusy(true);
     try {
-      const plansResult = await getIdpPlans();
-      const loadedPlans = plansResult.data ?? [];
+      const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
+      const loadedPlans = plansResult.data?.items ?? [];
       setPlans(loadedPlans);
       const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
       setSelectedPlanId(planId);
@@ -184,6 +184,12 @@ export function IdpPlanManagementPage() {
   const currentYear = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
+  const [planPage, setPlanPage] = useState(1);
+  const [planTotalCount, setPlanTotalCount] = useState(0);
+  const [planTotalPages, setPlanTotalPages] = useState(0);
+  const [planSearch, setPlanSearch] = useState('');
+  const [planSortBy, setPlanSortBy] = useState('createdAt');
+  const [planSortDirection, setPlanSortDirection] = useState<'asc' | 'desc'>('desc');
   const [versions, setVersions] = useState<IdpPlanVersion[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [importMode, setImportMode] = useState<'KPI' | 'HIERARCHY'>(canImportHierarchy ? 'HIERARCHY' : 'KPI');
@@ -215,10 +221,18 @@ export function IdpPlanManagementPage() {
   const fieldClass = 'w-full rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100';
 
   const load = async () => {
-    const plansResult = await getIdpPlans();
-    const loadedPlans = plansResult.data ?? [];
+    const plansResult = await getIdpPlansPage({
+      page: planPage,
+      pageSize: 25,
+      search: planSearch,
+      sortBy: planSortBy,
+      sortDirection: planSortDirection,
+    });
+    const loadedPlans = plansResult.data?.items ?? [];
     setPlans(loadedPlans);
-    const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
+    setPlanTotalCount(plansResult.data?.totalCount ?? 0);
+    setPlanTotalPages(plansResult.data?.totalPages ?? 0);
+    const planId = loadedPlans.some(plan => plan.id === selectedPlanId) ? selectedPlanId : loadedPlans[0]?.id ?? null;
     setSelectedPlanId(planId);
 
     if (planId) {
@@ -239,7 +253,7 @@ export function IdpPlanManagementPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [planPage, planSearch, planSortBy, planSortDirection]);
 
   const selectPlan = async (planId: number) => {
     setSelectedPlanId(planId);
@@ -390,7 +404,15 @@ export function IdpPlanManagementPage() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Plan Register</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Plan Register</h3>
+              <Badge variant="primary">{planTotalCount} plans</Badge>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_10rem_9rem]">
+              <input aria-label="Search IDP plans" placeholder="Code, title, municipality, or publication" className={fieldClass} value={planSearch} onChange={event => { setPlanSearch(event.target.value); setPlanPage(1); }} />
+              <select aria-label="Sort IDP plans" className={fieldClass} value={planSortBy} onChange={event => { setPlanSortBy(event.target.value); setPlanPage(1); }}><option value="createdAt">Created date</option><option value="planCode">Plan code</option><option value="planTitle">Plan title</option><option value="status">Status</option><option value="effectiveFrom">Effective from</option><option value="startFinancialYear">Start year</option></select>
+              <select aria-label="IDP plan sort direction" className={fieldClass} value={planSortDirection} onChange={event => { setPlanSortDirection(event.target.value as 'asc' | 'desc'); setPlanPage(1); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select>
+            </div>
             <div className="mt-3 space-y-2">
               {plans.map(plan => (
                 <button
@@ -403,7 +425,9 @@ export function IdpPlanManagementPage() {
                   <p className="text-xs text-secondary-500">Family: {plan.planFamilyId} | Effective: {new Date(plan.effectiveFrom).toLocaleDateString()} | Publication: {plan.publicationReference ?? 'Not published'}</p>
                 </button>
               ))}
+              {!plans.length ? <p className="py-6 text-center text-sm text-secondary-500">No plans match the current search.</p> : null}
             </div>
+            {planTotalPages > 1 ? <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {planPage} of {planTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={planPage <= 1} onClick={() => setPlanPage(value => Math.max(1, value - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={planPage >= planTotalPages} onClick={() => setPlanPage(value => value + 1)}>Next</Button></div></div> : null}
           </Card>
 
           <Card>
@@ -528,8 +552,8 @@ export function IdpHierarchyPage() {
   const [hierarchy, setHierarchy] = useState<IdpHierarchy | null>(null);
 
   const load = async () => {
-    const plansResult = await getIdpPlans();
-    const loadedPlans = plansResult.data ?? [];
+    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
+    const loadedPlans = plansResult.data?.items ?? [];
     setPlans(loadedPlans);
     const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
     setSelectedPlanId(planId);
@@ -647,8 +671,8 @@ export function IdpCommunityParticipationPage() {
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
 
   const load = async () => {
-    const plansResult = await getIdpPlans();
-    const loadedPlans = plansResult.data ?? [];
+    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
+    const loadedPlans = plansResult.data?.items ?? [];
     setPlans(loadedPlans);
     const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
     setSelectedPlanId(planId);
@@ -745,8 +769,8 @@ export function IdpAlignmentMatrixPage() {
   const [matrix, setMatrix] = useState<IdpAlignmentMatrixItem[]>([]);
 
   const load = async () => {
-    const plansResult = await getIdpPlans();
-    const loadedPlans = plansResult.data ?? [];
+    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
+    const loadedPlans = plansResult.data?.items ?? [];
     setPlans(loadedPlans);
     const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
     setSelectedPlanId(planId);
@@ -818,8 +842,8 @@ export function IdpReportsPage() {
   const [lastReport, setLastReport] = useState<IdpReportDocument | null>(null);
 
   const loadPlans = async () => {
-    const plansResult = await getIdpPlans();
-    const loadedPlans = plansResult.data ?? [];
+    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
+    const loadedPlans = plansResult.data?.items ?? [];
     setPlans(loadedPlans);
     setSelectedPlanId(current => current ?? loadedPlans[0]?.id ?? null);
   };

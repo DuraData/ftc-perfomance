@@ -61,10 +61,58 @@ public class IdpController : ControllerBase
             .AsNoTracking()
             .Include(plan => plan.PredecessorPlan)
             .OrderByDescending(plan => plan.CreatedAt)
+            .ThenByDescending(plan => plan.Id)
+            .Take(100)
             .Select(plan => ToSummaryResponse(plan))
             .ToArrayAsync();
 
         return Ok(new ApiResponse<IdpPlanSummaryResponse[]>(true, plans));
+    }
+
+    [HttpGet("plans/page")]
+    [Authorize(Policy = "Permission:IDP.Plan.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>>> GetPlansPage([FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("createdat" or "plancode" or "plantitle" or "status" or "effectivefrom" or "startfinancialyear"))
+            return BadRequest(new ApiResponse<PagedResponse<IdpPlanSummaryResponse>>(false, null,
+                "SortBy must be createdAt, planCode, planTitle, status, effectiveFrom, or startFinancialYear."));
+
+        IQueryable<IdpPlan> query = _context.IdpPlans.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(request.NormalizedSearch))
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(plan =>
+                plan.PlanCode.Contains(search) ||
+                plan.PlanTitle.Contains(search) ||
+                plan.MunicipalityName.Contains(search) ||
+                (plan.PublicationReference != null && plan.PublicationReference.Contains(search)));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("plancode", false) => query.OrderBy(plan => plan.PlanCode).ThenBy(plan => plan.Id),
+            ("plancode", true) => query.OrderByDescending(plan => plan.PlanCode).ThenByDescending(plan => plan.Id),
+            ("plantitle", false) => query.OrderBy(plan => plan.PlanTitle).ThenBy(plan => plan.Id),
+            ("plantitle", true) => query.OrderByDescending(plan => plan.PlanTitle).ThenByDescending(plan => plan.Id),
+            ("status", false) => query.OrderBy(plan => plan.Status).ThenBy(plan => plan.Id),
+            ("status", true) => query.OrderByDescending(plan => plan.Status).ThenByDescending(plan => plan.Id),
+            ("effectivefrom", false) => query.OrderBy(plan => plan.EffectiveFrom).ThenBy(plan => plan.Id),
+            ("effectivefrom", true) => query.OrderByDescending(plan => plan.EffectiveFrom).ThenByDescending(plan => plan.Id),
+            ("startfinancialyear", false) => query.OrderBy(plan => plan.StartFinancialYear).ThenBy(plan => plan.Id),
+            ("startfinancialyear", true) => query.OrderByDescending(plan => plan.StartFinancialYear).ThenByDescending(plan => plan.Id),
+            (_, false) => query.OrderBy(plan => plan.CreatedAt).ThenBy(plan => plan.Id),
+            _ => query.OrderByDescending(plan => plan.CreatedAt).ThenByDescending(plan => plan.Id)
+        };
+
+        var rows = await query
+            .Include(plan => plan.PredecessorPlan)
+            .Skip(request.Offset)
+            .Take(request.PageSize)
+            .ToArrayAsync();
+
+        return Ok(new ApiResponse<PagedResponse<IdpPlanSummaryResponse>>(true,
+            PagedResponse<IdpPlanSummaryResponse>.Create(rows.Select(ToSummaryResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("plans")]

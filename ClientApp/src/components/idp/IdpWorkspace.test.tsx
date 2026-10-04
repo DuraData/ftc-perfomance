@@ -6,7 +6,7 @@ const security = vi.hoisted(() => ({ canImport: vi.fn(() => true) }));
 const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
-  getIdpPlans: vi.fn(),
+  getIdpPlansPage: vi.fn(),
   getIdpPlanHierarchy: vi.fn(),
   getIdpDashboard: vi.fn(),
   getIdpImportBatches: vi.fn(),
@@ -53,7 +53,10 @@ describe('IDP plan lineage workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     security.canImport.mockReturnValue(true);
-    api.getIdpPlans.mockResolvedValue({ success: true, data: [predecessor] });
+    api.getIdpPlansPage.mockResolvedValue({
+      success: true,
+      data: { items: [predecessor], page: 1, pageSize: 100, totalCount: 1, totalPages: 1 },
+    });
     api.getIdpPlanHierarchy.mockResolvedValue({ success: true, data: { versions: [] } });
     api.getIdpDashboard.mockResolvedValue({ success: true, data: null });
     api.getIdpImportBatches.mockResolvedValue({ success: true, data: [] });
@@ -105,5 +108,22 @@ describe('IDP plan lineage workspace', () => {
     expect(screen.queryByLabelText('KPI CSV file')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Hierarchy/project CSV file')).not.toBeInTheDocument();
     expect(api.getIdpImportBatches).not.toHaveBeenCalled();
+  });
+
+  it('queries the plan register through bounded server paging and search', async () => {
+    api.getIdpPlansPage.mockResolvedValue({
+      success: true,
+      data: { items: [predecessor], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 },
+    });
+    render(<IdpPlanManagementPage />);
+
+    await screen.findByText('26 plans');
+    expect(api.getIdpPlansPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25 }));
+    fireEvent.change(screen.getByLabelText('Search IDP plans'), { target: { value: '2031' } });
+    await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenLastCalledWith(expect.objectContaining({
+      page: 1,
+      pageSize: 25,
+      search: '2031',
+    })));
   });
 });
