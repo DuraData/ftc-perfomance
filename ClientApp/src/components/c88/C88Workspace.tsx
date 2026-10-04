@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage, getMunicipalityFinancialYearMasters,
+  finalSubmitC88Report, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { C88CatalogueItemKind, C88IndicatorReport, C88Workspace, MunicipalEmployeeDto, MunicipalityFinancialYearMasterDto } from '../../types';
+import type { C88CatalogueItemKind, C88IndicatorReport, C88Workspace, MunicipalEmployeeDto } from '../../types';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { TargetPicker } from '../common/TargetPicker';
 import { Badge, Button, Card, EmptyState } from '../ui';
@@ -21,7 +22,6 @@ export function C88Workspace() {
   const { pushToast } = useApp();
   const { canCreate, canRead, canUpdate, canExecute } = useSecurity();
   const [data, setData] = useState<C88Workspace>(emptyWorkspace);
-  const [years, setYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
   const [employeePage, setEmployeePage] = useState(1);
   const [employeeTotalPages, setEmployeeTotalPages] = useState(0);
@@ -63,8 +63,8 @@ export function C88Workspace() {
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, yearResult, reportResult] = await Promise.all([
-      getC88Workspace(yearId || undefined, false), getMunicipalityFinancialYearMasters(),
+    const [workspace, reportResult] = await Promise.all([
+      getC88Workspace(yearId || undefined, false),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
         : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }, message: undefined }),
@@ -74,7 +74,6 @@ export function C88Workspace() {
     if (!reportResult.success) pushToast('error', reportResult.message ?? 'Unable to load Circular 88 reports.');
     setReportTotalCount(reportResult.data?.totalCount ?? 0);
     setReportTotalPages(reportResult.data?.totalPages ?? 0);
-    if (yearResult.success) setYears((yearResult.data ?? []).filter(item => item.isActive));
   }, [canReadModule, canReadReports, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -90,9 +89,8 @@ export function C88Workspace() {
     return () => window.clearTimeout(timeout);
   }, [reportSearchInput]);
   useEffect(() => {
-    setYearId(value => value || years.find(item => item.isCurrent)?.publicId || years[0]?.publicId || '');
     setConfigurationId(value => data.configurations.some(item => item.publicId === value) ? value : data.configurations[0]?.publicId || '');
-  }, [data.configurations, years]);
+  }, [data.configurations]);
   useEffect(() => {
     const firstIndicator = data.indicators.find(item => item.catalogueVersionPublicId === configuration?.catalogueVersionPublicId && item.isActive);
     setIndicatorId(value => data.indicators.some(item => item.publicId === value && item.catalogueVersionPublicId === configuration?.catalogueVersionPublicId) ? value : firstIndicator?.publicId ?? '');
@@ -118,7 +116,7 @@ export function C88Workspace() {
 
       <Section title="Municipality and financial-year configuration">
         <div className="grid gap-3 md:grid-cols-4">
-          <label className="text-sm">Financial year<select className={field} value={yearId} onChange={event => { setYearId(event.target.value); setReportPage(1); }}>{years.map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select></label>
+          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setReportPage(1); }} />
           <label className="text-sm">Configuration<select className={field} value={effectiveConfigurationId} onChange={event => setConfigurationId(event.target.value)}><option value="">Not configured</option>{data.configurations.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} · {item.catalogueVersionCode}</option>)}</select></label>
           <label className="text-sm">Published edition<select className={field} value={configuration?.catalogueVersionPublicId ?? catalogueItem.catalogueVersionPublicId} onChange={event => setCatalogueItem(value => ({ ...value, catalogueVersionPublicId: event.target.value }))}><option value="">Select edition</option>{publishedVersions.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label>
           <div className="flex items-end"><Badge variant={configuration?.isEnabled ? 'success' : 'warning'}>{configuration?.isEnabled ? 'Enabled' : 'Disabled'}</Badge></div>

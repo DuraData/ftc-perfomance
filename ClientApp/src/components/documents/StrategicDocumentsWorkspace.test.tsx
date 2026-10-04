@@ -9,7 +9,7 @@ const capabilities = vi.hoisted(() => ({
 }));
 const api = vi.hoisted(() => ({
   approveStrategicDocument: vi.fn(), createStrategicDocumentType: vi.fn(), createStrategicDocumentVersion: vi.fn(),
-  downloadStrategicDocument: vi.fn(), getMunicipalityFinancialYearMasters: vi.fn(), getStrategicDocumentHistory: vi.fn(),
+  downloadStrategicDocument: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getStrategicDocumentHistory: vi.fn(),
   getStrategicDocumentsPage: vi.fn(), getStrategicDocumentTypes: vi.fn(), publishStrategicDocument: vi.fn(),
   rescanStrategicDocument: vi.fn(), retireStrategicDocument: vi.fn(), updateStrategicDocumentType: vi.fn(),
 }));
@@ -41,7 +41,7 @@ describe('Strategic documents workspace', () => {
     capabilities.canUpdate.mockReturnValue(true);
     capabilities.canExecute.mockReturnValue(true);
     api.getStrategicDocumentTypes.mockResolvedValue({ success: true, data: [type] });
-    api.getMunicipalityFinancialYearMasters.mockResolvedValue({ success: true, data: [year] });
+    api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentHistory.mockResolvedValue({ success: true, data: [document] });
     api.createStrategicDocumentVersion.mockResolvedValue({ success: true, data: { ...document, publicId: 'document-2', title: 'Annual Review' } });
@@ -63,6 +63,8 @@ describe('Strategic documents workspace', () => {
   it('creates a link-backed governed version with municipality-year and type references', async () => {
     render(<StrategicDocumentsWorkspace />);
     await screen.findByText('Add strategic document');
+    const yearSelectors = await screen.findAllByRole('combobox', { name: /Strategic document financial year/ });
+    fireEvent.change(yearSelectors[yearSelectors.length - 1], { target: { value: 'year-1' } });
     fireEvent.click(screen.getByLabelText('Use approved external link'));
     fireEvent.change(screen.getByLabelText('Strategic document title'), { target: { value: 'Annual Review' } });
     fireEvent.change(screen.getByLabelText('Strategic document external URL'), { target: { value: 'https://example.gov.za/review.pdf' } });
@@ -95,7 +97,7 @@ describe('Strategic documents workspace', () => {
     render(<StrategicDocumentsWorkspace />);
 
     expect(await screen.findByText('Page 1 of 2 · 26 documents')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).find(button => !button.hasAttribute('disabled'))!);
 
     await waitFor(() => expect(api.getStrategicDocumentsPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }),

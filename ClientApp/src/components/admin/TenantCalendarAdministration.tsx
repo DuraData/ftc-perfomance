@@ -3,6 +3,7 @@ import { CalendarDays, CheckCircle2, Plus, RefreshCw } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormPanel, Input, Select, Textarea } from '../common/Form';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import {
@@ -10,15 +11,13 @@ import {
   createMunicipalityFinancialYearMaster,
   createReportingPeriodMaster,
   createSdbipLayerMaster,
-  getFinancialYearMasters,
-  getMunicipalityFinancialYearMasters,
   getMunicipalityFinancialYearMastersPage,
   getReportingPeriodMastersPage,
   getSdbipLayerMastersPage,
   updateMunicipalityFinancialYearMaster,
   updateSdbipLayerMaster,
 } from '../../api/api';
-import type { FinancialYearMasterDto, MunicipalityFinancialYearMasterDto, ReportingPeriodMasterDto, SdbipLayerMasterDto } from '../../types';
+import type { MunicipalityFinancialYearMasterDto, ReportingPeriodMasterDto, SdbipLayerMasterDto } from '../../types';
 
 const date = (value: string) => new Date(`${value}T00:00:00Z`).toISOString();
 const today = () => new Date().toISOString().slice(0, 10);
@@ -46,12 +45,11 @@ function CalendarRegisterControls({ state, label, sorts, onChange }: { state: Re
 export function TenantCalendarAdministration() {
   const { pushToast } = useApp();
   const security = useSecurity();
-  const [years, setYears] = useState<FinancialYearMasterDto[]>([]);
-  const [municipalYearOptions, setMunicipalYearOptions] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [municipalYears, setMunicipalYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [periods, setPeriods] = useState<ReportingPeriodMasterDto[]>([]);
   const [layers, setLayers] = useState<SdbipLayerMasterDto[]>([]);
   const [busy, setBusy] = useState(false);
+  const [pickerRevision, setPickerRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [municipalRegister, setMunicipalRegister] = useState<RegisterState>(() => registerState('startDate:desc'));
   const [periodRegister, setPeriodRegister] = useState<RegisterState>(() => registerState('sequence:asc'));
@@ -67,13 +65,12 @@ export function TenantCalendarAdministration() {
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [yearResult, municipalOptionsResult, municipalResult, periodResult, layerResult] = await Promise.all([
-      getFinancialYearMasters(), getMunicipalityFinancialYearMasters(), getMunicipalityFinancialYearMastersPage(queryFrom(municipalPage, municipalSearch, municipalStatus, municipalSort)),
+    const [municipalResult, periodResult, layerResult] = await Promise.all([
+      getMunicipalityFinancialYearMastersPage(queryFrom(municipalPage, municipalSearch, municipalStatus, municipalSort)),
       getReportingPeriodMastersPage(queryFrom(periodPage, periodSearch, periodStatus, periodSort)), getSdbipLayerMastersPage(queryFrom(layerPage, layerSearch, layerStatus, layerSort)),
     ]);
-    const failed = [yearResult, municipalOptionsResult, municipalResult, periodResult, layerResult].find(result => !result.success);
+    const failed = [municipalResult, periodResult, layerResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Tenant calendar masters could not be loaded.');
-    setYears(yearResult.data ?? []); setMunicipalYearOptions(municipalOptionsResult.data ?? []);
     setMunicipalYears(municipalResult.data?.items ?? []); setPeriods(periodResult.data?.items ?? []); setLayers(layerResult.data?.items ?? []);
     setMunicipalRegister(current => ({ ...current, totalCount: municipalResult.data?.totalCount ?? 0, totalPages: municipalResult.data?.totalPages ?? 0, page: municipalResult.data?.items.length === 0 && current.page > 1 ? current.page - 1 : current.page }));
     setPeriodRegister(current => ({ ...current, totalCount: periodResult.data?.totalCount ?? 0, totalPages: periodResult.data?.totalPages ?? 0, page: periodResult.data?.items.length === 0 && current.page > 1 ? current.page - 1 : current.page }));
@@ -90,7 +87,7 @@ export function TenantCalendarAdministration() {
     setBusy(true); setError(null);
     const result = await createFinancialYearMaster({ ...year, startDate: date(year.startDate), endDate: date(year.endDate) });
     if (!result.success) setError(result.message ?? 'Financial year could not be created.');
-    else { pushToast('success', 'Financial year created'); setYear({ code: '', name: '', startDate: today(), endDate: today() }); await load(); }
+    else { pushToast('success', 'Financial year created'); setYear({ code: '', name: '', startDate: today(), endDate: today() }); setPickerRevision(value => value + 1); await load(); }
     setBusy(false);
   };
 
@@ -99,7 +96,7 @@ export function TenantCalendarAdministration() {
     setBusy(true); setError(null);
     const result = await createMunicipalityFinancialYearMaster({ ...municipalYear, effectiveFrom: date(municipalYear.effectiveFrom), effectiveTo: null });
     if (!result.success) setError(result.message ?? 'Municipality financial year could not be configured.');
-    else { pushToast('success', 'Municipality financial year configured'); await load(); }
+    else { pushToast('success', 'Municipality financial year configured'); setPickerRevision(value => value + 1); await load(); }
     setBusy(false);
   };
 
@@ -116,7 +113,7 @@ export function TenantCalendarAdministration() {
     setBusy(true); setError(null);
     const result = await createReportingPeriodMaster({ ...period, startDate: date(period.startDate), endDate: date(period.endDate) });
     if (!result.success) setError(result.message ?? 'Reporting period could not be created.');
-    else { pushToast('success', 'Reporting period created'); setPeriod(current => ({ ...current, code: '', name: '', sequence: current.sequence + 1 })); await load(); }
+    else { pushToast('success', 'Reporting period created'); setPeriod(current => ({ ...current, code: '', name: '', sequence: current.sequence + 1 })); setPickerRevision(value => value + 1); await load(); }
     setBusy(false);
   };
 
@@ -132,7 +129,7 @@ export function TenantCalendarAdministration() {
       ? await updateSdbipLayerMaster(selectedLayer.publicId, { code: layer.code, name: layer.name, description: layer.description || null, displayOrder: layer.displayOrder, isActive: layer.isActive, reason: layer.reason, rowVersion: selectedLayer.rowVersion })
       : await createSdbipLayerMaster({ municipalityFinancialYearPublicId: layer.municipalityFinancialYearPublicId, code: layer.code, name: layer.name, description: layer.description || null, displayOrder: layer.displayOrder, reason: layer.reason });
     if (!result.success) setError(result.message ?? 'SDBIP layer could not be saved.');
-    else { pushToast('success', selectedLayer ? 'SDBIP layer updated' : 'SDBIP layer created'); clearLayer(); await load(); }
+    else { pushToast('success', selectedLayer ? 'SDBIP layer updated' : 'SDBIP layer created'); clearLayer(); setPickerRevision(value => value + 1); await load(); }
     setBusy(false);
   };
 
@@ -148,13 +145,13 @@ export function TenantCalendarAdministration() {
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => void saveYear()} disabled={busy}>Create year</Button>
         </FormPanel>}
         {security.canCreate('FINANCIAL_YEAR') && <FormPanel title="Municipality year" description="Activate a global year in the selected municipality." icon={<CheckCircle2 className="h-5 w-5" />}>
-          <Select label="Financial year" value={municipalYear.financialYearPublicId} placeholder="Select year" options={years.filter(item => item.isActive && !municipalYearOptions.some(link => link.financialYearPublicId === item.publicId)).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setMunicipalYear(current => ({ ...current, financialYearPublicId: event.target.value }))} />
+          <CalendarMasterPicker kind="financial-year" label="Financial year" value={municipalYear.financialYearPublicId} onChange={value => setMunicipalYear(current => ({ ...current, financialYearPublicId: value }))} refreshKey={pickerRevision} required />
           <Input label="Effective from" type="date" value={municipalYear.effectiveFrom} onChange={event => setMunicipalYear(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <Checkbox label="Make current" checked={municipalYear.isCurrent} onChange={event => setMunicipalYear(current => ({ ...current, isCurrent: event.target.checked }))} />
           <Button onClick={() => void saveMunicipalYear()} disabled={busy}>Activate for municipality</Button>
         </FormPanel>}
         {security.canCreate('REPORTING_PERIOD') && <FormPanel title="Reporting period" description="Create a canonical period within an activated year." icon={<Plus className="h-5 w-5" />}>
-          <Select label="Municipality year" value={period.municipalityFinancialYearPublicId} placeholder="Select year" options={municipalYearOptions.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setPeriod(current => ({ ...current, municipalityFinancialYearPublicId: event.target.value }))} />
+          <CalendarMasterPicker kind="municipality-financial-year" label="Municipality year" value={period.municipalityFinancialYearPublicId} onChange={value => setPeriod(current => ({ ...current, municipalityFinancialYearPublicId: value }))} refreshKey={pickerRevision} required />
           <div className="grid grid-cols-2 gap-2"><Input label="Code" value={period.code} onChange={event => setPeriod(current => ({ ...current, code: event.target.value }))} /><Input label="Name" value={period.name} onChange={event => setPeriod(current => ({ ...current, name: event.target.value }))} /></div>
           <div className="grid grid-cols-2 gap-2"><Select label="Type" value={period.periodType} options={[['1','Quarter 1'],['2','Quarter 2'],['3','Mid-term'],['4','Quarter 3'],['5','Quarter 4'],['6','Annual']].map(([value,label]) => ({ value, label }))} onChange={event => setPeriod(current => ({ ...current, periodType: Number(event.target.value) }))} /><Input label="Sequence" type="number" min="1" value={period.sequence} onChange={event => setPeriod(current => ({ ...current, sequence: Number(event.target.value) }))} /></div>
           <div className="grid grid-cols-2 gap-2"><Input label="Start" type="date" value={period.startDate} onChange={event => setPeriod(current => ({ ...current, startDate: event.target.value }))} /><Input label="End" type="date" value={period.endDate} onChange={event => setPeriod(current => ({ ...current, endDate: event.target.value }))} /></div>
@@ -163,7 +160,7 @@ export function TenantCalendarAdministration() {
       </div>
       {(selectedLayer ? security.canUpdate('SDBIP_LAYER') : security.canCreate('SDBIP_LAYER')) && <FormPanel title={selectedLayer ? 'Edit SDBIP layer' : 'SDBIP layer'} description="Configure municipality-specific SDBIP names and ordering for an exact financial year." icon={<Plus className="h-5 w-5" />}>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Select label="Municipality year" value={layer.municipalityFinancialYearPublicId} disabled={Boolean(selectedLayer)} placeholder="Select year" options={municipalYearOptions.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setLayer(current => ({ ...current, municipalityFinancialYearPublicId: event.target.value }))} />
+          <CalendarMasterPicker kind="municipality-financial-year" label="Municipality year" value={layer.municipalityFinancialYearPublicId} disabled={Boolean(selectedLayer)} selectedLabel={selectedLayer?.financialYearCode} onChange={value => setLayer(current => ({ ...current, municipalityFinancialYearPublicId: value }))} refreshKey={pickerRevision} required />
           <Input label="Code" value={layer.code} onChange={event => setLayer(current => ({ ...current, code: event.target.value }))} required />
           <Input label="Display name" value={layer.name} onChange={event => setLayer(current => ({ ...current, name: event.target.value }))} required />
           <Input label="Display order" type="number" min="1" value={layer.displayOrder} onChange={event => setLayer(current => ({ ...current, displayOrder: Number(event.target.value) }))} required />

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 
 const api = vi.hoisted(() => ({
-  getReportingPeriodMasters: vi.fn(),
+  getReportingPeriodMastersPage: vi.fn(),
   getPerformancePeriodTargets: vi.fn(),
   getPerformanceTargetRevisions: vi.fn(),
   createPerformancePeriodTarget: vi.fn(),
@@ -15,10 +15,10 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreat
 
 describe('PerformancePeriodTargetEditor', () => {
   beforeEach(() => {
-    api.getReportingPeriodMasters.mockResolvedValue({ success: true, data: [
+    api.getReportingPeriodMastersPage.mockResolvedValue({ success: true, data: { items: [
       { publicId: 'period-q1', code: 'Q1', name: 'Quarter 1', periodType: 1, isActive: true },
       { publicId: 'period-q2', code: 'Q2', name: 'Quarter 2', periodType: 2, isActive: true },
-    ] });
+    ], page: 1, pageSize: 25, totalCount: 2, totalPages: 1 } });
     api.getPerformancePeriodTargets.mockResolvedValue({ success: true, data: [
       { publicId: 'value-1', reportingPeriodPublicId: 'period-q1', periodCode: 'Q1', periodType: 1, unitKind: 2, direction: 1, targetValue: '25', budgetValue: 1000, originalUnitKind: 2, originalTargetValue: '25', originalBudgetValue: 1000, isTargetRevised: false, isBudgetRevised: false, description: 'Households connected', isActive: true, rowVersion: 'AQ==' },
     ] });
@@ -46,7 +46,7 @@ describe('PerformancePeriodTargetEditor', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Add period/i })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /Add period/i }));
 
-    expect(screen.getByRole('option', { name: 'Q2 · Quarter 2' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'Q2 · Quarter 2' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Q1 · Quarter 1' })).not.toBeInTheDocument();
   });
 });

@@ -4,7 +4,6 @@ import {
   createStrategicDocumentType,
   createStrategicDocumentVersion,
   downloadStrategicDocument,
-  getMunicipalityFinancialYearMasters,
   getStrategicDocumentHistory,
   getStrategicDocumentsPage,
   getStrategicDocumentTypes,
@@ -15,7 +14,8 @@ import {
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { MunicipalityFinancialYearMasterDto, SaveStrategicDocumentVersionPayload, StrategicDocument, StrategicDocumentType } from '../../types';
+import type { SaveStrategicDocumentVersionPayload, StrategicDocument, StrategicDocumentType } from '../../types';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState } from '../ui';
 
@@ -40,7 +40,6 @@ export function StrategicDocumentsWorkspace() {
   const canManage = canCreate('STRATEGIC_DOCUMENT') || canUpdate('STRATEGIC_DOCUMENT');
   const canManageTypes = canExecute('STRATEGIC_DOCUMENT.MANAGE_TYPES');
   const [types, setTypes] = useState<StrategicDocumentType[]>([]);
-  const [years, setYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [documents, setDocuments] = useState<StrategicDocument[]>([]);
   const [history, setHistory] = useState<StrategicDocument[]>([]);
   const [selected, setSelected] = useState<StrategicDocument | null>(null);
@@ -62,9 +61,8 @@ export function StrategicDocumentsWorkspace() {
 
   const load = useCallback(async () => {
     if (!canRead('STRATEGIC_DOCUMENT')) return;
-    const [typeResult, yearResult, documentResult] = await Promise.all([
+    const [typeResult, documentResult] = await Promise.all([
       getStrategicDocumentTypes(canManageTypes),
-      getMunicipalityFinancialYearMasters(),
       getStrategicDocumentsPage(
         { page, pageSize: 25, search, sortBy, sortDirection },
         { municipalityFinancialYearPublicId: yearFilter || undefined },
@@ -72,8 +70,6 @@ export function StrategicDocumentsWorkspace() {
     ]);
     if (!typeResult.success) pushToast('error', typeResult.message ?? 'Unable to load strategic-document types.');
     else setTypes(typeResult.data ?? []);
-    if (!yearResult.success) pushToast('error', yearResult.message ?? 'Unable to load financial years.');
-    else setYears((yearResult.data ?? []).filter(item => item.isActive));
     if (!documentResult.success) pushToast('error', documentResult.message ?? 'Unable to load strategic documents.');
     else {
       setDocuments(documentResult.data?.items ?? []);
@@ -92,10 +88,9 @@ export function StrategicDocumentsWorkspace() {
   useEffect(() => {
     setDraft(current => ({
       ...current,
-      municipalityFinancialYearPublicId: current.municipalityFinancialYearPublicId || years.find(item => item.isCurrent)?.publicId || years[0]?.publicId || '',
       documentTypePublicId: current.documentTypePublicId || types.find(item => item.isActive)?.publicId || '',
     }));
-  }, [types, years]);
+  }, [types]);
 
   const selectDocument = async (document: StrategicDocument) => {
     setSelected(document);
@@ -201,7 +196,7 @@ export function StrategicDocumentsWorkspace() {
       <div className="space-y-4">
         <Card>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_12rem_9rem_auto] md:items-end">
-            <label className="text-xs text-secondary-600">Financial year<select aria-label="Strategic document financial year filter" className={fieldClass} value={yearFilter} onChange={event => { setYearFilter(event.target.value); setPage(1); setSelected(null); }}><option value="">All active years</option>{years.map(year => <option key={year.publicId} value={year.publicId}>{year.code} — {year.name}</option>)}</select></label>
+            <CalendarMasterPicker kind="municipality-financial-year" label="Strategic document financial year filter" emptyLabel="All active years" value={yearFilter} onChange={value => { setYearFilter(value); setPage(1); setSelected(null); }} />
             <label className="text-xs text-secondary-600">Search<input aria-label="Search strategic documents" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
             <label className="text-xs text-secondary-600">Sort<select aria-label="Sort strategic documents" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); setSelected(null); }}><option value="createdAt">Created</option><option value="title">Title</option><option value="documentDate">Document date</option><option value="financialYear">Financial year</option><option value="displayOrder">Display order</option><option value="versionNumber">Version</option></select></label>
             <label className="text-xs text-secondary-600">Direction<select aria-label="Strategic document sort direction" className={fieldClass} value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); setSelected(null); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
@@ -229,7 +224,7 @@ export function StrategicDocumentsWorkspace() {
           <Card>
             <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{draft.previousVersionPublicId ? 'Create successor version' : 'Add strategic document'}</h2><p className="text-xs text-secondary-500">A successor preserves its predecessor and becomes the administrative current version. Existing published content remains visible until the successor is published.</p></div>{draft.previousVersionPublicId ? <Button variant="ghost" onClick={() => setDraft(emptyDocument())}>Cancel successor</Button> : null}</div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <label className="text-xs text-secondary-600">Financial year<select aria-label="Strategic document financial year" className={fieldClass} value={draft.municipalityFinancialYearPublicId} onChange={event => setDraft({ ...draft, municipalityFinancialYearPublicId: event.target.value })}>{years.map(year => <option key={year.publicId} value={year.publicId}>{year.code} — {year.name}</option>)}</select></label>
+              <CalendarMasterPicker kind="municipality-financial-year" label="Strategic document financial year" value={draft.municipalityFinancialYearPublicId} selectedLabel={selected?.financialYearCode} onChange={value => setDraft({ ...draft, municipalityFinancialYearPublicId: value })} required />
               <label className="text-xs text-secondary-600">Document type<select aria-label="Strategic document type" className={fieldClass} value={draft.documentTypePublicId} onChange={event => setDraft({ ...draft, documentTypePublicId: event.target.value })}>{types.filter(type => type.isActive).map(type => <option key={type.publicId} value={type.publicId}>{type.code} — {type.name}</option>)}</select></label>
               <label className="text-xs text-secondary-600">Optional SDBIP layer<input aria-label="Strategic document SDBIP layer" className={fieldClass} value={draft.sdbipLayer ?? ''} onChange={event => setDraft({ ...draft, sdbipLayer: event.target.value })} /></label>
               <label className="text-xs text-secondary-600 md:col-span-2">User-facing title<input aria-label="Strategic document title" className={fieldClass} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>

@@ -4,7 +4,8 @@ import { WorkflowGovernanceAdminPage } from './WorkflowGovernanceAdmin';
 const api = vi.hoisted(() => ({
   getWorkflowDefinitions: vi.fn(),
   getReportingWindows: vi.fn(),
-  getReportingPeriodMasters: vi.fn(),
+  getReportingPeriodMastersPage: vi.fn(),
+  getMunicipalityFinancialYearMastersPage: vi.fn(),
   getRatingSchemes: vi.fn(),
   createWorkflowDefinition: vi.fn(),
   compareWorkflowDefinitions: vi.fn(),
@@ -41,7 +42,8 @@ describe('WorkflowGovernanceAdminPage', () => {
     vi.clearAllMocks();
     api.getWorkflowDefinitions.mockResolvedValue({ success: true, data: [] });
     api.getReportingWindows.mockResolvedValue({ success: true, data: [] });
-    api.getReportingPeriodMasters.mockResolvedValue({ success: true, data: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: '' }] });
+    api.getReportingPeriodMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: '' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'year-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getRatingSchemes.mockResolvedValue({ success: true, data: [{ publicId: 'scheme-1', code: 'FIVE_POINT', name: 'Five point scale', isActive: true, rowVersion: 'AQ==', values: [] }] });
     api.getInternalAuditConfigurations.mockResolvedValue({ success: true, data: [] });
     api.getNotificationPolicies.mockResolvedValue({ success: true, data: [] });
@@ -69,13 +71,13 @@ describe('WorkflowGovernanceAdminPage', () => {
   it('loads authoritative configuration and switches governance tabs', async () => {
     render(<WorkflowGovernanceAdminPage />);
 
-    await waitFor(() => expect(api.getReportingPeriodMasters).toHaveBeenCalledOnce());
+    await waitFor(() => expect(api.getMunicipalityFinancialYearMastersPage).toHaveBeenCalled());
     expect(screen.getByText('New workflow version')).toBeInTheDocument();
     expect(screen.getAllByRole('option', { name: /FIVE_POINT · Five point scale/ })).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Windows' }));
     expect(screen.getByText('Open a reporting window')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Q1 · Quarter 1/ })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: /Q1 · Quarter 1/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Ratings' }));
     expect(screen.getByText('Create rating scheme')).toBeInTheDocument();

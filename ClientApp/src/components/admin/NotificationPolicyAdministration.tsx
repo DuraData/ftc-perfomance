@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BellRing, CalendarDays } from 'lucide-react';
 import {
   activateNotificationPolicy, addWorkingCalendarHoliday, copyNotificationPolicy, createNotificationPolicy, getNotificationPolicies,
   getWorkingCalendarHolidays, previewNotificationPolicy, runDueNotificationPolicies, setNotificationPolicyDeliveryState, testNotificationPolicy,
 } from '../../api/api';
-import type { NotificationPolicyDto, NotificationTemplatePreviewDto, ReportingPeriodMasterDto, WorkingCalendarHolidayDto } from '../../types';
+import type { NotificationPolicyDto, NotificationTemplatePreviewDto, WorkingCalendarHolidayDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormPanel, Input, Select, Textarea } from '../common/Form';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 
 const localDate = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const lifecycleName = (value: number) => ['Unknown', 'Draft', 'Active', 'Inactive', 'Superseded'][value] ?? 'Unknown';
 
-export function NotificationPolicyAdministration({ periods }: { periods: ReportingPeriodMasterDto[] }) {
+export function NotificationPolicyAdministration() {
   const { pushToast } = useApp();
-  const years = useMemo(() => Array.from(new Map(periods.map(period => [period.municipalityFinancialYearPublicId, period])).values()), [periods]);
   const [items, setItems] = useState<NotificationPolicyDto[]>([]);
   const [holidays, setHolidays] = useState<WorkingCalendarHolidayDto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -38,7 +38,7 @@ export function NotificationPolicyAdministration({ periods }: { periods: Reporti
   useEffect(() => { void load(); }, []);
 
   const saveDraft = async () => {
-    const yearId = draft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId;
+    const yearId = draft.municipalityFinancialYearPublicId;
     if (!yearId) { setError('Create a reporting period before configuring reminders.'); return; }
     const offsets = draft.offsets.split(',').map(value => Number(value.trim())).filter(Number.isInteger);
     setBusy(true); setError(null);
@@ -64,7 +64,7 @@ export function NotificationPolicyAdministration({ periods }: { periods: Reporti
     const result = operation === 'activate' ? await activateNotificationPolicy(item, reason)
       : operation === 'pause' ? await setNotificationPolicyDeliveryState(item, true, reason)
       : operation === 'resume' ? await setNotificationPolicyDeliveryState(item, false, reason)
-      : operation === 'copy' ? await copyNotificationPolicy(item, draft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId || '', reason)
+      : operation === 'copy' ? await copyNotificationPolicy(item, draft.municipalityFinancialYearPublicId, reason)
       : operation === 'test' ? await testNotificationPolicy(item) : await previewNotificationPolicy(item);
     if (!result.success) setError(result.message ?? `Policy could not ${operation}.`);
     else if (operation === 'preview') setPreview(result.data as NotificationTemplatePreviewDto);
@@ -80,7 +80,7 @@ export function NotificationPolicyAdministration({ periods }: { periods: Reporti
   };
 
   const addHoliday = async () => {
-    const yearId = holiday.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId;
+    const yearId = holiday.municipalityFinancialYearPublicId;
     if (!yearId) { setError('Select a financial year.'); return; }
     setBusy(true); const result = await addWorkingCalendarHoliday({ ...holiday, municipalityFinancialYearPublicId: yearId });
     if (!result.success) setError(result.message ?? 'Holiday could not be added.');
@@ -88,20 +88,19 @@ export function NotificationPolicyAdministration({ periods }: { periods: Reporti
     setBusy(false);
   };
 
-  const yearOptions = years.map((item, index) => ({ value: item.municipalityFinancialYearPublicId, label: `Financial year ${index + 1} · ${item.municipalityFinancialYearPublicId.slice(0, 8)}` }));
   return <div className="space-y-5">
     {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
     <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
       <FormPanel title="New notification policy draft" description="Policies inherit municipality → workflow stage → reporting period. Drafts have no effect until activated." icon={<BellRing className="h-5 w-5" />}>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Select label="Municipality financial year" value={draft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId || ''} options={yearOptions} onChange={event => setDraft(current => ({ ...current, municipalityFinancialYearPublicId: event.target.value }))} />
+          <CalendarMasterPicker kind="municipality-financial-year" label="Municipality financial year" value={draft.municipalityFinancialYearPublicId} onChange={value => setDraft(current => ({ ...current, municipalityFinancialYearPublicId: value }))} required />
           <Select label="Source deadline" value={draft.source} options={[{ value: 1, label: 'Reporting window' }, { value: 2, label: 'RFI response' }]} onChange={event => setDraft(current => ({ ...current, source: Number(event.target.value) as 1 | 2 }))} />
           <Input label="Policy code" value={draft.code} onChange={event => setDraft(current => ({ ...current, code: event.target.value.toUpperCase() }))} />
           <Input label="Policy name" value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
           <Select label="Submission type" value={draft.submissionKind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => setDraft(current => ({ ...current, submissionKind: Number(event.target.value) as 1 | 2 }))} />
           <Select label="Inheritance scope" value={draft.scope} options={[{ value: 1, label: 'Municipality default' }, { value: 2, label: 'Workflow stage default' }, { value: 3, label: 'Reporting period override' }]} onChange={event => setDraft(current => ({ ...current, scope: Number(event.target.value) as 1 | 2 | 3 }))} />
           {draft.scope === 2 && <Input label="Workflow stage code" value={draft.workflowStageCode} onChange={event => setDraft(current => ({ ...current, workflowStageCode: event.target.value.toUpperCase() }))} />}
-          {draft.scope === 3 && <Select label="Reporting period" value={draft.reportingPeriodPublicId} placeholder="Select period" options={periods.map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setDraft(current => ({ ...current, reportingPeriodPublicId: event.target.value }))} />}
+          {draft.scope === 3 && <CalendarMasterPicker kind="reporting-period" label="Reporting period" value={draft.reportingPeriodPublicId} municipalityFinancialYearId={draft.municipalityFinancialYearPublicId || undefined} onChange={value => setDraft(current => ({ ...current, reportingPeriodPublicId: value }))} required />}
           <Input label="Effective from" type="datetime-local" value={draft.effectiveFrom} onChange={event => setDraft(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <div><Input label="Working-day offsets" value={draft.offsets} onChange={event => setDraft(current => ({ ...current, offsets: event.target.value }))} /><p className="mt-1 text-xs text-secondary-500">Comma-separated; negative before due, zero due day, positive overdue.</p></div>
           <Select label="Recipients" value={draft.recipientKind} options={[{ value: 1, label: 'Primary assignees' }, { value: 2, label: 'Dynamic role codes' }, { value: 3, label: 'Specific user IDs' }]} onChange={event => setDraft(current => ({ ...current, recipientKind: Number(event.target.value) as 1 | 2 | 3 }))} />
@@ -120,7 +119,7 @@ export function NotificationPolicyAdministration({ periods }: { periods: Reporti
     </div>
     <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
       <FormPanel title="Working-calendar holiday" description="Reminder calculations exclude weekends and these municipality dates." icon={<CalendarDays className="h-5 w-5" />}>
-        <Select label="Municipality financial year" value={holiday.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId || ''} options={yearOptions} onChange={event => setHoliday(current => ({ ...current, municipalityFinancialYearPublicId: event.target.value }))} />
+        <CalendarMasterPicker kind="municipality-financial-year" label="Municipality financial year" value={holiday.municipalityFinancialYearPublicId} onChange={value => setHoliday(current => ({ ...current, municipalityFinancialYearPublicId: value }))} required />
         <Input label="Date" type="date" value={holiday.date} onChange={event => setHoliday(current => ({ ...current, date: event.target.value }))} />
         <Input label="Holiday name" value={holiday.name} onChange={event => setHoliday(current => ({ ...current, name: event.target.value }))} />
         <Textarea label="Governance reason" value={holiday.reason} onChange={event => setHoliday(current => ({ ...current, reason: event.target.value }))} />

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Clock3, Plus, RefreshCw, ShieldCheck, Star } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormPanel, Input, Select, Textarea } from '../common/Form';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import {
   createReportingWindowException,
   createRatingScheme,
@@ -11,7 +12,6 @@ import {
   compareWorkflowDefinitions,
   getDepartments,
   getRatingSchemes,
-  getReportingPeriodMasters,
   getReportingWindowExceptions,
   getReportingWindows,
   getUnits,
@@ -21,7 +21,7 @@ import {
   retireWorkflowDefinition,
   saveInternalAuditConfiguration,
 } from '../../api/api';
-import type { AdminUserDetail, DepartmentLookupDto, InternalAuditConfigurationDto, RatingSchemeDto, ReportingPeriodMasterDto, ReportingWindowDto, ReportingWindowExceptionDto, UnitLookupDto, WorkflowDefinitionComparisonDto, WorkflowDefinitionDto } from '../../types';
+import type { AdminUserDetail, DepartmentLookupDto, InternalAuditConfigurationDto, RatingSchemeDto, ReportingWindowDto, ReportingWindowExceptionDto, UnitLookupDto, WorkflowDefinitionComparisonDto, WorkflowDefinitionDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NotificationDeliveryOperations } from './NotificationDeliveryOperations';
 import { NotificationPolicyAdministration } from './NotificationPolicyAdministration';
@@ -64,7 +64,6 @@ export function WorkflowGovernanceAdminPage() {
   const [tab, setTab] = useState<Tab>('definitions');
   const [definitions, setDefinitions] = useState<WorkflowDefinitionDto[]>([]);
   const [windows, setWindows] = useState<ReportingWindowDto[]>([]);
-  const [periods, setPeriods] = useState<ReportingPeriodMasterDto[]>([]);
   const [ratings, setRatings] = useState<RatingSchemeDto[]>([]);
   const [auditConfigurations, setAuditConfigurations] = useState<InternalAuditConfigurationDto[]>([]);
   const [exceptionWindow, setExceptionWindow] = useState<ReportingWindowDto | null>(null);
@@ -78,6 +77,7 @@ export function WorkflowGovernanceAdminPage() {
   const [retireReasons, setRetireReasons] = useState<Record<string, string>>({});
 
   const [definition, setDefinition] = useState({ code: 'DEFAULT', name: 'Default performance workflow', submissionKind: 1, effectiveFrom: localDate(), reason: '' });
+  const [workflowYearId, setWorkflowYearId] = useState('');
   const [stages, setStages] = useState<StageDraft[]>([emptyStage(0), emptyStage(1)]);
   const [windowDraft, setWindowDraft] = useState({ reportingPeriodPublicId: '', submissionKind: 1, opensAt: localDate(), closesAt: localDate(new Date(Date.now() + 7 * 86400000)) });
   const [exceptionDraft, setExceptionDraft] = useState({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(Date.now() + 8 * 86400000)), reason: '' });
@@ -85,19 +85,16 @@ export function WorkflowGovernanceAdminPage() {
   const [ratingValues, setRatingValues] = useState([{ value: '1', label: 'Not achieved', minimum: '0', maximum: '49.99' }, { value: '2', label: 'Achieved', minimum: '50', maximum: '100' }]);
   const [auditDraft, setAuditDraft] = useState({ municipalityFinancialYearPublicId: '', model: 1 as 1 | 2, effectiveFrom: localDate(), reason: '' });
 
-  const years = useMemo(() => Array.from(new Map(periods.map(period => [period.municipalityFinancialYearPublicId, period])).values()), [periods]);
-
   const load = async () => {
     setBusy(true);
     setError(null);
-    const [definitionResult, windowResult, periodResult, ratingResult, auditResult] = await Promise.all([
-      getWorkflowDefinitions(), getReportingWindows(), getReportingPeriodMasters(), getRatingSchemes(), getInternalAuditConfigurations(),
+    const [definitionResult, windowResult, ratingResult, auditResult] = await Promise.all([
+      getWorkflowDefinitions(), getReportingWindows(), getRatingSchemes(), getInternalAuditConfigurations(),
     ]);
-    const failed = [definitionResult, windowResult, periodResult, ratingResult, auditResult].find(result => !result.success);
+    const failed = [definitionResult, windowResult, ratingResult, auditResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Workflow configuration could not be loaded.');
     setDefinitions(definitionResult.data ?? []);
     setWindows(windowResult.data ?? []);
-    setPeriods(periodResult.data ?? []);
     setRatings(ratingResult.data ?? []);
     setAuditConfigurations(auditResult.data ?? []);
     setBusy(false);
@@ -106,7 +103,7 @@ export function WorkflowGovernanceAdminPage() {
   useEffect(() => { void load(); }, []);
 
   const saveDefinition = async () => {
-    if (years.length === 0) { setError('Create an active reporting period before defining a workflow.'); return; }
+    if (!workflowYearId) { setError('Select a municipality financial year before defining a workflow.'); return; }
     setBusy(true); setError(null);
     const prefix = definition.submissionKind === 1 ? 'OPMS' : 'IPMS';
     const normalizedStages = stages.map((stage, index) => ({
@@ -119,7 +116,7 @@ export function WorkflowGovernanceAdminPage() {
       isTerminal: index === stages.length - 1,
     }));
     const result = await createWorkflowDefinition({
-      municipalityFinancialYearPublicId: years[0].municipalityFinancialYearPublicId,
+      municipalityFinancialYearPublicId: workflowYearId,
       submissionKind: definition.submissionKind,
       code: definition.code,
       name: definition.name,
@@ -218,7 +215,7 @@ export function WorkflowGovernanceAdminPage() {
   };
 
   const saveAuditModel = async () => {
-    const yearId = auditDraft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId;
+    const yearId = auditDraft.municipalityFinancialYearPublicId;
     if (!yearId) { setError('Create a municipality financial year before selecting an Internal Audit model.'); return; }
     const current = auditConfigurations.find(item => item.municipalityFinancialYearPublicId === yearId && item.isCurrent);
     setBusy(true); setError(null);
@@ -251,6 +248,7 @@ export function WorkflowGovernanceAdminPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Code" value={definition.code} onChange={event => setDefinition(current => ({ ...current, code: event.target.value }))} required />
               <Input label="Name" value={definition.name} onChange={event => setDefinition(current => ({ ...current, name: event.target.value }))} required />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality financial year" value={workflowYearId} onChange={setWorkflowYearId} required />
               <Select label="Submission type" value={definition.submissionKind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => setDefinition(current => ({ ...current, submissionKind: Number(event.target.value) }))} />
               <Input label="Effective from" type="datetime-local" value={definition.effectiveFrom} onChange={event => setDefinition(current => ({ ...current, effectiveFrom: event.target.value }))} />
               <Textarea label="Version reason" value={definition.reason} onChange={event => setDefinition(current => ({ ...current, reason: event.target.value }))} required />
@@ -276,7 +274,7 @@ export function WorkflowGovernanceAdminPage() {
 
         {tab === 'windows' && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
           <FormPanel title="Open a reporting window" description="Submission is rejected outside this server-enforced interval." icon={<Clock3 className="h-5 w-5" />}>
-            <Select label="Reporting period" value={windowDraft.reportingPeriodPublicId} placeholder="Select period" options={periods.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} onChange={event => setWindowDraft(current => ({ ...current, reportingPeriodPublicId: event.target.value }))} />
+            <CalendarMasterPicker kind="reporting-period" label="Reporting period" value={windowDraft.reportingPeriodPublicId} onChange={value => setWindowDraft(current => ({ ...current, reportingPeriodPublicId: value }))} required />
             <Select label="Submission type" value={windowDraft.submissionKind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => setWindowDraft(current => ({ ...current, submissionKind: Number(event.target.value) }))} />
             <Input label="Opens" type="datetime-local" value={windowDraft.opensAt} onChange={event => setWindowDraft(current => ({ ...current, opensAt: event.target.value }))} />
             <Input label="Closes" type="datetime-local" value={windowDraft.closesAt} onChange={event => setWindowDraft(current => ({ ...current, closesAt: event.target.value }))} />
@@ -301,7 +299,7 @@ export function WorkflowGovernanceAdminPage() {
 
         {tab === 'audit' && <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
           <FormPanel title="Select Internal Audit model" description="The selection is tenant and financial-year specific. Replacing it creates an audited version." icon={<ShieldCheck className="h-5 w-5" />}>
-            <Select label="Municipality financial year" value={auditDraft.municipalityFinancialYearPublicId || years[0]?.municipalityFinancialYearPublicId || ''} options={years.map((item, index) => ({ value: item.municipalityFinancialYearPublicId, label: `Financial year ${index + 1} · ${item.municipalityFinancialYearPublicId.slice(0, 8)}` }))} onChange={event => setAuditDraft(value => ({ ...value, municipalityFinancialYearPublicId: event.target.value }))} />
+            <CalendarMasterPicker kind="municipality-financial-year" label="Municipality financial year" value={auditDraft.municipalityFinancialYearPublicId} onChange={value => setAuditDraft(current => ({ ...current, municipalityFinancialYearPublicId: value }))} required />
             <Select label="Assessment model" value={auditDraft.model} options={[{ value: 1, label: 'Detailed IA Assessment' }, { value: 2, label: 'Satisfactory / Not Satisfactory' }]} onChange={event => setAuditDraft(value => ({ ...value, model: Number(event.target.value) as 1 | 2 }))} />
             <Input label="Effective from" type="datetime-local" value={auditDraft.effectiveFrom} onChange={event => setAuditDraft(value => ({ ...value, effectiveFrom: event.target.value }))} />
             <Textarea label="Governance reason" value={auditDraft.reason} maxLength={1000} onChange={event => setAuditDraft(value => ({ ...value, reason: event.target.value }))} required />
@@ -311,7 +309,7 @@ export function WorkflowGovernanceAdminPage() {
         </div>}
 
         {tab === 'delivery' && <NotificationDeliveryOperations />}
-        {tab === 'notifications' && <NotificationPolicyAdministration periods={periods} />}
+        {tab === 'notifications' && <NotificationPolicyAdministration />}
         {tab === 'cutover' && <TargetNormalizationAdministration />}
       </div>
     </AppShell>

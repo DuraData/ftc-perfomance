@@ -5,6 +5,7 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from '../common/Form';
 import { TargetPicker } from '../common/TargetPicker';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { useApp } from '../../context/AppContext';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
@@ -15,7 +16,6 @@ import {
   getIpmsTargetTemplate,
   getOpmsTarget,
   getOpmsTargetTemplate,
-  getSdbipLayerMasters,
   getVoteNumberMasters,
   getWardMasters,
   updateIpmsTarget,
@@ -31,7 +31,6 @@ import type {
   SaveIpmsTargetPayload,
   SaveOpmsTargetPayload,
   SaveTargetPeriodValuePayload,
-  SdbipLayerMasterDto,
   PerformanceTargetOptionDto,
   TargetUnitType,
   VoteNumberMasterDto,
@@ -782,7 +781,6 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [selectedVoteNumberId, setSelectedVoteNumberId] = useState('');
   const [wardMasters, setWardMasters] = useState<WardMasterDto[]>([]);
   const [voteNumberMasters, setVoteNumberMasters] = useState<VoteNumberMasterDto[]>([]);
-  const [sdbipLayers, setSdbipLayers] = useState<SdbipLayerMasterDto[]>([]);
   const [relatedIpmsTargets, setRelatedIpmsTargets] = useState<PerformanceTargetOptionDto[]>([]);
   const [relatedIpmsPage, setRelatedIpmsPage] = useState(1);
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
@@ -790,10 +788,9 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 
   useEffect(() => {
     const loadReferenceMasters = async () => {
-      const [wardResult, voteResult, layerResult] = await Promise.all([getWardMasters(), getVoteNumberMasters(), getSdbipLayerMasters()]);
+      const [wardResult, voteResult] = await Promise.all([getWardMasters(), getVoteNumberMasters()]);
       if (wardResult.success) setWardMasters((wardResult.data ?? []).filter(item => item.isActive));
       if (voteResult.success) setVoteNumberMasters((voteResult.data ?? []).filter(item => item.isActive));
-      if (layerResult.success) setSdbipLayers((layerResult.data ?? []).filter(item => item.isActive));
     };
     void loadReferenceMasters();
   }, []);
@@ -953,7 +950,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="SDBIP Layer" required error={fieldError('SDBIP Layer')} value={form.sdbipLayerPublicId} onChange={(event) => setForm(prev => ({ ...prev, sdbipLayerPublicId: event.target.value }))} options={sdbipLayers.filter(item => !selectedPeriod?.fiscalYear || item.financialYearCode === selectedPeriod.fiscalYear).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} />
+              <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={value => setForm(prev => ({ ...prev, sdbipLayerPublicId: value }))} />
             </FormRow>
             <FormRow cols={2}>
               <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />

@@ -4,8 +4,9 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Select } from '../common/Form';
-import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getMunicipalityFinancialYearMasters, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getPerformanceReportSummary, getReportingPeriodMasters, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
-import type { DepartmentLookupDto, MunicipalityFinancialYearMasterDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, ReportingPeriodMasterDto, UnitLookupDto } from '../../types';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
+import { downloadOfficialReport, downloadPerformanceReportCsv, generateOfficialReport, getDepartments, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getPerformanceReportSummary, getUnits, queueOfficialReportJob, retryOfficialReportJob, runOfficialReportSchedule, saveOfficialReportSchedule, saveOfficialReportTemplate } from '../../api/api';
+import type { DepartmentLookupDto, OfficialReportFormat, OfficialReportGenerationDto, OfficialReportJobDto, OfficialReportRecipientKind, OfficialReportScheduleCadence, OfficialReportScheduleDto, OfficialReportTemplateDto, OfficialReportType, PerformanceReportSummaryDto, UnitLookupDto } from '../../types';
 import { useApp } from '../../context/AppContext';
 
 const reportTypes: { value: OfficialReportType; label: string; code: string; columns: string[] }[] = [
@@ -40,8 +41,6 @@ export function Reports() {
   const { permissions, pushToast } = useApp();
   const [kind, setKind] = useState<1 | 2>(1);
   const [periodId, setPeriodId] = useState('');
-  const [periods, setPeriods] = useState<ReportingPeriodMasterDto[]>([]);
-  const [years, setYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [yearId, setYearId] = useState('');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [templateOptions, setTemplateOptions] = useState<OfficialReportTemplateDto[]>([]);
@@ -92,31 +91,22 @@ export function Reports() {
   const canReadOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.READ' : 'IPMS_REPORT.READ') || permissionSet.has('REPORTS.VIEW');
   const canGenerateOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.GENERATE' : 'IPMS_REPORT.GENERATE') || permissionSet.has('REPORTS.GENERATE');
   const canConfigureOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.CONFIGURE' : 'IPMS_REPORT.CONFIGURE');
-  const availablePeriods = useMemo(() => periods.filter(period => !yearId || period.municipalityFinancialYearPublicId === yearId), [periods, yearId]);
   const selectedTemplate = templateOptions.find(template => template.publicId === templateId);
   const selectedDepartment = departments.find(department => department.publicId === departmentId);
   const filteredUnits = units.filter(unit => !selectedDepartment || unit.departmentId === selectedDepartment.id);
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const [periodResult, yearResult, summaryResult, departmentResult, unitResult] = await Promise.all([
-      getReportingPeriodMasters(),
-      getMunicipalityFinancialYearMasters(),
+    const [summaryResult, departmentResult, unitResult] = await Promise.all([
       getPerformanceReportSummary(kind, periodId || undefined),
       getDepartments(),
       getUnits(),
     ]);
-    setPeriods(periodResult.data ?? []);
-    const loadedYears = yearResult.data ?? [];
-    setYears(loadedYears);
-    setYearId(current => current || loadedYears.find(year => year.isCurrent)?.publicId || loadedYears[0]?.publicId || '');
     setDepartments(departmentResult.data ?? []);
     setUnits(unitResult.data ?? []);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
     else setSummary(summaryResult.data);
-    if (!periodResult.success) setError(periodResult.message ?? 'Reporting periods could not be loaded.');
-    else if (!yearResult.success) setError(yearResult.message ?? 'Municipality financial years could not be loaded.');
-    else if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
+    if (!departmentResult.success || !unitResult.success) setError('Department and unit report filters could not be loaded.');
     setBusy(false);
   }, [kind, periodId]);
 
@@ -319,8 +309,8 @@ export function Reports() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-3">
               <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setTemplatePage(1); setGenerationPage(1); setJobPage(1); setSchedulePage(1); }} />
-              <Select label="Financial year" value={yearId} options={years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · Current' : ''}` }))} onChange={event => { setYearId(event.target.value); setPeriodId(''); }} />
-              <Select label="Reporting period" value={periodId} options={[{ value: '', label: 'All periods' }, ...availablePeriods.map(period => ({ value: period.publicId, label: `${period.code} · ${period.name}` }))]} onChange={event => { setPeriodId(event.target.value); setGenerationPage(1); }} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setPeriodId(''); }} />
+              <CalendarMasterPicker kind="reporting-period" label="Reporting period" value={periodId} municipalityFinancialYearId={yearId || undefined} emptyLabel="All periods" onChange={value => { setPeriodId(value); setGenerationPage(1); }} />
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void load(); void loadTemplateOptions(); void loadTemplates(); void loadGenerations(); void loadJobs(); void loadSchedules(); }} disabled={busy}>Refresh</Button>

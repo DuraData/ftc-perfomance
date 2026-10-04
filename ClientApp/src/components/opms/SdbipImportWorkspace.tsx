@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
-import { commitOpmsImport, downloadOpmsImportCsv, getSdbipLayerMasters, stageOpmsImport } from '../../api/api';
-import type { OpmsImportBatchDto, SdbipLayerMasterDto } from '../../types';
+import { useState } from 'react';
+import { commitOpmsImport, downloadOpmsImportCsv, stageOpmsImport } from '../../api/api';
+import type { OpmsImportBatchDto } from '../../types';
 import { parseSdbipImportCsv } from './sdbipImportCsv';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 
 export function SdbipImportWorkspace() {
-  const [layers, setLayers] = useState<SdbipLayerMasterDto[]>([]); const [layer, setLayer] = useState('');
+  const [layer, setLayer] = useState('');
   const [batch, setBatch] = useState<OpmsImportBatchDto>(); const [error, setError] = useState('');
   const [reason, setReason] = useState(''); const [approval, setApproval] = useState(''); const [effectiveAt, setEffectiveAt] = useState('');
-  useEffect(() => { void getSdbipLayerMasters(undefined, false).then(response => { const values = response.data ?? []; setLayers(values); if (values[0]) setLayer(values[0].publicId); }); }, []);
   const stage = async (file?: File) => {
     if (!file || !layer) return; setError(''); setBatch(undefined);
     try {
@@ -25,7 +25,7 @@ export function SdbipImportWorkspace() {
   return <div className="p-6 space-y-5">
     <div><h1 className="text-2xl font-semibold">SDBIP import and reconciliation</h1><p className="text-sm text-secondary-600">Upload the governed wide CSV template. Nothing is written to the KPI register until the complete preview is valid and committed.</p></div>
     <div className="bg-white dark:bg-secondary-800 rounded-lg border p-4 grid gap-4 md:grid-cols-2">
-      <label className="text-sm">SDBIP layer<select className="mt-1 w-full rounded border p-2" value={layer} onChange={event => setLayer(event.target.value)}>{layers.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} — {item.name}</option>)}</select></label>
+      <CalendarMasterPicker kind="sdbip-layer" label="SDBIP layer" value={layer} onChange={setLayer} required />
       <label className="text-sm">Wide CSV file<input className="mt-1 block w-full" type="file" accept=".csv,text/csv" onChange={event => void stage(event.target.files?.[0])} /></label>
       <div className="md:col-span-2 flex flex-wrap gap-2"><button type="button" className="rounded border px-3 py-2" onClick={() => void download()}>Download blank template</button><button type="button" className="rounded border px-3 py-2 disabled:opacity-50" disabled={!layer} onClick={() => void download(layer)}>Export current SDBIP</button></div>
     </div>
