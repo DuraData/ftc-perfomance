@@ -31,6 +31,7 @@ import {
 } from '../../api/api';
 import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, AuditTrailEntryDto, LoginAuditLog, UserPermissionOverride, UserPermissions } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 
 function useHasPermission(code: string) {
   const { permissions } = useApp();
@@ -38,7 +39,16 @@ function useHasPermission(code: string) {
 }
 
 export function AdminUsersPage() {
-  const canManage = useHasPermission('Admin.Users.Manage');
+  const { canCreate, canUpdate, canDelete, canExecute, canReadField, canEditField } = useSecurity();
+  const canCreateUser = canCreate('USER') && canEditField('USER', 'Email');
+  const canUpdateUser = canUpdate('USER');
+  const canDeleteUser = canDelete('USER');
+  const canReadEmail = canReadField('USER', 'Email');
+  const canReadPhone = canReadField('USER', 'PhoneNumber');
+  const canEditPhone = canEditField('USER', 'PhoneNumber');
+  const canAssignRoles = canExecute('ROLE.ASSIGN');
+  const canViewEffective = canExecute('SECURITY.VIEW_EFFECTIVE');
+  const canManagePermissions = canExecute('SECURITY.MANAGE_PERMISSIONS');
   const { pushToast } = useApp();
   const [rows, setRows] = useState<AdminUserDetail[]>([]);
   const [roles, setRoles] = useState<AdminRole[]>([]);
@@ -95,7 +105,7 @@ export function AdminUsersPage() {
     setForm({
       firstName: u.user.firstName,
       lastName: u.user.lastName,
-      email: u.user.email,
+      email: u.user.email ?? '',
       phoneNumber: u.user.phoneNumber ?? '',
       password: '',
       isActive: u.user.isActive,
@@ -107,7 +117,7 @@ export function AdminUsersPage() {
   const save = async () => {
     setError(null);
     setFormErrors({});
-    if (!canManage) return;
+    if (editing ? !canUpdateUser : !canCreateUser) return;
 
     const nextErrors: Record<string, string> = {};
     if (!form.firstName.trim()) nextErrors.firstName = 'First name is required';
@@ -125,7 +135,7 @@ export function AdminUsersPage() {
         id: editing.user.id,
         firstName: form.firstName,
         lastName: form.lastName,
-        phoneNumber: form.phoneNumber || undefined,
+        phoneNumber: canEditPhone ? form.phoneNumber || undefined : editing.user.phoneNumber,
         isActive: form.isActive,
       });
       if (!res.success || !res.data) {
@@ -138,7 +148,7 @@ export function AdminUsersPage() {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
-        phoneNumber: form.phoneNumber || undefined,
+        phoneNumber: canEditPhone ? form.phoneNumber || undefined : undefined,
         password: form.password,
       });
       if (!res.success) {
@@ -154,7 +164,7 @@ export function AdminUsersPage() {
   };
 
   const toggleActive = async (u: AdminUserDetail) => {
-    if (!canManage) return;
+    if (!(u.user.isActive ? canExecute('USER.DISABLE') : canExecute('USER.ENABLE'))) return;
     const res = u.user.isActive ? await deactivateUser(u.user.id) : await activateUser(u.user.id);
     if (!res.success) {
       setError(res.message ?? 'Failed to update status');
@@ -171,7 +181,7 @@ export function AdminUsersPage() {
   };
 
   const confirmDelete = async () => {
-    if (!canManage || !userToDelete) return;
+    if (!canDeleteUser || !userToDelete) return;
     const res = await deleteUser(userToDelete.user.id);
     if (!res.success) {
       setError(res.message ?? 'Failed to delete user');
@@ -245,7 +255,7 @@ export function AdminUsersPage() {
   };
 
   const columns = [
-    { id: 'email', header: 'Email', accessor: (r: AdminUserDetail) => r.user.email },
+    ...(canReadEmail ? [{ id: 'email', header: 'Email', accessor: (r: AdminUserDetail) => r.user.email ?? '—' }] : []),
     { id: 'name', header: 'Name', accessor: (r: AdminUserDetail) => r.user.fullName },
     {
       id: 'roles',
@@ -268,21 +278,21 @@ export function AdminUsersPage() {
 
   const actions = (r: AdminUserDetail) => (
     <div className="flex items-center justify-end gap-1">
-      <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)}>
+      {canUpdateUser && <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)} aria-label="Edit user">
         <Edit2 className="w-4 h-4 text-secondary-400" />
-      </button>
-      <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openRoles(r)}>
+      </button>}
+      {canAssignRoles && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openRoles(r)}>
         Roles
-      </button>
-      <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
+      </button>}
+      {canViewEffective && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
         Permissions
-      </button>
-      <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => toggleActive(r)}>
+      </button>}
+      {canExecute(r.user.isActive ? 'USER.DISABLE' : 'USER.ENABLE') && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => toggleActive(r)}>
         {r.user.isActive ? 'Deactivate' : 'Activate'}
-      </button>
-      <button className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(r)}>
+      </button>}
+      {canDeleteUser && <button className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(r)} aria-label="Delete user">
         <Trash2 className="w-4 h-4 text-error-500" />
-      </button>
+      </button>}
     </div>
   );
 
@@ -292,7 +302,7 @@ export function AdminUsersPage() {
         <div className="flex items-center justify-between">
           <Badge variant="primary">{rows.length} users</Badge>
           <div className="flex gap-2">
-            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreate} disabled={!canManage}>
+            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreate} disabled={!canCreateUser}>
               Add User
             </Button>
           </div>
@@ -327,8 +337,8 @@ export function AdminUsersPage() {
                   <Input label="Last Name" value={form.lastName} error={formErrors.lastName} onChange={(e) => setForm(prev => ({ ...prev, lastName: e.target.value }))} required />
                 </FormRow>
                 <FormRow cols={2}>
-                  <Input label="Email" type="email" value={form.email} error={formErrors.email} onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))} required disabled={!!editing} />
-                  <Input label="Phone Number" value={form.phoneNumber} onChange={(e) => setForm(prev => ({ ...prev, phoneNumber: e.target.value }))} />
+                  {(canReadEmail || !editing) && <Input label="Email" type="email" value={form.email} error={formErrors.email} onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))} required disabled={!!editing || !canEditField('USER', 'Email')} />}
+                  {canReadPhone && <Input label="Phone Number" value={form.phoneNumber} onChange={(e) => setForm(prev => ({ ...prev, phoneNumber: e.target.value }))} disabled={!canEditPhone} />}
                 </FormRow>
               </FormPanel>
               <FormPanel
@@ -358,7 +368,7 @@ export function AdminUsersPage() {
           </div>
           <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={save} disabled={!canManage}>{editing ? 'Save' : 'Create'}</Button>
+            <Button variant="primary" size="sm" onClick={save} disabled={editing ? !canUpdateUser : !canCreateUser}>{editing ? 'Save' : 'Create'}</Button>
           </div>
         </Modal>
 
@@ -366,7 +376,7 @@ export function AdminUsersPage() {
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-secondary-400" />
-              <p className="text-sm text-secondary-700 dark:text-secondary-300">{selectedUserForRoles?.user.email}</p>
+              <p className="text-sm text-secondary-700 dark:text-secondary-300">{selectedUserForRoles?.user.email ?? selectedUserForRoles?.user.fullName}</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {roles.map(r => (
@@ -385,7 +395,7 @@ export function AdminUsersPage() {
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="ghost" size="sm" onClick={() => setRoleModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={saveRoles} disabled={!canManage}>Save</Button>
+            <Button variant="primary" size="sm" onClick={saveRoles} disabled={!canAssignRoles}>Save</Button>
           </div>
         </Modal>
 
@@ -481,7 +491,7 @@ export function AdminUsersPage() {
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="ghost" size="sm" onClick={() => setPermissionModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={savePermissionOverrides} disabled={!canManage}>Save</Button>
+            <Button variant="primary" size="sm" onClick={savePermissionOverrides} disabled={!canManagePermissions}>Save</Button>
           </div>
         </Modal>
 

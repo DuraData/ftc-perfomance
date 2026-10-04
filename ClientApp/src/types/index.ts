@@ -1278,7 +1278,7 @@ export interface TargetNormalizationResultDto {
 }
 
 export interface LoginRequest {
-  email: string;
+  email?: string | null;
   password: string;
   twoFactorCode?: string;
   recoveryCode?: string;

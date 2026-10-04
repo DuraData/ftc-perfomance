@@ -30,7 +30,7 @@ public record MenuItemResponse(string Label, string? Path, string? Icon, MenuIte
 
 public record LoginAuditLogResponse(int Id, string? UserId, string Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
 
-public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
+public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string? Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
 {
     public Guid PublicId { get; init; }
 }

@@ -1376,6 +1376,18 @@ The production audit-administration surface no longer downloads fixed-size login
 
 The complete suites pass **315 backend tests**, with one environment-gated SQL Server test skipped, and **155/155 frontend tests across 47 files**. TypeScript and ESLint pass. R-45 remains **PARTIALLY COMPLIANT** for other secondary collections and representative native SQL Server query-plan/load acceptance.
 
+### 11.79 Tenant-scoped dynamic user administration and protected contact members
+
+The legacy user-administration boundary now participates in the database-driven security model instead of treating one broad UI permission as authority for every operation:
+
+- User list/detail, create, update, soft-delete, enable/disable, role, scope, assignment and effective-permission calls independently enforce stable `USER`, `ROLE` and `SECURITY` resource/action permissions. Direct API calls are denied when the corresponding capability is absent.
+- Every target-user lookup is constrained to the selected municipality. Mutations require an explicit municipality context, new users inherit that municipality, tenant roles cannot be assigned across municipalities, and department/unit scope identifiers are validated through tenant-filtered master queries.
+- `USER.Email` and `USER.PhoneNumber` are idempotently registered as sensitive members with independent READ/UPDATE permissions. Responses redact denied values, phone mutation is rejected when its member UPDATE is denied, and the SPA hides the denied email column/contact controls and mutation actions from the same effective capability set.
+- User create/update/status, role, scope and assignment changes append contextual audit records. Existing `Admin.Users.Manage` grants are additively migrated to the stable permissions; no administrator-authored role rule is reset.
+- Relational SQLite tests prove idempotent registry seeding, member metadata/permissions, tenant-before-projection list behavior, cross-tenant detail denial and direct phone-update denial. A component test proves denied contact data and mutation controls are not rendered.
+
+The complete suites pass **318 backend tests**, with one environment-gated SQL Server test skipped, and **156/156 frontend tests across 48 files**. This adds a third end-to-end protected member path. R-08 remains **PARTIALLY COMPLIANT** because the catalogue is not yet exhaustive across every secondary resource and deployment-level HTTP privilege-escalation testing remains outstanding.
+
 ## SQL Server Revalidation Required
 
 SQLite remains an interim development and relational-test provider. Before production readiness is claimed, execute and retain evidence for the following against a positively identified SQL Server/Azure SQL environment:
@@ -1408,7 +1420,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 1 | Tenant root and municipal master data | Partially Compliant | Tenant-owned masters, filters and administration exist; complete production master-data migration and acceptance evidence is absent. |
 | 2 | Tenant isolation across reads, writes, files, reports and audit | Partially Compliant | Query filters, write guards and controller tests are strong, but the required single end-to-end cross-tenant scenario spanning list/fetch/edit/approve/upload/download/report/audit was not found and native SQL Server evidence is absent. |
 | 3 | Employee identity, placement and organisation model | Compliant | Governed employee/organisation administration, placement scope and protected employee email member access are implemented and tested. |
-| 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and two protected member paths are tested; the sensitive-member catalogue is not complete and deployment-level HTTP privilege-escalation testing remains outstanding. |
+| 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and three protected member paths are tested. User administration now enforces tenant-bounded dynamic CRUD/actions plus protected email/phone reads and writes on direct calls; the sensitive-member catalogue is not exhaustive and deployment-level HTTP privilege-escalation testing remains outstanding. |
 | 5 | Authentication, municipality policy, sessions, MFA and federation | Partially Compliant | Local policy/session/MFA and configurable enterprise-provider code exist; live Entra/AD federation, conditional-access and recovery acceptance are external and unverified. |
 | 6 | Normalized period target model | Partially Compliant | New OPMS/IPMS target writes and public DTOs use typed `PerformancePeriodTarget` rows exclusively; the general form cannot bypass revision history. A governed production console previews and executes permission-protected, bounded reconciliation with explicit actor/reason/audit evidence while refusing ambiguous legacy revisions. Physical legacy columns remain solely for the controlled historic reconciliation path until execution is verified. |
 | 7 | Canonical target value and actual performance | Partially Compliant | Submission persistence/contracts use only canonical `ActualPerformance`, with legacy values losslessly archived before the competing columns are removed. Target save/response contracts now likewise use only canonical typed period rows, including non-numeric and period-specific units. Historic target reconciliation and physical legacy-column retirement remain deployment cutover work. |
@@ -1485,6 +1497,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced staff and personal workflow register downloads with one combined OPMS/IPMS endpoint that applies dynamic scopes before SQL counts, queue filters and stable paging, then delegates protected row details to the existing member-secured APIs.
 - Replaced every production full-target selector with lightweight scope-filtered search/paging, paged the OPMS related-IPMS display and retired unbounded target/submission collection routes with HTTP 410.
 - Replaced fixed-size audit-administration downloads with tenant-scoped searchable pages, made identifiable login audit municipality-owned and append-only, and added a data-preserving ownership backfill/index migration plus relational/UI evidence.
+- Replaced broad legacy user-administration authority with tenant-scoped dynamic resource/action checks, protected user email/phone member reads and writes, audited mutations, cross-tenant role/scope guards and capability-driven SPA controls.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
 - Re-ran every available quality gate after the fixes.
 
@@ -1492,8 +1505,8 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 315; Failed: 0; Skipped: 1; Total: 316.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 155/155 across 47 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
+| Backend test suite | **Passed: 318; Failed: 0; Skipped: 1; Total: 319.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 156/156 across 48 files.** The complete suite passed with one worker to avoid local Windows worker-start contention. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,095 modules transformed. |

@@ -28,7 +28,7 @@ public static class SecurityRegistrySeeder
             Resource("WARD", "Ward", true, true, true, false, true, true),
             Resource("VOTE_NUMBER", "Vote Number", true, true, true, false, true, true),
             Resource("EMPLOYEE", "Municipal Employee", true, true, true, false, true, true),
-            Resource("USER", "User Account", true, true, true, false, true, true),
+            Resource("USER", "User Account", true, true, true, true, true, true),
             Resource("ROLE", "Security Role", true, true, true, false, true, true),
             Resource("FINANCIAL_YEAR", "Financial Year", true, true, true, false, true, true),
             Resource("REPORTING_PERIOD", "Reporting Period", true, true, true, false, true, true),
@@ -42,8 +42,11 @@ public static class SecurityRegistrySeeder
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
-        var existingResourceCodes = await context.SecurityResources.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
+        var existingResources = await context.SecurityResources.ToListAsync();
+        var existingResourceCodes = existingResources.Select(item => item.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         context.SecurityResources.AddRange(resources.Where(item => !existingResourceCodes.Contains(item.Code)));
+        var existingUserResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "USER", StringComparison.OrdinalIgnoreCase));
+        if (existingUserResource != null) existingUserResource.SupportsDelete = true;
 
         var actions = new[]
         {
@@ -111,12 +114,18 @@ public static class SecurityRegistrySeeder
             Member("IPMS_SUBMISSION", "SubmittedDate", "Submitted Date", systemManaged: true),
             Member("IPMS_SUBMISSION", "InternalAuditObservation", "Internal Audit Observation", sensitive: true),
             Member("EMPLOYEE", "SalaryReference", "Salary Reference", sensitive: true),
-            Member("EMPLOYEE", "EmailAddress", "Email Address")
+            Member("EMPLOYEE", "EmailAddress", "Email Address", sensitive: true),
+            Member("USER", "Email", "Email Address", sensitive: true),
+            Member("USER", "PhoneNumber", "Phone Number", sensitive: true)
         };
-        var existing = await context.SecurityMemberDefinitions
-            .Select(item => item.ResourceCode + "|" + item.MemberCode)
-            .ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
+        var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
+        var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
         context.SecurityMemberDefinitions.AddRange(members.Where(item => !existing.Contains(item.ResourceCode + "|" + item.MemberCode)));
+        foreach (var definition in existingMembers.Where(item =>
+                     string.Equals(item.ResourceCode, "USER", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(item.MemberCode, "EmailAddress", StringComparison.OrdinalIgnoreCase)))
+            definition.IsSensitive = true;
         await context.SaveChangesAsync();
     }
 
@@ -258,7 +267,7 @@ public static class SecurityRegistrySeeder
             ["IPMS.Submissions.ExtendDueDate"] = ["IPMS_SUBMISSION.EXTEND_DUE_DATE"], ["IPMS.POE.Upload"] = ["IPMS_POE.UPLOAD", "IPMS_POE.REPLACE"],
             ["Configuration.Manage"] = ["WORKFLOW.CONFIGURE", "OPMS_REPORT.CONFIGURE", "IPMS_REPORT.CONFIGURE", "OPMS_KPI.NORMALIZE_LEGACY", "TID.READ", "TID.CREATE", "TID.UPDATE", "TID.CONFIGURE", "TID.UPLOAD_SOURCE", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.UPDATE", "STRATEGIC_DOCUMENT.MANAGE_TYPES", "STRATEGIC_DOCUMENT.APPROVE", "STRATEGIC_DOCUMENT.PUBLISH", "STRATEGIC_DOCUMENT.RETIRE", "STRATEGIC_DOCUMENT.RESCAN", "NAV.STRATEGIC_DOCUMENTS", "C88_INDICATOR.READ", "C88_INDICATOR.CREATE", "C88_INDICATOR.UPDATE", "C88_INDICATOR.CONFIGURE", "C88_INDICATOR.MANAGE_CATALOGUE", "C88_INDICATOR.MANAGE_ASSIGNMENTS", "C88_INDICATOR.MANAGE_WORKFLOW", "C88_INDICATOR.MANAGE_MAPPING", "C88_REPORT.READ", "C88_REPORT.CREATE", "C88_REPORT.UPDATE", "C88_REPORT.SUBMIT", "C88_REPORT.VERIFY", "C88_REPORT.RETURN", "C88_REPORT.FINAL_SUBMIT", "NAV.C88.PLANNING", "NAV.C88.REPORTING", "NAV.C88.COMPLIANCE", "NAV.C88.MAPPING", "NAV.C88.REPORTS", "WARD.READ", "WARD.CREATE", "WARD.UPDATE", "VOTE_NUMBER.READ", "VOTE_NUMBER.CREATE", "VOTE_NUMBER.UPDATE", "NAV.CONFIGURATION.PERIODS", "NAV.CONFIGURATION.WORKFLOW", "NAV.CONFIGURATION.LOOKUPS", "NAV.CONFIGURATION.WARDS", "NAV.SDBIP.VOTE_NUMBERS"],
             ["UserDirectory.View"] = ["NAV.ORGANISATION.EMPLOYEES"],
-            ["Admin.Users.Manage"] = ["NAV.ADMIN.USERS"], ["Admin.Roles.Manage"] = ["NAV.ADMIN.ROLES"], ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT"],
+            ["Admin.Users.Manage"] = ["NAV.ADMIN.USERS", "USER.CREATE", "USER.READ", "USER.UPDATE", "USER.DELETE", "USER.Email.READ", "USER.Email.UPDATE", "USER.PhoneNumber.READ", "USER.PhoneNumber.UPDATE", "USER.ENABLE", "USER.DISABLE", "ROLE.ASSIGN", "SECURITY.VIEW_EFFECTIVE", "SECURITY.ASSIGN_ROLES"], ["Admin.Roles.Manage"] = ["NAV.ADMIN.ROLES"], ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT"],
             ["Notifications.View"] = ["NAV.NOTIFICATIONS"],
             ["Reports.View"] = ["OPMS_REPORT.READ", "IPMS_REPORT.READ", "NAV.REPORTS"],
             ["Reports.Generate"] = ["OPMS_REPORT.GENERATE", "IPMS_REPORT.GENERATE"],
