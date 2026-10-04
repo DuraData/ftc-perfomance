@@ -94,6 +94,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<FinancialYear> FinancialYears { get; set; } = null!;
     public DbSet<MunicipalityFinancialYear> MunicipalityFinancialYears { get; set; } = null!;
     public DbSet<ReportingPeriod> ReportingPeriods { get; set; } = null!;
+    public DbSet<SdbipLayer> SdbipLayers { get; set; } = null!;
     public DbSet<MunicipalEmployee> MunicipalEmployees { get; set; } = null!;
     public DbSet<EmployeeAssignment> EmployeeAssignments { get; set; } = null!;
     public DbSet<PerformancePeriodTarget> PerformancePeriodTargets { get; set; } = null!;
@@ -215,6 +216,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<FinancialYear>().ToTable(table => table.HasCheckConstraint("CK_FinancialYears_DateRange", "[EndDate] >= [StartDate]"));
         builder.Entity<MunicipalityFinancialYear>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<MunicipalityFinancialYear>().HasIndex(item => new { item.MunicipalityId, item.FinancialYearId }).IsUnique();
+        builder.Entity<MunicipalityFinancialYear>().HasAlternateKey(item => new { item.Id, item.MunicipalityId });
         ConfigureRowVersion(builder.Entity<MunicipalityFinancialYear>().Property(item => item.RowVersion));
         builder.Entity<MunicipalityFinancialYear>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<MunicipalityFinancialYear>().HasOne(item => item.FinancialYear).WithMany().HasForeignKey(item => item.FinancialYearId).OnDelete(DeleteBehavior.Restrict);
@@ -223,6 +225,20 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<ReportingPeriod>().Property(item => item.RowVersion));
         builder.Entity<ReportingPeriod>().HasOne(item => item.MunicipalityFinancialYear).WithMany(item => item.ReportingPeriods).HasForeignKey(item => item.MunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<ReportingPeriod>().ToTable(table => table.HasCheckConstraint("CK_ReportingPeriods_DateRange", "[EndDate] >= [StartDate]"));
+        builder.Entity<SdbipLayer>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<SdbipLayer>().HasIndex(item => new { item.MunicipalityFinancialYearId, item.Code }).IsUnique();
+        builder.Entity<SdbipLayer>().HasIndex(item => new { item.MunicipalityId, item.IsActive, item.DisplayOrder });
+        builder.Entity<SdbipLayer>().HasAlternateKey(item => new { item.Id, item.MunicipalityId });
+        builder.Entity<SdbipLayer>().Property(item => item.Code).HasMaxLength(80);
+        builder.Entity<SdbipLayer>().Property(item => item.Name).HasMaxLength(200);
+        builder.Entity<SdbipLayer>().Property(item => item.Description).HasMaxLength(1000);
+        ConfigureRowVersion(builder.Entity<SdbipLayer>().Property(item => item.RowVersion));
+        builder.Entity<SdbipLayer>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<SdbipLayer>().HasOne(item => item.MunicipalityFinancialYear).WithMany(item => item.SdbipLayers)
+            .HasForeignKey(item => new { item.MunicipalityFinancialYearId, item.MunicipalityId })
+            .HasPrincipalKey(item => new { item.Id, item.MunicipalityId })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<SdbipLayer>().ToTable(table => table.HasCheckConstraint("CK_SdbipLayers_DisplayOrder", "[DisplayOrder] > 0"));
 
         builder.Entity<MunicipalEmployee>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<MunicipalEmployee>().HasIndex(item => new { item.MunicipalityId, item.EmployeeNumber }).IsUnique();
@@ -404,6 +420,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<EmployeeAssignment>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<MunicipalityFinancialYear>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<ReportingPeriod>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityFinancialYear.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<SdbipLayer>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<PerformancePeriodTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<PerformanceTargetRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<KpiFieldRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -584,6 +601,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             "[IsWithdrawn] = 0 OR ([ReasonForWithdrawal] IS NOT NULL AND [WithdrawnAt] IS NOT NULL)"));
         ConfigureRowVersion(builder.Entity<OpmsTarget>().Property(item => item.RowVersion));
         builder.Entity<OpmsTarget>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTarget>().HasOne(item => item.SdbipLayer).WithMany(item => item.OpmsTargets)
+            .HasForeignKey(item => new { item.SdbipLayerId, item.MunicipalityId })
+            .HasPrincipalKey(item => new { item.Id, item.MunicipalityId })
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetWard>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<OpmsTargetWard>().HasIndex(item => new { item.OpmsTargetId, item.WardId }).IsUnique();
         builder.Entity<OpmsTargetWard>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
@@ -1955,7 +1976,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         var protectedTypes = new HashSet<Type>
         {
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
-            typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear),
+            typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),

@@ -229,6 +229,9 @@ public record OpmsTargetResponse(
     public string? RevisedKpiDescription { get; init; }
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
+    public Guid? SdbipLayerPublicId { get; init; }
+    public string? SdbipLayerCode { get; init; }
+    public string? SdbipLayerName { get; init; }
 }
 
 public record IpmsTargetResponse(

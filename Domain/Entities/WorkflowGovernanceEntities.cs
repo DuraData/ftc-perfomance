@@ -63,6 +63,7 @@ public partial class OpmsTarget
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public Guid PublicId { get; set; } = Guid.NewGuid();
     public long? MunicipalityId { get; set; }
+    public long? SdbipLayerId { get; set; }
     public string? SourceTemplateId { get; set; }
     public int? SourceTemplateVersion { get; set; }
     public int? PeriodId { get; set; }
@@ -132,6 +133,7 @@ public partial class OpmsTarget
     public byte[] RowVersion { get; set; } = [];
 
     public Municipality? Municipality { get; set; }
+    public SdbipLayer? SdbipLayer { get; set; }
     public Period? Period { get; set; }
         public Department? Department { get; set; }
         public Unit? Unit { get; set; }

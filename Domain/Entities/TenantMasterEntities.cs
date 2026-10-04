@@ -36,6 +36,27 @@ public class MunicipalityFinancialYear
     public Municipality Municipality { get; set; } = null!;
     public FinancialYear FinancialYear { get; set; } = null!;
     public ICollection<ReportingPeriod> ReportingPeriods { get; set; } = new List<ReportingPeriod>();
+    public ICollection<SdbipLayer> SdbipLayers { get; set; } = new List<SdbipLayer>();
+}
+
+public class SdbipLayer
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public long MunicipalityFinancialYearId { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int DisplayOrder { get; set; } = 1;
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+
+    public Municipality Municipality { get; set; } = null!;
+    public MunicipalityFinancialYear MunicipalityFinancialYear { get; set; } = null!;
+    public ICollection<OpmsTarget> OpmsTargets { get; set; } = new List<OpmsTarget>();
 }
 
 public class ReportingPeriod

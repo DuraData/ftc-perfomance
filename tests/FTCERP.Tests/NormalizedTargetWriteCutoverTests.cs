@@ -56,13 +56,14 @@ public sealed class NormalizedTargetWriteCutoverTests
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
 
-        var result = await controller.CreateTarget(Request(seed.LegacyPeriod.Id));
+        var result = await controller.CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId));
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Quarter1 && item.TargetValue == "20");
         context.ChangeTracker.Clear();
         var stored = await context.OpmsTargets.SingleAsync();
+        Assert.Equal(seed.SdbipLayer.Id, stored.SdbipLayerId);
         Assert.Equal(0m, stored.AnnualTarget);
         Assert.Null(stored.Q1Target);
         var normalized = await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).OrderBy(item => item.ReportingPeriod.Sequence).ToArrayAsync();
@@ -76,7 +77,7 @@ public sealed class NormalizedTargetWriteCutoverTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
-        var request = Request(seed.LegacyPeriod.Id) with
+        var request = Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId) with
         {
             PeriodTargets =
             [
@@ -98,8 +99,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id))).Result).Value).Data!;
-        var changed = Request(seed.LegacyPeriod.Id) with { PeriodTargets = PeriodTargets("90") };
+        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId))).Result).Value).Data!;
+        var changed = Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId) with { PeriodTargets = PeriodTargets("90") };
 
         var result = await controller.UpdateTarget(created.Id, changed);
 
@@ -116,9 +117,9 @@ public sealed class NormalizedTargetWriteCutoverTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id))).Result).Value).Data!;
+        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId))).Result).Value).Data!;
 
-        var result = await controller.UpdateTarget(created.Id, Request(seed.LegacyPeriod.Id) with { InternalReference = "Updated metadata" });
+        var result = await controller.UpdateTarget(created.Id, Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId) with { InternalReference = "Updated metadata" });
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Equal("Updated metadata", response.InternalReference);
@@ -183,14 +184,15 @@ public sealed class NormalizedTargetWriteCutoverTests
         };
     }
 
-    private static SaveOpmsTargetRequest Request(int periodId) => new(
+    private static SaveOpmsTargetRequest Request(int periodId, Guid? sdbipLayerPublicId = null) => new(
         SourceTemplateId: null, SourceTemplateVersion: null, PeriodId: periodId, DepartmentId: null, UnitId: null,
         AssignedUserId: null, WardIds: [], AdditionalAssigneeIds: [], VoteNumberIds: [], IndicatorNumber: "OPMS-1",
         NationalKpa: "National KPA", MunicipalKpa: "Municipal KPA", StrategicGoalId: null, StrategicObjectiveId: null,
         PerformanceObjective: "Objective", TargetName: "Normalized target", KpiDescription: "Description", Baseline: 0m,
         BaselineDescription: null, BudgetSourceId: null, BudgetTypeId: null, UnitOfMeasureId: null, Weight: 10m,
         KpiType: "Quantitative", IndicatorType: "Output", FunctionalArea: null, StandardClassification: null,
-        IdpReference: null, InternalReference: null, FmsLink: null, IsRevised: false, PeriodTargets: PeriodTargets());
+        IdpReference: null, InternalReference: null, FmsLink: null, IsRevised: false, PeriodTargets: PeriodTargets())
+        { SdbipLayerPublicId = sdbipLayerPublicId };
 
     private static SaveIpmsTargetRequest IpmsRequest(int periodId) => new(
         SourceTemplateId: null,
@@ -228,7 +230,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         new(ReportingPeriodType.Annual, PerformanceUnitKind.PercentageBased, PerformanceDirection.HigherIsBetter, annual, null, "Annual target")
     ];
 
-    private static async Task<(Municipality Municipality, ApplicationUser User, Period LegacyPeriod)> SeedAsync(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context)
+    private static async Task<(Municipality Municipality, ApplicationUser User, Period LegacyPeriod, SdbipLayer SdbipLayer)> SeedAsync(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context)
     {
         var municipality = new Municipality { Code = "NORM", Name = "Normalized Municipality" };
         var user = IdpTestFixture.CreateUser("normalized-user");
@@ -239,10 +241,20 @@ public sealed class NormalizedTargetWriteCutoverTests
         var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, IsCurrent = true, IsActive = true, EffectiveFrom = financialYear.StartDate };
         context.MunicipalityFinancialYears.Add(municipalityYear);
         await context.SaveChangesAsync();
+        var sdbipLayer = new SdbipLayer
+        {
+            MunicipalityId = municipality.Id,
+            MunicipalityFinancialYearId = municipalityYear.Id,
+            Code = "TOP",
+            Name = "Top Layer SDBIP",
+            DisplayOrder = 1,
+            IsActive = true
+        };
+        context.SdbipLayers.Add(sdbipLayer);
         context.ReportingPeriods.AddRange(
             new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2026, 9, 30), IsActive = true },
             new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANN", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = financialYear.StartDate, EndDate = financialYear.EndDate, IsActive = true });
         await context.SaveChangesAsync();
-        return (municipality, user, legacyPeriod);
+        return (municipality, user, legacyPeriod, sdbipLayer);
     }
 }

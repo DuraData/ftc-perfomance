@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace FTCERP.Host.API.Controllers;
@@ -129,6 +130,68 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         if (!ValidDates(request.StartDate, request.EndDate) || request.StartDate < entity.MunicipalityFinancialYear.FinancialYear.StartDate || request.EndDate > entity.MunicipalityFinancialYear.FinancialYear.EndDate) return BadRequest(Fail<ReportingPeriodDto>("Reporting period dates must fall within the financial year."));
         entity.Name = request.Name.Trim(); entity.PeriodType = request.PeriodType; entity.Sequence = request.Sequence; entity.StartDate = request.StartDate; entity.EndDate = request.EndDate; entity.IsActive = request.IsActive;
         return await SaveVersioned(entity, ToDto, "Reporting period was changed by another user.");
+    }
+
+    [HttpGet("sdbip-layers")]
+    [Authorize(Policy = "Permission:SDBIP_LAYER.READ")]
+    public async Task<ActionResult<ApiResponse<SdbipLayerDto[]>>> GetSdbipLayers([FromQuery] Guid? municipalityFinancialYearId = null, [FromQuery] bool includeInactive = false)
+    {
+        if (!HasTenant()) return TenantRequired<SdbipLayerDto[]>();
+        var query = context.SdbipLayers.AsNoTracking().Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear).AsQueryable();
+        if (municipalityFinancialYearId.HasValue) query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearId.Value);
+        if (!includeInactive) query = query.Where(item => item.IsActive);
+        var rows = await query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code)
+            .Select(item => new SdbipLayerDto(item.PublicId, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
+                item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<SdbipLayerDto[]>(true, rows));
+    }
+
+    [HttpPost("sdbip-layers")]
+    [Authorize(Policy = "Permission:SDBIP_LAYER.CREATE")]
+    public async Task<ActionResult<ApiResponse<SdbipLayerDto>>> CreateSdbipLayer(SaveSdbipLayerRequest request)
+    {
+        if (!HasTenant()) return TenantRequired<SdbipLayerDto>();
+        var validation = ValidateSdbipLayer(request.Code, request.Name, request.Description, request.DisplayOrder, request.Reason);
+        if (validation != null) return BadRequest(Fail<SdbipLayerDto>(validation));
+        var parent = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear)
+            .SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId && item.IsActive);
+        if (parent == null) return BadRequest(Fail<SdbipLayerDto>("An active municipality financial year is required."));
+        var code = request.Code.Trim().ToUpperInvariant();
+        if (await context.SdbipLayers.AnyAsync(item => item.MunicipalityFinancialYearId == parent.Id && item.Code == code))
+            return Conflict(Fail<SdbipLayerDto>("The SDBIP layer code already exists for this municipality financial year."));
+        var entity = new SdbipLayer
+        {
+            MunicipalityId = tenantContext.MunicipalityId!.Value, MunicipalityFinancialYearId = parent.Id, MunicipalityFinancialYear = parent,
+            Code = code, Name = request.Name.Trim(), Description = Normalize(request.Description), DisplayOrder = request.DisplayOrder
+        };
+        context.SdbipLayers.Add(entity);
+        QueueSdbipLayerAudit(entity, "Create", null, request.Reason);
+        await context.SaveChangesAsync();
+        return Ok(new ApiResponse<SdbipLayerDto>(true, ToDto(entity)));
+    }
+
+    [HttpPut("sdbip-layers/{publicId:guid}")]
+    [Authorize(Policy = "Permission:SDBIP_LAYER.UPDATE")]
+    public async Task<ActionResult<ApiResponse<SdbipLayerDto>>> UpdateSdbipLayer(Guid publicId, UpdateSdbipLayerRequest request)
+    {
+        if (!HasTenant()) return TenantRequired<SdbipLayerDto>();
+        var validation = ValidateSdbipLayer(request.Code, request.Name, request.Description, request.DisplayOrder, request.Reason);
+        if (validation != null) return BadRequest(Fail<SdbipLayerDto>(validation));
+        var entity = await context.SdbipLayers.Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .SingleOrDefaultAsync(item => item.PublicId == publicId);
+        if (entity == null) return NotFound(Fail<SdbipLayerDto>("SDBIP layer not found."));
+        if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<SdbipLayerDto>("A valid row version is required."));
+        var code = request.Code.Trim().ToUpperInvariant();
+        if (await context.SdbipLayers.AnyAsync(item => item.Id != entity.Id && item.MunicipalityFinancialYearId == entity.MunicipalityFinancialYearId && item.Code == code))
+            return Conflict(Fail<SdbipLayerDto>("The SDBIP layer code already exists for this municipality financial year."));
+        if (!request.IsActive && await context.OpmsTargets.AnyAsync(item => item.SdbipLayerId == entity.Id && !item.IsWithdrawn))
+            return Conflict(Fail<SdbipLayerDto>("Withdraw or reclassify active KPIs before deactivating this SDBIP layer."));
+        var before = new { entity.Code, entity.Name, entity.Description, entity.DisplayOrder, entity.IsActive };
+        entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Normalize(request.Description); entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; entity.UpdatedAt = DateTime.UtcNow;
+        QueueSdbipLayerAudit(entity, "Update", before, request.Reason);
+        try { await context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<SdbipLayerDto>("The SDBIP layer changed since it was loaded. Refresh and try again.")); }
+        return Ok(new ApiResponse<SdbipLayerDto>(true, ToDto(entity)));
     }
 
     [HttpGet("employees")]
@@ -266,8 +329,31 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     private static FinancialYearDto ToDto(FinancialYear x) => new(x.PublicId, x.Code, x.Name, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion));
     private static MunicipalityFinancialYearDto ToDto(MunicipalityFinancialYear x) => new(x.PublicId, x.FinancialYear.PublicId, x.FinancialYear.Code, x.FinancialYear.Name, x.IsCurrent, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static ReportingPeriodDto ToDto(ReportingPeriod x) => new(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.Code, x.Name, x.PeriodType, x.Sequence, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion));
+    private static SdbipLayerDto ToDto(SdbipLayer x) => new(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.MunicipalityFinancialYear.FinancialYear.Code, x.Code, x.Name, x.Description, x.DisplayOrder, x.IsActive, Convert.ToBase64String(x.RowVersion));
     private static EmployeeDto ToDto(MunicipalEmployee x, bool includeEmail = false) => new(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, includeEmail ? x.EmailAddress : null, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static EmployeeAssignmentDto ToDto(EmployeeAssignment x) => new(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Position?.PublicId);
+    private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? ValidateSdbipLayer(string? code, string? name, string? description, int displayOrder, string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(code) || code.Trim().Length > 80) return "A code of at most 80 characters is required.";
+        if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 200) return "A name of at most 200 characters is required.";
+        if (description?.Trim().Length > 1000) return "Description cannot exceed 1000 characters.";
+        if (displayOrder < 1) return "Display order must be positive.";
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 10 || reason.Trim().Length > 1000) return "A governance reason between 10 and 1000 characters is required.";
+        return null;
+    }
+    private void QueueSdbipLayerAudit(SdbipLayer entity, string action, object? oldValue, string reason)
+    {
+        var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(actor)) throw new UnauthorizedAccessException("An authenticated actor is required for SDBIP layer governance.");
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = entity.MunicipalityId, EntityName = nameof(SdbipLayer), EntityId = entity.PublicId.ToString(), Action = action,
+            OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue),
+            NewValue = JsonSerializer.Serialize(new { entity.Code, entity.Name, entity.Description, entity.DisplayOrder, entity.IsActive, entity.MunicipalityFinancialYearId }),
+            ChangedBy = actor, ChangedAt = DateTime.UtcNow, Reason = reason.Trim(), CorrelationId = HttpContext.TraceIdentifier
+        });
+    }
 }
 
 public sealed record FinancialYearDto(Guid PublicId, string Code, string Name, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
@@ -278,6 +364,9 @@ public sealed record UpdateMunicipalityFinancialYearRequest(bool IsCurrent, bool
 public sealed record ReportingPeriodDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string Code, string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
 public sealed record SaveReportingPeriodRequest(Guid MunicipalityFinancialYearPublicId, string Code, string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate);
 public sealed record UpdateReportingPeriodRequest(string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
+public sealed record SdbipLayerDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, string Code, string Name, string? Description, int DisplayOrder, bool IsActive, string RowVersion);
+public sealed record SaveSdbipLayerRequest(Guid MunicipalityFinancialYearPublicId, string Code, string Name, string? Description, int DisplayOrder, string Reason);
+public sealed record UpdateSdbipLayerRequest(string Code, string Name, string? Description, int DisplayOrder, bool IsActive, string Reason, string RowVersion);
 public sealed record EmployeeDto(Guid PublicId, string EmployeeNumber, string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SaveEmployeeRequest(string EmployeeNumber, string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, DateTime EffectiveFrom, DateTime? EffectiveTo);
 public sealed record UpdateEmployeeRequest(string FirstName, string LastName, string? EmailAddress, string? IdentityUserId, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, bool EmailAddressSpecified = true);

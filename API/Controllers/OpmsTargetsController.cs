@@ -68,7 +68,7 @@ public class OpmsTargetsController : ControllerBase
         query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType);
         var items = await query
             .Skip(request.Offset).Take(request.PageSize)
-            .Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
+            .Include(item => item.SdbipLayer).Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
             .Include(item => item.Wards).Include(item => item.AdditionalAssignees).Include(item => item.VoteNumbers)
             .AsSplitQuery()
             .ToListAsync();
@@ -160,9 +160,12 @@ public class OpmsTargetsController : ControllerBase
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
+        var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, null);
+        if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
 
         var entity = new OpmsTarget
         {
+            SdbipLayerId = layer.Entity.Id,
             SourceTemplateId = request.SourceTemplateId,
             SourceTemplateVersion = request.SourceTemplateVersion,
             PeriodId = request.PeriodId,
@@ -222,6 +225,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Wards)
             .Include(item => item.AdditionalAssignees)
             .Include(item => item.VoteNumbers)
+            .Include(item => item.SdbipLayer)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
@@ -233,6 +237,8 @@ public class OpmsTargetsController : ControllerBase
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
+        var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, entity.SdbipLayerId);
+        if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, entity.Id, null);
         if (periodChangeError != null) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -240,6 +246,7 @@ public class OpmsTargetsController : ControllerBase
             !string.Equals(entity.KpiDescription, request.KpiDescription.Trim(), StringComparison.Ordinal))
             return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "KPI number, target name and KPI wording are governed originals. Record approved changes through the field-revision endpoint."));
 
+        entity.SdbipLayerId = layer.Entity.Id;
         entity.SourceTemplateId = request.SourceTemplateId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
         entity.PeriodId = request.PeriodId;
@@ -507,6 +514,7 @@ public class OpmsTargetsController : ControllerBase
     {
         var target = await _context.OpmsTargets
             .AsNoTracking()
+            .Include(item => item.SdbipLayer)
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
@@ -516,6 +524,17 @@ public class OpmsTargetsController : ControllerBase
             .FirstOrDefaultAsync(item => item.Id == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;
+    }
+
+    private async Task<(SdbipLayer? Entity, string? Error)> ResolveSdbipLayerAsync(Guid? publicId, TargetPeriodPlan plan, long? existingLayerId)
+    {
+        if (!publicId.HasValue) return (null, "A governed SDBIP layer is required.");
+        var municipalityYearIds = plan.Rows.Select(item => item.ReportingPeriod.MunicipalityFinancialYearId).Distinct().ToArray();
+        if (municipalityYearIds.Length != 1) return (null, "All period targets must belong to one municipality financial year.");
+        var layer = await _context.SdbipLayers.SingleOrDefaultAsync(item => item.PublicId == publicId.Value && item.MunicipalityFinancialYearId == municipalityYearIds[0]);
+        if (layer == null) return (null, "The SDBIP layer does not belong to the selected municipality financial year.");
+        if (!layer.IsActive && layer.Id != existingLayerId) return (null, "The selected SDBIP layer is inactive.");
+        return (layer, null);
     }
 
     private async Task<string?> ValidateMappingsAsync(SaveOpmsTargetRequest request)

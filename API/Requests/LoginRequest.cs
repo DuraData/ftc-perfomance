@@ -167,6 +167,7 @@ public record SaveOpmsTargetRequest(
     SaveTargetPeriodValueRequest[] PeriodTargets)
 {
     public int OriginalOrderNumber { get; init; } = 1;
+    public Guid? SdbipLayerPublicId { get; init; }
 }
 
 public record SaveIpmsTargetRequest(

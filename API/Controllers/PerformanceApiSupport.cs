@@ -151,7 +151,10 @@ public static class PerformanceApiSupport
             IsKpiDescriptionRevised = target.IsKpiDescriptionRevised,
             RevisedKpiDescription = target.RevisedKpiDescription,
             WithdrawnAt = target.WithdrawnAt,
-            WithdrawnByUserId = target.WithdrawnByUserId
+            WithdrawnByUserId = target.WithdrawnByUserId,
+            SdbipLayerPublicId = target.SdbipLayer?.PublicId,
+            SdbipLayerCode = target.SdbipLayer?.Code,
+            SdbipLayerName = target.SdbipLayer?.Name
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>

@@ -373,6 +373,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   id: string;
   publicId?: string;
   rowVersion?: string;
+  sdbipLayer?: { publicId: string; code: string; name: string };
   PriorYearOpmsId?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
@@ -1427,6 +1428,18 @@ export interface MunicipalityFinancialYearMasterDto {
   rowVersion: string;
 }
 
+export interface SdbipLayerMasterDto {
+  publicId: string;
+  municipalityFinancialYearPublicId: string;
+  financialYearCode: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  displayOrder: number;
+  isActive: boolean;
+  rowVersion: string;
+}
+
 export interface MunicipalEmployeeDto {
   publicId: string;
   employeeNumber: string;
@@ -2242,6 +2255,9 @@ export interface OpmsTargetDto {
   id: string;
   publicId: string;
   rowVersion: string;
+  sdbipLayerPublicId?: string | null;
+  sdbipLayerCode?: string | null;
+  sdbipLayerName?: string | null;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   periodId?: number | null;
@@ -2645,6 +2661,7 @@ export interface SaveIpmsTargetTemplatePayload {
 }
 
 export interface SaveOpmsTargetPayload {
+  sdbipLayerPublicId?: string | null;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   periodId?: number | null;

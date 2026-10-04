@@ -15,6 +15,7 @@ import {
   getIpmsTargetTemplate,
   getOpmsTarget,
   getOpmsTargetTemplate,
+  getSdbipLayerMasters,
   getVoteNumberMasters,
   getWardMasters,
   updateIpmsTarget,
@@ -30,6 +31,7 @@ import type {
   SaveIpmsTargetPayload,
   SaveOpmsTargetPayload,
   SaveTargetPeriodValuePayload,
+  SdbipLayerMasterDto,
   PerformanceTargetOptionDto,
   TargetUnitType,
   VoteNumberMasterDto,
@@ -124,6 +126,7 @@ function getFieldValidationError(errors: string[], label: string) {
 }
 
 type OpmsFormState = {
+  sdbipLayerPublicId: string;
   sourceTemplateId: string;
   sourceTemplateVersion: string;
   periodId: string;
@@ -278,6 +281,7 @@ function removeCsvId(value: string, id: string) {
 
 function createDefaultOpmsFormState(): OpmsFormState {
   return {
+    sdbipLayerPublicId: '',
     sourceTemplateId: '',
     sourceTemplateVersion: '',
     periodId: '',
@@ -415,6 +419,7 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
   const q1 = period(1); const q2 = period(2); const midTerm = period(3);
   const q3 = period(4); const q4 = period(5); const annual = period(6);
   return {
+    sdbipLayerPublicId: target.sdbipLayer?.publicId ?? '',
     sourceTemplateId: target.sourceTemplateId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
     periodId: target.period.id,
@@ -660,6 +665,7 @@ function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState): SaveT
 
 export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
   return {
+    sdbipLayerPublicId: form.sdbipLayerPublicId || null,
     sourceTemplateId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
     periodId: form.periodId ? Number(form.periodId) : null,
@@ -730,6 +736,7 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
 
 function validateOpmsForm(form: OpmsFormState) {
   const errors = validateRequiredFields([
+    { label: 'SDBIP Layer', value: form.sdbipLayerPublicId },
     { label: 'Period', value: form.periodId },
     { label: 'Department', value: form.departmentId },
     { label: 'Indicator Number', value: form.indicatorNumber },
@@ -775,6 +782,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [selectedVoteNumberId, setSelectedVoteNumberId] = useState('');
   const [wardMasters, setWardMasters] = useState<WardMasterDto[]>([]);
   const [voteNumberMasters, setVoteNumberMasters] = useState<VoteNumberMasterDto[]>([]);
+  const [sdbipLayers, setSdbipLayers] = useState<SdbipLayerMasterDto[]>([]);
   const [relatedIpmsTargets, setRelatedIpmsTargets] = useState<PerformanceTargetOptionDto[]>([]);
   const [relatedIpmsPage, setRelatedIpmsPage] = useState(1);
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
@@ -782,9 +790,10 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 
   useEffect(() => {
     const loadReferenceMasters = async () => {
-      const [wardResult, voteResult] = await Promise.all([getWardMasters(), getVoteNumberMasters()]);
+      const [wardResult, voteResult, layerResult] = await Promise.all([getWardMasters(), getVoteNumberMasters(), getSdbipLayerMasters()]);
       if (wardResult.success) setWardMasters((wardResult.data ?? []).filter(item => item.isActive));
       if (voteResult.success) setVoteNumberMasters((voteResult.data ?? []).filter(item => item.isActive));
+      if (layerResult.success) setSdbipLayers((layerResult.data ?? []).filter(item => item.isActive));
     };
     void loadReferenceMasters();
   }, []);
@@ -943,12 +952,13 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="SDBIP Layer" required error={fieldError('SDBIP Layer')} value={form.sdbipLayerPublicId} onChange={(event) => setForm(prev => ({ ...prev, sdbipLayerPublicId: event.target.value }))} options={sdbipLayers.filter(item => !selectedPeriod?.fiscalYear || item.financialYearCode === selectedPeriod.fiscalYear).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} />
             </FormRow>
             <FormRow cols={2}>
+              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
               <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
             </FormRow>
+            <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
             <FormRow cols={3}>
               <Select
                 label="Wards"

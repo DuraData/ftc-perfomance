@@ -68,6 +68,7 @@ import type {
   ReportingPeriodMasterDto,
   FinancialYearMasterDto,
   MunicipalityFinancialYearMasterDto,
+  SdbipLayerMasterDto,
   MunicipalEmployeeDto,
   EmployeeAssignmentMasterDto,
   AuthSessionDto,
@@ -493,6 +494,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     id: dto.id,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
+    sdbipLayer: dto.sdbipLayerPublicId ? { publicId: dto.sdbipLayerPublicId, code: dto.sdbipLayerCode ?? '', name: dto.sdbipLayerName ?? '' } : undefined,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     period: toPeriodReference(dto.periodId),
@@ -1179,6 +1181,21 @@ export async function createMunicipalityFinancialYearMaster(payload: { financial
 
 export async function updateMunicipalityFinancialYearMaster(publicId: string, payload: { isCurrent: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
   return put<MunicipalityFinancialYearMasterDto>(`/v1/masters/municipality-financial-years/${publicId}`, payload);
+}
+
+export async function getSdbipLayerMasters(municipalityFinancialYearPublicId?: string, includeInactive = false): Promise<ApiResponse<SdbipLayerMasterDto[]>> {
+  const query = new URLSearchParams();
+  if (municipalityFinancialYearPublicId) query.set('municipalityFinancialYearId', municipalityFinancialYearPublicId);
+  if (includeInactive) query.set('includeInactive', 'true');
+  return get<SdbipLayerMasterDto[]>(`/v1/masters/sdbip-layers${query.size ? `?${query.toString()}` : ''}`);
+}
+
+export async function createSdbipLayerMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; description?: string | null; displayOrder: number; reason: string }): Promise<ApiResponse<SdbipLayerMasterDto>> {
+  return post<SdbipLayerMasterDto>('/v1/masters/sdbip-layers', payload);
+}
+
+export async function updateSdbipLayerMaster(publicId: string, payload: { code: string; name: string; description?: string | null; displayOrder: number; isActive: boolean; reason: string; rowVersion: string }): Promise<ApiResponse<SdbipLayerMasterDto>> {
+  return put<SdbipLayerMasterDto>(`/v1/masters/sdbip-layers/${publicId}`, payload);
 }
 
 export async function createReportingPeriodMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; periodType: number; sequence: number; startDate: string; endDate: string }): Promise<ApiResponse<ReportingPeriodMasterDto>> {
