@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88ReportsPage, getC88Workspace, getMunicipalEmployees, getMunicipalityFinancialYearMasters,
+  finalSubmitC88Report, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage, getMunicipalityFinancialYearMasters,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
@@ -23,6 +23,9 @@ export function C88Workspace() {
   const [data, setData] = useState<C88Workspace>(emptyWorkspace);
   const [years, setYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeeTotalPages, setEmployeeTotalPages] = useState(0);
+  const [employeeSearch, setEmployeeSearch] = useState('');
   const [yearId, setYearId] = useState('');
   const [configurationId, setConfigurationId] = useState('');
   const [indicatorId, setIndicatorId] = useState('');
@@ -60,8 +63,8 @@ export function C88Workspace() {
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, yearResult, employeeResult, reportResult] = await Promise.all([
-      getC88Workspace(yearId || undefined, false), getMunicipalityFinancialYearMasters(), getMunicipalEmployees(),
+    const [workspace, yearResult, reportResult] = await Promise.all([
+      getC88Workspace(yearId || undefined, false), getMunicipalityFinancialYearMasters(),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
         : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }, message: undefined }),
@@ -72,10 +75,16 @@ export function C88Workspace() {
     setReportTotalCount(reportResult.data?.totalCount ?? 0);
     setReportTotalPages(reportResult.data?.totalPages ?? 0);
     if (yearResult.success) setYears((yearResult.data ?? []).filter(item => item.isActive));
-    if (employeeResult.success) setEmployees((employeeResult.data ?? []).filter(item => item.isActive));
   }, [canReadModule, canReadReports, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!canExecute('C88_INDICATOR.MANAGE_ASSIGNMENTS')) return;
+    void getMunicipalEmployeesPage({ page: employeePage, pageSize: 25, search: employeeSearch, sortBy: 'name', sortDirection: 'asc' }, true).then(result => {
+      setEmployees(result.data?.items ?? []);
+      setEmployeeTotalPages(result.data?.totalPages ?? 0);
+    });
+  }, [canExecute, employeePage, employeeSearch]);
   useEffect(() => {
     const timeout = window.setTimeout(() => { setReportPage(1); setReportSearch(reportSearchInput.trim()); }, 300);
     return () => window.clearTimeout(timeout);
@@ -126,7 +135,7 @@ export function C88Workspace() {
 
       <Section title="Planning, assignments, workflow and mappings">
         <div className="grid gap-3 md:grid-cols-3"><label className="text-sm">Indicator<select className={field} value={indicatorId} onChange={e => setIndicatorId(e.target.value)}>{data.indicators.filter(item => item.catalogueVersionPublicId === configuration?.catalogueVersionPublicId).map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label><input className={field} placeholder="Baseline" value={plan.baselineValue} onChange={e => setPlan({ ...plan, baselineValue: e.target.value })} /><input className={field} placeholder="Medium-term target" value={plan.mediumTermTarget} onChange={e => setPlan({ ...plan, mediumTermTarget: e.target.value })} /><input className={field} placeholder="Annual target" value={plan.annualTarget} onChange={e => setPlan({ ...plan, annualTarget: e.target.value })} />{canUpdate('C88_INDICATOR') && <Button disabled={busy || !configurationId || !indicatorId || !reason} onClick={() => void run(() => saveC88IndicatorPlan({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...plan, estimatedAvailability: plan.estimatedAvailability || null, reason, rowVersion: data.plans.find(item => item.configurationPublicId === configurationId && item.indicatorPublicId === indicatorId)?.rowVersion ?? null }), 'C88 plan saved.')}>Save plan</Button>}</div>
-        {canExecute('C88_INDICATOR.MANAGE_ASSIGNMENTS') && <div className="mt-3 grid gap-2 md:grid-cols-4"><select className={field} value={assignment.employeePublicId} onChange={e => setAssignment({ ...assignment, employeePublicId: e.target.value })}><option value="">Employee</option>{employees.map(item => <option key={item.publicId} value={item.publicId}>{item.firstName} {item.lastName}</option>)}</select><select className={field} value={assignment.role} onChange={e => setAssignment({ ...assignment, role: e.target.value })}>{['PrimaryCapturer','Contributor','ReviewerVerifier','FinalSubmitter'].map(role => <option key={role}>{role}</option>)}</select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Assignment({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...assignment, effectiveFrom: new Date().toISOString(), effectiveTo: null, isActive: true, reason, rowVersion: null }), 'Assignment created.')}>Assign</Button></div>}
+        {canExecute('C88_INDICATOR.MANAGE_ASSIGNMENTS') && <div className="mt-3 space-y-2"><div className="grid gap-2 md:grid-cols-4"><input aria-label="Search C88 assignment employees" className={field} placeholder="Search employees" value={employeeSearch} onChange={e => { setEmployeeSearch(e.target.value); setEmployeePage(1); }} /><select aria-label="C88 assignment employee" className={field} value={assignment.employeePublicId} onChange={e => setAssignment({ ...assignment, employeePublicId: e.target.value })}><option value="">Employee</option>{employees.map(item => <option key={item.publicId} value={item.publicId}>{item.firstName} {item.lastName}</option>)}</select><select aria-label="C88 assignment role" className={field} value={assignment.role} onChange={e => setAssignment({ ...assignment, role: e.target.value })}>{['PrimaryCapturer','Contributor','ReviewerVerifier','FinalSubmitter'].map(role => <option key={role}>{role}</option>)}</select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Assignment({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...assignment, effectiveFrom: new Date().toISOString(), effectiveTo: null, isActive: true, reason, rowVersion: null }), 'Assignment created.')}>Assign</Button></div>{employeeTotalPages > 1 && <div className="flex items-center justify-end gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div>}</div>}
         {canExecute('C88_INDICATOR.MANAGE_WORKFLOW') && <div className="mt-3"><Button disabled={busy || !configurationId || !reason} onClick={() => { const previous = data.workflows.find(item => item.configurationPublicId === configurationId && item.isCurrent); void run(() => createC88Workflow({ configurationPublicId: configurationId, effectiveFrom: new Date().toISOString(), effectiveTo: null, stages: [{ sequence: 1, kind: 'Capturer', name: 'Capturer', requiredRole: 'PrimaryCapturer', isActive: true }, { sequence: 2, kind: 'ReviewerVerifier', name: 'Reviewer / Verifier', requiredRole: 'ReviewerVerifier', isActive: true }, { sequence: 3, kind: 'FinalSubmission', name: 'Final Submission', requiredRole: 'FinalSubmitter', isActive: true }], reason, previousWorkflowPublicId: previous?.publicId ?? null, previousWorkflowRowVersion: previous?.rowVersion ?? null }), 'Independent C88 workflow version created.'); }}>Create workflow version</Button></div>}
         {canExecute('C88_INDICATOR.MANAGE_MAPPING') && <div className="mt-3 grid gap-2 md:grid-cols-4"><TargetPicker kind="opms" label="OPMS KPI" value={mapping.opmsTargetPublicId} valueField="publicId" onChange={value => setMapping({ ...mapping, opmsTargetPublicId: value })} /><select aria-label="Mapping type" className={field} value={mapping.mappingType} onChange={e => setMapping({ ...mapping, mappingType: e.target.value })}><option>Direct</option><option>Contributing</option></select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Mapping({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...mapping, reason, isActive: true, rowVersion: null }), 'Alignment-only mapping created.')}>Map without copying</Button></div>}
       </Section>

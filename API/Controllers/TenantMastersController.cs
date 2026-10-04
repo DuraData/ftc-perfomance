@@ -1,3 +1,4 @@
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -201,9 +202,61 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         if (!HasTenant()) return TenantRequired<EmployeeDto[]>();
         var canReadEmail = await CanAccessEmployeeEmailAsync(SecurityOperation.Read);
         var rows = await context.MunicipalEmployees.AsNoTracking().OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
+            .ThenBy(x => x.Id).Take(100)
             .Select(x => new EmployeeDto(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, canReadEmail ? x.EmailAddress : null, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<EmployeeDto[]>(true, rows));
     }
+
+    [HttpGet("employees/page")]
+    [Authorize(Policy = "Permission:EMPLOYEE.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<EmployeeDto>>>> GetEmployeesPage([FromQuery] PagedQueryRequest request, [FromQuery] bool activeOnly = false)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<EmployeeDto>>();
+        var canReadEmail = await CanAccessEmployeeEmailAsync(SecurityOperation.Read);
+        if (!EmployeeSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<EmployeeDto>>("SortBy must be createdAt, name, employeeNumber, email, status, or effectiveFrom."));
+        if (!canReadEmail && request.NormalizedSortBy == "email") return Forbid();
+
+        var query = context.MunicipalEmployees.AsNoTracking().AsQueryable();
+        if (activeOnly)
+        {
+            var now = DateTime.UtcNow;
+            query = query.Where(item => item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now));
+        }
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = canReadEmail
+                ? query.Where(item => item.EmployeeNumber.Contains(term) || item.FirstName.Contains(term) || item.LastName.Contains(term)
+                    || (item.EmailAddress != null && item.EmailAddress.Contains(term)))
+                : query.Where(item => item.EmployeeNumber.Contains(term) || item.FirstName.Contains(term) || item.LastName.Contains(term));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.LastName).ThenBy(item => item.FirstName).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.LastName).ThenByDescending(item => item.FirstName).ThenBy(item => item.Id),
+            ("employeenumber", false) => query.OrderBy(item => item.EmployeeNumber).ThenBy(item => item.Id),
+            ("employeenumber", true) => query.OrderByDescending(item => item.EmployeeNumber).ThenBy(item => item.Id),
+            ("email", false) => query.OrderBy(item => item.EmailAddress).ThenBy(item => item.Id),
+            ("email", true) => query.OrderByDescending(item => item.EmailAddress).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.LastName).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.LastName).ThenBy(item => item.Id),
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.Id)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize)
+            .Select(item => new EmployeeDto(item.PublicId, item.EmployeeNumber, item.FirstName, item.LastName,
+                canReadEmail ? item.EmailAddress : null, item.IdentityUserId, item.IsActive, item.EffectiveFrom,
+                item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<EmployeeDto>>(true,
+            PagedResponse<EmployeeDto>.Create(rows, request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> EmployeeSortFields = ["createdat", "name", "employeenumber", "email", "status", "effectivefrom"];
 
     [HttpPost("employees")]
     [Authorize(Policy = "Permission:EMPLOYEE.CREATE")]

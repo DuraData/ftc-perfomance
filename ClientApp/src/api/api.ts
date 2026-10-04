@@ -1218,8 +1218,11 @@ export async function createReportingPeriodMaster(payload: { municipalityFinanci
   return post<ReportingPeriodMasterDto>('/v1/masters/reporting-periods', payload);
 }
 
-export async function getMunicipalEmployees(): Promise<ApiResponse<MunicipalEmployeeDto[]>> {
-  return get<MunicipalEmployeeDto[]>('/v1/masters/employees');
+export async function getMunicipalEmployeesPage(query: RegisterPageQuery = {}, activeOnly = false): Promise<ApiResponse<PagedResult<MunicipalEmployeeDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (activeOnly) parameters.set('activeOnly', 'true');
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PagedResult<MunicipalEmployeeDto>>(`/v1/masters/employees/page${suffix}`);
 }
 
 export async function createMunicipalEmployee(payload: { employeeNumber: string; firstName: string; lastName: string; emailAddress?: string | null; identityUserId?: string | null; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalEmployeeDto>> {

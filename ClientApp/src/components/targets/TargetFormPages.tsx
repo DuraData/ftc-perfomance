@@ -902,7 +902,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { departments, units, employees, lookups } = referenceData;
+  const { departments, units, employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
+  const employeeIdentityOptions = employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }));
   const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedUnit = units.find(item => String(item.id) === form.unitId);
@@ -958,7 +959,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
               <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
             </FormRow>
-            <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
+            <Input label="Search employees" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} />
+            <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...(form.assignedToId && !employeeIdentityOptions.some(item => item.value === form.assignedToId) ? [{ value: form.assignedToId, label: 'Current assigned employee' }] : []), ...employeeIdentityOptions]} />
             <FormRow cols={3}>
               <Select
                 label="Wards"
@@ -1006,9 +1008,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 onChange={(event) => setSelectedAssigneeId(event.target.value)}
                 options={[
                   { value: '', label: 'Select Employee' },
-                  ...employees
-                    .filter(item => item.identityUserId)
-                    .map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` })),
+                  ...employeeIdentityOptions,
                 ]}
               />
               <div className="flex items-end">
@@ -1043,6 +1043,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 );
               })}
             </div>
+            {employeeTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div>}
 
             <FormRow cols={3}>
               <Select
@@ -1467,7 +1468,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { departments, units, employees, lookups } = referenceData;
+  const { departments, units, employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
+  const employeeIdentityOptions = employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }));
   const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedUnit = units.find(item => String(item.id) === form.unitId);
@@ -1526,9 +1528,10 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Select label="Employee" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
+              <Input label="Search employees" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} />
             </FormRow>
-            <Select label="Supervisor" value={form.supervisorId} onChange={(event) => setForm(prev => ({ ...prev, supervisorId: event.target.value }))} options={[{ value: '', label: 'Select Supervisor' }, ...employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }))]} />
+            <FormRow cols={2}><Select label="Employee" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...(form.assignedToId && !employeeIdentityOptions.some(item => item.value === form.assignedToId) ? [{ value: form.assignedToId, label: 'Current employee' }] : []), ...employeeIdentityOptions]} /><Select label="Supervisor" value={form.supervisorId} onChange={(event) => setForm(prev => ({ ...prev, supervisorId: event.target.value }))} options={[{ value: '', label: 'Select Supervisor' }, ...(form.supervisorId && !employeeIdentityOptions.some(item => item.value === form.supervisorId) ? [{ value: form.supervisorId, label: 'Current supervisor' }] : []), ...employeeIdentityOptions]} /></FormRow>
+            {employeeTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div>}
           </FormPanel>
 
           <FormPanel title="Target Definition" description="Define strategic alignment and the employee-level performance target." icon={<UserSquare2 className="h-5 w-5" />}>

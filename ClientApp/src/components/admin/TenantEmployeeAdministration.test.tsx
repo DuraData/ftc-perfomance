@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TenantEmployeeAdministration } from './TenantEmployeeAdministration';
 
 const api = vi.hoisted(() => ({
-  getMunicipalEmployees: vi.fn(), getDepartments: vi.fn(), getUnits: vi.fn(), getPositionMasters: vi.fn(), getUsersPage: vi.fn(), getEmployeeAssignments: vi.fn(),
+  getMunicipalEmployeesPage: vi.fn(), getDepartments: vi.fn(), getUnits: vi.fn(), getPositionMasters: vi.fn(), getUsersPage: vi.fn(), getEmployeeAssignments: vi.fn(),
   createMunicipalEmployee: vi.fn(), updateMunicipalEmployee: vi.fn(), createEmployeeAssignment: vi.fn(), closeEmployeeAssignment: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -12,7 +12,7 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreat
 
 describe('TenantEmployeeAdministration', () => {
   beforeEach(() => {
-    api.getMunicipalEmployees.mockResolvedValue({ success: true, data: [{ publicId: 'employee-1', employeeNumber: 'E001', firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }] });
+    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: 'E001', firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getDepartments.mockResolvedValue({ success: true, data: [{ id: 7, publicId: 'department-1', code: 'FIN', name: 'Finance' }] });
     api.getUnits.mockResolvedValue({ success: true, data: [{ id: 8, publicId: 'unit-1', departmentId: 7, departmentName: 'Finance', code: 'BUD', name: 'Budget' }] });
     api.getPositionMasters.mockResolvedValue({ success: true, data: [{ publicId: 'position-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', code: 'CFO', name: 'Chief Financial Officer', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }] });
@@ -25,6 +25,7 @@ describe('TenantEmployeeAdministration', () => {
   it('loads tenant employees and creates an effective-dated placement using public identifiers', async () => {
     render(<TenantEmployeeAdministration />);
     fireEvent.click(await screen.findByRole('button', { name: /Ada Mokoena/ }));
+    expect(api.getMunicipalEmployeesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' });
     await waitFor(() => expect(api.getEmployeeAssignments).toHaveBeenCalledWith('employee-1'));
 
     fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'department-1' } });

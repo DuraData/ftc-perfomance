@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -41,6 +42,13 @@ public sealed class TenantMastersControllerTests
         var readEnvelope = Assert.IsType<ApiResponse<EmployeeDto[]>>(Assert.IsType<OkObjectResult>(readResult.Result).Value);
         Assert.Null(Assert.Single(readEnvelope.Data!).EmailAddress);
 
+        var pageResult = await controller.GetEmployeesPage(new PagedQueryRequest { Page = 1, PageSize = 10, SortBy = "name", SortDirection = "asc" });
+        var pageEnvelope = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value);
+        Assert.Null(Assert.Single(pageEnvelope.Data!.Items).EmailAddress);
+        var hiddenEmailSearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "private@example.test", SortBy = "name", SortDirection = "asc" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenEmailSearch.Result).Value).Data!.TotalCount);
+        Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "email" })).Result);
+
         var updateResult = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
             employee.FirstName, employee.LastName, "exfiltration@example.test", null, true,
             employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion)));
@@ -80,6 +88,44 @@ public sealed class TenantMastersControllerTests
         Assert.Single(await tenantAContext.MunicipalEmployees.AsNoTracking().ToArrayAsync());
         Assert.Single(await tenantBContext.MunicipalEmployees.AsNoTracking().ToArrayAsync());
         Assert.NotEqual((await tenantAContext.MunicipalEmployees.SingleAsync()).MunicipalityId, (await tenantBContext.MunicipalEmployees.SingleAsync()).MunicipalityId);
+    }
+
+    [Fact]
+    public async Task Employee_directory_page_is_bounded_searchable_and_tenant_scoped()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using (var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true)))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.Municipalities.AddRange(new Municipality { Id = 91, Code = "M91", Name = "Municipality 91" }, new Municipality { Id = 92, Code = "M92", Name = "Municipality 92" });
+            setup.MunicipalEmployees.AddRange(Enumerable.Range(1, 31).Select(index => new MunicipalEmployee
+            {
+                MunicipalityId = 91, EmployeeNumber = $"E{index:000}", FirstName = $"Person{index:000}", LastName = "Local",
+                EmailAddress = $"person{index:000}@example.test", EffectiveFrom = DateTime.UtcNow.AddYears(-1)
+            }));
+            setup.MunicipalEmployees.AddRange(
+                new MunicipalEmployee { MunicipalityId = 91, EmployeeNumber = "EXPIRED", FirstName = "Expired", LastName = "NotCurrent", EffectiveFrom = DateTime.UtcNow.AddYears(-1), EffectiveTo = DateTime.UtcNow.AddDays(-1), IsActive = true },
+                new MunicipalEmployee { MunicipalityId = 91, EmployeeNumber = "FUTURE", FirstName = "Future", LastName = "NotCurrent", EffectiveFrom = DateTime.UtcNow.AddDays(1), IsActive = true });
+            setup.MunicipalEmployees.Add(new MunicipalEmployee { MunicipalityId = 92, EmployeeNumber = "FOREIGN", FirstName = "Foreign", LastName = "Employee", EffectiveFrom = DateTime.UtcNow });
+            await setup.SaveChangesAsync();
+        }
+        var tenant = new TestTenantContext(91, "directory-reader");
+        await using var context = new ApplicationDbContext(options, tenant);
+        var controller = CreateController(context, tenant);
+
+        var result = await controller.GetEmployeesPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "Local", SortBy = "employeeNumber", SortDirection = "asc" });
+
+        var payload = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.Equal(31, payload.TotalCount);
+        Assert.Equal(10, payload.Items.Length);
+        Assert.Equal(4, payload.TotalPages);
+        Assert.DoesNotContain(payload.Items, item => item.EmployeeNumber == "FOREIGN");
+        var activeResult = await controller.GetEmployeesPage(new PagedQueryRequest { PageSize = 100, SortBy = "name", SortDirection = "asc" }, true);
+        var activePayload = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(activeResult.Result).Value).Data!;
+        Assert.Equal(31, activePayload.TotalCount);
+        Assert.DoesNotContain(activePayload.Items, item => item.EmployeeNumber is "EXPIRED" or "FUTURE");
     }
 
     [Fact]

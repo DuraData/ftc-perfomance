@@ -9,7 +9,7 @@ const capabilities = vi.hoisted(() => ({
 }));
 const api = vi.hoisted(() => ({
   getTidConfiguration: vi.fn(), updateTidConfiguration: vi.fn(), getTidRegisterPage: vi.fn(), getTidHistory: vi.fn(),
-  createTidVersion: vi.fn(), uploadTidSourceDocument: vi.fn(), downloadTidSourceDocument: vi.fn(), getMunicipalEmployees: vi.fn(),
+  createTidVersion: vi.fn(), uploadTidSourceDocument: vi.fn(), downloadTidSourceDocument: vi.fn(), getMunicipalEmployeesPage: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
@@ -35,7 +35,7 @@ describe('TID workspace', () => {
     capabilities.canCreate.mockReturnValue(true);
     capabilities.canUpdate.mockReturnValue(true);
     capabilities.canExecute.mockReturnValue(true);
-    api.getMunicipalEmployees.mockResolvedValue({ success: true, data: [] });
+    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getTidConfiguration.mockResolvedValue({ success: true, data: configuration });
     api.getTidRegisterPage.mockResolvedValue({ success: true, data: { items: [item], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getTidHistory.mockResolvedValue({ success: true, data: [version] });
@@ -46,6 +46,7 @@ describe('TID workspace', () => {
   it('updates optional municipality policy with reason and concurrency', async () => {
     render(<TidWorkspace />);
     await screen.findByText('Municipality TID policy');
+    expect(api.getMunicipalEmployeesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }, true);
     fireEvent.click(screen.getByLabelText('Enable TID'));
     fireEvent.change(screen.getByLabelText('TID configuration reason'), { target: { value: 'Municipality opted out' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Policy' }));

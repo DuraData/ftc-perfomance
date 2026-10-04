@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createTidVersion,
   downloadTidSourceDocument,
-  getMunicipalEmployees,
+  getMunicipalEmployeesPage,
   getTidConfiguration,
   getTidHistory,
   getTidRegisterPage,
@@ -35,6 +35,9 @@ export function TidWorkspace() {
   const [configuration, setConfiguration] = useState<TidConfiguration | null>(null);
   const [items, setItems] = useState<TidRegisterItem[]>([]);
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
+  const [employeePage, setEmployeePage] = useState(1);
+  const [employeeTotalPages, setEmployeeTotalPages] = useState(0);
+  const [employeeSearch, setEmployeeSearch] = useState('');
   const [selected, setSelected] = useState<TidRegisterItem | null>(null);
   const [history, setHistory] = useState<TidVersion[]>([]);
   const [page, setPage] = useState(1);
@@ -74,8 +77,11 @@ export function TidWorkspace() {
   }, [search, searchInput]);
   useEffect(() => {
     if (!canCreate('TID') && !canUpdate('TID')) return;
-    void getMunicipalEmployees().then(result => setEmployees((result.data ?? []).filter(employee => employee.isActive)));
-  }, [canCreate, canUpdate]);
+    void getMunicipalEmployeesPage({ page: employeePage, pageSize: 25, search: employeeSearch, sortBy: 'name', sortDirection: 'asc' }, true).then(result => {
+      setEmployees(result.data?.items ?? []);
+      setEmployeeTotalPages(result.data?.totalPages ?? 0);
+    });
+  }, [canCreate, canUpdate, employeePage, employeeSearch]);
 
   const selectItem = async (item: TidRegisterItem) => {
     setSelected(item);
@@ -225,7 +231,9 @@ export function TidWorkspace() {
                         <label className="text-xs text-secondary-600">Limitations<textarea aria-label="TID limitations" className={textAreaClass} value={draft.limitations ?? ''} onChange={event => setDraft({ ...draft, limitations: event.target.value })} /></label>
                         <label className="text-xs text-secondary-600">Assumptions<textarea aria-label="TID assumptions" className={textAreaClass} value={draft.assumptions ?? ''} onChange={event => setDraft({ ...draft, assumptions: event.target.value })} /></label>
                         <label className="text-xs text-secondary-600 md:col-span-2">Verification method<textarea aria-label="TID verification method" className={textAreaClass} value={draft.verificationMethod} onChange={event => setDraft({ ...draft, verificationMethod: event.target.value })} /></label>
-                        <label className="text-xs text-secondary-600">Responsible employee<select aria-label="TID responsible employee" className={fieldClass} value={draft.responsibleEmployeePublicId ?? ''} onChange={event => setDraft({ ...draft, responsibleEmployeePublicId: event.target.value || null })}><option value="">Not assigned</option>{employees.map(employee => <option key={employee.publicId} value={employee.publicId}>{employee.employeeNumber} — {employee.firstName} {employee.lastName}</option>)}</select></label>
+                        <label className="text-xs text-secondary-600">Search responsible employees<input aria-label="Search TID responsible employees" className={fieldClass} value={employeeSearch} onChange={event => { setEmployeeSearch(event.target.value); setEmployeePage(1); }} /></label>
+                        <label className="text-xs text-secondary-600">Responsible employee<select aria-label="TID responsible employee" className={fieldClass} value={draft.responsibleEmployeePublicId ?? ''} onChange={event => setDraft({ ...draft, responsibleEmployeePublicId: event.target.value || null })}><option value="">Not assigned</option>{draft.responsibleEmployeePublicId && !employees.some(item => item.publicId === draft.responsibleEmployeePublicId) ? <option value={draft.responsibleEmployeePublicId}>{currentVersion?.responsibleEmployeeName ?? 'Current responsible employee'}</option> : null}{employees.map(employee => <option key={employee.publicId} value={employee.publicId}>{employee.employeeNumber} — {employee.firstName} {employee.lastName}</option>)}</select></label>
+                        {employeeTotalPages > 1 ? <div className="flex items-center gap-2 text-xs text-secondary-500 md:col-span-2"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div> : null}
                         <label className="text-xs text-secondary-600">Effective from<input aria-label="TID effective from" type="date" className={fieldClass} value={draft.effectiveFrom.slice(0, 10)} onChange={event => setDraft({ ...draft, effectiveFrom: event.target.value })} /></label>
                         <label className="text-xs text-secondary-600 md:col-span-2">Notes<textarea aria-label="TID notes" className={textAreaClass} value={draft.notes ?? ''} onChange={event => setDraft({ ...draft, notes: event.target.value })} /></label>
                         <label className="text-xs text-secondary-600 md:col-span-2">Version reason<input aria-label="TID version reason" className={fieldClass} value={draft.reason} onChange={event => setDraft({ ...draft, reason: event.target.value })} /></label>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, RefreshCw, UserRound } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
@@ -11,7 +11,7 @@ import {
   createMunicipalEmployee,
   getDepartments,
   getEmployeeAssignments,
-  getMunicipalEmployees,
+  getMunicipalEmployeesPage,
   getPositionMasters,
   getUnits,
   getUsersPage,
@@ -26,10 +26,19 @@ export function TenantEmployeeAdministration() {
   const { pushToast } = useApp();
   const security = useSecurity();
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
   const [units, setUnits] = useState<UnitLookupDto[]>([]);
   const [positions, setPositions] = useState<PositionMasterDto[]>([]);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
+  const [userPage, setUserPage] = useState(1);
+  const [userTotalPages, setUserTotalPages] = useState(0);
+  const [userSearch, setUserSearch] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [assignments, setAssignments] = useState<EmployeeAssignmentMasterDto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -42,16 +51,36 @@ export function TenantEmployeeAdministration() {
   const availableUnits = useMemo(() => units.filter(item => !selectedDepartmentId || item.departmentId === selectedDepartmentId), [selectedDepartmentId, units]);
   const availablePositions = useMemo(() => positions.filter(item => item.isActive && item.departmentPublicId === assignment.departmentPublicId && (item.unitPublicId ?? '') === assignment.unitPublicId), [assignment.departmentPublicId, assignment.unitPublicId, positions]);
 
-  const load = async () => {
+  const loadEmployees = useCallback(async () => {
     setBusy(true); setError(null);
-    const [employeeResult, departmentResult, unitResult, positionResult, userResult] = await Promise.all([getMunicipalEmployees(), getDepartments(), getUnits(), getPositionMasters(), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' })]);
-    const failed = [employeeResult, departmentResult, unitResult, positionResult, userResult].find(result => !result.success);
-    if (failed) setError(failed.message ?? 'Employee masters could not be loaded.');
-    setEmployees(employeeResult.data ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []); setUsers(userResult.data?.items ?? []);
+    const employeeResult = await getMunicipalEmployeesPage({ page, pageSize: 25, search, sortBy, sortDirection });
+    if (!employeeResult.success) setError(employeeResult.message ?? 'Employee register could not be loaded.');
+    setEmployees(employeeResult.data?.items ?? []);
+    setTotalCount(employeeResult.data?.totalCount ?? 0);
+    setTotalPages(employeeResult.data?.totalPages ?? 0);
+    if (employeeResult.data && employeeResult.data.totalPages > 0 && page > employeeResult.data.totalPages) setPage(employeeResult.data.totalPages);
     setBusy(false);
-  };
+  }, [page, search, sortBy, sortDirection]);
 
-  useEffect(() => { void load(); }, []);
+  const loadReferences = useCallback(async () => {
+    setBusy(true); setError(null);
+    const [departmentResult, unitResult, positionResult] = await Promise.all([getDepartments(), getUnits(), getPositionMasters()]);
+    const failed = [departmentResult, unitResult, positionResult].find(result => !result.success);
+    if (failed) setError(failed.message ?? 'Employee masters could not be loaded.');
+    setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []);
+    setBusy(false);
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    const result = await getUsersPage({ page: userPage, pageSize: 25, search: userSearch, sortBy: 'name', sortDirection: 'asc' });
+    if (!result.success) setError(result.message ?? 'Login directory could not be loaded.');
+    setUsers(result.data?.items ?? []);
+    setUserTotalPages(result.data?.totalPages ?? 0);
+  }, [userPage, userSearch]);
+
+  useEffect(() => { void loadEmployees(); }, [loadEmployees]);
+  useEffect(() => { void loadReferences(); }, [loadReferences]);
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
 
   const selectEmployee = async (publicId: string) => {
     setSelectedId(publicId); setBusy(true); setError(null);
@@ -65,7 +94,7 @@ export function TenantEmployeeAdministration() {
     setBusy(true); setError(null);
     const result = await createMunicipalEmployee({ ...employee, emailAddress: security.canEditField('EMPLOYEE', 'EmailAddress') ? employee.emailAddress || null : null, identityUserId: employee.identityUserId || null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
     if (!result.success) setError(result.message ?? 'Employee could not be created.');
-    else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() }); await load(); }
+    else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() }); if (page === 1) await loadEmployees(); else setPage(1); }
     setBusy(false);
   };
 
@@ -74,7 +103,7 @@ export function TenantEmployeeAdministration() {
     setBusy(true); setError(null);
     const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, emailAddress: null, emailAddressSpecified: false, identityUserId: selected.identityUserId, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
     if (!result.success) setError(result.message ?? 'Employee could not be deactivated.');
-    else { pushToast('success', 'Employee deactivated without deleting placement history'); setSelectedId(''); setAssignments([]); await load(); }
+    else { pushToast('success', 'Employee deactivated without deleting placement history'); setSelectedId(''); setAssignments([]); await loadEmployees(); }
     setBusy(false);
   };
 
@@ -98,18 +127,20 @@ export function TenantEmployeeAdministration() {
 
   return <AppShell title="Municipal Employees" subtitle="Tenant-owned people and effective-dated organizational placements">
     <div className="space-y-5">
-      <div className="flex justify-end"><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button></div>
+      <div className="flex justify-end"><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void loadEmployees(); void loadReferences(); void loadUsers(); }} disabled={busy}>Refresh</Button></div>
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE') && <FormPanel title="Create employee" description="Identity linkage is optional and does not replace the municipal employee record." icon={<UserRound className="h-5 w-5" />}>
           <Input label="Employee number" value={employee.employeeNumber} onChange={event => setEmployee(current => ({ ...current, employeeNumber: event.target.value }))} required />
           <div className="grid grid-cols-2 gap-2"><Input label="First name" value={employee.firstName} onChange={event => setEmployee(current => ({ ...current, firstName: event.target.value }))} required /><Input label="Last name" value={employee.lastName} onChange={event => setEmployee(current => ({ ...current, lastName: event.target.value }))} required /></div>
           {security.canReadField('EMPLOYEE', 'EmailAddress') && <Input label="Email" type="email" value={employee.emailAddress} disabled={!security.canEditField('EMPLOYEE', 'EmailAddress')} onChange={event => setEmployee(current => ({ ...current, emailAddress: event.target.value }))} />}
+          <Input label="Search linked logins" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
           <Select label="Linked login" value={employee.identityUserId} placeholder="No linked login" options={users.filter(item => item.user.isActive).map(item => ({ value: item.user.id, label: `${item.user.fullName} · ${item.user.email}` }))} onChange={event => setEmployee(current => ({ ...current, identityUserId: event.target.value }))} />
+          {userTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous logins</Button><span>Page {userPage} of {userTotalPages}</span><Button size="sm" variant="outline" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next logins</Button></div>}
           <Input label="Effective from" type="date" value={employee.effectiveFrom} onChange={event => setEmployee(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => void saveEmployee()} disabled={busy}>Create employee</Button>
         </FormPanel>}
-        <Card className="p-4"><h3 className="font-semibold">Employee register</h3><div className="mt-3 space-y-2">{employees.map(item => <button type="button" key={item.publicId} onClick={() => void selectEmployee(item.publicId)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left ${selectedId === item.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}><div><p className="font-medium">{item.firstName} {item.lastName}</p><p className="text-xs text-secondary-500">{item.employeeNumber}{security.canReadField('EMPLOYEE', 'EmailAddress') ? ` · ${item.emailAddress || 'No email'}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}</div></Card>
+        <Card className="p-4"><div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Employee register</h3><Badge variant="primary">{totalCount} employees</Badge></div><div className="mt-3 grid gap-2 md:grid-cols-[1fr_11rem_9rem]"><Input aria-label="Search employees" placeholder="Number, name, or email" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /><Select aria-label="Sort employees" value={sortBy} options={[{ value: 'name', label: 'Name' }, { value: 'employeeNumber', label: 'Employee number' }, { value: 'status', label: 'Status' }, { value: 'effectiveFrom', label: 'Effective from' }, ...(security.canReadField('EMPLOYEE', 'EmailAddress') ? [{ value: 'email', label: 'Email' }] : [])]} onChange={event => { setSortBy(event.target.value); setPage(1); }} /><Select aria-label="Sort direction" value={sortDirection} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} /></div><div className="mt-3 space-y-2">{employees.map(item => <button type="button" key={item.publicId} onClick={() => void selectEmployee(item.publicId)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left ${selectedId === item.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}><div><p className="font-medium">{item.firstName} {item.lastName}</p><p className="text-xs text-secondary-500">{item.employeeNumber}{security.canReadField('EMPLOYEE', 'EmailAddress') ? ` · ${item.emailAddress || 'No email'}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!busy && employees.length === 0 && <p className="py-6 text-center text-sm text-secondary-500">No employees match the current search.</p>}</div>{totalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></div></div>}</Card>
       </div>
       {selected && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE_ASSIGNMENT') && selected.isActive && <FormPanel title={`New placement · ${selected.firstName} ${selected.lastName}`} description="Overlapping effective dates are rejected by the server." icon={<Briefcase className="h-5 w-5" />}>
