@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getReportingPeriodMasters, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getReportingPeriodMasters, getReportingPeriodMastersPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -220,6 +220,21 @@ describe('versioned API routes', () => {
       method: 'PUT',
       body: JSON.stringify({ effectiveTo: '2026-10-02T00:00:00Z', reason: 'Employee transferred to Finance', rowVersion: 'AQ==' }),
     }));
+  });
+
+  it('transports bounded calendar-master filters, types, sorting, and pages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getFinancialYearMastersPage({ page: 2, pageSize: 25, search: '2026', sortBy: 'startDate', sortDirection: 'desc', active: true });
+    await getMunicipalityFinancialYearMastersPage({ page: 1, pageSize: 10, sortBy: 'current', sortDirection: 'desc', active: true, current: false });
+    await getReportingPeriodMastersPage({ page: 3, pageSize: 25, search: 'quarter', sortBy: 'sequence', sortDirection: 'asc', municipalityFinancialYearId: 'year-id', reportingPeriodType: 1 });
+    await getSdbipLayerMastersPage({ page: 1, pageSize: 25, sortBy: 'displayOrder', sortDirection: 'asc', active: false, municipalityFinancialYearId: 'year-id' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/financial-years/page?page=2&pageSize=25&search=2026&sortBy=startDate&sortDirection=desc&active=true'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/municipality-financial-years/page?page=1&pageSize=10&sortBy=current&sortDirection=desc&active=true&current=false'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/masters/reporting-periods/page?page=3&pageSize=25&search=quarter&sortBy=sequence&sortDirection=asc&reportingPeriodType=1&municipalityFinancialYearId=year-id'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/sdbip-layers/page?page=1&pageSize=25&sortBy=displayOrder&sortDirection=asc&active=false&municipalityFinancialYearId=year-id'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('uses versioned organization-master routes and carries optimistic concurrency', async () => {

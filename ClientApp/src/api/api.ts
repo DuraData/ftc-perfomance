@@ -1165,8 +1165,32 @@ export async function getReportingPeriodMasters(): Promise<ApiResponse<Reporting
   return get<ReportingPeriodMasterDto[]>('/v1/masters/reporting-periods');
 }
 
+export type CalendarMasterPageQuery = RegisterPageQuery & {
+  active?: boolean;
+  current?: boolean;
+  municipalityFinancialYearId?: string;
+  reportingPeriodType?: number;
+};
+
+function calendarMasterPageQuery(query: CalendarMasterPageQuery): string {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.active !== undefined) parameters.set('active', String(query.active));
+  if (query.current !== undefined) parameters.set('current', String(query.current));
+  if (query.municipalityFinancialYearId) parameters.set('municipalityFinancialYearId', query.municipalityFinancialYearId);
+  if (query.reportingPeriodType !== undefined) parameters.set('reportingPeriodType', String(query.reportingPeriodType));
+  return parameters.size ? `?${parameters.toString()}` : '';
+}
+
+export async function getReportingPeriodMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<ReportingPeriodMasterDto>>> {
+  return get<PagedResult<ReportingPeriodMasterDto>>(`/v1/masters/reporting-periods/page${calendarMasterPageQuery(query)}`);
+}
+
 export async function getFinancialYearMasters(): Promise<ApiResponse<FinancialYearMasterDto[]>> {
   return get<FinancialYearMasterDto[]>('/v1/masters/financial-years');
+}
+
+export async function getFinancialYearMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<FinancialYearMasterDto>>> {
+  return get<PagedResult<FinancialYearMasterDto>>(`/v1/masters/financial-years/page${calendarMasterPageQuery(query)}`);
 }
 
 export async function createFinancialYearMaster(payload: { code: string; name: string; startDate: string; endDate: string }): Promise<ApiResponse<FinancialYearMasterDto>> {
@@ -1175,6 +1199,10 @@ export async function createFinancialYearMaster(payload: { code: string; name: s
 
 export async function getMunicipalityFinancialYearMasters(): Promise<ApiResponse<MunicipalityFinancialYearMasterDto[]>> {
   return get<MunicipalityFinancialYearMasterDto[]>('/v1/masters/municipality-financial-years');
+}
+
+export async function getMunicipalityFinancialYearMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<MunicipalityFinancialYearMasterDto>>> {
+  return get<PagedResult<MunicipalityFinancialYearMasterDto>>(`/v1/masters/municipality-financial-years/page${calendarMasterPageQuery(query)}`);
 }
 
 export async function createMunicipalityFinancialYearMaster(payload: { financialYearPublicId: string; isCurrent: boolean; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
@@ -1190,6 +1218,10 @@ export async function getSdbipLayerMasters(municipalityFinancialYearPublicId?: s
   if (municipalityFinancialYearPublicId) query.set('municipalityFinancialYearId', municipalityFinancialYearPublicId);
   if (includeInactive) query.set('includeInactive', 'true');
   return get<SdbipLayerMasterDto[]>(`/v1/masters/sdbip-layers${query.size ? `?${query.toString()}` : ''}`);
+}
+
+export async function getSdbipLayerMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<SdbipLayerMasterDto>>> {
+  return get<PagedResult<SdbipLayerMasterDto>>(`/v1/masters/sdbip-layers/page${calendarMasterPageQuery(query)}`);
 }
 
 export const stageOpmsImport = (layerPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/layers/${layerPublicId}/stage`, payload);

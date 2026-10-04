@@ -17,11 +17,35 @@ namespace FTCERP.Host.API.Controllers;
 [Authorize]
 public sealed class TenantMastersController(ApplicationDbContext context, ITenantContext tenantContext, IAccessControlService? accessControl = null) : ControllerBase
 {
+    private static readonly HashSet<string> FinancialYearSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "startdate", "enddate", "status" };
+    private static readonly HashSet<string> MunicipalityYearSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "startdate", "effectivefrom", "status", "current" };
+    private static readonly HashSet<string> PeriodSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "sequence", "startdate", "enddate", "status" };
+    private static readonly HashSet<string> LayerSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "displayorder", "financialyear", "status" };
+
     [HttpGet("financial-years")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
     public async Task<ActionResult<ApiResponse<FinancialYearDto[]>>> GetFinancialYears() =>
         Ok(new ApiResponse<FinancialYearDto[]>(true, await context.FinancialYears.AsNoTracking().OrderByDescending(x => x.StartDate)
             .Select(x => new FinancialYearDto(x.PublicId, x.Code, x.Name, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+
+    [HttpGet("financial-years/page")]
+    [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<FinancialYearDto>>>> GetFinancialYearsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null)
+    {
+        if (!FinancialYearSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<FinancialYearDto>("createdAt, code, name, startDate, endDate, or status");
+        var query = context.FinancialYears.AsNoTracking().AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderFinancialYears(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new FinancialYearDto(item.PublicId, item.Code, item.Name, item.StartDate, item.EndDate, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<FinancialYearDto>>(true, PagedResponse<FinancialYearDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
 
     [HttpPost("financial-years")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.CREATE")]
@@ -60,6 +84,27 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         var rows = await context.MunicipalityFinancialYears.AsNoTracking().Include(x => x.FinancialYear).OrderByDescending(x => x.FinancialYear.StartDate)
             .Select(x => new MunicipalityFinancialYearDto(x.PublicId, x.FinancialYear.PublicId, x.FinancialYear.Code, x.FinancialYear.Name, x.IsCurrent, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<MunicipalityFinancialYearDto[]>(true, rows));
+    }
+
+    [HttpGet("municipality-financial-years/page")]
+    [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<MunicipalityFinancialYearDto>>>> GetMunicipalityFinancialYearsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] bool? current = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<MunicipalityFinancialYearDto>>();
+        if (!MunicipalityYearSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<MunicipalityFinancialYearDto>("createdAt, code, name, startDate, effectiveFrom, status, or current");
+        var query = context.MunicipalityFinancialYears.AsNoTracking().Include(item => item.FinancialYear).AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (current.HasValue) query = query.Where(item => item.IsCurrent == current.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.FinancialYear.Code.Contains(term) || item.FinancialYear.Name.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderMunicipalityYears(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new MunicipalityFinancialYearDto(item.PublicId, item.FinancialYear.PublicId, item.FinancialYear.Code, item.FinancialYear.Name, item.IsCurrent, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<MunicipalityFinancialYearDto>>(true, PagedResponse<MunicipalityFinancialYearDto>.Create(rows, request.Page, request.PageSize, total)));
     }
 
     [HttpPost("municipality-financial-years")]
@@ -104,6 +149,28 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         return Ok(new ApiResponse<ReportingPeriodDto[]>(true, rows));
     }
 
+    [HttpGet("reporting-periods/page")]
+    [Authorize(Policy = "Permission:REPORTING_PERIOD.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<ReportingPeriodDto>>>> GetReportingPeriodsPage([FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearId = null, [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<ReportingPeriodDto>>();
+        if (!PeriodSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<ReportingPeriodDto>("createdAt, code, name, sequence, startDate, endDate, or status");
+        var query = context.ReportingPeriods.AsNoTracking().Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear).AsQueryable();
+        if (municipalityFinancialYearId.HasValue) query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.ReportingPeriodType.HasValue) query = query.Where(item => item.PeriodType == request.ReportingPeriodType.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term) || item.MunicipalityFinancialYear.FinancialYear.Code.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderReportingPeriods(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new ReportingPeriodDto(item.PublicId, item.MunicipalityFinancialYear.PublicId, item.Code, item.Name, item.PeriodType, item.Sequence, item.StartDate, item.EndDate, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<ReportingPeriodDto>>(true, PagedResponse<ReportingPeriodDto>.Create(rows, request.Page, request.PageSize, total)));
+    }
+
     [HttpPost("reporting-periods")]
     [Authorize(Policy = "Permission:REPORTING_PERIOD.CREATE")]
     public async Task<ActionResult<ApiResponse<ReportingPeriodDto>>> CreateReportingPeriod(SaveReportingPeriodRequest request)
@@ -145,6 +212,28 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
             .Select(item => new SdbipLayerDto(item.PublicId, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
                 item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<SdbipLayerDto[]>(true, rows));
+    }
+
+    [HttpGet("sdbip-layers/page")]
+    [Authorize(Policy = "Permission:SDBIP_LAYER.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SdbipLayerDto>>>> GetSdbipLayersPage([FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearId = null, [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<SdbipLayerDto>>();
+        if (!LayerSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<SdbipLayerDto>("createdAt, code, name, displayOrder, financialYear, or status");
+        var query = context.SdbipLayers.AsNoTracking().Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear).AsQueryable();
+        if (municipalityFinancialYearId.HasValue) query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term) || (item.Description != null && item.Description.Contains(term))
+                || item.MunicipalityFinancialYear.FinancialYear.Code.Contains(term));
+        }
+        var total = await query.CountAsync();
+        query = OrderSdbipLayers(query, request.NormalizedSortBy, request.Descending);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item => new SdbipLayerDto(item.PublicId, item.MunicipalityFinancialYear.PublicId,
+            item.MunicipalityFinancialYear.FinancialYear.Code, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<SdbipLayerDto>>(true, PagedResponse<SdbipLayerDto>.Create(rows, request.Page, request.PageSize, total)));
     }
 
     [HttpPost("sdbip-layers")]
@@ -359,6 +448,77 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         });
         return await SaveVersioned(entity, ToDto, "Employee assignment was changed by another user.");
     }
+
+    private ActionResult<ApiResponse<PagedResponse<T>>> InvalidSort<T>(string fields) =>
+        BadRequest(Fail<PagedResponse<T>>($"SortBy must be {fields}."));
+
+    private static IQueryable<FinancialYear> OrderFinancialYears(IQueryable<FinancialYear> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("startdate", false) => query.OrderBy(item => item.StartDate).ThenBy(item => item.Id),
+        ("startdate", true) => query.OrderByDescending(item => item.StartDate).ThenBy(item => item.Id),
+        ("enddate", false) => query.OrderBy(item => item.EndDate).ThenBy(item => item.Id),
+        ("enddate", true) => query.OrderByDescending(item => item.EndDate).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenByDescending(item => item.StartDate).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenByDescending(item => item.StartDate).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<MunicipalityFinancialYear> OrderMunicipalityYears(IQueryable<MunicipalityFinancialYear> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.FinancialYear.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.FinancialYear.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.FinancialYear.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.FinancialYear.Name).ThenBy(item => item.Id),
+        ("startdate", false) => query.OrderBy(item => item.FinancialYear.StartDate).ThenBy(item => item.Id),
+        ("startdate", true) => query.OrderByDescending(item => item.FinancialYear.StartDate).ThenBy(item => item.Id),
+        ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenByDescending(item => item.FinancialYear.StartDate).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenByDescending(item => item.FinancialYear.StartDate).ThenBy(item => item.Id),
+        ("current", false) => query.OrderBy(item => item.IsCurrent).ThenByDescending(item => item.FinancialYear.StartDate).ThenBy(item => item.Id),
+        ("current", true) => query.OrderByDescending(item => item.IsCurrent).ThenByDescending(item => item.FinancialYear.StartDate).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<ReportingPeriod> OrderReportingPeriods(IQueryable<ReportingPeriod> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("sequence", false) => query.OrderBy(item => item.Sequence).ThenBy(item => item.Id),
+        ("sequence", true) => query.OrderByDescending(item => item.Sequence).ThenBy(item => item.Id),
+        ("startdate", false) => query.OrderBy(item => item.StartDate).ThenBy(item => item.Id),
+        ("startdate", true) => query.OrderByDescending(item => item.StartDate).ThenBy(item => item.Id),
+        ("enddate", false) => query.OrderBy(item => item.EndDate).ThenBy(item => item.Id),
+        ("enddate", true) => query.OrderByDescending(item => item.EndDate).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Sequence).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Sequence).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
+
+    private static IQueryable<SdbipLayer> OrderSdbipLayers(IQueryable<SdbipLayer> query, string sortBy, bool descending) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+        ("displayorder", false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("displayorder", true) => query.OrderByDescending(item => item.DisplayOrder).ThenBy(item => item.Code).ThenBy(item => item.Id),
+        ("financialyear", false) => query.OrderBy(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Id),
+        ("financialyear", true) => query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Id),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Id),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Id),
+        (_, false) => query.OrderBy(item => item.Id),
+        _ => query.OrderByDescending(item => item.Id)
+    };
 
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
     private async Task<bool> CanAccessEmployeeEmailAsync(SecurityOperation operation)

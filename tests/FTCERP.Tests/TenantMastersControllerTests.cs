@@ -14,6 +14,83 @@ namespace FTCERP.Tests;
 public sealed class TenantMastersControllerTests
 {
     [Fact]
+    public async Task Calendar_master_pages_filter_before_count_and_stay_tenant_scoped()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        FinancialYear[] years;
+        MunicipalityFinancialYear[] municipalYears;
+        await using (var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true)))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.Municipalities.AddRange(new Municipality { Id = 111, Code = "CAL-A", Name = "Calendar A" }, new Municipality { Id = 112, Code = "CAL-B", Name = "Calendar B" });
+            years = Enumerable.Range(1, 31).Select(index => new FinancialYear
+            {
+                Code = $"FY{index:000}", Name = $"Financial Year {index:000}", StartDate = new DateTime(2000 + index, 7, 1), EndDate = new DateTime(2001 + index, 6, 30), IsActive = index != 30
+            }).ToArray();
+            setup.FinancialYears.AddRange(years);
+            await setup.SaveChangesAsync();
+            municipalYears = years.Select((year, index) => new MunicipalityFinancialYear
+            {
+                MunicipalityId = 111, FinancialYearId = year.Id, FinancialYear = year, EffectiveFrom = year.StartDate, IsCurrent = index == 30, IsActive = index != 29
+            }).ToArray();
+            setup.MunicipalityFinancialYears.AddRange(municipalYears);
+            setup.MunicipalityFinancialYears.Add(new MunicipalityFinancialYear { MunicipalityId = 112, FinancialYearId = years[0].Id, FinancialYear = years[0], EffectiveFrom = years[0].StartDate });
+            await setup.SaveChangesAsync();
+            setup.ReportingPeriods.AddRange(municipalYears.Select((year, index) => new ReportingPeriod
+            {
+                MunicipalityFinancialYearId = year.Id, Code = "Q1", Name = $"Quarter One {index + 1:000}", PeriodType = ReportingPeriodType.Quarter1,
+                Sequence = 1, StartDate = year.FinancialYear.StartDate, EndDate = year.FinancialYear.StartDate.AddMonths(3).AddDays(-1), IsActive = index != 29
+            }));
+            setup.SdbipLayers.AddRange(municipalYears.Select((year, index) => new SdbipLayer
+            {
+                MunicipalityId = 111, MunicipalityFinancialYearId = year.Id, Code = "TOP", Name = $"Top Layer {index + 1:000}", Description = index == 6 ? "Searchable layer" : null,
+                DisplayOrder = index + 1, IsActive = index != 29
+            }));
+            await setup.SaveChangesAsync();
+        }
+
+        var tenant = new TestTenantContext(111, "calendar-reader");
+        await using var context = new ApplicationDbContext(options, tenant);
+        var controller = CreateController(context, tenant);
+        var yearsResult = await controller.GetFinancialYearsPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "Financial Year", SortBy = "code", SortDirection = "asc" });
+        var yearsPage = Assert.IsType<ApiResponse<PagedResponse<FinancialYearDto>>>(Assert.IsType<OkObjectResult>(yearsResult.Result).Value).Data!;
+        Assert.Equal(31, yearsPage.TotalCount);
+        Assert.Equal("FY011", yearsPage.Items[0].Code);
+
+        var municipalResult = await controller.GetMunicipalityFinancialYearsPage(new PagedQueryRequest { PageSize = 10, Search = "Financial Year", SortBy = "startDate", SortDirection = "desc" });
+        var municipalPage = Assert.IsType<ApiResponse<PagedResponse<MunicipalityFinancialYearDto>>>(Assert.IsType<OkObjectResult>(municipalResult.Result).Value).Data!;
+        Assert.Equal(31, municipalPage.TotalCount);
+        Assert.Equal("FY031", municipalPage.Items[0].Code);
+        var inactiveMunicipal = await controller.GetMunicipalityFinancialYearsPage(new PagedQueryRequest { SortBy = "code", SortDirection = "asc" }, false);
+        Assert.Equal(1, Assert.IsType<ApiResponse<PagedResponse<MunicipalityFinancialYearDto>>>(Assert.IsType<OkObjectResult>(inactiveMunicipal.Result).Value).Data!.TotalCount);
+
+        var periodResult = await controller.GetReportingPeriodsPage(new PagedQueryRequest { Search = "Quarter One", SortBy = "startDate", SortDirection = "desc", ReportingPeriodType = ReportingPeriodType.Quarter1 }, municipalYears[6].PublicId, true);
+        var periodPage = Assert.IsType<ApiResponse<PagedResponse<ReportingPeriodDto>>>(Assert.IsType<OkObjectResult>(periodResult.Result).Value).Data!;
+        Assert.Equal(1, periodPage.TotalCount);
+        Assert.Equal(years[6].StartDate, Assert.Single(periodPage.Items).StartDate);
+        var layerResult = await controller.GetSdbipLayersPage(new PagedQueryRequest { Search = "Searchable", SortBy = "displayOrder", SortDirection = "asc" });
+        var layerPage = Assert.IsType<ApiResponse<PagedResponse<SdbipLayerDto>>>(Assert.IsType<OkObjectResult>(layerResult.Result).Value).Data!;
+        Assert.Equal(1, layerPage.TotalCount);
+        Assert.Equal("Top Layer 007", Assert.Single(layerPage.Items).Name);
+    }
+
+    [Fact]
+    public async Task Calendar_master_pages_reject_unknown_sorts()
+    {
+        var tenant = new TestTenantContext(113, "calendar-reader");
+        await using var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, tenant);
+        var controller = CreateController(context, tenant);
+        var request = new PagedQueryRequest { SortBy = "unsafe" };
+
+        Assert.IsType<BadRequestObjectResult>((await controller.GetFinancialYearsPage(request)).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetMunicipalityFinancialYearsPage(request)).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetReportingPeriodsPage(request)).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetSdbipLayersPage(request)).Result);
+    }
+
+    [Fact]
     public async Task EmployeeEmail_member_permission_redacts_reads_and_rejects_direct_updates()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

@@ -3,6 +3,7 @@ import { TenantCalendarAdministration } from './TenantCalendarAdministration';
 
 const api = vi.hoisted(() => ({
   getFinancialYearMasters: vi.fn(), getMunicipalityFinancialYearMasters: vi.fn(), getReportingPeriodMasters: vi.fn(),
+  getMunicipalityFinancialYearMastersPage: vi.fn(), getReportingPeriodMastersPage: vi.fn(), getSdbipLayerMastersPage: vi.fn(),
   createFinancialYearMaster: vi.fn(), createMunicipalityFinancialYearMaster: vi.fn(), createReportingPeriodMaster: vi.fn(), updateMunicipalityFinancialYearMaster: vi.fn(),
   getSdbipLayerMasters: vi.fn(), createSdbipLayerMaster: vi.fn(), updateSdbipLayerMaster: vi.fn(),
 }));
@@ -15,8 +16,9 @@ describe('TenantCalendarAdministration', () => {
   beforeEach(() => {
     api.getFinancialYearMasters.mockResolvedValue({ success: true, data: [{ publicId: 'fy-1', code: '2026/27', name: '2026/27', startDate: '2026-07-01T00:00:00Z', endDate: '2027-06-30T00:00:00Z', isActive: true, rowVersion: 'AQ==' }] });
     api.getMunicipalityFinancialYearMasters.mockResolvedValue({ success: true, data: [{ publicId: 'mfy-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: false, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }] });
-    api.getReportingPeriodMasters.mockResolvedValue({ success: true, data: [] });
-    api.getSdbipLayerMasters.mockResolvedValue({ success: true, data: [] });
+    api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'mfy-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: false, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 27, totalPages: 2 } });
+    api.getReportingPeriodMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getSdbipLayerMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.createReportingPeriodMaster.mockResolvedValue({ success: true, data: {} });
     api.createSdbipLayerMaster.mockResolvedValue({ success: true, data: {} });
     api.updateMunicipalityFinancialYearMaster.mockResolvedValue({ success: true, data: {} });
@@ -42,5 +44,16 @@ describe('TenantCalendarAdministration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Make current' }));
     await waitFor(() => expect(api.updateMunicipalityFinancialYearMaster).toHaveBeenCalledWith('mfy-1', expect.objectContaining({ isCurrent: true, rowVersion: 'Ag==' })));
 
+  });
+
+  it('searches, filters, sorts, and pages calendar registers on the server', async () => {
+    render(<TenantCalendarAdministration />);
+    expect(await screen.findByText('27')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search municipality years'), { target: { value: '2026' } });
+    fireEvent.change(screen.getByLabelText('municipality years status'), { target: { value: 'active' } });
+    fireEvent.change(screen.getByLabelText('Sort municipality years'), { target: { value: 'current:desc' } });
+    await waitFor(() => expect(api.getMunicipalityFinancialYearMastersPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: '2026', active: true, sortBy: 'current', sortDirection: 'desc' })));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next' })[0]);
+    await waitFor(() => expect(api.getMunicipalityFinancialYearMastersPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })));
   });
 });
