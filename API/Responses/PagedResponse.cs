@@ -22,3 +22,10 @@ public sealed record PerformanceTargetOptionResponse(
     int? DepartmentId,
     string? DepartmentName,
     Guid? RelatedOpmsTargetPublicId = null);
+
+public sealed record TargetLibraryFacetsResponse(
+    string[] PrimaryAreas,
+    string[] FunctionalAreas,
+    string[] Classifications,
+    string[] TargetUnitTypes,
+    int[] Versions);

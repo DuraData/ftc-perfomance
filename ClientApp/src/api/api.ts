@@ -1,6 +1,7 @@
 import type {
   ApiResponse,
   PagedResult,
+  TargetLibraryFacets,
   PerformanceTargetOptionDto,
   AuditTrailEntryDto,
   LoginRequest,
@@ -1793,60 +1794,98 @@ export async function simulateAccess(payload: {
 }
 
 export async function getOpmsTargetTemplates(): Promise<ApiResponse<OpmsTargetTemplate[]>> {
-  const response = await get<OpmsTargetTemplateDto[]>('/opms-target-library');
+  const response = await get<OpmsTargetTemplateDto[]>('/v1/opms-target-library');
   return mapResponse(response, items => items.map(toOpmsTemplateModel));
 }
 
+export type TargetLibraryPageQuery = RegisterPageQuery & {
+  status?: 'all' | 'active' | 'archived';
+  primaryArea?: string;
+  functionalArea?: string;
+  classification?: string;
+  targetUnitType?: string;
+  version?: number;
+};
+
+function targetLibraryPageQuery(query: TargetLibraryPageQuery) {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.status) parameters.set('status', query.status);
+  if (query.primaryArea) parameters.set('primaryArea', query.primaryArea);
+  if (query.functionalArea) parameters.set('functionalArea', query.functionalArea);
+  if (query.classification) parameters.set('classification', query.classification);
+  if (query.targetUnitType) parameters.set('targetUnitType', query.targetUnitType);
+  if (query.version) parameters.set('version', String(query.version));
+  return `?${parameters.toString()}`;
+}
+
+export async function getOpmsTargetTemplatesPage(query: TargetLibraryPageQuery = {}): Promise<ApiResponse<PagedResult<OpmsTargetTemplate>>> {
+  const response = await get<PagedResult<OpmsTargetTemplateDto>>(`/v1/opms-target-library/page${targetLibraryPageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(toOpmsTemplateModel) }));
+}
+
+export async function getOpmsTargetTemplateFacets(): Promise<ApiResponse<TargetLibraryFacets>> {
+  return get<TargetLibraryFacets>('/v1/opms-target-library/facets');
+}
+
 export async function getOpmsTargetTemplate(id: string | number): Promise<ApiResponse<OpmsTargetTemplate>> {
-  const response = await get<OpmsTargetTemplateDto>(`/opms-target-library/${id}`);
+  const response = await get<OpmsTargetTemplateDto>(`/v1/opms-target-library/${id}`);
   return mapResponse(response, toOpmsTemplateModel);
 }
 
 export async function createOpmsTargetTemplate(payload: SaveOpmsTargetTemplatePayload): Promise<ApiResponse<OpmsTargetTemplate>> {
-  const response = await post<OpmsTargetTemplateDto>('/opms-target-library', toOpmsTemplatePayload(payload));
+  const response = await post<OpmsTargetTemplateDto>('/v1/opms-target-library', toOpmsTemplatePayload(payload));
   return mapResponse(response, toOpmsTemplateModel);
 }
 
 export async function updateOpmsTargetTemplate(id: string | number, payload: SaveOpmsTargetTemplatePayload): Promise<ApiResponse<OpmsTargetTemplate>> {
-  const response = await put<OpmsTargetTemplateDto>(`/opms-target-library/${id}`, toOpmsTemplatePayload(payload));
+  const response = await put<OpmsTargetTemplateDto>(`/v1/opms-target-library/${id}`, toOpmsTemplatePayload(payload));
   return mapResponse(response, toOpmsTemplateModel);
 }
 
 export async function archiveOpmsTargetTemplate(id: string | number): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/opms-target-library/${id}`);
+  return del<boolean>(`/v1/opms-target-library/${id}`);
 }
 
 export async function duplicateOpmsTargetTemplate(id: string | number): Promise<ApiResponse<OpmsTargetTemplate>> {
-  const response = await post<OpmsTargetTemplateDto>(`/opms-target-library/${id}/duplicate`);
+  const response = await post<OpmsTargetTemplateDto>(`/v1/opms-target-library/${id}/duplicate`);
   return mapResponse(response, toOpmsTemplateModel);
 }
 
 export async function getIpmsTargetTemplates(): Promise<ApiResponse<IpmsTargetTemplate[]>> {
-  const response = await get<IpmsTargetTemplateDto[]>('/ipms-target-library');
+  const response = await get<IpmsTargetTemplateDto[]>('/v1/ipms-target-library');
   return mapResponse(response, items => items.map(toIpmsTemplateModel));
 }
 
+export async function getIpmsTargetTemplatesPage(query: TargetLibraryPageQuery = {}): Promise<ApiResponse<PagedResult<IpmsTargetTemplate>>> {
+  const response = await get<PagedResult<IpmsTargetTemplateDto>>(`/v1/ipms-target-library/page${targetLibraryPageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(toIpmsTemplateModel) }));
+}
+
+export async function getIpmsTargetTemplateFacets(): Promise<ApiResponse<TargetLibraryFacets>> {
+  return get<TargetLibraryFacets>('/v1/ipms-target-library/facets');
+}
+
 export async function getIpmsTargetTemplate(id: string | number): Promise<ApiResponse<IpmsTargetTemplate>> {
-  const response = await get<IpmsTargetTemplateDto>(`/ipms-target-library/${id}`);
+  const response = await get<IpmsTargetTemplateDto>(`/v1/ipms-target-library/${id}`);
   return mapResponse(response, toIpmsTemplateModel);
 }
 
 export async function createIpmsTargetTemplate(payload: SaveIpmsTargetTemplatePayload): Promise<ApiResponse<IpmsTargetTemplate>> {
-  const response = await post<IpmsTargetTemplateDto>('/ipms-target-library', toIpmsTemplatePayload(payload));
+  const response = await post<IpmsTargetTemplateDto>('/v1/ipms-target-library', toIpmsTemplatePayload(payload));
   return mapResponse(response, toIpmsTemplateModel);
 }
 
 export async function updateIpmsTargetTemplate(id: string | number, payload: SaveIpmsTargetTemplatePayload): Promise<ApiResponse<IpmsTargetTemplate>> {
-  const response = await put<IpmsTargetTemplateDto>(`/ipms-target-library/${id}`, toIpmsTemplatePayload(payload));
+  const response = await put<IpmsTargetTemplateDto>(`/v1/ipms-target-library/${id}`, toIpmsTemplatePayload(payload));
   return mapResponse(response, toIpmsTemplateModel);
 }
 
 export async function archiveIpmsTargetTemplate(id: string | number): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/ipms-target-library/${id}`);
+  return del<boolean>(`/v1/ipms-target-library/${id}`);
 }
 
 export async function duplicateIpmsTargetTemplate(id: string | number): Promise<ApiResponse<IpmsTargetTemplate>> {
-  const response = await post<IpmsTargetTemplateDto>(`/ipms-target-library/${id}/duplicate`);
+  const response = await post<IpmsTargetTemplateDto>(`/v1/ipms-target-library/${id}/duplicate`);
   return mapResponse(response, toIpmsTemplateModel);
 }
 

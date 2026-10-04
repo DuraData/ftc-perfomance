@@ -1269,6 +1269,14 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface TargetLibraryFacets {
+  primaryAreas: string[];
+  functionalAreas: string[];
+  classifications: string[];
+  targetUnitTypes: string[];
+  versions: number[];
+}
+
 export interface PerformanceTargetOptionDto {
   id: string;
   publicId: string;

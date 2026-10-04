@@ -13,6 +13,7 @@ namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
 [Route("api/opms-target-library")]
+[Route("api/v1/opms-target-library")]
 [Authorize]
 public class OpmsTargetLibraryController : ControllerBase
 {
@@ -44,9 +45,70 @@ public class OpmsTargetLibraryController : ControllerBase
         var templates = await _context.OpmsTargetTemplates
             .AsNoTracking()
             .OrderByDescending(item => item.CreatedDate)
+            .ThenByDescending(item => item.Id)
+            .Take(100)
             .ToArrayAsync();
 
         return Ok(new ApiResponse<OpmsTargetTemplateResponse[]>(true, templates.Select(item => item.ToResponse()).ToArray()));
+    }
+
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>>> GetTemplatesPage(
+        [FromQuery] PagedQueryRequest page,
+        [FromQuery] TargetLibraryFilterRequest filter)
+    {
+        if (page.NormalizedSortBy is not ("createdat" or "templatecode" or "templatename" or "targetname" or "version"))
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>(false, null,
+                "SortBy must be createdAt, templateCode, templateName, targetName, or version."));
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>(false, null, "User not found"));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.View");
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
+            new ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>(false, null, decision.Reason));
+
+        var query = ApplyFilters(_context.OpmsTargetTemplates.AsNoTracking(), page, filter);
+        var totalCount = await query.CountAsync();
+        query = (page.NormalizedSortBy, page.Descending) switch
+        {
+            ("templatecode", false) => query.OrderBy(item => item.TemplateCode).ThenBy(item => item.Id),
+            ("templatecode", true) => query.OrderByDescending(item => item.TemplateCode).ThenByDescending(item => item.Id),
+            ("templatename", false) => query.OrderBy(item => item.TemplateName).ThenBy(item => item.Id),
+            ("templatename", true) => query.OrderByDescending(item => item.TemplateName).ThenByDescending(item => item.Id),
+            ("targetname", false) => query.OrderBy(item => item.TargetName).ThenBy(item => item.Id),
+            ("targetname", true) => query.OrderByDescending(item => item.TargetName).ThenByDescending(item => item.Id),
+            ("version", false) => query.OrderBy(item => item.Version).ThenBy(item => item.TemplateCode).ThenBy(item => item.Id),
+            ("version", true) => query.OrderByDescending(item => item.Version).ThenBy(item => item.TemplateCode).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedDate).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedDate).ThenByDescending(item => item.Id)
+        };
+        var templates = await query.Skip(page.Offset).Take(page.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>(true,
+            PagedResponse<OpmsTargetTemplateResponse>.Create(templates.Select(item => item.ToResponse()), page.Page, page.PageSize, totalCount)));
+    }
+
+    [HttpGet("facets")]
+    public async Task<ActionResult<ApiResponse<TargetLibraryFacetsResponse>>> GetTemplateFacets()
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<TargetLibraryFacetsResponse>(false, null, "User not found"));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.View");
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
+            new ApiResponse<TargetLibraryFacetsResponse>(false, null, decision.Reason));
+
+        var query = _context.OpmsTargetTemplates.AsNoTracking();
+        var national = await query.Where(item => item.NationalKpa != null && item.NationalKpa != "")
+            .Select(item => item.NationalKpa!).Distinct().OrderBy(item => item).Take(100).ToArrayAsync();
+        var municipal = await query.Where(item => item.MunicipalKpa != null && item.MunicipalKpa != "")
+            .Select(item => item.MunicipalKpa!).Distinct().OrderBy(item => item).Take(100).ToArrayAsync();
+        var functionalAreas = await query.Where(item => item.FunctionalArea != null && item.FunctionalArea != "")
+            .Select(item => item.FunctionalArea!).Distinct().OrderBy(item => item).Take(100).ToArrayAsync();
+        var classifications = await query.Where(item => item.KpiType != null && item.KpiType != "")
+            .Select(item => item.KpiType!).Distinct().OrderBy(item => item).Take(100).ToArrayAsync();
+        var unitTypes = await query.Select(item => item.TargetUnitType).Distinct().OrderBy(item => item).Take(100).ToArrayAsync();
+        var versions = await query.Select(item => item.Version).Distinct().OrderByDescending(item => item).Take(100).ToArrayAsync();
+        return Ok(new ApiResponse<TargetLibraryFacetsResponse>(true, new(
+            national.Concat(municipal).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item).Take(100).ToArray(),
+            functionalAreas, classifications, unitTypes, versions)));
     }
 
     [HttpGet("{id:int}")]
@@ -220,6 +282,47 @@ public class OpmsTargetLibraryController : ControllerBase
         entity.IsArchived = !request.IsActive;
         entity.CreatedBy ??= actor;
         return entity;
+    }
+
+    private static IQueryable<OpmsTargetTemplate> ApplyFilters(
+        IQueryable<OpmsTargetTemplate> query,
+        PagedQueryRequest page,
+        TargetLibraryFilterRequest filter)
+    {
+        if (page.NormalizedSearch.Length > 0)
+        {
+            var search = page.NormalizedSearch;
+            query = query.Where(item => item.TemplateCode.Contains(search) || item.TemplateName.Contains(search)
+                || item.TargetName.Contains(search) || item.KpiDescription.Contains(search));
+        }
+        query = filter.NormalizedStatus switch
+        {
+            "active" => query.Where(item => item.IsActive && !item.IsArchived),
+            "archived" => query.Where(item => item.IsArchived),
+            _ => query
+        };
+        if (filter.NormalizedPrimaryArea.Length > 0)
+        {
+            var value = filter.NormalizedPrimaryArea;
+            query = query.Where(item => item.NationalKpa == value || item.MunicipalKpa == value);
+        }
+        if (filter.NormalizedFunctionalArea.Length > 0)
+        {
+            var value = filter.NormalizedFunctionalArea;
+            query = query.Where(item => item.FunctionalArea == value);
+        }
+        if (filter.NormalizedClassification.Length > 0)
+        {
+            var value = filter.NormalizedClassification;
+            query = query.Where(item => item.KpiType == value);
+        }
+        if (filter.NormalizedTargetUnitType.Length > 0)
+        {
+            var value = filter.NormalizedTargetUnitType;
+            query = query.Where(item => item.TargetUnitType == value);
+        }
+        if (filter.Version.HasValue) query = query.Where(item => item.Version == filter.Version.Value);
+        return query;
     }
 
     private async Task AddVersionAsync(OpmsTargetTemplate template, string actor)

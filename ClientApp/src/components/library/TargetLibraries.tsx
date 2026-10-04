@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
@@ -25,10 +25,12 @@ import {
   createOpmsTargetTemplate as createOpmsTargetTemplateApi,
   duplicateIpmsTargetTemplate as duplicateIpmsTargetTemplateApi,
   duplicateOpmsTargetTemplate as duplicateOpmsTargetTemplateApi,
+  getIpmsTargetTemplateFacets as getIpmsTargetTemplateFacetsApi,
   getIpmsTargetTemplate as getIpmsTargetTemplateApi,
-  getIpmsTargetTemplates as getIpmsTargetTemplatesApi,
+  getIpmsTargetTemplatesPage as getIpmsTargetTemplatesPageApi,
+  getOpmsTargetTemplateFacets as getOpmsTargetTemplateFacetsApi,
   getOpmsTargetTemplate as getOpmsTargetTemplateApi,
-  getOpmsTargetTemplates as getOpmsTargetTemplatesApi,
+  getOpmsTargetTemplatesPage as getOpmsTargetTemplatesPageApi,
   updateIpmsTargetTemplate as updateIpmsTargetTemplateApi,
   updateOpmsTargetTemplate as updateOpmsTargetTemplateApi,
 } from '../../api/api';
@@ -41,9 +43,18 @@ import type {
   TargetUnitType,
   TemplateQuarterlyTarget,
   PerformanceLookupsDto,
+  TargetLibraryFacets,
 } from '../../types';
 
 type LibraryStatusFilter = 'all' | 'active' | 'archived';
+
+const emptyLibraryFacets: TargetLibraryFacets = {
+  primaryAreas: [],
+  functionalAreas: [],
+  classifications: [],
+  targetUnitTypes: [],
+  versions: [],
+};
 
 const targetUnitTypes: { value: TargetUnitType; label: string }[] = [
   { value: 'percentage', label: 'Percentage' },
@@ -109,6 +120,10 @@ function LibraryFilters({
   version,
   versionOptions,
   onVersionChange,
+  sortBy,
+  onSortByChange,
+  sortDirection,
+  onSortDirectionChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -129,6 +144,10 @@ function LibraryFilters({
   version: string;
   versionOptions: number[];
   onVersionChange: (value: string) => void;
+  sortBy: string;
+  onSortByChange: (value: string) => void;
+  sortDirection: 'asc' | 'desc';
+  onSortDirectionChange: (value: 'asc' | 'desc') => void;
 }) {
   return (
     <Card>
@@ -183,7 +202,45 @@ function LibraryFilters({
           />
         </div>
       </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:max-w-xl">
+        <Select
+          label="Sort templates"
+          value={sortBy}
+          onChange={(event) => onSortByChange(event.target.value)}
+          options={[
+            { value: 'createdAt', label: 'Created date' },
+            { value: 'templateCode', label: 'Template code' },
+            { value: 'templateName', label: 'Template name' },
+            { value: 'targetName', label: 'Target name' },
+            { value: 'version', label: 'Version' },
+          ]}
+        />
+        <Select
+          label="Sort direction"
+          value={sortDirection}
+          onChange={(event) => onSortDirectionChange(event.target.value as 'asc' | 'desc')}
+          options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]}
+        />
+      </div>
     </Card>
+  );
+}
+
+function LibraryPagination({ label, page, totalPages, onPageChange }: {
+  label: string;
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between text-xs text-secondary-500">
+      <span>{label} page {page} of {totalPages}</span>
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>Previous</Button>
+        <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>Next</Button>
+      </div>
+    </div>
   );
 }
 
@@ -304,49 +361,52 @@ function OpmsTemplateSelectionModal({
   onCreateMultiple: (templates: OpmsTargetTemplate[]) => void;
 }) {
   const [templates, setTemplates] = useState<OpmsTargetTemplate[]>([]);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [selectedTemplates, setSelectedTemplates] = useState<OpmsTargetTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const availableTemplates = useMemo(
-    () =>
-      templates.filter(template =>
-        template.isActive &&
-        !template.isArchived &&
-        `${template.templateCode} ${template.templateName} ${template.targetName} ${template.kpiDescription}`
-          .toLowerCase()
-          .includes(search.toLowerCase()),
-      ),
-    [templates, search],
-  );
+  const selectedIds = selectedTemplates.map(template => template.id);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     if (!isOpen) {
-      setSelectedIds([]);
+      setSelectedTemplates([]);
       return;
     }
 
     const loadTemplates = async () => {
       setIsLoading(true);
-      const result = await getOpmsTargetTemplatesApi();
+      const result = await getOpmsTargetTemplatesPageApi({ page, pageSize: 25, search, status: 'active', sortBy: 'templateName', sortDirection: 'asc' });
       if (result.success && result.data) {
-        setTemplates(result.data);
+        setTemplates(result.data.items);
+        setTotalCount(result.data.totalCount);
+        setTotalPages(result.data.totalPages);
       }
       setIsLoading(false);
     };
 
     void loadTemplates();
-  }, [isOpen]);
+  }, [isOpen, page, search]);
 
   const toggleSelected = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+    const template = templates.find(item => item.id === id);
+    if (!template) return;
+    setSelectedTemplates(prev => prev.some(item => item.id === id) ? prev.filter(item => item.id !== id) : [...prev, template]);
   };
 
   const toggleAll = () => {
-    setSelectedIds(prev => (
-      prev.length === availableTemplates.length
-        ? []
-        : availableTemplates.map(template => template.id)
-    ));
+    setSelectedTemplates(prev => {
+      const everyCurrentSelected = templates.length > 0 && templates.every(template => prev.some(item => item.id === template.id));
+      if (everyCurrentSelected) return prev.filter(item => !templates.some(template => template.id === item.id));
+      return [...prev.filter(item => !templates.some(template => template.id === item.id)), ...templates];
+    });
   };
 
   return (
@@ -355,17 +415,17 @@ function OpmsTemplateSelectionModal({
         <Input
           label="Search Template"
           placeholder="Search OPMS templates..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
           leftIcon={<Search className="h-3.5 w-3.5" />}
         />
         <div className="flex items-center justify-between gap-3">
-          <Badge variant="primary">{selectedIds.length} selected</Badge>
+          <div className="flex gap-2"><Badge variant="primary">{selectedIds.length} selected</Badge><Badge variant="default">{totalCount} templates</Badge></div>
           <Button
             variant="primary"
             disabled={selectedIds.length === 0}
             onClick={() => {
-              onCreateMultiple(availableTemplates.filter(template => selectedIds.includes(template.id)));
+              onCreateMultiple(selectedTemplates);
               onClose();
             }}
           >
@@ -373,7 +433,7 @@ function OpmsTemplateSelectionModal({
           </Button>
         </div>
         <TemplateListTable
-          items={availableTemplates}
+          items={templates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
           onToggleRow={toggleSelected}
@@ -427,7 +487,8 @@ function OpmsTemplateSelectionModal({
             },
           ]}
         />
-        {!isLoading && availableTemplates.length === 0 && (
+        <LibraryPagination label="OPMS templates" page={page} totalPages={totalPages} onPageChange={setPage} />
+        {!isLoading && templates.length === 0 && (
           <EmptyState
             icon={<Library className="h-5 w-5" />}
             title="No active OPMS templates"
@@ -451,49 +512,52 @@ function IpmsTemplateSelectionModal({
   onCreateMultiple: (templates: IpmsTargetTemplate[]) => void;
 }) {
   const [templates, setTemplates] = useState<IpmsTargetTemplate[]>([]);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [selectedTemplates, setSelectedTemplates] = useState<IpmsTargetTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const availableTemplates = useMemo(
-    () =>
-      templates.filter(template =>
-        template.isActive &&
-        !template.isArchived &&
-        `${template.templateCode} ${template.templateName} ${template.targetName} ${template.kpiDescription}`
-          .toLowerCase()
-          .includes(search.toLowerCase()),
-      ),
-    [templates, search],
-  );
+  const selectedIds = selectedTemplates.map(template => template.id);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     if (!isOpen) {
-      setSelectedIds([]);
+      setSelectedTemplates([]);
       return;
     }
 
     const loadTemplates = async () => {
       setIsLoading(true);
-      const result = await getIpmsTargetTemplatesApi();
+      const result = await getIpmsTargetTemplatesPageApi({ page, pageSize: 25, search, status: 'active', sortBy: 'templateName', sortDirection: 'asc' });
       if (result.success && result.data) {
-        setTemplates(result.data);
+        setTemplates(result.data.items);
+        setTotalCount(result.data.totalCount);
+        setTotalPages(result.data.totalPages);
       }
       setIsLoading(false);
     };
 
     void loadTemplates();
-  }, [isOpen]);
+  }, [isOpen, page, search]);
 
   const toggleSelected = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+    const template = templates.find(item => item.id === id);
+    if (!template) return;
+    setSelectedTemplates(prev => prev.some(item => item.id === id) ? prev.filter(item => item.id !== id) : [...prev, template]);
   };
 
   const toggleAll = () => {
-    setSelectedIds(prev => (
-      prev.length === availableTemplates.length
-        ? []
-        : availableTemplates.map(template => template.id)
-    ));
+    setSelectedTemplates(prev => {
+      const everyCurrentSelected = templates.length > 0 && templates.every(template => prev.some(item => item.id === template.id));
+      if (everyCurrentSelected) return prev.filter(item => !templates.some(template => template.id === item.id));
+      return [...prev.filter(item => !templates.some(template => template.id === item.id)), ...templates];
+    });
   };
 
   return (
@@ -502,17 +566,17 @@ function IpmsTemplateSelectionModal({
         <Input
           label="Search Template"
           placeholder="Search IPMS templates..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
           leftIcon={<Search className="h-3.5 w-3.5" />}
         />
         <div className="flex items-center justify-between gap-3">
-          <Badge variant="primary">{selectedIds.length} selected</Badge>
+          <div className="flex gap-2"><Badge variant="primary">{selectedIds.length} selected</Badge><Badge variant="default">{totalCount} templates</Badge></div>
           <Button
             variant="primary"
             disabled={selectedIds.length === 0}
             onClick={() => {
-              onCreateMultiple(availableTemplates.filter(template => selectedIds.includes(template.id)));
+              onCreateMultiple(selectedTemplates);
               onClose();
             }}
           >
@@ -520,7 +584,7 @@ function IpmsTemplateSelectionModal({
           </Button>
         </div>
         <TemplateListTable
-          items={availableTemplates}
+          items={templates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
           onToggleRow={toggleSelected}
@@ -574,7 +638,8 @@ function IpmsTemplateSelectionModal({
             },
           ]}
         />
-        {!isLoading && availableTemplates.length === 0 && (
+        <LibraryPagination label="IPMS templates" page={page} totalPages={totalPages} onPageChange={setPage} />
+        {!isLoading && templates.length === 0 && (
           <EmptyState
             icon={<Library className="h-5 w-5" />}
             title="No active IPMS templates"
@@ -881,6 +946,7 @@ export function OPMSTargetLibraryList() {
   const { pushToast, setCurrentPath } = useApp();
   const [opmsTargetTemplates, setOpmsTargetTemplates] = useState<OpmsTargetTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<LibraryStatusFilter>('all');
   const [kpa, setKpa] = useState('');
@@ -889,57 +955,55 @@ export function OPMSTargetLibraryList() {
   const [targetUnitType, setTargetUnitType] = useState('');
   const [version, setVersion] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [facets, setFacets] = useState<TargetLibraryFacets>(emptyLibraryFacets);
 
   const loadTemplates = useCallback(async () => {
     setIsLoading(true);
-    const result = await getOpmsTargetTemplatesApi();
+    const result = await getOpmsTargetTemplatesPageApi({
+      page, pageSize: 25, search, status, primaryArea: kpa, functionalArea: departmentOrFunctionalArea,
+      classification: kpiType, targetUnitType, version: version ? Number(version) : undefined, sortBy, sortDirection,
+    });
     if (result.success && result.data) {
-      setOpmsTargetTemplates(result.data);
+      setOpmsTargetTemplates(result.data.items);
+      setTotalCount(result.data.totalCount);
+      setTotalPages(result.data.totalPages);
+      setSelectedIds([]);
+      if (result.data.items.length === 0 && page > 1) setPage(value => Math.max(1, value - 1));
     } else {
       pushToast('error', result.message ?? 'Failed to load OPMS target library');
     }
     setIsLoading(false);
-  }, [pushToast]);
+  }, [departmentOrFunctionalArea, kpa, kpiType, page, pushToast, search, sortBy, sortDirection, status, targetUnitType, version]);
 
   useEffect(() => {
     void loadTemplates();
   }, [loadTemplates]);
 
-  const filteredTemplates = useMemo(
-    () =>
-      opmsTargetTemplates.filter(template => {
-        const matchesSearch = `${template.templateCode} ${template.templateName} ${template.targetName} ${template.kpiDescription}`
-          .toLowerCase()
-          .includes(search.toLowerCase());
-        const matchesStatus =
-          status === 'all' ||
-          (status === 'active' && template.isActive && !template.isArchived) ||
-          (status === 'archived' && !!template.isArchived);
-        const matchesKpa = !kpa || template.nationalKPA === kpa || template.municipalKPA === kpa;
-        const matchesDepartmentOrArea =
-          !departmentOrFunctionalArea ||
-          template.department?.name === departmentOrFunctionalArea ||
-          template.functionalArea === departmentOrFunctionalArea;
-        const matchesKpiType = !kpiType || template.kpiType === kpiType;
-        const matchesUnitType = !targetUnitType || template.targetUnitType === targetUnitType;
-        const matchesVersion = !version || String(template.version) === version;
-        return matchesSearch && matchesStatus && matchesKpa && matchesDepartmentOrArea && matchesKpiType && matchesUnitType && matchesVersion;
-      }),
-    [departmentOrFunctionalArea, kpa, kpiType, opmsTargetTemplates, search, status, targetUnitType, version],
-  );
+  useEffect(() => {
+    void getOpmsTargetTemplateFacetsApi().then(result => {
+      if (result.success && result.data) setFacets(result.data);
+      else pushToast('error', result.message ?? 'Failed to load OPMS target library filters');
+    });
+  }, [pushToast]);
 
-  const kpaOptions = Array.from(new Set(opmsTargetTemplates.flatMap(template => [template.nationalKPA, template.municipalKPA]).filter(Boolean))).sort();
-  const departmentOptions = Array.from(new Set(opmsTargetTemplates.flatMap(template => [template.department?.name, template.functionalArea]).filter(Boolean) as string[])).sort();
-  const kpiTypeOptions = Array.from(new Set(opmsTargetTemplates.map(template => template.kpiType).filter(Boolean))).sort();
-  const versionOptions = Array.from(new Set(opmsTargetTemplates.map(template => template.version))).sort((a, b) => b - a);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
   const toggleSelected = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
   };
   const toggleAll = () => {
     setSelectedIds(prev => (
-      prev.length === filteredTemplates.length
+      prev.length === opmsTargetTemplates.length
         ? []
-        : filteredTemplates.map(template => template.id)
+        : opmsTargetTemplates.map(template => template.id)
     ));
   };
 
@@ -957,12 +1021,12 @@ export function OPMSTargetLibraryList() {
     <AppShell title="OPMS Target Library" subtitle="Reusable generic OPMS target templates used to create live OPMS targets">
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-3">
-          <Badge variant="primary">{filteredTemplates.length} templates</Badge>
+          <Badge variant="primary">{totalCount} templates</Badge>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               disabled={selectedIds.length === 0}
-              onClick={() => { void createSelectedTargets(filteredTemplates.filter(template => selectedIds.includes(template.id))); }}
+              onClick={() => { void createSelectedTargets(opmsTargetTemplates.filter(template => selectedIds.includes(template.id))); }}
             >
               Create Selected OPMS Targets
             </Button>
@@ -973,29 +1037,33 @@ export function OPMSTargetLibraryList() {
         </div>
 
         <LibraryFilters
-          search={search}
-          onSearchChange={setSearch}
+          search={searchInput}
+          onSearchChange={setSearchInput}
           status={status}
-          onStatusChange={setStatus}
+          onStatusChange={value => { setStatus(value); setPage(1); }}
           areaValue={kpa}
           areaLabel="KPA"
-          areaOptions={kpaOptions}
-          onAreaChange={setKpa}
+          areaOptions={facets.primaryAreas}
+          onAreaChange={value => { setKpa(value); setPage(1); }}
           departmentOrFunctionalArea={departmentOrFunctionalArea}
-          departmentOptions={departmentOptions}
-          onDepartmentOrFunctionalAreaChange={setDepartmentOrFunctionalArea}
+          departmentOptions={facets.functionalAreas}
+          onDepartmentOrFunctionalAreaChange={value => { setDepartmentOrFunctionalArea(value); setPage(1); }}
           kpiType={kpiType}
-          kpiTypeOptions={kpiTypeOptions}
-          onKpiTypeChange={setKpiType}
+          kpiTypeOptions={facets.classifications}
+          onKpiTypeChange={value => { setKpiType(value); setPage(1); }}
           targetUnitType={targetUnitType}
-          onTargetUnitTypeChange={setTargetUnitType}
+          onTargetUnitTypeChange={value => { setTargetUnitType(value); setPage(1); }}
           version={version}
-          versionOptions={versionOptions}
-          onVersionChange={setVersion}
+          versionOptions={facets.versions}
+          onVersionChange={value => { setVersion(value); setPage(1); }}
+          sortBy={sortBy}
+          onSortByChange={value => { setSortBy(value); setPage(1); }}
+          sortDirection={sortDirection}
+          onSortDirectionChange={value => { setSortDirection(value); setPage(1); }}
         />
 
         <TemplateListTable
-          items={filteredTemplates}
+          items={opmsTargetTemplates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
           onToggleRow={toggleSelected}
@@ -1101,7 +1169,9 @@ export function OPMSTargetLibraryList() {
           ]}
         />
 
-        {!isLoading && filteredTemplates.length === 0 && (
+        <LibraryPagination label="OPMS templates" page={page} totalPages={totalPages} onPageChange={setPage} />
+
+        {!isLoading && opmsTargetTemplates.length === 0 && (
           <EmptyState
             icon={<Library className="h-6 w-6" />}
             title="No OPMS templates found"
@@ -1511,6 +1581,7 @@ export function IPMSTargetLibraryList() {
   const { pushToast, setCurrentPath } = useApp();
   const [ipmsTargetTemplates, setIpmsTargetTemplates] = useState<IpmsTargetTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<LibraryStatusFilter>('all');
   const [area, setArea] = useState('');
@@ -1519,57 +1590,55 @@ export function IPMSTargetLibraryList() {
   const [targetUnitType, setTargetUnitType] = useState('');
   const [version, setVersion] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [facets, setFacets] = useState<TargetLibraryFacets>(emptyLibraryFacets);
 
   const loadTemplates = useCallback(async () => {
     setIsLoading(true);
-    const result = await getIpmsTargetTemplatesApi();
+    const result = await getIpmsTargetTemplatesPageApi({
+      page, pageSize: 25, search, status, primaryArea: area, functionalArea: departmentOrFunctionalArea,
+      classification: employeeLevel, targetUnitType, version: version ? Number(version) : undefined, sortBy, sortDirection,
+    });
     if (result.success && result.data) {
-      setIpmsTargetTemplates(result.data);
+      setIpmsTargetTemplates(result.data.items);
+      setTotalCount(result.data.totalCount);
+      setTotalPages(result.data.totalPages);
+      setSelectedIds([]);
+      if (result.data.items.length === 0 && page > 1) setPage(value => Math.max(1, value - 1));
     } else {
       pushToast('error', result.message ?? 'Failed to load IPMS target library');
     }
     setIsLoading(false);
-  }, [pushToast]);
+  }, [area, departmentOrFunctionalArea, employeeLevel, page, pushToast, search, sortBy, sortDirection, status, targetUnitType, version]);
 
   useEffect(() => {
     void loadTemplates();
   }, [loadTemplates]);
 
-  const filteredTemplates = useMemo(
-    () =>
-      ipmsTargetTemplates.filter(template => {
-        const matchesSearch = `${template.templateCode} ${template.templateName} ${template.targetName} ${template.kpiDescription}`
-          .toLowerCase()
-          .includes(search.toLowerCase());
-        const matchesStatus =
-          status === 'all' ||
-          (status === 'active' && template.isActive && !template.isArchived) ||
-          (status === 'archived' && !!template.isArchived);
-        const matchesArea = !area || template.performanceArea === area;
-        const matchesDepartmentOrArea =
-          !departmentOrFunctionalArea ||
-          template.department?.name === departmentOrFunctionalArea ||
-          template.functionalArea === departmentOrFunctionalArea;
-        const matchesEmployeeLevel = !employeeLevel || template.employeeLevel === employeeLevel;
-        const matchesUnitType = !targetUnitType || template.targetUnitType === targetUnitType;
-        const matchesVersion = !version || String(template.version) === version;
-        return matchesSearch && matchesStatus && matchesArea && matchesDepartmentOrArea && matchesEmployeeLevel && matchesUnitType && matchesVersion;
-      }),
-    [area, departmentOrFunctionalArea, employeeLevel, ipmsTargetTemplates, search, status, targetUnitType, version],
-  );
+  useEffect(() => {
+    void getIpmsTargetTemplateFacetsApi().then(result => {
+      if (result.success && result.data) setFacets(result.data);
+      else pushToast('error', result.message ?? 'Failed to load IPMS target library filters');
+    });
+  }, [pushToast]);
 
-  const areaOptions = Array.from(new Set(ipmsTargetTemplates.map(template => template.performanceArea).filter(Boolean))).sort();
-  const departmentOptions = Array.from(new Set(ipmsTargetTemplates.flatMap(template => [template.department?.name, template.functionalArea]).filter(Boolean) as string[])).sort();
-  const levelOptions = Array.from(new Set(ipmsTargetTemplates.map(template => template.employeeLevel).filter(Boolean))).sort();
-  const versionOptions = Array.from(new Set(ipmsTargetTemplates.map(template => template.version))).sort((a, b) => b - a);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
   const toggleSelected = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
   };
   const toggleAll = () => {
     setSelectedIds(prev => (
-      prev.length === filteredTemplates.length
+      prev.length === ipmsTargetTemplates.length
         ? []
-        : filteredTemplates.map(template => template.id)
+        : ipmsTargetTemplates.map(template => template.id)
     ));
   };
 
@@ -1587,12 +1656,12 @@ export function IPMSTargetLibraryList() {
     <AppShell title="IPMS Target Library" subtitle="Reusable generic IPMS target templates used to create live individual targets">
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-3">
-          <Badge variant="primary">{filteredTemplates.length} templates</Badge>
+          <Badge variant="primary">{totalCount} templates</Badge>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               disabled={selectedIds.length === 0}
-              onClick={() => { void createSelectedTargets(filteredTemplates.filter(template => selectedIds.includes(template.id))); }}
+              onClick={() => { void createSelectedTargets(ipmsTargetTemplates.filter(template => selectedIds.includes(template.id))); }}
             >
               Create Selected IPMS Targets
             </Button>
@@ -1603,29 +1672,33 @@ export function IPMSTargetLibraryList() {
         </div>
 
         <LibraryFilters
-          search={search}
-          onSearchChange={setSearch}
+          search={searchInput}
+          onSearchChange={setSearchInput}
           status={status}
-          onStatusChange={setStatus}
+          onStatusChange={value => { setStatus(value); setPage(1); }}
           areaValue={area}
           areaLabel="Performance Area"
-          areaOptions={areaOptions}
-          onAreaChange={setArea}
+          areaOptions={facets.primaryAreas}
+          onAreaChange={value => { setArea(value); setPage(1); }}
           departmentOrFunctionalArea={departmentOrFunctionalArea}
-          departmentOptions={departmentOptions}
-          onDepartmentOrFunctionalAreaChange={setDepartmentOrFunctionalArea}
+          departmentOptions={facets.functionalAreas}
+          onDepartmentOrFunctionalAreaChange={value => { setDepartmentOrFunctionalArea(value); setPage(1); }}
           kpiType={employeeLevel}
-          kpiTypeOptions={levelOptions}
-          onKpiTypeChange={setEmployeeLevel}
+          kpiTypeOptions={facets.classifications}
+          onKpiTypeChange={value => { setEmployeeLevel(value); setPage(1); }}
           targetUnitType={targetUnitType}
-          onTargetUnitTypeChange={setTargetUnitType}
+          onTargetUnitTypeChange={value => { setTargetUnitType(value); setPage(1); }}
           version={version}
-          versionOptions={versionOptions}
-          onVersionChange={setVersion}
+          versionOptions={facets.versions}
+          onVersionChange={value => { setVersion(value); setPage(1); }}
+          sortBy={sortBy}
+          onSortByChange={value => { setSortBy(value); setPage(1); }}
+          sortDirection={sortDirection}
+          onSortDirectionChange={value => { setSortDirection(value); setPage(1); }}
         />
 
         <TemplateListTable
-          items={filteredTemplates}
+          items={ipmsTargetTemplates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
           onToggleRow={toggleSelected}
@@ -1721,7 +1794,9 @@ export function IPMSTargetLibraryList() {
           ]}
         />
 
-        {!isLoading && filteredTemplates.length === 0 && (
+        <LibraryPagination label="IPMS templates" page={page} totalPages={totalPages} onPageChange={setPage} />
+
+        {!isLoading && ipmsTargetTemplates.length === 0 && (
           <EmptyState
             icon={<Library className="h-6 w-6" />}
             title="No IPMS templates found"
