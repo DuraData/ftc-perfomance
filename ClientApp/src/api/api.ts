@@ -1584,6 +1584,10 @@ export async function getUsers(): Promise<ApiResponse<AdminUserDetail[]>> {
   return get<AdminUserDetail[]>('/users');
 }
 
+export async function getUsersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<AdminUserDetail>>> {
+  return get<PagedResult<AdminUserDetail>>(`/users/page${registerPageQuery(query)}`);
+}
+
 export async function getUser(id: string): Promise<ApiResponse<AdminUserDetail>> {
   return get<AdminUserDetail>(`/users/${id}`);
 }
@@ -1679,6 +1683,10 @@ export async function updateSecurityRole(role: SecurityRoleSummary, payload: { n
 
 export async function getSecurityUsers(): Promise<ApiResponse<SecurityUserSummary[]>> {
   return get<SecurityUserSummary[]>('/v1/security/users');
+}
+
+export async function getSecurityUsersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SecurityUserSummary>>> {
+  return get<PagedResult<SecurityUserSummary>>(`/v1/security/users/page${registerPageQuery(query)}`);
 }
 
 export async function getSecurityUserRoles(userId: string): Promise<ApiResponse<SecurityUserRoleConfiguration>> {

@@ -40,23 +40,51 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "USER.READ")) return Forbid();
         var canReadEmail = await IsAllowedAsync(actor, "USER.Email.READ");
         var canReadPhone = await IsAllowedAsync(actor, "USER.PhoneNumber.READ");
-        var users = await TenantUsers().AsNoTracking().OrderBy(u => u.Email).ToListAsync();
-        var rolesById = await _context.Roles.AsNoTracking().ToDictionaryAsync(r => r.Id);
-        var userRoleLinks = await _context.UserRoles.AsNoTracking().ToListAsync();
-
-        var result = users.Select(u =>
-        {
-            var userRoles = userRoleLinks.Where(ur => ur.UserId == u.Id)
-                .Select(ur => rolesById.TryGetValue(ur.RoleId, out var role) ? role : null)
-                .Where(r => r != null)
-                .Select(r => new RoleResponse(r!.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive))
-                .ToArray();
-
-            var userResponse = ToResponse(u, canReadEmail, canReadPhone);
-            return new UserDetailResponse(userResponse, userRoles);
-        }).ToArray();
+        var users = await TenantUsers().AsNoTracking().OrderBy(u => u.Email).ThenBy(u => u.Id).Take(100).ToArrayAsync();
+        var result = await ToUserDetailsAsync(users, canReadEmail, canReadPhone);
 
         return Ok(new ApiResponse<UserDetailResponse[]>(true, result));
+    }
+
+    [HttpGet("page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UserDetailResponse>>>> GetUsersPage([FromQuery] PagedQueryRequest request)
+    {
+        var actor = await GetCurrentActorAsync();
+        if (actor == null) return Unauthorized(Fail<PagedResponse<UserDetailResponse>>("User not found"));
+        if (!await IsAllowedAsync(actor, "USER.READ")) return Forbid();
+        var canReadEmail = await IsAllowedAsync(actor, "USER.Email.READ");
+        var canReadPhone = await IsAllowedAsync(actor, "USER.PhoneNumber.READ");
+        if (!UserSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<UserDetailResponse>>("SortBy must be createdAt, name, email, or status."));
+        if (!canReadEmail && request.NormalizedSortBy == "email")
+            return Forbid();
+
+        var query = TenantUsers().AsNoTracking();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = canReadEmail
+                ? query.Where(item => item.FirstName.Contains(term) || item.LastName.Contains(term)
+                    || (item.Email != null && item.Email.Contains(term)))
+                : query.Where(item => item.FirstName.Contains(term) || item.LastName.Contains(term));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.FirstName).ThenBy(item => item.LastName).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.FirstName).ThenByDescending(item => item.LastName).ThenBy(item => item.Id),
+            ("email", false) => query.OrderBy(item => item.Email).ThenBy(item => item.Id),
+            ("email", true) => query.OrderByDescending(item => item.Email).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.FirstName).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.FirstName).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+        };
+        var users = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var details = await ToUserDetailsAsync(users, canReadEmail, canReadPhone);
+        return Ok(new ApiResponse<PagedResponse<UserDetailResponse>>(true,
+            PagedResponse<UserDetailResponse>.Create(details, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("{id}")]
@@ -504,6 +532,28 @@ public class UsersController : ControllerBase
         var query = _context.Users.AsQueryable();
         if (_tenantContext.MunicipalityId is > 0) return query.Where(item => item.MunicipalityId == _tenantContext.MunicipalityId);
         return _tenantContext.IsSystem ? query : query.Where(_ => false);
+    }
+
+    private static readonly HashSet<string> UserSortFields = ["createdat", "name", "email", "status"];
+
+    private async Task<UserDetailResponse[]> ToUserDetailsAsync(ApplicationUser[] users, bool canReadEmail, bool canReadPhone)
+    {
+        if (users.Length == 0) return [];
+        var userIds = users.Select(item => item.Id).ToArray();
+        var links = await _context.UserRoles.AsNoTracking().Where(item => userIds.Contains(item.UserId)).ToArrayAsync();
+        var roleIds = links.Select(item => item.RoleId).Distinct().ToArray();
+        var rolesById = await _context.Roles.AsNoTracking().Where(item => roleIds.Contains(item.Id)).ToDictionaryAsync(item => item.Id);
+        var roleIdsByUser = links.GroupBy(item => item.UserId).ToDictionary(group => group.Key, group => group.Select(item => item.RoleId).ToArray());
+        return users.Select(user =>
+        {
+            var roles = roleIdsByUser.GetValueOrDefault(user.Id, [])
+                .Select(roleId => rolesById.GetValueOrDefault(roleId))
+                .Where(role => role != null)
+                .OrderBy(role => role!.Name)
+                .Select(role => new RoleResponse(role!.Id, role.Name!, role.Description, role.IsSystemRole, role.IsActive))
+                .ToArray();
+            return new UserDetailResponse(ToResponse(user, canReadEmail, canReadPhone), roles);
+        }).ToArray();
     }
 
     private async Task<ApplicationUser?> GetCurrentActorAsync()

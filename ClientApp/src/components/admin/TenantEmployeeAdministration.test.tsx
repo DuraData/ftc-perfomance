@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TenantEmployeeAdministration } from './TenantEmployeeAdministration';
 
 const api = vi.hoisted(() => ({
-  getMunicipalEmployees: vi.fn(), getDepartments: vi.fn(), getUnits: vi.fn(), getPositionMasters: vi.fn(), getUsers: vi.fn(), getEmployeeAssignments: vi.fn(),
+  getMunicipalEmployees: vi.fn(), getDepartments: vi.fn(), getUnits: vi.fn(), getPositionMasters: vi.fn(), getUsersPage: vi.fn(), getEmployeeAssignments: vi.fn(),
   createMunicipalEmployee: vi.fn(), updateMunicipalEmployee: vi.fn(), createEmployeeAssignment: vi.fn(), closeEmployeeAssignment: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -16,7 +16,7 @@ describe('TenantEmployeeAdministration', () => {
     api.getDepartments.mockResolvedValue({ success: true, data: [{ id: 7, publicId: 'department-1', code: 'FIN', name: 'Finance' }] });
     api.getUnits.mockResolvedValue({ success: true, data: [{ id: 8, publicId: 'unit-1', departmentId: 7, departmentName: 'Finance', code: 'BUD', name: 'Budget' }] });
     api.getPositionMasters.mockResolvedValue({ success: true, data: [{ publicId: 'position-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', code: 'CFO', name: 'Chief Financial Officer', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }] });
-    api.getUsers.mockResolvedValue({ success: true, data: [] });
+    api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
     api.getEmployeeAssignments.mockResolvedValue({ success: true, data: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }] });
     api.createEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
     api.closeEmployeeAssignment.mockResolvedValue({ success: true, data: {} });

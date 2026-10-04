@@ -3,6 +3,42 @@ namespace FTCERP.Tests;
 public class DynamicSecurityTests
 {
     [Fact]
+    public async Task Security_user_directory_pages_only_effective_authorized_municipalities()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("directory-admin", "Directory", "Admin"); actor.MunicipalityId = 7;
+        var local = IdpTestFixture.CreateUser("local-user", "Local", "User"); local.MunicipalityId = 7;
+        var expired = IdpTestFixture.CreateUser("expired-user", "Expired", "User"); expired.MunicipalityId = 7;
+        var foreign = IdpTestFixture.CreateUser("foreign-user", "Foreign", "User"); foreign.MunicipalityId = 8;
+        var municipalityA = new Municipality { Id = 7, Code = "M007", Name = "Municipality 7" };
+        var municipalityB = new Municipality { Id = 8, Code = "M008", Name = "Municipality 8" };
+        var localRole = Role("local-role", "LOCAL_SECURITY"); localRole.MunicipalityId = 7;
+        var foreignRole = Role("foreign-role", "FOREIGN_SECURITY"); foreignRole.MunicipalityId = 8;
+        context.AddRange(municipalityA, municipalityB, actor, local, expired, foreign, localRole, foreignRole);
+        await context.SaveChangesAsync();
+        var now = DateTime.UtcNow;
+        context.SecurityUserRoleAssignments.AddRange(
+            new SecurityUserRoleAssignment { UserId = actor.Id, RoleId = localRole.Id, MunicipalityId = 7, IsActive = true, EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = actor.Id },
+            new SecurityUserRoleAssignment { UserId = local.Id, RoleId = localRole.Id, MunicipalityId = 7, IsActive = true, EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = actor.Id },
+            new SecurityUserRoleAssignment { UserId = expired.Id, RoleId = localRole.Id, MunicipalityId = 7, IsActive = true, EffectiveFrom = now.AddDays(-2), EffectiveTo = now.AddDays(-1), AssignedAt = now.AddDays(-2), AssignedBy = actor.Id },
+            new SecurityUserRoleAssignment { UserId = foreign.Id, RoleId = foreignRole.Id, MunicipalityId = 8, IsActive = true, EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = actor.Id });
+        await context.SaveChangesAsync();
+        var tenant = new Mock<ITenantContext>(); tenant.SetupGet(item => item.MunicipalityId).Returns(7); tenant.SetupGet(item => item.IsSystem).Returns(false);
+        var controller = new SecurityAdministrationController(context, CreateService(context, actor), IdpTestFixture.CreateUserManagerMock(actor).Object, tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var result = await controller.GetUsersPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "name", SortDirection = "asc" });
+
+        var payload = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityUserDto>>>().Subject.Data!;
+        payload.TotalCount.Should().Be(2);
+        payload.Items.Should().ContainSingle();
+        payload.TotalPages.Should().Be(2);
+        payload.Items.Should().NotContain(item => item.Id == foreign.Id || item.Id == expired.Id);
+    }
+
+    [Fact]
     public async Task DynamicallyConfiguredKpiViewerAndDepartmentSubmitter_EnforceMenusCrudAndScope()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

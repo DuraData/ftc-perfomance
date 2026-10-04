@@ -15,7 +15,7 @@ import {
   getReportingWindowExceptions,
   getReportingWindows,
   getUnits,
-  getUsers,
+  getUsersPage,
   getWorkflowDefinitions,
   getInternalAuditConfigurations,
   retireWorkflowDefinition,
@@ -171,11 +171,11 @@ export function WorkflowGovernanceAdminPage() {
     setBusy(true); setError(null); setExceptionWindow(window);
     setExceptionDraft({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(new Date(window.closesAt).getTime() + 86400000)), reason: '' });
     const [exceptionResult, userResult, departmentResult, unitResult] = await Promise.all([
-      getReportingWindowExceptions(window.publicId), getUsers(), getDepartments(), getUnits(),
+      getReportingWindowExceptions(window.publicId), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }), getDepartments(), getUnits(),
     ]);
     const failed = [exceptionResult, userResult, departmentResult, unitResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Window exception data could not be loaded.');
-    setExceptions(exceptionResult.data ?? []); setUsers(userResult.data ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []);
+    setExceptions(exceptionResult.data ?? []); setUsers(userResult.data?.items ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []);
     setBusy(false);
   };
 

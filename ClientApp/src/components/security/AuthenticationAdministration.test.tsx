@@ -3,7 +3,7 @@ import { AuthenticationAdministrationPage } from './AuthenticationAdministration
 
 const api = vi.hoisted(() => ({
   getAuthenticationConfiguration: vi.fn(), getAuthenticationEvents: vi.fn(), getAuthenticationProviders: vi.fn(),
-  getSecurityUsers: vi.fn(), getUserAuthenticators: vi.fn(), provisionUserAuthenticator: vi.fn(),
+  getSecurityUsersPage: vi.fn(), getUserAuthenticators: vi.fn(), provisionUserAuthenticator: vi.fn(),
   saveAuthenticationConfiguration: vi.fn(), setUserAuthenticatorStatus: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -22,7 +22,7 @@ describe('AuthenticationAdministrationPage', () => {
     } });
     api.getAuthenticationEvents.mockResolvedValue({ success: true, data: [] });
     api.getAuthenticationProviders.mockResolvedValue({ success: true, data: [] });
-    api.getSecurityUsers.mockResolvedValue({ success: true, data: [] });
+    api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
     api.getUserAuthenticators.mockResolvedValue({ success: true, data: [] });
     api.saveAuthenticationConfiguration.mockResolvedValue({ success: true, data: {} });
   });

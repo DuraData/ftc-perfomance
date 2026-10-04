@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { AdminUsersPage } from './SystemAdmin';
 
 const api = vi.hoisted(() => ({
-  getUsers: vi.fn(),
+  getUsersPage: vi.fn(),
   getRoles: vi.fn(),
   getPermissions: vi.fn(),
 }));
@@ -28,16 +28,16 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 
 describe('User administration member permissions', () => {
   it('does not render denied email or phone values and hides mutation controls', async () => {
-    api.getUsers.mockResolvedValue({
+    api.getUsersPage.mockResolvedValue({
       success: true,
-      data: [{
+      data: { items: [{
         user: {
           id: 'user-1', publicId: '11111111-1111-1111-1111-111111111111', userName: 'user-1',
           firstName: 'Protected', lastName: 'User', fullName: 'Protected User', email: null,
           phoneNumber: null, isActive: true, mustChangePassword: false,
         },
         roles: [],
-      }],
+      }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
     });
     api.getRoles.mockResolvedValue({ success: true, data: [] });
     api.getPermissions.mockResolvedValue({ success: true, data: [] });
@@ -45,6 +45,7 @@ describe('User administration member permissions', () => {
     render(<AdminUsersPage />);
 
     expect(await screen.findByText('Protected User')).toBeInTheDocument();
+    expect(api.getUsersPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' });
     expect(screen.queryByText('private@example.test')).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Email' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add User' })).toBeDisabled();

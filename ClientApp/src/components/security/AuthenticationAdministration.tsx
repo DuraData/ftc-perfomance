@@ -3,7 +3,7 @@ import { ShieldCheck } from 'lucide-react';
 import { Button } from '../ui';
 import { Checkbox, Input, Select } from '../common/Form';
 import {
-  getAuthenticationConfiguration, getAuthenticationEvents, getAuthenticationProviders, getSecurityUsers,
+  getAuthenticationConfiguration, getAuthenticationEvents, getAuthenticationProviders, getSecurityUsersPage,
   getUserAuthenticators, provisionUserAuthenticator, saveAuthenticationConfiguration, setUserAuthenticatorStatus,
 } from '../../api/api';
 import type { AuthenticationConfiguration, AuthenticationEvent, EnterpriseProviderOption, SecurityUserSummary, UserAuthenticator } from '../../types';
@@ -18,6 +18,9 @@ export function AuthenticationAdministrationPage() {
   const [configuration, setConfiguration] = useState<AuthenticationConfiguration | null>(null);
   const [providers, setProviders] = useState<EnterpriseProviderOption[]>([]);
   const [users, setUsers] = useState<SecurityUserSummary[]>([]);
+  const [userPage, setUserPage] = useState(1);
+  const [userTotalPages, setUserTotalPages] = useState(0);
+  const [userSearch, setUserSearch] = useState('');
   const [authenticators, setAuthenticators] = useState<UserAuthenticator[]>([]);
   const [events, setEvents] = useState<AuthenticationEvent[]>([]);
   const [mode, setMode] = useState<1 | 2 | 3 | 4>(1);
@@ -40,11 +43,11 @@ export function AuthenticationAdministrationPage() {
   const [message, setMessage] = useState('');
 
   const load = useCallback(async () => {
-    const [configResult, providerResult, userResult, authenticatorResult, eventResult] = await Promise.all([
-      getAuthenticationConfiguration(), getAuthenticationProviders(), getSecurityUsers(), getUserAuthenticators(), getAuthenticationEvents(),
+    const [configResult, providerResult, authenticatorResult, eventResult] = await Promise.all([
+      getAuthenticationConfiguration(), getAuthenticationProviders(), getUserAuthenticators(), getAuthenticationEvents(),
     ]);
     const config = configResult.data ?? null;
-    setConfiguration(config); setProviders(providerResult.data ?? []); setUsers(userResult.data ?? []);
+    setConfiguration(config); setProviders(providerResult.data ?? []);
     setAuthenticators(authenticatorResult.data ?? []); setEvents(eventResult.data ?? []);
     if (config) {
       setMode(config.mode); setProviderCode(config.providerRegistrationCode ?? ''); setDisplayName(config.displayName);
@@ -64,6 +67,12 @@ export function AuthenticationAdministrationPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void getSecurityUsersPage({ page: userPage, pageSize: 25, search: userSearch, sortBy: 'name', sortDirection: 'asc' }).then(result => {
+      setUsers(result.data?.items ?? []);
+      setUserTotalPages(result.data?.totalPages ?? 0);
+    });
+  }, [userPage, userSearch]);
   const selectedUserRecord = useMemo(() => users.find(item => item.id === selectedUser), [selectedUser, users]);
 
   const save = async () => {
@@ -133,9 +142,11 @@ export function AuthenticationAdministrationPage() {
     <section className="rounded-xl border border-secondary-200 dark:border-secondary-700 p-5 space-y-4">
       <h2 className="font-semibold">Pre-provision enterprise identity</h2>
       <div className="grid md:grid-cols-2 gap-4">
+        <Input label="Search users" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
         <Select label="User" options={users.map(item => ({ value: item.id, label: `${item.fullName} — ${item.email}` }))} placeholder="Select user" value={selectedUser} onChange={event => setSelectedUser(event.target.value)} />
         <Input label="Verified email" value={selectedUserRecord?.email ?? ''} disabled />
       </div>
+      {userTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button variant="outline" size="sm" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</Button><span>Page {userPage} of {userTotalPages}</span><Button variant="outline" size="sm" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</Button></div>}
       <Input id="identity-provisioning-reason" label="Governance reason" value={linkReason} onChange={event => setLinkReason(event.target.value)} required />
       <Button onClick={provision} loading={busy} disabled={busy || !selectedUserRecord || !providerCode || linkReason.trim().length < 5}>Pre-provision identity</Button>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-2">User</th><th className="p-2">Provider</th><th className="p-2">Link state</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead><tbody>{authenticators.map(item => <tr key={item.publicId} className="border-t"><td className="p-2">{item.userEmail}</td><td className="p-2">{item.providerRegistrationCode}</td><td className="p-2">{item.linkedAt ? 'Bound' : 'Awaiting first validated sign-in'}</td><td className="p-2">{item.isActive ? 'Active' : 'Disabled'}</td><td className="p-2"><Button variant="secondary" size="sm" onClick={() => toggle(item)} disabled={busy}>{item.isActive ? 'Disable' : 'Enable'}</Button></td></tr>)}</tbody></table></div>

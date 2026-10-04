@@ -3,7 +3,7 @@ import { CheckCircle2, Shield, XCircle } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
-import { getPermissions, getRoleAccessMatrix, getSystemCoverageAudit, getUsers, simulateAccess } from '../../api/api';
+import { getPermissions, getRoleAccessMatrix, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
 import type { AccessSimulationResult, AdminPermission, AdminUserDetail, RoleAccessMatrixRow, SystemCoverageAuditRow } from '../../types';
 
 function BooleanPill({ value }: { value: boolean }) {
@@ -106,9 +106,9 @@ export function PermissionSimulationPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const [usersResult, permissionsResult] = await Promise.all([getUsers(), getPermissions()]);
+      const [usersResult, permissionsResult] = await Promise.all([getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }), getPermissions()]);
       if (!active) return;
-      setUsers(usersResult.data ?? []);
+      setUsers(usersResult.data?.items ?? []);
       setPermissions(permissionsResult.data ?? []);
     };
     void load();

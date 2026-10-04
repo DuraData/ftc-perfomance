@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Edit2, Plus, Trash2, Shield, Users, History, UserRound, KeyRound, ShieldCheck, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
@@ -21,7 +21,7 @@ import {
   getUserPermissions,
   getRolePermissions,
   getRoles,
-  getUsers,
+  getUsersPage,
   setRolePermissions,
   setUserPermissionOverrides,
   setUserRoles,
@@ -51,6 +51,12 @@ export function AdminUsersPage() {
   const canManagePermissions = canExecute('SECURITY.MANAGE_PERMISSIONS');
   const { pushToast } = useApp();
   const [rows, setRows] = useState<AdminUserDetail[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+  const [totalCount, setTotalCount] = useState(0);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,19 +84,25 @@ export function AdminUsersPage() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const result = await getUsersPage({ page, pageSize, search, sortBy, sortDirection });
+    if (!result.success) setError(result.message ?? 'Failed to load users');
+    setRows(result.data?.items ?? []);
+    setTotalCount(result.data?.totalCount ?? 0);
+    setLoading(false);
+  }, [page, pageSize, search, sortBy, sortDirection]);
+
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
+
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError(null);
-      const [usersRes, rolesRes, permsRes] = await Promise.all([getUsers(), getRoles(), getPermissions()]);
-      if (!usersRes.success) setError(usersRes.message ?? 'Failed to load users');
+    void Promise.all([getRoles(), getPermissions()]).then(([rolesRes, permsRes]) => {
       if (!rolesRes.success) setError(rolesRes.message ?? 'Failed to load roles');
       if (!permsRes.success) setError(permsRes.message ?? 'Failed to load permissions');
-      setRows(usersRes.data ?? []);
       setRoles(rolesRes.data ?? []);
       setAllPermissions(permsRes.data ?? []);
-      setLoading(false);
-    })();
+    });
   }, []);
 
   const openCreate = () => {
@@ -158,8 +170,7 @@ export function AdminUsersPage() {
       pushToast('success', 'User created');
     }
 
-    const refresh = await getUsers();
-    setRows(refresh.data ?? []);
+    await loadUsers();
     setModalOpen(false);
   };
 
@@ -170,8 +181,7 @@ export function AdminUsersPage() {
       setError(res.message ?? 'Failed to update status');
       return;
     }
-    const refresh = await getUsers();
-    setRows(refresh.data ?? []);
+    await loadUsers();
     pushToast('success', u.user.isActive ? 'User deactivated' : 'User activated');
   };
 
@@ -187,7 +197,8 @@ export function AdminUsersPage() {
       setError(res.message ?? 'Failed to delete user');
       return;
     }
-    setRows(prev => prev.filter(x => x.user.id !== userToDelete.user.id));
+    if (rows.length === 1 && page > 1) setPage(value => value - 1);
+    else await loadUsers();
     setDeleteConfirmOpen(false);
     setUserToDelete(null);
     pushToast('success', 'User deleted');
@@ -212,8 +223,7 @@ export function AdminUsersPage() {
       setError(res.message ?? 'Failed to update roles');
       return;
     }
-    const refresh = await getUsers();
-    setRows(refresh.data ?? []);
+    await loadUsers();
     setRoleModalOpen(false);
     setSelectedUserForRoles(null);
     pushToast('success', 'Roles updated');
@@ -255,11 +265,12 @@ export function AdminUsersPage() {
   };
 
   const columns = [
-    ...(canReadEmail ? [{ id: 'email', header: 'Email', accessor: (r: AdminUserDetail) => r.user.email ?? '—' }] : []),
-    { id: 'name', header: 'Name', accessor: (r: AdminUserDetail) => r.user.fullName },
+    ...(canReadEmail ? [{ id: 'email', header: 'Email', sortKey: 'email', accessor: (r: AdminUserDetail) => r.user.email ?? '—' }] : []),
+    { id: 'name', header: 'Name', sortKey: 'name', accessor: (r: AdminUserDetail) => r.user.fullName },
     {
       id: 'roles',
       header: 'Roles',
+      sortable: false,
       accessor: (r: AdminUserDetail) => (
         <div className="flex flex-wrap gap-1">
           {r.roles.slice(0, 3).map(role => (
@@ -272,6 +283,7 @@ export function AdminUsersPage() {
     {
       id: 'status',
       header: 'Status',
+      sortKey: 'status',
       accessor: (r: AdminUserDetail) => r.user.isActive ? <Badge variant="success" size="sm">Active</Badge> : <Badge variant="error" size="sm">Inactive</Badge>,
     },
   ];
@@ -300,7 +312,7 @@ export function AdminUsersPage() {
     <AppShell title="Users" subtitle="System Administration: Users">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Badge variant="primary">{rows.length} users</Badge>
+          <Badge variant="primary">{totalCount} users</Badge>
           <div className="flex gap-2">
             <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreate} disabled={!canCreateUser}>
               Add User
@@ -315,7 +327,21 @@ export function AdminUsersPage() {
         )}
 
         <Card>
-          <DataTable data={rows} columns={columns} actions={actions} searchable getRowId={(r) => r.user.id} emptyMessage={loading ? 'Loading...' : 'No users'} />
+          <DataTable
+            data={rows}
+            columns={columns}
+            actions={actions}
+            searchable
+            searchPlaceholder="Search users"
+            getRowId={(r) => r.user.id}
+            emptyMessage={loading ? 'Loading...' : 'No users'}
+            serverState={{
+              page, pageSize, totalCount, search, sortBy, sortDirection,
+              onPageChange: setPage,
+              onSearchChange: value => { setSearch(value); setPage(1); },
+              onSortChange: (field, direction) => { setSortBy(field); setSortDirection(direction); setPage(1); },
+            }}
+          />
         </Card>
 
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit User' : 'New User'} size="lg">

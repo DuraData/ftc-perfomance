@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
   createReportingWindow: vi.fn(),
   getReportingWindowExceptions: vi.fn(),
   createReportingWindowException: vi.fn(),
-  getUsers: vi.fn(),
+  getUsersPage: vi.fn(),
   getDepartments: vi.fn(),
   getUnits: vi.fn(),
   createRatingScheme: vi.fn(),
@@ -48,7 +48,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getWorkingCalendarHolidays.mockResolvedValue({ success: true, data: [] });
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
-    api.getUsers.mockResolvedValue({ success: true, data: [] });
+    api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
     api.getDepartments.mockResolvedValue({ success: true, data: [] });
     api.getUnits.mockResolvedValue({ success: true, data: [] });
     api.compareWorkflowDefinitions.mockResolvedValue({ success: false, message: 'not configured' });

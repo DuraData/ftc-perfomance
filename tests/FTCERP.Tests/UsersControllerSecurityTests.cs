@@ -104,6 +104,40 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal("0222222222", (await context.Users.SingleAsync(item => item.Id == target.Id)).PhoneNumber);
     }
 
+    [Fact]
+    public async Task User_directory_page_is_bounded_searchable_and_tenant_scoped()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new FixedTenantContext(301, "actor");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        context.AddRange(new Municipality { Id = 301, Code = "M301", Name = "Municipality 301" },
+            new Municipality { Id = 302, Code = "M302", Name = "Municipality 302" });
+        var actor = User("actor", 301, "actor@example.test", "0111111111");
+        var users = Enumerable.Range(1, 31).Select(index =>
+            User($"tenant-{index:00}", 301, $"person{index:00}@example.test", $"02{index:00000000}")).ToArray();
+        var other = User("other", 302, "person99@example.test", "0399999999");
+        context.Add(actor); context.AddRange(users); context.Add(other);
+        await context.SaveChangesAsync();
+        var directory = users.Append(actor).Append(other).ToDictionary(item => item.Id);
+        var controller = Controller(context, tenant, actor, directory,
+            Access(actor, "USER.READ", "USER.Email.READ", "USER.PhoneNumber.READ").Object);
+
+        var result = await controller.GetUsersPage(new PagedQueryRequest
+        {
+            Page = 2, PageSize = 10, SortBy = "email", SortDirection = "asc", Search = "example.test"
+        });
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<UserDetailResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(32, envelope.Data!.TotalCount);
+        Assert.Equal(10, envelope.Data.Items.Length);
+        Assert.Equal(2, envelope.Data.Page);
+        Assert.Equal(4, envelope.Data.TotalPages);
+        Assert.DoesNotContain(envelope.Data.Items, item => item.User.Id == other.Id);
+    }
+
     private static ApplicationUser User(string id, long municipalityId, string email, string phone) => new()
     {
         Id = id,

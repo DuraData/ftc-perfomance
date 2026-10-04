@@ -14,7 +14,7 @@ import {
   getMunicipalEmployees,
   getPositionMasters,
   getUnits,
-  getUsers,
+  getUsersPage,
   updateMunicipalEmployee,
 } from '../../api/api';
 import type { AdminUserDetail, DepartmentLookupDto, EmployeeAssignmentMasterDto, MunicipalEmployeeDto, PositionMasterDto, UnitLookupDto } from '../../types';
@@ -44,10 +44,10 @@ export function TenantEmployeeAdministration() {
 
   const load = async () => {
     setBusy(true); setError(null);
-    const [employeeResult, departmentResult, unitResult, positionResult, userResult] = await Promise.all([getMunicipalEmployees(), getDepartments(), getUnits(), getPositionMasters(), getUsers()]);
+    const [employeeResult, departmentResult, unitResult, positionResult, userResult] = await Promise.all([getMunicipalEmployees(), getDepartments(), getUnits(), getPositionMasters(), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' })]);
     const failed = [employeeResult, departmentResult, unitResult, positionResult, userResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Employee masters could not be loaded.');
-    setEmployees(employeeResult.data ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []); setUsers(userResult.data ?? []);
+    setEmployees(employeeResult.data ?? []); setDepartments(departmentResult.data ?? []); setUnits(unitResult.data ?? []); setPositions(positionResult.data ?? []); setUsers(userResult.data?.items ?? []);
     setBusy(false);
   };
 

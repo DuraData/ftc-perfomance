@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using FTCERP.Host.API.Responses;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
@@ -114,11 +115,57 @@ public sealed class SecurityAdministrationController : ControllerBase
         var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
         var municipalities = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
         var query = _context.Users.AsNoTracking().Where(item => item.IsActive);
+        var now = DateTime.UtcNow;
         if (!system)
-            query = query.Where(user => _context.SecurityUserRoleAssignments.Any(link => link.UserId == user.Id && link.IsActive && link.MunicipalityId.HasValue && municipalities.Contains(link.MunicipalityId.Value)));
-        var users = await query.OrderBy(item => item.FirstName).ThenBy(item => item.LastName).ToArrayAsync();
+            query = query.Where(user => _context.SecurityUserRoleAssignments.Any(link => link.UserId == user.Id && link.IsActive && !link.RevokedAt.HasValue
+                && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now)
+                && link.MunicipalityId.HasValue && municipalities.Contains(link.MunicipalityId.Value)));
+        var users = await query.OrderBy(item => item.FirstName).ThenBy(item => item.LastName).ThenBy(item => item.Id).Take(100).ToArrayAsync();
         return Ok(new ApiResponse<SecurityUserDto[]>(true, users.Select(item => new SecurityUserDto(item.Id, item.FullName, item.Email ?? item.UserName ?? item.Id)).ToArray()));
     }
+
+    [HttpGet("users/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW_EFFECTIVE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityUserDto>>>> GetUsersPage([FromQuery] PagedQueryRequest request)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<PagedResponse<SecurityUserDto>>(false, null, "User not found"));
+        if (!SecurityUserSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityUserDto>>(false, null, "SortBy must be createdAt, name, email, or status."));
+        var access = await _accessControl.GetEffectiveAccessAsync(actor);
+        var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
+        var municipalities = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
+        var query = _context.Users.AsNoTracking().AsQueryable();
+        var now = DateTime.UtcNow;
+        if (!system)
+            query = query.Where(user => _context.SecurityUserRoleAssignments.Any(link => link.UserId == user.Id && link.IsActive && !link.RevokedAt.HasValue
+                && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now)
+                && link.MunicipalityId.HasValue && municipalities.Contains(link.MunicipalityId.Value)));
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.FirstName.Contains(term) || item.LastName.Contains(term)
+                || (item.Email != null && item.Email.Contains(term)) || (item.UserName != null && item.UserName.Contains(term)));
+        }
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.FirstName).ThenBy(item => item.LastName).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.FirstName).ThenByDescending(item => item.LastName).ThenBy(item => item.Id),
+            ("email", false) => query.OrderBy(item => item.Email).ThenBy(item => item.Id),
+            ("email", true) => query.OrderByDescending(item => item.Email).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.FirstName).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.FirstName).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+        };
+        var users = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var rows = users.Select(item => new SecurityUserDto(item.Id, item.FullName, item.Email ?? item.UserName ?? item.Id));
+        return Ok(new ApiResponse<PagedResponse<SecurityUserDto>>(true,
+            PagedResponse<SecurityUserDto>.Create(rows, request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> SecurityUserSortFields = ["createdat", "name", "email", "status"];
 
     [HttpGet("users/{userId}/roles")]
     [Authorize(Policy = "Permission:SECURITY.ASSIGN_ROLES")]

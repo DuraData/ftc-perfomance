@@ -4,7 +4,7 @@ import {
   getRoleSecurityConfiguration,
   getSecurityRoles,
   getSecurityPermissionDefinitions,
-  getSecurityUsers,
+  getSecurityUsersPage,
   getSecurityUserRoles,
   createSecurityRole,
   saveRoleSecurityConfiguration,
@@ -35,6 +35,9 @@ const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).get
 export function SecurityAdministrationPage() {
   const [roles, setRoles] = useState<SecurityRoleSummary[]>([]);
   const [users, setUsers] = useState<SecurityUserSummary[]>([]);
+  const [userPage, setUserPage] = useState(1);
+  const [userTotalPages, setUserTotalPages] = useState(0);
+  const [userSearch, setUserSearch] = useState('');
   const [definitions, setDefinitions] = useState<SecurityPermissionDefinition[]>([]);
   const [roleId, setRoleId] = useState('');
   const [roleVersion, setRoleVersion] = useState('');
@@ -56,16 +59,22 @@ export function SecurityAdministrationPage() {
   const [roleActive, setRoleActive] = useState(true);
 
   useEffect(() => {
-    void Promise.all([getSecurityRoles(), getSecurityUsers(), getSecurityPermissionDefinitions(), getDepartments(), getUnits()]).then(([roleResult, userResult, definitionResult, departmentResult, unitResult]) => {
+    void Promise.all([getSecurityRoles(), getSecurityPermissionDefinitions(), getDepartments(), getUnits()]).then(([roleResult, definitionResult, departmentResult, unitResult]) => {
       const loadedRoles = roleResult.data ?? [];
       setRoles(loadedRoles);
-      setUsers(userResult.data ?? []);
       setDefinitions(definitionResult.data ?? []);
       setDepartments(departmentResult.data ?? []);
       setUnits(unitResult.data ?? []);
       if (loadedRoles.length) setRoleId(loadedRoles[0].id);
     });
   }, []);
+
+  useEffect(() => {
+    void getSecurityUsersPage({ page: userPage, pageSize: 25, search: userSearch, sortBy: 'name', sortDirection: 'asc' }).then(result => {
+      setUsers(result.data?.items ?? []);
+      setUserTotalPages(result.data?.totalPages ?? 0);
+    });
+  }, [userPage, userSearch]);
 
   const selectedRole = roles.find(role => role.id === roleId);
 
@@ -254,9 +263,11 @@ export function SecurityAdministrationPage() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Effective permission preview</h2>
         <div className="mt-3 flex flex-wrap gap-2">
+          <input aria-label="Search security users" placeholder="Search users" className="min-w-64 rounded border border-gray-300 p-2" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
           <select className="min-w-80 rounded border border-gray-300 p-2" value={previewUserId} onChange={event => void loadUserRoles(event.target.value)}><option value="">Select a user</option>{users.map(item => <option key={item.id} value={item.id}>{item.fullName} ({item.email})</option>)}</select>
           <button type="button" onClick={() => void loadPreview()} disabled={!previewUserId} className="rounded border border-blue-700 px-4 py-2 text-blue-700 disabled:opacity-50">Calculate</button>
         </div>
+        {userTotalPages > 1 && <div className="mt-2 flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</button><span>Page {userPage} of {userTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</button></div>}
         {userRoles && <div className="mt-4 rounded border border-gray-200 p-3">
           <h3 className="font-medium">Effective-dated roles for {userRoles.userName}</h3>
           <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-3">{roles.map(role => {
