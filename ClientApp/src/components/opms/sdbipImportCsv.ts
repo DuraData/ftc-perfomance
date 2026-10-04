@@ -1,9 +1,9 @@
 export type ImportPeriod = { periodType: number; unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string };
 export type SdbipImportRow = { sourceRowNumber: number; indicatorNumber: string; existingIndicatorNumber?: string; orderNumber: number; targetName: string; kpiDescription: string; departmentCode: string; unitCode?: string; nationalKpa: string; municipalKpa: string; performanceObjective: string; baseline: number; weight: number; kpiType: string; indicatorType: string; periodTargets: ImportPeriod[] };
 
-const periods: Array<[string, number]> = [['Q1', 0], ['Q2', 1], ['MID_TERM', 4], ['Q3', 2], ['Q4', 3], ['ANNUAL', 5]];
-const unitKinds: Record<string, number> = { NONE: 0, ABSOLUTE_COUNT: 1, PERCENTAGE_BASED: 2, CUMULATIVE: 3, NON_CUMULATIVE: 4, REVERSE_CUMULATIVE: 5, REVERSE_NON_CUMULATIVE: 6, TIME_BASED: 7, QUALITATIVE_TARGETS: 8, DATE: 9 };
-const directions: Record<string, number> = { HIGHER_IS_BETTER: 0, LOWER_IS_BETTER: 1, EXACT_TARGET: 2 };
+const periods: Array<[string, number]> = [['Q1', 1], ['Q2', 2], ['MID_TERM', 3], ['Q3', 4], ['Q4', 5], ['ANNUAL', 6]];
+const unitKinds: Record<string, number> = { NONE: 0, PERCENTAGE_BASED: 1, ABSOLUTE_COUNT: 2, FINANCIAL: 3, TIME_BASED: 4, AREA_BASED: 5, VOLUME_BASED: 6, INDEX_SCORES: 7, RATIOS: 8, BINARY: 9, DATE: 10, READINESS_SCALE: 11, BINARY_DETERMINATION: 12, QUALITATIVE_TARGETS: 13, ZERO_BASED: 14, REVERSE_CUMULATIVE: 15, REVERSE_NON_CUMULATIVE: 16 };
+const directions: Record<string, number> = { HIGHER_IS_BETTER: 1, LOWER_IS_BETTER: 2, EXACT: 3 };
 
 function csvRows(text: string): string[][] {
   const rows: string[][] = []; let row: string[] = []; let value = ''; let quoted = false;

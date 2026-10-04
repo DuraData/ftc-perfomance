@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
@@ -17,10 +18,58 @@ namespace FTCERP.Host.API.Controllers;
 [ApiController, Route("api/v1/opms/imports"), Authorize]
 public sealed class OpmsImportsController(
     ApplicationDbContext context, UserManager<ApplicationUser> userManager, ITenantContext tenantContext,
-    IPerformanceUnitEngine unitEngine, IWorkflowGovernanceService workflow) : ControllerBase
+    IPerformanceUnitEngine unitEngine, IWorkflowGovernanceService workflow, IAccessControlService accessControl) : ControllerBase
 {
     private const int MaximumRows = 5000;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    [HttpGet("template.csv"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
+    public IActionResult Template() => CsvFile(OpmsImportCsv.WideHeader + "\r\n", "opms-sdbip-import-template.csv");
+
+    [HttpGet("layers/{layerPublicId:guid}/export.csv"), Authorize(Policy = "Permission:OPMS_KPI.EXPORT")]
+    public async Task<IActionResult> Export(Guid layerPublicId)
+    {
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(new ApiResponse<object>(false, null, "User not found."));
+        var layer = await context.SdbipLayers.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == layerPublicId && x.IsActive);
+        if (layer == null) return NotFound(new ApiResponse<object>(false, null, "Active SDBIP layer not found."));
+        var scope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.EXPORT");
+        if (!scope.PermissionGranted) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<object>(false, null, "SDBIP export permission is denied."));
+        var query = context.OpmsTargets.AsNoTracking().Include(x => x.Department).Include(x => x.Unit)
+            .Where(x => x.SdbipLayerId == layer.Id && !x.IsWithdrawn);
+        if (!scope.Unrestricted)
+            query = query.Where(x => (x.DepartmentId.HasValue && scope.DepartmentIds.Contains(x.DepartmentId.Value)) ||
+                (x.UnitId.HasValue && scope.UnitIds.Contains(x.UnitId.Value)) ||
+                (x.AssignedUserId != null && scope.OwnerUserIds.Contains(x.AssignedUserId)) || scope.TargetIds.Contains(x.Id) || scope.KpiIds.Contains(x.Id));
+        var targets = await query.OrderBy(x => x.RevisedOrderNumber).ThenBy(x => x.PublicId).Take(100001).ToArrayAsync();
+        if (targets.Length > 100000) return StatusCode(StatusCodes.Status413PayloadTooLarge, new ApiResponse<object>(false, null, "Export exceeds 100,000 KPIs."));
+        var ids = targets.Select(x => x.Id).ToArray();
+        var periods = await context.PerformancePeriodTargets.AsNoTracking().Include(x => x.ReportingPeriod)
+            .Where(x => x.OpmsTargetId != null && ids.Contains(x.OpmsTargetId) && x.IsActive).ToArrayAsync();
+        var csv = new StringBuilder(OpmsImportCsv.WideHeader).Append("\r\n");
+        foreach (var target in targets)
+        {
+            var effectiveIndicator = target.IsIndicatorNumberRevised && target.RevisedIndicatorNumber != null ? target.RevisedIndicatorNumber : target.IndicatorNumber;
+            var effectiveName = target.IsTargetNameRevised && target.RevisedTargetName != null ? target.RevisedTargetName : target.TargetName;
+            var effectiveWording = target.IsKpiDescriptionRevised && target.RevisedKpiDescription != null ? target.RevisedKpiDescription : target.KpiDescription;
+            var values = new List<string?> { effectiveIndicator, effectiveIndicator, target.RevisedOrderNumber.ToString(CultureInfo.InvariantCulture), effectiveName, effectiveWording,
+                target.Department?.Code, target.Unit?.Code, target.NationalKpa, target.MunicipalKpa, target.PerformanceObjective,
+                target.Baseline.ToString(CultureInfo.InvariantCulture), target.Weight.ToString(CultureInfo.InvariantCulture), target.KpiType, target.IndicatorType };
+            foreach (var periodType in new[] { ReportingPeriodType.Quarter1, ReportingPeriodType.Quarter2, ReportingPeriodType.MidTerm, ReportingPeriodType.Quarter3, ReportingPeriodType.Quarter4, ReportingPeriodType.Annual })
+            {
+                var period = periods.SingleOrDefault(x => x.OpmsTargetId == target.Id && x.ReportingPeriod.PeriodType == periodType);
+                var revisable = periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual;
+                values.Add(period == null ? null : revisable && period.IsTargetRevised ? period.RevisedTargetValue : period.TargetValue);
+                values.Add(period == null ? null : OpmsImportCsv.ToTemplateUnit(revisable ? period.RevisedUnitKind ?? period.UnitKind : period.UnitKind));
+                values.Add(period == null ? null : OpmsImportCsv.ToTemplateDirection(period.Direction));
+                values.Add(period == null ? null : (revisable && period.IsBudgetRevised ? period.RevisedBudgetValue : period.BudgetValue)?.ToString(CultureInfo.InvariantCulture));
+                values.Add(period?.Description);
+            }
+            csv.AppendJoin(',', values.Select(PerformanceReportCsv.Encode)).Append("\r\n");
+        }
+        workflow.QueueAuditTrail("OpmsImportBatch", layer.PublicId.ToString(), "ExportWideTemplate", null, new { rowCount = targets.Length }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await context.SaveChangesAsync();
+        return CsvFile(csv.ToString(), $"sdbip-{SafeFileName(layer.Code)}-{DateTime.UtcNow:yyyyMMddHHmmss}.csv");
+    }
 
     [HttpPost("layers/{layerPublicId:guid}/stage"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
     public async Task<ActionResult<ApiResponse<OpmsImportBatchResponse>>> Stage(Guid layerPublicId, StageOpmsImportRequest request)
@@ -230,6 +279,16 @@ public sealed class OpmsImportsController(
     private static string? DetectPeriod(string error) => Enum.GetNames<ReportingPeriodType>().FirstOrDefault(error.Contains);
     private Task<ApplicationUser?> CurrentUser() { var id = PerformanceApiSupport.GetCurrentUserId(User); return string.IsNullOrWhiteSpace(id) ? Task.FromResult<ApplicationUser?>(null) : userManager.FindByIdAsync(id); }
     private static bool VersionsEqual(byte[]? a, byte[]? b) => a == null ? b == null : b != null && a.SequenceEqual(b);
+    private FileContentResult CsvFile(string value, string fileName) => File(new UTF8Encoding(true).GetBytes(value), "text/csv; charset=utf-8", fileName);
+    private static string SafeFileName(string value) => string.Concat(value.Where(character => char.IsLetterOrDigit(character) || character is '-' or '_')).ToLowerInvariant();
     private static OpmsImportBatchResponse ToResponse(OpmsImportBatch x) => new(x.PublicId, x.ClientRequestId, x.SdbipLayer.PublicId, x.SourceFileName, x.SourceSha256, x.Status.ToString(), x.TotalRows, x.NewRows, x.UnchangedRows, x.ChangedRows, x.InvalidRows, x.CreatedAt, x.CommittedAt, Convert.ToBase64String(x.RowVersion), x.Rows.OrderBy(r => r.SourceRowNumber).Select(r => new OpmsImportRowResponse(r.PublicId, r.SourceRowNumber, r.Reference, r.Status.ToString(), r.ExistingValueJson, r.NormalizedJson, r.ErrorCode, r.ErrorPeriod, r.ErrorField, r.SuppliedValue, r.ErrorMessage)).ToArray());
     private sealed record NormalizedRow(string IndicatorNumber, int OrderNumber, string TargetName, string KpiDescription, int DepartmentId, int? UnitId, string NationalKpa, string MunicipalKpa, string PerformanceObjective, decimal Baseline, decimal Weight, string KpiType, string IndicatorType, int PeriodId, SaveTargetPeriodValueRequest[] PeriodTargets);
+}
+
+internal static class OpmsImportCsv
+{
+    internal const string WideHeader = "EXISTING_INDICATOR_NUMBER,INDICATOR_NUMBER,ORDER_NUMBER,TARGET_NAME,KPI_DESCRIPTION,DEPARTMENT_CODE,UNIT_CODE,NATIONAL_KPA,MUNICIPAL_KPA,PERFORMANCE_OBJECTIVE,BASELINE,WEIGHT,KPI_TYPE,INDICATOR_TYPE,Q1_TARGET,Q1_UNIT,Q1_DIRECTION,Q1_BUDGET,Q1_DESCRIPTION,Q2_TARGET,Q2_UNIT,Q2_DIRECTION,Q2_BUDGET,Q2_DESCRIPTION,MID_TERM_TARGET,MID_TERM_UNIT,MID_TERM_DIRECTION,MID_TERM_BUDGET,MID_TERM_DESCRIPTION,Q3_TARGET,Q3_UNIT,Q3_DIRECTION,Q3_BUDGET,Q3_DESCRIPTION,Q4_TARGET,Q4_UNIT,Q4_DIRECTION,Q4_BUDGET,Q4_DESCRIPTION,ANNUAL_TARGET,ANNUAL_UNIT,ANNUAL_DIRECTION,ANNUAL_BUDGET,ANNUAL_DESCRIPTION";
+    internal static string ToTemplateUnit(PerformanceUnitKind value) => ToSnakeCase(value.ToString());
+    internal static string ToTemplateDirection(PerformanceDirection value) => ToSnakeCase(value.ToString());
+    private static string ToSnakeCase(string value) => string.Concat(value.Select((character, index) => index > 0 && char.IsUpper(character) ? "_" + character : character.ToString())).ToUpperInvariant();
 }

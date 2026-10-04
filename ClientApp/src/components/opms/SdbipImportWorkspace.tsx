@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { commitOpmsImport, getSdbipLayerMasters, stageOpmsImport } from '../../api/api';
+import { commitOpmsImport, downloadOpmsImportCsv, getSdbipLayerMasters, stageOpmsImport } from '../../api/api';
 import type { OpmsImportBatchDto, SdbipLayerMasterDto } from '../../types';
 import { parseSdbipImportCsv } from './sdbipImportCsv';
 
@@ -21,11 +21,13 @@ export function SdbipImportWorkspace() {
     const response = await commitOpmsImport(batch.publicId, { reason, approvalReference: approval || null, effectiveAt: effectiveAt || null, rowVersion: batch.rowVersion });
     if (!response.success || !response.data) setError(response.message ?? 'Unable to commit import.'); else setBatch(response.data);
   };
+  const download = async (exportLayer?: string) => { const response = await downloadOpmsImportCsv(exportLayer); if (!response.success) setError(response.message ?? 'Download failed.'); };
   return <div className="p-6 space-y-5">
     <div><h1 className="text-2xl font-semibold">SDBIP import and reconciliation</h1><p className="text-sm text-secondary-600">Upload the governed wide CSV template. Nothing is written to the KPI register until the complete preview is valid and committed.</p></div>
     <div className="bg-white dark:bg-secondary-800 rounded-lg border p-4 grid gap-4 md:grid-cols-2">
       <label className="text-sm">SDBIP layer<select className="mt-1 w-full rounded border p-2" value={layer} onChange={event => setLayer(event.target.value)}>{layers.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} — {item.name}</option>)}</select></label>
       <label className="text-sm">Wide CSV file<input className="mt-1 block w-full" type="file" accept=".csv,text/csv" onChange={event => void stage(event.target.files?.[0])} /></label>
+      <div className="md:col-span-2 flex flex-wrap gap-2"><button type="button" className="rounded border px-3 py-2" onClick={() => void download()}>Download blank template</button><button type="button" className="rounded border px-3 py-2 disabled:opacity-50" disabled={!layer} onClick={() => void download(layer)}>Export current SDBIP</button></div>
     </div>
     {error && <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</div>}
     {batch && <div className="space-y-4">

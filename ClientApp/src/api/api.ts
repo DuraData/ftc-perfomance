@@ -1194,6 +1194,18 @@ export async function getSdbipLayerMasters(municipalityFinancialYearPublicId?: s
 export const stageOpmsImport = (layerPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/layers/${layerPublicId}/stage`, payload);
 export const commitOpmsImport = (batchPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/${batchPublicId}/commit`, payload);
 
+export async function downloadOpmsImportCsv(layerPublicId?: string): Promise<ApiResponse<boolean>> {
+  const endpoint = layerPublicId ? `/v1/opms/imports/layers/${encodeURIComponent(layerPublicId)}/export.csv` : '/v1/opms/imports/template.csv';
+  const headers: Record<string, string> = {}; addTenantHeader(headers);
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers, credentials: 'include' });
+  if (!response.ok) return readApiResponse<boolean>(response);
+  const blob = await response.blob(); const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1].replace(/"$/, '')) : layerPublicId ? 'sdbip-export.csv' : 'opms-sdbip-import-template.csv';
+  const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = fileName; anchor.click(); URL.revokeObjectURL(url);
+  return { success: true, data: true };
+}
+
 export async function createSdbipLayerMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; description?: string | null; displayOrder: number; reason: string }): Promise<ApiResponse<SdbipLayerMasterDto>> {
   return post<SdbipLayerMasterDto>('/v1/masters/sdbip-layers', payload);
 }
