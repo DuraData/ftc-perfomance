@@ -1559,6 +1559,19 @@ export interface VoteNumberMasterDto {
   rowVersion: string;
 }
 
+export interface GlobalStrategicReferenceDto {
+  publicId: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  displayOrder: number;
+  isActive: boolean;
+  isEnabledForMunicipality: boolean;
+  availabilityPublicId?: string | null;
+  availabilityRowVersion?: string | null;
+  rowVersion: string;
+}
+
 export interface PerformancePeriodTargetDto {
   publicId: string;
   reportingPeriodPublicId: string;

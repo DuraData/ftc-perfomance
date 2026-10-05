@@ -18,6 +18,7 @@ public static class DbInitializer
         await SeedRolesAsync(roleManager);
         await SeedRolePermissionsAsync(context, roleManager);
         await SeedDefaultAdminUserAsync(context, userManager, configuration);
+        await SeedGlobalStrategicReferenceDefaultsAsync(context);
         var demoDataEnabled = configuration.GetValue("SeedData:DemoUsersEnabled", false);
         if (demoDataEnabled)
             await SeedDemoUsersAsync(context, userManager, configuration);
@@ -25,6 +26,32 @@ public static class DbInitializer
         if (demoDataEnabled)
             await SeedTargetsAndSubmissionsAsync(context, userManager);
         await SecurityRegistrySeeder.BackfillAssignmentsAsync(context);
+    }
+
+    private static async Task SeedGlobalStrategicReferenceDefaultsAsync(ApplicationDbContext context)
+    {
+        var nationalKpas = new[]
+        {
+            new NationalKpa { Code = "BSD", Name = "Basic Service Delivery and Infrastructure Development", DisplayOrder = 10 },
+            new NationalKpa { Code = "LED", Name = "Local Economic Development", DisplayOrder = 20 },
+            new NationalKpa { Code = "MTID", Name = "Municipal Transformation and Institutional Development", DisplayOrder = 30 },
+            new NationalKpa { Code = "MFVM", Name = "Municipal Financial Viability and Management", DisplayOrder = 40 },
+            new NationalKpa { Code = "GGPP", Name = "Good Governance and Public Participation", DisplayOrder = 50 }
+        };
+        var existingNationalKpas = await context.NationalKpas.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
+        context.NationalKpas.AddRange(nationalKpas.Where(item => !existingNationalKpas.Contains(item.Code)));
+
+        var pillars = new[]
+        {
+            new BackToBasicsPillar { Code = "PEOPLE_FIRST", Name = "Putting People First", DisplayOrder = 10 },
+            new BackToBasicsPillar { Code = "BASIC_SERVICES", Name = "Delivering Basic Services", DisplayOrder = 20 },
+            new BackToBasicsPillar { Code = "GOOD_GOVERNANCE", Name = "Good Governance", DisplayOrder = 30 },
+            new BackToBasicsPillar { Code = "FINANCIAL_MANAGEMENT", Name = "Sound Financial Management", DisplayOrder = 40 },
+            new BackToBasicsPillar { Code = "CAPABLE_INSTITUTIONS", Name = "Building Capable Institutions", DisplayOrder = 50 }
+        };
+        var existingPillars = await context.BackToBasicsPillars.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
+        context.BackToBasicsPillars.AddRange(pillars.Where(item => !existingPillars.Contains(item.Code)));
+        await context.SaveChangesAsync();
     }
 
     private static async Task SeedPermissionsAsync(ApplicationDbContext context)

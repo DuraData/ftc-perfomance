@@ -80,6 +80,7 @@ import type {
   DepartmentMasterDto,
   UnitMasterDto,
   PositionMasterDto,
+  GlobalStrategicReferenceDto,
   WorkflowDefinitionDto,
   WorkflowDefinitionComparisonDto,
   InternalAuditAssessmentDto,
@@ -1370,6 +1371,20 @@ export async function getVoteNumberMastersPage(query: OrganizationMasterPageQuer
 
 export async function saveVoteNumberMaster(publicId: string | null, payload: { departmentPublicId: string; code: string; number: string; name: string; amount: number; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').VoteNumberMasterDto>> {
   return publicId ? put<import('../types').VoteNumberMasterDto>(`/v1/masters/vote-numbers/${publicId}`, payload) : post<import('../types').VoteNumberMasterDto>('/v1/masters/vote-numbers', payload);
+}
+
+export type GlobalStrategicReferenceKind = 'national-kpas' | 'back-to-basics-pillars';
+
+export async function getGlobalStrategicReferences(kind: GlobalStrategicReferenceKind, activeOnly = false): Promise<ApiResponse<GlobalStrategicReferenceDto[]>> {
+  return get<GlobalStrategicReferenceDto[]>(`/v1/masters/${kind}${activeOnly ? '?activeOnly=true' : ''}`);
+}
+
+export async function saveGlobalStrategicReference(kind: GlobalStrategicReferenceKind, publicId: string | null, payload: { code: string; name: string; description?: string | null; displayOrder: number; isActive: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<GlobalStrategicReferenceDto>> {
+  return publicId ? put<GlobalStrategicReferenceDto>(`/v1/masters/${kind}/${publicId}`, payload) : post<GlobalStrategicReferenceDto>(`/v1/masters/${kind}`, payload);
+}
+
+export async function setGlobalStrategicReferenceAvailability(kind: GlobalStrategicReferenceKind, publicId: string, payload: { isEnabled: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<GlobalStrategicReferenceDto>> {
+  return put<GlobalStrategicReferenceDto>(`/v1/masters/${kind}/${publicId}/municipality-availability`, payload);
 }
 
 export async function closeEmployeeAssignment(publicId: string, payload: { effectiveTo: string; reason: string; rowVersion: string }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {

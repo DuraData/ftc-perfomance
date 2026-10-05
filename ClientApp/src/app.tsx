@@ -16,6 +16,7 @@ const WorkflowQueues = lazy(() => import('./components/workflow/WorkflowQueues')
 const MyWorkQueue = lazy(() => import('./components/workflow/WorkflowQueues').then(module => ({ default: module.MyWorkQueue })));
 const TenantOrganizationAdministration = lazy(() => import('./components/admin/TenantOrganizationAdministration').then(module => ({ default: module.TenantOrganizationAdministration })));
 const TenantReferenceAdministration = lazy(() => import('./components/admin/TenantReferenceAdministration').then(module => ({ default: module.TenantReferenceAdministration })));
+const GlobalStrategicReferenceAdministration = lazy(() => import('./components/admin/GlobalStrategicReferenceAdministration').then(module => ({ default: module.GlobalStrategicReferenceAdministration })));
 const LookupTables = lazy(() => import('./components/admin/AdminManagement').then(module => ({ default: module.LookupTables })));
 const AdminAuditLogsPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminAuditLogsPage })));
 const AdminUsersPage = lazy(() => import('./components/admin/SystemAdmin').then(module => ({ default: module.AdminUsersPage })));
@@ -38,7 +39,6 @@ const BudgetTypesPage = lazy(() => import('./components/admin/GenericLookupPages
 const StrategicGoalsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.StrategicGoalsPage })));
 const StrategicObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.StrategicObjectivesPage })));
 const UnitOfMeasurePage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.UnitOfMeasurePage })));
-const KPAsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.KPAsPage })));
 const MunicipalKPAsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.MunicipalKPAsPage })));
 const DepartmentalObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.DepartmentalObjectivesPage })));
 const OutputsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OutputsPage })));
@@ -262,7 +262,9 @@ function AppContent() {
       case '/admin/units-measure':
         return <UnitOfMeasurePage />;
       case '/admin/kpas':
-        return <KPAsPage />;
+        return <GlobalStrategicReferenceAdministration kind="national-kpas" />;
+      case '/admin/back-to-basics-pillars':
+        return <GlobalStrategicReferenceAdministration kind="back-to-basics-pillars" />;
       case '/admin/municipal-kpas':
         return <MunicipalKPAsPage />;
       case '/admin/departmental-objectives':
