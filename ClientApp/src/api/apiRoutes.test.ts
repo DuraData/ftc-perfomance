@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getReportingPeriodMasters, getReportingPeriodMastersPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMasters, getReportingPeriodMastersPage, getReportingWindowsPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -397,6 +397,24 @@ describe('versioned API routes', () => {
       expect.stringContaining('/v1/workflow/submissions/1/submission%20%2F%207/ratings/page?page=2&pageSize=10&sortBy=ratedAt&sortDirection=desc'),
       expect.objectContaining({ credentials: 'include' }),
     );
+  });
+
+  it('transports independent bounded workflow-governance register queries', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkflowDefinitionsPage({ page: 2, pageSize: 25, search: 'annual', sortBy: 'version', sortDirection: 'desc', submissionKind: 1, active: true });
+    await getReportingWindowsPage({ page: 3, pageSize: 25, search: 'Q1', sortBy: 'opensAt', sortDirection: 'asc', submissionKind: 2, active: false });
+    await getRatingSchemesPage({ page: 4, pageSize: 25, search: 'five', sortBy: 'code', sortDirection: 'asc', active: true });
+    await getInternalAuditConfigurationsPage({ page: 5, pageSize: 25, search: '2026', sortBy: 'createdAt', sortDirection: 'desc', model: 1, current: true });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/workflow/definitions/page?page=2&pageSize=25&search=annual&sortBy=version&sortDirection=desc&active=true&submissionKind=1'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/workflow/reporting-windows/page?page=3&pageSize=25&search=Q1&sortBy=opensAt&sortDirection=asc&active=false&submissionKind=2'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/workflow/rating-schemes/page?page=4&pageSize=25&search=five&sortBy=code&sortDirection=asc&active=true'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/internal-audit/configurations/page?page=5&pageSize=25&search=2026&sortBy=createdAt&sortDirection=desc&current=true&model=1'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('projects OPMS API data without inheriting production fixture values', async () => {

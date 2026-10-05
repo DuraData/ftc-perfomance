@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Security.Claims;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -21,16 +22,58 @@ public sealed class InternalAuditAssessmentsController(
     IWorkflowGovernanceService governance,
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
+    [HttpGet("configurations/page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<InternalAuditConfigurationDto>>>> ConfigurationsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] InternalAuditAssessmentModel? model = null,
+        [FromQuery] bool? current = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<InternalAuditConfigurationDto>>();
+        if (!ConfigurationSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<InternalAuditConfigurationDto>>("SortBy must be createdAt, financialYear, model, version, or effectiveFrom."));
+        var query = context.InternalAuditAssessmentConfigurations.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(item => item.Reason.ToLower().Contains(search)
+                || item.MunicipalityFinancialYear.FinancialYear.Code.ToLower().Contains(search));
+        }
+        if (model.HasValue) query = query.Where(item => item.Model == model.Value);
+        if (current.HasValue) query = query.Where(item => item.IsCurrent == current.Value);
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyConfigurationOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<InternalAuditConfigurationDto>>(true,
+            PagedResponse<InternalAuditConfigurationDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("configurations")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
-    public async Task<ActionResult<ApiResponse<InternalAuditConfigurationDto[]>>> Configurations()
+    public ActionResult<ApiResponse<InternalAuditConfigurationDto[]>> Configurations()
     {
         if (!HasTenant()) return TenantRequired<InternalAuditConfigurationDto[]>();
-        var rows = await context.InternalAuditAssessmentConfigurations.AsNoTracking()
-            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
-            .OrderByDescending(item => item.CreatedAt).ToArrayAsync();
-        return Ok(new ApiResponse<InternalAuditConfigurationDto[]>(true, rows.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<InternalAuditConfigurationDto[]>("This unbounded route is retired. Use the /configurations/page endpoint."));
     }
+
+    private static readonly HashSet<string> ConfigurationSortFields = ["createdat", "financialyear", "model", "version", "effectivefrom"];
+
+    private static IOrderedQueryable<InternalAuditAssessmentConfiguration> ApplyConfigurationOrdering(
+        IQueryable<InternalAuditAssessmentConfiguration> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("financialyear", false) => query.OrderBy(item => item.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(item => item.Id),
+            ("financialyear", true) => query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.Code).ThenByDescending(item => item.Id),
+            ("model", false) => query.OrderBy(item => item.Model).ThenBy(item => item.Id),
+            ("model", true) => query.OrderByDescending(item => item.Model).ThenByDescending(item => item.Id),
+            ("version", false) => query.OrderBy(item => item.Version).ThenBy(item => item.Id),
+            ("version", true) => query.OrderByDescending(item => item.Version).ThenByDescending(item => item.Id),
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+        };
 
     [HttpPost("configurations")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]

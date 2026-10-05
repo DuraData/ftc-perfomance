@@ -105,6 +105,54 @@ public sealed class WorkflowConfigurationControllerTests
     }
 
     [Fact]
+    public async Task GovernancePages_FilterBeforeCount_PageDeterministically_AndRetireLegacyArrays()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "WF-GOV", Name = "Workflow Governance Municipality" };
+        context.Municipalities.Add(municipality);
+        var financialYear = new FinancialYear { Code = "2034/35", Name = "2034/35", StartDate = new(2034, 7, 1), EndDate = new(2035, 6, 30) };
+        context.FinancialYears.Add(financialYear);
+        await context.SaveChangesAsync();
+        var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, FinancialYear = financialYear, EffectiveFrom = financialYear.StartDate };
+        context.MunicipalityFinancialYears.Add(year);
+        await context.SaveChangesAsync();
+        var startsAt = new DateTime(2034, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            var period = new ReportingPeriod { MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, Code = $"MATCH-P{index:00}", Name = $"Match period {index:00}", PeriodType = ReportingPeriodType.Quarter1, Sequence = index + 1, StartDate = startsAt.AddDays(index), EndDate = startsAt.AddDays(index + 1) };
+            context.ReportingPeriods.Add(period);
+            context.WorkflowDefinitions.Add(new WorkflowDefinition { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, SubmissionKind = SubmissionKind.Opms, Code = "MATCH", Name = $"Match workflow {index:00}", Version = index + 1, EffectiveFrom = startsAt.AddDays(index) });
+            context.RatingSchemes.Add(new RatingScheme { MunicipalityId = municipality.Id, Code = $"MATCH-{index:00}", Name = $"Match scheme {index:00}" });
+            await context.SaveChangesAsync();
+            context.ReportingWindows.Add(new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = period.Id, ReportingPeriod = period, SubmissionKind = SubmissionKind.Opms, OpensAt = startsAt.AddDays(index), ClosesAt = startsAt.AddDays(index + 1) });
+        }
+        context.WorkflowDefinitions.Add(new WorkflowDefinition { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, SubmissionKind = SubmissionKind.Ipms, Code = "OUTSIDE", Name = "Outside workflow", Version = 1, EffectiveFrom = startsAt });
+        context.RatingSchemes.Add(new RatingScheme { MunicipalityId = municipality.Id, Code = "OUTSIDE", Name = "Outside scheme" });
+        await context.SaveChangesAsync();
+
+        var controller = Controller(context, municipality.Id);
+        var definitionResult = await controller.GetDefinitionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "version", SortDirection = "asc" }, SubmissionKind.Opms);
+        var definitions = definitionResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<WorkflowDefinitionDto>>>().Subject.Data!;
+        definitions.TotalCount.Should().Be(11);
+        definitions.Items.Select(item => item.Version).Should().Equal(4, 5, 6);
+
+        var windowResult = await controller.GetWindowsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "period", SortDirection = "asc" }, SubmissionKind.Opms, true);
+        var windows = windowResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<ReportingWindowDto>>>().Subject.Data!;
+        windows.TotalCount.Should().Be(11);
+        windows.Items.Select(item => item.PeriodCode).Should().Equal("MATCH-P03", "MATCH-P04", "MATCH-P05");
+
+        var ratingResult = await controller.GetRatingSchemesPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "code", SortDirection = "asc" }, true);
+        var ratings = ratingResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<RatingSchemeDto>>>().Subject.Data!;
+        ratings.TotalCount.Should().Be(11);
+        ratings.Items.Select(item => item.Code).Should().Equal("MATCH-03", "MATCH-04", "MATCH-05");
+
+        (await controller.GetDefinitionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetDefinitions().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetWindows().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetRatingSchemes().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
+    [Fact]
     public async Task WorkflowEvidencePages_ApplySubmissionScopeBeforeCount_AndRetireLegacyArrays()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

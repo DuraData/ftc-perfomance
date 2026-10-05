@@ -133,6 +133,43 @@ public sealed class InternalAuditAssessmentTests
         await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("*append-only*");
     }
 
+    [Fact]
+    public async Task ConfigurationPage_FiltersBeforeCount_PagesDeterministically_AndRetiresLegacyArray()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var createdAt = new DateTime(2035, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            context.InternalAuditAssessmentConfigurations.Add(new InternalAuditAssessmentConfiguration
+            {
+                MunicipalityId = seed.Municipality.Id,
+                MunicipalityFinancialYearId = seed.Year.Id,
+                MunicipalityFinancialYear = seed.Year,
+                Model = index % 2 == 0 ? InternalAuditAssessmentModel.Detailed : InternalAuditAssessmentModel.SatisfactoryNotSatisfactory,
+                Version = index + 1,
+                IsCurrent = index == 10,
+                EffectiveFrom = createdAt.AddDays(index),
+                EffectiveTo = index == 10 ? null : createdAt.AddDays(index + 1),
+                Reason = $"match governance reason {index:00}",
+                CreatedByUserId = seed.User.Id,
+                CreatedByUser = seed.User,
+                CreatedAt = createdAt.AddMinutes(index)
+            });
+        }
+        context.InternalAuditAssessmentConfigurations.Add(new InternalAuditAssessmentConfiguration { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = seed.Year.Id, MunicipalityFinancialYear = seed.Year, Model = InternalAuditAssessmentModel.Detailed, Version = 12, IsCurrent = false, EffectiveFrom = createdAt.AddDays(12), EffectiveTo = createdAt.AddDays(13), Reason = "outside governance reason", CreatedByUserId = seed.User.Id, CreatedByUser = seed.User, CreatedAt = createdAt.AddDays(12) });
+        await context.SaveChangesAsync();
+        var controller = Controller(context, seed, allowed: true);
+
+        var result = await controller.ConfigurationsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "version", SortDirection = "asc" });
+        var page = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<InternalAuditConfigurationDto>>>().Subject.Data!;
+
+        page.TotalCount.Should().Be(11);
+        page.Items.Select(item => item.Version).Should().Equal(4, 5, 6);
+        (await controller.ConfigurationsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.Configurations().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
     private static T Data<T>(IActionResult result) where T : class =>
         Assert.IsType<ApiResponse<T>>(Assert.IsType<OkObjectResult>(result).Value).Data!;
 

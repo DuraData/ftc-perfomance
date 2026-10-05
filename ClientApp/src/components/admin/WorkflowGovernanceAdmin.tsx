@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Clock3, Plus, RefreshCw, ShieldCheck, Star } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
@@ -11,12 +11,12 @@ import {
   createReportingWindow,
   createWorkflowDefinition,
   compareWorkflowDefinitions,
-  getRatingSchemes,
+  getRatingSchemesPage,
   getReportingWindowExceptions,
-  getReportingWindows,
+  getReportingWindowsPage,
   getUsersPage,
-  getWorkflowDefinitions,
-  getInternalAuditConfigurations,
+  getWorkflowDefinitionsPage,
+  getInternalAuditConfigurationsPage,
   retireWorkflowDefinition,
   saveInternalAuditConfiguration,
 } from '../../api/api';
@@ -44,6 +44,12 @@ type StageDraft = {
 const localDate = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const kindName = (kind: number) => kind === 1 ? 'OPMS' : 'IPMS';
 const workflowStatus = (item: WorkflowDefinitionDto) => !item.isActive ? 'Retired' : item.effectiveTo && new Date(item.effectiveTo) <= new Date() ? 'Superseded' : item.effectiveFrom && new Date(item.effectiveFrom) > new Date() ? 'Scheduled' : 'Effective';
+const emptyPage = { totalCount: 0, totalPages: 0 };
+
+function RegisterPaging({ label, page, totalPages, totalCount, onPageChange }: { label: string; page: number; totalPages: number; totalCount: number; onPageChange: (page: number) => void }) {
+  if (totalPages <= 1) return totalCount > 0 ? <p className="mt-3 text-xs text-secondary-500">{totalCount} {label}</p> : null;
+  return <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages} · {totalCount} {label}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onPageChange(Math.max(1, page - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>Next</Button></div></div>;
+}
 const emptyStage = (index: number): StageDraft => ({
   code: index === 0 ? 'SUBMIT' : 'VERIFY',
   name: index === 0 ? 'Submit' : 'Verify',
@@ -65,6 +71,19 @@ export function WorkflowGovernanceAdminPage() {
   const [windows, setWindows] = useState<ReportingWindowDto[]>([]);
   const [ratings, setRatings] = useState<RatingSchemeDto[]>([]);
   const [auditConfigurations, setAuditConfigurations] = useState<InternalAuditConfigurationDto[]>([]);
+  const [definitionPage, setDefinitionPage] = useState(1);
+  const [definitionSearch, setDefinitionSearch] = useState('');
+  const [definitionMeta, setDefinitionMeta] = useState(emptyPage);
+  const [windowPage, setWindowPage] = useState(1);
+  const [windowSearch, setWindowSearch] = useState('');
+  const [windowMeta, setWindowMeta] = useState(emptyPage);
+  const [ratingPage, setRatingPage] = useState(1);
+  const [ratingSearch, setRatingSearch] = useState('');
+  const [ratingMeta, setRatingMeta] = useState(emptyPage);
+  const [selectedRatingOptions, setSelectedRatingOptions] = useState<RatingSchemeDto[]>([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditMeta, setAuditMeta] = useState(emptyPage);
   const [exceptionWindow, setExceptionWindow] = useState<ReportingWindowDto | null>(null);
   const [exceptions, setExceptions] = useState<ReportingWindowExceptionDto[]>([]);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
@@ -82,22 +101,29 @@ export function WorkflowGovernanceAdminPage() {
   const [ratingValues, setRatingValues] = useState([{ value: '1', label: 'Not achieved', minimum: '0', maximum: '49.99' }, { value: '2', label: 'Achieved', minimum: '50', maximum: '100' }]);
   const [auditDraft, setAuditDraft] = useState({ municipalityFinancialYearPublicId: '', model: 1 as 1 | 2, effectiveFrom: localDate(), reason: '' });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setBusy(true);
     setError(null);
     const [definitionResult, windowResult, ratingResult, auditResult] = await Promise.all([
-      getWorkflowDefinitions(), getReportingWindows(), getRatingSchemes(), getInternalAuditConfigurations(),
+      getWorkflowDefinitionsPage({ page: definitionPage, pageSize: 25, search: definitionSearch, sortBy: 'effectiveFrom', sortDirection: 'desc' }),
+      getReportingWindowsPage({ page: windowPage, pageSize: 25, search: windowSearch, sortBy: 'opensAt', sortDirection: 'desc' }),
+      getRatingSchemesPage({ page: ratingPage, pageSize: 25, search: ratingSearch, sortBy: 'code', sortDirection: 'asc' }),
+      getInternalAuditConfigurationsPage({ page: auditPage, pageSize: 25, search: auditSearch, sortBy: 'createdAt', sortDirection: 'desc' }),
     ]);
     const failed = [definitionResult, windowResult, ratingResult, auditResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Workflow configuration could not be loaded.');
-    setDefinitions(definitionResult.data ?? []);
-    setWindows(windowResult.data ?? []);
-    setRatings(ratingResult.data ?? []);
-    setAuditConfigurations(auditResult.data ?? []);
+    setDefinitions(definitionResult.data?.items ?? []);
+    setDefinitionMeta({ totalCount: definitionResult.data?.totalCount ?? 0, totalPages: definitionResult.data?.totalPages ?? 0 });
+    setWindows(windowResult.data?.items ?? []);
+    setWindowMeta({ totalCount: windowResult.data?.totalCount ?? 0, totalPages: windowResult.data?.totalPages ?? 0 });
+    setRatings(ratingResult.data?.items ?? []);
+    setRatingMeta({ totalCount: ratingResult.data?.totalCount ?? 0, totalPages: ratingResult.data?.totalPages ?? 0 });
+    setAuditConfigurations(auditResult.data?.items ?? []);
+    setAuditMeta({ totalCount: auditResult.data?.totalCount ?? 0, totalPages: auditResult.data?.totalPages ?? 0 });
     setBusy(false);
-  };
+  }, [auditPage, auditSearch, definitionPage, definitionSearch, ratingPage, ratingSearch, windowPage, windowSearch]);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [load]);
 
   const saveDefinition = async () => {
     if (!workflowYearId) { setError('Select a municipality financial year before defining a workflow.'); return; }
@@ -174,6 +200,7 @@ export function WorkflowGovernanceAdminPage() {
   };
 
   const exceptionUserOptions = users.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: item.user.fullName }));
+  const availableRatingSchemes = [...ratings, ...selectedRatingOptions.filter(selected => !ratings.some(item => item.publicId === selected.publicId))];
 
   const saveException = async () => {
     if (!exceptionWindow || !exceptionDraft.scopePublicId || !exceptionDraft.reason.trim()) { setError('Scope and reason are required.'); return; }
@@ -246,6 +273,7 @@ export function WorkflowGovernanceAdminPage() {
               <Input label="Effective from" type="datetime-local" value={definition.effectiveFrom} onChange={event => setDefinition(current => ({ ...current, effectiveFrom: event.target.value }))} />
               <Textarea label="Version reason" value={definition.reason} onChange={event => setDefinition(current => ({ ...current, reason: event.target.value }))} required />
             </div>
+            <div className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><Input label="Search rating schemes for stage assignment" value={ratingSearch} onChange={event => { setRatingSearch(event.target.value); setRatingPage(1); }} /><RegisterPaging label="schemes" page={ratingPage} totalPages={ratingMeta.totalPages} totalCount={ratingMeta.totalCount} onPageChange={setRatingPage} /></div>
             <div className="space-y-3">
               {stages.map((stage, index) => <div key={index} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700">
                 <div className="mb-2 flex items-center justify-between"><Badge variant={index === stages.length - 1 ? 'success' : 'default'}>Stage {index + 1}{index === stages.length - 1 ? ' · terminal' : ''}</Badge>{stages.length > 2 && <button className="text-xs text-error-600" onClick={() => setStages(current => current.filter((_, stageIndex) => stageIndex !== index))}>Remove</button>}</div>
@@ -254,14 +282,14 @@ export function WorkflowGovernanceAdminPage() {
                   <Input label="Name" value={stage.name} onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, name: event.target.value } : item))} />
                   <Input label="Registered action / permission" value={stage.requiredActionCode} onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, requiredActionCode: event.target.value.toUpperCase(), requiredPermissionCode: event.target.value.toUpperCase() } : item))} />
                   <Select label="Rejection stage" value={stage.rejectionStageCode} options={stages.slice(0, index).map(item => ({ value: item.code, label: item.name }))} placeholder="No rejection route" onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, rejectionStageCode: event.target.value } : item))} />
-                  <Select label="Rating scheme" value={stage.ratingSchemePublicId} options={ratings.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} placeholder="No rating at this stage" onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, ratingSchemePublicId: event.target.value, requiresRating: event.target.value ? item.requiresRating : false } : item))} />
+                  <Select label="Rating scheme" value={stage.ratingSchemePublicId} options={availableRatingSchemes.filter(item => item.isActive).map(item => ({ value: item.publicId, label: `${item.code} · ${item.name}` }))} placeholder="No rating at this stage" onChange={event => { const selected = ratings.find(item => item.publicId === event.target.value); if (selected) setSelectedRatingOptions(current => current.some(item => item.publicId === selected.publicId) ? current : [...current, selected]); setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, ratingSchemePublicId: event.target.value, requiresRating: event.target.value ? item.requiresRating : false } : item)); }} />
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-3"><Checkbox label="Different from submitter" checked={stage.requireDifferentActorFromSubmitter} onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, requireDifferentActorFromSubmitter: event.target.checked } : item))} /><Checkbox label="Optional and bypassable" checked={stage.isOptional && stage.allowBypass} onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, isOptional: event.target.checked, allowBypass: event.target.checked } : item))} /><Checkbox label="Rating required" checked={stage.requiresRating} disabled={!stage.ratingSchemePublicId} onChange={event => setStages(current => current.map((item, stageIndex) => stageIndex === index ? { ...item, requiresRating: event.target.checked } : item))} /></div>
               </div>)}
             </div>
             <div className="flex justify-between"><Button size="sm" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setStages(current => [...current, { ...emptyStage(current.length), code: `STAGE_${current.length + 1}`, name: `Stage ${current.length + 1}` }])}>Add stage</Button><Button size="sm" variant="primary" onClick={() => void saveDefinition()} disabled={busy}>Create version</Button></div>
           </FormPanel>
-          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Version history</h3><div className="mt-3 space-y-3">{definitions.map(item => { const status = workflowStatus(item); return <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between gap-3"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code} · v{item.version} · {kindName(item.submissionKind)}</p></div><Badge variant={status === 'Effective' ? 'success' : status === 'Scheduled' ? 'info' : 'default'}>{status}</Badge></div><div className="mt-2 flex flex-wrap gap-1">{item.stages.map(stage => <Badge key={stage.publicId} variant="default">{stage.sequence}. {stage.name}{stage.ratingSchemeCode ? ` · ${stage.ratingSchemeCode}${stage.requiresRating ? ' required' : ''}` : ''}</Badge>)}</div><div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => void compareWithPrevious(item)} disabled={busy || item.version <= 1}>Compare to previous</Button></div>{item.isActive && status !== 'Superseded' && <div className="mt-3 space-y-2 border-t border-secondary-200 pt-3 dark:border-secondary-700"><Textarea label={`Retirement reason for ${item.code} v${item.version}`} value={retireReasons[item.publicId] ?? ''} onChange={event => setRetireReasons(current => ({ ...current, [item.publicId]: event.target.value }))} required /><Button type="button" size="sm" variant="outline" onClick={() => void retireDefinition(item)} disabled={busy}>Retire version</Button><p className="text-xs text-secondary-500">Existing instances remain pinned to this version.</p></div>}</div>; })}{!definitions.length && <p className="text-sm text-secondary-500">No configured definitions.</p>}</div></Card>
+          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Version history</h3><div className="mt-3"><Input label="Search workflow versions" value={definitionSearch} onChange={event => { setDefinitionSearch(event.target.value); setDefinitionPage(1); }} /></div><div className="mt-3 space-y-3">{definitions.map(item => { const status = workflowStatus(item); return <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between gap-3"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code} · v{item.version} · {kindName(item.submissionKind)}</p></div><Badge variant={status === 'Effective' ? 'success' : status === 'Scheduled' ? 'info' : 'default'}>{status}</Badge></div><div className="mt-2 flex flex-wrap gap-1">{item.stages.map(stage => <Badge key={stage.publicId} variant="default">{stage.sequence}. {stage.name}{stage.ratingSchemeCode ? ` · ${stage.ratingSchemeCode}${stage.requiresRating ? ' required' : ''}` : ''}</Badge>)}</div><div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => void compareWithPrevious(item)} disabled={busy || item.version <= 1}>Compare to previous</Button></div>{item.isActive && status !== 'Superseded' && <div className="mt-3 space-y-2 border-t border-secondary-200 pt-3 dark:border-secondary-700"><Textarea label={`Retirement reason for ${item.code} v${item.version}`} value={retireReasons[item.publicId] ?? ''} onChange={event => setRetireReasons(current => ({ ...current, [item.publicId]: event.target.value }))} required /><Button type="button" size="sm" variant="outline" onClick={() => void retireDefinition(item)} disabled={busy}>Retire version</Button><p className="text-xs text-secondary-500">Existing instances remain pinned to this version.</p></div>}</div>; })}{!definitions.length && <p className="text-sm text-secondary-500">No configured definitions.</p>}</div><RegisterPaging label="versions" page={definitionPage} totalPages={definitionMeta.totalPages} totalCount={definitionMeta.totalCount} onPageChange={setDefinitionPage} /></Card>
           {comparison && <Card className="p-4 xl:col-span-2"><div className="flex items-center justify-between"><div><h3 className="font-semibold text-secondary-900 dark:text-white">Version comparison</h3><p className="text-sm text-secondary-500">{comparison.from.code} v{comparison.from.version} → v{comparison.to.version}</p></div><Button size="sm" variant="ghost" onClick={() => setComparison(null)}>Close comparison</Button></div><div className="mt-3 grid gap-2 md:grid-cols-2">{comparison.stageDifferences.map(change => <div key={change.stageCode} className="rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex justify-between"><span className="font-medium">{change.stageCode}</span><Badge variant={change.change === 'Unchanged' ? 'default' : 'warning'}>{change.change}</Badge></div><p className="mt-1 text-xs text-secondary-500">Sequence {change.fromSequence ?? '—'} → {change.toSequence ?? '—'}</p>{change.changedFields.length > 0 && <p className="mt-1 text-xs text-secondary-500">Changed: {change.changedFields.join(', ')}</p>}</div>)}</div></Card>}
         </div>}
 
@@ -273,7 +301,7 @@ export function WorkflowGovernanceAdminPage() {
             <Input label="Closes" type="datetime-local" value={windowDraft.closesAt} onChange={event => setWindowDraft(current => ({ ...current, closesAt: event.target.value }))} />
             <Button variant="primary" onClick={() => void saveWindow()} disabled={busy}>Create window</Button>
           </FormPanel>
-          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Configured windows</h3><div className="mt-3 space-y-2">{windows.map(item => <div key={item.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.periodCode} · {kindName(item.submissionKind)}</p><p className="text-xs text-secondary-500">{new Date(item.opensAt).toLocaleString()} — {new Date(item.closesAt).toLocaleString()}</p></div><div className="flex items-center gap-2"><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge><Button size="sm" variant="outline" onClick={() => void openExceptions(item)}>Manage exceptions</Button></div></div>)}</div></Card>
+          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Configured windows</h3><div className="mt-3"><Input label="Search reporting windows" value={windowSearch} onChange={event => { setWindowSearch(event.target.value); setWindowPage(1); }} /></div><div className="mt-3 space-y-2">{windows.map(item => <div key={item.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.periodCode} · {kindName(item.submissionKind)}</p><p className="text-xs text-secondary-500">{new Date(item.opensAt).toLocaleString()} — {new Date(item.closesAt).toLocaleString()}</p></div><div className="flex items-center gap-2"><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge><Button size="sm" variant="outline" onClick={() => void openExceptions(item)}>Manage exceptions</Button></div></div>)}</div><RegisterPaging label="windows" page={windowPage} totalPages={windowMeta.totalPages} totalCount={windowMeta.totalCount} onPageChange={setWindowPage} /></Card>
           {exceptionWindow && <div className="xl:col-span-2"><FormPanel title={`Scoped exceptions · ${exceptionWindow.periodCode} ${kindName(exceptionWindow.submissionKind)}`} description="An approved exception extends only one user, department, or unit beyond the normal close time." icon={<Clock3 className="h-5 w-5" />}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select label="Scope type" value={exceptionDraft.scopeType} options={[{ value: 'department', label: 'Department' }, { value: 'unit', label: 'Unit' }, { value: 'user', label: 'User' }]} onChange={event => setExceptionDraft(current => ({ ...current, scopeType: event.target.value, scopePublicId: '' }))} />{exceptionDraft.scopeType === 'user' ? <Select label="Scoped record" value={exceptionDraft.scopePublicId} placeholder="Select one scope" options={exceptionUserOptions} onChange={event => setExceptionDraft(current => ({ ...current, scopePublicId: event.target.value }))} /> : <OrganizationMasterPicker kind={exceptionDraft.scopeType === 'unit' ? 'unit' : 'department'} label="Scoped record" value={exceptionDraft.scopePublicId} emptyLabel="Select one scope" onChange={value => setExceptionDraft(current => ({ ...current, scopePublicId: value }))} />}<Input label="Extended close" type="datetime-local" value={exceptionDraft.extendedClosesAt} onChange={event => setExceptionDraft(current => ({ ...current, extendedClosesAt: event.target.value }))} /><Textarea label="Approval reason" value={exceptionDraft.reason} onChange={event => setExceptionDraft(current => ({ ...current, reason: event.target.value }))} required /></div>
             <div className="flex justify-end"><Button variant="primary" onClick={() => void saveException()} disabled={busy}>Approve exception</Button></div>
@@ -287,7 +315,7 @@ export function WorkflowGovernanceAdminPage() {
             {ratingValues.map((value, index) => <div key={index} className="grid gap-2 rounded-xl border border-secondary-200 p-3 sm:grid-cols-4 dark:border-secondary-700"><Input label="Value" type="number" value={value.value} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))} /><Input label="Label" value={value.label} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} /><Input label="Minimum %" type="number" value={value.minimum} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, minimum: event.target.value } : item))} /><Input label="Maximum %" type="number" value={value.maximum} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, maximum: event.target.value } : item))} /></div>)}
             <div className="flex justify-between"><Button size="sm" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setRatingValues(current => [...current, { value: String(current.length + 1), label: '', minimum: '', maximum: '' }])}>Add value</Button><Button size="sm" variant="primary" onClick={() => void saveRating()} disabled={busy}>Create scheme</Button></div>
           </FormPanel>
-          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Rating schemes</h3><div className="mt-3 space-y-3">{ratings.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.values.length} values</Badge></div><div className="mt-2 flex flex-wrap gap-1">{item.values.map(value => <Badge key={value.publicId} variant="default">{value.value}: {value.label}</Badge>)}</div></div>)}</div></Card>
+          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Rating schemes</h3><div className="mt-3"><Input label="Search rating schemes" value={ratingSearch} onChange={event => { setRatingSearch(event.target.value); setRatingPage(1); }} /></div><div className="mt-3 space-y-3">{ratings.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.values.length} values</Badge></div><div className="mt-2 flex flex-wrap gap-1">{item.values.map(value => <Badge key={value.publicId} variant="default">{value.value}: {value.label}</Badge>)}</div></div>)}</div><RegisterPaging label="schemes" page={ratingPage} totalPages={ratingMeta.totalPages} totalCount={ratingMeta.totalCount} onPageChange={setRatingPage} /></Card>
         </div>}
 
         {tab === 'audit' && <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -298,7 +326,7 @@ export function WorkflowGovernanceAdminPage() {
             <Textarea label="Governance reason" value={auditDraft.reason} maxLength={1000} onChange={event => setAuditDraft(value => ({ ...value, reason: event.target.value }))} required />
             <Button variant="primary" onClick={() => void saveAuditModel()} disabled={busy}>Create model version</Button>
           </FormPanel>
-          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Model selection history</h3><div className="mt-3 space-y-3">{auditConfigurations.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-medium">{item.model === 1 ? 'Detailed IA Assessment' : 'Satisfactory / Not Satisfactory'}</p><p className="text-xs text-secondary-500">{item.financialYearCode} · version {item.version}</p></div><Badge variant={item.isCurrent ? 'success' : 'default'}>{item.isCurrent ? 'Current' : 'Superseded'}</Badge></div><p className="mt-2 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleString()}{item.effectiveTo ? ` — ${new Date(item.effectiveTo).toLocaleString()}` : ''}</p><p className="mt-1 text-xs">{item.reason}</p></div>)}{!auditConfigurations.length && <p className="text-sm text-secondary-500">No Internal Audit model has been selected.</p>}</div></Card>
+          <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Model selection history</h3><div className="mt-3"><Input label="Search model history" value={auditSearch} onChange={event => { setAuditSearch(event.target.value); setAuditPage(1); }} /></div><div className="mt-3 space-y-3">{auditConfigurations.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-medium">{item.model === 1 ? 'Detailed IA Assessment' : 'Satisfactory / Not Satisfactory'}</p><p className="text-xs text-secondary-500">{item.financialYearCode} · version {item.version}</p></div><Badge variant={item.isCurrent ? 'success' : 'default'}>{item.isCurrent ? 'Current' : 'Superseded'}</Badge></div><p className="mt-2 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleString()}{item.effectiveTo ? ` — ${new Date(item.effectiveTo).toLocaleString()}` : ''}</p><p className="mt-1 text-xs">{item.reason}</p></div>)}{!auditConfigurations.length && <p className="text-sm text-secondary-500">No Internal Audit model has been selected.</p>}</div><RegisterPaging label="configurations" page={auditPage} totalPages={auditMeta.totalPages} totalCount={auditMeta.totalCount} onPageChange={setAuditPage} /></Card>
         </div>}
 
         {tab === 'delivery' && <NotificationDeliveryOperations />}

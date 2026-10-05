@@ -25,13 +25,41 @@ public sealed class WorkflowConfigurationController(
     IWorkflowGovernanceService governance,
     UserManager<ApplicationUser> userManager) : ControllerBase
 {
+    [HttpGet("definitions/page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<WorkflowDefinitionDto>>>> GetDefinitionsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] SubmissionKind? submissionKind = null,
+        [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<WorkflowDefinitionDto>>();
+        if (!WorkflowDefinitionSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<WorkflowDefinitionDto>>("SortBy must be createdAt, code, name, version, effectiveFrom, or financialYear."));
+        var query = context.WorkflowDefinitions.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(x => x.Code.ToLower().Contains(search) || x.Name.ToLower().Contains(search)
+                || x.MunicipalityFinancialYear.FinancialYear.Code.ToLower().Contains(search));
+        }
+        if (submissionKind.HasValue) query = query.Where(x => x.SubmissionKind == submissionKind.Value);
+        if (active.HasValue) query = query.Where(x => x.IsActive == active.Value);
+        var totalCount = await query.CountAsync();
+        var entities = await ApplyWorkflowDefinitionOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear)
+            .Include(x => x.Stages).ThenInclude(x => x.RatingScheme)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<WorkflowDefinitionDto>>(true,
+            PagedResponse<WorkflowDefinitionDto>.Create(entities.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("definitions")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
-    public async Task<ActionResult<ApiResponse<WorkflowDefinitionDto[]>>> GetDefinitions()
+    public ActionResult<ApiResponse<WorkflowDefinitionDto[]>> GetDefinitions()
     {
         if (!HasTenant()) return TenantRequired<WorkflowDefinitionDto[]>();
-        var entities = await context.WorkflowDefinitions.AsNoTracking().Include(x => x.MunicipalityFinancialYear).Include(x => x.Stages).ThenInclude(x => x.RatingScheme).OrderByDescending(x => x.Version).ToArrayAsync();
-        return Ok(new ApiResponse<WorkflowDefinitionDto[]>(true, entities.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<WorkflowDefinitionDto[]>("This unbounded route is retired. Use the /definitions/page endpoint."));
     }
 
     [HttpPost("definitions")]
@@ -149,13 +177,39 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<WorkflowDefinitionDto>(true, ToDto(entity), "Workflow retired. Existing instances remain pinned to this version."));
     }
 
+    [HttpGet("reporting-windows/page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<ReportingWindowDto>>>> GetWindowsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] SubmissionKind? submissionKind = null,
+        [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<ReportingWindowDto>>();
+        if (!ReportingWindowSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<ReportingWindowDto>>("SortBy must be opensAt, closesAt, period, or submissionKind."));
+        var query = context.ReportingWindows.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(x => x.ReportingPeriod.Code.ToLower().Contains(search) || x.ReportingPeriod.Name.ToLower().Contains(search));
+        }
+        if (submissionKind.HasValue) query = query.Where(x => x.SubmissionKind == submissionKind.Value);
+        if (active.HasValue) query = query.Where(x => x.IsActive == active.Value);
+        var totalCount = await query.CountAsync();
+        var entities = await ApplyReportingWindowOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Include(x => x.ReportingPeriod)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<ReportingWindowDto>>(true,
+            PagedResponse<ReportingWindowDto>.Create(entities.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("reporting-windows")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
-    public async Task<ActionResult<ApiResponse<ReportingWindowDto[]>>> GetWindows()
+    public ActionResult<ApiResponse<ReportingWindowDto[]>> GetWindows()
     {
         if (!HasTenant()) return TenantRequired<ReportingWindowDto[]>();
-        var entities = await context.ReportingWindows.AsNoTracking().Include(x => x.ReportingPeriod).OrderByDescending(x => x.OpensAt).ToArrayAsync();
-        return Ok(new ApiResponse<ReportingWindowDto[]>(true, entities.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<ReportingWindowDto[]>("This unbounded route is retired. Use the /reporting-windows/page endpoint."));
     }
 
     [HttpPost("reporting-windows")]
@@ -218,13 +272,38 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<ReportingWindowExceptionDto>(true, ToDto(entity)));
     }
 
+    [HttpGet("rating-schemes/page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<RatingSchemeDto>>>> GetRatingSchemesPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? active = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<RatingSchemeDto>>();
+        if (!RatingSchemeSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<RatingSchemeDto>>("SortBy must be code, name, or createdAt."));
+        var query = context.RatingSchemes.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(x => x.Code.ToLower().Contains(search) || x.Name.ToLower().Contains(search)
+                || x.Values.Any(value => value.Label.ToLower().Contains(search)));
+        }
+        if (active.HasValue) query = query.Where(x => x.IsActive == active.Value);
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyRatingSchemeOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Include(x => x.Values)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<RatingSchemeDto>>(true,
+            PagedResponse<RatingSchemeDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("rating-schemes")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
-    public async Task<ActionResult<ApiResponse<RatingSchemeDto[]>>> GetRatingSchemes()
+    public ActionResult<ApiResponse<RatingSchemeDto[]>> GetRatingSchemes()
     {
         if (!HasTenant()) return TenantRequired<RatingSchemeDto[]>();
-        var rows = await context.RatingSchemes.AsNoTracking().Include(x => x.Values).OrderBy(x => x.Code).ToArrayAsync();
-        return Ok(new ApiResponse<RatingSchemeDto[]>(true, rows.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<RatingSchemeDto[]>("This unbounded route is retired. Use the /rating-schemes/page endpoint."));
     }
 
     [HttpPost("rating-schemes")]
@@ -381,6 +460,48 @@ public sealed class WorkflowConfigurationController(
 
     private static readonly HashSet<string> WorkflowActionSortFields = ["createdat", "occurredat", "sequence", "actioncode", "actor"];
     private static readonly HashSet<string> StageRatingSortFields = ["createdat", "ratedat", "stagecode", "ratingscheme", "value", "actor"];
+    private static readonly HashSet<string> WorkflowDefinitionSortFields = ["createdat", "code", "name", "version", "effectivefrom", "financialyear"];
+    private static readonly HashSet<string> ReportingWindowSortFields = ["createdat", "opensat", "closesat", "period", "submissionkind"];
+    private static readonly HashSet<string> RatingSchemeSortFields = ["createdat", "code", "name"];
+
+    private static IOrderedQueryable<WorkflowDefinition> ApplyWorkflowDefinitionOrdering(
+        IQueryable<WorkflowDefinition> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("code", false) => query.OrderBy(x => x.Code).ThenBy(x => x.Version).ThenBy(x => x.Id),
+            ("code", true) => query.OrderByDescending(x => x.Code).ThenByDescending(x => x.Version).ThenByDescending(x => x.Id),
+            ("name", false) => query.OrderBy(x => x.Name).ThenBy(x => x.Id),
+            ("name", true) => query.OrderByDescending(x => x.Name).ThenByDescending(x => x.Id),
+            ("version", false) => query.OrderBy(x => x.Version).ThenBy(x => x.Id),
+            ("version", true) => query.OrderByDescending(x => x.Version).ThenByDescending(x => x.Id),
+            ("financialyear", false) => query.OrderBy(x => x.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(x => x.Id),
+            ("financialyear", true) => query.OrderByDescending(x => x.MunicipalityFinancialYear.FinancialYear.Code).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.EffectiveFrom).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.EffectiveFrom).ThenByDescending(x => x.Id)
+        };
+
+    private static IOrderedQueryable<ReportingWindow> ApplyReportingWindowOrdering(
+        IQueryable<ReportingWindow> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("closesat", false) => query.OrderBy(x => x.ClosesAt).ThenBy(x => x.Id),
+            ("closesat", true) => query.OrderByDescending(x => x.ClosesAt).ThenByDescending(x => x.Id),
+            ("period", false) => query.OrderBy(x => x.ReportingPeriod.Code).ThenBy(x => x.Id),
+            ("period", true) => query.OrderByDescending(x => x.ReportingPeriod.Code).ThenByDescending(x => x.Id),
+            ("submissionkind", false) => query.OrderBy(x => x.SubmissionKind).ThenBy(x => x.Id),
+            ("submissionkind", true) => query.OrderByDescending(x => x.SubmissionKind).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.OpensAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.OpensAt).ThenByDescending(x => x.Id)
+        };
+
+    private static IOrderedQueryable<RatingScheme> ApplyRatingSchemeOrdering(
+        IQueryable<RatingScheme> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("name", false) => query.OrderBy(x => x.Name).ThenBy(x => x.Id),
+            ("name", true) => query.OrderByDescending(x => x.Name).ThenByDescending(x => x.Id),
+            ("code", false) => query.OrderBy(x => x.Code).ThenBy(x => x.Id),
+            ("code", true) => query.OrderByDescending(x => x.Code).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.Id)
+        };
 
     private static IOrderedQueryable<SubmissionWorkflowAction> ApplyWorkflowActionOrdering(
         IQueryable<SubmissionWorkflowAction> query, string sortBy, bool descending) => (sortBy, descending) switch

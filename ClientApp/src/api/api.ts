@@ -1397,8 +1397,25 @@ export async function getPerformanceTargetRevisions(publicId: string): Promise<A
   return get<PerformanceTargetRevisionDto[]>(`/v1/performance-period-targets/${publicId}/revisions`);
 }
 
-export async function getWorkflowDefinitions(): Promise<ApiResponse<WorkflowDefinitionDto[]>> {
-  return get<WorkflowDefinitionDto[]>('/v1/workflow/definitions');
+export type GovernancePageQuery = RegisterPageQuery & {
+  active?: boolean;
+  submissionKind?: 1 | 2;
+  current?: boolean;
+  model?: 1 | 2;
+};
+
+function governancePageQuery(query: GovernancePageQuery): string {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.active !== undefined) parameters.set('active', String(query.active));
+  if (query.submissionKind !== undefined) parameters.set('submissionKind', String(query.submissionKind));
+  if (query.current !== undefined) parameters.set('current', String(query.current));
+  if (query.model !== undefined) parameters.set('model', String(query.model));
+  const value = parameters.toString();
+  return value ? `?${value}` : '';
+}
+
+export async function getWorkflowDefinitionsPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<WorkflowDefinitionDto>>> {
+  return get<PagedResult<WorkflowDefinitionDto>>(`/v1/workflow/definitions/page${governancePageQuery(query)}`);
 }
 
 export async function createWorkflowDefinition(payload: {
@@ -1422,8 +1439,8 @@ export async function retireWorkflowDefinition(publicId: string, payload: { reas
   return post<WorkflowDefinitionDto>(`/v1/workflow/definitions/${publicId}/retire`, payload);
 }
 
-export async function getReportingWindows(): Promise<ApiResponse<ReportingWindowDto[]>> {
-  return get<ReportingWindowDto[]>('/v1/workflow/reporting-windows');
+export async function getReportingWindowsPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<ReportingWindowDto>>> {
+  return get<PagedResult<ReportingWindowDto>>(`/v1/workflow/reporting-windows/page${governancePageQuery(query)}`);
 }
 
 export async function createReportingWindow(payload: { reportingPeriodPublicId: string; submissionKind: number; opensAt: string; closesAt: string }): Promise<ApiResponse<ReportingWindowDto>> {
@@ -1465,8 +1482,8 @@ export async function closePerformanceRfi(publicId: string, payload: { comment?:
   return post<PerformanceRfiDto>(`/v1/workflow/rfis/${publicId}/close`, payload);
 }
 
-export async function getInternalAuditConfigurations(): Promise<ApiResponse<InternalAuditConfigurationDto[]>> {
-  return get<InternalAuditConfigurationDto[]>('/v1/internal-audit/configurations');
+export async function getInternalAuditConfigurationsPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<InternalAuditConfigurationDto>>> {
+  return get<PagedResult<InternalAuditConfigurationDto>>(`/v1/internal-audit/configurations/page${governancePageQuery(query)}`);
 }
 
 export async function saveInternalAuditConfiguration(payload: { municipalityFinancialYearPublicId: string; model: 1 | 2; effectiveFrom: string; reason: string; currentRowVersion?: string }): Promise<ApiResponse<InternalAuditConfigurationDto>> {
@@ -1493,8 +1510,8 @@ export async function getPerformanceLookups(): Promise<ApiResponse<PerformanceLo
   return get<PerformanceLookupsDto>('/v1/performance-lookups');
 }
 
-export async function getRatingSchemes(): Promise<ApiResponse<RatingSchemeDto[]>> {
-  return get<RatingSchemeDto[]>('/v1/workflow/rating-schemes');
+export async function getRatingSchemesPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<RatingSchemeDto>>> {
+  return get<PagedResult<RatingSchemeDto>>(`/v1/workflow/rating-schemes/page${governancePageQuery(query)}`);
 }
 
 export async function getSubmissionStageRatingsPage(kind: number, submissionId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<StageRatingDto>>> {
