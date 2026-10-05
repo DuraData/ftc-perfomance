@@ -49,6 +49,10 @@ public static class SecurityRegistrySeeder
             Resource("PERFORMANCE_OBJECTIVE", "Performance Objective", true, true, true, false, true, true),
             Resource("BUDGET_SOURCE", "Budget Source", true, true, true, false, true, true),
             Resource("BUDGET_TYPE", "Budget Type", true, true, true, false, true, true),
+            Resource("KPI_TYPE", "KPI Type", true, true, true, false, true, true),
+            Resource("INDICATOR_TYPE", "Indicator Type", true, true, true, false, true, true),
+            Resource("FUNCTIONAL_AREA", "Functional Area", true, true, true, false, true, true),
+            Resource("STANDARD_CLASSIFICATION", "Standard Classification", true, true, true, false, true, true),
             Resource("STRATEGIC_HIERARCHY", "Strategic Planning Relationships", true, true, true, false, false, true),
             Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, false, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
@@ -232,6 +236,10 @@ public static class SecurityRegistrySeeder
             Nav("NAV.CONFIGURATION.PERFORMANCE_OBJECTIVES", "Performance Objectives", "/admin/performance-objectives", "target", 110, "NAV.CONFIGURATION.PERFORMANCE_OBJECTIVES", rootIds["NAV.CONFIGURATION"]),
             Nav("NAV.CONFIGURATION.BUDGET_SOURCES", "Budget Sources", "/admin/budget-sources", "coins", 120, "NAV.CONFIGURATION.BUDGET_SOURCES", rootIds["NAV.CONFIGURATION"]),
             Nav("NAV.CONFIGURATION.BUDGET_TYPES", "Budget Types", "/admin/budget-types", "wallet", 130, "NAV.CONFIGURATION.BUDGET_TYPES", rootIds["NAV.CONFIGURATION"]),
+            Nav("NAV.CONFIGURATION.KPI_TYPES", "KPI Types", "/admin/kpi-types", "list", 140, "NAV.CONFIGURATION.KPI_TYPES", rootIds["NAV.CONFIGURATION"]),
+            Nav("NAV.CONFIGURATION.INDICATOR_TYPES", "Indicator Types", "/admin/indicator-types", "list", 150, "NAV.CONFIGURATION.INDICATOR_TYPES", rootIds["NAV.CONFIGURATION"]),
+            Nav("NAV.CONFIGURATION.FUNCTIONAL_AREAS", "Functional Areas", "/admin/functional-areas", "layers", 160, "NAV.CONFIGURATION.FUNCTIONAL_AREAS", rootIds["NAV.CONFIGURATION"]),
+            Nav("NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS", "Standard Classifications", "/admin/standard-classifications", "layers", 170, "NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS", rootIds["NAV.CONFIGURATION"]),
             Nav("NAV.ADMIN.USERS", "Users", "/system-administration/users", "users", 10, "NAV.ADMIN.USERS", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.ROLES", "Roles", "/system-administration/roles", "users-group", 20, "NAV.ADMIN.ROLES", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.SECURITY", "Security", "/system-administration/security", "key", 30, "NAV.ADMIN.SECURITY", rootIds["NAV.ADMIN"]),
@@ -305,6 +313,13 @@ public static class SecurityRegistrySeeder
             ["Reports.Export"] = ["OPMS_REPORT.EXPORT", "IPMS_REPORT.EXPORT"],
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT"]
         };
+        mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "KPI_TYPE.READ", "KPI_TYPE.CREATE", "KPI_TYPE.UPDATE",
+            "INDICATOR_TYPE.READ", "INDICATOR_TYPE.CREATE", "INDICATOR_TYPE.UPDATE",
+            "FUNCTIONAL_AREA.READ", "FUNCTIONAL_AREA.CREATE", "FUNCTIONAL_AREA.UPDATE",
+            "STANDARD_CLASSIFICATION.READ", "STANDARD_CLASSIFICATION.CREATE", "STANDARD_CLASSIFICATION.UPDATE",
+            "NAV.CONFIGURATION.KPI_TYPES", "NAV.CONFIGURATION.INDICATOR_TYPES",
+            "NAV.CONFIGURATION.FUNCTIONAL_AREAS", "NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS"];
         var codes = mappings.Keys.Concat(mappings.Values.SelectMany(value => value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var definitions = await context.Permissions.Where(item => codes.Contains(item.Code)).ToDictionaryAsync(item => item.Code, StringComparer.OrdinalIgnoreCase);
         var current = await context.RolePermissions.AsNoTracking().Where(item => definitions.Values.Select(permission => permission.Id).Contains(item.PermissionId)).ToListAsync();

@@ -218,7 +218,11 @@ public static class PerformanceApiSupport
             BudgetTypePublicId = target.BudgetTypeMaster?.PublicId,
             BudgetTypeName = target.BudgetTypeMaster?.Name,
             BudgetSources = target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.DisplayOrder).ThenBy(item => item.BudgetSource.Name)
-                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray()
+                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray(),
+            KpiTypePublicId = target.KpiTypeMaster?.PublicId,
+            IndicatorTypePublicId = target.IndicatorTypeMaster?.PublicId,
+            FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId,
+            StandardClassificationPublicId = target.StandardClassificationMaster?.PublicId
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
@@ -294,7 +298,10 @@ public static class PerformanceApiSupport
             BudgetTypePublicId = target.BudgetTypeMaster?.PublicId,
             BudgetTypeName = target.BudgetTypeMaster?.Name,
             BudgetSources = target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.DisplayOrder).ThenBy(item => item.BudgetSource.Name)
-                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray()
+                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray(),
+            KpiTypePublicId = target.KpiTypeMaster?.PublicId,
+            IndicatorTypePublicId = target.IndicatorTypeMaster?.PublicId,
+            FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>

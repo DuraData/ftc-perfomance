@@ -24,6 +24,10 @@ const configuration: Record<StrategicPlanningMasterKind, { title: string; singul
   'performance-objectives': { title: 'Performance Objectives', singular: 'Performance Objective', resource: 'PERFORMANCE_OBJECTIVE' },
   'budget-sources': { title: 'Budget Sources', singular: 'Budget Source', resource: 'BUDGET_SOURCE' },
   'budget-types': { title: 'Budget Types', singular: 'Budget Type', resource: 'BUDGET_TYPE' },
+  'kpi-types': { title: 'KPI Types', singular: 'KPI Type', resource: 'KPI_TYPE' },
+  'indicator-types': { title: 'Indicator Types', singular: 'Indicator Type', resource: 'INDICATOR_TYPE' },
+  'functional-areas': { title: 'Functional Areas', singular: 'Functional Area', resource: 'FUNCTIONAL_AREA' },
+  'standard-classifications': { title: 'Standard Classifications', singular: 'Standard Classification', resource: 'STANDARD_CLASSIFICATION' },
 };
 const empty = () => ({ code: '', name: '', description: '', from: '', to: '', displayOrder: '10', isActive: 'true', reason: '' });
 const relationTypes = [
@@ -43,7 +47,7 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
   const [relationshipOptions, setRelationshipOptions] = useState<Record<string, StrategicPlanningMasterDto[]>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const relationship = relationTypes.find(item => item.value === relationshipType)!;
-  const supportsRelationships = !kind.startsWith('budget-');
+  const supportsRelationships = ['municipal-kpas', 'strategic-goals', 'strategic-interventions', 'strategic-objectives', 'performance-objectives'].includes(kind);
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);

@@ -227,6 +227,43 @@ public sealed class StrategicPlanningMastersControllerTests
     }
 
     [Fact]
+    public async Task GovernedPerformanceClassificationsAreTenantScopedEffectiveDatedAndCanonical()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Guid foreignKpiType;
+        await using (var tenantB = fixture.Context(fixture.MunicipalityB.Id))
+            foreignKpiType = Data(await Controller(tenantB, fixture.MunicipalityB.Id).CreateKpiType(
+                new("FOREIGN", "Foreign type", null, null, null, 10, true, "Create foreign KPI type master"))).PublicId;
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var controller = Controller(context, fixture.MunicipalityA.Id);
+        var kpiType = Data(await controller.CreateKpiType(new("OUTPUT", "Output", null, null, null, 10, true, "Create governed KPI type")));
+        var indicatorType = Data(await controller.CreateIndicatorType(new("QUANT", "Quantitative", null, null, null, 10, true, "Create governed indicator type")));
+        var functionalArea = Data(await controller.CreateFunctionalArea(new("TECH", "Technical Services", null, fixture.Year2026.PublicId, null, 10, true, "Create governed functional area")));
+        var expiredStandard = Data(await controller.CreateStandardClassification(new("OLD", "Historic standard", null, fixture.Year2025.PublicId, fixture.Year2025.PublicId, 10, true, "Create historic standard classification")));
+
+        var catalogueResult = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
+        var catalogue = Assert.IsType<OkObjectResult>(catalogueResult.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
+        Assert.Collection(catalogue.KpiTypes, item => Assert.Equal(kpiType.PublicId, item.PublicId));
+        Assert.Collection(catalogue.IndicatorTypes, item => Assert.Equal(indicatorType.PublicId, item.PublicId));
+        Assert.Collection(catalogue.FunctionalAreas, item => Assert.Equal(functionalArea.PublicId, item.PublicId));
+        Assert.Empty(catalogue.StandardClassifications);
+
+        var foreign = await PerformanceClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, foreignKpiType, indicatorType.PublicId, null, null, true);
+        Assert.False(foreign.IsValid);
+        var expired = await PerformanceClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, kpiType.PublicId, indicatorType.PublicId, functionalArea.PublicId, expiredStandard.PublicId, true);
+        Assert.False(expired.IsValid);
+        var resolved = await PerformanceClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, kpiType.PublicId, indicatorType.PublicId, functionalArea.PublicId, null, true);
+        Assert.True(resolved.IsValid);
+        var target = new OpmsTarget { MunicipalityId = fixture.MunicipalityA.Id, KpiType = "untrusted", IndicatorType = "untrusted" };
+        PerformanceClassificationResolver.Apply(target, resolved);
+        Assert.Equal(kpiType.Name, target.KpiType);
+        Assert.Equal(indicatorType.Name, target.IndicatorType);
+        Assert.Equal(functionalArea.Name, target.FunctionalArea);
+        Assert.Contains(await context.AuditTrails.ToArrayAsync(), item => item.EntityId == kpiType.PublicId.ToString());
+    }
+
+    [Fact]
     public async Task SecurityRegistrySeedsAllMastersHierarchyAndNavigation()
     {
         await using var fixture = await Fixture.CreateAsync(); await using var context = fixture.SystemContext(); await SecurityRegistrySeeder.SeedAsync(context);

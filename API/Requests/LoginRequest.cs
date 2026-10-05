@@ -183,6 +183,10 @@ public record SaveOpmsTargetRequest(
     public Guid? PerformanceObjectivePublicId { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
     public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
+    public Guid? KpiTypePublicId { get; init; }
+    public Guid? IndicatorTypePublicId { get; init; }
+    public Guid? FunctionalAreaPublicId { get; init; }
+    public Guid? StandardClassificationPublicId { get; init; }
 }
 
 public sealed record SaveKpiBudgetSourceRequest(Guid BudgetSourcePublicId, decimal? Amount);
@@ -229,6 +233,9 @@ public record SaveIpmsTargetRequest(
     public Guid? PerformanceObjectivePublicId { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
     public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
+    public Guid? KpiTypePublicId { get; init; }
+    public Guid? IndicatorTypePublicId { get; init; }
+    public Guid? FunctionalAreaPublicId { get; init; }
 }
 
 public record SaveTargetPeriodValueRequest(

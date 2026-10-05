@@ -423,9 +423,13 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   unitOfMeasure: UnitOfMeasure;
   weight: number;
   kpiType: string;
+  kpiTypePublicId?: string;
   indicatorType: string;
+  indicatorTypePublicId?: string;
   functionalArea?: string;
+  functionalAreaPublicId?: string;
   standardClassification?: string;
+  standardClassificationPublicId?: string;
   idpReference?: string;
   internalReference?: string;
   fmsLink?: string;
@@ -518,8 +522,11 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   unitOfMeasure: UnitOfMeasure;
   weight: number;
   kpiType: string;
+  kpiTypePublicId?: string;
   indicatorType: string;
+  indicatorTypePublicId?: string;
   functionalArea?: string;
+  functionalAreaPublicId?: string;
   idpReference?: string;
   internalReference?: string;
   isRevised: boolean;
@@ -1654,6 +1661,10 @@ export interface StrategicClassificationCatalogueDto {
   performanceObjectives: StrategicCatalogueItemDto[];
   budgetSources?: StrategicCatalogueItemDto[];
   budgetTypes?: StrategicCatalogueItemDto[];
+  kpiTypes?: StrategicCatalogueItemDto[];
+  indicatorTypes?: StrategicCatalogueItemDto[];
+  functionalAreas?: StrategicCatalogueItemDto[];
+  standardClassifications?: StrategicCatalogueItemDto[];
   relationships: StrategicCatalogueRelationshipDto[];
 }
 
@@ -2423,9 +2434,13 @@ export interface OpmsTargetDto {
   unitOfMeasureId?: number | null;
   weight: number;
   kpiType: string;
+  kpiTypePublicId?: string | null;
   indicatorType: string;
+  indicatorTypePublicId?: string | null;
   functionalArea?: string | null;
+  functionalAreaPublicId?: string | null;
   standardClassification?: string | null;
+  standardClassificationPublicId?: string | null;
   idpReference?: string | null;
   internalReference?: string | null;
   fmsLink?: string | null;
@@ -2490,8 +2505,11 @@ export interface IpmsTargetDto {
   unitOfMeasureId?: number | null;
   weight: number;
   kpiType: string;
+  kpiTypePublicId?: string | null;
   indicatorType: string;
+  indicatorTypePublicId?: string | null;
   functionalArea?: string | null;
+  functionalAreaPublicId?: string | null;
   idpReference?: string | null;
   internalReference?: string | null;
   isRevised: boolean;
@@ -2841,9 +2859,13 @@ export interface SaveOpmsTargetPayload {
   unitOfMeasureId?: number | null;
   weight: number;
   kpiType: string;
+  kpiTypePublicId: string;
   indicatorType: string;
+  indicatorTypePublicId: string;
   functionalArea?: string | null;
+  functionalAreaPublicId?: string | null;
   standardClassification?: string | null;
+  standardClassificationPublicId?: string | null;
   idpReference?: string | null;
   internalReference?: string | null;
   fmsLink?: string | null;
@@ -2884,8 +2906,11 @@ export interface SaveIpmsTargetPayload {
   unitOfMeasureId?: number | null;
   weight: number;
   kpiType: string;
+  kpiTypePublicId: string;
   indicatorType: string;
+  indicatorTypePublicId: string;
   functionalArea?: string | null;
+  functionalAreaPublicId?: string | null;
   idpReference?: string | null;
   internalReference?: string | null;
   isRevised: boolean;

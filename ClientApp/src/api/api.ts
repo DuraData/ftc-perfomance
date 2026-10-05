@@ -560,9 +560,13 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
+    kpiTypePublicId: dto.kpiTypePublicId ?? undefined,
     indicatorType: dto.indicatorType,
+    indicatorTypePublicId: dto.indicatorTypePublicId ?? undefined,
     functionalArea: dto.functionalArea ?? '',
+    functionalAreaPublicId: dto.functionalAreaPublicId ?? undefined,
     standardClassification: dto.standardClassification ?? '',
+    standardClassificationPublicId: dto.standardClassificationPublicId ?? undefined,
     idpReference: dto.idpReference ?? '',
     internalReference: dto.internalReference ?? '',
     fmsLink: dto.fmsLink ?? '',
@@ -652,8 +656,11 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
+    kpiTypePublicId: dto.kpiTypePublicId ?? undefined,
     indicatorType: dto.indicatorType,
+    indicatorTypePublicId: dto.indicatorTypePublicId ?? undefined,
     functionalArea: dto.functionalArea ?? '',
+    functionalAreaPublicId: dto.functionalAreaPublicId ?? undefined,
     idpReference: dto.idpReference ?? '',
     internalReference: dto.internalReference ?? '',
     isRevised: dto.isRevised,
@@ -1416,7 +1423,7 @@ export async function setGlobalStrategicReferenceAvailability(kind: GlobalStrate
   return put<GlobalStrategicReferenceDto>(`/v1/masters/${kind}/${publicId}/municipality-availability`, payload);
 }
 
-export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives' | 'budget-sources' | 'budget-types';
+export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives' | 'budget-sources' | 'budget-types' | 'kpi-types' | 'indicator-types' | 'functional-areas' | 'standard-classifications';
 
 export async function getStrategicPlanningMastersPage(kind: StrategicPlanningMasterKind, query: RegisterPageQuery = {}, options: { municipalityFinancialYearPublicId?: string; includeInactive?: boolean } = {}): Promise<ApiResponse<PagedResult<StrategicPlanningMasterDto>>> {
   const parameters = new URLSearchParams(registerPageQuery(query).slice(1));

@@ -15,4 +15,9 @@ describe('parseSdbipImportCsv', () => {
     expect(row.periodTargets.map(period => period.periodType).sort()).toEqual([1, 2, 3, 4, 5, 6]);
     expect(row.periodTargets.map(period => period.unitKind)).toEqual([1, 3, 4, 10, 13, 2]);
   });
+  it('maps optional governed performance classifications', () => {
+    const governedHeader = `${header},FUNCTIONAL_AREA,STANDARD_CLASSIFICATION`;
+    const [row] = parseSdbipImportCsv(`${governedHeader}\nKPI-1,1,T,D,FIN,K,M,B,G,I,O,P,0,10,Output,Quantitative,1,absolute_count,Technical Services,Service Delivery`);
+    expect(row).toMatchObject({ functionalArea: 'Technical Services', standardClassification: 'Service Delivery' });
+  });
 });

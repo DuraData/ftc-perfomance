@@ -223,7 +223,9 @@ public sealed class NormalizedTargetWriteCutoverTests
             StrategicGoalPublicId = classifications?.StrategicGoal,
             StrategicInterventionPublicId = classifications?.StrategicIntervention,
             StrategicObjectivePublicId = classifications?.StrategicObjective,
-            PerformanceObjectivePublicId = classifications?.PerformanceObjective
+            PerformanceObjectivePublicId = classifications?.PerformanceObjective,
+            KpiTypePublicId = classifications?.KpiType,
+            IndicatorTypePublicId = classifications?.IndicatorType
         };
 
     private static SaveIpmsTargetRequest IpmsRequest(int periodId, ClassificationIds classifications) => new(
@@ -262,7 +264,9 @@ public sealed class NormalizedTargetWriteCutoverTests
             StrategicGoalPublicId = classifications.StrategicGoal,
             StrategicInterventionPublicId = classifications.StrategicIntervention,
             StrategicObjectivePublicId = classifications.StrategicObjective,
-            PerformanceObjectivePublicId = classifications.PerformanceObjective
+            PerformanceObjectivePublicId = classifications.PerformanceObjective,
+            KpiTypePublicId = classifications.KpiType,
+            IndicatorTypePublicId = classifications.IndicatorType
         };
 
     private static SaveTargetPeriodValueRequest[] PeriodTargets(string annual = "100") =>
@@ -271,7 +275,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         new(ReportingPeriodType.Annual, PerformanceUnitKind.PercentageBased, PerformanceDirection.HigherIsBetter, annual, null, "Annual target")
     ];
 
-    private sealed record ClassificationIds(Guid NationalKpa, Guid MunicipalKpa, Guid BackToBasicsPillar, Guid StrategicGoal, Guid StrategicIntervention, Guid StrategicObjective, Guid PerformanceObjective);
+    private sealed record ClassificationIds(Guid NationalKpa, Guid MunicipalKpa, Guid BackToBasicsPillar, Guid StrategicGoal, Guid StrategicIntervention, Guid StrategicObjective, Guid PerformanceObjective, Guid KpiType, Guid IndicatorType);
 
     private static async Task<(Municipality Municipality, ApplicationUser User, Period LegacyPeriod, SdbipLayer SdbipLayer, ClassificationIds Classifications)> SeedAsync(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context)
     {
@@ -304,9 +308,11 @@ public sealed class NormalizedTargetWriteCutoverTests
         var intervention = new StrategicIntervention { MunicipalityId = municipality.Id, Code = "INT", Name = "Strategic Intervention" };
         var objective = new MunicipalStrategicObjective { MunicipalityId = municipality.Id, Code = "OBJ", Name = "Strategic Objective" };
         var performanceObjective = new PerformanceObjective { MunicipalityId = municipality.Id, Code = "PERF", Name = "Objective" };
-        context.AddRange(nationalKpa, municipalKpa, pillar, goal, intervention, objective, performanceObjective);
+        var kpiType = new GovernedKpiType { MunicipalityId = municipality.Id, Code = "QUANT", Name = "Quantitative" };
+        var indicatorType = new GovernedIndicatorType { MunicipalityId = municipality.Id, Code = "OUTPUT", Name = "Output" };
+        context.AddRange(nationalKpa, municipalKpa, pillar, goal, intervention, objective, performanceObjective, kpiType, indicatorType);
         await context.SaveChangesAsync();
         return (municipality, user, legacyPeriod, sdbipLayer,
-            new(nationalKpa.PublicId, municipalKpa.PublicId, pillar.PublicId, goal.PublicId, intervention.PublicId, objective.PublicId, performanceObjective.PublicId));
+            new(nationalKpa.PublicId, municipalKpa.PublicId, pillar.PublicId, goal.PublicId, intervention.PublicId, objective.PublicId, performanceObjective.PublicId, kpiType.PublicId, indicatorType.PublicId));
     }
 }

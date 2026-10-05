@@ -88,6 +88,33 @@ public sealed class OpmsImportControllerTests
     }
 
     [Fact]
+    public async Task Import_resolves_and_persists_all_governed_performance_classifications()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context); var controller = Controller(context, setup);
+        var row = Row(2, "KPI-CLASSIFIED", setup.Department.Code) with
+        {
+            KpiType = setup.KpiType.Code!,
+            IndicatorType = setup.IndicatorType.Code!,
+            FunctionalArea = setup.FunctionalArea.Code,
+            StandardClassification = setup.StandardClassification.Code
+        };
+
+        var staged = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "classified.csv", [row])));
+        staged.InvalidRows.Should().Be(0);
+        _ = Payload(await controller.Commit(staged.PublicId, new CommitOpmsImportRequest("Approved classified import", null, null, staged.RowVersion)));
+
+        var target = await context.OpmsTargets.SingleAsync();
+        target.KpiTypeMasterId.Should().Be(setup.KpiType.Id);
+        target.IndicatorTypeMasterId.Should().Be(setup.IndicatorType.Id);
+        target.FunctionalAreaMasterId.Should().Be(setup.FunctionalArea.Id);
+        target.StandardClassificationMasterId.Should().Be(setup.StandardClassification.Id);
+        target.FunctionalArea.Should().Be(setup.FunctionalArea.Name);
+        target.StandardClassification.Should().Be(setup.StandardClassification.Name);
+    }
+
+    [Fact]
     public async Task Import_cannot_resolve_a_strategic_master_from_another_municipality_even_when_query_filters_are_bypassed()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -153,7 +180,8 @@ public sealed class OpmsImportControllerTests
             NationalKpaId = setup.NationalKpa.Id, MunicipalKpaId = setup.MunicipalKpa.Id, BackToBasicsPillarId = setup.BackToBasicsPillar.Id,
             StrategicGoalMasterId = setup.StrategicGoal.Id, StrategicInterventionId = setup.StrategicIntervention.Id,
             StrategicObjectiveMasterId = setup.StrategicObjective.Id, PerformanceObjectiveId = setup.PerformanceObjective.Id,
-            BudgetTypeMasterId = setup.BudgetType.Id,
+            BudgetTypeMasterId = setup.BudgetType.Id, KpiTypeMasterId = setup.KpiType.Id, IndicatorTypeMasterId = setup.IndicatorType.Id,
+            FunctionalAreaMasterId = setup.FunctionalArea.Id, StandardClassificationMasterId = setup.StandardClassification.Id,
             KpiType = "Output", IndicatorType = "Quantitative", AnnualTargetDescription = "Annual", Weight = 10
         };
         target.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = setup.Municipality.Id, BudgetSourceId = setup.BudgetSourceA.Id, Amount = 125.50m });
@@ -173,6 +201,7 @@ public sealed class OpmsImportControllerTests
         csv.Should().Contain("\"KPI-REV\",\"KPI-REV\",\"3\"");
         csv.Should().Contain("\"'=Revised target\"");
         csv.Should().Contain("\"CAPEX\",\"MIG:125.5\"");
+        csv.Should().Contain("\"Output\",\"Quantitative\",\"TECHNICAL\",\"SERVICE\"");
         csv.Should().Contain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
     }
 
@@ -221,18 +250,25 @@ public sealed class OpmsImportControllerTests
         var budgetType = new GovernedBudgetType { MunicipalityId = municipality.Id, Code = "CAPEX", Name = "Capital expenditure" };
         var budgetSourceA = new GovernedBudgetSource { MunicipalityId = municipality.Id, Code = "MIG", Name = "Infrastructure grant" };
         var budgetSourceB = new GovernedBudgetSource { MunicipalityId = municipality.Id, Code = "OWN", Name = "Own revenue" };
-        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB);
+        var kpiType = new GovernedKpiType { MunicipalityId = municipality.Id, Code = "Output", Name = "Output" };
+        var indicatorType = new GovernedIndicatorType { MunicipalityId = municipality.Id, Code = "Quantitative", Name = "Quantitative" };
+        var functionalArea = new GovernedFunctionalArea { MunicipalityId = municipality.Id, Code = "TECHNICAL", Name = "Technical Services" };
+        var standardClassification = new GovernedStandardClassification { MunicipalityId = municipality.Id, Code = "SERVICE", Name = "Service Delivery" };
+        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB, kpiType, indicatorType, functionalArea, standardClassification);
         await context.SaveChangesAsync();
         var reportingPeriod = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANNUAL", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
         var layer = new SdbipLayer { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, Code = "TOP", Name = "Top Layer", IsActive = true };
         context.AddRange(reportingPeriod, layer); await context.SaveChangesAsync();
         return new Setup(municipality, user, department, layer, reportingPeriod, legacy, nationalKpa, municipalKpa, backToBasics,
-            strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB);
+            strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB,
+            kpiType, indicatorType, functionalArea, standardClassification);
     }
 
     private sealed record Setup(Municipality Municipality, ApplicationUser User, Department Department, SdbipLayer Layer, ReportingPeriod Annual, Period LegacyPeriod,
         NationalKpa NationalKpa, MunicipalKpa MunicipalKpa, BackToBasicsPillar BackToBasicsPillar, MunicipalStrategicGoal StrategicGoal,
         StrategicIntervention StrategicIntervention, MunicipalStrategicObjective StrategicObjective, PerformanceObjective PerformanceObjective,
-        GovernedBudgetType BudgetType, GovernedBudgetSource BudgetSourceA, GovernedBudgetSource BudgetSourceB);
+        GovernedBudgetType BudgetType, GovernedBudgetSource BudgetSourceA, GovernedBudgetSource BudgetSourceB,
+        GovernedKpiType KpiType, GovernedIndicatorType IndicatorType, GovernedFunctionalArea FunctionalArea,
+        GovernedStandardClassification StandardClassification);
     private sealed class Tenant(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
 }

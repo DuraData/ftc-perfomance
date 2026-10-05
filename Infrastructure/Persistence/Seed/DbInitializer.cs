@@ -24,6 +24,7 @@ public static class DbInitializer
             await SeedDemoUsersAsync(context, userManager, configuration);
         await SeedLookupTablesAsync(context);
         await SeedGovernedBudgetClassificationsAsync(context);
+        await SeedGovernedPerformanceClassificationsAsync(context);
         if (demoDataEnabled)
             await SeedTargetsAndSubmissionsAsync(context, userManager);
         await SecurityRegistrySeeder.BackfillAssignmentsAsync(context);
@@ -67,6 +68,51 @@ public static class DbInitializer
         }
 
         await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedGovernedPerformanceClassificationsAsync(ApplicationDbContext context)
+    {
+        var municipalities = await context.Municipalities.IgnoreQueryFilters().AsNoTracking().Select(item => item.Id).ToArrayAsync();
+        var opms = await context.OpmsTargets.IgnoreQueryFilters().AsNoTracking().Where(item => item.MunicipalityId.HasValue)
+            .Select(item => new { MunicipalityId = item.MunicipalityId!.Value, item.KpiType, item.IndicatorType, item.FunctionalArea, item.StandardClassification }).ToArrayAsync();
+        var ipms = await context.IpmsTargets.IgnoreQueryFilters().AsNoTracking().Where(item => item.MunicipalityId.HasValue)
+            .Select(item => new { MunicipalityId = item.MunicipalityId!.Value, item.KpiType, item.IndicatorType, item.FunctionalArea }).ToArrayAsync();
+
+        await SeedPerformanceMaster(context.GovernedKpiTypes, municipalities, ["Quantitative", "Qualitative"],
+            opms.Select(item => (item.MunicipalityId, (string?)item.KpiType)).Concat(ipms.Select(item => (item.MunicipalityId, (string?)item.KpiType))));
+        await SeedPerformanceMaster(context.GovernedIndicatorTypes, municipalities, ["Input", "Activity", "Output", "Outcome", "Impact", "Efficiency"],
+            opms.Select(item => (item.MunicipalityId, (string?)item.IndicatorType)).Concat(ipms.Select(item => (item.MunicipalityId, (string?)item.IndicatorType))));
+        await SeedPerformanceMaster(context.GovernedFunctionalAreas, municipalities, ["Corporate Services", "Financial Services", "Technical Services", "Community Services", "Public Safety", "Local Economic Development"],
+            opms.Select(item => (item.MunicipalityId, item.FunctionalArea)).Concat(ipms.Select(item => (item.MunicipalityId, item.FunctionalArea))));
+        await SeedPerformanceMaster(context.GovernedStandardClassifications, municipalities, Array.Empty<string>(),
+            opms.Select(item => (item.MunicipalityId, item.StandardClassification)));
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedPerformanceMaster<TEntity>(DbSet<TEntity> set, long[] municipalities, IReadOnlyCollection<string> defaults,
+        IEnumerable<(long MunicipalityId, string? Value)> legacy) where TEntity : StrategicPlanningMasterBase, new()
+    {
+        var existing = await set.IgnoreQueryFilters().AsNoTracking().Select(item => new { item.MunicipalityId, item.Code }).ToArrayAsync();
+        var keys = existing.Select(item => $"{item.MunicipalityId}:{item.Code}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var legacyByMunicipality = legacy.Where(item => !string.IsNullOrWhiteSpace(item.Value)).GroupBy(item => item.MunicipalityId)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Value!.Trim()));
+        foreach (var municipalityId in municipalities)
+        {
+            var values = defaults.Concat(legacyByMunicipality.GetValueOrDefault(municipalityId) ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            for (var index = 0; index < values.Length; index++)
+            {
+                var code = PerformanceMasterCode(values[index]);
+                if (!keys.Add($"{municipalityId}:{code}")) continue;
+                set.Add(new TEntity { MunicipalityId = municipalityId, Code = code, Name = values[index], DisplayOrder = (index + 1) * 10, IsActive = true });
+            }
+        }
+    }
+
+    private static string PerformanceMasterCode(string value)
+    {
+        var code = new string(value.Trim().ToUpperInvariant().Select(character => char.IsLetterOrDigit(character) ? character : '_').ToArray());
+        while (code.Contains("__", StringComparison.Ordinal)) code = code.Replace("__", "_", StringComparison.Ordinal);
+        return code.Trim('_')[..Math.Min(code.Trim('_').Length, 80)];
     }
 
     private static async Task SeedGlobalStrategicReferenceDefaultsAsync(ApplicationDbContext context)

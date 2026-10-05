@@ -42,6 +42,15 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     [HttpGet("budget-types/page"), Authorize(Policy = "Permission:BUDGET_TYPE.READ")]
     public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetBudgetTypes([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedBudgetTypes, request);
 
+    [HttpGet("kpi-types/page"), Authorize(Policy = "Permission:KPI_TYPE.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetKpiTypes([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedKpiTypes, request);
+    [HttpGet("indicator-types/page"), Authorize(Policy = "Permission:INDICATOR_TYPE.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetIndicatorTypes([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedIndicatorTypes, request);
+    [HttpGet("functional-areas/page"), Authorize(Policy = "Permission:FUNCTIONAL_AREA.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetFunctionalAreas([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedFunctionalAreas, request);
+    [HttpGet("standard-classifications/page"), Authorize(Policy = "Permission:STANDARD_CLASSIFICATION.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetStandardClassifications([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedStandardClassifications, request);
+
     [HttpPost("municipal-kpas"), Authorize(Policy = "Permission:MUNICIPAL_KPA.CREATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateMunicipalKpa(SaveStrategicPlanningMasterRequest request) => Create(context.MunicipalKpas, () => new MunicipalKpa(), nameof(MunicipalKpa), request);
 
@@ -63,6 +72,15 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     [HttpPost("budget-types"), Authorize(Policy = "Permission:BUDGET_TYPE.CREATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateBudgetType(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedBudgetTypes, () => new GovernedBudgetType(), nameof(GovernedBudgetType), request);
 
+    [HttpPost("kpi-types"), Authorize(Policy = "Permission:KPI_TYPE.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateKpiType(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedKpiTypes, () => new GovernedKpiType(), nameof(GovernedKpiType), request);
+    [HttpPost("indicator-types"), Authorize(Policy = "Permission:INDICATOR_TYPE.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateIndicatorType(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedIndicatorTypes, () => new GovernedIndicatorType(), nameof(GovernedIndicatorType), request);
+    [HttpPost("functional-areas"), Authorize(Policy = "Permission:FUNCTIONAL_AREA.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateFunctionalArea(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedFunctionalAreas, () => new GovernedFunctionalArea(), nameof(GovernedFunctionalArea), request);
+    [HttpPost("standard-classifications"), Authorize(Policy = "Permission:STANDARD_CLASSIFICATION.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateStandardClassification(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedStandardClassifications, () => new GovernedStandardClassification(), nameof(GovernedStandardClassification), request);
+
     [HttpPut("municipal-kpas/{publicId:guid}"), Authorize(Policy = "Permission:MUNICIPAL_KPA.UPDATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateMunicipalKpa(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.MunicipalKpas, publicId, nameof(MunicipalKpa), request);
 
@@ -83,6 +101,15 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
 
     [HttpPut("budget-types/{publicId:guid}"), Authorize(Policy = "Permission:BUDGET_TYPE.UPDATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateBudgetType(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedBudgetTypes, publicId, nameof(GovernedBudgetType), request);
+
+    [HttpPut("kpi-types/{publicId:guid}"), Authorize(Policy = "Permission:KPI_TYPE.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateKpiType(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedKpiTypes, publicId, nameof(GovernedKpiType), request);
+    [HttpPut("indicator-types/{publicId:guid}"), Authorize(Policy = "Permission:INDICATOR_TYPE.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateIndicatorType(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedIndicatorTypes, publicId, nameof(GovernedIndicatorType), request);
+    [HttpPut("functional-areas/{publicId:guid}"), Authorize(Policy = "Permission:FUNCTIONAL_AREA.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateFunctionalArea(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedFunctionalAreas, publicId, nameof(GovernedFunctionalArea), request);
+    [HttpPut("standard-classifications/{publicId:guid}"), Authorize(Policy = "Permission:STANDARD_CLASSIFICATION.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateStandardClassification(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedStandardClassifications, publicId, nameof(GovernedStandardClassification), request);
 
     [HttpGet("relationships"), Authorize(Policy = "Permission:STRATEGIC_HIERARCHY.READ")]
     public async Task<ActionResult<ApiResponse<StrategicPlanningRelationshipDto[]>>> GetRelationships([FromQuery] bool includeInactive = false)
@@ -191,13 +218,15 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         var interventions = await CatalogueRows(context.StrategicInterventions, year); var objectives = await CatalogueRows(context.MunicipalStrategicObjectives, year);
         var performanceObjectives = await CatalogueRows(context.PerformanceObjectives, year);
         var budgetSources = await CatalogueRows(context.GovernedBudgetSources, year); var budgetTypes = await CatalogueRows(context.GovernedBudgetTypes, year);
+        var kpiTypes = await CatalogueRows(context.GovernedKpiTypes, year); var indicatorTypes = await CatalogueRows(context.GovernedIndicatorTypes, year);
+        var functionalAreas = await CatalogueRows(context.GovernedFunctionalAreas, year); var standardClassifications = await CatalogueRows(context.GovernedStandardClassifications, year);
         var relationships = new List<StrategicCatalogueRelationshipDto>();
         relationships.AddRange(await context.MunicipalKpaStrategicGoals.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("municipal-kpa-strategic-goal", item.MunicipalKpa.PublicId, item.StrategicGoal.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicGoalInterventions.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-intervention", item.StrategicGoal.PublicId, item.StrategicIntervention.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicGoalObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-objective", item.StrategicGoal.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicInterventionObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-intervention-objective", item.StrategicIntervention.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicObjectivePerformanceObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-objective-performance-objective", item.StrategicObjective.PublicId, item.PerformanceObjective.PublicId)).ToArrayAsync());
-        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, budgetSources, budgetTypes, relationships.ToArray())));
+        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, budgetSources, budgetTypes, kpiTypes, indicatorTypes, functionalAreas, standardClassifications, relationships.ToArray())));
     }
 
     private static Task<StrategicCatalogueItemDto[]> CatalogueRows<TEntity>(DbSet<TEntity> set, MunicipalityFinancialYear year) where TEntity : StrategicPlanningMasterBase =>
@@ -336,4 +365,8 @@ public sealed record StrategicClassificationCatalogueDto(
     StrategicCatalogueItemDto[] PerformanceObjectives,
     StrategicCatalogueItemDto[] BudgetSources,
     StrategicCatalogueItemDto[] BudgetTypes,
+    StrategicCatalogueItemDto[] KpiTypes,
+    StrategicCatalogueItemDto[] IndicatorTypes,
+    StrategicCatalogueItemDto[] FunctionalAreas,
+    StrategicCatalogueItemDto[] StandardClassifications,
     StrategicCatalogueRelationshipDto[] Relationships);

@@ -162,12 +162,20 @@ type OpmsFormState = {
   budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>;
   budgetTypeHint: string;
   budgetSourceHint: string;
+  kpiTypeHint: string;
+  indicatorTypeHint: string;
+  functionalAreaHint: string;
+  standardClassificationHint: string;
   unitOfMeasureId: string;
   weight: string;
   kpiType: string;
+  kpiTypePublicId: string;
   indicatorType: string;
+  indicatorTypePublicId: string;
   functionalArea: string;
+  functionalAreaPublicId: string;
   standardClassification: string;
+  standardClassificationPublicId: string;
   idpReference: string;
   internalReference: string;
   fmsLink: string;
@@ -238,11 +246,17 @@ type IpmsFormState = {
   budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>;
   budgetTypeHint: string;
   budgetSourceHint: string;
+  kpiTypeHint: string;
+  indicatorTypeHint: string;
+  functionalAreaHint: string;
   unitOfMeasureId: string;
   weight: string;
   kpiType: string;
+  kpiTypePublicId: string;
   indicatorType: string;
+  indicatorTypePublicId: string;
   functionalArea: string;
+  functionalAreaPublicId: string;
   idpReference: string;
   internalReference: string;
   isRevised: boolean;
@@ -337,12 +351,20 @@ function createDefaultOpmsFormState(): OpmsFormState {
     budgetSources: [],
     budgetTypeHint: '',
     budgetSourceHint: '',
+    kpiTypeHint: '',
+    indicatorTypeHint: '',
+    functionalAreaHint: '',
+    standardClassificationHint: '',
     unitOfMeasureId: '',
     weight: '0',
     kpiType: '',
+    kpiTypePublicId: '',
     indicatorType: '',
+    indicatorTypePublicId: '',
     functionalArea: '',
+    functionalAreaPublicId: '',
     standardClassification: '',
+    standardClassificationPublicId: '',
     idpReference: '',
     internalReference: '',
     fmsLink: '',
@@ -415,11 +437,17 @@ function createDefaultIpmsFormState(): IpmsFormState {
     budgetSources: [],
     budgetTypeHint: '',
     budgetSourceHint: '',
+    kpiTypeHint: '',
+    indicatorTypeHint: '',
+    functionalAreaHint: '',
     unitOfMeasureId: '',
     weight: '0',
     kpiType: '',
+    kpiTypePublicId: '',
     indicatorType: '',
+    indicatorTypePublicId: '',
     functionalArea: '',
+    functionalAreaPublicId: '',
     idpReference: '',
     internalReference: '',
     isRevised: false,
@@ -495,12 +523,20 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount == null ? '' : String(item.amount) })),
     budgetTypeHint: '',
     budgetSourceHint: '',
+    kpiTypeHint: '',
+    indicatorTypeHint: '',
+    functionalAreaHint: '',
+    standardClassificationHint: '',
     unitOfMeasureId: target.unitOfMeasure.id,
     weight: String(target.weight),
     kpiType: target.kpiType,
+    kpiTypePublicId: target.kpiTypePublicId ?? '',
     indicatorType: target.indicatorType,
+    indicatorTypePublicId: target.indicatorTypePublicId ?? '',
     functionalArea: target.functionalArea ?? '',
+    functionalAreaPublicId: target.functionalAreaPublicId ?? '',
     standardClassification: target.standardClassification ?? '',
+    standardClassificationPublicId: target.standardClassificationPublicId ?? '',
     idpReference: target.idpReference ?? '',
     internalReference: target.internalReference ?? '',
     fmsLink: target.fmsLink ?? '',
@@ -576,11 +612,17 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount == null ? '' : String(item.amount) })),
     budgetTypeHint: '',
     budgetSourceHint: '',
+    kpiTypeHint: '',
+    indicatorTypeHint: '',
+    functionalAreaHint: '',
     unitOfMeasureId: target.unitOfMeasure.id,
     weight: String(target.weight),
     kpiType: target.kpiType,
+    kpiTypePublicId: target.kpiTypePublicId ?? '',
     indicatorType: target.indicatorType,
+    indicatorTypePublicId: target.indicatorTypePublicId ?? '',
     functionalArea: target.functionalArea ?? '',
+    functionalAreaPublicId: target.functionalAreaPublicId ?? '',
     idpReference: target.idpReference ?? '',
     internalReference: target.internalReference ?? '',
     isRevised: target.isRevised,
@@ -639,10 +681,10 @@ function opmsFormFromTemplate(template: OpmsTargetTemplate): OpmsFormState {
     budgetSourceHint: template.budgetSource?.code || template.budgetSource?.name || '',
     unitOfMeasureId: template.unitOfMeasure.id,
     weight: String(template.weight),
-    kpiType: template.kpiType,
-    indicatorType: template.indicatorType,
-    functionalArea: template.functionalArea ?? '',
-    standardClassification: template.standardClassification ?? '',
+    kpiTypeHint: template.kpiType,
+    indicatorTypeHint: template.indicatorType,
+    functionalAreaHint: template.functionalArea ?? '',
+    standardClassificationHint: template.standardClassification ?? '',
     idpReference: template.idpReference ?? '',
     internalReference: template.internalReference ?? '',
     fmsLink: template.fmsLink ?? '',
@@ -685,7 +727,7 @@ function ipmsFormFromTemplate(template: IpmsTargetTemplate): IpmsFormState {
     annualTargetDescription: template.annualTargetDescription,
     unitOfMeasureId: template.unitOfMeasure.id,
     weight: String(template.weight),
-    functionalArea: template.functionalArea ?? '',
+    functionalAreaHint: template.functionalArea ?? '',
     targetUnitType: toXafUnitType(template.targetUnitType),
     q1UnitType: toXafUnitType(template.targetUnitType),
     q2UnitType: toXafUnitType(template.targetUnitType),
@@ -761,9 +803,13 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
+    kpiTypePublicId: form.kpiTypePublicId,
     indicatorType: form.indicatorType,
+    indicatorTypePublicId: form.indicatorTypePublicId,
     functionalArea: form.functionalArea || null,
+    functionalAreaPublicId: form.functionalAreaPublicId || null,
     standardClassification: form.standardClassification || null,
+    standardClassificationPublicId: form.standardClassificationPublicId || null,
     idpReference: form.idpReference || null,
     internalReference: form.internalReference || null,
     fmsLink: form.fmsLink || null,
@@ -805,8 +851,11 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
+    kpiTypePublicId: form.kpiTypePublicId,
     indicatorType: form.indicatorType,
+    indicatorTypePublicId: form.indicatorTypePublicId,
     functionalArea: form.functionalArea || null,
+    functionalAreaPublicId: form.functionalAreaPublicId || null,
     idpReference: form.idpReference || null,
     internalReference: form.internalReference || null,
     isRevised: form.isRevised,
@@ -833,6 +882,8 @@ function validateOpmsForm(form: OpmsFormState) {
     { label: 'Annual Target', value: form.annualTarget },
     { label: 'Weight %', value: form.weight },
     { label: 'Unit of Measure', value: form.unitOfMeasureId },
+    { label: 'KPI Type', value: form.kpiTypePublicId },
+    { label: 'Indicator Type', value: form.indicatorTypePublicId },
   ]);
   errors.push(...validateBudgetSources(form.budgetSources));
   return errors;
@@ -856,6 +907,8 @@ function validateIpmsForm(form: IpmsFormState) {
     { label: 'Annual Target', value: form.annualTarget },
     { label: 'Weight %', value: form.weight },
     { label: 'Unit of Measure', value: form.unitOfMeasureId },
+    { label: 'KPI Type', value: form.kpiTypePublicId },
+    { label: 'Indicator Type', value: form.indicatorTypePublicId },
   ]);
   errors.push(...validateBudgetSources(form.budgetSources));
   return errors;
@@ -932,6 +985,38 @@ function resolveBudgetTemplateHints<T extends { budgetTypePublicId: string; budg
   return { ...form, budgetTypePublicId: type?.publicId ?? form.budgetTypePublicId, budgetSources: source && form.budgetSources.length === 0 ? [{ budgetSourcePublicId: source.publicId, amount: '' }] : form.budgetSources, budgetTypeHint: '', budgetSourceHint: '' };
 }
 
+export function resolvePerformanceTemplateHints<T extends {
+  kpiType: string; kpiTypePublicId: string; kpiTypeHint: string;
+  indicatorType: string; indicatorTypePublicId: string; indicatorTypeHint: string;
+  functionalArea: string; functionalAreaPublicId: string; functionalAreaHint: string;
+  standardClassification?: string; standardClassificationPublicId?: string; standardClassificationHint?: string;
+}>(form: T, catalogue: StrategicClassificationCatalogueDto): T {
+  if (!form.kpiTypeHint && !form.indicatorTypeHint && !form.functionalAreaHint && !form.standardClassificationHint) return form;
+  const match = (items: StrategicCatalogueItemDto[] | undefined, hint: string | undefined) => {
+    const normalized = hint?.trim().toLowerCase();
+    return normalized ? items?.find(item => item.code?.trim().toLowerCase() === normalized || item.name.trim().toLowerCase() === normalized) : undefined;
+  };
+  const kpiType = match(catalogue.kpiTypes, form.kpiTypeHint);
+  const indicatorType = match(catalogue.indicatorTypes, form.indicatorTypeHint);
+  const functionalArea = match(catalogue.functionalAreas, form.functionalAreaHint);
+  const standardClassification = match(catalogue.standardClassifications, form.standardClassificationHint);
+  return {
+    ...form,
+    kpiTypePublicId: kpiType?.publicId ?? form.kpiTypePublicId,
+    kpiType: kpiType?.name ?? form.kpiType,
+    indicatorTypePublicId: indicatorType?.publicId ?? form.indicatorTypePublicId,
+    indicatorType: indicatorType?.name ?? form.indicatorType,
+    functionalAreaPublicId: functionalArea?.publicId ?? form.functionalAreaPublicId,
+    functionalArea: functionalArea?.name ?? form.functionalArea,
+    ...(form.standardClassificationPublicId !== undefined ? {
+      standardClassificationPublicId: standardClassification?.publicId ?? form.standardClassificationPublicId,
+      standardClassification: standardClassification?.name ?? form.standardClassification,
+      standardClassificationHint: '',
+    } : {}),
+    kpiTypeHint: '', indicatorTypeHint: '', functionalAreaHint: '',
+  };
+}
+
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
   const referenceData = usePerformanceReferenceData(true);
@@ -948,7 +1033,9 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
   const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
   const { catalogue, catalogueError } = useStrategicCatalogue('opms', form.municipalityFinancialYearPublicId);
-  useEffect(() => { if (catalogue) setForm(current => resolveBudgetTemplateHints(current, catalogue)); }, [catalogue]);
+  useEffect(() => {
+    if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
+  }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.standardClassificationHint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1105,7 +1192,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [] }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', standardClassificationPublicId: '', standardClassification: '' }))} />
               <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} municipalityFinancialYearId={form.municipalityFinancialYearPublicId || undefined} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={(value, option) => setForm(prev => ({ ...prev, sdbipLayerPublicId: value, municipalityFinancialYearPublicId: (option as SdbipLayerMasterDto | undefined)?.municipalityFinancialYearPublicId ?? prev.municipalityFinancialYearPublicId }))} />
             </FormRow>
             <FormRow cols={2}>
@@ -1287,11 +1374,11 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 }}
                 options={targetUnitTypeOptions}
               />
-              <Input label="KPI Type" value={form.kpiType} onChange={(event) => setForm(prev => ({ ...prev, kpiType: event.target.value }))} />
-              <Input label="Indicator Type" value={form.indicatorType} onChange={(event) => setForm(prev => ({ ...prev, indicatorType: event.target.value }))} />
-              <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
+              <Select label="KPI Type" required value={form.kpiTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.kpiTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.kpiTypes, form.kpiTypePublicId, form.kpiType)} />
+              <Select label="Indicator Type" required value={form.indicatorTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.indicatorTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.indicatorTypes, form.indicatorTypePublicId, form.indicatorType)} />
+              <Select label="Functional Area" value={form.functionalAreaPublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.functionalAreas?.find(option => option.publicId === value); setForm(prev => ({ ...prev, functionalAreaPublicId: value, functionalArea: item?.name ?? '' })); }} options={strategicOptions(catalogue?.functionalAreas, form.functionalAreaPublicId, form.functionalArea)} />
             </FormRow>
-            <Input label="Standard Classification" value={form.standardClassification} onChange={(event) => setForm(prev => ({ ...prev, standardClassification: event.target.value }))} />
+            <Select label="Standard Classification" value={form.standardClassificationPublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.standardClassifications?.find(option => option.publicId === value); setForm(prev => ({ ...prev, standardClassificationPublicId: value, standardClassification: item?.name ?? '' })); }} options={strategicOptions(catalogue?.standardClassifications, form.standardClassificationPublicId, form.standardClassification)} />
           </FormPanel>
 
           <FormPanel title="Budget And References" description="Capture budget linkage, identifiers, and external references." icon={<Building2 className="h-5 w-5" />}>
@@ -1536,7 +1623,9 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
   const { catalogue, catalogueError } = useStrategicCatalogue('ipms', form.municipalityFinancialYearPublicId);
-  useEffect(() => { if (catalogue) setForm(current => resolveBudgetTemplateHints(current, catalogue)); }, [catalogue]);
+  useEffect(() => {
+    if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
+  }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint]);
   const [existingTarget, setExistingTarget] = useState<IPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -1677,7 +1766,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Linked OPMS" value={linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not linked')} readOnly />
             </FormRow>
             <FormRow cols={3}>
-              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [] }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '' }))} />
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
               <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setOrganizationLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
             </FormRow>
@@ -1741,9 +1830,9 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 }}
                 options={targetUnitTypeOptions}
               />
-              <Input label="KPI Type" value={form.kpiType} onChange={(event) => setForm(prev => ({ ...prev, kpiType: event.target.value }))} />
-              <Input label="Indicator Type" value={form.indicatorType} onChange={(event) => setForm(prev => ({ ...prev, indicatorType: event.target.value }))} />
-              <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
+              <Select label="KPI Type" required value={form.kpiTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.kpiTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.kpiTypes, form.kpiTypePublicId, form.kpiType)} />
+              <Select label="Indicator Type" required value={form.indicatorTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.indicatorTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.indicatorTypes, form.indicatorTypePublicId, form.indicatorType)} />
+              <Select label="Functional Area" value={form.functionalAreaPublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.functionalAreas?.find(option => option.publicId === value); setForm(prev => ({ ...prev, functionalAreaPublicId: value, functionalArea: item?.name ?? '' })); }} options={strategicOptions(catalogue?.functionalAreas, form.functionalAreaPublicId, form.functionalArea)} />
             </FormRow>
             <FormRow cols={2}>
               <Select label="Budget Type" value={form.budgetTypePublicId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypePublicId: event.target.value }))} options={strategicOptions(catalogue?.budgetTypes, form.budgetTypePublicId, existingTarget?.budgetTypeName)} />

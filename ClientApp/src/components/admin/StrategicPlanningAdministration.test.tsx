@@ -38,4 +38,12 @@ describe('StrategicPlanningAdministration', () => {
     expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
     expect(screen.queryByText('Optional strategic relationships')).not.toBeInTheDocument();
   });
+
+  it('uses the governed performance-classification endpoint without strategic relationship controls', async () => {
+    render(<StrategicPlanningAdministration kind="kpi-types" />);
+    expect(await screen.findByText('Inclusive growth')).toBeInTheDocument();
+    expect(api.getStrategicPlanningMastersPage).toHaveBeenCalledWith('kpi-types', expect.anything(), { includeInactive: true });
+    expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
+    expect(screen.queryByText('Optional strategic relationships')).not.toBeInTheDocument();
+  });
 });

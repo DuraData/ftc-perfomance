@@ -1,4 +1,4 @@
-import { buildOpmsPayload, childrenFor, getTargetUnitLabel, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
+import { buildOpmsPayload, childrenFor, getTargetUnitLabel, resolvePerformanceTemplateHints, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
 
 describe('TargetFormPages helpers', () => {
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
@@ -20,6 +20,17 @@ describe('TargetFormPages helpers', () => {
     const catalogue = { nationalKpas: [], municipalKpas: [], backToBasicsPillars: [], strategicGoals: items, strategicInterventions: [], strategicObjectives: [], performanceObjectives: [], relationships: [{ relationshipType: 'municipal-kpa-strategic-goal', parentPublicId: 'kpa-1', childPublicId: 'goal-2' }] };
     expect(childrenFor(catalogue, 'municipal-kpa-strategic-goal', 'kpa-1', items)).toEqual([items[1]]);
     expect(childrenFor(catalogue, 'municipal-kpa-strategic-goal', 'kpa-without-mappings', items)).toEqual(items);
+  });
+
+  it('resolves reusable template classification hints to governed catalogue ids', () => {
+    const form = { kpiType: '', kpiTypePublicId: '', kpiTypeHint: 'output', indicatorType: '', indicatorTypePublicId: '', indicatorTypeHint: 'QUANT', functionalArea: '', functionalAreaPublicId: '', functionalAreaHint: 'Technical Services', standardClassification: '', standardClassificationPublicId: '', standardClassificationHint: 'SERVICE' };
+    const item = (publicId: string, code: string, name: string) => ({ publicId, code, name, displayOrder: 1 });
+    const catalogue = { kpiTypes: [item('kpi-id', 'OUTPUT', 'Output')], indicatorTypes: [item('indicator-id', 'QUANT', 'Quantitative')], functionalAreas: [item('area-id', 'TECH', 'Technical Services')], standardClassifications: [item('class-id', 'SERVICE', 'Service Delivery')] };
+    expect(resolvePerformanceTemplateHints(form, catalogue as never)).toMatchObject({
+      kpiTypePublicId: 'kpi-id', kpiType: 'Output', indicatorTypePublicId: 'indicator-id', indicatorType: 'Quantitative',
+      functionalAreaPublicId: 'area-id', functionalArea: 'Technical Services', standardClassificationPublicId: 'class-id', standardClassification: 'Service Delivery',
+      kpiTypeHint: '', indicatorTypeHint: '', functionalAreaHint: '', standardClassificationHint: '',
+    });
   });
   it('maps legacy unit type to XAF unit type', () => {
     expect(toXafUnitType('percentage')).toBe('PercentageBased');

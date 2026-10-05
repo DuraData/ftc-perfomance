@@ -253,6 +253,14 @@ function AppContent() {
         return <StrategicPlanningAdministration kind="budget-types" />;
       case '/admin/budget-sources':
         return <StrategicPlanningAdministration kind="budget-sources" />;
+      case '/admin/kpi-types':
+        return <StrategicPlanningAdministration kind="kpi-types" />;
+      case '/admin/indicator-types':
+        return <StrategicPlanningAdministration kind="indicator-types" />;
+      case '/admin/functional-areas':
+        return <StrategicPlanningAdministration kind="functional-areas" />;
+      case '/admin/standard-classifications':
+        return <StrategicPlanningAdministration kind="standard-classifications" />;
       case '/admin/strategic-goals':
         return <StrategicPlanningAdministration kind="strategic-goals" />;
       case '/admin/strategic-interventions':

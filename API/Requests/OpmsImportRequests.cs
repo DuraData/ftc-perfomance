@@ -8,5 +8,6 @@ public sealed record OpmsImportRowRequest(
     string DepartmentCode, string? UnitCode, string NationalKpa, string MunicipalKpa, string BackToBasicsPillar,
     string StrategicGoal, string StrategicIntervention, string StrategicObjective, string PerformanceObjective,
     decimal Baseline, decimal Weight, string KpiType, string IndicatorType, SaveTargetPeriodValueRequest[] PeriodTargets,
-    string? ExistingIndicatorNumber = null, string? BudgetType = null, string? BudgetSources = null);
+    string? ExistingIndicatorNumber = null, string? BudgetType = null, string? BudgetSources = null,
+    string? FunctionalArea = null, string? StandardClassification = null);
 public sealed record CommitOpmsImportRequest(string Reason, string? ApprovalReference, DateTime? EffectiveAt, string RowVersion);
