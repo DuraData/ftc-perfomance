@@ -171,6 +171,63 @@ public class IdpImportControllerTests
     }
 
     [Fact]
+    public async Task ImportBatchPage_FiltersBeforeCount_ExcludesRows_AndRetiresLegacyArray()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        for (var index = 0; index < 31; index++)
+        {
+            var batch = Batch(setup.Plan, setup.User, $"match-{index:00}.csv");
+            batch.ImportType = index % 2 == 0 ? "KPI" : "HIERARCHY";
+            context.IdpImportBatches.Add(batch);
+        }
+
+        var otherPlan = Plan(await context.Municipalities.SingleAsync(), setup.User, "OTHER");
+        context.IdpPlans.Add(otherPlan);
+        await context.SaveChangesAsync();
+        var otherBatch = Batch(otherPlan, setup.User, "match-outside.csv");
+        otherBatch.ImportType = "KPI";
+        context.IdpImportBatches.Add(otherBatch);
+        await context.SaveChangesAsync();
+
+        var controller = CreateController(context, setup.User, new Mock<IWorkflowGovernanceService>().Object);
+        var action = await controller.GetBatchesPage(setup.Plan.PublicId,
+            new PagedQueryRequest { Page = 2, PageSize = 10, Search = "match", SortBy = "fileName", SortDirection = "asc" },
+            "Staged", "KPI");
+        var page = ((action.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>)!.Data!;
+
+        page.TotalCount.Should().Be(16);
+        page.Items.Should().HaveCount(6);
+        page.Items.Should().OnlyContain(item => item.ImportType == "KPI" && item.SourceFileName.StartsWith("match-"));
+        page.Items.Should().NotContain(item => item.SourceFileName == "match-outside.csv");
+        page.Items.First().SourceFileName.Should().Be("match-20.csv");
+
+        (await controller.GetBatchesPage(setup.Plan.PublicId,
+            new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetBatches(setup.Plan.PublicId)).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
+    [Fact]
+    public async Task ImportBatchReads_AllowEitherDynamicImportCapability_AndDenyWithoutBoth()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+                new AccessDecisionResult(code == "IDP_PLAN.IMPORT", code == "IDP_PLAN.IMPORT" ? "Allowed" : "Denied", [], [], []));
+        var controller = CreateController(context, setup.User, new Mock<IWorkflowGovernanceService>().Object, access.Object);
+
+        (await controller.GetBatchesPage(setup.Plan.PublicId, new PagedQueryRequest())).Result.Should().BeOfType<OkObjectResult>();
+
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        (await controller.GetBatchesPage(setup.Plan.PublicId, new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
     public async Task ManualAndImportedKpis_UseTheSameIndicatorValidationPolicy()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -283,9 +340,21 @@ public class IdpImportControllerTests
     private static IdpImportsController CreateController(
         ApplicationDbContext context,
         ApplicationUser user,
-        IWorkflowGovernanceService workflow) => new(
+        IWorkflowGovernanceService workflow,
+        IAccessControlService? accessControl = null)
+    {
+        var access = accessControl;
+        if (access == null)
+        {
+            var accessMock = new Mock<IAccessControlService>();
+            accessMock.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+                .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+            access = accessMock.Object;
+        }
+        return new IdpImportsController(
             context,
             IdpTestFixture.CreateUserManagerMock(user).Object,
+            access,
             workflow)
         {
             ControllerContext = new ControllerContext
@@ -293,6 +362,7 @@ public class IdpImportControllerTests
                 HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) }
             }
         };
+    }
 
     private static IdpImportBatchResponse Payload(ActionResult<ApiResponse<IdpImportBatchResponse>> action) =>
         ((action.Result as OkObjectResult)!.Value as ApiResponse<IdpImportBatchResponse>)!.Data!;

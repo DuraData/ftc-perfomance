@@ -6,7 +6,8 @@ import {
   createIdpPlanVersion,
     commitIdpHierarchyImport,
     commitIdpImport,
-  getIdpImportBatches,
+  getIdpImportBatch,
+  getIdpImportBatchesPage,
   getIdpAlignmentMatrix,
   getIdpDashboard,
   getIdpPlansPage,
@@ -26,6 +27,7 @@ import type {
   IdpDashboard,
   IdpHierarchy,
   IdpImportBatch,
+  IdpImportBatchSummary,
   IdpHierarchyImportRowPayload,
   IdpKpiImportRowPayload,
   IdpPlanSummary,
@@ -196,7 +198,17 @@ export function IdpPlanManagementPage() {
   const [importRows, setImportRows] = useState<Array<IdpKpiImportRowPayload | IdpHierarchyImportRowPayload>>([]);
   const [importFileName, setImportFileName] = useState('');
   const [importBatch, setImportBatch] = useState<IdpImportBatch | null>(null);
-  const [importHistory, setImportHistory] = useState<IdpImportBatch[]>([]);
+  const [importHistory, setImportHistory] = useState<IdpImportBatchSummary[]>([]);
+  const [importHistoryPage, setImportHistoryPage] = useState(1);
+  const [importHistoryTotalCount, setImportHistoryTotalCount] = useState(0);
+  const [importHistoryTotalPages, setImportHistoryTotalPages] = useState(0);
+  const [importHistorySearchInput, setImportHistorySearchInput] = useState('');
+  const [importHistorySearch, setImportHistorySearch] = useState('');
+  const [importHistoryStatus, setImportHistoryStatus] = useState<'' | 'Staged' | 'Committed' | 'Cancelled'>('');
+  const [importHistoryType, setImportHistoryType] = useState<'' | 'KPI' | 'HIERARCHY'>('');
+  const [importHistorySortBy, setImportHistorySortBy] = useState('createdAt');
+  const [importHistorySortDirection, setImportHistorySortDirection] = useState<'asc' | 'desc'>('desc');
+  const [importHistoryRevision, setImportHistoryRevision] = useState(0);
   const [importReason, setImportReason] = useState('');
   const [importBusy, setImportBusy] = useState(false);
   const [planDraft, setPlanDraft] = useState({
@@ -239,11 +251,6 @@ export function IdpPlanManagementPage() {
       const hierarchyResult = await getIdpPlanHierarchy(planId);
       const hierarchy = hierarchyResult.data;
       setVersions(hierarchy?.versions ?? []);
-      const selected = loadedPlans.find(plan => plan.id === planId);
-      if (selected && (canImportKpis || canImportHierarchy)) {
-        const historyResult = await getIdpImportBatches(selected.publicId);
-        setImportHistory(historyResult.data ?? []);
-      }
     } else {
       setVersions([]);
       setImportHistory([]);
@@ -259,15 +266,47 @@ export function IdpPlanManagementPage() {
     setSelectedPlanId(planId);
     const hierarchyResult = await getIdpPlanHierarchy(planId);
     setVersions(hierarchyResult.data?.versions ?? []);
-    const selected = plans.find(plan => plan.id === planId);
-    if (selected && (canImportKpis || canImportHierarchy)) {
-      const historyResult = await getIdpImportBatches(selected.publicId);
-      setImportHistory(historyResult.data ?? []);
-    }
+    setImportHistoryPage(1);
     setImportBatch(null);
   };
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setImportHistoryPage(1);
+      setImportHistorySearch(importHistorySearchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [importHistorySearchInput]);
+
+  useEffect(() => {
+    if (!selectedPlan || (!canImportKpis && !canImportHierarchy)) {
+      setImportHistory([]);
+      setImportHistoryTotalCount(0);
+      setImportHistoryTotalPages(0);
+      return;
+    }
+    void getIdpImportBatchesPage(selectedPlan.publicId, {
+      page: importHistoryPage,
+      pageSize: 25,
+      search: importHistorySearch,
+      status: importHistoryStatus || undefined,
+      importType: importHistoryType || undefined,
+      sortBy: importHistorySortBy,
+      sortDirection: importHistorySortDirection,
+    }).then(result => {
+      setImportHistory(result.data?.items ?? []);
+      setImportHistoryTotalCount(result.data?.totalCount ?? 0);
+      setImportHistoryTotalPages(result.data?.totalPages ?? 0);
+    });
+  }, [selectedPlan, canImportKpis, canImportHierarchy, importHistoryPage, importHistorySearch, importHistoryStatus, importHistoryType, importHistorySortBy, importHistorySortDirection, importHistoryRevision]);
+
+  const openImportBatch = async (batchPublicId: string) => {
+    const result = await getIdpImportBatch(batchPublicId);
+    if (result.success && result.data) setImportBatch(result.data);
+    else pushToast('error', result.message ?? 'Unable to load the import reconciliation detail.');
+  };
 
   const stageImport = async () => {
     if (!selectedPlan || !importRows.length || !importFileName) {
@@ -285,7 +324,8 @@ export function IdpPlanManagementPage() {
         return;
       }
       setImportBatch(result.data);
-      setImportHistory(history => [result.data!, ...history.filter(item => item.publicId !== result.data!.publicId)]);
+      setImportHistoryPage(1);
+      setImportHistoryRevision(value => value + 1);
       pushToast(result.data.invalidRows ? 'info' : 'success', result.data.invalidRows ? 'Reconciliation contains invalid rows.' : 'Reconciliation preview is ready.');
     } finally {
       setImportBusy(false);
@@ -306,7 +346,7 @@ export function IdpPlanManagementPage() {
         return;
       }
       setImportBatch(result.data);
-      setImportHistory(history => history.map(item => item.publicId === result.data!.publicId ? result.data! : item));
+      setImportHistoryRevision(value => value + 1);
       setImportReason('');
       pushToast('success', `${importBatch.importType === 'HIERARCHY' ? 'Hierarchy' : 'KPI'} import committed atomically.`);
     } finally {
@@ -531,12 +571,23 @@ export function IdpPlanManagementPage() {
               </div>
             ) : null}
 
-            {importHistory.length ? (
-              <div className="mt-5">
-                <h4 className="text-sm font-semibold text-secondary-800 dark:text-secondary-200">Recent import batches</h4>
-                <div className="mt-2 flex flex-wrap gap-2">{importHistory.slice(0, 10).map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => setImportBatch(batch)}>{batch.importType} · {batch.sourceFileName} · {batch.status} · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
+            <div className="mt-5 space-y-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <h4 className="mr-auto text-sm font-semibold text-secondary-800 dark:text-secondary-200">Import history · {importHistoryTotalCount}</h4>
+                <label className="text-xs text-secondary-600">Search<input aria-label="Search IDP import history" className={fieldClass} value={importHistorySearchInput} onChange={event => setImportHistorySearchInput(event.target.value)} /></label>
+                <label className="text-xs text-secondary-600">Status<select aria-label="Filter IDP import status" className={fieldClass} value={importHistoryStatus} onChange={event => { setImportHistoryStatus(event.target.value as typeof importHistoryStatus); setImportHistoryPage(1); }}><option value="">All</option><option value="Staged">Staged</option><option value="Committed">Committed</option><option value="Cancelled">Cancelled</option></select></label>
+                <label className="text-xs text-secondary-600">Type<select aria-label="Filter IDP import type" className={fieldClass} value={importHistoryType} onChange={event => { setImportHistoryType(event.target.value as typeof importHistoryType); setImportHistoryPage(1); }}><option value="">All</option><option value="KPI">KPI</option><option value="HIERARCHY">Hierarchy</option></select></label>
+                <label className="text-xs text-secondary-600">Sort<select aria-label="Sort IDP import history" className={fieldClass} value={importHistorySortBy} onChange={event => { setImportHistorySortBy(event.target.value); setImportHistoryPage(1); }}><option value="createdAt">Created</option><option value="fileName">File name</option><option value="status">Status</option><option value="importType">Type</option><option value="totalRows">Row count</option><option value="committedAt">Committed</option></select></label>
+                <select aria-label="IDP import sort direction" className={fieldClass} value={importHistorySortDirection} onChange={event => { setImportHistorySortDirection(event.target.value as 'asc' | 'desc'); setImportHistoryPage(1); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select>
               </div>
-            ) : null}
+              {importHistory.length ? (
+                <div className="flex flex-wrap gap-2">{importHistory.map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => void openImportBatch(batch.publicId)}>{batch.importType} · {batch.sourceFileName} · {batch.status} · {batch.totalRows} rows · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
+              ) : <p className="text-sm text-secondary-500">No import batches match the current filters.</p>}
+              <div className="flex items-center justify-between text-xs text-secondary-500">
+                <span>Page {importHistoryPage} of {Math.max(1, importHistoryTotalPages)}</span>
+                <div className="flex gap-2"><Button variant="outline" disabled={importHistoryPage <= 1} onClick={() => setImportHistoryPage(value => value - 1)}>Previous imports</Button><Button variant="outline" disabled={importHistoryPage >= importHistoryTotalPages} onClick={() => setImportHistoryPage(value => value + 1)}>Next imports</Button></div>
+              </div>
+            </div>
           </Card>
         ) : null}
       </div>

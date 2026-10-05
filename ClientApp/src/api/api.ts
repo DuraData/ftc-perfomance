@@ -141,6 +141,8 @@ import type {
   PerformanceDashboardDto,
   WorkflowQueueDto,
   WorkflowQueueName,
+  IdpImportBatch,
+  IdpImportBatchSummary,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -2351,36 +2353,52 @@ export async function getIdpPlanHierarchy(planId: number): Promise<ApiResponse<I
   return get<IdpHierarchy>(`/idp/plans/${planId}/hierarchy`);
 }
 
-export async function getIdpImportBatches(planPublicId: string): Promise<ApiResponse<import('../types').IdpImportBatch[]>> {
-  return get<import('../types').IdpImportBatch[]>(`/v1/idp/plans/${planPublicId}/imports`);
+export type IdpImportBatchPageQuery = RegisterPageQuery & {
+  status?: 'Staged' | 'Committed' | 'Cancelled';
+  importType?: 'KPI' | 'HIERARCHY';
+};
+
+export async function getIdpImportBatchesPage(
+  planPublicId: string,
+  query: IdpImportBatchPageQuery = {},
+): Promise<ApiResponse<PagedResult<IdpImportBatchSummary>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.status) parameters.set('status', query.status);
+  if (query.importType) parameters.set('importType', query.importType);
+  const value = parameters.toString();
+  return get<PagedResult<IdpImportBatchSummary>>(`/v1/idp/plans/${planPublicId}/imports/page${value ? `?${value}` : ''}`);
+}
+
+export async function getIdpImportBatch(batchPublicId: string): Promise<ApiResponse<IdpImportBatch>> {
+  return get<IdpImportBatch>(`/v1/idp/imports/${batchPublicId}`);
 }
 
 export async function stageIdpKpiImport(
   planPublicId: string,
   payload: { clientRequestId: string; sourceFileName: string; rows: import('../types').IdpKpiImportRowPayload[] },
-): Promise<ApiResponse<import('../types').IdpImportBatch>> {
-  return post<import('../types').IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/kpis/stage`, payload);
+): Promise<ApiResponse<IdpImportBatch>> {
+  return post<IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/kpis/stage`, payload);
 }
 
 export async function stageIdpHierarchyImport(
   planPublicId: string,
   payload: { clientRequestId: string; sourceFileName: string; rows: import('../types').IdpHierarchyImportRowPayload[] },
-): Promise<ApiResponse<import('../types').IdpImportBatch>> {
-  return post<import('../types').IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/hierarchy/stage`, payload);
+): Promise<ApiResponse<IdpImportBatch>> {
+  return post<IdpImportBatch>(`/v1/idp/plans/${planPublicId}/imports/hierarchy/stage`, payload);
 }
 
 export async function commitIdpImport(
   batchPublicId: string,
   payload: { rowVersion: string; reason: string },
-): Promise<ApiResponse<import('../types').IdpImportBatch>> {
-  return post<import('../types').IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit`, payload);
+): Promise<ApiResponse<IdpImportBatch>> {
+  return post<IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit`, payload);
 }
 
 export async function commitIdpHierarchyImport(
   batchPublicId: string,
   payload: { rowVersion: string; reason: string },
-): Promise<ApiResponse<import('../types').IdpImportBatch>> {
-  return post<import('../types').IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit-hierarchy`, payload);
+): Promise<ApiResponse<IdpImportBatch>> {
+  return post<IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit-hierarchy`, payload);
 }
 
 export async function getIdpHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {

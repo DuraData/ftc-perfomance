@@ -2976,6 +2976,8 @@ export interface IdpImportBatch {
   rows: IdpImportRow[];
 }
 
+export type IdpImportBatchSummary = Omit<IdpImportBatch, 'rows'>;
+
 export interface IdpKpiImportRowPayload {
   sourceRowNumber: number;
   projectCode: string;

@@ -9,7 +9,8 @@ const api = vi.hoisted(() => ({
   getIdpPlansPage: vi.fn(),
   getIdpPlanHierarchy: vi.fn(),
   getIdpDashboard: vi.fn(),
-  getIdpImportBatches: vi.fn(),
+  getIdpImportBatch: vi.fn(),
+  getIdpImportBatchesPage: vi.fn(),
   stageIdpKpiImport: vi.fn(),
   stageIdpHierarchyImport: vi.fn(),
   commitIdpImport: vi.fn(),
@@ -59,7 +60,11 @@ describe('IDP plan lineage workspace', () => {
     });
     api.getIdpPlanHierarchy.mockResolvedValue({ success: true, data: { versions: [] } });
     api.getIdpDashboard.mockResolvedValue({ success: true, data: null });
-    api.getIdpImportBatches.mockResolvedValue({ success: true, data: [] });
+    api.getIdpImportBatch.mockResolvedValue({ success: true, data: null });
+    api.getIdpImportBatchesPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
     api.createIdpPlan.mockResolvedValue({ success: true, data: predecessor });
     api.createIdpPlanVersion.mockResolvedValue({ success: true, data: {} });
   });
@@ -107,7 +112,7 @@ describe('IDP plan lineage workspace', () => {
     await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });
     expect(screen.queryByLabelText('KPI CSV file')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Hierarchy/project CSV file')).not.toBeInTheDocument();
-    expect(api.getIdpImportBatches).not.toHaveBeenCalled();
+    expect(api.getIdpImportBatchesPage).not.toHaveBeenCalled();
   });
 
   it('queries the plan register through bounded server paging and search', async () => {
@@ -124,6 +129,33 @@ describe('IDP plan lineage workspace', () => {
       page: 1,
       pageSize: 25,
       search: '2031',
+    })));
+  });
+
+  it('pages and filters IDP import summaries without loading reconciliation rows', async () => {
+    api.getIdpImportBatchesPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 },
+    });
+    render(<IdpPlanManagementPage />);
+
+    await screen.findByText('Import history · 31');
+    expect(api.getIdpImportBatchesPage).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({
+      page: 1,
+      pageSize: 25,
+      sortBy: 'createdAt',
+      sortDirection: 'desc',
+    }));
+
+    fireEvent.change(screen.getByLabelText('Search IDP import history'), { target: { value: 'council' } });
+    fireEvent.change(screen.getByLabelText('Filter IDP import status'), { target: { value: 'Committed' } });
+    fireEvent.change(screen.getByLabelText('Filter IDP import type'), { target: { value: 'KPI' } });
+    await waitFor(() => expect(api.getIdpImportBatchesPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({
+      page: 1,
+      pageSize: 25,
+      search: 'council',
+      status: 'Committed',
+      importType: 'KPI',
     })));
   });
 });
