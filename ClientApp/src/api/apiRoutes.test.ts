@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMasters, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -233,6 +234,25 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/strategic-documents/families/family-id/versions'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/strategic-documents/document-id/approve'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('Council 1/2026') }));
     expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining('/v1/strategic-documents/document-id/publish'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('2026-07-02') }));
+  });
+
+  it('uses governed strategic-risk register and KPI relationship routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getStrategicRisksPage({ page: 2, pageSize: 25, search: 'water', sortBy: 'reference', sortDirection: 'asc' }, { active: true, municipalityFinancialYearPublicId: 'year-id' });
+    await saveStrategicRisk(null, { riskReference: 'SR-1', riskTitle: 'Water', isActive: true, reason: 'Approved' });
+    await saveStrategicRisk('risk/id', { riskTitle: 'Water updated', isActive: false, reason: 'Review', rowVersion: 'AQ==' });
+    await getStrategicRiskLinksPage({ page: 3, pageSize: 10, sortBy: 'linkedAt', sortDirection: 'desc' }, { strategicRiskPublicId: 'risk/id', includeInactive: true });
+    await linkStrategicRisk({ strategicRiskPublicId: 'risk/id', targetPublicId: 'target/id', isPrimary: true, reason: 'Material exposure' });
+    await unlinkStrategicRisk('link/id', { reason: 'Mitigated', rowVersion: 'Ag==' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/strategic-risks/page?page=2&pageSize=25&search=water&sortBy=reference&sortDirection=asc&municipalityFinancialYearPublicId=year-id&active=true'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/strategic-risks'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('SR-1') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/strategic-risks/risk%2Fid'), expect.objectContaining({ method: 'PUT', body: expect.stringContaining('AQ==') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/strategic-risks/links/page?page=3&pageSize=10&sortBy=linkedAt&sortDirection=desc&strategicRiskPublicId=risk%2Fid&includeInactive=true'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/strategic-risks/links'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('target/id') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining('/v1/strategic-risks/links/link%2Fid/unlink'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('Mitigated') }));
   });
 
   it('loads performance target revisions from the controller route', async () => {

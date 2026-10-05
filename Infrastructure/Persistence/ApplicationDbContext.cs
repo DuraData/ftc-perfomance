@@ -42,6 +42,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<OpmsTargetWard> OpmsTargetWards { get; set; } = null!;
     public DbSet<OpmsTargetAdditionalAssignee> OpmsTargetAdditionalAssignees { get; set; } = null!;
     public DbSet<OpmsTargetVoteNumber> OpmsTargetVoteNumbers { get; set; } = null!;
+    public DbSet<StrategicRisk> StrategicRisks { get; set; } = null!;
+    public DbSet<OpmsKpiStrategicRisk> OpmsKpiStrategicRisks { get; set; } = null!;
     public DbSet<IpmsTarget> IpmsTargets { get; set; } = null!;
     public DbSet<OpmsTargetTemplate> OpmsTargetTemplates { get; set; } = null!;
     public DbSet<IpmsTargetTemplate> IpmsTargetTemplates { get; set; } = null!;
@@ -1197,6 +1199,34 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<VoteNumber>()
             .Property(vn => vn.Amount)
             .HasPrecision(18, 2);
+
+        builder.Entity<StrategicRisk>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<StrategicRisk>().ToTable("OPMS_StrategicRisks");
+        builder.Entity<StrategicRisk>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicRisk>().HasIndex(item => new { item.MunicipalityId, item.RiskReference }).IsUnique().HasFilter("[RiskReference] IS NOT NULL");
+        builder.Entity<StrategicRisk>().Property(item => item.RiskReference).HasMaxLength(100);
+        builder.Entity<StrategicRisk>().Property(item => item.RiskTitle).HasMaxLength(500);
+        builder.Entity<StrategicRisk>().Property(item => item.RiskDescription).HasMaxLength(2000);
+        builder.Entity<StrategicRisk>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRisk>().HasOne(item => item.EffectiveFromMunicipalityFinancialYear).WithMany().HasForeignKey(item => item.EffectiveFromMunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRisk>().HasOne(item => item.EffectiveToMunicipalityFinancialYear).WithMany().HasForeignKey(item => item.EffectiveToMunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRisk>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRisk>().HasOne(item => item.UpdatedByUser).WithMany().HasForeignKey(item => item.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureRowVersion(builder.Entity<StrategicRisk>().Property(item => item.RowVersion));
+
+        builder.Entity<OpmsKpiStrategicRisk>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<OpmsKpiStrategicRisk>().ToTable("OPMS_KPIStrategicRisks");
+        builder.Entity<OpmsKpiStrategicRisk>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsKpiStrategicRisk>().HasIndex(item => new { item.OpmsTargetId, item.StrategicRiskId }).IsUnique().HasFilter("[IsActive] = 1");
+        builder.Entity<OpmsKpiStrategicRisk>().HasIndex(item => new { item.OpmsTargetId, item.IsPrimary }).IsUnique().HasFilter("[IsActive] = 1 AND [IsPrimary] = 1");
+        builder.Entity<OpmsKpiStrategicRisk>().Property(item => item.LinkReason).HasMaxLength(1000);
+        builder.Entity<OpmsKpiStrategicRisk>().Property(item => item.UnlinkReason).HasMaxLength(1000);
+        builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.OpmsTarget).WithMany().HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.StrategicRisk).WithMany(item => item.KpiLinks).HasForeignKey(item => item.StrategicRiskId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.LinkedByUser).WithMany().HasForeignKey(item => item.LinkedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.UnlinkedByUser).WithMany().HasForeignKey(item => item.UnlinkedByUserId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureRowVersion(builder.Entity<OpmsKpiStrategicRisk>().Property(item => item.RowVersion));
 
         builder.Entity<OpmsTarget>()
             .HasOne(ot => ot.Period)

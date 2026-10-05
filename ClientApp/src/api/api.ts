@@ -119,6 +119,10 @@ import type {
   StrategicDocument,
   StrategicDocumentType,
   SaveStrategicDocumentVersionPayload,
+  StrategicRiskDto,
+  StrategicRiskKpiLinkDto,
+  StrategicRiskSummaryDto,
+  SaveStrategicRiskPayload,
   C88Workspace,
   C88IndicatorReport,
   EnterpriseSignInOptions,
@@ -2610,6 +2614,45 @@ export async function downloadStrategicDocument(document: StrategicDocument): Pr
   anchor.click();
   URL.revokeObjectURL(url);
   return { success: true, data: true };
+}
+
+export async function getStrategicRisksPage(query: RegisterPageQuery = {}, options: {
+  municipalityFinancialYearPublicId?: string; active?: boolean;
+} = {}): Promise<ApiResponse<PagedResult<StrategicRiskDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (options.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', options.municipalityFinancialYearPublicId);
+  if (options.active !== undefined) parameters.set('active', String(options.active));
+  return get<PagedResult<StrategicRiskDto>>(`/v1/strategic-risks/page?${parameters.toString()}`);
+}
+
+export function getStrategicRiskSummary(): Promise<ApiResponse<StrategicRiskSummaryDto>> {
+  return get<StrategicRiskSummaryDto>('/v1/strategic-risks/summary');
+}
+
+export function saveStrategicRisk(publicId: string | null, payload: SaveStrategicRiskPayload): Promise<ApiResponse<StrategicRiskDto>> {
+  return publicId
+    ? put<StrategicRiskDto>(`/v1/strategic-risks/${encodeURIComponent(publicId)}`, payload)
+    : post<StrategicRiskDto>('/v1/strategic-risks', payload);
+}
+
+export async function getStrategicRiskLinksPage(query: RegisterPageQuery = {}, options: {
+  strategicRiskPublicId?: string; targetPublicId?: string; includeInactive?: boolean;
+} = {}): Promise<ApiResponse<PagedResult<StrategicRiskKpiLinkDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (options.strategicRiskPublicId) parameters.set('strategicRiskPublicId', options.strategicRiskPublicId);
+  if (options.targetPublicId) parameters.set('targetPublicId', options.targetPublicId);
+  if (options.includeInactive) parameters.set('includeInactive', 'true');
+  return get<PagedResult<StrategicRiskKpiLinkDto>>(`/v1/strategic-risks/links/page?${parameters.toString()}`);
+}
+
+export function linkStrategicRisk(payload: {
+  strategicRiskPublicId: string; targetPublicId: string; isPrimary: boolean; reason: string;
+}): Promise<ApiResponse<StrategicRiskKpiLinkDto>> {
+  return post<StrategicRiskKpiLinkDto>('/v1/strategic-risks/links', payload);
+}
+
+export function unlinkStrategicRisk(publicId: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<StrategicRiskKpiLinkDto>> {
+  return post<StrategicRiskKpiLinkDto>(`/v1/strategic-risks/links/${encodeURIComponent(publicId)}/unlink`, payload);
 }
 
 export async function getC88Workspace(municipalityFinancialYearPublicId?: string, includeReports = true): Promise<ApiResponse<C88Workspace>> {

@@ -3328,6 +3328,60 @@ export interface SaveStrategicDocumentVersionPayload {
   reason: string;
 }
 
+export interface StrategicRiskDto {
+  publicId: string;
+  riskReference?: string | null;
+  riskTitle: string;
+  riskDescription?: string | null;
+  effectiveFromMunicipalityFinancialYearPublicId?: string | null;
+  effectiveFromFinancialYear?: string | null;
+  effectiveToMunicipalityFinancialYearPublicId?: string | null;
+  effectiveToFinancialYear?: string | null;
+  isActive: boolean;
+  activeKpiLinks: number;
+  createdAt: string;
+  updatedAt?: string | null;
+  rowVersion: string;
+}
+
+export interface StrategicRiskKpiLinkDto {
+  publicId: string;
+  strategicRiskPublicId: string;
+  riskReference?: string | null;
+  riskTitle: string;
+  targetPublicId: string;
+  indicatorNumber: string;
+  targetName: string;
+  departmentName?: string | null;
+  unitName?: string | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  linkedAt: string;
+  linkReason: string;
+  unlinkedAt?: string | null;
+  unlinkReason?: string | null;
+  rowVersion: string;
+}
+
+export interface StrategicRiskSummaryDto {
+  totalRisks: number;
+  activeRisks: number;
+  linkedRisks: number;
+  unlinkedActiveRisks: number;
+  linkedKpis: number;
+}
+
+export interface SaveStrategicRiskPayload {
+  riskReference?: string | null;
+  riskTitle: string;
+  riskDescription?: string | null;
+  effectiveFromMunicipalityFinancialYearPublicId?: string | null;
+  effectiveToMunicipalityFinancialYearPublicId?: string | null;
+  isActive: boolean;
+  reason: string;
+  rowVersion?: string | null;
+}
+
 export type C88CatalogueItemKind = 'Sector' | 'Outcome' | 'IndicatorType' | 'MunicipalCategory' | 'ReadinessTier' | 'ReportType' | 'ResponseType';
 export type C88AssignmentRole = 'PrimaryCapturer' | 'Contributor' | 'ReviewerVerifier' | 'FinalSubmitter';
 export type C88ReportState = 'Draft' | 'Submitted' | 'Verified' | 'FinalSubmitted' | 'Rework';
