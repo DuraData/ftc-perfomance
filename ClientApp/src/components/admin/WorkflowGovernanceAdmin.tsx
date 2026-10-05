@@ -90,6 +90,10 @@ export function WorkflowGovernanceAdminPage() {
   const [exceptionSearch, setExceptionSearch] = useState('');
   const [exceptionMeta, setExceptionMeta] = useState(emptyPage);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
+  const [exceptionUserPage, setExceptionUserPage] = useState(1);
+  const [exceptionUserSearch, setExceptionUserSearch] = useState('');
+  const [exceptionUserMeta, setExceptionUserMeta] = useState(emptyPage);
+  const [selectedExceptionUser, setSelectedExceptionUser] = useState<AdminUserDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [comparison, setComparison] = useState<WorkflowDefinitionComparisonDto | null>(null);
@@ -193,15 +197,18 @@ export function WorkflowGovernanceAdminPage() {
   const openExceptions = async (window: ReportingWindowDto) => {
     setBusy(true); setError(null); setExceptionWindow(window);
     setExceptionPage(1); setExceptionSearch('');
+    setExceptionUserPage(1); setExceptionUserSearch(''); setSelectedExceptionUser(null);
     setExceptionDraft({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(new Date(window.closesAt).getTime() + 86400000)), reason: '' });
     const [exceptionResult, userResult] = await Promise.all([
-      getReportingWindowExceptionsPage(window.publicId, { page: 1, pageSize: 25, sortBy: 'approvedAt', sortDirection: 'desc' }), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }),
+      getReportingWindowExceptionsPage(window.publicId, { page: 1, pageSize: 25, sortBy: 'approvedAt', sortDirection: 'desc' }),
+      getUsersPage({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }),
     ]);
     const failed = [exceptionResult, userResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Window exception data could not be loaded.');
     setExceptions(exceptionResult.data?.items ?? []);
     setExceptionMeta({ totalCount: exceptionResult.data?.totalCount ?? 0, totalPages: exceptionResult.data?.totalPages ?? 0 });
     setUsers(userResult.data?.items ?? []);
+    setExceptionUserMeta({ totalCount: userResult.data?.totalCount ?? 0, totalPages: userResult.data?.totalPages ?? 0 });
     setBusy(false);
   };
 
@@ -215,7 +222,19 @@ export function WorkflowGovernanceAdminPage() {
     setBusy(false);
   };
 
-  const exceptionUserOptions = users.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: item.user.fullName }));
+  const loadExceptionUsers = async (page: number, search: string) => {
+    setBusy(true); setError(null);
+    const result = await getUsersPage({ page, pageSize: 25, search, sortBy: 'name', sortDirection: 'asc' });
+    if (!result.success) setError(result.message ?? 'User scope directory could not be loaded.');
+    setUsers(result.data?.items ?? []);
+    setExceptionUserMeta({ totalCount: result.data?.totalCount ?? 0, totalPages: result.data?.totalPages ?? 0 });
+    setBusy(false);
+  };
+
+  const availableExceptionUsers = selectedExceptionUser && !users.some(item => item.user.publicId === selectedExceptionUser.user.publicId)
+    ? [...users, selectedExceptionUser]
+    : users;
+  const exceptionUserOptions = availableExceptionUsers.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: `${item.user.fullName} · ${item.user.email}` }));
   const availableRatingSchemes = [...ratings, ...selectedRatingOptions.filter(selected => !ratings.some(item => item.publicId === selected.publicId))];
 
   const saveException = async () => {
@@ -319,7 +338,7 @@ export function WorkflowGovernanceAdminPage() {
           </FormPanel>
           <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Configured windows</h3><div className="mt-3"><Input label="Search reporting windows" value={windowSearch} onChange={event => { setWindowSearch(event.target.value); setWindowPage(1); }} /></div><div className="mt-3 space-y-2">{windows.map(item => <div key={item.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.periodCode} · {kindName(item.submissionKind)}</p><p className="text-xs text-secondary-500">{new Date(item.opensAt).toLocaleString()} — {new Date(item.closesAt).toLocaleString()}</p></div><div className="flex items-center gap-2"><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge><Button size="sm" variant="outline" onClick={() => void openExceptions(item)}>Manage exceptions</Button></div></div>)}</div><RegisterPaging label="windows" page={windowPage} totalPages={windowMeta.totalPages} totalCount={windowMeta.totalCount} onPageChange={setWindowPage} /></Card>
           {exceptionWindow && <div className="xl:col-span-2"><FormPanel title={`Scoped exceptions · ${exceptionWindow.periodCode} ${kindName(exceptionWindow.submissionKind)}`} description="An approved exception extends only one user, department, or unit beyond the normal close time." icon={<Clock3 className="h-5 w-5" />}>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select label="Scope type" value={exceptionDraft.scopeType} options={[{ value: 'department', label: 'Department' }, { value: 'unit', label: 'Unit' }, { value: 'user', label: 'User' }]} onChange={event => setExceptionDraft(current => ({ ...current, scopeType: event.target.value, scopePublicId: '' }))} />{exceptionDraft.scopeType === 'user' ? <Select label="Scoped record" value={exceptionDraft.scopePublicId} placeholder="Select one scope" options={exceptionUserOptions} onChange={event => setExceptionDraft(current => ({ ...current, scopePublicId: event.target.value }))} /> : <OrganizationMasterPicker kind={exceptionDraft.scopeType === 'unit' ? 'unit' : 'department'} label="Scoped record" value={exceptionDraft.scopePublicId} emptyLabel="Select one scope" onChange={value => setExceptionDraft(current => ({ ...current, scopePublicId: value }))} />}<Input label="Extended close" type="datetime-local" value={exceptionDraft.extendedClosesAt} onChange={event => setExceptionDraft(current => ({ ...current, extendedClosesAt: event.target.value }))} /><Textarea label="Approval reason" value={exceptionDraft.reason} onChange={event => setExceptionDraft(current => ({ ...current, reason: event.target.value }))} required /></div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select label="Scope type" value={exceptionDraft.scopeType} options={[{ value: 'department', label: 'Department' }, { value: 'unit', label: 'Unit' }, { value: 'user', label: 'User' }]} onChange={event => { setSelectedExceptionUser(null); setExceptionDraft(current => ({ ...current, scopeType: event.target.value, scopePublicId: '' })); }} />{exceptionDraft.scopeType === 'user' ? <div className="space-y-2"><Input label="Search scoped users" value={exceptionUserSearch} onChange={event => { const search = event.target.value; setExceptionUserSearch(search); setExceptionUserPage(1); void loadExceptionUsers(1, search); }} /><Select label="Scoped record" value={exceptionDraft.scopePublicId} placeholder="Select one scope" options={exceptionUserOptions} onChange={event => { const publicId = event.target.value; setSelectedExceptionUser(users.find(item => item.user.publicId === publicId) ?? null); setExceptionDraft(current => ({ ...current, scopePublicId: publicId })); }} /><RegisterPaging label="users" page={exceptionUserPage} totalPages={exceptionUserMeta.totalPages} totalCount={exceptionUserMeta.totalCount} onPageChange={page => { setExceptionUserPage(page); void loadExceptionUsers(page, exceptionUserSearch); }} /></div> : <OrganizationMasterPicker kind={exceptionDraft.scopeType === 'unit' ? 'unit' : 'department'} label="Scoped record" value={exceptionDraft.scopePublicId} emptyLabel="Select one scope" onChange={value => setExceptionDraft(current => ({ ...current, scopePublicId: value }))} />}<Input label="Extended close" type="datetime-local" value={exceptionDraft.extendedClosesAt} onChange={event => setExceptionDraft(current => ({ ...current, extendedClosesAt: event.target.value }))} /><Textarea label="Approval reason" value={exceptionDraft.reason} onChange={event => setExceptionDraft(current => ({ ...current, reason: event.target.value }))} required /></div>
             <div className="flex justify-end"><Button variant="primary" onClick={() => void saveException()} disabled={busy}>Approve exception</Button></div>
             <Input label="Search scoped exceptions" value={exceptionSearch} onChange={event => { const search = event.target.value; setExceptionSearch(search); setExceptionPage(1); void loadExceptionPage(1, search); }} />
             <div className="space-y-2">{exceptions.map(item => <div key={item.publicId} className="rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><span>{item.userId ? `User ${item.userId}` : item.departmentId ? `Department #${item.departmentId}` : `Unit #${item.unitId}`}</span><Badge variant="default">until {new Date(item.extendedClosesAt).toLocaleString()}</Badge></div><p className="mt-1 text-xs text-secondary-500">{item.reason}</p></div>)}{!exceptions.length && <p className="text-sm text-secondary-500">No scoped exceptions for this window.</p>}</div>

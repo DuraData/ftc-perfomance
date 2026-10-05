@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { WorkflowGovernanceAdminPage } from './WorkflowGovernanceAdmin';
 
 const api = vi.hoisted(() => ({
@@ -53,7 +53,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getWorkingCalendarHolidays.mockResolvedValue({ success: true, data: [] });
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowExceptionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
-    api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
+    api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.compareWorkflowDefinitions.mockResolvedValue({ success: false, message: 'not configured' });
@@ -133,6 +133,35 @@ describe('WorkflowGovernanceAdminPage', () => {
 
     fireEvent.change(screen.getByLabelText('Search scoped exceptions'), { target: { value: 'approved extension' } });
     await waitFor(() => expect(api.getReportingWindowExceptionsPage).toHaveBeenLastCalledWith('window-1', expect.objectContaining({ page: 1, search: 'approved extension' })));
+  });
+
+  it('searches and pages the full user directory for user-scoped exceptions', async () => {
+    api.getReportingWindowsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'window-1', reportingPeriodPublicId: 'period-1', periodCode: 'Q1', submissionKind: 1, opensAt: '2026-07-01T00:00:00Z', closesAt: '2026-07-31T00:00:00Z', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getUsersPage.mockImplementation(async ({ page = 1, search = '' }) => ({
+      success: true,
+      data: {
+        items: [{ user: { id: `user-${page}`, publicId: `user-public-${page}`, userName: `user-${page}`, firstName: 'Scoped', lastName: `User ${page}`, fullName: `Scoped User ${page}`, email: `user${page}@example.test`, isActive: true, mustChangePassword: false }, roles: [] }],
+        page,
+        pageSize: 25,
+        totalCount: search ? 1 : 26,
+        totalPages: search ? 1 : 2,
+      },
+    }));
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Windows' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage exceptions' }));
+    await waitFor(() => expect(api.getUsersPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
+
+    fireEvent.change(screen.getByLabelText('Scope type'), { target: { value: 'user' } });
+    const paging = await screen.findByText('Page 1 of 2 · 26 users');
+    expect(screen.getByRole('option', { name: 'Scoped User 1 · user1@example.test' })).toBeInTheDocument();
+    fireEvent.click(within(paging.parentElement!).getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(api.getUsersPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
+    expect(await screen.findByRole('option', { name: 'Scoped User 2 · user2@example.test' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Search scoped users'), { target: { value: 'specific user' } });
+    await waitFor(() => expect(api.getUsersPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'specific user', sortBy: 'name', sortDirection: 'asc' }));
   });
 
   it('compares versions and renders authoritative stage differences', async () => {
