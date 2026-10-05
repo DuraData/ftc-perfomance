@@ -337,19 +337,28 @@ public class AccessControlService : IAccessControlService
     public async Task<SystemCoverageAuditResponse[]> BuildSystemCoverageAuditAsync()
     {
         var matrix = await BuildRoleAccessMatrixAsync();
-        var rolesByName = await _roleManager.Roles.AsNoTracking().ToDictionaryAsync(role => role.Name!, StringComparer.OrdinalIgnoreCase);
         var now = DateTime.UtcNow;
+        var roleQuery = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
+        if (_tenantContext?.MunicipalityId is long roleMunicipalityId)
+            roleQuery = roleQuery.Where(role => role.MunicipalityId == roleMunicipalityId || !role.MunicipalityId.HasValue);
+        var visibleRoles = await roleQuery.Where(role => role.Name != null).ToArrayAsync();
+        var visibleRoleIds = visibleRoles.Select(role => role.Id).ToArray();
+        var rolesByName = visibleRoles.ToDictionary(role => role.Name!, StringComparer.OrdinalIgnoreCase);
         var assignmentQuery = _context.SecurityUserRoleAssignments.AsNoTracking()
-            .Where(link => link.IsActive && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue)
+            .Where(link => visibleRoleIds.Contains(link.RoleId) && link.IsActive && link.EffectiveFrom <= now
+                && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue)
             .AsQueryable();
-        var scopeQuery = _context.UserScopes.AsNoTracking().AsQueryable();
+        var scopeQuery = _context.UserScopes.AsNoTracking()
+            .Where(scope => scope.IsActive && scope.EffectiveFrom <= now && (!scope.EffectiveTo.HasValue || scope.EffectiveTo > now))
+            .AsQueryable();
         if (_tenantContext?.MunicipalityId is long municipalityId)
         {
             assignmentQuery = assignmentQuery.Where(link => link.MunicipalityId == municipalityId);
             scopeQuery = scopeQuery.Where(scope => !scope.MunicipalityId.HasValue || scope.MunicipalityId == municipalityId);
         }
         var userRoles = await assignmentQuery.ToListAsync();
-        var userScopes = await scopeQuery.ToListAsync();
+        var assignedUserIds = userRoles.Select(link => link.UserId).Distinct().ToArray();
+        var userScopes = await scopeQuery.Where(scope => assignedUserIds.Contains(scope.UserId)).ToListAsync();
 
         return SecurityModel.OrderedRoles.Select(roleName =>
         {
@@ -357,11 +366,12 @@ public class AccessControlService : IAccessControlService
             var links = role == null ? [] : userRoles.Where(link => link.RoleId == role.Id).ToArray();
             var row = matrix.FirstOrDefault(item => string.Equals(item.Role, roleName, StringComparison.OrdinalIgnoreCase));
             var hasPermissions = row != null && row.Permissions.Length > 0;
-            var hasScopeFiltering = links.Any(link => userScopes.Any(scope => scope.UserId == link.UserId));
+            var hasScopeFiltering = links.Any(link => link.MunicipalityId.HasValue || link.DepartmentId.HasValue || link.UnitId.HasValue
+                || userScopes.Any(scope => scope.UserId == link.UserId));
             return new SystemCoverageAuditResponse(
                 roleName,
                 SeededUser: links.Length > 0,
-                Dashboard: true,
+                Dashboard: row != null && row.Permissions.Any(permission => permission.Equals("Dashboard.View", StringComparison.OrdinalIgnoreCase) || permission == "*"),
                 Menu: row != null && row.Menus.Length > 0,
                 Permissions: hasPermissions,
                 ScopeFiltering: hasScopeFiltering,

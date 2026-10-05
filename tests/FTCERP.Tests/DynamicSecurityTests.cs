@@ -62,12 +62,13 @@ public class DynamicSecurityTests
         var municipality = new Municipality { Id = 7, Code = "AUDIT-7", Name = "Audit Municipality" };
         var user = IdpTestFixture.CreateUser("audit-user", "Audit", "Reviewer"); user.Municipality = municipality;
         var role = Role("audit-reviewer", SecurityModel.Reviewer); role.Municipality = municipality;
+        var uncoveredRole = Role("audit-approver", SecurityModel.Approver); uncoveredRole.Municipality = municipality;
         var dashboard = new Permission { Code = "Dashboard.View", Module = "Dashboard", Feature = "Dashboard", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
         var reports = new Permission { Code = "Reports.View", Module = "Reports", Feature = "Reports", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
         var audit = new Permission { Code = "Audit.Trails.View", Module = "Audit", Feature = "Trails", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
         var notifications = new Permission { Code = "Notifications.View", Module = "Notifications", Feature = "Notifications", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
         var expiredCrud = new Permission { Code = "OPMS.Create", Module = "OPMS", Feature = "OPMS", Action = "Create", Kind = SecurityPermissionKind.Action, IsActive = true };
-        context.AddRange(municipality, user, role, dashboard, reports, audit, notifications, expiredCrud);
+        context.AddRange(municipality, user, role, uncoveredRole, dashboard, reports, audit, notifications, expiredCrud);
         await context.SaveChangesAsync();
         context.RolePermissions.AddRange(
             new RolePermission { RoleId = role.Id, PermissionId = dashboard.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
@@ -104,6 +105,19 @@ public class DynamicSecurityTests
         reviewer.Reports.Should().BeTrue();
         reviewer.AuditTrail.Should().BeTrue();
         reviewer.Complete.Should().BeTrue();
+
+        var service = new AccessControlService(context, IdpTestFixture.CreateUserManagerMock(user).Object, roleManager.Object, tenant.Object);
+        var coverage = await service.BuildSystemCoverageAuditAsync();
+        var reviewerCoverage = coverage.Should().ContainSingle(item => item.Role == SecurityModel.Reviewer).Subject;
+        reviewerCoverage.SeededUser.Should().BeTrue();
+        reviewerCoverage.Dashboard.Should().BeTrue();
+        reviewerCoverage.Menu.Should().BeTrue();
+        reviewerCoverage.ScopeFiltering.Should().BeTrue();
+        reviewerCoverage.Crud.Should().BeFalse();
+        reviewerCoverage.Reports.Should().BeTrue();
+        reviewerCoverage.AuditTrail.Should().BeTrue();
+        reviewerCoverage.Notifications.Should().BeFalse();
+        coverage.Should().ContainSingle(item => item.Role == SecurityModel.Approver).Which.Dashboard.Should().BeFalse();
     }
 
     [Fact]
