@@ -89,6 +89,11 @@ export function RoleAccessMatrixPage() {
 
 export function PermissionSimulationPage() {
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
+  const [userPage, setUserPage] = useState(1);
+  const [userSearch, setUserSearch] = useState('');
+  const [userTotalCount, setUserTotalCount] = useState(0);
+  const [userTotalPages, setUserTotalPages] = useState(0);
+  const [selectedUserSnapshot, setSelectedUserSnapshot] = useState<AdminUserDetail | null>(null);
   const [permissions, setPermissions] = useState<AdminPermission[]>([]);
   const [result, setResult] = useState<AccessSimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,21 +112,35 @@ export function PermissionSimulationPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const [usersResult, permissionsResult] = await Promise.all([getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }), getPermissions()]);
+      const usersResult = await getUsersPage({ page: userPage, pageSize: 25, search: userSearch, sortBy: 'name', sortDirection: 'asc' });
       if (!active) return;
       setUsers(usersResult.data?.items ?? []);
-      setPermissions(permissionsResult.data ?? []);
+      setUserTotalCount(usersResult.data?.totalCount ?? 0);
+      setUserTotalPages(usersResult.data?.totalPages ?? 0);
+      if (!usersResult.success) setError(usersResult.message ?? 'User directory could not be loaded.');
     };
     void load();
     return () => {
       active = false;
     };
+  }, [userPage, userSearch]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const permissionsResult = await getPermissions();
+      if (!active) return;
+      setPermissions(permissionsResult.data ?? []);
+      if (!permissionsResult.success) setError(permissionsResult.message ?? 'Permission catalogue could not be loaded.');
+    };
+    void load();
+    return () => { active = false; };
   }, []);
 
-  const selectedUser = useMemo(
-    () => users.find(item => item.user.id === form.userId) ?? null,
-    [form.userId, users],
-  );
+  const selectedUser = users.find(item => item.user.id === form.userId) ?? selectedUserSnapshot;
+  const availableUsers = selectedUserSnapshot && !users.some(item => item.user.id === selectedUserSnapshot.user.id)
+    ? [...users, selectedUserSnapshot]
+    : users;
 
   const simulate = async () => {
     if (!form.userId || !form.permissionCode) {
@@ -157,13 +176,17 @@ export function PermissionSimulationPage() {
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <Card className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Select
-              label="User"
-              value={form.userId}
-              onChange={(event) => setForm(prev => ({ ...prev, userId: event.target.value }))}
-              options={users.map(item => ({ value: item.user.id, label: `${item.user.fullName} (${item.roles.map(role => role.name).join(', ') || 'No Role'})` }))}
-              placeholder="Select user"
-            />
+            <div className="space-y-2">
+              <Input label="Search users" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
+              <Select
+                label="User"
+                value={form.userId}
+                onChange={(event) => { const userId = event.target.value; setSelectedUserSnapshot(users.find(item => item.user.id === userId) ?? null); setForm(prev => ({ ...prev, userId })); }}
+                options={availableUsers.map(item => ({ value: item.user.id, label: `${item.user.fullName} (${item.roles.map(role => role.name).join(', ') || 'No Role'})` }))}
+                placeholder="Select user"
+              />
+              {userTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</Button><span>Page {userPage} of {userTotalPages} · {userTotalCount} users</span><Button size="sm" variant="outline" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</Button></div>}
+            </div>
             <Select
               label="Permission"
               value={form.permissionCode}
