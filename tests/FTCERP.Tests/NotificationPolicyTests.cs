@@ -1,3 +1,5 @@
+using FTCERP.Host.API.Requests;
+using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
@@ -11,12 +13,79 @@ public sealed class NotificationPolicyTests
     [Fact]
     public void AdministrationEndpoints_RequireDynamicWorkflowConfigurationPermission()
     {
-        foreach (var methodName in new[] { nameof(NotificationPoliciesController.GetAll), nameof(NotificationPoliciesController.CreateDraft), nameof(NotificationPoliciesController.Activate), nameof(NotificationPoliciesController.CopyToFinancialYear), nameof(NotificationPoliciesController.SetDeliveryState), nameof(NotificationPoliciesController.QueueTest), nameof(NotificationPoliciesController.RunDue), nameof(NotificationPoliciesController.AddHoliday) })
+        foreach (var methodName in new[] { nameof(NotificationPoliciesController.GetPage), nameof(NotificationPoliciesController.GetAll), nameof(NotificationPoliciesController.GetHolidaysPage), nameof(NotificationPoliciesController.GetHolidays), nameof(NotificationPoliciesController.CreateDraft), nameof(NotificationPoliciesController.Activate), nameof(NotificationPoliciesController.CopyToFinancialYear), nameof(NotificationPoliciesController.SetDeliveryState), nameof(NotificationPoliciesController.QueueTest), nameof(NotificationPoliciesController.RunDue), nameof(NotificationPoliciesController.AddHoliday) })
         {
             var method = typeof(NotificationPoliciesController).GetMethod(methodName)!;
             var attribute = method.GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true).Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>().Single();
             attribute.Policy.Should().Be("Permission:WORKFLOW.CONFIGURE");
         }
+    }
+
+    [Fact]
+    public async Task AdministrationLedgers_PageSearchSortAndRetireLegacyArrays()
+    {
+        long? tenantMunicipalityId = null;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(() => tenantMunicipalityId);
+        tenant.SetupGet(item => item.IsSystem).Returns(() => !tenantMunicipalityId.HasValue);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var fixture = await Seed(context, deliveryPaused: false);
+        var municipality = fixture.Policy.Municipality;
+        var year = fixture.Policy.MunicipalityFinancialYear;
+        var user = fixture.Policy.CreatedByUser;
+        var startsAt = new DateTime(2026, 7, 1, 8, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            context.NotificationConfigurations.Add(new NotificationConfiguration
+            {
+                Municipality = municipality, MunicipalityFinancialYear = year, FamilyId = Guid.NewGuid(), Version = index + 1,
+                Code = $"MATCH-{index:00}", Name = $"Match policy {index:00}", ApplicabilityKey = $"MATCH-{index:00}",
+                Scope = NotificationPolicyScope.MunicipalityDefault, Source = NotificationScheduleSource.ReportingWindow,
+                SubmissionKind = SubmissionKind.Opms, Lifecycle = NotificationPolicyLifecycle.Draft, IsMandatory = true,
+                ChannelsCsv = "IN_APP", TitleTemplate = "{Item}", MessageTemplate = "{Period}", EffectiveFrom = startsAt.AddDays(index),
+                CreatedAt = startsAt.AddMinutes(index), CreatedByUser = user
+            });
+            context.WorkingCalendarHolidays.Add(new WorkingCalendarHoliday
+            {
+                Municipality = municipality, MunicipalityFinancialYear = year, Date = startsAt.Date.AddDays(index),
+                Name = $"Match holiday {index:00}", CreatedAt = startsAt.AddMinutes(index), CreatedByUser = user
+            });
+        }
+        var otherMunicipality = new Municipality { Code = "NOTIFY-OTHER", Name = "Other Notification Municipality", EffectiveFrom = startsAt.AddYears(-1) };
+        var otherUser = IdpTestFixture.CreateUser("notify-other");
+        otherUser.Municipality = otherMunicipality;
+        var otherMunicipalYear = new MunicipalityFinancialYear { Municipality = otherMunicipality, FinancialYear = year.FinancialYear, EffectiveFrom = year.EffectiveFrom };
+        context.NotificationConfigurations.Add(new NotificationConfiguration
+        {
+            Municipality = otherMunicipality, MunicipalityFinancialYear = otherMunicipalYear, FamilyId = Guid.NewGuid(), Code = "MATCH-OTHER",
+            Name = "Match policy other tenant", ApplicabilityKey = "MATCH-OTHER", Scope = NotificationPolicyScope.MunicipalityDefault,
+            Source = NotificationScheduleSource.ReportingWindow, SubmissionKind = SubmissionKind.Opms, Lifecycle = NotificationPolicyLifecycle.Draft,
+            IsMandatory = true, ChannelsCsv = "IN_APP", TitleTemplate = "{Item}", MessageTemplate = "{Period}", EffectiveFrom = startsAt,
+            CreatedByUser = otherUser
+        });
+        context.WorkingCalendarHolidays.Add(new WorkingCalendarHoliday
+        {
+            Municipality = otherMunicipality, MunicipalityFinancialYear = otherMunicipalYear, Date = startsAt.Date,
+            Name = "Match holiday other tenant", CreatedByUser = otherUser
+        });
+        await context.SaveChangesAsync();
+        tenantMunicipalityId = municipality.Id;
+        var controller = new NotificationPoliciesController(context, tenant.Object, new Mock<INotificationPolicyService>().Object, new Mock<IWorkflowGovernanceService>().Object);
+
+        var policiesResult = await controller.GetPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "code", SortDirection = "asc" });
+        var policies = policiesResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<NotificationPolicyDto>>>().Subject.Data!;
+        policies.TotalCount.Should().Be(11);
+        policies.Items.Select(item => item.Code).Should().Equal("MATCH-03", "MATCH-04", "MATCH-05");
+
+        var holidaysResult = await controller.GetHolidaysPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "name", SortDirection = "asc" });
+        var holidays = holidaysResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<WorkingCalendarHolidayDto>>>().Subject.Data!;
+        holidays.TotalCount.Should().Be(11);
+        holidays.Items.Select(item => item.Name).Should().Equal("Match holiday 03", "Match holiday 04", "Match holiday 05");
+
+        (await controller.GetPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetHolidaysPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetAll().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetHolidays().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]

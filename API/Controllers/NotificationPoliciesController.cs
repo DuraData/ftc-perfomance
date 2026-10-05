@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -57,14 +58,51 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         return Ok(new ApiResponse<NotificationPreferenceDto>(true, ToDto(entity), "Optional notification preferences saved. Mandatory operational notifications cannot be disabled."));
     }
 
+    [HttpGet("page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<NotificationPolicyDto>>>> GetPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] NotificationPolicyLifecycle? lifecycle = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<NotificationPolicyDto>>();
+        if (request.NormalizedSortBy is not ("createdat" or "code" or "name" or "version" or "effectivefrom" or "financialyear"))
+            return BadRequest(Fail<PagedResponse<NotificationPolicyDto>>("SortBy must be createdAt, code, name, version, effectiveFrom, or financialYear."));
+        var query = context.NotificationConfigurations.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(x => x.Code.ToLower().Contains(search) || x.Name.ToLower().Contains(search)
+                || x.MunicipalityFinancialYear.FinancialYear.Code.ToLower().Contains(search)
+                || (x.ReportingPeriod != null && (x.ReportingPeriod.Code.ToLower().Contains(search) || x.ReportingPeriod.Name.ToLower().Contains(search))));
+        }
+        if (municipalityFinancialYearPublicId.HasValue)
+            query = query.Where(x => x.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (lifecycle.HasValue) query = query.Where(x => x.Lifecycle == lifecycle.Value);
+        var totalCount = await query.CountAsync();
+        query = request.NormalizedSortBy switch
+        {
+            "code" => request.Descending ? query.OrderByDescending(x => x.Code).ThenByDescending(x => x.Version).ThenBy(x => x.PublicId) : query.OrderBy(x => x.Code).ThenByDescending(x => x.Version).ThenBy(x => x.PublicId),
+            "name" => request.Descending ? query.OrderByDescending(x => x.Name).ThenBy(x => x.PublicId) : query.OrderBy(x => x.Name).ThenBy(x => x.PublicId),
+            "version" => request.Descending ? query.OrderByDescending(x => x.Version).ThenBy(x => x.PublicId) : query.OrderBy(x => x.Version).ThenBy(x => x.PublicId),
+            "effectivefrom" => request.Descending ? query.OrderByDescending(x => x.EffectiveFrom).ThenBy(x => x.PublicId) : query.OrderBy(x => x.EffectiveFrom).ThenBy(x => x.PublicId),
+            "financialyear" => request.Descending ? query.OrderByDescending(x => x.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(x => x.PublicId) : query.OrderBy(x => x.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(x => x.PublicId),
+            _ => request.Descending ? query.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.PublicId) : query.OrderBy(x => x.CreatedAt).ThenBy(x => x.PublicId)
+        };
+        var values = await query.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear)
+            .Include(x => x.ReportingPeriod).Include(x => x.Rules)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<NotificationPolicyDto>>(true,
+            PagedResponse<NotificationPolicyDto>.Create(values.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
-    public async Task<ActionResult<ApiResponse<NotificationPolicyDto[]>>> GetAll()
+    public ActionResult<ApiResponse<NotificationPolicyDto[]>> GetAll()
     {
         if (!HasTenant()) return TenantRequired<NotificationPolicyDto[]>();
-        var values = await context.NotificationConfigurations.AsNoTracking().Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear).Include(x => x.ReportingPeriod).Include(x => x.Rules)
-            .OrderBy(x => x.Code).ThenByDescending(x => x.Version).ToArrayAsync();
-        return Ok(new ApiResponse<NotificationPolicyDto[]>(true, values.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<NotificationPolicyDto[]>("This unbounded route is retired. Use the /page endpoint."));
     }
 
     [HttpPost]
@@ -216,13 +254,44 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         return Ok(new ApiResponse<int>(true, count, $"Queued {count} due notification(s)."));
     }
 
+    [HttpGet("holidays/page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<WorkingCalendarHolidayDto>>>> GetHolidaysPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] Guid? municipalityFinancialYearPublicId = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<WorkingCalendarHolidayDto>>();
+        if (request.NormalizedSortBy is not ("createdat" or "date" or "name" or "financialyear"))
+            return BadRequest(Fail<PagedResponse<WorkingCalendarHolidayDto>>("SortBy must be createdAt, date, name, or financialYear."));
+        var query = context.WorkingCalendarHolidays.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(x => x.Name.ToLower().Contains(search) || x.MunicipalityFinancialYear.FinancialYear.Code.ToLower().Contains(search));
+        }
+        if (municipalityFinancialYearPublicId.HasValue)
+            query = query.Where(x => x.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        var totalCount = await query.CountAsync();
+        query = request.NormalizedSortBy switch
+        {
+            "date" => request.Descending ? query.OrderByDescending(x => x.Date).ThenBy(x => x.PublicId) : query.OrderBy(x => x.Date).ThenBy(x => x.PublicId),
+            "name" => request.Descending ? query.OrderByDescending(x => x.Name).ThenBy(x => x.PublicId) : query.OrderBy(x => x.Name).ThenBy(x => x.PublicId),
+            "financialyear" => request.Descending ? query.OrderByDescending(x => x.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(x => x.PublicId) : query.OrderBy(x => x.MunicipalityFinancialYear.FinancialYear.Code).ThenBy(x => x.PublicId),
+            _ => request.Descending ? query.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.PublicId) : query.OrderBy(x => x.CreatedAt).ThenBy(x => x.PublicId)
+        };
+        var rows = await query.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<WorkingCalendarHolidayDto>>(true,
+            PagedResponse<WorkingCalendarHolidayDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("holidays")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
-    public async Task<ActionResult<ApiResponse<WorkingCalendarHolidayDto[]>>> GetHolidays()
+    public ActionResult<ApiResponse<WorkingCalendarHolidayDto[]>> GetHolidays()
     {
         if (!HasTenant()) return TenantRequired<WorkingCalendarHolidayDto[]>();
-        var rows = await context.WorkingCalendarHolidays.AsNoTracking().Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear).OrderBy(x => x.Date).ToArrayAsync();
-        return Ok(new ApiResponse<WorkingCalendarHolidayDto[]>(true, rows.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<WorkingCalendarHolidayDto[]>("This unbounded route is retired. Use the /holidays/page endpoint."));
     }
 
     [HttpPost("holidays")]

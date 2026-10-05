@@ -30,6 +30,7 @@ describe('IdpPlanPicker', () => {
     const { rerender } = render(<IdpPlanPicker label="IDP plan" value="" onChange={onChange} />);
 
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: undefined, sortBy: 'createdAt', sortDirection: 'desc' }));
+    await screen.findByRole('option', { name: 'IDP-1 - Plan 1' });
     fireEvent.change(screen.getByLabelText('IDP plan'), { target: { value: '1' } });
     expect(onChange).toHaveBeenCalledWith('1', expect.objectContaining({ id: 1 }));
     rerender(<IdpPlanPicker label="IDP plan" value="1" onChange={onChange} />);

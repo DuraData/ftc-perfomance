@@ -1533,8 +1533,11 @@ export async function retryNotificationDelivery(item: NotificationOutboxItemDto,
   return post<NotificationOutboxItemDto>(`/v1/notification-operations/${item.publicId}/retry`, { reason, rowVersion: item.rowVersion });
 }
 
-export async function getNotificationPolicies(): Promise<ApiResponse<NotificationPolicyDto[]>> {
-  return get<NotificationPolicyDto[]>('/v1/notification-policies');
+export async function getNotificationPoliciesPage(query: RegisterPageQuery = {}, municipalityFinancialYearPublicId?: string, lifecycle?: number): Promise<ApiResponse<PagedResult<NotificationPolicyDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).replace(/^\?/, ''));
+  if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
+  if (lifecycle) parameters.set('lifecycle', String(lifecycle));
+  return get<PagedResult<NotificationPolicyDto>>(`/v1/notification-policies/page?${parameters.toString()}`);
 }
 
 export async function createNotificationPolicy(payload: {
@@ -1570,8 +1573,10 @@ export async function runDueNotificationPolicies(): Promise<ApiResponse<number>>
   return post<number>('/v1/notification-policies/run-due', {});
 }
 
-export async function getWorkingCalendarHolidays(): Promise<ApiResponse<WorkingCalendarHolidayDto[]>> {
-  return get<WorkingCalendarHolidayDto[]>('/v1/notification-policies/holidays');
+export async function getWorkingCalendarHolidaysPage(query: RegisterPageQuery = {}, municipalityFinancialYearPublicId?: string): Promise<ApiResponse<PagedResult<WorkingCalendarHolidayDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).replace(/^\?/, ''));
+  if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
+  return get<PagedResult<WorkingCalendarHolidayDto>>(`/v1/notification-policies/holidays/page?${parameters.toString()}`);
 }
 
 export async function addWorkingCalendarHoliday(payload: { municipalityFinancialYearPublicId: string; date: string; name: string; reason: string }): Promise<ApiResponse<WorkingCalendarHolidayDto>> {

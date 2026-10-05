@@ -22,8 +22,8 @@ const api = vi.hoisted(() => ({
   createRatingScheme: vi.fn(),
   getInternalAuditConfigurationsPage: vi.fn(),
   saveInternalAuditConfiguration: vi.fn(),
-  getNotificationPolicies: vi.fn(),
-  getWorkingCalendarHolidays: vi.fn(),
+  getNotificationPoliciesPage: vi.fn(),
+  getWorkingCalendarHolidaysPage: vi.fn(),
   createNotificationPolicy: vi.fn(),
   activateNotificationPolicy: vi.fn(),
   setNotificationPolicyDeliveryState: vi.fn(),
@@ -49,8 +49,8 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'year-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getRatingSchemesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'scheme-1', code: 'FIVE_POINT', name: 'Five point scale', isActive: true, rowVersion: 'AQ==', values: [] }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getInternalAuditConfigurationsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
-    api.getNotificationPolicies.mockResolvedValue({ success: true, data: [] });
-    api.getWorkingCalendarHolidays.mockResolvedValue({ success: true, data: [] });
+    api.getNotificationPoliciesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getWorkingCalendarHolidaysPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowExceptionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
@@ -65,10 +65,30 @@ describe('WorkflowGovernanceAdminPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
 
-    await waitFor(() => expect(api.getNotificationPolicies).toHaveBeenCalledOnce());
+    await waitFor(() => expect(api.getNotificationPoliciesPage).toHaveBeenCalledOnce());
     expect(screen.getByText('New notification policy draft')).toBeInTheDocument();
     expect(screen.getByText('Working-calendar holiday')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run due now' })).toBeInTheDocument();
+  });
+
+  it('pages and searches notification policies and working-calendar holidays independently', async () => {
+    api.getNotificationPoliciesPage.mockImplementation(async ({ page = 1, search = '' }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: search ? 1 : 26, totalPages: search ? 1 : 2 } }));
+    api.getWorkingCalendarHolidaysPage.mockImplementation(async ({ page = 1, search = '' }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: search ? 1 : 27, totalPages: search ? 1 : 2 } }));
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText('26 policies · Page 1 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('27 holidays · Page 1 of 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next policies' }));
+    await waitFor(() => expect(api.getNotificationPoliciesPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }), undefined, undefined));
+    fireEvent.change(screen.getByLabelText('Search notification policies'), { target: { value: 'annual' } });
+    await waitFor(() => expect(api.getNotificationPoliciesPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, search: 'annual' }), undefined, undefined));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next holidays' }));
+    await waitFor(() => expect(api.getWorkingCalendarHolidaysPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'date', sortDirection: 'asc' })));
+    fireEvent.change(screen.getByLabelText('Search configured holidays'), { target: { value: 'heritage' } });
+    await waitFor(() => expect(api.getWorkingCalendarHolidaysPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, search: 'heritage' })));
   });
 
   it('loads authoritative configuration and switches governance tabs', async () => {

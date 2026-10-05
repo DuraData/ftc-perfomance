@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BellRing, CalendarDays } from 'lucide-react';
 import {
-  activateNotificationPolicy, addWorkingCalendarHoliday, copyNotificationPolicy, createNotificationPolicy, getNotificationPolicies,
-  getWorkingCalendarHolidays, previewNotificationPolicy, runDueNotificationPolicies, setNotificationPolicyDeliveryState, testNotificationPolicy,
+  activateNotificationPolicy, addWorkingCalendarHoliday, copyNotificationPolicy, createNotificationPolicy, getNotificationPoliciesPage,
+  getWorkingCalendarHolidaysPage, previewNotificationPolicy, runDueNotificationPolicies, setNotificationPolicyDeliveryState, testNotificationPolicy,
 } from '../../api/api';
 import type { NotificationPolicyDto, NotificationTemplatePreviewDto, WorkingCalendarHolidayDto } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -17,6 +17,21 @@ export function NotificationPolicyAdministration() {
   const { pushToast } = useApp();
   const [items, setItems] = useState<NotificationPolicyDto[]>([]);
   const [holidays, setHolidays] = useState<WorkingCalendarHolidayDto[]>([]);
+  const [policyPage, setPolicyPage] = useState(1);
+  const [policyTotalCount, setPolicyTotalCount] = useState(0);
+  const [policyTotalPages, setPolicyTotalPages] = useState(0);
+  const [policySearchInput, setPolicySearchInput] = useState('');
+  const [policySearch, setPolicySearch] = useState('');
+  const [policyLifecycle, setPolicyLifecycle] = useState('');
+  const [policySortBy, setPolicySortBy] = useState('createdAt');
+  const [policySortDirection, setPolicySortDirection] = useState<'asc' | 'desc'>('desc');
+  const [holidayPage, setHolidayPage] = useState(1);
+  const [holidayTotalCount, setHolidayTotalCount] = useState(0);
+  const [holidayTotalPages, setHolidayTotalPages] = useState(0);
+  const [holidaySearchInput, setHolidaySearchInput] = useState('');
+  const [holidaySearch, setHolidaySearch] = useState('');
+  const [holidaySortBy, setHolidaySortBy] = useState('date');
+  const [holidaySortDirection, setHolidaySortDirection] = useState<'asc' | 'desc'>('asc');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -29,13 +44,22 @@ export function NotificationPolicyAdministration() {
   });
   const [holiday, setHoliday] = useState({ municipalityFinancialYearPublicId: '', date: '', name: '', reason: '' });
 
-  const load = async () => {
-    setBusy(true); setError(null);
-    const [policyResult, holidayResult] = await Promise.all([getNotificationPolicies(), getWorkingCalendarHolidays()]);
-    if (!policyResult.success || !holidayResult.success) setError(policyResult.message ?? holidayResult.message ?? 'Notification configuration could not be loaded.');
-    setItems(policyResult.data ?? []); setHolidays(holidayResult.data ?? []); setBusy(false);
-  };
-  useEffect(() => { void load(); }, []);
+  const loadPolicies = useCallback(async () => {
+    const result = await getNotificationPoliciesPage({ page: policyPage, pageSize: 25, search: policySearch, sortBy: policySortBy, sortDirection: policySortDirection }, undefined, Number(policyLifecycle) || undefined);
+    if (!result.success) setError(result.message ?? 'Notification policies could not be loaded.');
+    setItems(result.data?.items ?? []); setPolicyTotalCount(result.data?.totalCount ?? 0); setPolicyTotalPages(result.data?.totalPages ?? 0);
+  }, [policyLifecycle, policyPage, policySearch, policySortBy, policySortDirection]);
+
+  const loadHolidays = useCallback(async () => {
+    const result = await getWorkingCalendarHolidaysPage({ page: holidayPage, pageSize: 25, search: holidaySearch, sortBy: holidaySortBy, sortDirection: holidaySortDirection });
+    if (!result.success) setError(result.message ?? 'Working-calendar holidays could not be loaded.');
+    setHolidays(result.data?.items ?? []); setHolidayTotalCount(result.data?.totalCount ?? 0); setHolidayTotalPages(result.data?.totalPages ?? 0);
+  }, [holidayPage, holidaySearch, holidaySortBy, holidaySortDirection]);
+
+  useEffect(() => { void loadPolicies(); }, [loadPolicies]);
+  useEffect(() => { void loadHolidays(); }, [loadHolidays]);
+  useEffect(() => { const timeout = window.setTimeout(() => { setPolicyPage(1); setPolicySearch(policySearchInput.trim()); }, 300); return () => window.clearTimeout(timeout); }, [policySearchInput]);
+  useEffect(() => { const timeout = window.setTimeout(() => { setHolidayPage(1); setHolidaySearch(holidaySearchInput.trim()); }, 300); return () => window.clearTimeout(timeout); }, [holidaySearchInput]);
 
   const saveDraft = async () => {
     const yearId = draft.municipalityFinancialYearPublicId;
@@ -54,7 +78,7 @@ export function NotificationPolicyAdministration() {
       })), reason: draft.reason.trim(),
     });
     if (!result.success) setError(result.message ?? 'Draft policy could not be created.');
-    else { pushToast('success', 'Notification policy draft created'); setDraft(current => ({ ...current, reason: '' })); await load(); }
+    else { pushToast('success', 'Notification policy draft created'); setDraft(current => ({ ...current, reason: '' })); setPolicyPage(1); await loadPolicies(); }
     setBusy(false);
   };
 
@@ -68,7 +92,7 @@ export function NotificationPolicyAdministration() {
       : operation === 'test' ? await testNotificationPolicy(item) : await previewNotificationPolicy(item);
     if (!result.success) setError(result.message ?? `Policy could not ${operation}.`);
     else if (operation === 'preview') setPreview(result.data as NotificationTemplatePreviewDto);
-    else { pushToast('success', `Notification policy ${operation} completed`); setReasons(current => ({ ...current, [item.publicId]: '' })); await load(); }
+    else { pushToast('success', `Notification policy ${operation} completed`); setReasons(current => ({ ...current, [item.publicId]: '' })); await loadPolicies(); }
     setBusy(false);
   };
 
@@ -84,7 +108,7 @@ export function NotificationPolicyAdministration() {
     if (!yearId) { setError('Select a financial year.'); return; }
     setBusy(true); const result = await addWorkingCalendarHoliday({ ...holiday, municipalityFinancialYearPublicId: yearId });
     if (!result.success) setError(result.message ?? 'Holiday could not be added.');
-    else { pushToast('success', 'Working-calendar holiday added'); setHoliday(current => ({ ...current, date: '', name: '', reason: '' })); await load(); }
+    else { pushToast('success', 'Working-calendar holiday added'); setHoliday(current => ({ ...current, date: '', name: '', reason: '' })); setHolidayPage(1); await loadHolidays(); }
     setBusy(false);
   };
 
@@ -112,10 +136,16 @@ export function NotificationPolicyAdministration() {
         <Textarea label="Governance reason" value={draft.reason} onChange={event => setDraft(current => ({ ...current, reason: event.target.value }))} required />
         <Button variant="primary" onClick={() => void saveDraft()} disabled={busy}>Create draft</Button>
       </FormPanel>
-      <Card className="p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Policy versions</h3><p className="text-xs text-secondary-500">Activation supersedes the effective policy at the same scope.</p></div><Button size="sm" variant="outline" onClick={() => void runDue()} disabled={busy}>Run due now</Button></div><div className="mt-3 space-y-3">
+      <Card className="p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Policy versions</h3><p className="text-xs text-secondary-500">Activation supersedes the effective policy at the same scope.</p></div><Button size="sm" variant="outline" onClick={() => void runDue()} disabled={busy}>Run due now</Button></div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Input label="Search notification policies" value={policySearchInput} onChange={event => setPolicySearchInput(event.target.value)} placeholder="Code, name, year or period" />
+        <Select label="Policy lifecycle" value={policyLifecycle} onChange={event => { setPolicyLifecycle(event.target.value); setPolicyPage(1); }} options={[{ value: '', label: 'All lifecycles' }, { value: '1', label: 'Draft' }, { value: '2', label: 'Active' }, { value: '3', label: 'Inactive' }, { value: '4', label: 'Superseded' }]} />
+        <Select label="Sort policies by" value={policySortBy} onChange={event => { setPolicySortBy(event.target.value); setPolicyPage(1); }} options={[{ value: 'createdAt', label: 'Created' }, { value: 'code', label: 'Code' }, { value: 'name', label: 'Name' }, { value: 'version', label: 'Version' }, { value: 'effectiveFrom', label: 'Effective from' }, { value: 'financialYear', label: 'Financial year' }]} />
+        <Select label="Policy sort direction" value={policySortDirection} onChange={event => { setPolicySortDirection(event.target.value as 'asc' | 'desc'); setPolicyPage(1); }} options={[{ value: 'desc', label: 'Descending' }, { value: 'asc', label: 'Ascending' }]} />
+      </div><div className="mt-3 space-y-3">
         {items.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code} · v{item.version} · {item.financialYearCode}</p></div><div className="flex gap-1"><Badge variant={item.lifecycle === 2 ? 'success' : 'default'}>{lifecycleName(item.lifecycle)}</Badge>{item.deliveryPaused && <Badge variant="warning">Paused</Badge>}</div></div><p className="mt-2 text-xs text-secondary-500">{item.channels.join(' + ')} · {item.rules.map(rule => `${rule.workingDayOffset}d`).join(', ')}</p><Textarea label={`Governance reason for ${item.code} v${item.version}`} value={reasons[item.publicId] ?? ''} onChange={event => setReasons(current => ({ ...current, [item.publicId]: event.target.value }))} /><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void act(item, 'preview')}>Preview</Button><Button size="sm" variant="outline" onClick={() => void act(item, 'test')} disabled={busy}>Queue test</Button>{item.lifecycle === 1 && <Button size="sm" variant="primary" onClick={() => void act(item, 'activate')} disabled={busy}>Activate</Button>}{item.lifecycle === 2 && <Button size="sm" variant="outline" onClick={() => void act(item, item.deliveryPaused ? 'resume' : 'pause')} disabled={busy}>{item.deliveryPaused ? 'Resume delivery' : 'Pause delivery'}</Button>}<Button size="sm" variant="outline" onClick={() => void act(item, 'copy')} disabled={busy}>Copy to selected FY</Button></div></div>)}
         {!items.length && <p className="text-sm text-secondary-500">No notification policies configured.</p>}
-      </div>{preview && <div className="mt-4 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm"><p className="font-medium">{preview.title}</p><p>{preview.message}</p><p className="mt-1 text-xs">Channels: {preview.channels.join(', ')}</p></div>}</Card>
+      </div><div className="mt-3 flex items-center justify-between gap-3 text-xs text-secondary-500"><span>{policyTotalCount} policies · Page {policyPage} of {Math.max(policyTotalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={policyPage <= 1} onClick={() => setPolicyPage(value => Math.max(1, value - 1))}>Previous policies</Button><Button size="sm" variant="outline" disabled={policyPage >= policyTotalPages} onClick={() => setPolicyPage(value => value + 1)}>Next policies</Button></span></div>{preview && <div className="mt-4 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm"><p className="font-medium">{preview.title}</p><p>{preview.message}</p><p className="mt-1 text-xs">Channels: {preview.channels.join(', ')}</p></div>}</Card>
     </div>
     <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
       <FormPanel title="Working-calendar holiday" description="Reminder calculations exclude weekends and these municipality dates." icon={<CalendarDays className="h-5 w-5" />}>
@@ -125,7 +155,7 @@ export function NotificationPolicyAdministration() {
         <Textarea label="Governance reason" value={holiday.reason} onChange={event => setHoliday(current => ({ ...current, reason: event.target.value }))} />
         <Button variant="primary" onClick={() => void addHoliday()} disabled={busy}>Add holiday</Button>
       </FormPanel>
-      <Card className="p-4"><h3 className="font-semibold">Configured holidays</h3><div className="mt-3 space-y-2">{holidays.map(item => <div key={item.publicId} className="flex justify-between rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><span>{item.name}</span><span className="text-secondary-500">{new Date(item.date).toLocaleDateString()} · {item.financialYearCode}</span></div>)}{!holidays.length && <p className="text-sm text-secondary-500">No municipality holidays configured.</p>}</div></Card>
+      <Card className="p-4"><h3 className="font-semibold">Configured holidays</h3><div className="mt-3 grid gap-3 sm:grid-cols-2"><Input label="Search configured holidays" value={holidaySearchInput} onChange={event => setHolidaySearchInput(event.target.value)} placeholder="Name or financial year" /><Select label="Sort holidays by" value={holidaySortBy} onChange={event => { setHolidaySortBy(event.target.value); setHolidayPage(1); }} options={[{ value: 'date', label: 'Date' }, { value: 'name', label: 'Name' }, { value: 'financialYear', label: 'Financial year' }, { value: 'createdAt', label: 'Created' }]} /><Select label="Holiday sort direction" value={holidaySortDirection} onChange={event => { setHolidaySortDirection(event.target.value as 'asc' | 'desc'); setHolidayPage(1); }} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} /></div><div className="mt-3 space-y-2">{holidays.map(item => <div key={item.publicId} className="flex justify-between rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><span>{item.name}</span><span className="text-secondary-500">{new Date(item.date).toLocaleDateString()} · {item.financialYearCode}</span></div>)}{!holidays.length && <p className="text-sm text-secondary-500">No municipality holidays configured.</p>}</div><div className="mt-3 flex items-center justify-between gap-3 text-xs text-secondary-500"><span>{holidayTotalCount} holidays · Page {holidayPage} of {Math.max(holidayTotalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={holidayPage <= 1} onClick={() => setHolidayPage(value => Math.max(1, value - 1))}>Previous holidays</Button><Button size="sm" variant="outline" disabled={holidayPage >= holidayTotalPages} onClick={() => setHolidayPage(value => value + 1)}>Next holidays</Button></span></div></Card>
     </div>
   </div>;
 }
