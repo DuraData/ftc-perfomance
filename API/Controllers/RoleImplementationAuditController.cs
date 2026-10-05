@@ -15,32 +15,59 @@ public class RoleImplementationAuditController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly RoleManager<Domain.Entities.ApplicationRole> _roleManager;
+    private readonly ITenantContext _tenantContext;
 
-    public RoleImplementationAuditController(ApplicationDbContext context, RoleManager<Domain.Entities.ApplicationRole> roleManager)
+    public RoleImplementationAuditController(
+        ApplicationDbContext context,
+        RoleManager<Domain.Entities.ApplicationRole> roleManager,
+        ITenantContext tenantContext)
     {
         _context = context;
         _roleManager = roleManager;
+        _tenantContext = tenantContext;
     }
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<RoleImplementationAuditResponse[]>>> GetAudit()
     {
-        var rolePermissions = await _context.RolePermissions
-            .AsNoTracking()
-            .Include(item => item.Permission)
-            .GroupBy(item => item.RoleId)
-            .ToDictionaryAsync(group => group.Key, group => group.Select(item => item.Permission.Code).ToHashSet(StringComparer.OrdinalIgnoreCase));
-
-        var userRoles = await _context.UserRoles.AsNoTracking().ToListAsync();
-        var userScopes = await _context.UserScopes.AsNoTracking().ToListAsync();
+        var now = DateTime.UtcNow;
+        var roleQuery = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
+        if (_tenantContext.MunicipalityId is long municipalityId)
+            roleQuery = roleQuery.Where(role => role.MunicipalityId == municipalityId || !role.MunicipalityId.HasValue);
+        var roles = await roleQuery.ToArrayAsync();
+        var roleIds = roles.Select(role => role.Id).ToArray();
+        var permissionRules = await _context.RolePermissions.AsNoTracking()
+            .Where(item => roleIds.Contains(item.RoleId) && item.IsActive && item.EffectiveFrom <= now
+                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now) && item.Permission.IsActive)
+            .Select(item => new { item.RoleId, item.Permission.Code, item.IsAllowed })
+            .ToArrayAsync();
+        var rolePermissions = permissionRules.GroupBy(item => item.RoleId).ToDictionary(group => group.Key, group =>
+        {
+            var denied = group.Where(item => !item.IsAllowed).Select(item => item.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return group.Where(item => item.IsAllowed && !denied.Contains(item.Code)).Select(item => item.Code)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        });
+        var assignmentQuery = _context.SecurityUserRoleAssignments.AsNoTracking()
+            .Where(item => roleIds.Contains(item.RoleId) && item.IsActive && item.EffectiveFrom <= now
+                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now) && !item.RevokedAt.HasValue);
+        var scopeQuery = _context.UserScopes.AsNoTracking()
+            .Where(item => item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now));
+        if (_tenantContext.MunicipalityId is long assignmentMunicipalityId)
+        {
+            assignmentQuery = assignmentQuery.Where(item => item.MunicipalityId == assignmentMunicipalityId);
+            scopeQuery = scopeQuery.Where(item => !item.MunicipalityId.HasValue || item.MunicipalityId == assignmentMunicipalityId);
+        }
+        var assignments = await assignmentQuery.ToArrayAsync();
+        var assignedUserIds = assignments.Select(item => item.UserId).Distinct().ToArray();
+        var userScopes = await scopeQuery.Where(item => assignedUserIds.Contains(item.UserId)).ToArrayAsync();
         var navigation = await _context.SecurityNavigationItems.AsNoTracking().Where(item => item.IsActive).OrderBy(item => item.DisplayOrder).ToArrayAsync();
+        var rolesByName = roles.Where(role => role.Name != null).ToDictionary(role => role.Name!, StringComparer.OrdinalIgnoreCase);
 
         var results = new List<RoleImplementationAuditResponse>();
 
         foreach (var roleName in SecurityModel.OrderedRoles)
         {
-            var role = await _roleManager.FindByNameAsync(roleName);
-            if (role == null)
+            if (!rolesByName.TryGetValue(roleName, out var role))
             {
                 continue;
             }
@@ -50,8 +77,10 @@ public class RoleImplementationAuditController : ControllerBase
                 : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var menus = AccessControlService.BuildAuthorizedNavigation(navigation, permissions);
-            var roleUserIds = userRoles.Where(link => link.RoleId == role.Id).Select(link => link.UserId).ToHashSet();
-            var hasScopeRows = userScopes.Any(scope => roleUserIds.Contains(scope.UserId));
+            var roleAssignments = assignments.Where(link => link.RoleId == role.Id).ToArray();
+            var roleUserIds = roleAssignments.Select(link => link.UserId).ToHashSet();
+            var hasScopeRows = roleAssignments.Any(link => link.MunicipalityId.HasValue || link.DepartmentId.HasValue || link.UnitId.HasValue)
+                || userScopes.Any(scope => roleUserIds.Contains(scope.UserId));
 
             var actual = new RoleImplementationAuditResponse(
                 roleName,

@@ -53,6 +53,60 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task Role_implementation_audit_uses_current_tenant_dynamic_security_evidence()
+    {
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(7);
+        tenant.SetupGet(item => item.IsSystem).Returns(false);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var municipality = new Municipality { Id = 7, Code = "AUDIT-7", Name = "Audit Municipality" };
+        var user = IdpTestFixture.CreateUser("audit-user", "Audit", "Reviewer"); user.Municipality = municipality;
+        var role = Role("audit-reviewer", SecurityModel.Reviewer); role.Municipality = municipality;
+        var dashboard = new Permission { Code = "Dashboard.View", Module = "Dashboard", Feature = "Dashboard", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
+        var reports = new Permission { Code = "Reports.View", Module = "Reports", Feature = "Reports", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
+        var audit = new Permission { Code = "Audit.Trails.View", Module = "Audit", Feature = "Trails", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
+        var notifications = new Permission { Code = "Notifications.View", Module = "Notifications", Feature = "Notifications", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
+        var expiredCrud = new Permission { Code = "OPMS.Create", Module = "OPMS", Feature = "OPMS", Action = "Create", Kind = SecurityPermissionKind.Action, IsActive = true };
+        context.AddRange(municipality, user, role, dashboard, reports, audit, notifications, expiredCrud);
+        await context.SaveChangesAsync();
+        context.RolePermissions.AddRange(
+            new RolePermission { RoleId = role.Id, PermissionId = dashboard.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = role.Id, PermissionId = reports.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = role.Id, PermissionId = audit.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = role.Id, PermissionId = notifications.Id, IsAllowed = false, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = role.Id, PermissionId = expiredCrud.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-2), EffectiveTo = DateTime.UtcNow.AddDays(-1) });
+        context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment
+        {
+            UserId = user.Id, RoleId = role.Id, MunicipalityId = municipality.Id, IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1), AssignedAt = DateTime.UtcNow, AssignedBy = user.Id
+        });
+        context.SecurityNavigationItems.Add(new SecurityNavigationItem
+        {
+            Code = "NAV.REVIEWER.DASHBOARD", Name = "Reviewer Dashboard", Route = "/dashboard",
+            RequiredPermissionCode = dashboard.Code, DisplayOrder = 1, IsActive = true
+        });
+        await context.SaveChangesAsync();
+        var roleStore = new Mock<IRoleStore<ApplicationRole>>();
+        var roleManager = new Mock<RoleManager<ApplicationRole>>(roleStore.Object, null!, null!, null!, null!);
+        roleManager.SetupGet(manager => manager.Roles).Returns(context.Roles);
+        var controller = new RoleImplementationAuditController(context, roleManager.Object, tenant.Object);
+
+        var result = await controller.GetAudit();
+
+        var payload = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<RoleImplementationAuditResponse[]>>().Subject.Data!;
+        var reviewer = payload.Should().ContainSingle(item => item.Role == SecurityModel.Reviewer).Subject;
+        reviewer.Dashboard.Should().BeTrue();
+        reviewer.Menus.Should().BeTrue();
+        reviewer.ScopeFiltering.Should().BeTrue();
+        reviewer.Crud.Should().BeFalse("the only CRUD grant is expired");
+        reviewer.Notifications.Should().BeFalse("the current notification rule is an explicit deny");
+        reviewer.Reports.Should().BeTrue();
+        reviewer.AuditTrail.Should().BeTrue();
+        reviewer.Complete.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Security_user_directory_pages_only_effective_authorized_municipalities()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
