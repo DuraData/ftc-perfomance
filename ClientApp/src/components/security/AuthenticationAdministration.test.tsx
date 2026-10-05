@@ -2,14 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthenticationAdministrationPage } from './AuthenticationAdministration';
 
 const api = vi.hoisted(() => ({
-  getAuthenticationConfiguration: vi.fn(), getAuthenticationEvents: vi.fn(), getAuthenticationProviders: vi.fn(),
-  getSecurityUsersPage: vi.fn(), getUserAuthenticators: vi.fn(), provisionUserAuthenticator: vi.fn(),
+  getAuthenticationConfiguration: vi.fn(), getAuthenticationEventsPage: vi.fn(), getAuthenticationProviders: vi.fn(),
+  getSecurityUsersPage: vi.fn(), getUserAuthenticatorsPage: vi.fn(), provisionUserAuthenticator: vi.fn(),
   saveAuthenticationConfiguration: vi.fn(), setUserAuthenticatorStatus: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
 
 describe('AuthenticationAdministrationPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     api.getAuthenticationConfiguration.mockResolvedValue({ success: true, data: {
       publicId: 'configuration-1', mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in',
       isActive: true, effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
@@ -20,10 +21,10 @@ describe('AuthenticationAdministrationPage', () => {
         sessionAbsoluteTimeoutHours: 12, maximumConcurrentSessions: 3, rowVersion: 'Ag==',
       },
     } });
-    api.getAuthenticationEvents.mockResolvedValue({ success: true, data: [] });
+    api.getAuthenticationEventsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'event-1', providerCode: 'ENTRA', eventType: 'ExternalSignIn', success: true, occurredAt: '2026-10-01T09:00:00Z', correlationId: 'trace-1' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
     api.getAuthenticationProviders.mockResolvedValue({ success: true, data: [] });
     api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
-    api.getUserAuthenticators.mockResolvedValue({ success: true, data: [] });
+    api.getUserAuthenticatorsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'authenticator-1', userPublicId: 'user-public-1', userEmail: 'person@example.test', providerRegistrationCode: 'ENTRA', expectedEmail: 'person@example.test', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
     api.saveAuthenticationConfiguration.mockResolvedValue({ success: true, data: {} });
   });
 
@@ -40,5 +41,22 @@ describe('AuthenticationAdministrationPage', () => {
       reason: 'Approved security policy update',
       policy: expect.objectContaining({ minimumPasswordLength: 18, requireMfaForAllLocalUsers: true, rowVersion: 'Ag==' }),
     })));
+  });
+
+  it('loads bounded identity and event pages and transports search filters', async () => {
+    render(<AuthenticationAdministrationPage />);
+
+    expect(await screen.findByText('31 enterprise identities')).toBeInTheDocument();
+    expect(await screen.findByText('31 authentication events')).toBeInTheDocument();
+    expect(api.getUserAuthenticatorsPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25, sortBy: 'email' }));
+    expect(api.getAuthenticationEventsPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25, sortBy: 'occurredAt' }));
+
+    fireEvent.change(screen.getByLabelText('Search enterprise identities'), { target: { value: 'person' } });
+    fireEvent.change(screen.getByLabelText('Identity status'), { target: { value: 'inactive' } });
+    fireEvent.change(screen.getByLabelText('Search authentication events'), { target: { value: 'denied' } });
+    fireEvent.change(screen.getByLabelText('Event result'), { target: { value: 'failure' } });
+
+    await waitFor(() => expect(api.getUserAuthenticatorsPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'person', active: false })));
+    await waitFor(() => expect(api.getAuthenticationEventsPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'denied', success: false })));
   });
 });

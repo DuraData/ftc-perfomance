@@ -1,7 +1,12 @@
 using System.Security.Claims;
+using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
+using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
+using FTCERP.Host.Infrastructure.Security;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace FTCERP.Tests;
@@ -86,6 +91,70 @@ public sealed class EnterpriseAuthenticationTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
     }
 
+    [Fact]
+    public async Task Authentication_administration_pages_filter_tenant_and_status_before_count_and_page()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var tenantA = new Municipality { Code = "AUTH-A", Name = "Authentication A" };
+        var tenantB = new Municipality { Code = "AUTH-B", Name = "Authentication B" };
+        context.AddRange(tenantA, tenantB);
+        await context.SaveChangesAsync();
+
+        for (var index = 0; index < 31; index++)
+        {
+            var user = User($"person-{index:00}", tenantA);
+            context.Users.Add(user);
+            context.UserAuthenticators.Add(new UserAuthenticator
+            {
+                MunicipalityId = tenantA.Id,
+                User = user,
+                ProviderRegistrationCode = index % 2 == 0 ? "ENTRA" : "ADFS",
+                ExpectedEmail = user.Email!,
+                IsActive = index % 2 == 0,
+                CreatedByUserId = user.Id,
+                CreatedAt = DateTime.UtcNow.AddMinutes(-index)
+            });
+            context.AuthenticationEvents.Add(new AuthenticationEvent
+            {
+                MunicipalityId = tenantA.Id,
+                UserId = user.Id,
+                ProviderCode = "ENTRA",
+                EventType = "ExternalSignIn",
+                Success = index % 2 == 0,
+                FailureCode = index % 2 == 0 ? null : "DENIED",
+                OccurredAt = DateTime.UtcNow.AddMinutes(-index),
+                CorrelationId = $"trace-{index:00}"
+            });
+        }
+        var outside = User("outside", tenantB);
+        context.Users.Add(outside);
+        context.UserAuthenticators.Add(new UserAuthenticator { MunicipalityId = tenantB.Id, User = outside, ProviderRegistrationCode = "ENTRA", ExpectedEmail = outside.Email!, IsActive = true, CreatedByUserId = outside.Id });
+        context.AuthenticationEvents.Add(new AuthenticationEvent { MunicipalityId = tenantB.Id, UserId = outside.Id, ProviderCode = "ENTRA", EventType = "ExternalSignIn", Success = false, FailureCode = "DENIED", CorrelationId = "outside" });
+        await context.SaveChangesAsync();
+
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(tenantA.Id), new EnterpriseProviderRegistry([Provider()]));
+        var authenticators = await controller.GetAuthenticatorsPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "person", SortBy = "email", SortDirection = "asc" }, true, null);
+        var authenticatorPage = Assert.IsType<ApiResponse<PagedResponse<UserAuthenticatorDto>>>(Assert.IsType<OkObjectResult>(authenticators.Result).Value).Data!;
+        Assert.Equal(16, authenticatorPage.TotalCount);
+        Assert.Equal(6, authenticatorPage.Items.Length);
+        Assert.All(authenticatorPage.Items, item => Assert.StartsWith("person-", item.UserEmail));
+
+        var events = await controller.GetEventsPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "DENIED", SortBy = "occurredAt", SortDirection = "desc" }, false, null, null);
+        var eventPage = Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(Assert.IsType<OkObjectResult>(events.Result).Value).Data!;
+        Assert.Equal(15, eventPage.TotalCount);
+        Assert.Equal(5, eventPage.Items.Length);
+        Assert.All(eventPage.Items, item => Assert.Equal("DENIED", item.FailureCode));
+
+        var invalid = await controller.GetEventsPage(new PagedQueryRequest { SortBy = "unsafe" });
+        Assert.IsType<BadRequestObjectResult>(invalid.Result);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetAuthenticators().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetEvents().Result).StatusCode);
+    }
+
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
     private static async Task<(Municipality Municipality, ApplicationUser User)> SeedConfigurationAsync(ApplicationDbContext context)
@@ -118,4 +187,11 @@ public sealed class EnterpriseAuthenticationTests
         Code = "ENTRA", Kind = EnterpriseProviderKinds.MicrosoftEntraId, DisplayName = "Work account",
         Authority = authority, ClientId = "client-id", ClientSecret = clientSecret, CallbackPath = "/signin-oidc-entra"
     };
+
+    private sealed class TenantContext(long municipalityId) : ITenantContext
+    {
+        public long? MunicipalityId => municipalityId;
+        public bool IsSystem => false;
+        public string? UserId => "authentication-admin";
+    }
 }

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
@@ -94,15 +95,57 @@ public sealed class AuthenticationAdministrationController(
 
     [HttpGet("authenticators")]
     [Authorize(Policy = "Permission:AUTHENTICATION.LINK_IDENTITIES")]
-    public async Task<ActionResult<ApiResponse<UserAuthenticatorDto[]>>> GetAuthenticators(CancellationToken cancellationToken)
+    public ActionResult<ApiResponse<UserAuthenticatorDto[]>> GetAuthenticators() => StatusCode(StatusCodes.Status410Gone,
+        Fail<UserAuthenticatorDto[]>("The unbounded authenticator route is retired. Use /api/v1/admin/authentication/authenticators/page."));
+
+    [HttpGet("authenticators/page")]
+    [Authorize(Policy = "Permission:AUTHENTICATION.LINK_IDENTITIES")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UserAuthenticatorDto>>>> GetAuthenticatorsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? active = null,
+        [FromQuery] string? providerCode = null,
+        CancellationToken cancellationToken = default)
     {
         if (!TryTenant(out var municipalityId, out var failure)) return failure!;
-        var rows = await context.UserAuthenticators.AsNoTracking().Include(item => item.User)
-            .Where(item => item.MunicipalityId == municipalityId).OrderBy(item => item.ExpectedEmail)
-            .Select(item => new UserAuthenticatorDto(item.PublicId, item.User.PublicId, item.User.Email!, item.ProviderRegistrationCode,
-                item.ExpectedEmail, item.Issuer, item.Subject, item.IsActive, item.LinkedAt, item.LastAuthenticatedAt, Convert.ToBase64String(item.RowVersion)))
-            .ToArrayAsync(cancellationToken);
-        return Ok(new ApiResponse<UserAuthenticatorDto[]>(true, rows));
+        if (request.NormalizedSortBy is not ("createdat" or "email" or "provider" or "status" or "linkedat" or "lastauthenticatedat"))
+            return BadRequest(Fail<PagedResponse<UserAuthenticatorDto>>("SortBy must be createdAt, email, provider, status, linkedAt, or lastAuthenticatedAt."));
+
+        var query = context.UserAuthenticators.AsNoTracking().Where(item => item.MunicipalityId == municipalityId);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (!string.IsNullOrWhiteSpace(providerCode))
+        {
+            var provider = providerCode.Trim();
+            query = query.Where(item => item.ProviderRegistrationCode == provider);
+        }
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.ExpectedEmail.Contains(term)
+                || item.User.Email != null && item.User.Email.Contains(term)
+                || item.ProviderRegistrationCode.Contains(term)
+                || item.Issuer != null && item.Issuer.Contains(term)
+                || item.Subject != null && item.Subject.Contains(term));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("email", false) => query.OrderBy(item => item.ExpectedEmail).ThenBy(item => item.Id),
+            ("email", true) => query.OrderByDescending(item => item.ExpectedEmail).ThenByDescending(item => item.Id),
+            ("provider", false) => query.OrderBy(item => item.ProviderRegistrationCode).ThenBy(item => item.ExpectedEmail).ThenBy(item => item.Id),
+            ("provider", true) => query.OrderByDescending(item => item.ProviderRegistrationCode).ThenBy(item => item.ExpectedEmail).ThenByDescending(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.ExpectedEmail).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.ExpectedEmail).ThenByDescending(item => item.Id),
+            ("linkedat", false) => query.OrderBy(item => item.LinkedAt).ThenBy(item => item.Id),
+            ("linkedat", true) => query.OrderByDescending(item => item.LinkedAt).ThenByDescending(item => item.Id),
+            ("lastauthenticatedat", false) => query.OrderBy(item => item.LastAuthenticatedAt).ThenBy(item => item.Id),
+            ("lastauthenticatedat", true) => query.OrderByDescending(item => item.LastAuthenticatedAt).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Include(item => item.User).ToArrayAsync(cancellationToken);
+        return Ok(new ApiResponse<PagedResponse<UserAuthenticatorDto>>(true,
+            PagedResponse<UserAuthenticatorDto>.Create(rows.Select(item => ToDto(item, item.User)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("authenticators")]
@@ -168,15 +211,60 @@ public sealed class AuthenticationAdministrationController(
 
     [HttpGet("events")]
     [Authorize(Policy = "Permission:AUTHENTICATION.VIEW_EVENTS")]
-    public async Task<ActionResult<ApiResponse<AuthenticationEventDto[]>>> GetEvents([FromQuery] int take = 100, CancellationToken cancellationToken = default)
+    public ActionResult<ApiResponse<AuthenticationEventDto[]>> GetEvents() => StatusCode(StatusCodes.Status410Gone,
+        Fail<AuthenticationEventDto[]>("The fixed-limit authentication-event route is retired. Use /api/v1/admin/authentication/events/page."));
+
+    [HttpGet("events/page")]
+    [Authorize(Policy = "Permission:AUTHENTICATION.VIEW_EVENTS")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<AuthenticationEventDto>>>> GetEventsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? success = null,
+        [FromQuery] string? providerCode = null,
+        [FromQuery] string? eventType = null,
+        CancellationToken cancellationToken = default)
     {
         if (!TryTenant(out var municipalityId, out var failure)) return failure!;
-        take = Math.Clamp(take, 1, 500);
-        var rows = await context.AuthenticationEvents.AsNoTracking().Where(item => item.MunicipalityId == municipalityId)
-            .OrderByDescending(item => item.OccurredAt).Take(take)
-            .Select(item => new AuthenticationEventDto(item.PublicId, item.UserId, item.ProviderCode, item.EventType, item.Success,
-                item.FailureCode, item.OccurredAt, item.IpAddress, item.CorrelationId)).ToArrayAsync(cancellationToken);
-        return Ok(new ApiResponse<AuthenticationEventDto[]>(true, rows));
+        if (request.NormalizedSortBy is not ("createdat" or "occurredat" or "provider" or "eventtype" or "result"))
+            return BadRequest(Fail<PagedResponse<AuthenticationEventDto>>("SortBy must be createdAt, occurredAt, provider, eventType, or result."));
+
+        var query = context.AuthenticationEvents.AsNoTracking().Where(item => item.MunicipalityId == municipalityId);
+        if (success.HasValue) query = query.Where(item => item.Success == success.Value);
+        if (!string.IsNullOrWhiteSpace(providerCode))
+        {
+            var provider = providerCode.Trim();
+            query = query.Where(item => item.ProviderCode == provider);
+        }
+        if (!string.IsNullOrWhiteSpace(eventType))
+        {
+            var type = eventType.Trim();
+            query = query.Where(item => item.EventType == type);
+        }
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.ProviderCode.Contains(term)
+                || item.EventType.Contains(term)
+                || item.UserId != null && item.UserId.Contains(term)
+                || item.FailureCode != null && item.FailureCode.Contains(term)
+                || item.IpAddress != null && item.IpAddress.Contains(term)
+                || item.CorrelationId.Contains(term));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("provider", false) => query.OrderBy(item => item.ProviderCode).ThenByDescending(item => item.OccurredAt).ThenBy(item => item.Id),
+            ("provider", true) => query.OrderByDescending(item => item.ProviderCode).ThenByDescending(item => item.OccurredAt).ThenByDescending(item => item.Id),
+            ("eventtype", false) => query.OrderBy(item => item.EventType).ThenByDescending(item => item.OccurredAt).ThenBy(item => item.Id),
+            ("eventtype", true) => query.OrderByDescending(item => item.EventType).ThenByDescending(item => item.OccurredAt).ThenByDescending(item => item.Id),
+            ("result", false) => query.OrderBy(item => item.Success).ThenByDescending(item => item.OccurredAt).ThenBy(item => item.Id),
+            ("result", true) => query.OrderByDescending(item => item.Success).ThenByDescending(item => item.OccurredAt).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.OccurredAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.OccurredAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync(cancellationToken);
+        return Ok(new ApiResponse<PagedResponse<AuthenticationEventDto>>(true,
+            PagedResponse<AuthenticationEventDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
     }
 
     private bool TryTenant(out long municipalityId, out ActionResult? failure)
@@ -230,6 +318,7 @@ public sealed class AuthenticationAdministrationController(
     private static AuthenticationConfigurationDto ToDto(AuthenticationConfiguration item) => new(item.PublicId, item.Mode, item.ProviderRegistrationCode, item.DisplayName, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), item.Policy == null ? null : ToDto(item.Policy));
     private static AuthenticationPolicyDto ToDto(AuthenticationPolicy item) => new(item.PublicId, item.MinimumPasswordLength, item.MaximumFailedAttempts, item.LockoutMinutes, item.RequireMfaForPrivilegedLocalUsers, item.RequireMfaForAllLocalUsers, item.RequireFirstLoginPasswordChange, item.SessionIdleTimeoutMinutes, item.SessionAbsoluteTimeoutHours, item.MaximumConcurrentSessions, Convert.ToBase64String(item.RowVersion));
     private static UserAuthenticatorDto ToDto(UserAuthenticator item, ApplicationUser user) => new(item.PublicId, user.PublicId, user.Email!, item.ProviderRegistrationCode, item.ExpectedEmail, item.Issuer, item.Subject, item.IsActive, item.LinkedAt, item.LastAuthenticatedAt, Convert.ToBase64String(item.RowVersion));
+    private static AuthenticationEventDto ToDto(AuthenticationEvent item) => new(item.PublicId, item.UserId, item.ProviderCode, item.EventType, item.Success, item.FailureCode, item.OccurredAt, item.IpAddress, item.CorrelationId);
 }
 
 public sealed record AuthenticationConfigurationDto(Guid PublicId, AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, AuthenticationPolicyDto? Policy);
