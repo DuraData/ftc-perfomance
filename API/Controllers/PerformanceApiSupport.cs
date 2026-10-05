@@ -214,7 +214,11 @@ public static class PerformanceApiSupport
             StrategicObjectivePublicId = target.StrategicObjectiveMaster?.PublicId,
             PerformanceObjectivePublicId = target.PerformanceObjectiveReference?.PublicId,
             BackToBasicsPillar = target.BackToBasicsPillarReference?.Name,
-            StrategicIntervention = target.StrategicInterventionReference?.Name
+            StrategicIntervention = target.StrategicInterventionReference?.Name,
+            BudgetTypePublicId = target.BudgetTypeMaster?.PublicId,
+            BudgetTypeName = target.BudgetTypeMaster?.Name,
+            BudgetSources = target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.DisplayOrder).ThenBy(item => item.BudgetSource.Name)
+                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray()
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
@@ -286,7 +290,11 @@ public static class PerformanceApiSupport
             StrategicObjectivePublicId = target.StrategicObjectiveMaster?.PublicId,
             PerformanceObjectivePublicId = target.PerformanceObjectiveReference?.PublicId,
             BackToBasicsPillar = target.BackToBasicsPillarReference?.Name,
-            StrategicIntervention = target.StrategicInterventionReference?.Name
+            StrategicIntervention = target.StrategicInterventionReference?.Name,
+            BudgetTypePublicId = target.BudgetTypeMaster?.PublicId,
+            BudgetTypeName = target.BudgetTypeMaster?.Name,
+            BudgetSources = target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.DisplayOrder).ThenBy(item => item.BudgetSource.Name)
+                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray()
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>

@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -171,18 +172,76 @@ public sealed class StrategicPlanningMastersControllerTests
     }
 
     [Fact]
+    public async Task GovernedBudgetMastersAreTenantScopedEffectiveDatedAndSupportMultipleSources()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Guid foreignSource;
+        await using (var tenantB = fixture.Context(fixture.MunicipalityB.Id))
+        {
+            foreignSource = Data(await Controller(tenantB, fixture.MunicipalityB.Id).CreateBudgetSource(
+                new("FOREIGN", "Foreign grant", null, null, null, 10, true, "Create tenant B budget source"))).PublicId;
+        }
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var controller = Controller(context, fixture.MunicipalityA.Id);
+        var sourceA = Data(await controller.CreateBudgetSource(new("MIG", "Infrastructure grant", null, null, null, 10, true, "Create first governed budget source")));
+        var sourceB = Data(await controller.CreateBudgetSource(new("OWN", "Own revenue", null, fixture.Year2026.PublicId, null, 20, true, "Create second governed budget source")));
+        var historicSource = Data(await controller.CreateBudgetSource(new("OLD", "Historic grant", null, fixture.Year2025.PublicId, fixture.Year2025.PublicId, 30, true, "Create historic governed budget source")));
+        var budgetType = Data(await controller.CreateBudgetType(new("CAPEX", "Capital expenditure", null, null, null, 10, true, "Create governed budget type")));
+
+        var catalogueResult = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
+        var catalogue = Assert.IsType<OkObjectResult>(catalogueResult.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
+        Assert.Equal([sourceA.PublicId, sourceB.PublicId], catalogue.BudgetSources.Select(item => item.PublicId));
+        Assert.Collection(catalogue.BudgetTypes, item => Assert.Equal(budgetType.PublicId, item.PublicId));
+
+        var foreign = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, budgetType.PublicId,
+            [new(foreignSource, 10m)]);
+        Assert.False(foreign.IsValid);
+        Assert.Contains("this municipality", foreign.Error, StringComparison.OrdinalIgnoreCase);
+
+        var expired = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, budgetType.PublicId,
+            [new(historicSource.PublicId, 10m)]);
+        Assert.False(expired.IsValid);
+        Assert.Contains("not valid", expired.Error, StringComparison.OrdinalIgnoreCase);
+
+        var duplicate = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, budgetType.PublicId,
+            [new(sourceA.PublicId, 10m), new(sourceA.PublicId, 20m)]);
+        Assert.False(duplicate.IsValid);
+
+        var resolved = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, budgetType.PublicId,
+            [new(sourceA.PublicId, 125.50m), new(sourceB.PublicId, null)]);
+        Assert.True(resolved.IsValid);
+        var target = new OpmsTarget { Id = "OPMS-BUDGET-1", MunicipalityId = fixture.MunicipalityA.Id };
+        BudgetClassificationResolver.Apply(target, resolved);
+        Assert.Equal(budgetType.PublicId, resolved.BudgetType!.PublicId);
+        Assert.Equal(2, target.GovernedBudgetSources.Count(item => item.IsActive));
+        Assert.Contains(target.GovernedBudgetSources, item => item.BudgetSourceId == resolved.BudgetSources[0].Source.Id && item.Amount == 125.50m);
+
+        var changed = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, null,
+            [new(sourceA.PublicId, 200m)], resolved.BudgetType!.Id, resolved.BudgetSources.Select(item => item.Source.Id).ToArray());
+        BudgetClassificationResolver.Apply(target, changed);
+        Assert.Null(target.BudgetTypeMasterId);
+        Assert.Single(target.GovernedBudgetSources, item => item.IsActive);
+        Assert.Equal(2, target.GovernedBudgetSources.Count(item => !item.IsActive));
+        Assert.Contains(await context.AuditTrails.ToArrayAsync(), item => item.EntityName == nameof(GovernedBudgetSource));
+    }
+
+    [Fact]
     public async Task SecurityRegistrySeedsAllMastersHierarchyAndNavigation()
     {
         await using var fixture = await Fixture.CreateAsync(); await using var context = fixture.SystemContext(); await SecurityRegistrySeeder.SeedAsync(context);
         var resources = await context.SecurityResources.Select(item => item.Code).ToArrayAsync();
-        Assert.Contains("MUNICIPAL_KPA", resources); Assert.Contains("STRATEGIC_GOAL", resources); Assert.Contains("STRATEGIC_INTERVENTION", resources); Assert.Contains("STRATEGIC_OBJECTIVE", resources); Assert.Contains("PERFORMANCE_OBJECTIVE", resources); Assert.Contains("STRATEGIC_HIERARCHY", resources);
+        Assert.Contains("MUNICIPAL_KPA", resources); Assert.Contains("STRATEGIC_GOAL", resources); Assert.Contains("STRATEGIC_INTERVENTION", resources); Assert.Contains("STRATEGIC_OBJECTIVE", resources); Assert.Contains("PERFORMANCE_OBJECTIVE", resources); Assert.Contains("STRATEGIC_HIERARCHY", resources); Assert.Contains("BUDGET_SOURCE", resources); Assert.Contains("BUDGET_TYPE", resources);
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/strategic-interventions" && item.RequiredPermissionCode == "NAV.CONFIGURATION.STRATEGIC_INTERVENTIONS");
+        Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/budget-sources" && item.RequiredPermissionCode == "NAV.CONFIGURATION.BUDGET_SOURCES");
     }
 
     [Theory]
     [InlineData(nameof(StrategicPlanningMastersController.CreateMunicipalKpa), "Permission:MUNICIPAL_KPA.CREATE")]
     [InlineData(nameof(StrategicPlanningMastersController.UpdateStrategicGoal), "Permission:STRATEGIC_GOAL.UPDATE")]
     [InlineData(nameof(StrategicPlanningMastersController.GetStrategicInterventions), "Permission:STRATEGIC_INTERVENTION.READ")]
+    [InlineData(nameof(StrategicPlanningMastersController.CreateBudgetSource), "Permission:BUDGET_SOURCE.CREATE")]
+    [InlineData(nameof(StrategicPlanningMastersController.UpdateBudgetType), "Permission:BUDGET_TYPE.UPDATE")]
     [InlineData(nameof(StrategicPlanningMastersController.LinkGoalToObjective), "Permission:STRATEGIC_HIERARCHY.CREATE")]
     public void EndpointsCarryDynamicPermissionPolicies(string methodName, string policy)
     {

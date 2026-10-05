@@ -13,6 +13,7 @@ vi.mock('../common/CalendarMasterPicker', () => ({ CalendarMasterPicker: ({ labe
 
 describe('StrategicPlanningAdministration', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     api.getStrategicPlanningMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'goal-1', code: 'SG1', name: 'Inclusive growth', description: null, effectiveFromFinancialYearPublicId: 'year-1', effectiveFromFinancialYearCode: '2025/26', effectiveToFinancialYearPublicId: null, effectiveToFinancialYearCode: null, displayOrder: 10, isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicPlanningRelationships.mockResolvedValue({ success: true, data: [] });
     api.saveStrategicPlanningMaster.mockResolvedValue({ success: true, data: {} }); api.linkStrategicPlanningRelationship.mockResolvedValue({ success: true, data: {} }); api.disableStrategicPlanningRelationship.mockResolvedValue({ success: true, data: {} });
@@ -28,5 +29,13 @@ describe('StrategicPlanningAdministration', () => {
   it('exposes configurable optional relationships without enforcing a fixed hierarchy', async () => {
     render(<StrategicPlanningAdministration kind="strategic-goals" />); expect(await screen.findByText('Optional strategic relationships')).toBeInTheDocument();
     expect(screen.getByLabelText('Relationship')).toHaveValue('municipal-kpa-strategic-goal'); expect(screen.getByText(/no fixed hierarchy is imposed/i)).toBeInTheDocument();
+  });
+
+  it('uses the governed budget endpoint and does not expose strategic relationship controls', async () => {
+    render(<StrategicPlanningAdministration kind="budget-sources" />);
+    expect(await screen.findByText('Inclusive growth')).toBeInTheDocument();
+    expect(api.getStrategicPlanningMastersPage).toHaveBeenCalledWith('budget-sources', expect.anything(), { includeInactive: true });
+    expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
+    expect(screen.queryByText('Optional strategic relationships')).not.toBeInTheDocument();
   });
 });

@@ -22,6 +22,8 @@ const configuration: Record<StrategicPlanningMasterKind, { title: string; singul
   'strategic-interventions': { title: 'Strategic Interventions', singular: 'Strategic Intervention', resource: 'STRATEGIC_INTERVENTION' },
   'strategic-objectives': { title: 'Strategic Objectives', singular: 'Strategic Objective', resource: 'STRATEGIC_OBJECTIVE' },
   'performance-objectives': { title: 'Performance Objectives', singular: 'Performance Objective', resource: 'PERFORMANCE_OBJECTIVE' },
+  'budget-sources': { title: 'Budget Sources', singular: 'Budget Source', resource: 'BUDGET_SOURCE' },
+  'budget-types': { title: 'Budget Types', singular: 'Budget Type', resource: 'BUDGET_TYPE' },
 };
 const empty = () => ({ code: '', name: '', description: '', from: '', to: '', displayOrder: '10', isActive: 'true', reason: '' });
 const relationTypes = [
@@ -41,27 +43,28 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
   const [relationshipOptions, setRelationshipOptions] = useState<Record<string, StrategicPlanningMasterDto[]>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const relationship = relationTypes.find(item => item.value === relationshipType)!;
+  const supportsRelationships = !kind.startsWith('budget-');
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
     const [masters, links] = await Promise.all([
       getStrategicPlanningMastersPage(kind, { page, pageSize: 25, search: search || undefined, sortBy: 'displayOrder', sortDirection: 'asc' }, { includeInactive: true }),
-      security.canRead('STRATEGIC_HIERARCHY') ? getStrategicPlanningRelationships(true) : Promise.resolve({ success: true, data: [] as StrategicPlanningRelationshipDto[] }),
+      supportsRelationships && security.canRead('STRATEGIC_HIERARCHY') ? getStrategicPlanningRelationships(true) : Promise.resolve({ success: true, data: [] as StrategicPlanningRelationshipDto[] }),
     ]);
     if (!masters.success) setError(masters.message ?? `${config.title} could not be loaded.`);
     setRows(masters.data?.items ?? []); setTotalPages(masters.data?.totalPages ?? 0); setRelationships(links.data ?? []); setBusy(false);
-  }, [config.title, kind, page, search, security]);
+  }, [config.title, kind, page, search, security, supportsRelationships]);
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!security.canCreate('STRATEGIC_HIERARCHY')) return;
+    if (!supportsRelationships || !security.canCreate('STRATEGIC_HIERARCHY')) return;
     let cancelled = false;
     Promise.all(relationTypes.flatMap(item => [item.parent, item.child]).filter((value, index, values) => values.indexOf(value) === index).map(async optionKind => {
       const result = await getStrategicPlanningMastersPage(optionKind, { page: 1, pageSize: 100, sortBy: 'name', sortDirection: 'asc' });
       return [optionKind, result.data?.items ?? []] as const;
     })).then(entries => { if (!cancelled) setRelationshipOptions(Object.fromEntries(entries)); });
     return () => { cancelled = true; };
-  }, [security]);
+  }, [security, supportsRelationships]);
 
   const edit = (item: StrategicPlanningMasterDto) => { setSelected(item); setForm({ code: item.code ?? '', name: item.name, description: item.description ?? '', from: item.effectiveFromFinancialYearPublicId ?? '', to: item.effectiveToFinancialYearPublicId ?? '', displayOrder: String(item.displayOrder), isActive: String(item.isActive), reason: '' }); };
   const clear = () => { setSelected(null); setForm(empty()); };
@@ -86,7 +89,7 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
   const parentOptions = useMemo(() => [{ value: '', label: 'Select parent' }, ...(relationshipOptions[relationship.parent] ?? []).map(item => ({ value: item.publicId, label: `${item.code ? `${item.code} · ` : ''}${item.name}` }))], [relationship.parent, relationshipOptions]);
   const childOptions = useMemo(() => [{ value: '', label: 'Select child' }, ...(relationshipOptions[relationship.child] ?? []).map(item => ({ value: item.publicId, label: `${item.code ? `${item.code} · ` : ''}${item.name}` }))], [relationship.child, relationshipOptions]);
 
-  return <AppShell title={config.title} subtitle="Municipality-scoped, effective-dated strategic planning configuration">
+  return <AppShell title={config.title} subtitle="Municipality-scoped, effective-dated controlled master configuration">
     <div className="space-y-5">
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="flex gap-2"><Input label="Search register" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /><Button variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button></div>
@@ -101,7 +104,7 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
         </FormPanel>}
         <Card className="p-4"><div className="flex justify-between"><h3 className="font-semibold">Authoritative register</h3><Badge variant="primary">{rows.length}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <div key={item.publicId} className="flex items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code || 'No code'} · order {item.displayOrder} · {item.effectiveFromFinancialYearCode || 'open'} to {item.effectiveToFinancialYearCode || 'open'}</p><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></div>{security.canUpdate(config.resource) && <Button size="sm" variant="outline" onClick={() => edit(item)}>Edit</Button>}</div>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-3 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></div>}</Card>
       </div>
-      {security.canRead('STRATEGIC_HIERARCHY') && <Card className="p-4"><div className="flex items-center gap-2"><Link2 className="h-5 w-5" /><h3 className="font-semibold">Optional strategic relationships</h3></div><p className="mt-1 text-sm text-secondary-500">Configure only the relationships your municipality uses; no fixed hierarchy is imposed.</p>{security.canCreate('STRATEGIC_HIERARCHY') && <div className="mt-3 grid gap-2 lg:grid-cols-3"><Select label="Relationship" value={relationshipType} options={relationTypes.map(item => ({ value: item.value, label: item.label }))} onChange={event => { setRelationshipType(event.target.value as typeof relationshipType); setParentId(''); setChildId(''); }} /><Select label="Parent" value={parentId} options={parentOptions} onChange={event => setParentId(event.target.value)} /><Select label="Child" value={childId} options={childOptions} onChange={event => setChildId(event.target.value)} /><div className="lg:col-span-2"><Textarea label="Relationship governance reason" value={relationshipReason} onChange={event => setRelationshipReason(event.target.value)} /></div><Button onClick={() => void link()} disabled={busy}>Create relationship</Button></div>}<div className="mt-4 space-y-2">{relationships.map(item => <div key={item.publicId} className="flex items-center justify-between rounded border border-secondary-200 p-2 text-sm dark:border-secondary-700"><span>{item.parentName} → {item.childName} <Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></span>{item.isActive && security.canUpdate('STRATEGIC_HIERARCHY') && <Button size="sm" variant="ghost" onClick={() => void disable(item)}>Disable</Button>}</div>)}</div></Card>}
+      {supportsRelationships && security.canRead('STRATEGIC_HIERARCHY') && <Card className="p-4"><div className="flex items-center gap-2"><Link2 className="h-5 w-5" /><h3 className="font-semibold">Optional strategic relationships</h3></div><p className="mt-1 text-sm text-secondary-500">Configure only the relationships your municipality uses; no fixed hierarchy is imposed.</p>{security.canCreate('STRATEGIC_HIERARCHY') && <div className="mt-3 grid gap-2 lg:grid-cols-3"><Select label="Relationship" value={relationshipType} options={relationTypes.map(item => ({ value: item.value, label: item.label }))} onChange={event => { setRelationshipType(event.target.value as typeof relationshipType); setParentId(''); setChildId(''); }} /><Select label="Parent" value={parentId} options={parentOptions} onChange={event => setParentId(event.target.value)} /><Select label="Child" value={childId} options={childOptions} onChange={event => setChildId(event.target.value)} /><div className="lg:col-span-2"><Textarea label="Relationship governance reason" value={relationshipReason} onChange={event => setRelationshipReason(event.target.value)} /></div><Button onClick={() => void link()} disabled={busy}>Create relationship</Button></div>}<div className="mt-4 space-y-2">{relationships.map(item => <div key={item.publicId} className="flex items-center justify-between rounded border border-secondary-200 p-2 text-sm dark:border-secondary-700"><span>{item.parentName} → {item.childName} <Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></span>{item.isActive && security.canUpdate('STRATEGIC_HIERARCHY') && <Button size="sm" variant="ghost" onClick={() => void disable(item)}>Disable</Button>}</div>)}</div></Card>}
     </div>
   </AppShell>;
 }

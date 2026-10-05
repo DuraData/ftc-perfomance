@@ -72,6 +72,7 @@ public class IpmsTargetsController : ControllerBase
             .Include(item => item.NationalKpaReference).Include(item => item.MunicipalKpaReference).Include(item => item.BackToBasicsPillarReference)
             .Include(item => item.StrategicGoalMaster).Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
+            .Include(item => item.BudgetTypeMaster).Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
             .AsSplitQuery().ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
         return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true,
@@ -167,6 +168,9 @@ public class IpmsTargetsController : ControllerBase
         if (!strategicSelection.IsComplete) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "All governed strategic classifications are required."));
         var strategicClassification = await StrategicClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, strategicSelection);
         if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, strategicClassification.Error));
+        var budgetClassification = await BudgetClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            request.BudgetTypePublicId, request.BudgetSources);
+        if (!budgetClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, budgetClassification.Error));
 
         var entity = new IpmsTarget
         {
@@ -190,8 +194,6 @@ public class IpmsTargetsController : ControllerBase
             TargetName = request.TargetName.Trim(),
             KpiDescription = request.KpiDescription.Trim(),
             Baseline = request.Baseline,
-            BudgetSourceId = request.BudgetSourceId,
-            BudgetTypeId = request.BudgetTypeId,
             UnitOfMeasureId = request.UnitOfMeasureId,
             Weight = request.Weight,
             KpiType = request.KpiType,
@@ -204,6 +206,7 @@ public class IpmsTargetsController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
         StrategicClassificationResolver.Apply(entity, strategicClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification);
 
         _context.IpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, null, entity.Id);
@@ -224,7 +227,7 @@ public class IpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
 
-        var entity = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IpmsTargets.Include(item => item.GovernedBudgetSources).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
 
@@ -241,6 +244,10 @@ public class IpmsTargetsController : ControllerBase
             entity.NationalKpaId, entity.MunicipalKpaId, entity.BackToBasicsPillarId, entity.StrategicGoalMasterId,
             entity.StrategicInterventionId, entity.StrategicObjectiveMasterId, entity.PerformanceObjectiveId);
         if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, strategicClassification.Error));
+        var budgetClassification = await BudgetClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            request.BudgetTypePublicId, request.BudgetSources, entity.BudgetTypeMasterId,
+            entity.GovernedBudgetSources.Where(item => item.IsActive).Select(item => item.BudgetSourceId).ToArray());
+        if (!budgetClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, budgetClassification.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
         if (periodChangeError != null) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -262,8 +269,6 @@ public class IpmsTargetsController : ControllerBase
         entity.StrategicObjectiveId = request.StrategicObjectiveId;
         entity.PerformanceObjective = request.PerformanceObjective;
         entity.Baseline = request.Baseline;
-        entity.BudgetSourceId = request.BudgetSourceId;
-        entity.BudgetTypeId = request.BudgetTypeId;
         entity.UnitOfMeasureId = request.UnitOfMeasureId;
         entity.Weight = request.Weight;
         entity.KpiType = request.KpiType;
@@ -273,6 +278,7 @@ public class IpmsTargetsController : ControllerBase
         entity.InternalReference = request.InternalReference;
         entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
         StrategicClassificationResolver.Apply(entity, strategicClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification);
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
@@ -521,6 +527,8 @@ public class IpmsTargetsController : ControllerBase
             .Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster)
             .Include(item => item.PerformanceObjectiveReference)
+            .Include(item => item.BudgetTypeMaster)
+            .Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;

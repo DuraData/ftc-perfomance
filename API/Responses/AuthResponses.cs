@@ -244,7 +244,12 @@ public record OpmsTargetResponse(
     public Guid? PerformanceObjectivePublicId { get; init; }
     public string? BackToBasicsPillar { get; init; }
     public string? StrategicIntervention { get; init; }
+    public Guid? BudgetTypePublicId { get; init; }
+    public string? BudgetTypeName { get; init; }
+    public KpiBudgetSourceResponse[] BudgetSources { get; init; } = [];
 }
+
+public sealed record KpiBudgetSourceResponse(Guid PublicId, Guid BudgetSourcePublicId, string Code, string Name, decimal? Amount);
 
 public record IpmsTargetResponse(
     string Id,
@@ -307,6 +312,9 @@ public record IpmsTargetResponse(
     public Guid? PerformanceObjectivePublicId { get; init; }
     public string? BackToBasicsPillar { get; init; }
     public string? StrategicIntervention { get; init; }
+    public Guid? BudgetTypePublicId { get; init; }
+    public string? BudgetTypeName { get; init; }
+    public KpiBudgetSourceResponse[] BudgetSources { get; init; } = [];
 }
 
 public record TargetPeriodValueResponse(

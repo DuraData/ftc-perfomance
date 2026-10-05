@@ -358,16 +358,16 @@ function toStrategicObjectiveReference(
   };
 }
 
-function toBudgetSourceReference(id?: number | null, name?: string | null): BudgetSource {
+function toBudgetSourceReference(id?: number | string | null, name?: string | null, code = ''): BudgetSource {
   return {
     id: id === null || id === undefined ? '' : String(id),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
-    code: '',
+    code,
     isActive: true,
   };
 }
 
-function toBudgetTypeReference(id?: number | null, name?: string | null): BudgetType {
+function toBudgetTypeReference(id?: number | string | null, name?: string | null): BudgetType {
   return {
     id: id === null || id === undefined ? '' : String(id),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
@@ -552,8 +552,11 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     baselineDescription: dto.baselineDescription ?? '',
     annualTarget: numericTarget(annual?.targetValue),
     annualTargetDescription: annual?.description ?? '',
-    budgetSource: toBudgetSourceReference(dto.budgetSourceId),
-    budgetType: toBudgetTypeReference(dto.budgetTypeId),
+    budgetSource: dto.budgetSources?.[0] ? toBudgetSourceReference(dto.budgetSources[0].budgetSourcePublicId, dto.budgetSources[0].name, dto.budgetSources[0].code) : toBudgetSourceReference(dto.budgetSourceId),
+    budgetType: dto.budgetTypePublicId ? toBudgetTypeReference(dto.budgetTypePublicId, dto.budgetTypeName) : toBudgetTypeReference(dto.budgetTypeId),
+    budgetTypePublicId: dto.budgetTypePublicId ?? undefined,
+    budgetTypeName: dto.budgetTypeName ?? undefined,
+    budgetSources: dto.budgetSources ?? [],
     unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
@@ -641,8 +644,11 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     baseline: dto.baseline,
     annualTarget: numericTarget(annual?.targetValue),
     annualTargetDescription: annual?.description ?? '',
-    budgetSource: toBudgetSourceReference(dto.budgetSourceId),
-    budgetType: toBudgetTypeReference(dto.budgetTypeId),
+    budgetSource: dto.budgetSources?.[0] ? toBudgetSourceReference(dto.budgetSources[0].budgetSourcePublicId, dto.budgetSources[0].name, dto.budgetSources[0].code) : toBudgetSourceReference(dto.budgetSourceId),
+    budgetType: dto.budgetTypePublicId ? toBudgetTypeReference(dto.budgetTypePublicId, dto.budgetTypeName) : toBudgetTypeReference(dto.budgetTypeId),
+    budgetTypePublicId: dto.budgetTypePublicId ?? undefined,
+    budgetTypeName: dto.budgetTypeName ?? undefined,
+    budgetSources: dto.budgetSources ?? [],
     unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
     weight: dto.weight,
     kpiType: dto.kpiType,
@@ -1410,7 +1416,7 @@ export async function setGlobalStrategicReferenceAvailability(kind: GlobalStrate
   return put<GlobalStrategicReferenceDto>(`/v1/masters/${kind}/${publicId}/municipality-availability`, payload);
 }
 
-export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives';
+export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives' | 'budget-sources' | 'budget-types';
 
 export async function getStrategicPlanningMastersPage(kind: StrategicPlanningMasterKind, query: RegisterPageQuery = {}, options: { municipalityFinancialYearPublicId?: string; includeInactive?: boolean } = {}): Promise<ApiResponse<PagedResult<StrategicPlanningMasterDto>>> {
   const parameters = new URLSearchParams(registerPageQuery(query).slice(1));

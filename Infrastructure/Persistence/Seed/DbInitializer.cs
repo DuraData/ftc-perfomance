@@ -23,9 +23,50 @@ public static class DbInitializer
         if (demoDataEnabled)
             await SeedDemoUsersAsync(context, userManager, configuration);
         await SeedLookupTablesAsync(context);
+        await SeedGovernedBudgetClassificationsAsync(context);
         if (demoDataEnabled)
             await SeedTargetsAndSubmissionsAsync(context, userManager);
         await SecurityRegistrySeeder.BackfillAssignmentsAsync(context);
+    }
+
+    private static async Task SeedGovernedBudgetClassificationsAsync(ApplicationDbContext context)
+    {
+        var municipalities = await context.Municipalities.IgnoreQueryFilters().AsNoTracking().Select(item => item.Id).ToArrayAsync();
+        var existingSources = await context.GovernedBudgetSources.IgnoreQueryFilters().AsNoTracking()
+            .Select(item => new { item.MunicipalityId, item.Code }).ToArrayAsync();
+        var existingTypes = await context.GovernedBudgetTypes.IgnoreQueryFilters().AsNoTracking()
+            .Select(item => new { item.MunicipalityId, item.Code }).ToArrayAsync();
+        var sourceKeys = existingSources.Select(item => $"{item.MunicipalityId}:{item.Code}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var typeKeys = existingTypes.Select(item => $"{item.MunicipalityId}:{item.Code}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var municipalityId in municipalities)
+        {
+            var order = 0;
+            foreach (var source in GetBudgetSourceSeeds())
+            {
+                order += 10;
+                if (!sourceKeys.Add($"{municipalityId}:{source.Code}")) continue;
+                context.GovernedBudgetSources.Add(new GovernedBudgetSource
+                {
+                    MunicipalityId = municipalityId, Code = source.Code, Name = source.Name,
+                    DisplayOrder = order, IsActive = source.IsActive
+                });
+            }
+
+            order = 0;
+            foreach (var type in GetBudgetTypeSeeds())
+            {
+                order += 10;
+                if (!typeKeys.Add($"{municipalityId}:{type.Code}")) continue;
+                context.GovernedBudgetTypes.Add(new GovernedBudgetType
+                {
+                    MunicipalityId = municipalityId, Code = type.Code, Name = type.Name,
+                    DisplayOrder = order, IsActive = type.IsActive
+                });
+            }
+        }
+
+        await context.SaveChangesAsync();
     }
 
     private static async Task SeedGlobalStrategicReferenceDefaultsAsync(ApplicationDbContext context)

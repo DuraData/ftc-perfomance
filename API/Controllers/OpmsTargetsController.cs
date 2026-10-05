@@ -84,6 +84,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.NationalKpaReference).Include(item => item.MunicipalKpaReference).Include(item => item.BackToBasicsPillarReference)
             .Include(item => item.StrategicGoalMaster).Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
+            .Include(item => item.BudgetTypeMaster).Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
             .AsSplitQuery()
             .ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
@@ -186,6 +187,9 @@ public class OpmsTargetsController : ControllerBase
         if (!strategicSelection.IsComplete) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "All governed strategic classifications are required."));
         var strategicClassification = await StrategicClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, strategicSelection);
         if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, strategicClassification.Error));
+        var budgetClassification = await BudgetClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            request.BudgetTypePublicId, request.BudgetSources);
+        if (!budgetClassification.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, budgetClassification.Error));
 
         var entity = new OpmsTarget
         {
@@ -209,8 +213,6 @@ public class OpmsTargetsController : ControllerBase
             KpiDescription = request.KpiDescription.Trim(),
             Baseline = request.Baseline,
             BaselineDescription = request.BaselineDescription,
-            BudgetSourceId = request.BudgetSourceId,
-            BudgetTypeId = request.BudgetTypeId,
             UnitOfMeasureId = request.UnitOfMeasureId,
             Weight = request.Weight,
             KpiType = request.KpiType,
@@ -225,6 +227,7 @@ public class OpmsTargetsController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
         StrategicClassificationResolver.Apply(entity, strategicClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification);
         ApplyMappings(entity, request);
 
         _context.OpmsTargets.Add(entity);
@@ -253,6 +256,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Wards)
             .Include(item => item.AdditionalAssignees)
             .Include(item => item.VoteNumbers)
+            .Include(item => item.GovernedBudgetSources)
             .Include(item => item.SdbipLayer)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
@@ -275,6 +279,10 @@ public class OpmsTargetsController : ControllerBase
             entity.NationalKpaId, entity.MunicipalKpaId, entity.BackToBasicsPillarId, entity.StrategicGoalMasterId,
             entity.StrategicInterventionId, entity.StrategicObjectiveMasterId, entity.PerformanceObjectiveId);
         if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, strategicClassification.Error));
+        var budgetClassification = await BudgetClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            request.BudgetTypePublicId, request.BudgetSources, entity.BudgetTypeMasterId,
+            entity.GovernedBudgetSources.Where(item => item.IsActive).Select(item => item.BudgetSourceId).ToArray());
+        if (!budgetClassification.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, budgetClassification.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, entity.Id, null);
         if (periodChangeError != null) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -296,8 +304,6 @@ public class OpmsTargetsController : ControllerBase
         entity.PerformanceObjective = request.PerformanceObjective;
         entity.Baseline = request.Baseline;
         entity.BaselineDescription = request.BaselineDescription;
-        entity.BudgetSourceId = request.BudgetSourceId;
-        entity.BudgetTypeId = request.BudgetTypeId;
         entity.UnitOfMeasureId = request.UnitOfMeasureId;
         entity.Weight = request.Weight;
         entity.KpiType = request.KpiType;
@@ -309,6 +315,7 @@ public class OpmsTargetsController : ControllerBase
         entity.FmsLink = request.FmsLink;
         entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
         StrategicClassificationResolver.Apply(entity, strategicClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification);
         _context.OpmsTargetWards.RemoveRange(entity.Wards);
         _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
         _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
@@ -565,6 +572,8 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster)
             .Include(item => item.PerformanceObjectiveReference)
+            .Include(item => item.BudgetTypeMaster)
+            .Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;

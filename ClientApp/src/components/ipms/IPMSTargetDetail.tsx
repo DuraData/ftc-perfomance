@@ -142,6 +142,11 @@ export function GeneralInfoTab({ target }: { target: IPMSTarget }) {
         </FormRow>
       </FormSection>
 
+      <FormSection title="Budget Information">
+        <Input label="Budget Type" value={target.budgetTypeName ?? ''} placeholder="No Budget Type" disabled />
+        <div className="mt-3 grid gap-2 md:grid-cols-2">{(target.budgetSources ?? []).map(source => <Card key={source.publicId} className="p-3"><p className="font-medium">{source.code ? `${source.code} · ` : ''}{source.name}</p><p className="text-xs text-secondary-500">{source.amount == null ? 'No source amount specified' : `Amount: ${source.amount.toLocaleString()}`}</p></Card>)}{!(target.budgetSources ?? []).length && <p className="text-sm text-secondary-500">No budget sources selected.</p>}</div>
+      </FormSection>
+
     </div>
   );
 }

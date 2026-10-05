@@ -181,7 +181,11 @@ public record SaveOpmsTargetRequest(
     public Guid? StrategicInterventionPublicId { get; init; }
     public Guid? StrategicObjectivePublicId { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
+    public Guid? BudgetTypePublicId { get; init; }
+    public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
 }
+
+public sealed record SaveKpiBudgetSourceRequest(Guid BudgetSourcePublicId, decimal? Amount);
 
 public record SaveIpmsTargetRequest(
     string? SourceTemplateId,
@@ -223,6 +227,8 @@ public record SaveIpmsTargetRequest(
     public Guid? StrategicInterventionPublicId { get; init; }
     public Guid? StrategicObjectivePublicId { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
+    public Guid? BudgetTypePublicId { get; init; }
+    public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
 }
 
 public record SaveTargetPeriodValueRequest(

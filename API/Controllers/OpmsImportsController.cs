@@ -40,7 +40,8 @@ public sealed class OpmsImportsController(
             .Include(x => x.NationalKpaReference).Include(x => x.MunicipalKpaReference)
             .Include(x => x.BackToBasicsPillarReference).Include(x => x.StrategicGoalMaster)
             .Include(x => x.StrategicInterventionReference).Include(x => x.StrategicObjectiveMaster)
-            .Include(x => x.PerformanceObjectiveReference)
+            .Include(x => x.PerformanceObjectiveReference).Include(x => x.BudgetTypeMaster)
+            .Include(x => x.GovernedBudgetSources).ThenInclude(x => x.BudgetSource)
             .Where(x => x.SdbipLayerId == layer.Id && !x.IsWithdrawn);
         if (!scope.Unrestricted)
             query = query.Where(x => (x.DepartmentId.HasValue && scope.DepartmentIds.Contains(x.DepartmentId.Value)) ||
@@ -63,6 +64,9 @@ public sealed class OpmsImportsController(
                 target.StrategicInterventionReference?.Code ?? target.StrategicInterventionReference?.Name,
                 target.StrategicObjectiveMaster?.Code ?? target.StrategicObjectiveMaster?.Name,
                 target.PerformanceObjectiveReference?.Code ?? target.PerformanceObjectiveReference?.Name,
+                target.BudgetTypeMaster?.Code ?? target.BudgetTypeMaster?.Name,
+                string.Join(';', target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.Code)
+                    .Select(item => item.BudgetSource.Code + (item.Amount.HasValue ? ":" + item.Amount.Value.ToString(CultureInfo.InvariantCulture) : string.Empty))),
                 target.Baseline.ToString(CultureInfo.InvariantCulture), target.Weight.ToString(CultureInfo.InvariantCulture), target.KpiType, target.IndicatorType };
             foreach (var periodType in new[] { ReportingPeriodType.Quarter1, ReportingPeriodType.Quarter2, ReportingPeriodType.MidTerm, ReportingPeriodType.Quarter3, ReportingPeriodType.Quarter4, ReportingPeriodType.Annual })
             {
@@ -167,6 +171,10 @@ public sealed class OpmsImportsController(
                     dto.ClassificationSelection);
                 if (!classification.IsValid) throw new DbUpdateConcurrencyException(classification.Error ?? "Canonical strategic classification validation failed.");
                 StrategicClassificationResolver.Apply(target, classification);
+                var budgetClassification = await BudgetClassificationResolver.ResolveAsync(context, batch.SdbipLayer.MunicipalityFinancialYearId,
+                    dto.BudgetTypePublicId, dto.BudgetSources);
+                if (!budgetClassification.IsValid) throw new DbUpdateConcurrencyException(budgetClassification.Error ?? "Canonical budget classification validation failed.");
+                BudgetClassificationResolver.Apply(target, budgetClassification);
                 context.OpmsTargets.Add(target);
                 var plan = await TargetPeriodCutover.BuildPlanAsync(context, unitEngine, batch.MunicipalityId, dto.PeriodId, dto.PeriodTargets);
                 if (!plan.IsValid) throw new DbUpdateConcurrencyException(plan.Error ?? "Canonical period validation failed.");
@@ -231,7 +239,8 @@ public sealed class OpmsImportsController(
         var departments = await context.Departments.Where(x => x.MunicipalityId == layer.MunicipalityId && x.IsActive).ToArrayAsync();
         var units = await context.Units.Where(x => x.MunicipalityId == layer.MunicipalityId && x.IsActive).ToArrayAsync();
         var period = await context.Periods.SingleOrDefaultAsync(x => x.IsActive && x.FiscalYear == layer.MunicipalityFinancialYear.FinancialYear.Code);
-        var existing = await context.OpmsTargets.Where(x => x.MunicipalityId == layer.MunicipalityId && x.SdbipLayerId == layer.Id).ToArrayAsync();
+        var existing = await context.OpmsTargets.Include(x => x.GovernedBudgetSources)
+            .Where(x => x.MunicipalityId == layer.MunicipalityId && x.SdbipLayerId == layer.Id).ToArrayAsync();
         var nationalKpas = await context.NationalKpas.AsNoTracking().ToArrayAsync();
         var municipalKpas = await context.MunicipalKpas.AsNoTracking().Where(x => x.MunicipalityId == layer.MunicipalityId).ToArrayAsync();
         var backToBasicsPillars = await context.BackToBasicsPillars.AsNoTracking().ToArrayAsync();
@@ -239,6 +248,8 @@ public sealed class OpmsImportsController(
         var strategicInterventions = await context.StrategicInterventions.AsNoTracking().Where(x => x.MunicipalityId == layer.MunicipalityId).ToArrayAsync();
         var strategicObjectives = await context.MunicipalStrategicObjectives.AsNoTracking().Where(x => x.MunicipalityId == layer.MunicipalityId).ToArrayAsync();
         var performanceObjectives = await context.PerformanceObjectives.AsNoTracking().Where(x => x.MunicipalityId == layer.MunicipalityId).ToArrayAsync();
+        var budgetTypes = await context.GovernedBudgetTypes.AsNoTracking().Where(x => x.MunicipalityId == layer.MunicipalityId).ToArrayAsync();
+        var budgetSources = await context.GovernedBudgetSources.AsNoTracking().Where(x => x.MunicipalityId == layer.MunicipalityId).ToArrayAsync();
         foreach (var source in rows.OrderBy(x => x.SourceRowNumber))
         {
             OpmsImportRow Invalid(string code, string field, string? value, string message, string? periodName = null) => new()
@@ -280,6 +291,19 @@ public sealed class OpmsImportsController(
                 match?.StrategicInterventionId, match?.StrategicObjectiveMasterId, match?.PerformanceObjectiveId);
             if (!classification.IsValid)
             { result.Add(Invalid("INVALID_STRATEGIC_CLASSIFICATION", "StrategicClassification", null, classification.Error!)); continue; }
+            var budgetTypeReference = string.IsNullOrWhiteSpace(source.BudgetType)
+                ? new ReferenceMatch(null, null, nameof(source.BudgetType), source.BudgetType, null)
+                : MatchReference(source.BudgetType, budgetTypes, item => item.Code, item => item.Name, item => item.PublicId, nameof(source.BudgetType), "Budget Type");
+            if (budgetTypeReference.ErrorCode != null)
+            { result.Add(Invalid(budgetTypeReference.ErrorCode, budgetTypeReference.Field, budgetTypeReference.Value, budgetTypeReference.ErrorMessage!)); continue; }
+            var parsedBudgetSources = ParseBudgetSources(source.BudgetSources, budgetSources);
+            if (parsedBudgetSources.Error != null)
+            { result.Add(Invalid("INVALID_BUDGET_SOURCES", nameof(source.BudgetSources), source.BudgetSources, parsedBudgetSources.Error)); continue; }
+            var budgetClassification = await BudgetClassificationResolver.ResolveAsync(context, layer.MunicipalityFinancialYearId,
+                budgetTypeReference.PublicId, parsedBudgetSources.Values, match?.BudgetTypeMasterId,
+                match?.GovernedBudgetSources.Where(item => item.IsActive).Select(item => item.BudgetSourceId).ToArray());
+            if (!budgetClassification.IsValid)
+            { result.Add(Invalid("INVALID_BUDGET_CLASSIFICATION", "BudgetClassification", null, budgetClassification.Error!)); continue; }
             var definitionError = OpmsTargetDefinitionPolicy.Validate(indicator, source.OrderNumber, source.TargetName, source.KpiDescription,
                 classification.NationalKpa!.Name, classification.MunicipalKpa!.Name, classification.PerformanceObjective!.Name, source.Weight, source.KpiType, source.IndicatorType);
             if (definitionError != null) { result.Add(Invalid("INVALID_KPI", "KPI", indicator, definitionError)); continue; }
@@ -287,7 +311,7 @@ public sealed class OpmsImportsController(
             if (!plan.IsValid) { result.Add(Invalid("INVALID_PERIOD_TARGET", "PeriodTargets", null, plan.Error!, DetectPeriod(plan.Error!))); continue; }
             var normalized = new NormalizedRow(indicator, source.OrderNumber, source.TargetName.Trim(), source.KpiDescription.Trim(), department.Id, unit?.Id,
                 selection, classification.NationalKpa!.Name, classification.MunicipalKpa!.Name, classification.PerformanceObjective!.Name, source.Baseline, source.Weight,
-                source.KpiType.Trim(), source.IndicatorType.Trim(), period.Id, source.PeriodTargets);
+                source.KpiType.Trim(), source.IndicatorType.Trim(), budgetTypeReference.PublicId, parsedBudgetSources.Values, period.Id, source.PeriodTargets);
             var normalizedJson = JsonSerializer.Serialize(normalized, JsonOptions);
             var status = OpmsImportRowStatus.New;
             if (match != null)
@@ -297,6 +321,7 @@ public sealed class OpmsImportsController(
                     match.BackToBasicsPillarId != classification.BackToBasicsPillar!.Id || match.StrategicGoalMasterId != classification.StrategicGoal!.Id ||
                     match.StrategicInterventionId != classification.StrategicIntervention!.Id || match.StrategicObjectiveMasterId != classification.StrategicObjective!.Id ||
                     match.PerformanceObjectiveId != classification.PerformanceObjective!.Id ||
+                    match.BudgetTypeMasterId != budgetClassification.BudgetType?.Id || !SameBudgetSources(match.GovernedBudgetSources, budgetClassification.BudgetSources) ||
                     match.Baseline != normalized.Baseline || match.Weight != normalized.Weight || match.KpiType != normalized.KpiType || match.IndicatorType != normalized.IndicatorType)
                 { result.Add(Invalid("ORIGINAL_FIELD_CHANGE", "KPI", indicator, "The import attempts to change governed original fields. Only KPI number, name, wording, order, Q3, Q4 and Annual targets/budgets may be revised.")); continue; }
                 var currentPeriods = await context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).Where(x => x.OpmsTargetId == match.Id && x.IsActive).ToArrayAsync();
@@ -341,6 +366,36 @@ public sealed class OpmsImportsController(
             _ => new(null, "CLASSIFICATION_AMBIGUOUS", field, normalized, $"{label} matches more than one governed master. Supply its unique code.")
         };
     }
+    private static (SaveKpiBudgetSourceRequest[] Values, string? Error) ParseBudgetSources(string? value, IEnumerable<GovernedBudgetSource> masters)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return ([], null);
+        var result = new List<SaveKpiBudgetSourceRequest>();
+        var tokens = value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length > 50) return ([], "No more than 50 Budget Sources may be supplied per KPI.");
+        foreach (var token in tokens)
+        {
+            var reference = token; decimal? amount = null;
+            var separator = token.LastIndexOf(':');
+            if (separator >= 0)
+            {
+                reference = token[..separator].Trim();
+                var amountText = token[(separator + 1)..].Trim();
+                if (!decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) || parsed < 0)
+                    return ([], $"Budget Source '{token}' has an invalid amount. Use CODE[:AMOUNT] entries separated by semicolons.");
+                amount = parsed;
+            }
+            var match = MatchReference(reference, masters, item => item.Code, item => item.Name, item => item.PublicId, "BudgetSources", "Budget Source");
+            if (match.ErrorCode != null) return ([], match.ErrorMessage);
+            result.Add(new SaveKpiBudgetSourceRequest(match.PublicId!.Value, amount));
+        }
+        return (result.ToArray(), null);
+    }
+    private static bool SameBudgetSources(IEnumerable<OpmsKpiBudgetSource> existing, IEnumerable<ResolvedBudgetSource> desired)
+    {
+        var current = existing.Where(item => item.IsActive).Select(item => (item.BudgetSourceId, item.Amount)).OrderBy(item => item.BudgetSourceId).ToArray();
+        var requested = desired.Select(item => (BudgetSourceId: item.Source.Id, item.Amount)).OrderBy(item => item.BudgetSourceId).ToArray();
+        return current.SequenceEqual(requested);
+    }
     private static string? DetectPeriod(string error) => Enum.GetNames<ReportingPeriodType>().FirstOrDefault(error.Contains);
     private Task<ApplicationUser?> CurrentUser() { var id = PerformanceApiSupport.GetCurrentUserId(User); return string.IsNullOrWhiteSpace(id) ? Task.FromResult<ApplicationUser?>(null) : userManager.FindByIdAsync(id); }
     private static bool VersionsEqual(byte[]? a, byte[]? b) => a == null ? b == null : b != null && a.SequenceEqual(b);
@@ -350,12 +405,13 @@ public sealed class OpmsImportsController(
     private sealed record ReferenceMatch(Guid? PublicId, string? ErrorCode, string Field, string? Value, string? ErrorMessage);
     private sealed record NormalizedRow(string IndicatorNumber, int OrderNumber, string TargetName, string KpiDescription, int DepartmentId, int? UnitId,
         StrategicClassificationSelection ClassificationSelection, string NationalKpa, string MunicipalKpa, string PerformanceObjective,
-        decimal Baseline, decimal Weight, string KpiType, string IndicatorType, int PeriodId, SaveTargetPeriodValueRequest[] PeriodTargets);
+        decimal Baseline, decimal Weight, string KpiType, string IndicatorType, Guid? BudgetTypePublicId,
+        SaveKpiBudgetSourceRequest[] BudgetSources, int PeriodId, SaveTargetPeriodValueRequest[] PeriodTargets);
 }
 
 internal static class OpmsImportCsv
 {
-    internal const string WideHeader = "EXISTING_INDICATOR_NUMBER,INDICATOR_NUMBER,ORDER_NUMBER,TARGET_NAME,KPI_DESCRIPTION,DEPARTMENT_CODE,UNIT_CODE,NATIONAL_KPA,MUNICIPAL_KPA,BACK_TO_BASICS_PILLAR,STRATEGIC_GOAL,STRATEGIC_INTERVENTION,STRATEGIC_OBJECTIVE,PERFORMANCE_OBJECTIVE,BASELINE,WEIGHT,KPI_TYPE,INDICATOR_TYPE,Q1_TARGET,Q1_UNIT,Q1_DIRECTION,Q1_BUDGET,Q1_DESCRIPTION,Q2_TARGET,Q2_UNIT,Q2_DIRECTION,Q2_BUDGET,Q2_DESCRIPTION,MID_TERM_TARGET,MID_TERM_UNIT,MID_TERM_DIRECTION,MID_TERM_BUDGET,MID_TERM_DESCRIPTION,Q3_TARGET,Q3_UNIT,Q3_DIRECTION,Q3_BUDGET,Q3_DESCRIPTION,Q4_TARGET,Q4_UNIT,Q4_DIRECTION,Q4_BUDGET,Q4_DESCRIPTION,ANNUAL_TARGET,ANNUAL_UNIT,ANNUAL_DIRECTION,ANNUAL_BUDGET,ANNUAL_DESCRIPTION";
+    internal const string WideHeader = "EXISTING_INDICATOR_NUMBER,INDICATOR_NUMBER,ORDER_NUMBER,TARGET_NAME,KPI_DESCRIPTION,DEPARTMENT_CODE,UNIT_CODE,NATIONAL_KPA,MUNICIPAL_KPA,BACK_TO_BASICS_PILLAR,STRATEGIC_GOAL,STRATEGIC_INTERVENTION,STRATEGIC_OBJECTIVE,PERFORMANCE_OBJECTIVE,BUDGET_TYPE,BUDGET_SOURCES,BASELINE,WEIGHT,KPI_TYPE,INDICATOR_TYPE,Q1_TARGET,Q1_UNIT,Q1_DIRECTION,Q1_BUDGET,Q1_DESCRIPTION,Q2_TARGET,Q2_UNIT,Q2_DIRECTION,Q2_BUDGET,Q2_DESCRIPTION,MID_TERM_TARGET,MID_TERM_UNIT,MID_TERM_DIRECTION,MID_TERM_BUDGET,MID_TERM_DESCRIPTION,Q3_TARGET,Q3_UNIT,Q3_DIRECTION,Q3_BUDGET,Q3_DESCRIPTION,Q4_TARGET,Q4_UNIT,Q4_DIRECTION,Q4_BUDGET,Q4_DESCRIPTION,ANNUAL_TARGET,ANNUAL_UNIT,ANNUAL_DIRECTION,ANNUAL_BUDGET,ANNUAL_DESCRIPTION";
     internal static string ToTemplateUnit(PerformanceUnitKind value) => ToSnakeCase(value.ToString());
     internal static string ToTemplateDirection(PerformanceDirection value) => ToSnakeCase(value.ToString());
     private static string ToSnakeCase(string value) => string.Concat(value.Select((character, index) => index > 0 && char.IsUpper(character) ? "_" + character : character.ToString())).ToUpperInvariant();

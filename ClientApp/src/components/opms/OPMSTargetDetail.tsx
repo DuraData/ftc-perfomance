@@ -243,18 +243,8 @@ function BudgetTab({ target }: { target: OPMSTarget }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Budget Information">
-        <FormRow cols={2}>
-          <Select
-            label="Budget Source"
-            options={[{ value: target.budgetSource.id, label: target.budgetSource.name }]}
-            defaultValue={target.budgetSource.id}
-          />
-          <Select
-            label="Budget Type"
-            options={[{ value: target.budgetType.id, label: target.budgetType.name }]}
-            defaultValue={target.budgetType.id}
-          />
-        </FormRow>
+        <Select label="Budget Type" options={target.budgetTypePublicId ? [{ value: target.budgetTypePublicId, label: target.budgetTypeName ?? target.budgetType.name }] : []} defaultValue={target.budgetTypePublicId} placeholder="No Budget Type" />
+        <div className="mt-3 grid gap-2 md:grid-cols-2">{(target.budgetSources ?? []).map(source => <Card key={source.publicId} className="p-3"><p className="font-medium">{source.code ? `${source.code} · ` : ''}{source.name}</p><p className="text-xs text-secondary-500">{source.amount == null ? 'No source amount specified' : `Amount: ${source.amount.toLocaleString()}`}</p></Card>)}{!(target.budgetSources ?? []).length && <p className="text-sm text-secondary-500">No budget sources selected.</p>}</div>
       </FormSection>
 
       <FormSection title="Quarterly Budget Allocation">

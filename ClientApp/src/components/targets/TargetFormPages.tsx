@@ -158,8 +158,10 @@ type OpmsFormState = {
   baselineDescription: string;
   annualTarget: string;
   annualTargetDescription: string;
-  budgetSourceId: string;
-  budgetTypeId: string;
+  budgetTypePublicId: string;
+  budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>;
+  budgetTypeHint: string;
+  budgetSourceHint: string;
   unitOfMeasureId: string;
   weight: string;
   kpiType: string;
@@ -232,8 +234,10 @@ type IpmsFormState = {
   baseline: string;
   annualTarget: string;
   annualTargetDescription: string;
-  budgetSourceId: string;
-  budgetTypeId: string;
+  budgetTypePublicId: string;
+  budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>;
+  budgetTypeHint: string;
+  budgetSourceHint: string;
   unitOfMeasureId: string;
   weight: string;
   kpiType: string;
@@ -329,8 +333,10 @@ function createDefaultOpmsFormState(): OpmsFormState {
     baselineDescription: '',
     annualTarget: '0',
     annualTargetDescription: '',
-    budgetSourceId: '',
-    budgetTypeId: '',
+    budgetTypePublicId: '',
+    budgetSources: [],
+    budgetTypeHint: '',
+    budgetSourceHint: '',
     unitOfMeasureId: '',
     weight: '0',
     kpiType: '',
@@ -405,8 +411,10 @@ function createDefaultIpmsFormState(): IpmsFormState {
     baseline: '0',
     annualTarget: '0',
     annualTargetDescription: '',
-    budgetSourceId: '',
-    budgetTypeId: '',
+    budgetTypePublicId: '',
+    budgetSources: [],
+    budgetTypeHint: '',
+    budgetSourceHint: '',
     unitOfMeasureId: '',
     weight: '0',
     kpiType: '',
@@ -483,8 +491,10 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     baselineDescription: target.baselineDescription ?? '',
     annualTarget: annual?.targetValue ?? '',
     annualTargetDescription: annual?.description ?? '',
-    budgetSourceId: target.budgetSource.id,
-    budgetTypeId: target.budgetType.id,
+    budgetTypePublicId: target.budgetTypePublicId ?? '',
+    budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount == null ? '' : String(item.amount) })),
+    budgetTypeHint: '',
+    budgetSourceHint: '',
     unitOfMeasureId: target.unitOfMeasure.id,
     weight: String(target.weight),
     kpiType: target.kpiType,
@@ -562,8 +572,10 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     baseline: String(target.baseline),
     annualTarget: annual?.targetValue ?? '',
     annualTargetDescription: annual?.description ?? '',
-    budgetSourceId: target.budgetSource.id,
-    budgetTypeId: target.budgetType.id,
+    budgetTypePublicId: target.budgetTypePublicId ?? '',
+    budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount == null ? '' : String(item.amount) })),
+    budgetTypeHint: '',
+    budgetSourceHint: '',
     unitOfMeasureId: target.unitOfMeasure.id,
     weight: String(target.weight),
     kpiType: target.kpiType,
@@ -623,8 +635,8 @@ function opmsFormFromTemplate(template: OpmsTargetTemplate): OpmsFormState {
     baseline: String(template.baseline),
     annualTarget: String(template.annualTarget),
     annualTargetDescription: template.annualTargetDescription,
-    budgetSourceId: template.budgetSource?.id ?? defaults.budgetSourceId,
-    budgetTypeId: template.budgetType?.id ?? defaults.budgetTypeId,
+    budgetTypeHint: template.budgetType?.code || template.budgetType?.name || '',
+    budgetSourceHint: template.budgetSource?.code || template.budgetSource?.name || '',
     unitOfMeasureId: template.unitOfMeasure.id,
     weight: String(template.weight),
     kpiType: template.kpiType,
@@ -744,8 +756,8 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     kpiDescription: form.kpiDescription,
     baseline: Number(form.baseline || 0),
     baselineDescription: form.baselineDescription || null,
-    budgetSourceId: form.budgetSourceId ? Number(form.budgetSourceId) : null,
-    budgetTypeId: form.budgetTypeId ? Number(form.budgetTypeId) : null,
+    budgetTypePublicId: form.budgetTypePublicId || null,
+    budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount === '' ? null : Number(item.amount) })),
     unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
@@ -788,8 +800,8 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     targetName: form.targetName,
     kpiDescription: form.kpiDescription,
     baseline: Number(form.baseline || 0),
-    budgetSourceId: form.budgetSourceId ? Number(form.budgetSourceId) : null,
-    budgetTypeId: form.budgetTypeId ? Number(form.budgetTypeId) : null,
+    budgetTypePublicId: form.budgetTypePublicId || null,
+    budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount === '' ? null : Number(item.amount) })),
     unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
@@ -822,13 +834,12 @@ function validateOpmsForm(form: OpmsFormState) {
     { label: 'Weight %', value: form.weight },
     { label: 'Unit of Measure', value: form.unitOfMeasureId },
   ]);
-
-
+  errors.push(...validateBudgetSources(form.budgetSources));
   return errors;
 }
 
 function validateIpmsForm(form: IpmsFormState) {
-  return validateRequiredFields([
+  const errors = validateRequiredFields([
     { label: 'Municipality Financial Year', value: form.municipalityFinancialYearPublicId },
     { label: 'Period', value: form.periodId },
     { label: 'Department', value: form.departmentId },
@@ -846,6 +857,16 @@ function validateIpmsForm(form: IpmsFormState) {
     { label: 'Weight %', value: form.weight },
     { label: 'Unit of Measure', value: form.unitOfMeasureId },
   ]);
+  errors.push(...validateBudgetSources(form.budgetSources));
+  return errors;
+}
+
+function validateBudgetSources(sources: Array<{ budgetSourcePublicId: string; amount: string }>) {
+  const selected = sources.filter(item => item.budgetSourcePublicId);
+  const errors: string[] = [];
+  if (new Set(selected.map(item => item.budgetSourcePublicId)).size !== selected.length) errors.push('Each Budget Source may be selected only once.');
+  if (selected.some(item => item.amount !== '' && (!Number.isFinite(Number(item.amount)) || Number(item.amount) < 0))) errors.push('Budget Source amounts must be non-negative numbers.');
+  return errors;
 }
 
 function useStrategicCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string) {
@@ -887,6 +908,30 @@ function strategicOptions(items: StrategicCatalogueItemDto[] = [], selectedId = 
   return [{ value: '', label: 'Select one' }, ...options];
 }
 
+function BudgetSourceEditor({ value, options, onChange }: {
+  value: Array<{ budgetSourcePublicId: string; amount: string }>;
+  options: StrategicCatalogueItemDto[];
+  onChange: (value: Array<{ budgetSourcePublicId: string; amount: string }>) => void;
+}) {
+  return <div className="space-y-2">
+    <div className="flex items-center justify-between"><p className="text-sm font-medium">Budget Sources</p><Button size="sm" variant="outline" onClick={() => onChange([...value, { budgetSourcePublicId: '', amount: '' }])}>Add source</Button></div>
+    {value.map((item, index) => <div key={`${index}-${item.budgetSourcePublicId}`} className="grid gap-2 md:grid-cols-[1fr_0.55fr_auto]">
+      <Select label={`Budget Source ${index + 1}`} value={item.budgetSourcePublicId} options={strategicOptions(options, item.budgetSourcePublicId)} onChange={event => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, budgetSourcePublicId: event.target.value } : row))} />
+      <Input label="Amount (optional)" type="number" min="0" step="0.01" value={item.amount} onChange={event => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
+      <div className="self-end"><Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, rowIndex) => rowIndex !== index))}>Remove</Button></div>
+    </div>)}
+    {!value.length && <p className="text-xs text-secondary-500">No budget source selected.</p>}
+  </div>;
+}
+
+function resolveBudgetTemplateHints<T extends { budgetTypePublicId: string; budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>; budgetTypeHint: string; budgetSourceHint: string }>(form: T, catalogue: StrategicClassificationCatalogueDto): T {
+  if (!form.budgetTypeHint && !form.budgetSourceHint) return form;
+  const matches = (items: StrategicCatalogueItemDto[] | undefined, hint: string) => items?.find(item => item.code?.toLowerCase() === hint.toLowerCase() || item.name.toLowerCase() === hint.toLowerCase());
+  const type = matches(catalogue.budgetTypes, form.budgetTypeHint);
+  const source = matches(catalogue.budgetSources, form.budgetSourceHint);
+  return { ...form, budgetTypePublicId: type?.publicId ?? form.budgetTypePublicId, budgetSources: source && form.budgetSources.length === 0 ? [{ budgetSourcePublicId: source.publicId, amount: '' }] : form.budgetSources, budgetTypeHint: '', budgetSourceHint: '' };
+}
+
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
   const referenceData = usePerformanceReferenceData(true);
@@ -903,6 +948,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
   const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
   const { catalogue, catalogueError } = useStrategicCatalogue('opms', form.municipalityFinancialYearPublicId);
+  useEffect(() => { if (catalogue) setForm(current => resolveBudgetTemplateHints(current, catalogue)); }, [catalogue]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1059,7 +1105,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [] }))} />
               <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} municipalityFinancialYearId={form.municipalityFinancialYearPublicId || undefined} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={(value, option) => setForm(prev => ({ ...prev, sdbipLayerPublicId: value, municipalityFinancialYearPublicId: (option as SdbipLayerMasterDto | undefined)?.municipalityFinancialYearPublicId ?? prev.municipalityFinancialYearPublicId }))} />
             </FormRow>
             <FormRow cols={2}>
@@ -1249,10 +1295,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
           </FormPanel>
 
           <FormPanel title="Budget And References" description="Capture budget linkage, identifiers, and external references." icon={<Building2 className="h-5 w-5" />}>
-            <FormRow cols={2}>
-              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={lookups.budgetSources.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={lookups.budgetTypes.map(item => ({ value: String(item.id), label: item.name }))} />
-            </FormRow>
+            <Select label="Budget Type" value={form.budgetTypePublicId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypePublicId: event.target.value }))} options={strategicOptions(catalogue?.budgetTypes, form.budgetTypePublicId, existingTarget?.budgetTypeName)} />
+            <BudgetSourceEditor value={form.budgetSources} options={catalogue?.budgetSources ?? []} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
               <Input label="Internal Reference" value={form.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />
@@ -1492,6 +1536,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
   const { catalogue, catalogueError } = useStrategicCatalogue('ipms', form.municipalityFinancialYearPublicId);
+  useEffect(() => { if (catalogue) setForm(current => resolveBudgetTemplateHints(current, catalogue)); }, [catalogue]);
   const [existingTarget, setExistingTarget] = useState<IPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -1632,7 +1677,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Linked OPMS" value={linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not linked')} readOnly />
             </FormRow>
             <FormRow cols={3}>
-              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [] }))} />
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
               <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setOrganizationLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
             </FormRow>
@@ -1701,9 +1746,9 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={lookups.budgetSources.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={lookups.budgetTypes.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Budget Type" value={form.budgetTypePublicId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypePublicId: event.target.value }))} options={strategicOptions(catalogue?.budgetTypes, form.budgetTypePublicId, existingTarget?.budgetTypeName)} />
             </FormRow>
+            <BudgetSourceEditor value={form.budgetSources} options={catalogue?.budgetSources ?? []} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
           </FormPanel>
 
           <FormPanel title="References And Review" description="Maintain linkage and quick review context on the same page." icon={<Building2 className="h-5 w-5" />}>

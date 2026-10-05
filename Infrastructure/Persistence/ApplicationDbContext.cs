@@ -158,6 +158,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureGlobalStrategicReferences(builder);
         ConfigureStrategicPlanningMasters(builder);
         ConfigurePerformanceTargetStrategicClassifications(builder);
+        ConfigureGovernedBudgetClassifications(builder);
 
         builder.Entity<Municipality>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<Municipality>().HasIndex(item => item.Code).IsUnique();

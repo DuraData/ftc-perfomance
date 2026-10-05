@@ -13,6 +13,7 @@ public sealed class OpmsImportCsvTests
         columns.Should().OnlyHaveUniqueItems();
         columns.Should().Contain(["Q1_TARGET", "Q2_TARGET", "MID_TERM_TARGET", "Q3_TARGET", "Q4_TARGET", "ANNUAL_TARGET"]);
         columns.Should().Contain(["EXISTING_INDICATOR_NUMBER", "DEPARTMENT_CODE", "UNIT_CODE"]);
+        columns.Should().Contain(["BUDGET_TYPE", "BUDGET_SOURCES"]);
     }
 
     [Theory]

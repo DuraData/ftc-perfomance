@@ -36,6 +36,12 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     [HttpGet("performance-objectives/page"), Authorize(Policy = "Permission:PERFORMANCE_OBJECTIVE.READ")]
     public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetPerformanceObjectives([FromQuery] StrategicPlanningPageRequest request) => Page(context.PerformanceObjectives, request);
 
+    [HttpGet("budget-sources/page"), Authorize(Policy = "Permission:BUDGET_SOURCE.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetBudgetSources([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedBudgetSources, request);
+
+    [HttpGet("budget-types/page"), Authorize(Policy = "Permission:BUDGET_TYPE.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetBudgetTypes([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedBudgetTypes, request);
+
     [HttpPost("municipal-kpas"), Authorize(Policy = "Permission:MUNICIPAL_KPA.CREATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateMunicipalKpa(SaveStrategicPlanningMasterRequest request) => Create(context.MunicipalKpas, () => new MunicipalKpa(), nameof(MunicipalKpa), request);
 
@@ -51,6 +57,12 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     [HttpPost("performance-objectives"), Authorize(Policy = "Permission:PERFORMANCE_OBJECTIVE.CREATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreatePerformanceObjective(SaveStrategicPlanningMasterRequest request) => Create(context.PerformanceObjectives, () => new PerformanceObjective(), nameof(PerformanceObjective), request);
 
+    [HttpPost("budget-sources"), Authorize(Policy = "Permission:BUDGET_SOURCE.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateBudgetSource(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedBudgetSources, () => new GovernedBudgetSource(), nameof(GovernedBudgetSource), request);
+
+    [HttpPost("budget-types"), Authorize(Policy = "Permission:BUDGET_TYPE.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateBudgetType(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedBudgetTypes, () => new GovernedBudgetType(), nameof(GovernedBudgetType), request);
+
     [HttpPut("municipal-kpas/{publicId:guid}"), Authorize(Policy = "Permission:MUNICIPAL_KPA.UPDATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateMunicipalKpa(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.MunicipalKpas, publicId, nameof(MunicipalKpa), request);
 
@@ -65,6 +77,12 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
 
     [HttpPut("performance-objectives/{publicId:guid}"), Authorize(Policy = "Permission:PERFORMANCE_OBJECTIVE.UPDATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdatePerformanceObjective(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.PerformanceObjectives, publicId, nameof(PerformanceObjective), request);
+
+    [HttpPut("budget-sources/{publicId:guid}"), Authorize(Policy = "Permission:BUDGET_SOURCE.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateBudgetSource(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedBudgetSources, publicId, nameof(GovernedBudgetSource), request);
+
+    [HttpPut("budget-types/{publicId:guid}"), Authorize(Policy = "Permission:BUDGET_TYPE.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateBudgetType(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedBudgetTypes, publicId, nameof(GovernedBudgetType), request);
 
     [HttpGet("relationships"), Authorize(Policy = "Permission:STRATEGIC_HIERARCHY.READ")]
     public async Task<ActionResult<ApiResponse<StrategicPlanningRelationshipDto[]>>> GetRelationships([FromQuery] bool includeInactive = false)
@@ -172,13 +190,14 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         var kpas = await CatalogueRows(context.MunicipalKpas, year); var goals = await CatalogueRows(context.MunicipalStrategicGoals, year);
         var interventions = await CatalogueRows(context.StrategicInterventions, year); var objectives = await CatalogueRows(context.MunicipalStrategicObjectives, year);
         var performanceObjectives = await CatalogueRows(context.PerformanceObjectives, year);
+        var budgetSources = await CatalogueRows(context.GovernedBudgetSources, year); var budgetTypes = await CatalogueRows(context.GovernedBudgetTypes, year);
         var relationships = new List<StrategicCatalogueRelationshipDto>();
         relationships.AddRange(await context.MunicipalKpaStrategicGoals.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("municipal-kpa-strategic-goal", item.MunicipalKpa.PublicId, item.StrategicGoal.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicGoalInterventions.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-intervention", item.StrategicGoal.PublicId, item.StrategicIntervention.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicGoalObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-objective", item.StrategicGoal.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicInterventionObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-intervention-objective", item.StrategicIntervention.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicObjectivePerformanceObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-objective-performance-objective", item.StrategicObjective.PublicId, item.PerformanceObjective.PublicId)).ToArrayAsync());
-        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, relationships.ToArray())));
+        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, budgetSources, budgetTypes, relationships.ToArray())));
     }
 
     private static Task<StrategicCatalogueItemDto[]> CatalogueRows<TEntity>(DbSet<TEntity> set, MunicipalityFinancialYear year) where TEntity : StrategicPlanningMasterBase =>
@@ -315,4 +334,6 @@ public sealed record StrategicClassificationCatalogueDto(
     StrategicCatalogueItemDto[] StrategicInterventions,
     StrategicCatalogueItemDto[] StrategicObjectives,
     StrategicCatalogueItemDto[] PerformanceObjectives,
+    StrategicCatalogueItemDto[] BudgetSources,
+    StrategicCatalogueItemDto[] BudgetTypes,
     StrategicCatalogueRelationshipDto[] Relationships);

@@ -35,7 +35,6 @@ const IndustriesPage = lazy(() => import('./components/admin/GenericLookupPages'
 const ContactsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ContactsPage })));
 const ResumesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ResumesPage })));
 const OccupationsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OccupationsPage })));
-const BudgetTypesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.BudgetTypesPage })));
 const UnitOfMeasurePage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.UnitOfMeasurePage })));
 const DepartmentalObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.DepartmentalObjectivesPage })));
 const OutputsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OutputsPage })));
@@ -251,7 +250,9 @@ function AppContent() {
       case '/system-administration/role-permission-crud-audit':
         return <RolePermissionCrudAuditPage />;
       case '/admin/budget-types':
-        return <BudgetTypesPage />;
+        return <StrategicPlanningAdministration kind="budget-types" />;
+      case '/admin/budget-sources':
+        return <StrategicPlanningAdministration kind="budget-sources" />;
       case '/admin/strategic-goals':
         return <StrategicPlanningAdministration kind="strategic-goals" />;
       case '/admin/strategic-interventions':

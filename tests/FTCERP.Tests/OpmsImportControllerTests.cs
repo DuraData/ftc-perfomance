@@ -65,6 +65,29 @@ public sealed class OpmsImportControllerTests
     }
 
     [Fact]
+    public async Task Import_resolves_and_persists_governed_budget_type_and_multiple_sources()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context); var controller = Controller(context, setup);
+        var row = Row(2, "KPI-BUDGET", setup.Department.Code) with
+        {
+            BudgetType = setup.BudgetType.Code,
+            BudgetSources = $"{setup.BudgetSourceA.Code}:125.50;{setup.BudgetSourceB.Code}"
+        };
+        var staged = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "budget.csv", [row])));
+        staged.InvalidRows.Should().Be(0);
+        _ = Payload(await controller.Commit(staged.PublicId, new CommitOpmsImportRequest("Council approved budget import", null, null, staged.RowVersion)));
+
+        var target = await context.OpmsTargets.Include(item => item.GovernedBudgetSources).SingleAsync();
+        target.BudgetTypeMasterId.Should().Be(setup.BudgetType.Id);
+        target.BudgetSourceId.Should().BeNull(); target.BudgetTypeId.Should().BeNull();
+        target.GovernedBudgetSources.Should().HaveCount(2);
+        target.GovernedBudgetSources.Should().Contain(item => item.BudgetSourceId == setup.BudgetSourceA.Id && item.Amount == 125.50m);
+        target.GovernedBudgetSources.Should().Contain(item => item.BudgetSourceId == setup.BudgetSourceB.Id && item.Amount == null);
+    }
+
+    [Fact]
     public async Task Import_cannot_resolve_a_strategic_master_from_another_municipality_even_when_query_filters_are_bypassed()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -130,8 +153,10 @@ public sealed class OpmsImportControllerTests
             NationalKpaId = setup.NationalKpa.Id, MunicipalKpaId = setup.MunicipalKpa.Id, BackToBasicsPillarId = setup.BackToBasicsPillar.Id,
             StrategicGoalMasterId = setup.StrategicGoal.Id, StrategicInterventionId = setup.StrategicIntervention.Id,
             StrategicObjectiveMasterId = setup.StrategicObjective.Id, PerformanceObjectiveId = setup.PerformanceObjective.Id,
+            BudgetTypeMasterId = setup.BudgetType.Id,
             KpiType = "Output", IndicatorType = "Quantitative", AnnualTargetDescription = "Annual", Weight = 10
         };
+        target.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = setup.Municipality.Id, BudgetSourceId = setup.BudgetSourceA.Id, Amount = 125.50m });
         context.Add(target); context.PerformancePeriodTargets.Add(new PerformancePeriodTarget
         {
             MunicipalityId = setup.Municipality.Id, ReportingPeriodId = setup.Annual.Id, OpmsTargetId = target.Id,
@@ -147,6 +172,7 @@ public sealed class OpmsImportControllerTests
         csv.Should().Contain("EXISTING_INDICATOR_NUMBER,INDICATOR_NUMBER");
         csv.Should().Contain("\"KPI-REV\",\"KPI-REV\",\"3\"");
         csv.Should().Contain("\"'=Revised target\"");
+        csv.Should().Contain("\"CAPEX\",\"MIG:125.5\"");
         csv.Should().Contain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
     }
 
@@ -192,17 +218,21 @@ public sealed class OpmsImportControllerTests
         var strategicIntervention = new StrategicIntervention { MunicipalityId = municipality.Id, Code = "Strategic Intervention", Name = "Strategic Intervention" };
         var strategicObjective = new MunicipalStrategicObjective { MunicipalityId = municipality.Id, Code = "Strategic Objective", Name = "Strategic Objective" };
         var performanceObjective = new PerformanceObjective { MunicipalityId = municipality.Id, Code = "Performance Objective", Name = "Performance Objective" };
-        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective);
+        var budgetType = new GovernedBudgetType { MunicipalityId = municipality.Id, Code = "CAPEX", Name = "Capital expenditure" };
+        var budgetSourceA = new GovernedBudgetSource { MunicipalityId = municipality.Id, Code = "MIG", Name = "Infrastructure grant" };
+        var budgetSourceB = new GovernedBudgetSource { MunicipalityId = municipality.Id, Code = "OWN", Name = "Own revenue" };
+        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB);
         await context.SaveChangesAsync();
         var reportingPeriod = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANNUAL", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
         var layer = new SdbipLayer { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, Code = "TOP", Name = "Top Layer", IsActive = true };
         context.AddRange(reportingPeriod, layer); await context.SaveChangesAsync();
         return new Setup(municipality, user, department, layer, reportingPeriod, legacy, nationalKpa, municipalKpa, backToBasics,
-            strategicGoal, strategicIntervention, strategicObjective, performanceObjective);
+            strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB);
     }
 
     private sealed record Setup(Municipality Municipality, ApplicationUser User, Department Department, SdbipLayer Layer, ReportingPeriod Annual, Period LegacyPeriod,
         NationalKpa NationalKpa, MunicipalKpa MunicipalKpa, BackToBasicsPillar BackToBasicsPillar, MunicipalStrategicGoal StrategicGoal,
-        StrategicIntervention StrategicIntervention, MunicipalStrategicObjective StrategicObjective, PerformanceObjective PerformanceObjective);
+        StrategicIntervention StrategicIntervention, MunicipalStrategicObjective StrategicObjective, PerformanceObjective PerformanceObjective,
+        GovernedBudgetType BudgetType, GovernedBudgetSource BudgetSourceA, GovernedBudgetSource BudgetSourceB);
     private sealed class Tenant(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
 }
