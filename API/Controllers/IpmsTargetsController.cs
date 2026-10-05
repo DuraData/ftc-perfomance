@@ -69,6 +69,9 @@ public class IpmsTargetsController : ControllerBase
         query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType);
         var items = await query.Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
+            .Include(item => item.NationalKpaReference).Include(item => item.MunicipalKpaReference).Include(item => item.BackToBasicsPillarReference)
+            .Include(item => item.StrategicGoalMaster).Include(item => item.StrategicInterventionReference)
+            .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
             .AsSplitQuery().ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
         return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true,
@@ -160,6 +163,10 @@ public class IpmsTargetsController : ControllerBase
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
+        var strategicSelection = StrategicClassificationResolver.Selection(request);
+        if (!strategicSelection.IsComplete) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "All governed strategic classifications are required."));
+        var strategicClassification = await StrategicClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, strategicSelection);
+        if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, strategicClassification.Error));
 
         var entity = new IpmsTarget
         {
@@ -196,6 +203,7 @@ public class IpmsTargetsController : ControllerBase
             TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString(),
             CreatedAt = DateTime.UtcNow
         };
+        StrategicClassificationResolver.Apply(entity, strategicClassification);
 
         _context.IpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, null, entity.Id);
@@ -227,6 +235,12 @@ public class IpmsTargetsController : ControllerBase
         if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
+        var strategicSelection = StrategicClassificationResolver.Selection(request);
+        if (!strategicSelection.IsComplete) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "All governed strategic classifications are required."));
+        var strategicClassification = await StrategicClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, strategicSelection,
+            entity.NationalKpaId, entity.MunicipalKpaId, entity.BackToBasicsPillarId, entity.StrategicGoalMasterId,
+            entity.StrategicInterventionId, entity.StrategicObjectiveMasterId, entity.PerformanceObjectiveId);
+        if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, strategicClassification.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
         if (periodChangeError != null) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -258,6 +272,7 @@ public class IpmsTargetsController : ControllerBase
         entity.IdpReference = request.IdpReference;
         entity.InternalReference = request.InternalReference;
         entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
+        StrategicClassificationResolver.Apply(entity, strategicClassification);
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
@@ -499,6 +514,13 @@ public class IpmsTargetsController : ControllerBase
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
+            .Include(item => item.NationalKpaReference)
+            .Include(item => item.MunicipalKpaReference)
+            .Include(item => item.BackToBasicsPillarReference)
+            .Include(item => item.StrategicGoalMaster)
+            .Include(item => item.StrategicInterventionReference)
+            .Include(item => item.StrategicObjectiveMaster)
+            .Include(item => item.PerformanceObjectiveReference)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;

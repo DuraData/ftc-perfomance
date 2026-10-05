@@ -375,6 +375,16 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   id: string;
   publicId?: string;
   rowVersion?: string;
+  municipalityFinancialYearPublicId?: string;
+  nationalKpaPublicId?: string;
+  municipalKpaPublicId?: string;
+  backToBasicsPillarPublicId?: string;
+  backToBasicsPillar?: string;
+  strategicGoalPublicId?: string;
+  strategicInterventionPublicId?: string;
+  strategicIntervention?: string;
+  strategicObjectivePublicId?: string;
+  performanceObjectivePublicId?: string;
   sdbipLayer?: { publicId: string; code: string; name: string };
   PriorYearOpmsId?: string;
   sourceTemplateId?: string;
@@ -461,6 +471,16 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   id: string;
   publicId?: string;
   rowVersion?: string;
+  municipalityFinancialYearPublicId?: string;
+  nationalKpaPublicId?: string;
+  municipalKpaPublicId?: string;
+  backToBasicsPillarPublicId?: string;
+  backToBasicsPillar?: string;
+  strategicGoalPublicId?: string;
+  strategicInterventionPublicId?: string;
+  strategicIntervention?: string;
+  strategicObjectivePublicId?: string;
+  performanceObjectivePublicId?: string;
   sourceTemplateId?: string;
   sourceTemplateVersion?: number;
   relatedOPMSTarget?: OPMSTarget;
@@ -1597,6 +1617,30 @@ export interface StrategicPlanningRelationshipDto {
   rowVersion: string;
 }
 
+export interface StrategicCatalogueItemDto {
+  publicId: string;
+  code?: string | null;
+  name: string;
+  displayOrder: number;
+}
+
+export interface StrategicCatalogueRelationshipDto {
+  relationshipType: string;
+  parentPublicId: string;
+  childPublicId: string;
+}
+
+export interface StrategicClassificationCatalogueDto {
+  nationalKpas: StrategicCatalogueItemDto[];
+  municipalKpas: StrategicCatalogueItemDto[];
+  backToBasicsPillars: StrategicCatalogueItemDto[];
+  strategicGoals: StrategicCatalogueItemDto[];
+  strategicInterventions: StrategicCatalogueItemDto[];
+  strategicObjectives: StrategicCatalogueItemDto[];
+  performanceObjectives: StrategicCatalogueItemDto[];
+  relationships: StrategicCatalogueRelationshipDto[];
+}
+
 export interface PerformancePeriodTargetDto {
   publicId: string;
   reportingPeriodPublicId: string;
@@ -2310,6 +2354,7 @@ export interface OpmsTargetDto {
   id: string;
   publicId: string;
   rowVersion: string;
+  municipalityFinancialYearPublicId?: string | null;
   sdbipLayerPublicId?: string | null;
   sdbipLayerCode?: string | null;
   sdbipLayerName?: string | null;
@@ -2334,6 +2379,15 @@ export interface OpmsTargetDto {
   revisedOrderNumber: number;
   nationalKpa: string;
   municipalKpa: string;
+  nationalKpaPublicId?: string | null;
+  municipalKpaPublicId?: string | null;
+  backToBasicsPillarPublicId?: string | null;
+  backToBasicsPillar?: string | null;
+  strategicGoalPublicId?: string | null;
+  strategicInterventionPublicId?: string | null;
+  strategicIntervention?: string | null;
+  strategicObjectivePublicId?: string | null;
+  performanceObjectivePublicId?: string | null;
   strategicGoalId?: number | null;
   strategicObjectiveId?: number | null;
   performanceObjective: string;
@@ -2369,6 +2423,7 @@ export interface IpmsTargetDto {
   id: string;
   publicId: string;
   rowVersion: string;
+  municipalityFinancialYearPublicId?: string | null;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetId?: string | null;
@@ -2389,6 +2444,15 @@ export interface IpmsTargetDto {
   revisedOrderNumber: number;
   nationalKpa: string;
   municipalKpa: string;
+  nationalKpaPublicId?: string | null;
+  municipalKpaPublicId?: string | null;
+  backToBasicsPillarPublicId?: string | null;
+  backToBasicsPillar?: string | null;
+  strategicGoalPublicId?: string | null;
+  strategicInterventionPublicId?: string | null;
+  strategicIntervention?: string | null;
+  strategicObjectivePublicId?: string | null;
+  performanceObjectivePublicId?: string | null;
   strategicGoalId?: number | null;
   strategicObjectiveId?: number | null;
   performanceObjective: string;
@@ -2736,6 +2800,13 @@ export interface SaveOpmsTargetPayload {
   originalOrderNumber?: number;
   nationalKpa: string;
   municipalKpa: string;
+  nationalKpaPublicId: string;
+  municipalKpaPublicId: string;
+  backToBasicsPillarPublicId?: string | null;
+  strategicGoalPublicId?: string | null;
+  strategicInterventionPublicId?: string | null;
+  strategicObjectivePublicId?: string | null;
+  performanceObjectivePublicId: string;
   strategicGoalId?: number | null;
   strategicObjectiveId?: number | null;
   performanceObjective: string;
@@ -2773,6 +2844,13 @@ export interface SaveIpmsTargetPayload {
   originalOrderNumber?: number;
   nationalKpa: string;
   municipalKpa: string;
+  nationalKpaPublicId: string;
+  municipalKpaPublicId: string;
+  backToBasicsPillarPublicId?: string | null;
+  strategicGoalPublicId?: string | null;
+  strategicInterventionPublicId?: string | null;
+  strategicObjectivePublicId?: string | null;
+  performanceObjectivePublicId: string;
   strategicGoalId?: number | null;
   strategicObjectiveId?: number | null;
   performanceObjective: string;

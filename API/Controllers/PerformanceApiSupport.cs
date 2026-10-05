@@ -201,10 +201,20 @@ public static class PerformanceApiSupport
             WithdrawnAt = target.WithdrawnAt,
             WithdrawnByUserId = target.WithdrawnByUserId,
             SdbipLayerPublicId = target.SdbipLayer?.PublicId,
+            MunicipalityFinancialYearPublicId = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.PublicId,
             SdbipLayerCode = target.SdbipLayer?.Code,
             SdbipLayerName = target.SdbipLayer?.Name,
             DepartmentPublicId = target.Department?.PublicId,
-            UnitPublicId = target.Unit?.PublicId
+            UnitPublicId = target.Unit?.PublicId,
+            NationalKpaPublicId = target.NationalKpaReference?.PublicId,
+            MunicipalKpaPublicId = target.MunicipalKpaReference?.PublicId,
+            BackToBasicsPillarPublicId = target.BackToBasicsPillarReference?.PublicId,
+            StrategicGoalPublicId = target.StrategicGoalMaster?.PublicId,
+            StrategicInterventionPublicId = target.StrategicInterventionReference?.PublicId,
+            StrategicObjectivePublicId = target.StrategicObjectiveMaster?.PublicId,
+            PerformanceObjectivePublicId = target.PerformanceObjectiveReference?.PublicId,
+            BackToBasicsPillar = target.BackToBasicsPillarReference?.Name,
+            StrategicIntervention = target.StrategicInterventionReference?.Name
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
@@ -266,7 +276,17 @@ public static class PerformanceApiSupport
             WithdrawnAt = target.WithdrawnAt,
             WithdrawnByUserId = target.WithdrawnByUserId,
             DepartmentPublicId = target.Department?.PublicId,
-            UnitPublicId = target.Unit?.PublicId
+            MunicipalityFinancialYearPublicId = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.PublicId,
+            UnitPublicId = target.Unit?.PublicId,
+            NationalKpaPublicId = target.NationalKpaReference?.PublicId,
+            MunicipalKpaPublicId = target.MunicipalKpaReference?.PublicId,
+            BackToBasicsPillarPublicId = target.BackToBasicsPillarReference?.PublicId,
+            StrategicGoalPublicId = target.StrategicGoalMaster?.PublicId,
+            StrategicInterventionPublicId = target.StrategicInterventionReference?.PublicId,
+            StrategicObjectivePublicId = target.StrategicObjectiveMaster?.PublicId,
+            PerformanceObjectivePublicId = target.PerformanceObjectiveReference?.PublicId,
+            BackToBasicsPillar = target.BackToBasicsPillarReference?.Name,
+            StrategicIntervention = target.StrategicInterventionReference?.Name
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>

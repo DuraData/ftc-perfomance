@@ -51,10 +51,60 @@ public sealed class OpmsImportControllerTests
         committed.Status.Should().Be("Committed");
         var target = await context.OpmsTargets.SingleAsync();
         target.SdbipLayerId.Should().Be(setup.Layer.Id);
+        target.NationalKpaId.Should().Be(setup.NationalKpa.Id);
+        target.MunicipalKpaId.Should().Be(setup.MunicipalKpa.Id);
+        target.BackToBasicsPillarId.Should().Be(setup.BackToBasicsPillar.Id);
+        target.StrategicGoalMasterId.Should().Be(setup.StrategicGoal.Id);
+        target.StrategicInterventionId.Should().Be(setup.StrategicIntervention.Id);
+        target.StrategicObjectiveMasterId.Should().Be(setup.StrategicObjective.Id);
+        target.PerformanceObjectiveId.Should().Be(setup.PerformanceObjective.Id);
         var canonical = await context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).SingleAsync();
         canonical.OpmsTargetId.Should().Be(target.Id); canonical.ReportingPeriod.PeriodType.Should().Be(ReportingPeriodType.Annual);
         canonical.UnitKind.Should().Be(PerformanceUnitKind.AbsoluteCount); canonical.TargetValue.Should().Be("100");
         (await context.OpmsImportRows.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Import_cannot_resolve_a_strategic_master_from_another_municipality_even_when_query_filters_are_bypassed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var foreignMunicipality = new Municipality { Code = "FOREIGN", Name = "Foreign Municipality", IsActive = true };
+        context.Add(foreignMunicipality); await context.SaveChangesAsync();
+        context.Add(new MunicipalStrategicGoal { MunicipalityId = foreignMunicipality.Id, Code = "FOREIGN-GOAL", Name = "Foreign Goal" });
+        await context.SaveChangesAsync();
+
+        var row = Row(2, "KPI-CROSS-TENANT", setup.Department.Code) with { StrategicGoal = "FOREIGN-GOAL" };
+        var staged = Payload(await Controller(context, setup).Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "cross-tenant.csv", [row])));
+
+        staged.InvalidRows.Should().Be(1);
+        staged.Rows.Single().ErrorCode.Should().Be("CLASSIFICATION_NOT_FOUND");
+        staged.Rows.Single().ErrorField.Should().Be(nameof(OpmsImportRowRequest.StrategicGoal));
+    }
+
+    [Fact]
+    public async Task Import_enforces_configured_strategic_hierarchy_relationships()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var configuredGoal = new MunicipalStrategicGoal { MunicipalityId = setup.Municipality.Id, Code = "ONLY-GOAL", Name = "Only configured goal" };
+        context.Add(configuredGoal); await context.SaveChangesAsync();
+        context.Add(new MunicipalKpaStrategicGoal
+        {
+            MunicipalityId = setup.Municipality.Id,
+            MunicipalKpaId = setup.MunicipalKpa.Id,
+            StrategicGoalId = configuredGoal.Id,
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var staged = Payload(await Controller(context, setup).Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "invalid-hierarchy.csv", [Row(2, "KPI-HIERARCHY", setup.Department.Code)])));
+
+        staged.InvalidRows.Should().Be(1);
+        staged.Rows.Single().ErrorCode.Should().Be("INVALID_STRATEGIC_CLASSIFICATION");
+        staged.Rows.Single().ErrorMessage.Should().Contain("Strategic Goal is not configured");
     }
 
     [Fact]
@@ -77,6 +127,9 @@ public sealed class OpmsImportControllerTests
             DepartmentId = setup.Department.Id, IndicatorNumber = "KPI-1", IsIndicatorNumberRevised = true, RevisedIndicatorNumber = "KPI-REV",
             OriginalOrderNumber = 1, RevisedOrderNumber = 3, TargetName = "Original", IsTargetNameRevised = true, RevisedTargetName = "=Revised target",
             KpiDescription = "Original wording", NationalKpa = "Basic Services", MunicipalKpa = "Service Delivery", PerformanceObjective = "Improve access",
+            NationalKpaId = setup.NationalKpa.Id, MunicipalKpaId = setup.MunicipalKpa.Id, BackToBasicsPillarId = setup.BackToBasicsPillar.Id,
+            StrategicGoalMasterId = setup.StrategicGoal.Id, StrategicInterventionId = setup.StrategicIntervention.Id,
+            StrategicObjectiveMasterId = setup.StrategicObjective.Id, PerformanceObjectiveId = setup.PerformanceObjective.Id,
             KpiType = "Output", IndicatorType = "Quantitative", AnnualTargetDescription = "Annual", Weight = 10
         };
         context.Add(target); context.PerformancePeriodTargets.Add(new PerformancePeriodTarget
@@ -102,6 +155,7 @@ public sealed class OpmsImportControllerTests
 
     private static OpmsImportRowRequest Row(int sourceRow, string indicator, string department) => new(sourceRow, indicator, 1,
         "Water connections", "Households connected", department, null, "Basic Services", "Service Delivery", "Improve access",
+        "Strategic Goal", "Strategic Intervention", "Strategic Objective", "Performance Objective",
         0, 10, "Output", "Quantitative",
         [new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.AbsoluteCount, PerformanceDirection.HigherIsBetter, "100", 1000, "Annual")]);
 
@@ -131,12 +185,24 @@ public sealed class OpmsImportControllerTests
         context.AddRange(year, department, legacy); await context.SaveChangesAsync();
         var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = year.Id, IsCurrent = true, IsActive = true, EffectiveFrom = year.StartDate };
         context.Add(municipalityYear); await context.SaveChangesAsync();
+        var nationalKpa = new NationalKpa { Code = "Basic Services", Name = "Basic Services" };
+        var municipalKpa = new MunicipalKpa { MunicipalityId = municipality.Id, Code = "Service Delivery", Name = "Service Delivery" };
+        var backToBasics = new BackToBasicsPillar { Code = "Improve access", Name = "Improve access" };
+        var strategicGoal = new MunicipalStrategicGoal { MunicipalityId = municipality.Id, Code = "Strategic Goal", Name = "Strategic Goal" };
+        var strategicIntervention = new StrategicIntervention { MunicipalityId = municipality.Id, Code = "Strategic Intervention", Name = "Strategic Intervention" };
+        var strategicObjective = new MunicipalStrategicObjective { MunicipalityId = municipality.Id, Code = "Strategic Objective", Name = "Strategic Objective" };
+        var performanceObjective = new PerformanceObjective { MunicipalityId = municipality.Id, Code = "Performance Objective", Name = "Performance Objective" };
+        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective);
+        await context.SaveChangesAsync();
         var reportingPeriod = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANNUAL", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
         var layer = new SdbipLayer { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, Code = "TOP", Name = "Top Layer", IsActive = true };
         context.AddRange(reportingPeriod, layer); await context.SaveChangesAsync();
-        return new Setup(municipality, user, department, layer, reportingPeriod, legacy);
+        return new Setup(municipality, user, department, layer, reportingPeriod, legacy, nationalKpa, municipalKpa, backToBasics,
+            strategicGoal, strategicIntervention, strategicObjective, performanceObjective);
     }
 
-    private sealed record Setup(Municipality Municipality, ApplicationUser User, Department Department, SdbipLayer Layer, ReportingPeriod Annual, Period LegacyPeriod);
+    private sealed record Setup(Municipality Municipality, ApplicationUser User, Department Department, SdbipLayer Layer, ReportingPeriod Annual, Period LegacyPeriod,
+        NationalKpa NationalKpa, MunicipalKpa MunicipalKpa, BackToBasicsPillar BackToBasicsPillar, MunicipalStrategicGoal StrategicGoal,
+        StrategicIntervention StrategicIntervention, MunicipalStrategicObjective StrategicObjective, PerformanceObjective PerformanceObjective);
     private sealed class Tenant(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
 }

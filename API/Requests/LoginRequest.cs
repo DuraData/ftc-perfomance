@@ -174,6 +174,13 @@ public record SaveOpmsTargetRequest(
     public Guid? SdbipLayerPublicId { get; init; }
     public Guid? DepartmentPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
+    public Guid? NationalKpaPublicId { get; init; }
+    public Guid? MunicipalKpaPublicId { get; init; }
+    public Guid? BackToBasicsPillarPublicId { get; init; }
+    public Guid? StrategicGoalPublicId { get; init; }
+    public Guid? StrategicInterventionPublicId { get; init; }
+    public Guid? StrategicObjectivePublicId { get; init; }
+    public Guid? PerformanceObjectivePublicId { get; init; }
 }
 
 public record SaveIpmsTargetRequest(
@@ -209,6 +216,13 @@ public record SaveIpmsTargetRequest(
     public int OriginalOrderNumber { get; init; } = 1;
     public Guid? DepartmentPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
+    public Guid? NationalKpaPublicId { get; init; }
+    public Guid? MunicipalKpaPublicId { get; init; }
+    public Guid? BackToBasicsPillarPublicId { get; init; }
+    public Guid? StrategicGoalPublicId { get; init; }
+    public Guid? StrategicInterventionPublicId { get; init; }
+    public Guid? StrategicObjectivePublicId { get; init; }
+    public Guid? PerformanceObjectivePublicId { get; init; }
 }
 
 public record SaveTargetPeriodValueRequest(

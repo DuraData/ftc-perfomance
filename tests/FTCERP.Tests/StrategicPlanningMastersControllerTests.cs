@@ -69,6 +69,108 @@ public sealed class StrategicPlanningMastersControllerTests
     }
 
     [Fact]
+    public async Task CanonicalResolverEnforcesTenantYearAvailabilityAndConfiguredHierarchy()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Guid foreignGoal;
+        await using (var tenantB = fixture.Context(fixture.MunicipalityB.Id))
+        {
+            foreignGoal = Data(await Controller(tenantB, fixture.MunicipalityB.Id).CreateStrategicGoal(
+                new("B-GOAL", "Tenant B goal", null, null, null, 1, true, "Create foreign strategic goal"))).PublicId;
+        }
+
+        Guid disabledNationalKpa;
+        await using (var setup = fixture.SystemContext())
+        {
+            var national = new NationalKpa { Code = "NKPA-DISABLED", Name = "Disabled locally" };
+            setup.NationalKpas.Add(national);
+            await setup.SaveChangesAsync();
+            setup.MunicipalityNationalKpas.Add(new MunicipalityNationalKpa
+            {
+                MunicipalityId = fixture.MunicipalityA.Id,
+                NationalKpaId = national.Id,
+                IsEnabled = false
+            });
+            await setup.SaveChangesAsync();
+            disabledNationalKpa = national.PublicId;
+        }
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var controller = Controller(context, fixture.MunicipalityA.Id);
+        var kpa = Data(await controller.CreateMunicipalKpa(new("KPA-A", "Municipal KPA A", null, null, null, 1, true, "Create canonical KPA")));
+        var allowedGoal = Data(await controller.CreateStrategicGoal(new("GOAL-A", "Allowed goal", null, null, null, 1, true, "Create allowed goal")));
+        var otherGoal = Data(await controller.CreateStrategicGoal(new("GOAL-B", "Other goal", null, null, null, 2, true, "Create other goal")));
+        var expiredObjective = Data(await controller.CreateStrategicObjective(new("OBJ-OLD", "Historic objective", null,
+            fixture.Year2025.PublicId, fixture.Year2025.PublicId, 1, true, "Create historic objective")));
+        await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, allowedGoal.PublicId, "Configure the permitted hierarchy"));
+
+        var foreign = await StrategicClassificationResolver.ResolveAsync(context, fixture.Year2026.Id,
+            new(null, null, null, foreignGoal, null, null, null));
+        Assert.False(foreign.IsValid);
+        Assert.Contains("selected municipality", foreign.Error, StringComparison.OrdinalIgnoreCase);
+
+        var disabled = await StrategicClassificationResolver.ResolveAsync(context, fixture.Year2026.Id,
+            new(disabledNationalKpa, null, null, null, null, null, null));
+        Assert.False(disabled.IsValid);
+        Assert.Contains("not available", disabled.Error, StringComparison.OrdinalIgnoreCase);
+
+        var mismatch = await StrategicClassificationResolver.ResolveAsync(context, fixture.Year2026.Id,
+            new(null, kpa.PublicId, null, otherGoal.PublicId, null, null, null));
+        Assert.False(mismatch.IsValid);
+        Assert.Contains("not configured", mismatch.Error, StringComparison.OrdinalIgnoreCase);
+
+        var expired = await StrategicClassificationResolver.ResolveAsync(context, fixture.Year2026.Id,
+            new(null, null, null, null, null, expiredObjective.PublicId, null));
+        Assert.False(expired.IsValid);
+        Assert.Contains("not valid", expired.Error, StringComparison.OrdinalIgnoreCase);
+
+        var historic = await StrategicClassificationResolver.ResolveAsync(context, fixture.Year2026.Id,
+            new(null, null, null, null, null, expiredObjective.PublicId, null), existingStrategicObjectiveId:
+            await context.MunicipalStrategicObjectives.Where(item => item.PublicId == expiredObjective.PublicId).Select(item => item.Id).SingleAsync());
+        Assert.True(historic.IsValid);
+
+        var valid = await StrategicClassificationResolver.ResolveAsync(context, fixture.Year2026.Id,
+            new(null, kpa.PublicId, null, allowedGoal.PublicId, null, null, null));
+        Assert.True(valid.IsValid);
+        var target = new OpmsTarget { NationalKpa = "untrusted", MunicipalKpa = "untrusted", PerformanceObjective = "untrusted" };
+        StrategicClassificationResolver.Apply(target, valid);
+        Assert.Equal(kpa.Name, target.MunicipalKpa);
+        Assert.Equal(valid.MunicipalKpa!.Id, target.MunicipalKpaId);
+        Assert.Equal(valid.StrategicGoal!.Id, target.StrategicGoalMasterId);
+        Assert.Null(target.StrategicGoalId);
+    }
+
+    [Fact]
+    public async Task CatalogueReturnsOnlyAvailableEffectiveValuesAndActiveRelationships()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using (var setup = fixture.SystemContext())
+        {
+            var available = new NationalKpa { Code = "NKPA-AVAILABLE", Name = "Available", DisplayOrder = 1 };
+            var disabled = new NationalKpa { Code = "NKPA-DISABLED", Name = "Disabled", DisplayOrder = 2 };
+            setup.NationalKpas.AddRange(available, disabled);
+            await setup.SaveChangesAsync();
+            setup.MunicipalityNationalKpas.Add(new MunicipalityNationalKpa { MunicipalityId = fixture.MunicipalityA.Id, NationalKpaId = disabled.Id, IsEnabled = false });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var controller = Controller(context, fixture.MunicipalityA.Id);
+        var kpa = Data(await controller.CreateMunicipalKpa(new("KPA-CURRENT", "Current KPA", null, fixture.Year2026.PublicId, null, 1, true, "Create current catalogue KPA")));
+        _ = Data(await controller.CreateMunicipalKpa(new("KPA-EXPIRED", "Expired KPA", null, fixture.Year2025.PublicId, fixture.Year2025.PublicId, 2, true, "Create expired catalogue KPA")));
+        _ = Data(await controller.CreateMunicipalKpa(new("KPA-INACTIVE", "Inactive KPA", null, null, null, 3, false, "Create inactive catalogue KPA")));
+        var goal = Data(await controller.CreateStrategicGoal(new("GOAL-CURRENT", "Current goal", null, null, null, 1, true, "Create catalogue goal")));
+        await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, goal.PublicId, "Configure catalogue relationship"));
+
+        var response = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
+        var catalogue = Assert.IsType<OkObjectResult>(response.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
+        Assert.Collection(catalogue.NationalKpas, item => Assert.Equal("NKPA-AVAILABLE", item.Code));
+        Assert.Collection(catalogue.MunicipalKpas, item => Assert.Equal(kpa.PublicId, item.PublicId));
+        Assert.Contains(catalogue.Relationships, item => item.RelationshipType == "municipal-kpa-strategic-goal"
+            && item.ParentPublicId == kpa.PublicId && item.ChildPublicId == goal.PublicId);
+    }
+
+    [Fact]
     public async Task SecurityRegistrySeedsAllMastersHierarchyAndNavigation()
     {
         await using var fixture = await Fixture.CreateAsync(); await using var context = fixture.SystemContext(); await SecurityRegistrySeeder.SeedAsync(context);

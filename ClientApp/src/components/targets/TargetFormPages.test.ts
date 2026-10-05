@@ -1,8 +1,8 @@
-import { buildOpmsPayload, getTargetUnitLabel, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
+import { buildOpmsPayload, childrenFor, getTargetUnitLabel, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
 
 describe('TargetFormPages helpers', () => {
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
-    const payload = buildOpmsPayload({ departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11' } as never);
+    const payload = buildOpmsPayload({ departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11', nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1' } as never);
     expect(payload.departmentId).toBeNull();
     expect(payload.departmentPublicId).toBe('department-public-id');
     expect(payload.unitId).toBeNull();
@@ -10,6 +10,14 @@ describe('TargetFormPages helpers', () => {
     expect(payload.wardIds).toEqual([1, 2]);
     expect(payload.additionalAssigneeIds).toEqual(['user-a', 'user-b']);
     expect(payload.voteNumberIds).toEqual([10, 11]);
+    expect(payload).toMatchObject({ nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1' });
+  });
+
+  it('filters children only when the selected parent has configured mappings', () => {
+    const items = [{ publicId: 'goal-1', name: 'Goal 1', displayOrder: 1 }, { publicId: 'goal-2', name: 'Goal 2', displayOrder: 2 }];
+    const catalogue = { nationalKpas: [], municipalKpas: [], backToBasicsPillars: [], strategicGoals: items, strategicInterventions: [], strategicObjectives: [], performanceObjectives: [], relationships: [{ relationshipType: 'municipal-kpa-strategic-goal', parentPublicId: 'kpa-1', childPublicId: 'goal-2' }] };
+    expect(childrenFor(catalogue, 'municipal-kpa-strategic-goal', 'kpa-1', items)).toEqual([items[1]]);
+    expect(childrenFor(catalogue, 'municipal-kpa-strategic-goal', 'kpa-without-mappings', items)).toEqual(items);
   });
   it('maps legacy unit type to XAF unit type', () => {
     expect(toXafUnitType('percentage')).toBe('PercentageBased');

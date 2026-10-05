@@ -15,6 +15,12 @@ namespace FTCERP.Host.API.Controllers;
 [Authorize]
 public sealed class StrategicPlanningMastersController(ApplicationDbContext context, ITenantContext tenantContext) : ControllerBase
 {
+    [HttpGet("catalogue/opms"), Authorize(Policy = "Permission:OPMS_KPI.READ")]
+    public Task<ActionResult<ApiResponse<StrategicClassificationCatalogueDto>>> GetOpmsCatalogue([FromQuery] Guid municipalityFinancialYearPublicId) => Catalogue(municipalityFinancialYearPublicId);
+
+    [HttpGet("catalogue/ipms"), Authorize(Policy = "Permission:IPMS_KPI.READ")]
+    public Task<ActionResult<ApiResponse<StrategicClassificationCatalogueDto>>> GetIpmsCatalogue([FromQuery] Guid municipalityFinancialYearPublicId) => Catalogue(municipalityFinancialYearPublicId);
+
     [HttpGet("municipal-kpas/page"), Authorize(Policy = "Permission:MUNICIPAL_KPA.READ")]
     public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetMunicipalKpas([FromQuery] StrategicPlanningPageRequest request) => Page(context.MunicipalKpas, request);
 
@@ -152,6 +158,36 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         return Ok(new ApiResponse<PagedResponse<StrategicPlanningMasterDto>>(true, PagedResponse<StrategicPlanningMasterDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, total)));
     }
 
+    private async Task<ActionResult<ApiResponse<StrategicClassificationCatalogueDto>>> Catalogue(Guid municipalityFinancialYearPublicId)
+    {
+        if (!TenantSelected()) return TenantRequired<StrategicClassificationCatalogueDto>();
+        var year = await context.MunicipalityFinancialYears.AsNoTracking().Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.PublicId == municipalityFinancialYearPublicId);
+        if (year == null) return NotFound(Fail<StrategicClassificationCatalogueDto>("Municipality financial year not found."));
+        var nationalKpas = await context.NationalKpas.AsNoTracking().Where(item => item.IsActive
+                && (!item.MunicipalityMappings.Any() || item.MunicipalityMappings.Any(mapping => mapping.IsEnabled)))
+            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000).Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder)).ToArrayAsync();
+        var pillars = await context.BackToBasicsPillars.AsNoTracking().Where(item => item.IsActive
+                && (!item.MunicipalityMappings.Any() || item.MunicipalityMappings.Any(mapping => mapping.IsEnabled)))
+            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000).Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder)).ToArrayAsync();
+        var kpas = await CatalogueRows(context.MunicipalKpas, year); var goals = await CatalogueRows(context.MunicipalStrategicGoals, year);
+        var interventions = await CatalogueRows(context.StrategicInterventions, year); var objectives = await CatalogueRows(context.MunicipalStrategicObjectives, year);
+        var performanceObjectives = await CatalogueRows(context.PerformanceObjectives, year);
+        var relationships = new List<StrategicCatalogueRelationshipDto>();
+        relationships.AddRange(await context.MunicipalKpaStrategicGoals.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("municipal-kpa-strategic-goal", item.MunicipalKpa.PublicId, item.StrategicGoal.PublicId)).ToArrayAsync());
+        relationships.AddRange(await context.StrategicGoalInterventions.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-intervention", item.StrategicGoal.PublicId, item.StrategicIntervention.PublicId)).ToArrayAsync());
+        relationships.AddRange(await context.StrategicGoalObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-objective", item.StrategicGoal.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
+        relationships.AddRange(await context.StrategicInterventionObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-intervention-objective", item.StrategicIntervention.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
+        relationships.AddRange(await context.StrategicObjectivePerformanceObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-objective-performance-objective", item.StrategicObjective.PublicId, item.PerformanceObjective.PublicId)).ToArrayAsync());
+        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, relationships.ToArray())));
+    }
+
+    private static Task<StrategicCatalogueItemDto[]> CatalogueRows<TEntity>(DbSet<TEntity> set, MunicipalityFinancialYear year) where TEntity : StrategicPlanningMasterBase =>
+        set.AsNoTracking().Where(item => item.IsActive
+                && (!item.EffectiveFromFinancialYearId.HasValue || item.EffectiveFromFinancialYear!.FinancialYear.StartDate <= year.FinancialYear.StartDate)
+                && (!item.EffectiveToFinancialYearId.HasValue || item.EffectiveToFinancialYear!.FinancialYear.EndDate >= year.FinancialYear.EndDate))
+            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000)
+            .Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder)).ToArrayAsync();
+
     private async Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> Create<TEntity>(DbSet<TEntity> set, Func<TEntity> factory, string entityName, SaveStrategicPlanningMasterRequest request) where TEntity : StrategicPlanningMasterBase
     {
         if (!TenantSelected()) return TenantRequired<StrategicPlanningMasterDto>();
@@ -269,3 +305,14 @@ public sealed record SaveStrategicPlanningMasterRequest(string? Code, string Nam
 public sealed record StrategicPlanningRelationshipDto(Guid PublicId, string RelationshipType, Guid ParentPublicId, string ParentName, Guid ChildPublicId, string ChildName, bool IsActive, string RowVersion);
 public sealed record LinkStrategicPlanningRequest(Guid ParentPublicId, Guid ChildPublicId, string Reason, string? RowVersion = null);
 public sealed record DisableStrategicPlanningRelationshipRequest(string Reason, string RowVersion);
+public sealed record StrategicCatalogueItemDto(Guid PublicId, string? Code, string Name, int DisplayOrder);
+public sealed record StrategicCatalogueRelationshipDto(string RelationshipType, Guid ParentPublicId, Guid ChildPublicId);
+public sealed record StrategicClassificationCatalogueDto(
+    StrategicCatalogueItemDto[] NationalKpas,
+    StrategicCatalogueItemDto[] MunicipalKpas,
+    StrategicCatalogueItemDto[] BackToBasicsPillars,
+    StrategicCatalogueItemDto[] StrategicGoals,
+    StrategicCatalogueItemDto[] StrategicInterventions,
+    StrategicCatalogueItemDto[] StrategicObjectives,
+    StrategicCatalogueItemDto[] PerformanceObjectives,
+    StrategicCatalogueRelationshipDto[] Relationships);

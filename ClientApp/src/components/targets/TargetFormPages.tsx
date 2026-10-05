@@ -12,6 +12,7 @@ import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
   createIpmsTarget,
   createOpmsTarget,
+  getStrategicClassificationCatalogue,
   getIpmsTarget,
   getIpmsTargetOptions,
   getIpmsTargetTemplate,
@@ -31,6 +32,9 @@ import type {
   SaveOpmsTargetPayload,
   SaveTargetPeriodValuePayload,
   PerformanceTargetOptionDto,
+  StrategicClassificationCatalogueDto,
+  StrategicCatalogueItemDto,
+  SdbipLayerMasterDto,
   TargetUnitType,
   VoteNumberMasterDto,
   WardMasterDto,
@@ -124,6 +128,7 @@ function getFieldValidationError(errors: string[], label: string) {
 }
 
 type OpmsFormState = {
+  municipalityFinancialYearPublicId: string;
   sdbipLayerPublicId: string;
   sourceTemplateId: string;
   sourceTemplateVersion: string;
@@ -137,6 +142,13 @@ type OpmsFormState = {
   indicatorNumber: string;
   nationalKPA: string;
   municipalKPA: string;
+  nationalKpaPublicId: string;
+  municipalKpaPublicId: string;
+  backToBasicsPillarPublicId: string;
+  strategicGoalPublicId: string;
+  strategicInterventionPublicId: string;
+  strategicObjectivePublicId: string;
+  performanceObjectivePublicId: string;
   strategicGoalId: string;
   strategicObjectiveId: string;
   performanceObjective: string;
@@ -193,6 +205,7 @@ type OpmsFormState = {
 };
 
 type IpmsFormState = {
+  municipalityFinancialYearPublicId: string;
   sourceTemplateId: string;
   sourceTemplateVersion: string;
   relatedOPMSTargetId: string;
@@ -204,6 +217,13 @@ type IpmsFormState = {
   indicatorNumber: string;
   nationalKPA: string;
   municipalKPA: string;
+  nationalKpaPublicId: string;
+  municipalKpaPublicId: string;
+  backToBasicsPillarPublicId: string;
+  strategicGoalPublicId: string;
+  strategicInterventionPublicId: string;
+  strategicObjectivePublicId: string;
+  performanceObjectivePublicId: string;
   strategicGoalId: string;
   strategicObjectiveId: string;
   performanceObjective: string;
@@ -279,6 +299,7 @@ function removeCsvId(value: string, id: string) {
 
 function createDefaultOpmsFormState(): OpmsFormState {
   return {
+    municipalityFinancialYearPublicId: '',
     sdbipLayerPublicId: '',
     sourceTemplateId: '',
     sourceTemplateVersion: '',
@@ -292,6 +313,13 @@ function createDefaultOpmsFormState(): OpmsFormState {
     indicatorNumber: '',
     nationalKPA: '',
     municipalKPA: '',
+    nationalKpaPublicId: '',
+    municipalKpaPublicId: '',
+    backToBasicsPillarPublicId: '',
+    strategicGoalPublicId: '',
+    strategicInterventionPublicId: '',
+    strategicObjectivePublicId: '',
+    performanceObjectivePublicId: '',
     strategicGoalId: '',
     strategicObjectiveId: '',
     performanceObjective: '',
@@ -350,6 +378,7 @@ function createDefaultOpmsFormState(): OpmsFormState {
 
 function createDefaultIpmsFormState(): IpmsFormState {
   return {
+    municipalityFinancialYearPublicId: '',
     sourceTemplateId: '',
     sourceTemplateVersion: '',
     relatedOPMSTargetId: '',
@@ -361,6 +390,13 @@ function createDefaultIpmsFormState(): IpmsFormState {
     indicatorNumber: '',
     nationalKPA: '',
     municipalKPA: '',
+    nationalKpaPublicId: '',
+    municipalKpaPublicId: '',
+    backToBasicsPillarPublicId: '',
+    strategicGoalPublicId: '',
+    strategicInterventionPublicId: '',
+    strategicObjectivePublicId: '',
+    performanceObjectivePublicId: '',
     strategicGoalId: '',
     strategicObjectiveId: '',
     performanceObjective: '',
@@ -417,6 +453,7 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
   const q1 = period(1); const q2 = period(2); const midTerm = period(3);
   const q3 = period(4); const q4 = period(5); const annual = period(6);
   return {
+    municipalityFinancialYearPublicId: target.municipalityFinancialYearPublicId ?? '',
     sdbipLayerPublicId: target.sdbipLayer?.publicId ?? '',
     sourceTemplateId: target.sourceTemplateId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
@@ -430,6 +467,13 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
     municipalKPA: target.municipalKPA,
+    nationalKpaPublicId: target.nationalKpaPublicId ?? '',
+    municipalKpaPublicId: target.municipalKpaPublicId ?? '',
+    backToBasicsPillarPublicId: target.backToBasicsPillarPublicId ?? '',
+    strategicGoalPublicId: target.strategicGoalPublicId ?? '',
+    strategicInterventionPublicId: target.strategicInterventionPublicId ?? '',
+    strategicObjectivePublicId: target.strategicObjectivePublicId ?? '',
+    performanceObjectivePublicId: target.performanceObjectivePublicId ?? '',
     strategicGoalId: target.strategicGoal.id,
     strategicObjectiveId: target.strategicObjective.id,
     performanceObjective: target.performanceObjective,
@@ -491,6 +535,7 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
   const q1 = period(1); const q2 = period(2); const midTerm = period(3);
   const q3 = period(4); const q4 = period(5); const annual = period(6);
   return {
+    municipalityFinancialYearPublicId: target.municipalityFinancialYearPublicId ?? '',
     sourceTemplateId: target.sourceTemplateId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
     relatedOPMSTargetId: target.relatedOPMSTarget?.id ?? '',
@@ -502,6 +547,13 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
     municipalKPA: target.municipalKPA,
+    nationalKpaPublicId: target.nationalKpaPublicId ?? '',
+    municipalKpaPublicId: target.municipalKpaPublicId ?? '',
+    backToBasicsPillarPublicId: target.backToBasicsPillarPublicId ?? '',
+    strategicGoalPublicId: target.strategicGoalPublicId ?? '',
+    strategicInterventionPublicId: target.strategicInterventionPublicId ?? '',
+    strategicObjectivePublicId: target.strategicObjectivePublicId ?? '',
+    performanceObjectivePublicId: target.performanceObjectivePublicId ?? '',
     strategicGoalId: target.strategicGoal.id,
     strategicObjectiveId: target.strategicObjective.id,
     performanceObjective: target.performanceObjective,
@@ -678,6 +730,13 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
     municipalKpa: form.municipalKPA,
+    nationalKpaPublicId: form.nationalKpaPublicId,
+    municipalKpaPublicId: form.municipalKpaPublicId,
+    backToBasicsPillarPublicId: form.backToBasicsPillarPublicId || null,
+    strategicGoalPublicId: form.strategicGoalPublicId || null,
+    strategicInterventionPublicId: form.strategicInterventionPublicId || null,
+    strategicObjectivePublicId: form.strategicObjectivePublicId || null,
+    performanceObjectivePublicId: form.performanceObjectivePublicId,
     strategicGoalId: form.strategicGoalId ? Number(form.strategicGoalId) : null,
     strategicObjectiveId: form.strategicObjectiveId ? Number(form.strategicObjectiveId) : null,
     performanceObjective: form.performanceObjective,
@@ -716,6 +775,13 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
     municipalKpa: form.municipalKPA,
+    nationalKpaPublicId: form.nationalKpaPublicId,
+    municipalKpaPublicId: form.municipalKpaPublicId,
+    backToBasicsPillarPublicId: form.backToBasicsPillarPublicId || null,
+    strategicGoalPublicId: form.strategicGoalPublicId || null,
+    strategicInterventionPublicId: form.strategicInterventionPublicId || null,
+    strategicObjectivePublicId: form.strategicObjectivePublicId || null,
+    performanceObjectivePublicId: form.performanceObjectivePublicId,
     strategicGoalId: form.strategicGoalId ? Number(form.strategicGoalId) : null,
     strategicObjectiveId: form.strategicObjectiveId ? Number(form.strategicObjectiveId) : null,
     performanceObjective: form.performanceObjective,
@@ -739,13 +805,18 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
 function validateOpmsForm(form: OpmsFormState) {
   const errors = validateRequiredFields([
     { label: 'SDBIP Layer', value: form.sdbipLayerPublicId },
+    { label: 'Municipality Financial Year', value: form.municipalityFinancialYearPublicId },
     { label: 'Period', value: form.periodId },
     { label: 'Department', value: form.departmentId },
     { label: 'Indicator Number', value: form.indicatorNumber },
     { label: 'Target Name', value: form.targetName },
-    { label: 'National KPA', value: form.nationalKPA },
-    { label: 'Municipal KPA', value: form.municipalKPA },
-    { label: 'Performance Objective', value: form.performanceObjective },
+    { label: 'National KPA', value: form.nationalKpaPublicId },
+    { label: 'Municipal KPA', value: form.municipalKpaPublicId },
+    { label: 'Back-to-Basics Pillar', value: form.backToBasicsPillarPublicId },
+    { label: 'Strategic Goal', value: form.strategicGoalPublicId },
+    { label: 'Strategic Intervention', value: form.strategicInterventionPublicId },
+    { label: 'Strategic Objective', value: form.strategicObjectivePublicId },
+    { label: 'Performance Objective', value: form.performanceObjectivePublicId },
     { label: 'KPI Description', value: form.kpiDescription },
     { label: 'Annual Target', value: form.annualTarget },
     { label: 'Weight %', value: form.weight },
@@ -758,18 +829,62 @@ function validateOpmsForm(form: OpmsFormState) {
 
 function validateIpmsForm(form: IpmsFormState) {
   return validateRequiredFields([
+    { label: 'Municipality Financial Year', value: form.municipalityFinancialYearPublicId },
     { label: 'Period', value: form.periodId },
     { label: 'Department', value: form.departmentId },
     { label: 'Indicator Number', value: form.indicatorNumber },
     { label: 'Target Name', value: form.targetName },
-    { label: 'National KPA', value: form.nationalKPA },
-    { label: 'Municipal KPA', value: form.municipalKPA },
-    { label: 'Performance Objective', value: form.performanceObjective },
+    { label: 'National KPA', value: form.nationalKpaPublicId },
+    { label: 'Municipal KPA', value: form.municipalKpaPublicId },
+    { label: 'Back-to-Basics Pillar', value: form.backToBasicsPillarPublicId },
+    { label: 'Strategic Goal', value: form.strategicGoalPublicId },
+    { label: 'Strategic Intervention', value: form.strategicInterventionPublicId },
+    { label: 'Strategic Objective', value: form.strategicObjectivePublicId },
+    { label: 'Performance Objective', value: form.performanceObjectivePublicId },
     { label: 'KPI Description', value: form.kpiDescription },
     { label: 'Annual Target', value: form.annualTarget },
     { label: 'Weight %', value: form.weight },
     { label: 'Unit of Measure', value: form.unitOfMeasureId },
   ]);
+}
+
+function useStrategicCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string) {
+  const [catalogue, setCatalogue] = useState<StrategicClassificationCatalogueDto>();
+  const [catalogueError, setCatalogueError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    if (!municipalityFinancialYearPublicId) {
+      setCatalogue(undefined);
+      setCatalogueError('');
+      return () => { cancelled = true; };
+    }
+    void getStrategicClassificationCatalogue(kind, municipalityFinancialYearPublicId).then(result => {
+      if (cancelled) return;
+      if (result.success && result.data) {
+        setCatalogue(result.data);
+        setCatalogueError('');
+      } else {
+        setCatalogue(undefined);
+        setCatalogueError(result.message ?? 'Unable to load strategic classifications.');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [kind, municipalityFinancialYearPublicId]);
+  return { catalogue, catalogueError };
+}
+
+export function childrenFor(catalogue: StrategicClassificationCatalogueDto | undefined, relationshipType: string, parentPublicId: string, items: StrategicCatalogueItemDto[]) {
+  if (!catalogue || !parentPublicId) return items;
+  const mappings = catalogue.relationships.filter(item => item.relationshipType === relationshipType && item.parentPublicId === parentPublicId);
+  if (mappings.length === 0) return items;
+  const allowed = new Set(mappings.map(item => item.childPublicId));
+  return items.filter(item => allowed.has(item.publicId));
+}
+
+function strategicOptions(items: StrategicCatalogueItemDto[] = [], selectedId = '', selectedName = '') {
+  const options = items.map(item => ({ value: item.publicId, label: `${item.code ? `${item.code} · ` : ''}${item.name}` }));
+  if (selectedId && !options.some(item => item.value === selectedId)) options.unshift({ value: selectedId, label: `${selectedName || 'Historical selection'} · retained` });
+  return [{ value: '', label: 'Select one' }, ...options];
 }
 
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
@@ -787,6 +902,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [relatedIpmsPage, setRelatedIpmsPage] = useState(1);
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
   const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
+  const { catalogue, catalogueError } = useStrategicCatalogue('opms', form.municipalityFinancialYearPublicId);
 
   useEffect(() => {
     let cancelled = false;
@@ -943,7 +1059,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={value => setForm(prev => ({ ...prev, sdbipLayerPublicId: value }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} municipalityFinancialYearId={form.municipalityFinancialYearPublicId || undefined} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={(value, option) => setForm(prev => ({ ...prev, sdbipLayerPublicId: value, municipalityFinancialYearPublicId: (option as SdbipLayerMasterDto | undefined)?.municipalityFinancialYearPublicId ?? prev.municipalityFinancialYearPublicId }))} />
             </FormRow>
             <FormRow cols={2}>
               <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setReferenceLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
@@ -1076,15 +1193,20 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Indicator Number" required error={fieldError('Indicator Number')} value={form.indicatorNumber} onChange={(event) => setForm(prev => ({ ...prev, indicatorNumber: event.target.value }))} />
               <Input label="Target Name" required error={fieldError('Target Name')} value={form.targetName} onChange={(event) => setForm(prev => ({ ...prev, targetName: event.target.value }))} />
             </FormRow>
-            <FormRow cols={2}>
-              <Input label="National KPA" required value={form.nationalKPA} onChange={(event) => setForm(prev => ({ ...prev, nationalKPA: event.target.value }))} />
-              <Input label="Municipal KPA" required value={form.municipalKPA} onChange={(event) => setForm(prev => ({ ...prev, municipalKPA: event.target.value }))} />
+            {catalogueError && <p className="text-sm text-error-600">{catalogueError}</p>}
+            <FormRow cols={3}>
+              <Select label="National KPA" required error={fieldError('National KPA')} value={form.nationalKpaPublicId} options={strategicOptions(catalogue?.nationalKpas, form.nationalKpaPublicId, form.nationalKPA)} onChange={event => { const item = catalogue?.nationalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, nationalKpaPublicId: event.target.value, nationalKPA: item?.name ?? prev.nationalKPA })); }} />
+              <Select label="Municipal KPA" required error={fieldError('Municipal KPA')} value={form.municipalKpaPublicId} options={strategicOptions(catalogue?.municipalKpas, form.municipalKpaPublicId, form.municipalKPA)} onChange={event => { const item = catalogue?.municipalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, municipalKpaPublicId: event.target.value, municipalKPA: item?.name ?? prev.municipalKPA, strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' })); }} />
+              <Select label="Back-to-Basics Pillar" value={form.backToBasicsPillarPublicId} options={strategicOptions(catalogue?.backToBasicsPillars, form.backToBasicsPillarPublicId, existingTarget?.backToBasicsPillar)} onChange={event => setForm(prev => ({ ...prev, backToBasicsPillarPublicId: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value, strategicObjectiveId: '' }))} options={lookups.strategicGoals.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={lookups.strategicObjectives.filter(item => !form.strategicGoalId || String(item.strategicGoalId) === form.strategicGoalId).map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Strategic Goal" value={form.strategicGoalPublicId} options={strategicOptions(childrenFor(catalogue, 'municipal-kpa-strategic-goal', form.municipalKpaPublicId, catalogue?.strategicGoals ?? []), form.strategicGoalPublicId, existingTarget?.strategicGoal.name)} onChange={event => setForm(prev => ({ ...prev, strategicGoalPublicId: event.target.value, strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <Select label="Strategic Intervention" value={form.strategicInterventionPublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-goal-intervention', form.strategicGoalPublicId, catalogue?.strategicInterventions ?? []), form.strategicInterventionPublicId, existingTarget?.strategicIntervention)} onChange={event => setForm(prev => ({ ...prev, strategicInterventionPublicId: event.target.value, strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
             </FormRow>
-            <Input label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjective} onChange={(event) => setForm(prev => ({ ...prev, performanceObjective: event.target.value }))} />
+            <FormRow cols={2}>
+              <Select label="Strategic Objective" value={form.strategicObjectivePublicId} options={strategicOptions(childrenFor(catalogue, form.strategicInterventionPublicId ? 'strategic-intervention-objective' : 'strategic-goal-objective', form.strategicInterventionPublicId || form.strategicGoalPublicId, catalogue?.strategicObjectives ?? []), form.strategicObjectivePublicId, existingTarget?.strategicObjective.name)} onChange={event => setForm(prev => ({ ...prev, strategicObjectivePublicId: event.target.value, performanceObjectivePublicId: '' }))} />
+              <Select label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjectivePublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-objective-performance-objective', form.strategicObjectivePublicId, catalogue?.performanceObjectives ?? []), form.performanceObjectivePublicId, form.performanceObjective)} onChange={event => { const item = catalogue?.performanceObjectives.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, performanceObjectivePublicId: event.target.value, performanceObjective: item?.name ?? prev.performanceObjective })); }} />
+            </FormRow>
             <Textarea label="KPI Description" required error={fieldError('KPI Description')} rows={4} value={form.kpiDescription} onChange={(event) => setForm(prev => ({ ...prev, kpiDescription: event.target.value }))} />
           </FormPanel>
         </div>
@@ -1369,6 +1491,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
+  const { catalogue, catalogueError } = useStrategicCatalogue('ipms', form.municipalityFinancialYearPublicId);
   const [existingTarget, setExistingTarget] = useState<IPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -1508,7 +1631,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               </div>
               <Input label="Linked OPMS" value={linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not linked')} readOnly />
             </FormRow>
-            <FormRow cols={2}>
+            <FormRow cols={3}>
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
               <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setOrganizationLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
             </FormRow>
@@ -1525,15 +1649,20 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Indicator Number" required error={fieldError('Indicator Number')} value={form.indicatorNumber} onChange={(event) => setForm(prev => ({ ...prev, indicatorNumber: event.target.value }))} />
               <Input label="Target Name" required error={fieldError('Target Name')} value={form.targetName} onChange={(event) => setForm(prev => ({ ...prev, targetName: event.target.value }))} />
             </FormRow>
-            <FormRow cols={2}>
-              <Input label="National KPA" required value={form.nationalKPA} onChange={(event) => setForm(prev => ({ ...prev, nationalKPA: event.target.value }))} />
-              <Input label="Municipal KPA" required value={form.municipalKPA} onChange={(event) => setForm(prev => ({ ...prev, municipalKPA: event.target.value }))} />
+            {catalogueError && <p className="text-sm text-error-600">{catalogueError}</p>}
+            <FormRow cols={3}>
+              <Select label="National KPA" required error={fieldError('National KPA')} value={form.nationalKpaPublicId} options={strategicOptions(catalogue?.nationalKpas, form.nationalKpaPublicId, form.nationalKPA)} onChange={event => { const item = catalogue?.nationalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, nationalKpaPublicId: event.target.value, nationalKPA: item?.name ?? prev.nationalKPA })); }} />
+              <Select label="Municipal KPA" required error={fieldError('Municipal KPA')} value={form.municipalKpaPublicId} options={strategicOptions(catalogue?.municipalKpas, form.municipalKpaPublicId, form.municipalKPA)} onChange={event => { const item = catalogue?.municipalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, municipalKpaPublicId: event.target.value, municipalKPA: item?.name ?? prev.municipalKPA, strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' })); }} />
+              <Select label="Back-to-Basics Pillar" value={form.backToBasicsPillarPublicId} options={strategicOptions(catalogue?.backToBasicsPillars, form.backToBasicsPillarPublicId, existingTarget?.backToBasicsPillar)} onChange={event => setForm(prev => ({ ...prev, backToBasicsPillarPublicId: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value, strategicObjectiveId: '' }))} options={lookups.strategicGoals.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={lookups.strategicObjectives.filter(item => !form.strategicGoalId || String(item.strategicGoalId) === form.strategicGoalId).map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Strategic Goal" value={form.strategicGoalPublicId} options={strategicOptions(childrenFor(catalogue, 'municipal-kpa-strategic-goal', form.municipalKpaPublicId, catalogue?.strategicGoals ?? []), form.strategicGoalPublicId, existingTarget?.strategicGoal.name)} onChange={event => setForm(prev => ({ ...prev, strategicGoalPublicId: event.target.value, strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <Select label="Strategic Intervention" value={form.strategicInterventionPublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-goal-intervention', form.strategicGoalPublicId, catalogue?.strategicInterventions ?? []), form.strategicInterventionPublicId, existingTarget?.strategicIntervention)} onChange={event => setForm(prev => ({ ...prev, strategicInterventionPublicId: event.target.value, strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
             </FormRow>
-            <Input label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjective} onChange={(event) => setForm(prev => ({ ...prev, performanceObjective: event.target.value }))} />
+            <FormRow cols={2}>
+              <Select label="Strategic Objective" value={form.strategicObjectivePublicId} options={strategicOptions(childrenFor(catalogue, form.strategicInterventionPublicId ? 'strategic-intervention-objective' : 'strategic-goal-objective', form.strategicInterventionPublicId || form.strategicGoalPublicId, catalogue?.strategicObjectives ?? []), form.strategicObjectivePublicId, existingTarget?.strategicObjective.name)} onChange={event => setForm(prev => ({ ...prev, strategicObjectivePublicId: event.target.value, performanceObjectivePublicId: '' }))} />
+              <Select label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjectivePublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-objective-performance-objective', form.strategicObjectivePublicId, catalogue?.performanceObjectives ?? []), form.performanceObjectivePublicId, form.performanceObjective)} onChange={event => { const item = catalogue?.performanceObjectives.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, performanceObjectivePublicId: event.target.value, performanceObjective: item?.name ?? prev.performanceObjective })); }} />
+            </FormRow>
             <Textarea label="KPI Description" required error={fieldError('KPI Description')} rows={4} value={form.kpiDescription} onChange={(event) => setForm(prev => ({ ...prev, kpiDescription: event.target.value }))} />
           </FormPanel>
         </div>

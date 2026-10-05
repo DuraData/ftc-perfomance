@@ -83,6 +83,7 @@ import type {
   GlobalStrategicReferenceDto,
   StrategicPlanningMasterDto,
   StrategicPlanningRelationshipDto,
+  StrategicClassificationCatalogueDto,
   WorkflowDefinitionDto,
   WorkflowDefinitionComparisonDto,
   InternalAuditAssessmentDto,
@@ -508,6 +509,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     id: dto.id,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
+    municipalityFinancialYearPublicId: dto.municipalityFinancialYearPublicId ?? undefined,
     sdbipLayer: dto.sdbipLayerPublicId ? { publicId: dto.sdbipLayerPublicId, code: dto.sdbipLayerCode ?? '', name: dto.sdbipLayerName ?? '' } : undefined,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
@@ -528,6 +530,15 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     revisedOrderNumber: dto.revisedOrderNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
+    nationalKpaPublicId: dto.nationalKpaPublicId ?? undefined,
+    municipalKpaPublicId: dto.municipalKpaPublicId ?? undefined,
+    backToBasicsPillarPublicId: dto.backToBasicsPillarPublicId ?? undefined,
+    backToBasicsPillar: dto.backToBasicsPillar ?? undefined,
+    strategicGoalPublicId: dto.strategicGoalPublicId ?? undefined,
+    strategicInterventionPublicId: dto.strategicInterventionPublicId ?? undefined,
+    strategicIntervention: dto.strategicIntervention ?? undefined,
+    strategicObjectivePublicId: dto.strategicObjectivePublicId ?? undefined,
+    performanceObjectivePublicId: dto.performanceObjectivePublicId ?? undefined,
     strategicGoal,
     strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
@@ -594,6 +605,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     id: dto.id,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
+    municipalityFinancialYearPublicId: dto.municipalityFinancialYearPublicId ?? undefined,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     relatedOPMSTarget: undefined,
@@ -608,6 +620,15 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     revisedOrderNumber: dto.revisedOrderNumber,
     nationalKPA: dto.nationalKpa,
     municipalKPA: dto.municipalKpa,
+    nationalKpaPublicId: dto.nationalKpaPublicId ?? undefined,
+    municipalKpaPublicId: dto.municipalKpaPublicId ?? undefined,
+    backToBasicsPillarPublicId: dto.backToBasicsPillarPublicId ?? undefined,
+    backToBasicsPillar: dto.backToBasicsPillar ?? undefined,
+    strategicGoalPublicId: dto.strategicGoalPublicId ?? undefined,
+    strategicInterventionPublicId: dto.strategicInterventionPublicId ?? undefined,
+    strategicIntervention: dto.strategicIntervention ?? undefined,
+    strategicObjectivePublicId: dto.strategicObjectivePublicId ?? undefined,
+    performanceObjectivePublicId: dto.performanceObjectivePublicId ?? undefined,
     strategicGoal,
     strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
@@ -1404,6 +1425,10 @@ export function saveStrategicPlanningMaster(kind: StrategicPlanningMasterKind, p
 
 export function getStrategicPlanningRelationships(includeInactive = false): Promise<ApiResponse<StrategicPlanningRelationshipDto[]>> {
   return get<StrategicPlanningRelationshipDto[]>(`/v1/strategic-planning/relationships${includeInactive ? '?includeInactive=true' : ''}`);
+}
+
+export function getStrategicClassificationCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string): Promise<ApiResponse<StrategicClassificationCatalogueDto>> {
+  return get<StrategicClassificationCatalogueDto>(`/v1/strategic-planning/catalogue/${kind}?municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}`);
 }
 
 export function linkStrategicPlanningRelationship(kind: string, parentPublicId: string, childPublicId: string, reason: string, rowVersion?: string | null): Promise<ApiResponse<StrategicPlanningRelationshipDto>> {

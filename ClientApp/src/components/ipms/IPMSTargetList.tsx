@@ -23,6 +23,13 @@ function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
     kpiDescription: target.kpiDescription,
     nationalKpa: target.nationalKPA,
     municipalKpa: target.municipalKPA,
+    nationalKpaPublicId: target.nationalKpaPublicId!,
+    municipalKpaPublicId: target.municipalKpaPublicId!,
+    backToBasicsPillarPublicId: target.backToBasicsPillarPublicId ?? null,
+    strategicGoalPublicId: target.strategicGoalPublicId ?? null,
+    strategicInterventionPublicId: target.strategicInterventionPublicId ?? null,
+    strategicObjectivePublicId: target.strategicObjectivePublicId ?? null,
+    performanceObjectivePublicId: target.performanceObjectivePublicId!,
     performanceObjective: target.performanceObjective,
     departmentId: null,
     departmentPublicId: target.department?.publicId ?? null,
@@ -203,6 +210,10 @@ export function IPMSTargetList() {
             onClick={(e) => {
               e.stopPropagation();
               void (async () => {
+                if (!row.nationalKpaPublicId || !row.municipalKpaPublicId || !row.performanceObjectivePublicId) {
+                  pushToast('error', 'Reconcile this legacy target to governed strategic classifications before copying it.');
+                  return;
+                }
                 const result = await createIpmsTargetApi(buildPayloadFromTarget({
                   ...row,
                   id: '',

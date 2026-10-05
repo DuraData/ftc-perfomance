@@ -230,10 +230,20 @@ public record OpmsTargetResponse(
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
     public Guid? SdbipLayerPublicId { get; init; }
+    public Guid? MunicipalityFinancialYearPublicId { get; init; }
     public string? SdbipLayerCode { get; init; }
     public string? SdbipLayerName { get; init; }
     public Guid? DepartmentPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
+    public Guid? NationalKpaPublicId { get; init; }
+    public Guid? MunicipalKpaPublicId { get; init; }
+    public Guid? BackToBasicsPillarPublicId { get; init; }
+    public Guid? StrategicGoalPublicId { get; init; }
+    public Guid? StrategicInterventionPublicId { get; init; }
+    public Guid? StrategicObjectivePublicId { get; init; }
+    public Guid? PerformanceObjectivePublicId { get; init; }
+    public string? BackToBasicsPillar { get; init; }
+    public string? StrategicIntervention { get; init; }
 }
 
 public record IpmsTargetResponse(
@@ -286,7 +296,17 @@ public record IpmsTargetResponse(
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
     public Guid? DepartmentPublicId { get; init; }
+    public Guid? MunicipalityFinancialYearPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
+    public Guid? NationalKpaPublicId { get; init; }
+    public Guid? MunicipalKpaPublicId { get; init; }
+    public Guid? BackToBasicsPillarPublicId { get; init; }
+    public Guid? StrategicGoalPublicId { get; init; }
+    public Guid? StrategicInterventionPublicId { get; init; }
+    public Guid? StrategicObjectivePublicId { get; init; }
+    public Guid? PerformanceObjectivePublicId { get; init; }
+    public string? BackToBasicsPillar { get; init; }
+    public string? StrategicIntervention { get; init; }
 }
 
 public record TargetPeriodValueResponse(
