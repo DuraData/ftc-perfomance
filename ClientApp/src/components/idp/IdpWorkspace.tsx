@@ -35,6 +35,7 @@ import type {
   IdpReportDocument,
 } from '../../types';
 import { idpHierarchyCsvTemplate, idpKpiCsvTemplate, parseIdpHierarchyCsv, parseIdpKpiCsv } from './idpImportCsv';
+import { IdpPlanPicker } from './IdpPlanPicker';
 
 function metricCard(title: string, value: string | number, caption?: string) {
   return (
@@ -49,20 +50,13 @@ function metricCard(title: string, value: string | number, caption?: string) {
 export function IdpPlanningDashboardPage() {
   const { setCurrentPath } = useApp();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
-  const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = async () => {
+  const load = async (planId = selectedPlanId) => {
     setBusy(true);
     try {
-      const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
-      const loadedPlans = plansResult.data?.items ?? [];
-      setPlans(loadedPlans);
-      const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
-      setSelectedPlanId(planId);
-
       if (planId) {
         const dashboardResult = await getIdpDashboard(planId);
         setDashboard(dashboardResult.data ?? null);
@@ -73,11 +67,6 @@ export function IdpPlanningDashboardPage() {
       setBusy(false);
     }
   };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <AppShell title="IDP Dashboard" subtitle="Executive strategic planning and implementation view">
@@ -95,18 +84,7 @@ export function IdpPlanningDashboardPage() {
               Manage Plans and Versions
             </Button>
           ) : null}
-          <select
-            value={selectedPlanId ?? ''}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              setSelectedPlanId(Number.isNaN(value) ? null : value);
-            }}
-            className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-200"
-          >
-            {plans.map(plan => (
-              <option key={plan.id} value={plan.id}>{plan.planCode} - {plan.planTitle}</option>
-            ))}
-          </select>
+          <IdpPlanPicker label="Dashboard plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
         </div>
 
         {busy ? <Card><p className="text-sm text-secondary-500">Loading IDP dashboard...</p></Card> : null}
@@ -433,7 +411,7 @@ export function IdpPlanManagementPage() {
               <label className="text-xs text-secondary-600">Plan code<input aria-label="Plan code" className={fieldClass} value={planDraft.planCode} onChange={event => setPlanDraft({ ...planDraft, planCode: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Start financial year<input aria-label="Start financial year" type="number" className={fieldClass} value={planDraft.startFinancialYear} onChange={event => setPlanDraft({ ...planDraft, startFinancialYear: Number(event.target.value) })} /></label>
               <label className="text-xs text-secondary-600">End financial year<input aria-label="End financial year" type="number" className={fieldClass} value={planDraft.endFinancialYear} onChange={event => setPlanDraft({ ...planDraft, endFinancialYear: Number(event.target.value) })} /></label>
-              <label className="text-xs text-secondary-600">Predecessor plan<select aria-label="Predecessor plan" className={fieldClass} value={planDraft.predecessorPlanPublicId} onChange={event => setPlanDraft({ ...planDraft, predecessorPlanPublicId: event.target.value })}><option value="">New plan family</option>{plans.map(plan => <option key={plan.publicId} value={plan.publicId}>{plan.planCode} - {plan.planTitle}</option>)}</select></label>
+              <IdpPlanPicker label="Predecessor plan" value={planDraft.predecessorPlanPublicId} valueField="publicId" emptyLabel="New plan family" onChange={value => setPlanDraft(current => ({ ...current, predecessorPlanPublicId: value }))} />
               <label className="text-xs text-secondary-600">Effective from<input aria-label="Plan effective from" type="date" className={fieldClass} value={planDraft.effectiveFrom} onChange={event => setPlanDraft({ ...planDraft, effectiveFrom: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Effective to<input aria-label="Plan effective to" type="date" className={fieldClass} value={planDraft.effectiveTo} onChange={event => setPlanDraft({ ...planDraft, effectiveTo: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Publication reference<input aria-label="Plan publication reference" className={fieldClass} value={planDraft.publicationReference} onChange={event => setPlanDraft({ ...planDraft, publicationReference: event.target.value })} /></label>
@@ -598,17 +576,10 @@ export function IdpPlanManagementPage() {
 export function IdpHierarchyPage() {
   const { pushToast } = useApp();
   const canManageHierarchy = useHasAnyPermission(['IDP.Hierarchy.Manage', 'IDP.Collaboration.Manage']);
-  const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [hierarchy, setHierarchy] = useState<IdpHierarchy | null>(null);
 
-  const load = async () => {
-    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
-    const loadedPlans = plansResult.data?.items ?? [];
-    setPlans(loadedPlans);
-    const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
-    setSelectedPlanId(planId);
-
+  const load = async (planId = selectedPlanId) => {
     if (planId) {
       const hierarchyResult = await getIdpPlanHierarchy(planId);
       setHierarchy(hierarchyResult.data ?? null);
@@ -616,11 +587,6 @@ export function IdpHierarchyPage() {
       setHierarchy(null);
     }
   };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const pathRows = useMemo(() => {
     if (!hierarchy) return [];
@@ -650,13 +616,7 @@ export function IdpHierarchyPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
             {!canManageHierarchy ? <Badge variant="warning">Read Only</Badge> : null}
-            <select
-              value={selectedPlanId ?? ''}
-              onChange={event => setSelectedPlanId(Number(event.target.value))}
-              className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-200"
-            >
-              {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.planCode}</option>)}
-            </select>
+            <IdpPlanPicker label="Hierarchy plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
             {canManageHierarchy ? (
               <Button
                 variant="outline"
@@ -717,17 +677,10 @@ export function IdpHierarchyPage() {
 export function IdpCommunityParticipationPage() {
   const { pushToast } = useApp();
   const canManageParticipation = useHasAnyPermission(['IDP.Participation.Manage']);
-  const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
 
-  const load = async () => {
-    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
-    const loadedPlans = plansResult.data?.items ?? [];
-    setPlans(loadedPlans);
-    const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
-    setSelectedPlanId(planId);
-
+  const load = async (planId = selectedPlanId) => {
     if (planId) {
       const dashboardResult = await getIdpDashboard(planId);
       setDashboard(dashboardResult.data ?? null);
@@ -736,11 +689,6 @@ export function IdpCommunityParticipationPage() {
     }
   };
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <AppShell title="Community Participation" subtitle="Ward consultations, public meetings, and stakeholder inputs">
       <div className="space-y-4">
@@ -748,19 +696,7 @@ export function IdpCommunityParticipationPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
             {!canManageParticipation ? <Badge variant="warning">Read Only</Badge> : null}
-            <select
-              value={selectedPlanId ?? ''}
-              onChange={async event => {
-                const planId = Number(event.target.value);
-                setSelectedPlanId(planId);
-
-                const dashboardResult = await getIdpDashboard(planId);
-                setDashboard(dashboardResult.data ?? null);
-              }}
-              className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-200"
-            >
-              {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.planCode}</option>)}
-            </select>
+            <IdpPlanPicker label="Participation plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
             {canManageParticipation ? (
               <Button
                 variant="primary"
@@ -815,17 +751,10 @@ export function IdpCommunityParticipationPage() {
 
 export function IdpAlignmentMatrixPage() {
   const canManageAlignment = useHasAnyPermission(['IDP.Alignment.Manage']);
-  const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [matrix, setMatrix] = useState<IdpAlignmentMatrixItem[]>([]);
 
-  const load = async () => {
-    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
-    const loadedPlans = plansResult.data?.items ?? [];
-    setPlans(loadedPlans);
-    const planId = selectedPlanId ?? loadedPlans[0]?.id ?? null;
-    setSelectedPlanId(planId);
-
+  const load = async (planId = selectedPlanId) => {
     if (planId) {
       const matrixResult = await getIdpAlignmentMatrix(planId);
       setMatrix(matrixResult.data ?? []);
@@ -834,11 +763,6 @@ export function IdpAlignmentMatrixPage() {
     }
   };
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <AppShell title="Alignment Matrix" subtitle="NDP, PGDS, DDM, sector, and municipal alignment mapping">
       <div className="space-y-4">
@@ -846,13 +770,7 @@ export function IdpAlignmentMatrixPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => void load()}>Refresh</Button>
             {!canManageAlignment ? <Badge variant="warning">Read Only</Badge> : null}
-            <select
-              value={selectedPlanId ?? ''}
-              onChange={event => setSelectedPlanId(Number(event.target.value))}
-              className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-200"
-            >
-              {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.planCode}</option>)}
-            </select>
+            <IdpPlanPicker label="Alignment plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
           </div>
         </Card>
 
@@ -888,20 +806,8 @@ export function IdpAlignmentMatrixPage() {
 
 export function IdpReportsPage() {
   const { pushToast } = useApp();
-  const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [lastReport, setLastReport] = useState<IdpReportDocument | null>(null);
-
-  const loadPlans = async () => {
-    const plansResult = await getIdpPlansPage({ pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
-    const loadedPlans = plansResult.data?.items ?? [];
-    setPlans(loadedPlans);
-    setSelectedPlanId(current => current ?? loadedPlans[0]?.id ?? null);
-  };
-
-  useEffect(() => {
-    void loadPlans();
-  }, []);
 
   const generate = async (reportType: string, format: 'pdf' | 'excel' | 'word') => {
     if (!selectedPlanId) {
@@ -924,13 +830,7 @@ export function IdpReportsPage() {
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedPlanId ?? ''}
-              onChange={event => setSelectedPlanId(Number(event.target.value))}
-              className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-200"
-            >
-              {plans.map(plan => <option key={plan.id} value={plan.id}>{plan.planCode} - {plan.planTitle}</option>)}
-            </select>
+            <IdpPlanPicker label="Report plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => setSelectedPlanId(value ? Number(value) : null)} />
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('annual', 'pdf')}>Annual PDF</Button>
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('five-year', 'word')}>Five-Year Word</Button>
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('ward-based', 'excel')}>Ward Excel</Button>

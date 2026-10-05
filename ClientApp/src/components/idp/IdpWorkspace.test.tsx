@@ -56,7 +56,7 @@ describe('IDP plan lineage workspace', () => {
     security.canImport.mockReturnValue(true);
     api.getIdpPlansPage.mockResolvedValue({
       success: true,
-      data: { items: [predecessor], page: 1, pageSize: 100, totalCount: 1, totalPages: 1 },
+      data: { items: [predecessor], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
     });
     api.getIdpPlanHierarchy.mockResolvedValue({ success: true, data: { versions: [] } });
     api.getIdpDashboard.mockResolvedValue({ success: true, data: null });
@@ -76,6 +76,15 @@ describe('IDP plan lineage workspace', () => {
     expect(app.setCurrentPath).toHaveBeenCalledWith('/idp/plans');
     expect(api.createIdpPlan).not.toHaveBeenCalled();
     expect(api.createIdpPlanVersion).not.toHaveBeenCalled();
+  });
+
+  it('loads the dashboard through the bounded searchable plan picker', async () => {
+    render(<IdpPlanningDashboardPage />);
+
+    await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: undefined, sortBy: 'createdAt', sortDirection: 'desc' }));
+    await waitFor(() => expect(api.getIdpDashboard).toHaveBeenCalledWith(predecessor.id));
+    fireEvent.change(screen.getByLabelText('Dashboard plan search'), { target: { value: 'future plan' } });
+    await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'future plan', sortBy: 'createdAt', sortDirection: 'desc' }), { timeout: 1500 });
   });
 
   it('submits user-entered predecessor and publication metadata', async () => {
