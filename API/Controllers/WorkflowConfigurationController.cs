@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Application.Services;
 using FTCERP.Host.Domain.Entities;
@@ -327,6 +328,51 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<StageRatingDto[]>(true, rows.Select(ToDto).ToArray()));
     }
 
+    [HttpGet("submissions/{kind}/{submissionId}/rfis/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceRfiDto>>>> GetRfisPage(
+        SubmissionKind kind,
+        string submissionId,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? status = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<PerformanceRfiDto>>();
+        var access = await LoadSubmissionAccess(kind, submissionId);
+        if (access == null) return NotFound(Fail<PagedResponse<PerformanceRfiDto>>("Submission not found."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<PerformanceRfiDto>>("User not found."));
+        var readCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
+        if (!(await accessControl.CheckPermissionAsync(user, readCode, access.Scope)).Allowed) return Forbid();
+        if (!RfiSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<PerformanceRfiDto>>("SortBy must be raisedAt, dueAt, or status."));
+        var normalizedStatus = status?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (normalizedStatus is not ("" or "open" or "responded" or "closed" or "overdue"))
+            return BadRequest(Fail<PagedResponse<PerformanceRfiDto>>("Status must be open, responded, closed, or overdue."));
+        if (access.Instance == null)
+            return Ok(new ApiResponse<PagedResponse<PerformanceRfiDto>>(true, PagedResponse<PerformanceRfiDto>.Empty(request.Page, request.PageSize)));
+
+        var query = context.PerformanceRfis.AsNoTracking()
+            .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(x => x.Question.Contains(request.NormalizedSearch)
+                || (x.Response != null && x.Response.Contains(request.NormalizedSearch))
+                || x.RaisedByUserId.Contains(request.NormalizedSearch));
+        query = normalizedStatus switch
+        {
+            "open" => query.Where(x => !x.RespondedAt.HasValue && !x.ClosedAt.HasValue),
+            "responded" => query.Where(x => x.RespondedAt.HasValue && !x.ClosedAt.HasValue),
+            "closed" => query.Where(x => x.ClosedAt.HasValue),
+            "overdue" => query.Where(x => !x.ClosedAt.HasValue && x.ResponseDueAt < DateTime.UtcNow),
+            _ => query
+        };
+
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyRfiOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Include(x => x.EvidenceLinks).ThenInclude(x => x.PoeFile).ThenInclude(x => x.Blob)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<PerformanceRfiDto>>(true,
+            PagedResponse<PerformanceRfiDto>.Create(rows.Select(ToRfiDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("submissions/{kind}/{submissionId}/rfis")]
     public async Task<ActionResult<ApiResponse<PerformanceRfiDto[]>>> GetRfis(SubmissionKind kind, string submissionId)
     {
@@ -337,13 +383,24 @@ public sealed class WorkflowConfigurationController(
         if (user == null) return Unauthorized(Fail<PerformanceRfiDto[]>("User not found."));
         var readCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
         if (!(await accessControl.CheckPermissionAsync(user, readCode, access.Scope)).Allowed) return Forbid();
-        if (access.Instance == null) return Ok(new ApiResponse<PerformanceRfiDto[]>(true, []));
-        var rows = await context.PerformanceRfis.AsNoTracking()
-            .Include(x => x.EvidenceLinks).ThenInclude(x => x.PoeFile).ThenInclude(x => x.Blob)
-            .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id)
-            .OrderByDescending(x => x.RaisedAt).ToArrayAsync();
-        return Ok(new ApiResponse<PerformanceRfiDto[]>(true, rows.Select(ToRfiDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<PerformanceRfiDto[]>("This unbounded route is retired. Use the /rfis/page endpoint."));
     }
+
+    private static readonly HashSet<string> RfiSortFields = ["raisedat", "dueat", "status"];
+
+    private static IOrderedQueryable<PerformanceRfi> ApplyRfiOrdering(
+        IQueryable<PerformanceRfi> query,
+        string sortBy,
+        bool descending) => (sortBy, descending) switch
+        {
+            ("dueat", false) => query.OrderBy(x => x.ResponseDueAt).ThenBy(x => x.Id),
+            ("dueat", true) => query.OrderByDescending(x => x.ResponseDueAt).ThenByDescending(x => x.Id),
+            ("status", false) => query.OrderBy(x => x.ClosedAt.HasValue).ThenBy(x => x.RespondedAt.HasValue).ThenBy(x => x.Id),
+            ("status", true) => query.OrderByDescending(x => x.ClosedAt.HasValue).ThenByDescending(x => x.RespondedAt.HasValue).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.RaisedAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.RaisedAt).ThenByDescending(x => x.Id)
+        };
 
     [HttpPost("submissions/{kind}/{submissionId}/rfis")]
     public async Task<ActionResult<ApiResponse<PerformanceRfiDto>>> RaiseRfi(SubmissionKind kind, string submissionId, RaisePerformanceRfiRequest request)

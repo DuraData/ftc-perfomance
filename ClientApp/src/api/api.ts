@@ -1438,8 +1438,19 @@ export async function createReportingWindowException(windowPublicId: string, pay
   return post<ReportingWindowExceptionDto>(`/v1/workflow/reporting-windows/${windowPublicId}/exceptions`, payload);
 }
 
-export async function getPerformanceRfis(kind: 1 | 2, submissionId: string): Promise<ApiResponse<PerformanceRfiDto[]>> {
-  return get<PerformanceRfiDto[]>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/rfis`);
+export type PerformanceRfiPageQuery = RegisterPageQuery & {
+  status?: 'open' | 'responded' | 'closed' | 'overdue';
+};
+
+export async function getPerformanceRfisPage(
+  kind: 1 | 2,
+  submissionId: string,
+  query: PerformanceRfiPageQuery = {},
+): Promise<ApiResponse<PagedResult<PerformanceRfiDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.status) parameters.set('status', query.status);
+  const value = parameters.toString();
+  return get<PagedResult<PerformanceRfiDto>>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/rfis/page${value ? `?${value}` : ''}`);
 }
 
 export async function raisePerformanceRfi(kind: 1 | 2, submissionId: string, payload: { question: string; responseDueAt: string; evidencePublicIds?: string[] }): Promise<ApiResponse<PerformanceRfiDto>> {

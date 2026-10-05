@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileCheck2, MessageCircleQuestion, RefreshCw } from 'lucide-react';
-import { closePerformanceRfi, getIpmsSubmissionAttachments, getOpmsSubmissionAttachments, getPerformanceRfis, raisePerformanceRfi, respondPerformanceRfi } from '../../api/api';
+import { closePerformanceRfi, getIpmsSubmissionAttachments, getOpmsSubmissionAttachments, getPerformanceRfisPage, raisePerformanceRfi, respondPerformanceRfi } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import type { Attachment, PerformanceRfiDto } from '../../types';
@@ -17,6 +17,14 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
   const canRespond = security.canExecute(`${prefix}_RFI.RESPOND`);
   const canClose = security.canExecute(`${prefix}_RFI.CLOSE`);
   const [rows, setRows] = useState<PerformanceRfiDto[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<'' | 'open' | 'responded' | 'closed' | 'overdue'>('');
+  const [sortBy, setSortBy] = useState('raisedAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [question, setQuestion] = useState('');
   const [responseDueAt, setResponseDueAt] = useState(localDate);
   const [responses, setResponses] = useState<Record<string, string>>({});
@@ -26,27 +34,35 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
+  const loadRfis = useCallback(async () => {
     setBusy(true); setError('');
-    const [result, evidenceResult] = await Promise.all([
-      getPerformanceRfis(kind, submissionId),
-      kind === 1 ? getOpmsSubmissionAttachments(submissionId) : getIpmsSubmissionAttachments(submissionId),
-    ]);
+    const result = await getPerformanceRfisPage(kind, submissionId, { page, pageSize: 25, search, status: status || undefined, sortBy, sortDirection });
     if (!result.success) setError(result.message ?? 'RFIs could not be loaded.');
-    else if (!evidenceResult.success) setError(evidenceResult.message ?? 'Submission evidence could not be loaded.');
-    setRows(result.data ?? []);
-    setAvailableEvidence((evidenceResult.data ?? []).filter(file => file.isActive !== false && file.publicId && file.scanStatus === 'Clean' && !file.isQuarantined));
+    setRows(result.data?.items ?? []);
+    setTotalCount(result.data?.totalCount ?? 0);
+    setTotalPages(result.data?.totalPages ?? 0);
     setBusy(false);
+  }, [kind, submissionId, page, search, status, sortBy, sortDirection]);
+
+  const loadEvidence = useCallback(async () => {
+    const evidenceResult = kind === 1 ? await getOpmsSubmissionAttachments(submissionId) : await getIpmsSubmissionAttachments(submissionId);
+    if (!evidenceResult.success) setError(evidenceResult.message ?? 'Submission evidence could not be loaded.');
+    setAvailableEvidence((evidenceResult.data ?? []).filter(file => file.isActive !== false && file.publicId && file.scanStatus === 'Clean' && !file.isQuarantined));
   }, [kind, submissionId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadRfis(); }, [loadRfis]);
+  useEffect(() => { void loadEvidence(); }, [loadEvidence]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   const raise = async () => {
     if (!question.trim()) { setError('Question is required.'); return; }
     setBusy(true); setError('');
     const result = await raisePerformanceRfi(kind, submissionId, { question: question.trim(), responseDueAt: new Date(responseDueAt).toISOString(), evidencePublicIds: questionEvidence });
     if (!result.success) setError(result.message ?? 'RFI could not be raised.');
-    else { setQuestion(''); setQuestionEvidence([]); pushToast('success', 'RFI raised'); await load(); }
+    else { setQuestion(''); setQuestionEvidence([]); if (page === 1) await loadRfis(); else setPage(1); pushToast('success', 'RFI raised'); }
     setBusy(false);
   };
 
@@ -56,7 +72,7 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     setBusy(true); setError('');
     const result = await respondPerformanceRfi(row.publicId, { response, rowVersion: row.rowVersion, evidencePublicIds: responseEvidence[row.publicId] ?? [] });
     if (!result.success) setError(result.message ?? 'RFI response could not be saved.');
-    else { setResponses(current => ({ ...current, [row.publicId]: '' })); setResponseEvidence(current => ({ ...current, [row.publicId]: [] })); pushToast('success', 'RFI response recorded'); await load(); }
+    else { setResponses(current => ({ ...current, [row.publicId]: '' })); setResponseEvidence(current => ({ ...current, [row.publicId]: [] })); await loadRfis(); pushToast('success', 'RFI response recorded'); }
     setBusy(false);
   };
 
@@ -69,14 +85,16 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     setBusy(true); setError('');
     const result = await closePerformanceRfi(row.publicId, { rowVersion: row.rowVersion });
     if (!result.success) setError(result.message ?? 'RFI could not be closed.');
-    else { pushToast('success', 'RFI closed'); await load(); }
+    else { await loadRfis(); pushToast('success', 'RFI closed'); }
     setBusy(false);
   };
 
   return <div className="mt-5 rounded-lg border border-secondary-200 p-4 dark:border-secondary-700">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="flex items-center gap-2 font-semibold"><MessageCircleQuestion className="h-4 w-4" />Requests for information</h3><p className="mt-1 text-xs text-secondary-500">Governed questions, responses, due dates, concurrency, and closure history.</p></div><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh RFIs</Button></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="flex items-center gap-2 font-semibold"><MessageCircleQuestion className="h-4 w-4" />Requests for information</h3><p className="mt-1 text-xs text-secondary-500">Governed questions, responses, due dates, concurrency, and closure history.</p></div><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => { void loadRfis(); void loadEvidence(); }} disabled={busy}>Refresh RFIs</Button></div>
     {error && <div role="alert" className="mt-3 rounded border border-error-200 bg-error-50 p-2 text-sm text-error-700">{error}</div>}
     {canRaise && <div className="mt-4 grid gap-3 md:grid-cols-[1fr_15rem_auto]"><div className="space-y-2"><Textarea label="New question" value={question} onChange={event => setQuestion(event.target.value)} />{evidencePicker(questionEvidence, setQuestionEvidence, 'Evidence supporting the question')}</div><Input label="Response due" type="datetime-local" value={responseDueAt} onChange={event => setResponseDueAt(event.target.value)} /><div className="self-end"><Button variant="primary" onClick={() => void raise()} disabled={busy}>Raise RFI</Button></div></div>}
+    <div className="mt-4 flex flex-wrap items-end gap-2"><label className="text-xs text-secondary-600">Search<Input aria-label="Search RFIs" value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label><label className="text-xs text-secondary-600">Status<select aria-label="Filter RFI status" className="block rounded border border-secondary-300 bg-white px-2 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={status} onChange={event => { setStatus(event.target.value as typeof status); setPage(1); }}><option value="">All</option><option value="open">Open</option><option value="responded">Responded</option><option value="closed">Closed</option><option value="overdue">Overdue</option></select></label><label className="text-xs text-secondary-600">Sort<select aria-label="Sort RFIs" className="block rounded border border-secondary-300 bg-white px-2 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }}><option value="raisedAt">Raised</option><option value="dueAt">Due date</option><option value="status">Status</option></select></label><select aria-label="RFI sort direction" className="rounded border border-secondary-300 bg-white px-2 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select><span className="text-xs text-secondary-500">{totalCount} RFIs</span></div>
     <div className="mt-4 space-y-3">{rows.map(row => <div key={row.publicId} className="rounded-lg border border-secondary-200 bg-secondary-50 p-3 dark:border-secondary-700 dark:bg-secondary-800"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-medium">{row.question}</p><p className="mt-1 text-xs text-secondary-500">Raised {new Date(row.raisedAt).toLocaleString()} · due {new Date(row.responseDueAt).toLocaleString()}</p></div><Badge variant={row.closedAt ? 'success' : row.respondedAt ? 'warning' : 'error'}>{row.closedAt ? 'Closed' : row.respondedAt ? 'Responded' : 'Open'}</Badge></div>{row.response && <p className="mt-3 rounded bg-white p-2 text-sm dark:bg-secondary-900">{row.response}</p>}{row.evidence?.length > 0 && <div className="mt-3 space-y-1">{row.evidence.map(link => <a key={link.publicId} href={link.url || undefined} className="flex items-center gap-2 text-xs text-primary-700 hover:underline" aria-disabled={!link.url}><FileCheck2 className="h-3.5 w-3.5" />{link.fileName} · {link.purpose === 1 ? 'question' : link.purpose === 2 ? 'response' : 'closure'} evidence</a>)}</div>}{!row.respondedAt && canRespond && <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_18rem_auto]"><Textarea label="Response" value={responses[row.publicId] ?? ''} onChange={event => setResponses(current => ({ ...current, [row.publicId]: event.target.value }))} />{evidencePicker(responseEvidence[row.publicId] ?? [], next => setResponseEvidence(current => ({ ...current, [row.publicId]: next })), 'Evidence supporting the response')}<div className="self-end"><Button size="sm" variant="outline" onClick={() => void respond(row)} disabled={busy}>Respond</Button></div></div>}{row.respondedAt && !row.closedAt && canClose && <div className="mt-3"><Button size="sm" variant="success" onClick={() => void close(row)} disabled={busy}>Close RFI</Button></div>}</div>)}{!rows.length && <p className="text-sm text-secondary-500">{busy ? 'Loading RFIs…' : 'No RFIs recorded for this submission.'}</p>}</div>
+    <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {Math.max(1, totalPages)}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous RFIs</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next RFIs</Button></div></div>
   </div>;
 }
