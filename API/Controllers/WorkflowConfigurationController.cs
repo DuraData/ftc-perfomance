@@ -280,30 +280,89 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<WorkflowActionDto>(true, ToDto(transition.Action), transition.Reason));
     }
 
+    [HttpGet("submissions/{kind}/{submissionId}/actions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<WorkflowActionDto>>>> HistoryPage(
+        SubmissionKind kind,
+        string submissionId,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<WorkflowActionDto>>();
+        var access = await LoadSubmissionAccess(kind, submissionId);
+        if (access == null) return NotFound(Fail<PagedResponse<WorkflowActionDto>>("Submission not found."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<WorkflowActionDto>>("User not found."));
+        var permissionCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
+        if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
+        if (!WorkflowActionSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<WorkflowActionDto>>("SortBy must be occurredAt, sequence, actionCode, or actor."));
+        if (access.Instance == null)
+            return Ok(new ApiResponse<PagedResponse<WorkflowActionDto>>(true, PagedResponse<WorkflowActionDto>.Empty(request.Page, request.PageSize)));
+
+        var query = context.SubmissionWorkflowActions.AsNoTracking()
+            .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(x => x.ActionCode.Contains(request.NormalizedSearch)
+                || x.ActorUserId.Contains(request.NormalizedSearch)
+                || (x.Comment != null && x.Comment.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyWorkflowActionOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<WorkflowActionDto>>(true,
+            PagedResponse<WorkflowActionDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("submissions/{kind}/{submissionId}/actions")]
     public async Task<ActionResult<ApiResponse<WorkflowActionDto[]>>> History(SubmissionKind kind, string submissionId)
     {
         if (!HasTenant()) return TenantRequired<WorkflowActionDto[]>();
-        if (kind is not (SubmissionKind.Opms or SubmissionKind.Ipms)) return BadRequest(Fail<WorkflowActionDto[]>("Unsupported submission type."));
+        var access = await LoadSubmissionAccess(kind, submissionId);
+        if (access == null) return NotFound(Fail<WorkflowActionDto[]>("Submission not found."));
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<WorkflowActionDto[]>("User not found."));
         var permissionCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
-        int? department; int? unit; string? owner;
-        if (kind == SubmissionKind.Opms)
-        {
-            var submission = await context.OpmsSubmissions.AsNoTracking().Include(x => x.OpmsTarget).SingleOrDefaultAsync(x => x.Id == submissionId);
-            if (submission == null) return NotFound(Fail<WorkflowActionDto[]>("OPMS submission not found."));
-            department = submission.OpmsTarget.DepartmentId; unit = submission.OpmsTarget.UnitId; owner = submission.OpmsTarget.AssignedUserId;
-        }
-        else
-        {
-            var submission = await context.IpmsSubmissions.AsNoTracking().Include(x => x.IpmsTarget).SingleOrDefaultAsync(x => x.Id == submissionId);
-            if (submission == null) return NotFound(Fail<WorkflowActionDto[]>("IPMS submission not found."));
-            department = submission.IpmsTarget.DepartmentId; unit = submission.IpmsTarget.UnitId; owner = submission.IpmsTarget.AssignedUserId;
-        }
-        if (!(await accessControl.CheckPermissionAsync(user, permissionCode, new AccessScopeContext(department, unit, owner, TargetId: submissionId, MunicipalityId: tenantContext.MunicipalityId))).Allowed) return Forbid();
-        var rows = await context.SubmissionWorkflowActions.AsNoTracking().Where(x => x.SubmissionWorkflowInstance.SubmissionKind == kind && x.SubmissionWorkflowInstance.SubmissionId == submissionId).OrderBy(x => x.Sequence).ToArrayAsync();
-        return Ok(new ApiResponse<WorkflowActionDto[]>(true, rows.Select(ToDto).ToArray()));
+        if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<WorkflowActionDto[]>("This unbounded route is retired. Use the /actions/page endpoint."));
+    }
+
+    [HttpGet("submissions/{kind}/{submissionId}/ratings/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<StageRatingDto>>>> RatingHistoryPage(
+        SubmissionKind kind,
+        string submissionId,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<StageRatingDto>>();
+        var access = await LoadSubmissionAccess(kind, submissionId);
+        if (access == null) return NotFound(Fail<PagedResponse<StageRatingDto>>("Submission not found."));
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(Fail<PagedResponse<StageRatingDto>>("User not found."));
+        var permissionCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
+        if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
+        if (!StageRatingSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<StageRatingDto>>("SortBy must be ratedAt, stageCode, ratingScheme, value, or actor."));
+        if (access.Instance == null)
+            return Ok(new ApiResponse<PagedResponse<StageRatingDto>>(true, PagedResponse<StageRatingDto>.Empty(request.Page, request.PageSize)));
+
+        var query = context.SubmissionStageRatings.AsNoTracking()
+            .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(x => x.WorkflowStageDefinition.Code.Contains(request.NormalizedSearch)
+                || x.RatingScheme.Code.Contains(request.NormalizedSearch)
+                || x.LabelSnapshot.Contains(request.NormalizedSearch)
+                || x.RatedByUserId.Contains(request.NormalizedSearch)
+                || x.RatedByUser.FirstName.Contains(request.NormalizedSearch)
+                || x.RatedByUser.LastName.Contains(request.NormalizedSearch)
+                || (x.Comment != null && x.Comment.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyStageRatingOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Include(x => x.SubmissionWorkflowAction)
+            .Include(x => x.WorkflowStageDefinition)
+            .Include(x => x.RatingScheme)
+            .Include(x => x.RatingSchemeValue)
+            .Include(x => x.RatedByUser)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<StageRatingDto>>(true,
+            PagedResponse<StageRatingDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("submissions/{kind}/{submissionId}/ratings")]
@@ -316,17 +375,40 @@ public sealed class WorkflowConfigurationController(
         if (user == null) return Unauthorized(Fail<StageRatingDto[]>("User not found."));
         var permissionCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
-        var rows = await context.SubmissionStageRatings.AsNoTracking()
-            .Include(x => x.SubmissionWorkflowAction)
-            .Include(x => x.WorkflowStageDefinition)
-            .Include(x => x.RatingScheme)
-            .Include(x => x.RatingSchemeValue)
-            .Include(x => x.RatedByUser)
-            .Where(x => x.SubmissionWorkflowInstance.SubmissionKind == kind && x.SubmissionWorkflowInstance.SubmissionId == submissionId)
-            .OrderBy(x => x.RatedAt)
-            .ToArrayAsync();
-        return Ok(new ApiResponse<StageRatingDto[]>(true, rows.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<StageRatingDto[]>("This unbounded route is retired. Use the /ratings/page endpoint."));
     }
+
+    private static readonly HashSet<string> WorkflowActionSortFields = ["createdat", "occurredat", "sequence", "actioncode", "actor"];
+    private static readonly HashSet<string> StageRatingSortFields = ["createdat", "ratedat", "stagecode", "ratingscheme", "value", "actor"];
+
+    private static IOrderedQueryable<SubmissionWorkflowAction> ApplyWorkflowActionOrdering(
+        IQueryable<SubmissionWorkflowAction> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("sequence", false) => query.OrderBy(x => x.Sequence).ThenBy(x => x.Id),
+            ("sequence", true) => query.OrderByDescending(x => x.Sequence).ThenByDescending(x => x.Id),
+            ("actioncode", false) => query.OrderBy(x => x.ActionCode).ThenBy(x => x.Id),
+            ("actioncode", true) => query.OrderByDescending(x => x.ActionCode).ThenByDescending(x => x.Id),
+            ("actor", false) => query.OrderBy(x => x.ActorUserId).ThenBy(x => x.Id),
+            ("actor", true) => query.OrderByDescending(x => x.ActorUserId).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.OccurredAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.Id)
+        };
+
+    private static IOrderedQueryable<SubmissionStageRating> ApplyStageRatingOrdering(
+        IQueryable<SubmissionStageRating> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("stagecode", false) => query.OrderBy(x => x.WorkflowStageDefinition.Code).ThenBy(x => x.Id),
+            ("stagecode", true) => query.OrderByDescending(x => x.WorkflowStageDefinition.Code).ThenByDescending(x => x.Id),
+            ("ratingscheme", false) => query.OrderBy(x => x.RatingScheme.Code).ThenBy(x => x.Id),
+            ("ratingscheme", true) => query.OrderByDescending(x => x.RatingScheme.Code).ThenByDescending(x => x.Id),
+            ("value", false) => query.OrderBy(x => x.Value).ThenBy(x => x.Id),
+            ("value", true) => query.OrderByDescending(x => x.Value).ThenByDescending(x => x.Id),
+            ("actor", false) => query.OrderBy(x => x.RatedByUserId).ThenBy(x => x.Id),
+            ("actor", true) => query.OrderByDescending(x => x.RatedByUserId).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.RatedAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.RatedAt).ThenByDescending(x => x.Id)
+        };
 
     [HttpGet("submissions/{kind}/{submissionId}/rfis/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceRfiDto>>>> GetRfisPage(

@@ -1,22 +1,32 @@
 import { useEffect, useState } from 'react';
 import { Star } from 'lucide-react';
-import { getSubmissionStageRatings } from '../../api/api';
+import { getSubmissionStageRatingsPage } from '../../api/api';
 import type { StageRatingDto } from '../../types';
-import { Badge } from '../ui';
+import { Badge, Button } from '../ui';
 
 export function StageRatingHistory({ kind, submissionId }: { kind: 1 | 2; submissionId: string }) {
   const [ratings, setRatings] = useState<StageRatingDto[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     let active = true;
-    void getSubmissionStageRatings(kind, submissionId).then(result => {
+    setError(null);
+    void getSubmissionStageRatingsPage(kind, submissionId, { page, pageSize: 10, sortBy: 'ratedAt', sortDirection: 'desc' }).then(result => {
       if (!active) return;
       if (!result.success) setError(result.message ?? 'Stage ratings could not be loaded.');
-      else setRatings(result.data ?? []);
+      else {
+        setRatings(result.data?.items ?? []);
+        setTotalCount(result.data?.totalCount ?? 0);
+        setTotalPages(result.data?.totalPages ?? 0);
+      }
     });
     return () => { active = false; };
-  }, [kind, submissionId]);
+  }, [kind, submissionId, page]);
+
+  useEffect(() => { setPage(1); }, [kind, submissionId]);
 
   return <div className="rounded-xl border border-secondary-200 p-4 dark:border-secondary-700">
     <div className="flex items-center gap-2"><Star className="h-4 w-4 text-primary-600" /><h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Immutable stage ratings</h4></div>
@@ -26,5 +36,9 @@ export function StageRatingHistory({ kind, submissionId }: { kind: 1 | 2; submis
       <div><p className="font-medium text-secondary-900 dark:text-white">{rating.stageCode} · {rating.label}</p><p className="text-xs text-secondary-500">{rating.ratingSchemeCode} · {rating.ratedByName ?? rating.ratedByUserId} · {new Date(rating.ratedAt).toLocaleString()}</p>{rating.comment && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">{rating.comment}</p>}</div>
       <Badge variant="info">{rating.value}</Badge>
     </div>)}</div>
+    {!error && totalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500">
+      <span>Page {page} of {totalPages} · {totalCount} ratings</span>
+      <div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous ratings</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next ratings</Button></div>
+    </div>}
   </div>;
 }

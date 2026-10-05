@@ -1497,8 +1497,8 @@ export async function getRatingSchemes(): Promise<ApiResponse<RatingSchemeDto[]>
   return get<RatingSchemeDto[]>('/v1/workflow/rating-schemes');
 }
 
-export async function getSubmissionStageRatings(kind: number, submissionId: string): Promise<ApiResponse<StageRatingDto[]>> {
-  return get<StageRatingDto[]>(`/v1/workflow/submissions/${kind}/${submissionId}/ratings`);
+export async function getSubmissionStageRatingsPage(kind: number, submissionId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<StageRatingDto>>> {
+  return get<PagedResult<StageRatingDto>>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/ratings/page${registerPageQuery(query)}`);
 }
 
 export async function getPendingNotificationDeliveries(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<NotificationOutboxItemDto>>> {

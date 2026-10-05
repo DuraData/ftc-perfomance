@@ -104,6 +104,104 @@ public sealed class WorkflowConfigurationControllerTests
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
+    [Fact]
+    public async Task WorkflowEvidencePages_ApplySubmissionScopeBeforeCount_AndRetireLegacyArrays()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "WF-EVIDENCE", Name = "Workflow Evidence Municipality" };
+        var user = IdpTestFixture.CreateUser("workflow-reader");
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        user.MunicipalityId = municipality.Id;
+        var financialYear = new FinancialYear { Code = "2033/34", Name = "2033/34", StartDate = new(2033, 7, 1), EndDate = new(2034, 6, 30) };
+        context.FinancialYears.Add(financialYear);
+        await context.SaveChangesAsync();
+        var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, FinancialYear = financialYear, EffectiveFrom = financialYear.StartDate };
+        var target = new OpmsTarget { MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "WF-KPI", TargetName = "Workflow target", KpiDescription = "Workflow target", AnnualTargetDescription = "Target", PerformanceObjective = "Objective" };
+        var scheme = new RatingScheme { MunicipalityId = municipality.Id, Code = "FIVE", Name = "Five point" };
+        var value = new RatingSchemeValue { MunicipalityId = municipality.Id, RatingScheme = scheme, Value = 4, Label = "Exceeded", SortOrder = 4 };
+        context.AddRange(year, target, scheme, value);
+        await context.SaveChangesAsync();
+        var submission = new OpmsSubmission { MunicipalityId = municipality.Id, OpmsTargetId = target.Id, OpmsTarget = target, Quarter = "Q1", BaseState = SubmissionBaseStates.Submitted, Status = "reviewed", SubmittedByUserId = user.Id, SubmittedAt = DateTime.UtcNow };
+        var workflow = new WorkflowDefinition { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, SubmissionKind = SubmissionKind.Opms, Code = "EVIDENCE", Name = "Evidence workflow", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var stage = new WorkflowStageDefinition { MunicipalityId = municipality.Id, WorkflowDefinition = workflow, Code = "REVIEW", Name = "Review", Sequence = 1, RequiredActionCode = "OPMS_SUBMISSION.REVIEW", RequiredPermissionCode = "OPMS_SUBMISSION.READ", IsTerminal = true, RequiresRating = true, RatingScheme = scheme };
+        context.AddRange(submission, workflow, stage);
+        await context.SaveChangesAsync();
+        var instance = new SubmissionWorkflowInstance { MunicipalityId = municipality.Id, WorkflowDefinitionId = workflow.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id };
+        var otherInstance = new SubmissionWorkflowInstance { MunicipalityId = municipality.Id, WorkflowDefinitionId = workflow.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms, SubmissionId = "other-submission" };
+        context.AddRange(instance, otherInstance);
+        await context.SaveChangesAsync();
+        var occurredAt = new DateTime(2033, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+        var actions = new List<SubmissionWorkflowAction>();
+        for (var index = 0; index < 21; index++)
+        {
+            var action = new SubmissionWorkflowAction
+            {
+                MunicipalityId = municipality.Id,
+                SubmissionWorkflowInstanceId = instance.Id,
+                SubmissionWorkflowInstance = instance,
+                Sequence = index + 1,
+                ActionCode = $"MATCH-ACTION-{index:00}",
+                Outcome = WorkflowActionOutcome.Approve,
+                ActorUserId = user.Id,
+                Comment = $"match-comment-{index:00}",
+                OccurredAt = occurredAt.AddMinutes(index)
+            };
+            actions.Add(action);
+            context.SubmissionWorkflowActions.Add(action);
+        }
+        var outsideAction = new SubmissionWorkflowAction { MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = otherInstance.Id, SubmissionWorkflowInstance = otherInstance, Sequence = 1, ActionCode = "MATCH-OUTSIDE", Outcome = WorkflowActionOutcome.Approve, ActorUserId = user.Id, OccurredAt = occurredAt };
+        context.SubmissionWorkflowActions.Add(outsideAction);
+        await context.SaveChangesAsync();
+        for (var index = 0; index < actions.Count; index++)
+        {
+            context.SubmissionStageRatings.Add(new SubmissionStageRating
+            {
+                MunicipalityId = municipality.Id,
+                SubmissionWorkflowInstanceId = instance.Id,
+                SubmissionWorkflowInstance = instance,
+                SubmissionWorkflowActionId = actions[index].Id,
+                SubmissionWorkflowAction = actions[index],
+                WorkflowStageDefinitionId = stage.Id,
+                WorkflowStageDefinition = stage,
+                RatingSchemeId = scheme.Id,
+                RatingScheme = scheme,
+                RatingSchemeValueId = value.Id,
+                RatingSchemeValue = value,
+                Value = value.Value,
+                LabelSnapshot = $"match-label-{index:00}",
+                RatedByUserId = user.Id,
+                RatedAt = occurredAt.AddMinutes(index)
+            });
+        }
+        context.SubmissionStageRatings.Add(new SubmissionStageRating { MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = otherInstance.Id, SubmissionWorkflowInstance = otherInstance, SubmissionWorkflowActionId = outsideAction.Id, SubmissionWorkflowAction = outsideAction, WorkflowStageDefinitionId = stage.Id, WorkflowStageDefinition = stage, RatingSchemeId = scheme.Id, RatingScheme = scheme, RatingSchemeValueId = value.Id, RatingSchemeValue = value, Value = value.Value, LabelSnapshot = "match-outside", RatedByUserId = user.Id, RatedAt = occurredAt });
+        await context.SaveChangesAsync();
+
+        var controller = Controller(context, municipality.Id, user);
+        var actionResult = await controller.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Page = 2, PageSize = 10, Search = "match", SortBy = "occurredAt", SortDirection = "asc" });
+        var actionPage = actionResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        actionPage.TotalCount.Should().Be(21);
+        actionPage.Items.Should().HaveCount(10);
+        actionPage.Items.First().ActionCode.Should().Be("MATCH-ACTION-10");
+        actionPage.Items.Should().NotContain(item => item.ActionCode == "MATCH-OUTSIDE");
+
+        var ratingResult = await controller.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Page = 2, PageSize = 10, Search = "match", SortBy = "ratedAt", SortDirection = "desc" });
+        var ratingPage = ratingResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
+        ratingPage.TotalCount.Should().Be(21);
+        ratingPage.Items.Should().HaveCount(10);
+        ratingPage.Items.First().Label.Should().Be("match-label-10");
+        ratingPage.Items.Should().NotContain(item => item.Label == "match-outside");
+
+        (await controller.HistoryPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.RatingHistoryPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.History(SubmissionKind.Opms, submission.Id)).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        (await controller.RatingHistory(SubmissionKind.Opms, submission.Id)).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
     private static WorkflowConfigurationController Controller(ApplicationDbContext context, long municipalityId = 7, ApplicationUser? suppliedUser = null)
     {
         var tenant = new Mock<ITenantContext>();
