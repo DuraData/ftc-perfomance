@@ -12,7 +12,7 @@ import {
   createWorkflowDefinition,
   compareWorkflowDefinitions,
   getRatingSchemesPage,
-  getReportingWindowExceptions,
+  getReportingWindowExceptionsPage,
   getReportingWindowsPage,
   getUsersPage,
   getWorkflowDefinitionsPage,
@@ -86,6 +86,9 @@ export function WorkflowGovernanceAdminPage() {
   const [auditMeta, setAuditMeta] = useState(emptyPage);
   const [exceptionWindow, setExceptionWindow] = useState<ReportingWindowDto | null>(null);
   const [exceptions, setExceptions] = useState<ReportingWindowExceptionDto[]>([]);
+  const [exceptionPage, setExceptionPage] = useState(1);
+  const [exceptionSearch, setExceptionSearch] = useState('');
+  const [exceptionMeta, setExceptionMeta] = useState(emptyPage);
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,13 +192,26 @@ export function WorkflowGovernanceAdminPage() {
 
   const openExceptions = async (window: ReportingWindowDto) => {
     setBusy(true); setError(null); setExceptionWindow(window);
+    setExceptionPage(1); setExceptionSearch('');
     setExceptionDraft({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(new Date(window.closesAt).getTime() + 86400000)), reason: '' });
     const [exceptionResult, userResult] = await Promise.all([
-      getReportingWindowExceptions(window.publicId), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }),
+      getReportingWindowExceptionsPage(window.publicId, { page: 1, pageSize: 25, sortBy: 'approvedAt', sortDirection: 'desc' }), getUsersPage({ pageSize: 100, sortBy: 'name', sortDirection: 'asc' }),
     ]);
     const failed = [exceptionResult, userResult].find(result => !result.success);
     if (failed) setError(failed.message ?? 'Window exception data could not be loaded.');
-    setExceptions(exceptionResult.data ?? []); setUsers(userResult.data?.items ?? []);
+    setExceptions(exceptionResult.data?.items ?? []);
+    setExceptionMeta({ totalCount: exceptionResult.data?.totalCount ?? 0, totalPages: exceptionResult.data?.totalPages ?? 0 });
+    setUsers(userResult.data?.items ?? []);
+    setBusy(false);
+  };
+
+  const loadExceptionPage = async (page: number, search: string) => {
+    if (!exceptionWindow) return;
+    setBusy(true); setError(null);
+    const result = await getReportingWindowExceptionsPage(exceptionWindow.publicId, { page, pageSize: 25, search, sortBy: 'approvedAt', sortDirection: 'desc' });
+    if (!result.success) setError(result.message ?? 'Window exceptions could not be loaded.');
+    setExceptions(result.data?.items ?? []);
+    setExceptionMeta({ totalCount: result.data?.totalCount ?? 0, totalPages: result.data?.totalPages ?? 0 });
     setBusy(false);
   };
 
@@ -216,8 +232,8 @@ export function WorkflowGovernanceAdminPage() {
     else {
       pushToast('success', 'Scoped reporting-window exception approved');
       setExceptionDraft(current => ({ ...current, scopePublicId: '', reason: '' }));
-      const refreshed = await getReportingWindowExceptions(exceptionWindow.publicId);
-      setExceptions(refreshed.data ?? []);
+      setExceptionPage(1);
+      await loadExceptionPage(1, exceptionSearch);
     }
     setBusy(false);
   };
@@ -305,7 +321,9 @@ export function WorkflowGovernanceAdminPage() {
           {exceptionWindow && <div className="xl:col-span-2"><FormPanel title={`Scoped exceptions · ${exceptionWindow.periodCode} ${kindName(exceptionWindow.submissionKind)}`} description="An approved exception extends only one user, department, or unit beyond the normal close time." icon={<Clock3 className="h-5 w-5" />}>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select label="Scope type" value={exceptionDraft.scopeType} options={[{ value: 'department', label: 'Department' }, { value: 'unit', label: 'Unit' }, { value: 'user', label: 'User' }]} onChange={event => setExceptionDraft(current => ({ ...current, scopeType: event.target.value, scopePublicId: '' }))} />{exceptionDraft.scopeType === 'user' ? <Select label="Scoped record" value={exceptionDraft.scopePublicId} placeholder="Select one scope" options={exceptionUserOptions} onChange={event => setExceptionDraft(current => ({ ...current, scopePublicId: event.target.value }))} /> : <OrganizationMasterPicker kind={exceptionDraft.scopeType === 'unit' ? 'unit' : 'department'} label="Scoped record" value={exceptionDraft.scopePublicId} emptyLabel="Select one scope" onChange={value => setExceptionDraft(current => ({ ...current, scopePublicId: value }))} />}<Input label="Extended close" type="datetime-local" value={exceptionDraft.extendedClosesAt} onChange={event => setExceptionDraft(current => ({ ...current, extendedClosesAt: event.target.value }))} /><Textarea label="Approval reason" value={exceptionDraft.reason} onChange={event => setExceptionDraft(current => ({ ...current, reason: event.target.value }))} required /></div>
             <div className="flex justify-end"><Button variant="primary" onClick={() => void saveException()} disabled={busy}>Approve exception</Button></div>
+            <Input label="Search scoped exceptions" value={exceptionSearch} onChange={event => { const search = event.target.value; setExceptionSearch(search); setExceptionPage(1); void loadExceptionPage(1, search); }} />
             <div className="space-y-2">{exceptions.map(item => <div key={item.publicId} className="rounded-lg border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><span>{item.userId ? `User ${item.userId}` : item.departmentId ? `Department #${item.departmentId}` : `Unit #${item.unitId}`}</span><Badge variant="default">until {new Date(item.extendedClosesAt).toLocaleString()}</Badge></div><p className="mt-1 text-xs text-secondary-500">{item.reason}</p></div>)}{!exceptions.length && <p className="text-sm text-secondary-500">No scoped exceptions for this window.</p>}</div>
+            <RegisterPaging label="exceptions" page={exceptionPage} totalPages={exceptionMeta.totalPages} totalCount={exceptionMeta.totalCount} onPageChange={page => { setExceptionPage(page); void loadExceptionPage(page, exceptionSearch); }} />
           </FormPanel></div>}
         </div>}
 

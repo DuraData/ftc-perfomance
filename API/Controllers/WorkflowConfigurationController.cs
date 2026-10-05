@@ -226,6 +226,43 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<ReportingWindowDto>(true, ToDto(entity)));
     }
 
+    [HttpGet("reporting-windows/{windowPublicId:guid}/exceptions/page")]
+    [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<ReportingWindowExceptionDto>>>> GetWindowExceptionsPage(
+        Guid windowPublicId,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? scope = null)
+    {
+        if (!HasTenant()) return TenantRequired<PagedResponse<ReportingWindowExceptionDto>>();
+        var window = await context.ReportingWindows.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == windowPublicId);
+        if (window == null) return NotFound(Fail<PagedResponse<ReportingWindowExceptionDto>>("Reporting window not found."));
+        if (!ReportingWindowExceptionSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<ReportingWindowExceptionDto>>("SortBy must be approvedAt, extendedClosesAt, or scope."));
+        var normalizedScope = scope?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (normalizedScope is not ("" or "user" or "department" or "unit"))
+            return BadRequest(Fail<PagedResponse<ReportingWindowExceptionDto>>("Scope must be user, department, or unit."));
+        var query = context.ReportingWindowExceptions.AsNoTracking().Where(x => x.ReportingWindowId == window.Id);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(x => x.Reason.ToLower().Contains(search)
+                || (x.UserId != null && x.UserId.ToLower().Contains(search))
+                || x.ApprovedByUserId.ToLower().Contains(search));
+        }
+        query = normalizedScope switch
+        {
+            "user" => query.Where(x => x.UserId != null),
+            "department" => query.Where(x => x.DepartmentId.HasValue),
+            "unit" => query.Where(x => x.UnitId.HasValue),
+            _ => query
+        };
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyReportingWindowExceptionOrdering(query, request.NormalizedSortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<ReportingWindowExceptionDto>>(true,
+            PagedResponse<ReportingWindowExceptionDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpGet("reporting-windows/{windowPublicId:guid}/exceptions")]
     [Authorize(Policy = "Permission:WORKFLOW.CONFIGURE")]
     public async Task<ActionResult<ApiResponse<ReportingWindowExceptionDto[]>>> GetWindowExceptions(Guid windowPublicId)
@@ -233,8 +270,8 @@ public sealed class WorkflowConfigurationController(
         if (!HasTenant()) return TenantRequired<ReportingWindowExceptionDto[]>();
         var window = await context.ReportingWindows.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == windowPublicId);
         if (window == null) return NotFound(Fail<ReportingWindowExceptionDto[]>("Reporting window not found."));
-        var rows = await context.ReportingWindowExceptions.AsNoTracking().Where(x => x.ReportingWindowId == window.Id).OrderByDescending(x => x.ApprovedAt).ToArrayAsync();
-        return Ok(new ApiResponse<ReportingWindowExceptionDto[]>(true, rows.Select(ToDto).ToArray()));
+        return StatusCode(StatusCodes.Status410Gone,
+            Fail<ReportingWindowExceptionDto[]>("This unbounded route is retired. Use the /exceptions/page endpoint."));
     }
 
     [HttpPost("reporting-windows/{windowPublicId:guid}/exceptions")]
@@ -462,6 +499,7 @@ public sealed class WorkflowConfigurationController(
     private static readonly HashSet<string> StageRatingSortFields = ["createdat", "ratedat", "stagecode", "ratingscheme", "value", "actor"];
     private static readonly HashSet<string> WorkflowDefinitionSortFields = ["createdat", "code", "name", "version", "effectivefrom", "financialyear"];
     private static readonly HashSet<string> ReportingWindowSortFields = ["createdat", "opensat", "closesat", "period", "submissionkind"];
+    private static readonly HashSet<string> ReportingWindowExceptionSortFields = ["createdat", "approvedat", "extendedclosesat", "scope"];
     private static readonly HashSet<string> RatingSchemeSortFields = ["createdat", "code", "name"];
 
     private static IOrderedQueryable<WorkflowDefinition> ApplyWorkflowDefinitionOrdering(
@@ -501,6 +539,17 @@ public sealed class WorkflowConfigurationController(
             ("code", true) => query.OrderByDescending(x => x.Code).ThenByDescending(x => x.Id),
             (_, false) => query.OrderBy(x => x.Id),
             _ => query.OrderByDescending(x => x.Id)
+        };
+
+    private static IOrderedQueryable<ReportingWindowException> ApplyReportingWindowExceptionOrdering(
+        IQueryable<ReportingWindowException> query, string sortBy, bool descending) => (sortBy, descending) switch
+        {
+            ("extendedclosesat", false) => query.OrderBy(x => x.ExtendedClosesAt).ThenBy(x => x.Id),
+            ("extendedclosesat", true) => query.OrderByDescending(x => x.ExtendedClosesAt).ThenByDescending(x => x.Id),
+            ("scope", false) => query.OrderBy(x => x.UserId != null ? 1 : x.DepartmentId.HasValue ? 2 : 3).ThenBy(x => x.Id),
+            ("scope", true) => query.OrderByDescending(x => x.UserId != null ? 1 : x.DepartmentId.HasValue ? 2 : 3).ThenByDescending(x => x.Id),
+            (_, false) => query.OrderBy(x => x.ApprovedAt).ThenBy(x => x.Id),
+            _ => query.OrderByDescending(x => x.ApprovedAt).ThenByDescending(x => x.Id)
         };
 
     private static IOrderedQueryable<SubmissionWorkflowAction> ApplyWorkflowActionOrdering(

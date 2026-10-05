@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   compareWorkflowDefinitions: vi.fn(),
   retireWorkflowDefinition: vi.fn(),
   createReportingWindow: vi.fn(),
-  getReportingWindowExceptions: vi.fn(),
+  getReportingWindowExceptionsPage: vi.fn(),
   createReportingWindowException: vi.fn(),
   getUsersPage: vi.fn(),
   getDepartmentMastersPage: vi.fn(),
@@ -52,7 +52,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getNotificationPolicies.mockResolvedValue({ success: true, data: [] });
     api.getWorkingCalendarHolidays.mockResolvedValue({ success: true, data: [] });
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
-    api.getReportingWindowExceptions.mockResolvedValue({ success: true, data: [] });
+    api.getReportingWindowExceptionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
@@ -113,10 +113,26 @@ describe('WorkflowGovernanceAdminPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Windows' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Manage exceptions' }));
 
-    await waitFor(() => expect(api.getReportingWindowExceptions).toHaveBeenCalledWith('window-1'));
+    await waitFor(() => expect(api.getReportingWindowExceptionsPage).toHaveBeenCalledWith('window-1', { page: 1, pageSize: 25, sortBy: 'approvedAt', sortDirection: 'desc' }));
     expect(screen.getByText('Scoped exceptions · Q1 OPMS')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'FIN · Finance' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve exception' })).toBeInTheDocument();
+  });
+
+  it('pages and searches scoped reporting-window exceptions', async () => {
+    api.getReportingWindowsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'window-1', reportingPeriodPublicId: 'period-1', periodCode: 'Q1', submissionKind: 1, opensAt: '2026-07-01T00:00:00Z', closesAt: '2026-07-31T00:00:00Z', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getReportingWindowExceptionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Windows' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage exceptions' }));
+    expect(await screen.findByText('Page 1 of 2 · 26 exceptions')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).find(button => !button.hasAttribute('disabled'))!);
+    await waitFor(() => expect(api.getReportingWindowExceptionsPage).toHaveBeenLastCalledWith('window-1', expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'approvedAt', sortDirection: 'desc' })));
+
+    fireEvent.change(screen.getByLabelText('Search scoped exceptions'), { target: { value: 'approved extension' } });
+    await waitFor(() => expect(api.getReportingWindowExceptionsPage).toHaveBeenLastCalledWith('window-1', expect.objectContaining({ page: 1, search: 'approved extension' })));
   });
 
   it('compares versions and renders authoritative stage differences', async () => {

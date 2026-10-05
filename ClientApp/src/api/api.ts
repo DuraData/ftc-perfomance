@@ -1447,8 +1447,15 @@ export async function createReportingWindow(payload: { reportingPeriodPublicId: 
   return post<ReportingWindowDto>('/v1/workflow/reporting-windows', payload);
 }
 
-export async function getReportingWindowExceptions(windowPublicId: string): Promise<ApiResponse<ReportingWindowExceptionDto[]>> {
-  return get<ReportingWindowExceptionDto[]>(`/v1/workflow/reporting-windows/${windowPublicId}/exceptions`);
+export type ReportingWindowExceptionPageQuery = RegisterPageQuery & {
+  scope?: 'user' | 'department' | 'unit';
+};
+
+export async function getReportingWindowExceptionsPage(windowPublicId: string, query: ReportingWindowExceptionPageQuery = {}): Promise<ApiResponse<PagedResult<ReportingWindowExceptionDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.scope) parameters.set('scope', query.scope);
+  const value = parameters.toString();
+  return get<PagedResult<ReportingWindowExceptionDto>>(`/v1/workflow/reporting-windows/${encodeURIComponent(windowPublicId)}/exceptions/page${value ? `?${value}` : ''}`);
 }
 
 export async function createReportingWindowException(windowPublicId: string, payload: { userPublicId?: string; departmentPublicId?: string; unitPublicId?: string; extendedClosesAt: string; reason: string }): Promise<ApiResponse<ReportingWindowExceptionDto>> {
