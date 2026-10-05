@@ -955,8 +955,13 @@ public class IpmsSubmissionsController : ControllerBase
         var varianceReasonChanged = existing == null
             ? !string.IsNullOrWhiteSpace(request.VarianceReason)
             : request.VarianceReason?.Trim() != existing.VarianceReason;
-        if (varianceReasonChanged && !permissions.Contains("IPMS_SUBMISSION.Variance.UPDATE"))
-            return "Variance is system-managed and cannot be modified by the current user.";
+        if (varianceReasonChanged && !permissions.Contains("IPMS_SUBMISSION.VarianceReason.UPDATE"))
+            return "Variance Reason is protected by member-level security.";
+        var correctiveMeasureChanged = existing == null
+            ? !string.IsNullOrWhiteSpace(request.CorrectiveMeasure)
+            : request.CorrectiveMeasure?.Trim() != existing.CorrectiveMeasure;
+        if (correctiveMeasureChanged && !permissions.Contains("IPMS_SUBMISSION.CorrectiveMeasure.UPDATE"))
+            return "Corrective Measure is protected by member-level security.";
         return null;
     }
 
@@ -978,7 +983,9 @@ public class IpmsSubmissionsController : ControllerBase
         var response = submission.ToResponse();
         if (!permissions.Contains("IPMS_SUBMISSION.ActualPerformance.READ"))
             response = response with { ActualPerformance = null, ActualExpenditure = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserId = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
-        if (!permissions.Contains("IPMS_SUBMISSION.Variance.READ")) response = response with { Variance = null, VarianceReason = null };
+        if (!permissions.Contains("IPMS_SUBMISSION.Variance.READ")) response = response with { Variance = null };
+        if (!permissions.Contains("IPMS_SUBMISSION.VarianceReason.READ")) response = response with { VarianceReason = null };
+        if (!permissions.Contains("IPMS_SUBMISSION.CorrectiveMeasure.READ")) response = response with { CorrectiveMeasure = null };
         if (!permissions.Contains("IPMS_SUBMISSION.SubmittedDate.READ")) response = response with { SubmittedAt = null };
         if (!permissions.Contains("IPMS_SUBMISSION.InternalAuditObservation.READ"))
             response = response with { AuditedAt = null, AuditorComments = null, AuditorComment = null, AuditorRecommendation = null, AuditorScore = null, AuditorResponseDueDate = null };

@@ -958,8 +958,14 @@ public class OpmsSubmissionsController : ControllerBase
         var varianceChanged = existing == null
             ? !string.IsNullOrWhiteSpace(request.VarianceReason)
             : request.VarianceReason?.Trim() != existing.VarianceReason;
-        if (varianceChanged && !permissions.Contains("OPMS_SUBMISSION.Variance.UPDATE"))
-            return "Variance is system-managed and cannot be modified by the current user.";
+        if (varianceChanged && !permissions.Contains("OPMS_SUBMISSION.VarianceReason.UPDATE"))
+            return "Variance Reason is protected by member-level security.";
+
+        var correctiveMeasureChanged = existing == null
+            ? !string.IsNullOrWhiteSpace(request.CorrectiveMeasure)
+            : request.CorrectiveMeasure?.Trim() != existing.CorrectiveMeasure;
+        if (correctiveMeasureChanged && !permissions.Contains("OPMS_SUBMISSION.CorrectiveMeasure.UPDATE"))
+            return "Corrective Measure is protected by member-level security.";
         return null;
     }
 
@@ -985,7 +991,11 @@ public class OpmsSubmissionsController : ControllerBase
         if (!permissions.Contains("OPMS_SUBMISSION.ActualPerformance.READ"))
             response = response with { ActualPerformance = null, ActualExpenditure = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserId = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
         if (!permissions.Contains("OPMS_SUBMISSION.Variance.READ"))
-            response = response with { Variance = null, VarianceReason = null };
+            response = response with { Variance = null };
+        if (!permissions.Contains("OPMS_SUBMISSION.VarianceReason.READ"))
+            response = response with { VarianceReason = null };
+        if (!permissions.Contains("OPMS_SUBMISSION.CorrectiveMeasure.READ"))
+            response = response with { CorrectiveMeasure = null };
         if (!permissions.Contains("OPMS_SUBMISSION.SubmittedDate.READ"))
             response = response with { SubmittedAt = null };
         if (!permissions.Contains("OPMS_SUBMISSION.InternalAuditObservation.READ"))

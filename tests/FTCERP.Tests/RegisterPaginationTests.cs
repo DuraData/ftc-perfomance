@@ -12,6 +12,53 @@ namespace FTCERP.Tests;
 public sealed class RegisterPaginationTests
 {
     [Fact]
+    public async Task Submission_member_permissions_redact_fields_and_reject_direct_updates()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("submission-member-user");
+        var target = Target("member-target", "KPI-MEMBER", "Member target", Guid.NewGuid());
+        target.AssignedUserId = user.Id;
+        var submission = new OpmsSubmission
+        {
+            Id = "member-submission", OpmsTargetId = target.Id, OpmsTarget = target, Quarter = "Q1",
+            BaseState = SubmissionBaseStates.InProgress, Status = SubmissionBaseStates.InProgress,
+            SubmitterStatus = "In Progress", VerifierStatus = "Pending", ApproverStatus = "Pending", PmsStatus = "Pending", AuditorStatus = "Pending",
+            ActualPerformance = "50", Variance = 5, VarianceReason = "Original reason", CorrectiveMeasure = "Private corrective action",
+            SubmittedByUserId = user.Id
+        };
+        context.AddRange(user, target, submission);
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        access.Setup(service => service.GetEffectiveAccessAsync(user)).ReturnsAsync(new EffectiveAccessResult([], [
+            "OPMS_SUBMISSION.ActualPerformance.READ", "OPMS_SUBMISSION.Variance.READ"
+        ], [], [], [], []));
+        var controller = new OpmsSubmissionsController(
+            context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>(), Mock.Of<ISubmissionValueService>(),
+            Mock.Of<IConfigurableWorkflowService>(), Mock.Of<IReportingWindowService>(), Mock.Of<IEvidenceInspectionService>(),
+            Mock.Of<IEvidenceMalwareScanner>(), Mock.Of<IPerformanceSuggestionService>())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+        var read = await controller.GetSubmission(submission.Id);
+
+        var response = Assert.IsType<ApiResponse<OpmsSubmissionResponse>>(Assert.IsType<OkObjectResult>(read.Result).Value).Data!;
+        response.Variance.Should().Be(5);
+        response.VarianceReason.Should().BeNull();
+        response.CorrectiveMeasure.Should().BeNull();
+
+        var update = await controller.UpdateSubmission(submission.Id, new SaveOpmsSubmissionRequest(
+            target.Id, "Q1", "50", null, "Original reason", "Changed without permission", null, null));
+        var denied = update.Result.Should().BeOfType<ObjectResult>().Subject;
+        denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        denied.Value.Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Contain("Corrective Measure");
+        (await context.OpmsSubmissions.SingleAsync()).CorrectiveMeasure.Should().Be("Private corrective action");
+    }
+
+    [Fact]
     public async Task Opms_submission_page_filters_by_target_before_count_and_projects_target_identity()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **387 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **206 frontend tests pass** across 56 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **388 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **208 frontend tests pass** across 57 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -1792,6 +1792,17 @@ Status: **CLOSED AT REPOSITORY LEVEL FOR SYSTEM-COVERAGE AUDIT CORRECTNESS — d
 
 The full backend suite passes **387 tests**, with one explicitly environment-gated native SQL Server test skipped. The focused test rebuilt the 2,103-module production frontend successfully; the immediately preceding complete frontend, TypeScript, ESLint and 72-chunk bundle-budget gate remains green. No schema change, online resource, cloud infrastructure or provider-specific application path was introduced.
 
+### 11.115 Independent submission variance/corrective member security
+
+Status: **CLOSED AT REPOSITORY LEVEL FOR THE IMPLEMENTED OPMS/IPMS SUBMISSION MEMBERS — catalogue expansion and deployed penetration testing remain**
+
+- Registered `VarianceReason` and `CorrectiveMeasure` as stable OPMS/IPMS submission members. The idempotent registry seeder generates independent READ and UPDATE permissions for both resources, while additive legacy mappings preserve the intended access of existing submission View/Edit grants without overwriting administrator-authored rules.
+- OPMS and IPMS response projection now evaluates `Variance`, `VarianceReason` and `CorrectiveMeasure` independently: unreadable values are redacted, and direct update attempts without the matching member UPDATE capability return HTTP 403. Computed `Variance` remains system-managed and read-only.
+- The submission workspace hides unreadable actual, variance, reason and corrective fields; renders readable-but-noneditable members read-only; enables only independently authorized inputs; and withholds the Edit action when no submission member can be edited. The actual summary no longer exposes a restricted value.
+- Relational API coverage proves variance can remain visible while reason/corrective text is redacted, and that a denied direct corrective update cannot change persistence. Component tests prove both hidden and read-only/editable combinations. Registry tests prove all six governed OPMS/IPMS submission members and ten generated member permissions per resource.
+
+The complete suites pass **388 backend tests**, with one explicitly environment-gated native SQL Server test skipped, and **208/208 frontend tests across 57 files**. TypeScript, ESLint, the Vite production build and the 72-chunk bundle budget pass; the largest JavaScript chunk is **400.0 KiB**. No schema change, online resource, cloud infrastructure or provider-specific application path was introduced.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -1807,7 +1818,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 1 | Tenant root and municipal master data | Partially Compliant | Tenant-owned masters, filters and administration exist, including configurable ordered SDBIP layers per municipality financial year with composite tenant FKs; complete production master-data migration and acceptance evidence is absent. |
 | 2 | Tenant isolation across reads, writes, files, reports and audit | Compliant | A relational test-host scenario dynamically creates two municipalities and proves Municipality A cannot list, fetch, edit, approve, upload to, download from, report on or audit Municipality B records; forged tenant-header selection is rejected before controller execution. Native provider evidence is tracked separately under area 31. |
 | 3 | Employee identity, placement and organisation model | Compliant | Governed employee/organisation administration, placement scope and protected employee email member access are implemented and tested. |
-| 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and three protected member paths are tested. User administration enforces tenant-bounded dynamic CRUD/actions plus protected email/phone reads and writes, legacy role/permission mutations can no longer bypass the single audited versioned security API, the bounded tenant-aware role matrix reports current effective assignments/scopes with explicit-DENY precedence, and both fixed V3.9 baseline-role audits use the same authoritative effective records without synthetic dashboard coverage; the sensitive-member catalogue is not exhaustive and deployment-level HTTP privilege-escalation testing remains outstanding. |
+| 4 | Dynamic roles, navigation, CRUD, actions, member security and scope | Partially Compliant | Database-driven allow/deny/scope/navigation evaluation and protected user, employee and OPMS/IPMS submission member paths are tested. User administration enforces tenant-bounded dynamic CRUD/actions plus protected email/phone reads and writes; submission actual, variance, reason, corrective, submitted-date and Internal Audit members are registered and server-enforced; legacy role/permission mutations can no longer bypass the single audited versioned security API; the bounded tenant-aware role matrix reports current effective assignments/scopes with explicit-DENY precedence; and both fixed V3.9 baseline-role audits use the same authoritative effective records without synthetic dashboard coverage. The sensitive-member catalogue is not exhaustive and deployment-level HTTP privilege-escalation testing remains outstanding. |
 | 5 | Authentication, municipality policy, sessions, MFA and federation | Partially Compliant | Local policy/session/MFA and configurable enterprise-provider code exist; live Entra/AD federation, conditional-access and recovery acceptance are external and unverified. |
 | 6 | Normalized period target model | Partially Compliant | New OPMS target writes require an active persisted SDBIP layer for the exact canonical municipality financial year, and OPMS/IPMS target writes and public DTOs use typed `PerformancePeriodTarget` rows exclusively; the general form cannot bypass revision history. A governed production console previews and executes permission-protected, bounded reconciliation with explicit actor/reason/audit evidence while refusing ambiguous legacy revisions. Physical legacy columns and historic layer assignment remain solely for controlled reconciliation until execution is verified. |
 | 7 | Canonical target value and actual performance | Partially Compliant | Submission persistence/contracts use only canonical `ActualPerformance`, with legacy values losslessly archived before the competing columns are removed. Target save/response contracts now likewise use only canonical typed period rows, including non-numeric and period-specific units. Historic target reconciliation and physical legacy-column retirement remain deployment cutover work. |
@@ -1908,6 +1919,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced the unbounded dynamic role-access matrix with a tenant-aware searchable page, page-targeted permission/assignment/scope graph loading, current effective assignment evidence, explicit-DENY reporting, independently paged role/CRUD audit screens and HTTP 410 compatibility-route retirement.
 - Replaced legacy Identity-link and timeless rule evidence in the fixed V3.9 baseline-role implementation audit with selected-tenant, effective dynamic assignments/scopes and active/effective ALLOW-minus-DENY permission evaluation.
 - Corrected the system-coverage audit to use tenant-visible current dynamic assignments, active/effective user scopes, direct assignment scopes and real dashboard permission evidence instead of legacy or hard-coded positives.
+- Added independent OPMS/IPMS `VarianceReason` and `CorrectiveMeasure` member registration, READ redaction, UPDATE denial and capability-driven submission controls while keeping computed `Variance` system-managed.
 - Replaced the unbounded official-report schedule list with tenant- and permission-filtered authoritative server paging, including searchable current schedules, allow-listed sorting, independent SPA refreshes and a capped compatibility route.
 - Replaced post-materialization official-generation scope filtering with immutable normalized scope grants and a guarded historic backfill, then added scope-before-count database paging and an independent searchable SPA generation register.
 - Added a real ASP.NET Core HTTP tenant-isolation matrix covering list, fetch, edit, approve, POE upload/download, performance reporting and audit, plus forged municipality-header rejection, using dynamically persisted permissions and two relational tenants.
@@ -1918,8 +1930,8 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 387; Failed: 0; Skipped: 1; Total: 388.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 206/206 across 56 files.** |
+| Backend test suite | **Passed: 388; Failed: 0; Skipped: 1; Total: 389.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 208/208 across 57 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,103 modules transformed. |

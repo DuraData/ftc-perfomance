@@ -36,6 +36,16 @@ public sealed class UsersControllerSecurityTests
         Assert.All(members, item => Assert.True(item.IsSensitive));
         Assert.Equal(4, await context.Permissions.CountAsync(item => item.ResourceCode == "USER" && item.MemberCode != null));
         Assert.Single(await context.Permissions.Where(item => item.Code == "USER.DELETE").ToArrayAsync());
+
+        foreach (var resourceCode in new[] { "OPMS_SUBMISSION", "IPMS_SUBMISSION" })
+        {
+            var submissionMembers = await context.SecurityMemberDefinitions
+                .Where(item => item.ResourceCode == resourceCode)
+                .Select(item => item.MemberCode)
+                .ToArrayAsync();
+            submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "SubmittedDate", "InternalAuditObservation"]);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(10);
+        }
     }
 
     [Fact]

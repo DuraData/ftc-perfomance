@@ -402,7 +402,15 @@ export function SubmissionWorkspace({
   const targetUnit = currentSubmission.target.unitOfMeasure.symbol || currentSubmission.target.unitOfMeasure.name;
   const isConsolidationPeriod = currentSubmission.quarter === 'Mid-Year' || currentSubmission.quarter === 'Annual';
   const resourceCode = `${submissionType}_SUBMISSION`;
-  const canManageConsolidation = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
+  const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
+  const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
+  const canReadVariance = security.canReadField(resourceCode, 'Variance');
+  const canReadVarianceReason = security.canReadField(resourceCode, 'VarianceReason');
+  const canEditVarianceReason = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'VarianceReason');
+  const canReadCorrectiveMeasure = security.canReadField(resourceCode, 'CorrectiveMeasure');
+  const canEditCorrectiveMeasure = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'CorrectiveMeasure');
+  const canEditSubmissionMembers = canEditActual || canEditVarianceReason || canEditCorrectiveMeasure;
+  const canManageConsolidation = canEditActual;
 
   const smallTitle = `${titlePrefix}`;
   const pageTitle = `Submission: ${submissionType}-${currentSubmission.quarter}-${currentSubmission.id.padStart(4, '0')}`;
@@ -549,7 +557,7 @@ export function SubmissionWorkspace({
           {subtitle && <p className="mt-1 text-sm text-secondary-500">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">
-          {!isEditing && !currentSubmission.isDisabled ? (
+          {!isEditing && !currentSubmission.isDisabled && canEditSubmissionMembers ? (
             <Button variant="outline" size="sm" icon={<Edit2 className="w-4 h-4" />} onClick={() => setIsEditing(true)}>
               Edit
             </Button>
@@ -613,7 +621,7 @@ export function SubmissionWorkspace({
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Actual</p>
               <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">
-                {currentSubmission.actualPerformance || formatValue(currentSubmission.actual, targetUnit)}
+                {canReadActual ? (currentSubmission.actualPerformance || formatValue(currentSubmission.actual, targetUnit)) : 'Restricted'}
               </p>
             </div>
             <div>
@@ -657,24 +665,24 @@ export function SubmissionWorkspace({
 
           <Section title="Actual Performance" icon={<CheckCircle2 className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field
+              {canReadActual && <Field
                 label="Actual Performance"
                 value={currentSubmission.actualPerformance ?? ''}
-                editable={isEditing}
+                editable={isEditing && canEditActual}
                 onChange={(value) => updateDraftSubmission(current => ({ ...current, actualPerformance: value, actual: Number.isFinite(Number(value)) ? Number(value) : 0 }))}
-              />
-              <Field
+              />}
+              {canReadActual && <Field
                 label="Actual Expenditure"
                 value={actualExpenditure !== undefined ? actualExpenditure : ''}
-                editable={isEditing}
+                editable={isEditing && canEditActual}
                 type="number"
                 onChange={(value) => updateDraftSubmission(current => 'actualExpenditure' in current ? { ...current, actualExpenditure: Number(value || 0) } : current)}
-              />
-              <Field label="Variance" value={formatVariance(variance)} />
+              />}
+              {canReadVariance && <Field label="Variance" value={formatVariance(variance)} />}
             </div>
           </Section>
 
-          {isConsolidationPeriod && (
+          {isConsolidationPeriod && canReadActual && (
             <Section title="Governed Consolidation" icon={<Sparkles className="h-4 w-4" />}>
               <p className="text-sm text-secondary-600 dark:text-secondary-300">
                 The system suggestion is calculated from submitted source quarters. It is retained permanently when the final actual is accepted or edited.
@@ -726,19 +734,19 @@ export function SubmissionWorkspace({
 
           <Section title="Variance & Corrective Action" icon={<AlertTriangle className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field
+              {canReadVarianceReason && <Field
                 label="Variance Reason"
                 value={getVarianceReason(currentSubmission) || ''}
-                editable={isEditing}
+                editable={isEditing && canEditVarianceReason}
                 onChange={(value) => updateDraftSubmission(current => 'varianceReason' in current ? { ...current, varianceReason: value } : current)}
-              />
-              <Field
+              />}
+              {canReadCorrectiveMeasure && <Field
                 label="Corrective Measure"
                 value={getCorrectiveMeasure(currentSubmission) || ''}
                 wide
-                editable={isEditing}
+                editable={isEditing && canEditCorrectiveMeasure}
                 onChange={(value) => updateDraftSubmission(current => 'correctiveMeasure' in current ? { ...current, correctiveMeasure: value } : current)}
-              />
+              />}
               <Field label="Submitter Score" value={scoreDisplay} />
               <Field label="Submitter Status" value={<Badge variant={getStatusBadgeVariant(currentSubmission.status)}>{statusLabels[currentSubmission.status]}</Badge>} />
             </div>
