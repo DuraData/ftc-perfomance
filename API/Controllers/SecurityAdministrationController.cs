@@ -182,7 +182,18 @@ public sealed class SecurityAdministrationController : ControllerBase
             .OrderBy(item => item.Role.Name)
             .Include(item => item.Role)
             .ToArrayAsync();
-        var assignments = assignmentEntities.Select(item => new UserRoleAssignmentDto(item.Id, item.RoleId, item.Role.Name ?? item.Role.RoleCode, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArray();
+        var departmentIds = assignmentEntities.Where(item => item.DepartmentId.HasValue).Select(item => item.DepartmentId!.Value).Distinct().ToArray();
+        var unitIds = assignmentEntities.Where(item => item.UnitId.HasValue).Select(item => item.UnitId!.Value).Distinct().ToArray();
+        var departments = await _context.Departments.AsNoTracking().Where(item => departmentIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.PublicId, item.Name }).ToDictionaryAsync(item => item.Id);
+        var units = await _context.Units.AsNoTracking().Where(item => unitIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.PublicId, item.Name }).ToDictionaryAsync(item => item.Id);
+        var assignments = assignmentEntities.Select(item =>
+        {
+            var department = item.DepartmentId.HasValue && departments.TryGetValue(item.DepartmentId.Value, out var foundDepartment) ? foundDepartment : null;
+            var unit = item.UnitId.HasValue && units.TryGetValue(item.UnitId.Value, out var foundUnit) ? foundUnit : null;
+            return new UserRoleAssignmentDto(item.Id, item.RoleId, item.Role.Name ?? item.Role.RoleCode, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), department?.PublicId, department?.Name, unit?.PublicId, unit?.Name);
+        }).ToArray();
         return Ok(new ApiResponse<UserRoleSecurityConfigurationDto>(true, new UserRoleSecurityConfigurationDto(user.Id, user.FullName, assignments)));
     }
 
@@ -208,6 +219,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (!isSystem && roles.Any(role => !role.MunicipalityId.HasValue || !actorMunicipalities.Contains(role.MunicipalityId.Value))) return Forbid();
         if (request.Assignments.Any(item => item.EffectiveTo.HasValue && item.EffectiveTo <= (item.EffectiveFrom ?? DateTime.UtcNow)))
             return BadRequest(new ApiResponse<bool>(false, false, "Every assignment EffectiveTo must be later than EffectiveFrom"));
+        var resolvedScopes = new Dictionary<string, (int? DepartmentId, int? UnitId)>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in request.Assignments)
         {
             var role = roles.Single(value => value.Id == item.RoleId);
@@ -215,15 +227,35 @@ public sealed class SecurityAdministrationController : ControllerBase
             if (!municipalityId.HasValue) return BadRequest(new ApiResponse<bool>(false, false, "Every assignment requires a municipality"));
             if (_tenantContext.MunicipalityId is > 0 && municipalityId != _tenantContext.MunicipalityId)
                 return BadRequest(new ApiResponse<bool>(false, false, "Assignment municipality must match the selected context"));
-            if (item.DepartmentId.HasValue && !await _context.Departments.AnyAsync(value => value.Id == item.DepartmentId && value.IsActive))
-                return BadRequest(new ApiResponse<bool>(false, false, "One or more assignment departments are invalid or inactive"));
-            if (item.UnitId.HasValue)
+            var departmentId = item.DepartmentId;
+            if (item.DepartmentPublicId.HasValue)
             {
-                var unitDepartmentId = await _context.Units.Where(value => value.Id == item.UnitId && value.IsActive).Select(value => (int?)value.DepartmentId).SingleOrDefaultAsync();
-                if (!unitDepartmentId.HasValue) return BadRequest(new ApiResponse<bool>(false, false, "One or more assignment units are invalid or inactive"));
-                if (item.DepartmentId.HasValue && item.DepartmentId != unitDepartmentId)
+                var resolvedDepartmentId = await _context.Departments.Where(value => value.PublicId == item.DepartmentPublicId && value.MunicipalityId == municipalityId && value.IsActive).Select(value => (int?)value.Id).SingleOrDefaultAsync();
+                if (!resolvedDepartmentId.HasValue || (departmentId.HasValue && departmentId != resolvedDepartmentId))
+                    return BadRequest(new ApiResponse<bool>(false, false, "One or more assignment departments are invalid or inactive"));
+                departmentId = resolvedDepartmentId;
+            }
+            else if (departmentId.HasValue && !await _context.Departments.AnyAsync(value => value.Id == departmentId && value.MunicipalityId == municipalityId && value.IsActive))
+                return BadRequest(new ApiResponse<bool>(false, false, "One or more assignment departments are invalid or inactive"));
+
+            var unitId = item.UnitId;
+            if (item.UnitPublicId.HasValue)
+            {
+                var resolvedUnit = await _context.Units.Where(value => value.PublicId == item.UnitPublicId && value.MunicipalityId == municipalityId && value.IsActive).Select(value => new { value.Id, value.DepartmentId }).SingleOrDefaultAsync();
+                if (resolvedUnit == null || (unitId.HasValue && unitId != resolvedUnit.Id))
+                    return BadRequest(new ApiResponse<bool>(false, false, "One or more assignment units are invalid or inactive"));
+                unitId = resolvedUnit.Id;
+                if (departmentId.HasValue && departmentId != resolvedUnit.DepartmentId)
                     return BadRequest(new ApiResponse<bool>(false, false, "Assignment unit must belong to its selected department"));
             }
+            else if (unitId.HasValue)
+            {
+                var unitDepartmentId = await _context.Units.Where(value => value.Id == unitId && value.MunicipalityId == municipalityId && value.IsActive).Select(value => (int?)value.DepartmentId).SingleOrDefaultAsync();
+                if (!unitDepartmentId.HasValue) return BadRequest(new ApiResponse<bool>(false, false, "One or more assignment units are invalid or inactive"));
+                if (departmentId.HasValue && departmentId != unitDepartmentId)
+                    return BadRequest(new ApiResponse<bool>(false, false, "Assignment unit must belong to its selected department"));
+            }
+            resolvedScopes[item.RoleId] = (departmentId, unitId);
         }
         var grantedCodes = await _context.RolePermissions.AsNoTracking().Where(item => requestedRoleIds.Contains(item.RoleId) && item.IsActive && item.IsAllowed).Select(item => item.Permission.Code).Distinct().ToArrayAsync();
         if (grantedCodes.Any(code => !actorPermissions.Contains(code))) return Forbid();
@@ -252,7 +284,8 @@ public sealed class SecurityAdministrationController : ControllerBase
             var role = roles.Single(value => value.Id == item.RoleId);
             var municipalityId = item.MunicipalityId ?? role.MunicipalityId;
             if (!isSystem && (!municipalityId.HasValue || !actorMunicipalities.Contains(municipalityId.Value))) return Forbid();
-            _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment { UserId = userId, RoleId = role.Id, MunicipalityId = municipalityId, DepartmentId = item.DepartmentId, UnitId = item.UnitId, EffectiveFrom = item.EffectiveFrom ?? now, EffectiveTo = item.EffectiveTo, AssignedBy = actor.Id, AssignedAt = now, IsActive = true });
+            var resolvedScope = resolvedScopes[item.RoleId];
+            _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment { UserId = userId, RoleId = role.Id, MunicipalityId = municipalityId, DepartmentId = resolvedScope.DepartmentId, UnitId = resolvedScope.UnitId, EffectiveFrom = item.EffectiveFrom ?? now, EffectiveTo = item.EffectiveTo, AssignedBy = actor.Id, AssignedAt = now, IsActive = true });
         }
         var identityLinks = await _context.UserRoles.Where(item => item.UserId == userId).ToArrayAsync();
         _context.UserRoles.RemoveRange(identityLinks);
@@ -570,10 +603,10 @@ public sealed class SecurityAdministrationController : ControllerBase
 public sealed record SecurityResourceDto(string Code, string Name, string Type, bool CanCreate, bool CanRead, bool CanUpdate, bool CanDelete, bool CanExport, bool CanImport, bool SupportsMembers, bool SupportsCriteria, string RowVersion);
 public sealed record SecurityRoleDto(string Id, Guid PublicId, string RoleCode, string Name, string? Description, long? MunicipalityId, bool IsSystemRole, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SecurityUserDto(string Id, string FullName, string Email);
-public sealed record UserRoleAssignmentDto(long Id, string RoleId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record UserRoleAssignmentDto(long Id, string RoleId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName);
 public sealed record UserRoleSecurityConfigurationDto(string UserId, string UserName, UserRoleAssignmentDto[] Assignments);
 public sealed record ExpectedUserRoleAssignment(long AssignmentId, string RowVersion);
-public sealed record UpdateUserRoleAssignment(string RoleId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo);
+public sealed record UpdateUserRoleAssignment(string RoleId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo, Guid? DepartmentPublicId = null, Guid? UnitPublicId = null);
 public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments);
 public sealed record SecurityActionDto(string Code, string Name, string ResourceCode, string? Description, string RowVersion);
 public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion);

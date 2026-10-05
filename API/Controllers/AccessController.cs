@@ -1,6 +1,7 @@
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -16,11 +17,15 @@ public class AccessController : ControllerBase
 {
     private readonly IAccessControlService _accessControlService;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ApplicationDbContext _context;
+    private readonly ITenantContext _tenantContext;
 
-    public AccessController(IAccessControlService accessControlService, UserManager<ApplicationUser> userManager)
+    public AccessController(IAccessControlService accessControlService, UserManager<ApplicationUser> userManager, ApplicationDbContext context, ITenantContext tenantContext)
     {
         _accessControlService = accessControlService;
         _userManager = userManager;
+        _context = context;
+        _tenantContext = tenantContext;
     }
 
     [HttpGet("my-permissions")]
@@ -60,23 +65,36 @@ public class AccessController : ControllerBase
     [Authorize(Policy = "Permission:Admin.Users.Manage")]
     public async Task<ActionResult<ApiResponse<AccessSimulationResponse>>> Simulate([FromBody] SimulateAccessRequest request)
     {
+        if (_tenantContext.MunicipalityId is not > 0)
+            return Conflict(new ApiResponse<AccessSimulationResponse>(false, null, "Select a municipality context before simulating access"));
+
         ApplicationUser? subject = null;
         if (!string.IsNullOrWhiteSpace(request.UserId))
         {
             subject = await _userManager.FindByIdAsync(request.UserId);
         }
 
-        if (subject == null)
+        if (subject == null || subject.MunicipalityId != _tenantContext.MunicipalityId)
         {
             return NotFound(new ApiResponse<AccessSimulationResponse>(false, null, "Simulation user not found"));
         }
+
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(
+            _context,
+            _tenantContext.MunicipalityId,
+            request.DepartmentId,
+            request.UnitId,
+            request.DepartmentPublicId,
+            request.UnitPublicId);
+        if (organization.Error != null)
+            return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, organization.Error));
 
         var result = await _accessControlService.CheckPermissionAsync(
             subject,
             request.PermissionCode,
             new AccessScopeContext(
-                request.DepartmentId,
-                request.UnitId,
+                organization.DepartmentId,
+                organization.UnitId,
                 request.OwnerUserId,
                 request.DelegatorUserId,
                 request.TargetId,

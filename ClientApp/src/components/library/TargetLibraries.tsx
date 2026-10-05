@@ -1426,7 +1426,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     );
   }
 
-  const { departments, lookups } = referenceData;
+  const { lookups } = referenceData;
 
   return (
     <AppShell title={template ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
@@ -1444,10 +1444,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <Input label="Template Code" required value={form.templateCode} onChange={(event) => setForm(prev => ({ ...prev, templateCode: event.target.value }))} />
               <Input label="Template Name" required value={form.templateName} onChange={(event) => setForm(prev => ({ ...prev, templateName: event.target.value }))} />
             </FormRow>
-            <FormRow cols={2}>
-              <Select label="Department" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={[{ value: '', label: 'General Template' }, ...departments.map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
-            </FormRow>
+            <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} helpText="Department and unit ownership are selected when this reusable template becomes a live target." />
             <FormRow cols={2}>
               <Input label="Indicator Number" required value={form.indicatorNumber} onChange={(event) => setForm(prev => ({ ...prev, indicatorNumber: event.target.value }))} />
               <Input label="Target Name" required value={form.targetName} onChange={(event) => setForm(prev => ({ ...prev, targetName: event.target.value }))} />
@@ -2029,7 +2026,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     );
   }
 
-  const { departments, lookups } = referenceData;
+  const { lookups } = referenceData;
 
   return (
     <AppShell title={template ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
@@ -2047,10 +2044,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <Input label="Template Code" required value={form.templateCode} onChange={(event) => setForm(prev => ({ ...prev, templateCode: event.target.value }))} />
               <Input label="Template Name" required value={form.templateName} onChange={(event) => setForm(prev => ({ ...prev, templateName: event.target.value }))} />
             </FormRow>
-            <FormRow cols={2}>
-              <Select label="Department" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={[{ value: '', label: 'General Template' }, ...departments.map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} />
-            </FormRow>
+            <Input label="Functional Area" value={form.functionalArea} onChange={(event) => setForm(prev => ({ ...prev, functionalArea: event.target.value }))} helpText="Department and unit ownership are selected when this reusable template becomes a live target." />
             <FormRow cols={2}>
               <Input label="Performance Area" required value={form.performanceArea} onChange={(event) => setForm(prev => ({ ...prev, performanceArea: event.target.value }))} />
               <Input label="Target Name" required value={form.targetName} onChange={(event) => setForm(prev => ({ ...prev, targetName: event.target.value }))} />

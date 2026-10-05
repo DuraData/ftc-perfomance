@@ -108,6 +108,42 @@ public sealed class RegisterPaginationTests
     }
 
     [Fact]
+    public async Task Opms_target_page_applies_public_department_and_lifecycle_filters_before_count()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("filtered-page-user");
+        var finance = new Department { PublicId = Guid.NewGuid(), Code = "FIN", Name = "Finance" };
+        var corporate = new Department { PublicId = Guid.NewGuid(), Code = "CORP", Name = "Corporate" };
+        var active = Target("active-finance", "001", "Active finance", Guid.NewGuid()); active.Department = finance;
+        var revised = Target("revised-finance", "002", "Revised finance", Guid.NewGuid()); revised.Department = finance; revised.IsRevised = true;
+        var withdrawn = Target("withdrawn-finance", "003", "Withdrawn finance", Guid.NewGuid()); withdrawn.Department = finance; withdrawn.IsWithdrawn = true; withdrawn.ReasonForWithdrawal = "Retired"; withdrawn.WithdrawnAt = DateTime.UtcNow;
+        var other = Target("revised-corporate", "004", "Revised corporate", Guid.NewGuid()); other.Department = corporate; other.IsRevised = true;
+        context.AddRange(user, finance, corporate, active, revised, withdrawn, other);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        var controller = new OpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            Mock.Of<IWorkflowGovernanceService>(), Mock.Of<ITenantContext>(), new PerformanceUnitEngine())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+        var result = await controller.GetTargetsPage(new PagedQueryRequest
+        {
+            DepartmentPublicId = finance.PublicId,
+            Lifecycle = "revised",
+            SortBy = "indicatorNumber",
+            SortDirection = "asc"
+        });
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(1, envelope.Data!.TotalCount);
+        Assert.Equal("revised-finance", Assert.Single(envelope.Data.Items).Id);
+    }
+
+    [Fact]
     public async Task Opms_target_page_rejects_unknown_sort_fields()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

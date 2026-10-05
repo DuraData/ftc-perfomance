@@ -10,8 +10,6 @@ import {
   saveRoleSecurityConfiguration,
   saveSecurityUserRoles,
   updateSecurityRole,
-  getDepartments,
-  getUnits,
 } from '../../api/api';
 import type {
   SecurityRoleSummary,
@@ -21,13 +19,12 @@ import type {
   RoleSecurityPermission,
   SecurityPermissionDefinition,
   SecurityPermissionState,
-  DepartmentLookupDto,
-  UnitLookupDto,
 } from '../../types';
 import { NavigationRegistryEditor } from './NavigationRegistryEditor';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 
 type EditableRule = Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>;
-type AssignmentDraft = { roleId: string; municipalityId?: number; departmentId?: number; unitId?: number; effectiveFrom: string; effectiveTo?: string };
+type AssignmentDraft = { roleId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; departmentName?: string; unitId?: number; unitPublicId?: string; unitName?: string; effectiveFrom: string; effectiveTo?: string };
 const scopes = ['', 'Self', 'AssignedKpiScope', 'AssignedTargetScope', 'AssignedProjectScope', 'AssignedTaskScope', 'UnitScope', 'DepartmentScope', 'InstitutionScope', 'System'];
 const kinds = ['Resource', 'Navigation', 'Member', 'Action', 'Report'] as const;
 const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
@@ -47,8 +44,6 @@ export function SecurityAdministrationPage() {
   const [preview, setPreview] = useState<EffectiveSecurityPreview | null>(null);
   const [userRoles, setUserRoles] = useState<SecurityUserRoleConfiguration | null>(null);
   const [assignmentDrafts, setAssignmentDrafts] = useState<AssignmentDraft[]>([]);
-  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
-  const [units, setUnits] = useState<UnitLookupDto[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [newRoleCode, setNewRoleCode] = useState('');
@@ -59,12 +54,10 @@ export function SecurityAdministrationPage() {
   const [roleActive, setRoleActive] = useState(true);
 
   useEffect(() => {
-    void Promise.all([getSecurityRoles(), getSecurityPermissionDefinitions(), getDepartments(), getUnits()]).then(([roleResult, definitionResult, departmentResult, unitResult]) => {
+    void Promise.all([getSecurityRoles(), getSecurityPermissionDefinitions()]).then(([roleResult, definitionResult]) => {
       const loadedRoles = roleResult.data ?? [];
       setRoles(loadedRoles);
       setDefinitions(definitionResult.data ?? []);
-      setDepartments(departmentResult.data ?? []);
-      setUnits(unitResult.data ?? []);
       if (loadedRoles.length) setRoleId(loadedRoles[0].id);
     });
   }, []);
@@ -178,7 +171,7 @@ export function SecurityAdministrationPage() {
     if (!userId) { setUserRoles(null); setAssignmentDrafts([]); return; }
     const result = await getSecurityUserRoles(userId);
     setUserRoles(result.data ?? null);
-    setAssignmentDrafts(result.data?.assignments.map(item => ({ roleId: item.roleId, municipalityId: item.municipalityId, departmentId: item.departmentId, unitId: item.unitId, effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo })) ?? []);
+    setAssignmentDrafts(result.data?.assignments.map(item => ({ roleId: item.roleId, municipalityId: item.municipalityId, departmentId: item.departmentId, departmentPublicId: item.departmentPublicId, departmentName: item.departmentName, unitId: item.unitId, unitPublicId: item.unitPublicId, unitName: item.unitName, effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo })) ?? []);
   };
 
   const saveUserRoles = async () => {
@@ -276,11 +269,10 @@ export function SecurityAdministrationPage() {
           })}</div>
           <div className="mt-4 space-y-3">{assignmentDrafts.map((assignment, index) => {
             const role = roles.find(item => item.id === assignment.roleId);
-            const availableUnits = units.filter(item => !assignment.departmentId || item.departmentId === assignment.departmentId);
             return <div key={assignment.roleId} className="grid gap-2 rounded bg-gray-50 p-3 md:grid-cols-2 lg:grid-cols-5">
               <div className="text-sm font-medium text-gray-800">{role?.name ?? assignment.roleId}<div className="font-mono text-xs text-gray-500">{role?.roleCode}</div></div>
-              <label className="text-xs text-gray-600">Department<select aria-label={`${role?.name} department`} className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={assignment.departmentId ?? ''} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentId: event.target.value ? Number(event.target.value) : undefined, unitId: undefined } : item))}><option value="">All permitted departments</option>{departments.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
-              <label className="text-xs text-gray-600">Unit<select aria-label={`${role?.name} unit`} className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={assignment.unitId ?? ''} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitId: event.target.value ? Number(event.target.value) : undefined } : item))}><option value="">All permitted units</option>{availableUnits.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
+              <OrganizationMasterPicker kind="department" label={`${role?.name} department`} value={assignment.departmentPublicId ?? ''} selectedLabel={assignment.departmentName} emptyLabel="All permitted departments" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentId: undefined, departmentPublicId: value || undefined, departmentName: option?.name, unitId: undefined, unitPublicId: undefined, unitName: undefined } : item))} />
+              <OrganizationMasterPicker kind="unit" label={`${role?.name} unit`} value={assignment.unitPublicId ?? ''} selectedLabel={assignment.unitName} departmentPublicId={assignment.departmentPublicId} emptyLabel="All permitted units" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitId: undefined, unitPublicId: value || undefined, unitName: option?.name } : item))} />
               <label className="text-xs text-gray-600">Effective from<input aria-label={`${role?.name} effective from`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveFrom)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveFrom: event.target.value } : item))} /></label>
               <label className="text-xs text-gray-600">Effective to<input aria-label={`${role?.name} effective to`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveTo)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveTo: event.target.value || undefined } : item))} /></label>
             </div>;

@@ -20,6 +20,11 @@ public sealed class PagedQueryRequest
 
     public Guid? RelatedOpmsTargetPublicId { get; init; }
 
+    public Guid? DepartmentPublicId { get; init; }
+
+    [StringLength(20)]
+    public string? Lifecycle { get; init; }
+
     public FTCERP.Host.Domain.Entities.ReportingPeriodType? ReportingPeriodType { get; init; }
 
     [RegularExpression("^(?i:asc|desc)$", ErrorMessage = "SortDirection must be 'asc' or 'desc'.")]
@@ -29,4 +34,5 @@ public sealed class PagedQueryRequest
     public bool Descending => string.Equals(SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
     public string NormalizedSearch => Search?.Trim() ?? string.Empty;
     public string NormalizedSortBy => SortBy?.Trim().ToLowerInvariant() ?? "createdat";
+    public string NormalizedLifecycle => Lifecycle?.Trim().ToLowerInvariant() ?? string.Empty;
 }

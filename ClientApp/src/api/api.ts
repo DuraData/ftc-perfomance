@@ -282,9 +282,10 @@ function toPeriodReference(id?: number | null): Period {
   };
 }
 
-function toDepartmentReference(id?: number | null, name?: string | null): Department {
+function toDepartmentReference(id?: number | null, name?: string | null, publicId?: string | null): Department {
   return {
     id: id === null || id === undefined ? '' : String(id),
+    publicId: normalizeOptionalString(publicId),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
     code: '',
     isActive: true,
@@ -297,10 +298,12 @@ function toUnitReference(
   id: number | null | undefined,
   name: string | null | undefined,
   department: Department,
+  publicId?: string | null,
 ): DepartmentUnit | undefined {
   if ((id === null || id === undefined) && !normalizeOptionalString(name)) return undefined;
   return {
     id: id === null || id === undefined ? '' : String(id),
+    publicId: normalizeOptionalString(publicId),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
     code: '',
     department,
@@ -486,7 +489,7 @@ function numericTarget(value?: string | null): number {
 }
 
 function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
-  const department = toDepartmentReference(dto.departmentId, dto.departmentName);
+  const department = toDepartmentReference(dto.departmentId, dto.departmentName, dto.departmentPublicId);
   const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
   const periods = dto.periodTargets ?? [];
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
@@ -501,7 +504,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     period: toPeriodReference(dto.periodId),
     department,
-    unit: toUnitReference(dto.unitId, dto.unitName, department),
+    unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
     assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
     wards: dto.wardIds.map(id => ({ id: String(id), code: String(id), name: `Ward ${id}`, isActive: true })),
     wardIds: dto.wardIds,
@@ -572,7 +575,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
 }
 
 function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
-  const department = toDepartmentReference(dto.departmentId, dto.departmentName);
+  const department = toDepartmentReference(dto.departmentId, dto.departmentName, dto.departmentPublicId);
   const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
   const periods = dto.periodTargets ?? [];
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
@@ -587,7 +590,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     relatedOPMSTarget: undefined,
     period: toPeriodReference(dto.periodId),
     department,
-    unit: toUnitReference(dto.unitId, dto.unitName, department),
+    unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
     assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
     indicatorNumber: dto.indicatorNumber,
     isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
@@ -1787,7 +1790,7 @@ export async function getSecurityUserRoles(userId: string): Promise<ApiResponse<
   return get<SecurityUserRoleConfiguration>(`/v1/security/users/${userId}/roles`);
 }
 
-export async function saveSecurityUserRoles(userId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ roleId: string; municipalityId?: number; departmentId?: number; unitId?: number; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
+export async function saveSecurityUserRoles(userId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ roleId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; unitId?: number; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
   return put<boolean>(`/v1/security/users/${userId}/roles`, {
     expectedAssignments: current.assignments.map(item => ({ assignmentId: item.id, rowVersion: item.rowVersion })),
     assignments,
@@ -1849,7 +1852,9 @@ export async function simulateAccess(payload: {
   userId: string;
   role?: string;
   departmentId?: number | null;
+  departmentPublicId?: string | null;
   unitId?: number | null;
+  unitPublicId?: string | null;
   targetId?: string | null;
   kpiId?: string | null;
   projectId?: string | null;
@@ -1976,6 +1981,8 @@ export type RegisterPageQuery = {
   sortDirection?: 'asc' | 'desc';
   targetPublicId?: string;
   relatedOpmsTargetPublicId?: string;
+  departmentPublicId?: string;
+  lifecycle?: 'active' | 'revised' | 'withdrawn';
   reportingPeriodType?: 1 | 2 | 3 | 4 | 5 | 6;
 };
 
@@ -1988,6 +1995,8 @@ function registerPageQuery(query: RegisterPageQuery): string {
   if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
   if (query.targetPublicId?.trim()) parameters.set('targetPublicId', query.targetPublicId.trim());
   if (query.relatedOpmsTargetPublicId?.trim()) parameters.set('relatedOpmsTargetPublicId', query.relatedOpmsTargetPublicId.trim());
+  if (query.departmentPublicId?.trim()) parameters.set('departmentPublicId', query.departmentPublicId.trim());
+  if (query.lifecycle) parameters.set('lifecycle', query.lifecycle);
   if (query.reportingPeriodType !== undefined) parameters.set('reportingPeriodType', String(query.reportingPeriodType));
   const value = parameters.toString();
   return value ? `?${value}` : '';

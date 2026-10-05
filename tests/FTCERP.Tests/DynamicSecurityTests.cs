@@ -332,6 +332,48 @@ public class DynamicSecurityTests
         context.SecurityUserRoleAssignments.Should().ContainSingle(item => item.UserId == actor.Id);
     }
 
+    [Fact]
+    public async Task RoleAssignment_ResolvesTenantScopedPublicOrganizationIds_and_projects_them_back()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var actor = IdpTestFixture.CreateUser("public-scope-admin");
+        var target = IdpTestFixture.CreateUser("public-scope-target");
+        var systemRole = Role("public-system-role", "SYSTEM_ADMIN");
+        var tenantRole = Role("public-tenant-role", "UNIT_REVIEWER"); tenantRole.MunicipalityId = 7;
+        var systemPermission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action };
+        var department = new Department { MunicipalityId = 7, Code = "FIN", Name = "Finance", IsActive = true };
+        var unit = new Unit { MunicipalityId = 7, Department = department, Code = "REV", Name = "Revenue", IsActive = true };
+        context.AddRange(actor, target, systemRole, tenantRole, systemPermission, department, unit);
+        await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(actor, systemRole));
+        context.RolePermissions.Add(new RolePermission { RoleId = systemRole.Id, PermissionId = systemPermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        await context.SaveChangesAsync();
+
+        var tenant = new Mock<ITenantContext>(); tenant.SetupGet(item => item.MunicipalityId).Returns(7); tenant.SetupGet(item => item.IsSystem).Returns(true);
+        var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor, [target.Id] = target };
+        var controller = new SecurityAdministrationController(context, CreateService(context, actor), IdpTestFixture.CreateUserManagerMock(actor, users).Object, tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var savedResult = await controller.PutUserRoles(target.Id, new UpdateUserRoleSecurityRequest([], [
+            new UpdateUserRoleAssignment(tenantRole.Id, 7, null, null, DateTime.UtcNow.AddMinutes(-1), null, department.PublicId, unit.PublicId)
+        ]));
+
+        savedResult.Result.Should().BeOfType<OkObjectResult>();
+        var stored = await context.SecurityUserRoleAssignments.SingleAsync(item => item.UserId == target.Id && item.IsActive);
+        stored.DepartmentId.Should().Be(department.Id);
+        stored.UnitId.Should().Be(unit.Id);
+
+        var loadedResult = await controller.GetUserRoles(target.Id);
+        var loaded = loadedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!;
+        var assignment = loaded.Assignments.Should().ContainSingle().Subject;
+        assignment.DepartmentPublicId.Should().Be(department.PublicId);
+        assignment.DepartmentName.Should().Be("Finance");
+        assignment.UnitPublicId.Should().Be(unit.PublicId);
+        assignment.UnitName.Should().Be("Revenue");
+    }
+
     private static AccessControlService CreateService(ApplicationDbContext context, ApplicationUser user)
     {
         var userManager = IdpTestFixture.CreateUserManagerMock(user);

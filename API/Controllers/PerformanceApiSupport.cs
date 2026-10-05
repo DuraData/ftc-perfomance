@@ -1,6 +1,7 @@
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Domain.Services;
+using FTCERP.Host.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -22,6 +23,53 @@ public static class PerformanceApiSupport
         .Include(item => item.DisposalEvents).ThenInclude(item => item.ActorUser);
 
     public static string? GetCurrentUserId(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    public static async Task<(int? DepartmentId, int? UnitId, string? Error)> ResolveOrganizationScopeAsync(
+        ApplicationDbContext context,
+        long? municipalityId,
+        int? departmentId,
+        int? unitId,
+        Guid? departmentPublicId,
+        Guid? unitPublicId)
+    {
+        if (!municipalityId.HasValue || municipalityId == long.MinValue)
+            return (null, null, "A municipality context is required.");
+
+        if (departmentPublicId.HasValue)
+        {
+            var resolved = await context.Departments.Where(item => item.PublicId == departmentPublicId && item.MunicipalityId == municipalityId && item.IsActive)
+                .Select(item => (int?)item.Id).SingleOrDefaultAsync();
+            if (!resolved.HasValue || (departmentId.HasValue && departmentId != resolved))
+                return (null, null, "The selected department is invalid, inactive, or outside the municipality.");
+            departmentId = resolved;
+        }
+        else if (departmentId.HasValue && !await context.Departments.AnyAsync(item => item.Id == departmentId && item.MunicipalityId == municipalityId && item.IsActive))
+            return (null, null, "The selected department is invalid, inactive, or outside the municipality.");
+
+        if (unitPublicId.HasValue)
+        {
+            var resolved = await context.Units.Where(item => item.PublicId == unitPublicId && item.MunicipalityId == municipalityId && item.IsActive)
+                .Select(item => new { item.Id, item.DepartmentId }).SingleOrDefaultAsync();
+            if (resolved == null || (unitId.HasValue && unitId != resolved.Id))
+                return (null, null, "The selected unit is invalid, inactive, or outside the municipality.");
+            unitId = resolved.Id;
+            if (departmentId.HasValue && departmentId != resolved.DepartmentId)
+                return (null, null, "The selected unit does not belong to the selected department.");
+            departmentId ??= resolved.DepartmentId;
+        }
+        else if (unitId.HasValue)
+        {
+            var resolvedDepartmentId = await context.Units.Where(item => item.Id == unitId && item.MunicipalityId == municipalityId && item.IsActive)
+                .Select(item => (int?)item.DepartmentId).SingleOrDefaultAsync();
+            if (!resolvedDepartmentId.HasValue)
+                return (null, null, "The selected unit is invalid, inactive, or outside the municipality.");
+            if (departmentId.HasValue && departmentId != resolvedDepartmentId)
+                return (null, null, "The selected unit does not belong to the selected department.");
+            departmentId ??= resolvedDepartmentId;
+        }
+
+        return (departmentId, unitId, null);
+    }
 
     public static string? GetIpAddress(HttpContext context) => context.Connection.RemoteIpAddress?.ToString();
 
@@ -154,7 +202,9 @@ public static class PerformanceApiSupport
             WithdrawnByUserId = target.WithdrawnByUserId,
             SdbipLayerPublicId = target.SdbipLayer?.PublicId,
             SdbipLayerCode = target.SdbipLayer?.Code,
-            SdbipLayerName = target.SdbipLayer?.Name
+            SdbipLayerName = target.SdbipLayer?.Name,
+            DepartmentPublicId = target.Department?.PublicId,
+            UnitPublicId = target.Unit?.PublicId
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
@@ -214,7 +264,9 @@ public static class PerformanceApiSupport
             IsWithdrawn = target.IsWithdrawn,
             ReasonForWithdrawal = target.ReasonForWithdrawal,
             WithdrawnAt = target.WithdrawnAt,
-            WithdrawnByUserId = target.WithdrawnByUserId
+            WithdrawnByUserId = target.WithdrawnByUserId,
+            DepartmentPublicId = target.Department?.PublicId,
+            UnitPublicId = target.Unit?.PublicId
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>

@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  getDepartments,
   getMunicipalEmployeesPage,
   getPerformanceLookups,
-  getUnits,
 } from '../api/api';
 import type {
-  DepartmentLookupDto,
   MunicipalEmployeeDto,
   PerformanceLookupsDto,
-  UnitLookupDto,
 } from '../types';
 
 const emptyLookups: PerformanceLookupsDto = {
@@ -22,8 +18,6 @@ const emptyLookups: PerformanceLookupsDto = {
 };
 
 export function usePerformanceReferenceData(includePeople = true) {
-  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
-  const [units, setUnits] = useState<UnitLookupDto[]>([]);
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
   const [employeePage, setEmployeePage] = useState(1);
   const [employeeTotalPages, setEmployeeTotalPages] = useState(0);
@@ -38,25 +32,15 @@ export function usePerformanceReferenceData(includePeople = true) {
     const load = async () => {
       setIsLoading(true);
       setError(null);
-      const [departmentResult, unitResult, lookupResult] = await Promise.all([
-        getDepartments(),
-        includePeople ? getUnits() : Promise.resolve(null),
-        getPerformanceLookups(),
-      ]);
+      const lookupResult = await getPerformanceLookups();
       if (cancelled) return;
 
-      const failed = [departmentResult, unitResult, lookupResult]
-        .filter(result => result && !result.success)
-        .map(result => result?.message)
-        .find(Boolean);
-      if (failed) {
-        setError(failed ?? 'Failed to load performance reference data.');
+      if (!lookupResult.success) {
+        setError(lookupResult.message ?? 'Failed to load performance reference data.');
         setIsLoading(false);
         return;
       }
 
-      setDepartments(departmentResult.data ?? []);
-      setUnits(unitResult?.data ?? []);
       setLookups(lookupResult.data ?? emptyLookups);
       setIsLoading(false);
     };
@@ -81,5 +65,5 @@ export function usePerformanceReferenceData(includePeople = true) {
 
   const setEmployeeSearch = (value: string) => { setEmployeeSearchState(value); setEmployeePage(1); };
 
-  return { departments, units, employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups, isLoading, error };
+  return { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups, isLoading, error };
 }

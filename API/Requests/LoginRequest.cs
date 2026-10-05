@@ -75,7 +75,11 @@ public record SimulateAccessRequest(
     string? KpiId,
     string? ProjectId,
     string? TaskId,
-    string PermissionCode);
+    string PermissionCode)
+{
+    public Guid? DepartmentPublicId { get; init; }
+    public Guid? UnitPublicId { get; init; }
+}
 
 public record SaveOpmsTargetTemplateRequest(
     string TemplateCode,
@@ -168,6 +172,8 @@ public record SaveOpmsTargetRequest(
 {
     public int OriginalOrderNumber { get; init; } = 1;
     public Guid? SdbipLayerPublicId { get; init; }
+    public Guid? DepartmentPublicId { get; init; }
+    public Guid? UnitPublicId { get; init; }
 }
 
 public record SaveIpmsTargetRequest(
@@ -201,6 +207,8 @@ public record SaveIpmsTargetRequest(
     SaveTargetPeriodValueRequest[] PeriodTargets)
 {
     public int OriginalOrderNumber { get; init; } = 1;
+    public Guid? DepartmentPublicId { get; init; }
+    public Guid? UnitPublicId { get; init; }
 }
 
 public record SaveTargetPeriodValueRequest(

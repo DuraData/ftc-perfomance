@@ -1,8 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getReportingPeriodMasters, getReportingPeriodMastersPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuditTrails, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatches, getIdpPlansPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceTargetRevisions, getPositionMasters, getPositionMastersPage, getReportingPeriodMasters, getReportingPeriodMastersPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getVoteNumberMasters, getVoteNumberMastersPage, getWardMasters, getWardMastersPage, getWorkflowQueue, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('transports public organization identifiers for permission simulation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { allowed: true, reason: 'Allowed', effectivePermissions: [], matchedScopes: [], matchedAssignments: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await simulateAccess({ userId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' });
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/access/simulate'), expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ userId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' }),
+    }));
+  });
 
   it('uses the permission-protected versioned audit route', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -260,7 +272,7 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/departments/page?page=2&pageSize=25&search=finance&sortBy=name&sortDirection=asc&active=true'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/positions/page?page=1&pageSize=10&sortBy=grade&sortDirection=desc&departmentPublicId=department-id&unitPublicId=unit-id'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/masters/wards/page?page=3&pageSize=25&search=ward+12&sortBy=code&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/vote-numbers/page?page=1&pageSize=25&sortBy=amount&sortDirection=desc&active=false&departmentPublicId=department-id'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/vote-numbers/page?page=1&pageSize=25&sortBy=amount&sortDirection=desc&departmentPublicId=department-id&active=false'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('uses governed ward and vote-number master routes', async () => {
@@ -414,14 +426,14 @@ describe('versioned API routes', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await getOpmsTargetsPage({ page: 2, pageSize: 25, search: ' water ', sortBy: 'targetName', sortDirection: 'asc' });
+    await getOpmsTargetsPage({ page: 2, pageSize: 25, search: ' water ', sortBy: 'targetName', sortDirection: 'asc', departmentPublicId: 'department-1', lifecycle: 'revised' });
     await getIpmsTargetsPage({ page: 1, pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
     await getPendingNotificationDeliveries({ page: 3, pageSize: 10, search: ' timeout ', sortBy: 'attemptCount', sortDirection: 'desc' });
     await getNotifications({ page: 1, pageSize: 8, sortBy: 'createdAt', sortDirection: 'desc' });
     await getC88Workspace('year-1', false);
     await getC88ReportsPage({ page: 2, pageSize: 25, search: ' water ', sortBy: 'indicatorCode', sortDirection: 'asc' }, 'year-1');
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/page?page=2&pageSize=25&search=water&sortBy=targetName&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/page?page=2&pageSize=25&search=water&sortBy=targetName&sortDirection=asc&departmentPublicId=department-1&lifecycle=revised'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-targets/page?page=1&pageSize=100&sortBy=createdAt&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/notification-operations/pending/page?page=3&pageSize=10&search=timeout&sortBy=attemptCount&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/notifications/page?page=1&pageSize=8&sortBy=createdAt&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));

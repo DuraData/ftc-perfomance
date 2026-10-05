@@ -232,6 +232,8 @@ public record OpmsTargetResponse(
     public Guid? SdbipLayerPublicId { get; init; }
     public string? SdbipLayerCode { get; init; }
     public string? SdbipLayerName { get; init; }
+    public Guid? DepartmentPublicId { get; init; }
+    public Guid? UnitPublicId { get; init; }
 }
 
 public record IpmsTargetResponse(
@@ -283,6 +285,8 @@ public record IpmsTargetResponse(
     public string? ReasonForWithdrawal { get; init; }
     public DateTime? WithdrawnAt { get; init; }
     public string? WithdrawnByUserId { get; init; }
+    public Guid? DepartmentPublicId { get; init; }
+    public Guid? UnitPublicId { get; init; }
 }
 
 public record TargetPeriodValueResponse(

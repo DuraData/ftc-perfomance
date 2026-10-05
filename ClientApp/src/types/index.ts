@@ -314,6 +314,7 @@ export interface User {
 // Organization Structure
 export interface Department {
   id: string;
+  publicId?: string;
   name: string;
   code: string;
   description?: string;
@@ -326,6 +327,7 @@ export interface Department {
 
 export interface DepartmentUnit {
   id: string;
+  publicId?: string;
   name: string;
   code: string;
   department: Department;
@@ -2115,7 +2117,11 @@ export interface SecurityUserRoleAssignment {
   roleName: string;
   municipalityId?: number;
   departmentId?: number;
+  departmentPublicId?: string;
+  departmentName?: string;
   unitId?: number;
+  unitPublicId?: string;
+  unitName?: string;
   effectiveFrom: string;
   effectiveTo?: string;
   rowVersion: string;
@@ -2273,8 +2279,10 @@ export interface OpmsTargetDto {
   sourceTemplateVersion?: number | null;
   periodId?: number | null;
   departmentId?: number | null;
+  departmentPublicId?: string | null;
   departmentName?: string | null;
   unitId?: number | null;
+  unitPublicId?: string | null;
   unitName?: string | null;
   assignedUserId?: string | null;
   assignedUserName?: string | null;
@@ -2328,8 +2336,10 @@ export interface IpmsTargetDto {
   relatedOpmsTargetId?: string | null;
   periodId?: number | null;
   departmentId?: number | null;
+  departmentPublicId?: string | null;
   departmentName?: string | null;
   unitId?: number | null;
+  unitPublicId?: string | null;
   unitName?: string | null;
   assignedUserId?: string | null;
   assignedUserName?: string | null;
@@ -2677,7 +2687,9 @@ export interface SaveOpmsTargetPayload {
   sourceTemplateVersion?: number | null;
   periodId?: number | null;
   departmentId?: number | null;
+  departmentPublicId?: string | null;
   unitId?: number | null;
+  unitPublicId?: string | null;
   assignedUserId?: string | null;
   wardIds?: number[];
   additionalAssigneeIds?: string[];
@@ -2714,7 +2726,9 @@ export interface SaveIpmsTargetPayload {
   relatedOpmsTargetId?: string | null;
   periodId?: number | null;
   departmentId?: number | null;
+  departmentPublicId?: string | null;
   unitId?: number | null;
+  unitPublicId?: string | null;
   assignedUserId?: string | null;
   supervisorId?: string | null;
   indicatorNumber: string;

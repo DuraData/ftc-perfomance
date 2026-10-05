@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **374 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **184 frontend tests pass** across 54 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **377 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **185 frontend tests pass** across 54 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -1587,13 +1587,13 @@ Status: **CLOSED AT REPOSITORY LEVEL FOR PAGING — legacy ownership/PublicId/Ro
 
 ### 11.96 Bounded organization and municipal reference registers
 
-Status: **CLOSED AT REPOSITORY LEVEL FOR ADMINISTRATION PAGING — selector modernization advanced in section 11.99; legacy numeric-ID consumers and native SQL Server query-plan acceptance remain**
+Status: **CLOSED AT REPOSITORY LEVEL FOR ADMINISTRATION PAGING — selector modernization is completed in sections 11.99-11.100; native SQL Server query-plan acceptance remains**
 
 - Added permission-protected `/api/v1/masters/{departments|units|positions|wards|vote-numbers}/page` contracts over the shared validated 1-100 request. All five apply tenant query filters before search, optional active-state and relationship filters, authoritative `Count`, paging and projection; sort fields are allow-listed and every order has a stable numeric-key tie break.
 - Search covers the identifiers and relationship labels relevant to each register. Unit, position and vote-number pages can be constrained by stable department public ID, and positions can additionally be constrained by unit public ID. Vote amounts use a provider-neutral numeric cast for stable SQLite development and SQL Server deployment behavior under locale changes.
 - Existing array routes remain temporarily unchanged for lookup consumers so this incremental administration cutover cannot silently hide records. The Departments, Units, Positions, Wards and Vote Numbers administration screens now use independent 25-row server pages, debounced search, lifecycle filters, allow-listed sort choices, authoritative totals and previous/next navigation.
 - Relational tests prove tenant-filter-before-count behavior, deterministic second-page ordering, active-state and relationship filters, searchable position metadata, numeric vote sorting and invalid-sort denial. Route/component coverage proves exact filter transport, authoritative totals, paging and governed edits with unchanged public-ID/RowVersion write contracts.
-- This closes the administration-register portion of R-45. Section 11.99 moves the principal organization/reference authoring and reporting consumers to bounded pickers; two legacy numeric-ID consumers, remaining secondary/detail collections and representative native SQL Server query-plan/load acceptance remain open.
+- This closes the administration-register portion of R-45. Sections 11.99-11.100 move all production organization/reference consumers to bounded public-ID pickers; remaining secondary/detail collections and representative native SQL Server query-plan/load acceptance remain open.
 
 ### 11.97 Bounded tenant calendar and SDBIP administration
 
@@ -1618,14 +1618,27 @@ The complete suites pass **374 backend tests**, with one environment-gated SQL S
 
 ### 11.99 Bounded organization and municipal-reference selectors
 
-Status: **SUBSTANTIALLY CLOSED FOR PUBLIC-ID CONSUMERS — two legacy numeric-ID consumers and native SQL Server query-plan acceptance remain**
+Status: **CLOSED FOR PRODUCTION CONSUMERS BY SECTION 11.100 — native SQL Server query-plan acceptance remains**
 
 - Added one reusable `OrganizationMasterPicker` over the governed department, unit, position, ward and vote-number page contracts. It provides debounced search, 25-row pages, authoritative totals, active-state filtering, dependent department/unit filters, previous/next navigation, excluded-value handling and selected-public-ID preservation.
 - Migrated tenant organization and municipal-reference authoring, municipal-employee placements, workflow reporting-window exceptions, official departmental/unit report filters and OPMS ward/vote mappings away from full-array organization/reference downloads. Dependent unit and position choices are constrained by the stable selected department/unit public IDs, while the existing target transport continues to receive its required numeric relationship IDs from the authoritative selected DTO without a provider-specific code path.
 - Component coverage proves search, paging, dependent filtering, selected-value preservation and production-consumer integration. A report-filter test proves the bounded organization contract is used; migrated administration, placement and workflow tests continue to prove their governed mutations. The calendar administration regression timeout was raised only for the known multi-step test so the expanded parallel suite remains deterministic.
-- Source inventory now finds legacy full-array organization calls only in `SecurityAdministration` and `OPMSTargetList`. Both currently persist/filter by numeric department/unit identifiers while the governed page DTO contracts expose stable public IDs; their contract modernization is deliberately deferred rather than silently translating or truncating authorization/filter semantics. Remaining fixed-size user/template/detail selectors and native SQL Server query-plan/load acceptance continue under R-45.
+- Source inventory at that increment found legacy full-array organization calls only in `SecurityAdministration` and `OPMSTargetList`. Both still persisted/filtered by numeric department/unit identifiers while the governed page DTO contracts exposed stable public IDs, so their contract modernization was deferred rather than silently translating or truncating authorization/filter semantics. Section 11.100 records their subsequent public-ID cutover; remaining fixed-size user/template/detail selectors and native SQL Server query-plan/load acceptance continue under R-45.
 
-The complete suites pass **374 backend tests**, with one environment-gated SQL Server test skipped, and **184/184 frontend tests across 54 files**. TypeScript, ESLint, accessibility automation, the Vite production build and the **72-chunk** bundle budget pass; the largest JavaScript chunk is **400.1 KiB**. No schema change, online resource or provider-specific application implementation was introduced.
+The complete suites at that increment passed **374 backend tests**, with one environment-gated SQL Server test skipped, and **184/184 frontend tests across 54 files**. Section 11.100 closes the two deferred production consumers and records the superseding verification totals. No schema change, online resource or provider-specific application implementation was introduced.
+
+### 11.100 Public-ID organization scope contracts and final selector cutover
+
+Status: **CLOSED AT REPOSITORY LEVEL FOR PRODUCTION CONSUMERS — compatibility routes and native SQL Server query-plan acceptance remain**
+
+- Removed the final production calls to the legacy full-array department and unit client functions. OPMS/IPMS capture, OPMS register filtering, security role assignment and permission simulation now use the bounded `OrganizationMasterPicker`; source inventory finds only the unused compatibility function definitions, retained for non-SPA clients pending a separately governed retirement.
+- OPMS register department and lifecycle filters now execute in the authorized database query before `Count` and paging. The SPA no longer filters the current page locally or derives totals from a truncated result, and the server rejects unsupported lifecycle values.
+- OPMS/IPMS create and update requests now carry stable department/unit public IDs. A shared resolver validates active records within the selected municipality, derives a department from a selected unit where appropriate, rejects cross-tenant and mismatched relationships, and persists the existing numeric foreign keys internally. Responses project the stable public IDs back to the client, so no provider-specific storage change is required.
+- Dynamic security role assignments now accept and return stable department/unit public IDs and labels while retaining numeric fields only for backward-compatible callers. Resolution is tenant-scoped and active-state checked before persistence; unit/department mismatches and cross-municipality values fail closed. Permission simulation uses the same bounded picker and shared tenant-safe resolver rather than administrator-entered internal IDs.
+- Reusable target-template forms no longer expose a misleading department selector whose value was never persisted. Their guidance now makes the ownership boundary explicit: department and unit are selected when the template becomes a live target.
+- Relational coverage proves organization public-ID resolution, cross-tenant rejection, internal FK persistence and response projection; security tests prove role-assignment persistence/projection; register tests prove department/lifecycle filtering before authoritative counts. Frontend tests prove public-ID payload transport and target serialization.
+
+The complete suites pass **377 backend tests**, with one explicitly environment-gated native SQL Server test skipped, and **185/185 frontend tests across 54 files**. TypeScript, ESLint, accessibility automation, the Vite production build and the **72-chunk** bundle budget pass; the largest JavaScript chunk is **400.0 KiB**. No schema change, online resource, cloud infrastructure or provider-specific application path was introduced.
 
 ### 12.1 Final verdict
 
@@ -1742,12 +1755,12 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 374; Failed: 0; Skipped: 1; Total: 375.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 184/184 across 54 files.** |
+| Backend test suite | **Passed: 377; Failed: 0; Skipped: 1; Total: 378.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 185/185 across 54 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,101 modules transformed. |
-| Bundle budget | Passed with 72 JavaScript chunks; largest chunk 400.1 KiB. |
+| Bundle budget | Passed with 72 JavaScript chunks; largest chunk 400.0 KiB. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |

@@ -3,6 +3,7 @@ import { CheckCircle2, Shield, XCircle } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { getPermissions, getRoleAccessMatrix, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
 import type { AccessSimulationResult, AdminPermission, AdminUserDetail, RoleAccessMatrixRow, SystemCoverageAuditRow } from '../../types';
 
@@ -133,8 +134,10 @@ export function PermissionSimulationPage() {
     const response = await simulateAccess({
       userId: form.userId,
       permissionCode: form.permissionCode,
-      departmentId: form.departmentId ? Number(form.departmentId) : null,
-      unitId: form.unitId ? Number(form.unitId) : null,
+      departmentId: null,
+      departmentPublicId: form.departmentId || null,
+      unitId: null,
+      unitPublicId: form.unitId || null,
       targetId: form.targetId || null,
       kpiId: form.kpiId || null,
       projectId: form.projectId || null,
@@ -168,8 +171,8 @@ export function PermissionSimulationPage() {
               options={permissions.map(item => ({ value: item.code, label: item.code }))}
               placeholder="Select permission"
             />
-            <Input label="Department Id" value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} />
-            <Input label="Unit Id" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} />
+            <OrganizationMasterPicker kind="department" label="Department" value={form.departmentId} emptyLabel="Any permitted department" onChange={value => setForm(prev => ({ ...prev, departmentId: value, unitId: '' }))} />
+            <OrganizationMasterPicker kind="unit" label="Unit" value={form.unitId} departmentPublicId={form.departmentId || undefined} emptyLabel="Any permitted unit" onChange={value => setForm(prev => ({ ...prev, unitId: value }))} />
             <Input label="Target Id" value={form.targetId} onChange={(event) => setForm(prev => ({ ...prev, targetId: event.target.value }))} />
             <Input label="KPI Id" value={form.kpiId} onChange={(event) => setForm(prev => ({ ...prev, kpiId: event.target.value }))} />
             <Input label="Project Id" value={form.projectId} onChange={(event) => setForm(prev => ({ ...prev, projectId: event.target.value }))} />

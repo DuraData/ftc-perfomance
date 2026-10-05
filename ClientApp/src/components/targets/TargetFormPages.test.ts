@@ -2,7 +2,11 @@ import { buildOpmsPayload, getTargetUnitLabel, toApiUnitType, toXafUnitType, val
 
 describe('TargetFormPages helpers', () => {
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
-    const payload = buildOpmsPayload({ wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11' } as never);
+    const payload = buildOpmsPayload({ departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11' } as never);
+    expect(payload.departmentId).toBeNull();
+    expect(payload.departmentPublicId).toBe('department-public-id');
+    expect(payload.unitId).toBeNull();
+    expect(payload.unitPublicId).toBe('unit-public-id');
     expect(payload.wardIds).toEqual([1, 2]);
     expect(payload.additionalAssigneeIds).toEqual(['user-a', 'user-b']);
     expect(payload.voteNumberIds).toEqual([10, 11]);

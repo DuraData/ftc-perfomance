@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Plus, Eye, Edit2, Ban, Copy, Library, FileText } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { useApp } from '../../context/AppContext';
 import { useHasAnyPermission } from '../security/AccessControl';
 import {
   createOpmsTarget as createOpmsTargetApi,
   withdrawOpmsTarget as withdrawOpmsTargetApi,
   getOpmsTargetsPage as getOpmsTargetsPageApi,
-  getDepartments,
 } from '../../api/api';
-import type { DepartmentLookupDto, OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
+import type { OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
 import { OpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 import { canonicalSaveRows } from '../../lib/performanceTargetContract';
@@ -25,8 +25,10 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
     nationalKpa: target.nationalKPA,
     municipalKpa: target.municipalKPA,
     performanceObjective: target.performanceObjective,
-    departmentId: target.department?.id ? Number(target.department.id) : null,
-    unitId: target.unit?.id ? Number(target.unit.id) : null,
+    departmentId: null,
+    departmentPublicId: target.department?.publicId ?? null,
+    unitId: null,
+    unitPublicId: target.unit?.publicId ?? null,
     assignedUserId: target.assignedTo?.id ?? null,
     sourceTemplateId: target.sourceTemplateId ?? null,
     sourceTemplateVersion: target.sourceTemplateVersion ?? null,
@@ -54,7 +56,7 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
   };
 }
 
-export function OPMSTargetFilters({ departments, onFilterChange }: { departments: DepartmentLookupDto[]; onFilterChange: (filters: Record<string, string>) => void }) {
+export function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Record<string, string>) => void }) {
   const [filters, setFilters] = useState({
     department: '',
     status: '',
@@ -69,22 +71,7 @@ export function OPMSTargetFilters({ departments, onFilterChange }: { departments
   return (
     <Card className="mb-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="opms-department-filter" className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
-            Department
-          </label>
-          <select
-            id="opms-department-filter"
-            value={filters.department}
-            onChange={(e) => handleChange('department', e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-secondary-200 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-800 focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">All Departments</option>
-            {departments.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        </div>
+        <OrganizationMasterPicker kind="department" label="Department" value={filters.department} emptyLabel="All Departments" onChange={value => handleChange('department', value)} />
         <div>
           <label htmlFor="opms-status-filter" className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
             Status
@@ -124,11 +111,11 @@ export function OPMSTargetList() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [withdrawalTarget, setWithdrawalTarget] = useState<OPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
-  const [departments, setDepartments] = useState<DepartmentLookupDto[]>([]);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
-    const result = await getOpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection });
+    const lifecycle = filters.status === 'active' || filters.status === 'revised' || filters.status === 'withdrawn' ? filters.status : undefined;
+    const result = await getOpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection, departmentPublicId: filters.department || undefined, lifecycle });
     if (result.success && result.data) {
       setOpmsTargets(result.data.items);
       setTotalCount(result.data.totalCount);
@@ -136,7 +123,7 @@ export function OPMSTargetList() {
       pushToast('error', result.message ?? 'Failed to load OPMS targets');
     }
     setIsLoading(false);
-  }, [page, pushToast, search, sortBy, sortDirection]);
+  }, [filters.department, filters.status, page, pushToast, search, sortBy, sortDirection]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -149,13 +136,6 @@ export function OPMSTargetList() {
   useEffect(() => {
     void loadTargets();
   }, [loadTargets]);
-
-  useEffect(() => {
-    void getDepartments().then(result => {
-      if (result.success) setDepartments(result.data ?? []);
-      else pushToast('error', result.message ?? 'Failed to load department filters');
-    }).catch(() => pushToast('error', 'The department service is unavailable.'));
-  }, [pushToast]);
 
   const handleRowClick = (row: OPMSTarget) => {
     setCurrentPath(`/opms/targets/${row.id}`);
@@ -173,19 +153,6 @@ export function OPMSTargetList() {
     }
     openCreateFromTemplate(templates[0]);
   };
-
-  const filteredTargets = useMemo(
-    () =>
-      opmsTargets.filter(target => {
-        if (filters.department && target.department.id !== filters.department) return false;
-        if (filters.status) {
-          const status = target.isWithdrawn ? 'withdrawn' : target.isRevised ? 'revised' : 'active';
-          if (status !== filters.status) return false;
-        }
-        return true;
-      }),
-    [filters, opmsTargets],
-  );
 
   const columns = [
     {
@@ -345,7 +312,7 @@ export function OPMSTargetList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="primary">
-              {Object.values(filters).some(Boolean) ? `${filteredTargets.length} shown of ${totalCount}` : `${totalCount} targets`}
+              {`${totalCount} targets`}
             </Badge>
             {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
           </div>
@@ -362,11 +329,11 @@ export function OPMSTargetList() {
         </div>
 
         {/* Filters */}
-        <OPMSTargetFilters departments={departments} onFilterChange={setFilters} />
+        <OPMSTargetFilters onFilterChange={next => { setPage(1); setFilters(next); }} />
 
         {/* Data Table */}
         <DataTable
-          data={filteredTargets}
+          data={opmsTargets}
           columns={columns}
           onRowClick={handleRowClick}
           actions={actions}

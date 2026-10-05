@@ -421,8 +421,8 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     sourceTemplateId: target.sourceTemplateId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
     periodId: target.period.id,
-    departmentId: target.department.id,
-    unitId: target.unit?.id ?? '',
+    departmentId: target.department.publicId ?? '',
+    unitId: target.unit?.publicId ?? '',
     assignedToId: target.assignedTo?.id ?? '',
     wardIds: (target.wardIds ?? target.wards?.map(item => Number(item.id)) ?? []).join(','),
     additionalAssigneeIds: (target.additionalAssigneeIds ?? target.additionalAssignees.map(item => item.id)).join(','),
@@ -495,8 +495,8 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
     relatedOPMSTargetId: target.relatedOPMSTarget?.id ?? '',
     periodId: target.period.id,
-    departmentId: target.department.id,
-    unitId: target.unit?.id ?? '',
+    departmentId: target.department.publicId ?? '',
+    unitId: target.unit?.publicId ?? '',
     assignedToId: target.assignedTo?.id ?? '',
     supervisorId: target.assignedTo?.manager?.id ?? '',
     indicatorNumber: target.indicatorNumber,
@@ -559,7 +559,7 @@ function opmsFormFromTemplate(template: OpmsTargetTemplate): OpmsFormState {
     ...defaults,
     sourceTemplateId: template.id,
     sourceTemplateVersion: String(template.version),
-    departmentId: template.department?.id ?? defaults.departmentId,
+    departmentId: template.department?.publicId ?? defaults.departmentId,
     indicatorNumber: template.indicatorNumber,
     nationalKPA: template.nationalKPA,
     municipalKPA: template.municipalKPA,
@@ -613,7 +613,7 @@ function ipmsFormFromTemplate(template: IpmsTargetTemplate): IpmsFormState {
     ...defaults,
     sourceTemplateId: template.id,
     sourceTemplateVersion: String(template.version),
-    departmentId: template.department?.id ?? defaults.departmentId,
+    departmentId: template.department?.publicId ?? defaults.departmentId,
     indicatorNumber: template.templateCode,
     targetName: template.targetName,
     kpiDescription: template.kpiDescription,
@@ -667,8 +667,10 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     sourceTemplateId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
     periodId: form.periodId ? Number(form.periodId) : null,
-    departmentId: form.departmentId ? Number(form.departmentId) : null,
-    unitId: form.unitId ? Number(form.unitId) : null,
+    departmentId: null,
+    departmentPublicId: form.departmentId || null,
+    unitId: null,
+    unitPublicId: form.unitId || null,
     assignedUserId: form.assignedToId || null,
     wardIds: [...new Set(parseCsvIds(form.wardIds).map(Number).filter(Number.isSafeInteger))],
     additionalAssigneeIds: [...new Set(parseCsvIds(form.additionalAssigneeIds))],
@@ -705,8 +707,10 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
     relatedOpmsTargetId: form.relatedOPMSTargetId || null,
     periodId: form.periodId ? Number(form.periodId) : null,
-    departmentId: form.departmentId ? Number(form.departmentId) : null,
-    unitId: form.unitId ? Number(form.unitId) : null,
+    departmentId: null,
+    departmentPublicId: form.departmentId || null,
+    unitId: null,
+    unitPublicId: form.unitId || null,
     assignedUserId: form.assignedToId || null,
     supervisorId: form.supervisorId || null,
     indicatorNumber: form.indicatorNumber,
@@ -888,11 +892,11 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { departments, units, employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
+  const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
   const employeeIdentityOptions = employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }));
-  const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
-  const selectedUnit = units.find(item => String(item.id) === form.unitId);
+  const selectedDepartmentName = referenceLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
+  const selectedUnitName = referenceLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
   const selectedUom = lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId);
   const selectedWardIds = parseCsvIds(form.wardIds);
   const selectedAssigneeIds = parseCsvIds(form.additionalAssigneeIds);
@@ -942,8 +946,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={value => setForm(prev => ({ ...prev, sdbipLayerPublicId: value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
+              <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setReferenceLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
+              <OrganizationMasterPicker kind="unit" label="Unit" value={form.unitId} selectedLabel={selectedUnitName} departmentPublicId={form.departmentId || undefined} emptyLabel="No Unit" onChange={(value, option) => { setForm(prev => ({ ...prev, unitId: value })); if (value && option) setReferenceLabels(current => ({ ...current, [`unit:${value}`]: option.name })); }} />
             </FormRow>
             <Input label="Search employees" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} />
             <Select label="Assigned User" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...(form.assignedToId && !employeeIdentityOptions.some(item => item.value === form.assignedToId) ? [{ value: form.assignedToId, label: 'Current assigned employee' }] : []), ...employeeIdentityOptions]} />
@@ -1135,7 +1139,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Department</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedDepartment?.name ?? '-'}</p>
+                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedDepartmentName ?? '-'}</p>
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Period</p>
@@ -1143,7 +1147,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Unit</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedUnit?.name ?? '-'}</p>
+                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedUnitName ?? '-'}</p>
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Measure</p>
@@ -1369,6 +1373,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [linkedOpmsLabel, setLinkedOpmsLabel] = useState('');
+  const [organizationLabels, setOrganizationLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const initialize = async () => {
@@ -1449,11 +1454,11 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { departments, units, employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
+  const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
   const employeeIdentityOptions = employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }));
-  const selectedDepartment = departments.find(item => String(item.id) === form.departmentId);
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
-  const selectedUnit = units.find(item => String(item.id) === form.unitId);
+  const selectedDepartmentName = organizationLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
+  const selectedUnitName = organizationLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
   const fieldError = (label: string) => getFieldValidationError(validationErrors, label);
 
   return (
@@ -1505,10 +1510,10 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <Select label="Department" required error={fieldError('Department')} value={form.departmentId} onChange={(event) => setForm(prev => ({ ...prev, departmentId: event.target.value }))} options={departments.map(item => ({ value: String(item.id), label: item.name }))} />
+              <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setOrganizationLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Unit" value={form.unitId} onChange={(event) => setForm(prev => ({ ...prev, unitId: event.target.value }))} options={[{ value: '', label: 'No Unit' }, ...units.filter(item => !form.departmentId || String(item.departmentId) === form.departmentId).map(item => ({ value: String(item.id), label: item.name }))]} />
+              <OrganizationMasterPicker kind="unit" label="Unit" value={form.unitId} selectedLabel={selectedUnitName} departmentPublicId={form.departmentId || undefined} emptyLabel="No Unit" onChange={(value, option) => { setForm(prev => ({ ...prev, unitId: value })); if (value && option) setOrganizationLabels(current => ({ ...current, [`unit:${value}`]: option.name })); }} />
               <Input label="Search employees" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} />
             </FormRow>
             <FormRow cols={2}><Select label="Employee" value={form.assignedToId} onChange={(event) => setForm(prev => ({ ...prev, assignedToId: event.target.value }))} options={[{ value: '', label: 'Select Employee' }, ...(form.assignedToId && !employeeIdentityOptions.some(item => item.value === form.assignedToId) ? [{ value: form.assignedToId, label: 'Current employee' }] : []), ...employeeIdentityOptions]} /><Select label="Supervisor" value={form.supervisorId} onChange={(event) => setForm(prev => ({ ...prev, supervisorId: event.target.value }))} options={[{ value: '', label: 'Select Supervisor' }, ...(form.supervisorId && !employeeIdentityOptions.some(item => item.value === form.supervisorId) ? [{ value: form.supervisorId, label: 'Current supervisor' }] : []), ...employeeIdentityOptions]} /></FormRow>
@@ -1581,7 +1586,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Department</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedDepartment?.name ?? '-'}</p>
+                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedDepartmentName ?? '-'}</p>
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Period</p>
@@ -1589,7 +1594,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Unit</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedUnit?.name ?? '-'}</p>
+                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedUnitName ?? '-'}</p>
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Related OPMS</p>

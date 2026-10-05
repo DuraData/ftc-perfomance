@@ -152,7 +152,9 @@ public class IpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, user.Id));
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, _tenantContext.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.CREATE", new AccessScopeContext(organization.DepartmentId, organization.UnitId, user.Id));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
@@ -166,8 +168,8 @@ public class IpmsTargetsController : ControllerBase
             SourceTemplateVersion = request.SourceTemplateVersion,
             RelatedOpmsTargetId = request.RelatedOpmsTargetId,
             PeriodId = request.PeriodId,
-            DepartmentId = request.DepartmentId,
-            UnitId = request.UnitId,
+            DepartmentId = organization.DepartmentId,
+            UnitId = organization.UnitId,
             AssignedUserId = request.AssignedUserId,
             SupervisorId = request.SupervisorId,
             IndicatorNumber = request.IndicatorNumber.Trim(),
@@ -221,6 +223,8 @@ public class IpmsTargetsController : ControllerBase
         var before = await FindTargetAsync(id);
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
@@ -234,8 +238,8 @@ public class IpmsTargetsController : ControllerBase
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
         entity.RelatedOpmsTargetId = request.RelatedOpmsTargetId;
         entity.PeriodId = request.PeriodId;
-        entity.DepartmentId = request.DepartmentId;
-        entity.UnitId = request.UnitId;
+        entity.DepartmentId = organization.DepartmentId;
+        entity.UnitId = organization.UnitId;
         entity.AssignedUserId = request.AssignedUserId;
         entity.SupervisorId = request.SupervisorId;
         entity.NationalKpa = request.NationalKpa;

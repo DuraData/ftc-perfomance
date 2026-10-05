@@ -53,6 +53,8 @@ public class OpmsTargetsController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "SortBy must be createdAt, indicatorNumber, targetName, or effectiveOrder."));
         if (request.NormalizedSortBy == "effectiveorder" && !request.ReportingPeriodType.HasValue)
             return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "ReportingPeriodType is required for effectiveOrder sorting."));
+        if (!TargetLifecycleFilters.Contains(request.NormalizedLifecycle))
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "Lifecycle must be active, revised, or withdrawn."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
         if (!scope.PermissionGranted)
@@ -63,6 +65,15 @@ public class OpmsTargetsController : ControllerBase
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || (item.RevisedIndicatorNumber != null && item.RevisedIndicatorNumber.Contains(request.NormalizedSearch)) || item.TargetName.Contains(request.NormalizedSearch) || (item.RevisedTargetName != null && item.RevisedTargetName.Contains(request.NormalizedSearch)) || item.KpiDescription.Contains(request.NormalizedSearch) || (item.RevisedKpiDescription != null && item.RevisedKpiDescription.Contains(request.NormalizedSearch)));
+        if (request.DepartmentPublicId.HasValue)
+            query = query.Where(item => item.Department != null && item.Department.PublicId == request.DepartmentPublicId.Value);
+        query = request.NormalizedLifecycle switch
+        {
+            "active" => query.Where(item => !item.IsWithdrawn && !item.IsRevised),
+            "revised" => query.Where(item => !item.IsWithdrawn && item.IsRevised),
+            "withdrawn" => query.Where(item => item.IsWithdrawn),
+            _ => query
+        };
 
         var totalCount = await query.CountAsync();
         query = ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType);
@@ -78,6 +89,7 @@ public class OpmsTargetsController : ControllerBase
     }
 
     private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname", "effectiveorder"];
+    private static readonly HashSet<string> TargetLifecycleFilters = ["", "active", "revised", "withdrawn"];
 
     private static IQueryable<OpmsTarget> ApplyTargetOrdering(IQueryable<OpmsTarget> query, string sortBy, bool descending, ReportingPeriodType? periodType) =>
         (sortBy, descending) switch
@@ -155,7 +167,9 @@ public class OpmsTargetsController : ControllerBase
             request.KpiDescription, request.NationalKpa, request.MunicipalKpa, request.PerformanceObjective, request.Weight, request.KpiType, request.IndicatorType);
         if (definitionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, definitionError));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(request.DepartmentId, request.UnitId, null, null));
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, _tenantContext.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(organization.DepartmentId, organization.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
@@ -172,8 +186,8 @@ public class OpmsTargetsController : ControllerBase
             SourceTemplateId = request.SourceTemplateId,
             SourceTemplateVersion = request.SourceTemplateVersion,
             PeriodId = request.PeriodId,
-            DepartmentId = request.DepartmentId,
-            UnitId = request.UnitId,
+            DepartmentId = organization.DepartmentId,
+            UnitId = organization.UnitId,
             AssignedUserId = request.AssignedUserId,
             MunicipalityId = _tenantContext.MunicipalityId,
             IndicatorNumber = request.IndicatorNumber.Trim(),
@@ -239,6 +253,8 @@ public class OpmsTargetsController : ControllerBase
         var before = (await FindTargetAsync(id))?.ToResponse();
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
         var mappingError = await ValidateMappingsAsync(request);
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
@@ -256,8 +272,8 @@ public class OpmsTargetsController : ControllerBase
         entity.SourceTemplateId = request.SourceTemplateId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
         entity.PeriodId = request.PeriodId;
-        entity.DepartmentId = request.DepartmentId;
-        entity.UnitId = request.UnitId;
+        entity.DepartmentId = organization.DepartmentId;
+        entity.UnitId = organization.UnitId;
         entity.AssignedUserId = request.AssignedUserId;
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
