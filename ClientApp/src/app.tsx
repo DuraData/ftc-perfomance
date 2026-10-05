@@ -36,13 +36,10 @@ const ContactsPage = lazy(() => import('./components/admin/GenericLookupPages').
 const ResumesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ResumesPage })));
 const OccupationsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OccupationsPage })));
 const BudgetTypesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.BudgetTypesPage })));
-const StrategicGoalsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.StrategicGoalsPage })));
-const StrategicObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.StrategicObjectivesPage })));
 const UnitOfMeasurePage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.UnitOfMeasurePage })));
-const MunicipalKPAsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.MunicipalKPAsPage })));
 const DepartmentalObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.DepartmentalObjectivesPage })));
 const OutputsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OutputsPage })));
-const PerformanceObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.PerformanceObjectivesPage })));
+const StrategicPlanningAdministration = lazy(() => import('./components/admin/StrategicPlanningAdministration').then(module => ({ default: module.StrategicPlanningAdministration })));
 const PriorityIssuesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.PriorityIssuesPage })));
 const IPMSTargetLibraryDetail = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryDetail })));
 const IPMSTargetLibraryList = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryList })));
@@ -256,9 +253,11 @@ function AppContent() {
       case '/admin/budget-types':
         return <BudgetTypesPage />;
       case '/admin/strategic-goals':
-        return <StrategicGoalsPage />;
+        return <StrategicPlanningAdministration kind="strategic-goals" />;
+      case '/admin/strategic-interventions':
+        return <StrategicPlanningAdministration kind="strategic-interventions" />;
       case '/admin/strategic-objectives':
-        return <StrategicObjectivesPage />;
+        return <StrategicPlanningAdministration kind="strategic-objectives" />;
       case '/admin/units-measure':
         return <UnitOfMeasurePage />;
       case '/admin/kpas':
@@ -266,13 +265,13 @@ function AppContent() {
       case '/admin/back-to-basics-pillars':
         return <GlobalStrategicReferenceAdministration kind="back-to-basics-pillars" />;
       case '/admin/municipal-kpas':
-        return <MunicipalKPAsPage />;
+        return <StrategicPlanningAdministration kind="municipal-kpas" />;
       case '/admin/departmental-objectives':
         return <DepartmentalObjectivesPage />;
       case '/admin/outputs':
         return <OutputsPage />;
       case '/admin/performance-objectives':
-        return <PerformanceObjectivesPage />;
+        return <StrategicPlanningAdministration kind="performance-objectives" />;
       case '/admin/priority-issues':
         return <PriorityIssuesPage />;
       case '/admin/occupations':

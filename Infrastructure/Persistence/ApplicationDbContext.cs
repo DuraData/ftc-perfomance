@@ -156,6 +156,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureOfficialReports(builder);
         ConfigureNotificationPolicies(builder);
         ConfigureGlobalStrategicReferences(builder);
+        ConfigureStrategicPlanningMasters(builder);
 
         builder.Entity<Municipality>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<Municipality>().HasIndex(item => item.Code).IsUnique();
@@ -2046,7 +2047,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent),
             typeof(InternalAuditAssessmentConfiguration), typeof(InternalAuditAssessment), typeof(OfficialReportTemplate), typeof(OfficialReportGeneration), typeof(OfficialReportGenerationScopeGrant), typeof(OfficialReportSchedule), typeof(OfficialReportJob),
             typeof(NotificationConfiguration), typeof(NotificationScheduleRule), typeof(WorkingCalendarHoliday), typeof(ScheduledNotification), typeof(NotificationPreference),
-            typeof(MunicipalityNationalKpa), typeof(MunicipalityBackToBasicsPillar)
+            typeof(MunicipalityNationalKpa), typeof(MunicipalityBackToBasicsPillar),
+            typeof(MunicipalKpa), typeof(MunicipalStrategicGoal), typeof(StrategicIntervention), typeof(MunicipalStrategicObjective), typeof(PerformanceObjective),
+            typeof(MunicipalKpaStrategicGoal), typeof(StrategicGoalIntervention), typeof(StrategicGoalObjective), typeof(StrategicInterventionObjective), typeof(StrategicObjectivePerformanceObjective)
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {

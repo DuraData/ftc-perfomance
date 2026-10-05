@@ -1572,6 +1572,31 @@ export interface GlobalStrategicReferenceDto {
   rowVersion: string;
 }
 
+export interface StrategicPlanningMasterDto {
+  publicId: string;
+  code?: string | null;
+  name: string;
+  description?: string | null;
+  effectiveFromFinancialYearPublicId?: string | null;
+  effectiveFromFinancialYearCode?: string | null;
+  effectiveToFinancialYearPublicId?: string | null;
+  effectiveToFinancialYearCode?: string | null;
+  displayOrder: number;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface StrategicPlanningRelationshipDto {
+  publicId: string;
+  relationshipType: string;
+  parentPublicId: string;
+  parentName: string;
+  childPublicId: string;
+  childName: string;
+  isActive: boolean;
+  rowVersion: string;
+}
+
 export interface PerformancePeriodTargetDto {
   publicId: string;
   reportingPeriodPublicId: string;

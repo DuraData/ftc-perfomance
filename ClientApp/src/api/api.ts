@@ -81,6 +81,8 @@ import type {
   UnitMasterDto,
   PositionMasterDto,
   GlobalStrategicReferenceDto,
+  StrategicPlanningMasterDto,
+  StrategicPlanningRelationshipDto,
   WorkflowDefinitionDto,
   WorkflowDefinitionComparisonDto,
   InternalAuditAssessmentDto,
@@ -1385,6 +1387,31 @@ export async function saveGlobalStrategicReference(kind: GlobalStrategicReferenc
 
 export async function setGlobalStrategicReferenceAvailability(kind: GlobalStrategicReferenceKind, publicId: string, payload: { isEnabled: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<GlobalStrategicReferenceDto>> {
   return put<GlobalStrategicReferenceDto>(`/v1/masters/${kind}/${publicId}/municipality-availability`, payload);
+}
+
+export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives';
+
+export async function getStrategicPlanningMastersPage(kind: StrategicPlanningMasterKind, query: RegisterPageQuery = {}, options: { municipalityFinancialYearPublicId?: string; includeInactive?: boolean } = {}): Promise<ApiResponse<PagedResult<StrategicPlanningMasterDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (options.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', options.municipalityFinancialYearPublicId);
+  if (options.includeInactive) parameters.set('includeInactive', 'true');
+  return get<PagedResult<StrategicPlanningMasterDto>>(`/v1/strategic-planning/${kind}/page?${parameters.toString()}`);
+}
+
+export function saveStrategicPlanningMaster(kind: StrategicPlanningMasterKind, publicId: string | null, payload: { code?: string | null; name: string; description?: string | null; effectiveFromFinancialYearPublicId?: string | null; effectiveToFinancialYearPublicId?: string | null; displayOrder: number; isActive: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<StrategicPlanningMasterDto>> {
+  return publicId ? put<StrategicPlanningMasterDto>(`/v1/strategic-planning/${kind}/${encodeURIComponent(publicId)}`, payload) : post<StrategicPlanningMasterDto>(`/v1/strategic-planning/${kind}`, payload);
+}
+
+export function getStrategicPlanningRelationships(includeInactive = false): Promise<ApiResponse<StrategicPlanningRelationshipDto[]>> {
+  return get<StrategicPlanningRelationshipDto[]>(`/v1/strategic-planning/relationships${includeInactive ? '?includeInactive=true' : ''}`);
+}
+
+export function linkStrategicPlanningRelationship(kind: string, parentPublicId: string, childPublicId: string, reason: string, rowVersion?: string | null): Promise<ApiResponse<StrategicPlanningRelationshipDto>> {
+  return post<StrategicPlanningRelationshipDto>(`/v1/strategic-planning/relationships/${encodeURIComponent(kind)}`, { parentPublicId, childPublicId, reason, rowVersion });
+}
+
+export function disableStrategicPlanningRelationship(publicId: string, reason: string, rowVersion: string): Promise<ApiResponse<StrategicPlanningRelationshipDto>> {
+  return post<StrategicPlanningRelationshipDto>(`/v1/strategic-planning/relationships/${encodeURIComponent(publicId)}/disable`, { reason, rowVersion });
 }
 
 export async function closeEmployeeAssignment(publicId: string, payload: { effectiveTo: string; reason: string; rowVersion: string }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {
