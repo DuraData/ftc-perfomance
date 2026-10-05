@@ -39,6 +39,7 @@ import {
 import type { OPMSTarget, IPMSTarget, OPMSSubmission, Employee, AuditTrailEntryDto } from '../../types';
 import { KpiOrderingEditor } from '../targets/KpiOrderingEditor';
 import { KpiDefinitionRevisionEditor } from '../targets/KpiDefinitionRevisionEditor';
+import { DetailCollectionPaging } from '../common/DetailCollectionPaging';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -281,10 +282,18 @@ function BudgetTab({ target }: { target: OPMSTarget }) {
 
 function SubmissionsTab({
   submissions,
+  page,
+  totalPages,
+  totalCount,
+  onPageChange,
   onUpdateSubmission,
   onDeleteSubmission,
 }: {
   submissions: OPMSSubmission[];
+  page: number;
+  totalPages: number;
+  totalCount: number;
+  onPageChange: (page: number) => void;
   onUpdateSubmission: (submission: OPMSSubmission) => void;
   onDeleteSubmission: (submissionId: string, reason: string) => void;
 }) {
@@ -384,13 +393,16 @@ function SubmissionsTab({
   }
 
   return (
-    <DataTable 
+    <div>
+      <DataTable
       data={submissions} 
       columns={columns} 
       emptyMessage="No submissions yet" 
       getRowId={(row) => row.id}
       onRowClick={(row) => { void openSubmission(row); }}
-    />
+      />
+      <DetailCollectionPaging label="submissions" page={page} totalPages={totalPages} totalCount={totalCount} onPageChange={onPageChange} />
+    </div>
   );
 }
 
@@ -413,7 +425,7 @@ export function VoteNumbersTab({ target }: { target: OPMSTarget }) {
   );
 }
 
-function RelatedIPMSTab({ ipmsTargets }: { ipmsTargets: IPMSTarget[] }) {
+function RelatedIPMSTab({ ipmsTargets, page, totalPages, totalCount, onPageChange }: { ipmsTargets: IPMSTarget[]; page: number; totalPages: number; totalCount: number; onPageChange: (page: number) => void }) {
   const columns = [
     { id: 'indicator', header: 'Indicator', accessor: (row: IPMSTarget) => row.indicatorNumber },
     { id: 'name', header: 'Name', accessor: (row: IPMSTarget) => row.targetName },
@@ -427,6 +439,7 @@ function RelatedIPMSTab({ ipmsTargets }: { ipmsTargets: IPMSTarget[] }) {
         <p className="text-xs text-secondary-600">Linked IPMS targets</p>
       </div>
       <DataTable data={ipmsTargets} columns={columns} emptyMessage="No linked IPMS" getRowId={(row) => row.id} />
+      <DetailCollectionPaging label="linked targets" page={page} totalPages={totalPages} totalCount={totalCount} onPageChange={onPageChange} />
     </div>
   );
 }
@@ -517,6 +530,10 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const [target, setTarget] = useState<OPMSTarget | null>(null);
   const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
   const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
+  const [submissionPage, setSubmissionPage] = useState(1);
+  const [submissionMeta, setSubmissionMeta] = useState({ totalCount: 0, totalPages: 0 });
+  const [relatedPage, setRelatedPage] = useState(1);
+  const [relatedMeta, setRelatedMeta] = useState({ totalCount: 0, totalPages: 0 });
   const [auditEntries, setAuditEntries] = useState<AuditTrailEntryDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -525,8 +542,8 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       setIsLoading(true);
       const [targetResult, submissionsResult, ipmsTargetsResult] = await Promise.all([
         getOpmsTargetApi(targetId),
-        getOpmsSubmissionsApi({ page: 1, pageSize: 100, targetPublicId: targetId }),
-        getIpmsTargetsApi({ page: 1, pageSize: 100, relatedOpmsTargetPublicId: targetId }),
+        getOpmsSubmissionsApi({ page: 1, pageSize: 25, targetPublicId: targetId }),
+        getIpmsTargetsApi({ page: 1, pageSize: 25, relatedOpmsTargetPublicId: targetId }),
       ]);
 
       if (targetResult.success && targetResult.data) {
@@ -537,16 +554,28 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
       if (submissionsResult.success && submissionsResult.data) {
         setOpmsSubmissions(submissionsResult.data.items);
+        setSubmissionMeta({ totalCount: submissionsResult.data.totalCount, totalPages: submissionsResult.data.totalPages });
       }
 
       if (ipmsTargetsResult.success && ipmsTargetsResult.data) {
         setIpmsTargets(ipmsTargetsResult.data.items);
+        setRelatedMeta({ totalCount: ipmsTargetsResult.data.totalCount, totalPages: ipmsTargetsResult.data.totalPages });
       }
       setIsLoading(false);
     };
 
-    void loadData();
+    setSubmissionPage(1); setRelatedPage(1); void loadData();
   }, [targetId]);
+
+  const loadSubmissionPage = async (page: number) => {
+    const result = await getOpmsSubmissionsApi({ page, pageSize: 25, targetPublicId: targetId });
+    if (result.success && result.data) { setOpmsSubmissions(result.data.items); setSubmissionMeta({ totalCount: result.data.totalCount, totalPages: result.data.totalPages }); setSubmissionPage(page); }
+  };
+
+  const loadRelatedPage = async (page: number) => {
+    const result = await getIpmsTargetsApi({ page, pageSize: 25, relatedOpmsTargetPublicId: targetId });
+    if (result.success && result.data) { setIpmsTargets(result.data.items); setRelatedMeta({ totalCount: result.data.totalCount, totalPages: result.data.totalPages }); setRelatedPage(page); }
+  };
 
   useEffect(() => {
     const loadAudit = async () => {
@@ -586,9 +615,9 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     { id: 'budget', label: 'Budget', icon: <DollarSign className="w-3.5 h-3.5" /> },
     { id: 'ordering', label: 'Ordering', icon: <ListOrdered className="w-3.5 h-3.5" /> },
     { id: 'revisions', label: 'Revisions', icon: <History className="w-3.5 h-3.5" /> },
-    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: opmsSubmissions.filter(s => s.target.id === target.id).length },
+    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: submissionMeta.totalCount },
     { id: 'votes', label: 'Votes', icon: <Layers className="w-3.5 h-3.5" /> },
-    { id: 'ipms', label: 'IPMS', icon: <Link2 className="w-3.5 h-3.5" />, badge: ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id).length },
+    { id: 'ipms', label: 'IPMS', icon: <Link2 className="w-3.5 h-3.5" />, badge: relatedMeta.totalCount },
     { id: 'assignees', label: 'Assignees', icon: <Users className="w-3.5 h-3.5" /> },
     { id: 'attachments', label: 'Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
     { id: 'history', label: 'Audit', icon: <History className="w-3.5 h-3.5" /> },
@@ -605,6 +634,10 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'submissions': return (
         <SubmissionsTab
           submissions={opmsSubmissions.filter(s => s.target.id === target.id)}
+          page={submissionPage}
+          totalPages={submissionMeta.totalPages}
+          totalCount={submissionMeta.totalCount}
+          onPageChange={page => { void loadSubmissionPage(page); }}
           onUpdateSubmission={(submission) => {
             void (async () => {
               const result = await updateOpmsSubmissionApi(submission.id, {
@@ -632,7 +665,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         />
       );
       case 'votes': return <VoteNumbersTab target={target} />;
-      case 'ipms': return <RelatedIPMSTab ipmsTargets={ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id)} />;
+      case 'ipms': return <RelatedIPMSTab ipmsTargets={ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id)} page={relatedPage} totalPages={relatedMeta.totalPages} totalCount={relatedMeta.totalCount} onPageChange={page => { void loadRelatedPage(page); }} />;
       case 'assignees': return <AssigneesTab target={target} />;
       case 'attachments': return <AttachmentsTab target={target} />;
       case 'history': return <HistoryTab entries={auditEntries} />;

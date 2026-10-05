@@ -34,6 +34,7 @@ import {
 import type { IPMSTarget, IPMSSubmission, AuditTrailEntryDto } from '../../types';
 import { KpiOrderingEditor } from '../targets/KpiOrderingEditor';
 import { KpiDefinitionRevisionEditor } from '../targets/KpiDefinitionRevisionEditor';
+import { DetailCollectionPaging } from '../common/DetailCollectionPaging';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -228,10 +229,18 @@ function QuarterlyTargetsTab({ target }: { target: IPMSTarget }) {
 
 function SubmissionsTab({
   submissions,
+  page,
+  totalPages,
+  totalCount,
+  onPageChange,
   onUpdateSubmission,
   onDeleteSubmission,
 }: {
   submissions: IPMSSubmission[];
+  page: number;
+  totalPages: number;
+  totalCount: number;
+  onPageChange: (page: number) => void;
   onUpdateSubmission: (submission: IPMSSubmission) => void;
   onDeleteSubmission: (submissionId: string, reason: string) => void;
 }) {
@@ -331,13 +340,16 @@ function SubmissionsTab({
   }
 
   return (
-    <DataTable 
+    <div>
+      <DataTable
       data={submissions} 
       columns={columns} 
       emptyMessage="No submissions yet" 
       getRowId={(row) => row.id}
       onRowClick={(row) => { void openSubmission(row); }}
-    />
+      />
+      <DetailCollectionPaging label="submissions" page={page} totalPages={totalPages} totalCount={totalCount} onPageChange={onPageChange} />
+    </div>
   );
 }
 
@@ -395,6 +407,8 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const [activeTab, setActiveTab] = useState('general');
   const [target, setTarget] = useState<IPMSTarget | null>(null);
   const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
+  const [submissionPage, setSubmissionPage] = useState(1);
+  const [submissionMeta, setSubmissionMeta] = useState({ totalCount: 0, totalPages: 0 });
   const [auditEntries, setAuditEntries] = useState<AuditTrailEntryDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -403,7 +417,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       setIsLoading(true);
       const [targetResult, submissionsResult] = await Promise.all([
         getIpmsTargetApi(targetId),
-        getIpmsSubmissionsApi({ page: 1, pageSize: 100, targetPublicId: targetId }),
+        getIpmsSubmissionsApi({ page: 1, pageSize: 25, targetPublicId: targetId }),
       ]);
 
       if (targetResult.success && targetResult.data) {
@@ -414,13 +428,19 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
       if (submissionsResult.success && submissionsResult.data) {
         setIpmsSubmissions(submissionsResult.data.items);
+        setSubmissionMeta({ totalCount: submissionsResult.data.totalCount, totalPages: submissionsResult.data.totalPages });
       }
 
       setIsLoading(false);
     };
 
-    void loadData();
+    setSubmissionPage(1); void loadData();
   }, [targetId]);
+
+  const loadSubmissionPage = async (page: number) => {
+    const result = await getIpmsSubmissionsApi({ page, pageSize: 25, targetPublicId: targetId });
+    if (result.success && result.data) { setIpmsSubmissions(result.data.items); setSubmissionMeta({ totalCount: result.data.totalCount, totalPages: result.data.totalPages }); setSubmissionPage(page); }
+  };
 
   useEffect(() => {
     const loadAudit = async () => {
@@ -459,7 +479,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     { id: 'quarterly', label: 'Quarterly', icon: <TrendingUp className="w-3.5 h-3.5" /> },
     { id: 'ordering', label: 'Ordering', icon: <ListOrdered className="w-3.5 h-3.5" /> },
     { id: 'revisions', label: 'Revisions', icon: <History className="w-3.5 h-3.5" /> },
-    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: ipmsSubmissions.filter(s => s.target.id === target.id).length },
+    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: submissionMeta.totalCount },
     { id: 'attachments', label: 'Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
     { id: 'history', label: 'Audit', icon: <History className="w-3.5 h-3.5" /> },
   ];
@@ -474,6 +494,10 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       case 'submissions': return (
         <SubmissionsTab
           submissions={ipmsSubmissions.filter(s => s.target.id === target.id)}
+          page={submissionPage}
+          totalPages={submissionMeta.totalPages}
+          totalCount={submissionMeta.totalCount}
+          onPageChange={page => { void loadSubmissionPage(page); }}
           onUpdateSubmission={(submission) => {
             void (async () => {
               const result = await updateIpmsSubmissionApi(submission.id, {

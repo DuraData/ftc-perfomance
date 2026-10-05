@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **384 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **199 frontend tests pass** across 56 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **384 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **201 frontend tests pass** across 56 files. TypeScript type-check, ESLint, accessibility automation, backend/frontend builds, the executable bundle budget, model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -1738,6 +1738,16 @@ Status: **CLOSED AT REPOSITORY LEVEL FOR IDP PLAN SELECTION — native SQL Serve
 
 The complete suites pass **384 backend tests**, with one explicitly environment-gated native SQL Server test skipped, and **199/199 frontend tests across 56 files**. TypeScript, ESLint and the Vite production build pass; 2,102 modules build into 72 JavaScript chunks with a **400.0 KiB** maximum. No schema change, online resource, cloud infrastructure or provider-specific application path was introduced.
 
+### 11.110 Bounded target-detail submission and linked-target collections
+
+Status: **CLOSED AT REPOSITORY LEVEL FOR TARGET-DETAIL SECONDARY COLLECTIONS — native SQL Server query-plan acceptance remains**
+
+- Replaced the OPMS and IPMS target-detail submission snapshots with target-filtered 25-row server pages. Each detail view now exposes previous/next navigation, an authoritative total and a page indicator rather than implying that the first fixed-size response is complete.
+- Replaced the OPMS target-detail related-IPMS snapshot with the existing server-filtered related-target page contract at 25 rows. Its tab badge and ledger summary use the authoritative database count, and later pages remain reachable without downloading the whole related register.
+- Added a shared compact detail-collection paging control and focused component tests proving exact target-scoped first-page requests, authoritative totals, and second-page transport for OPMS submissions, IPMS submissions and linked IPMS targets.
+
+The complete suites pass **384 backend tests**, with one explicitly environment-gated native SQL Server test skipped, and **201/201 frontend tests across 56 files**. TypeScript, ESLint, the Vite production build and bundle budget pass; 2,103 modules build into 72 JavaScript chunks with a **400.0 KiB** maximum. No schema change, online resource, cloud infrastructure or provider-specific application path was introduced.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -1771,7 +1781,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 19 | Dashboards and role-scoped operational views | Partially Compliant | OPMS/IPMS headline metrics use authorization-scoped database aggregates, while staff and personal workflow queues use combined scope-filtered SQL counts and paging; broader analytical drill-down and some specified operational flows remain incomplete. |
 | 20 | Official reports, exports and version history | Compliant | Municipality/FY/period-scoped approved template versions cover all 16 required report classes in CSV/XLSX/DOCX/PDF; durable jobs and immutable schedule versions govern queueing, recurrence, dynamic recipients and channel snapshots; every execution re-evaluates report plus resource permissions/scope, links its immutable generation and distribution evidence, while downloads re-evaluate scope and integrity. |
 | 21 | Notifications, reminders and delivery operations | Compliant | Versioned municipality/FY policies inherit through stage and period scope, materialize idempotent working-day reminders/escalations for reporting windows and RFIs, support in-app/email/SMS delivery, preserve retry/terminal receipts, catch up after downtime, enforce mandatory delivery over persisted optional preferences and expose governed administration/operations. |
-| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. Target-detail collections and submission RFI ledgers are bounded, dashboards use aggregates, workflow queues use combined database paging, reusable target libraries, target/employee/calendar/SDBIP/IDP-plan, reporting-window user-scope and access-simulation user selectors plus user/security/employee/organization/reference/calendar/SDBIP/authentication/IDP-plan-and-import-history/official-report administration use searchable server pages, and audit administration uses tenant-scoped server paging; unbounded OPMS/IPMS target/submission reads are retired. Other secondary collections and uniform SQL Server query-plan acceptance remain. |
+| 22 | API versioning, errors, idempotency and bounded paging | Partially Compliant | RFC 7807, idempotency and primary register paging are implemented. OPMS/IPMS target-detail submissions, OPMS linked-IPMS targets and submission RFI ledgers are bounded with authoritative totals, dashboards use aggregates, workflow queues use combined database paging, reusable target libraries, target/employee/calendar/SDBIP/IDP-plan, reporting-window user-scope and access-simulation user selectors plus user/security/employee/organization/reference/calendar/SDBIP/authentication/IDP-plan-and-import-history/official-report administration use searchable server pages, and audit administration uses tenant-scoped server paging; unbounded OPMS/IPMS target/submission reads are retired. Other secondary collections and uniform SQL Server query-plan acceptance remain. |
 | 23 | Technical Indicator Descriptions | Compliant | Governed configuration, versions, files, scans, register paging and authorization are implemented. |
 | 24 | Circular 88 | Compliant | Catalogue, assignments, governed reports, workflow and paged register are implemented and tested. |
 | 25 | Integrated Development Plan | Compliant | Governed IDP structures, import/report paths and repository tests are present. |
@@ -1798,7 +1808,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Dynamic role/menu/CRUD/scope repository enforcement | Repository portion closed | Added a relational integration test that creates `KPI_VIEWER` and `DEPARTMENT_SUBMITTER` dynamically and proves menu, read/update and department scope behavior. HTTP penetration and catalogue completion remain under area 4. |
 | Cross-tenant HTTP list/fetch/edit/approve/upload/download/report/audit | Closed at repository level | A real in-process HTTP host with relational SQLite, dynamic role permissions and two municipalities proves isolation across every required surface and rejects a forged municipality header. Native SQL Server and deployed penetration evidence remain under areas 31 and 32. |
 | Canonical submission base state and fail-closed workflow | Closed at repository level | Constrained base state, backfill migration and regression coverage pass. |
-| Primary register paging, TID and administration directories | Substantially closed | Main registers, reusable OPMS/IPMS target libraries, TID, workflow-governance/reporting-window-exception and submission RFI/action/rating ledgers, user/security, authentication identity/event, IDP import-history, municipal-employee, organization and municipal-reference administration plus all target/employee/calendar/SDBIP selectors are server-paged; other compatibility/detail collections and SQL Server query-plan evidence remain open. |
+| Primary register paging, TID and administration directories | Substantially closed | Main registers, reusable OPMS/IPMS target libraries, TID, target-detail submission/linked-target collections, workflow-governance/reporting-window-exception and submission RFI/action/rating ledgers, user/security, authentication identity/event, IDP import-history, municipal-employee, organization and municipal-reference administration plus all target/employee/calendar/SDBIP selectors are server-paged; other compatibility/detail collections and SQL Server query-plan evidence remain open. |
 | Frontend use of mock business data | Closed at repository level | Removed production `mockData` imports and API fixture overlays. Target capture and target-template forms use persisted performance catalogues, tenant organization/employee endpoints and real related-target APIs with explicit loading/error/empty behavior. |
 | Normalized target cutover and legacy wide fields | **Repository contract closed; deployment cutover remains** | Active OPMS/IPMS create/update and public DTOs use only typed canonical period rows, heterogeneous values are tested, and governed revisions cannot be bypassed. The Data Cutover console previews and executes bounded reasoned reconciliation. Competing actual projections are retired losslessly; execute and verify historic target reconciliation, then remove the now-internal target compatibility columns. |
 | Mid-term/annual consolidation suggestions | **Closed at repository level** | Central calculation, municipality policies, suggested-versus-final persistence, immutable generated/accepted/edited history, protected OPMS/IPMS APIs, canonical metric recalculation and the Mid-Term/Annual SPA workflow are implemented and tested. Native SQL Server acceptance remains under area 31. |
@@ -1849,6 +1859,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced the unbounded municipal-employee register and employee selectors with tenant-filtered, member-aware, currently-effective page contracts across employee administration, OPMS/IPMS ownership, TID responsibility and Circular 88 assignments.
 - Replaced the unbounded IDP plan query with a tenant-filtered searchable page contract, added true server paging to the plan-management register and moved every production IDP plan consumer to bounded retrieval.
 - Replaced the fixed first-200 official-report job history with tenant- and permission-filtered authoritative server paging, including audit-report visibility, debounced search and independent SPA job-ledger refreshes.
+- Replaced fixed-size OPMS/IPMS target-detail submission snapshots and the OPMS linked-IPMS snapshot with target-filtered 25-row pages, authoritative counts and reusable previous/next controls.
 - Replaced the unbounded official-report schedule list with tenant- and permission-filtered authoritative server paging, including searchable current schedules, allow-listed sorting, independent SPA refreshes and a capped compatibility route.
 - Replaced post-materialization official-generation scope filtering with immutable normalized scope grants and a guarded historic backfill, then added scope-before-count database paging and an independent searchable SPA generation register.
 - Added a real ASP.NET Core HTTP tenant-isolation matrix covering list, fetch, edit, approve, POE upload/download, performance reporting and audit, plus forged municipality-header rejection, using dynamically persisted permissions and two relational tenants.
@@ -1860,10 +1871,10 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Gate | Result |
 |---|---|
 | Backend test suite | **Passed: 384; Failed: 0; Skipped: 1; Total: 385.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 199/199 across 56 files.** |
+| Frontend Vitest suite | **Passed: 201/201 across 56 files.** |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
-| Frontend production build | Passed under Vite 8; 2,102 modules transformed. |
+| Frontend production build | Passed under Vite 8; 2,103 modules transformed. |
 | Bundle budget | Passed with 72 JavaScript chunks; largest chunk 400.0 KiB. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed after a sequential clean/build; **0 warnings, 0 errors**. |
