@@ -107,12 +107,22 @@ public class AccessController : ControllerBase
             new AccessSimulationResponse(result.Allowed, result.Reason, result.EffectivePermissions, result.MatchedScopes, result.MatchedAssignments)));
     }
 
+    [HttpGet("role-access-matrix/page")]
+    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<RoleAccessMatrixResponse>>>> GetRoleAccessMatrixPage([FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("name" or "code" or "createdat"))
+            return BadRequest(new ApiResponse<PagedResponse<RoleAccessMatrixResponse>>(false, null, "SortBy must be name, code, or createdAt."));
+        var page = await _accessControlService.BuildRoleAccessMatrixPageAsync(request);
+        return Ok(new ApiResponse<PagedResponse<RoleAccessMatrixResponse>>(true, page));
+    }
+
     [HttpGet("role-access-matrix")]
     [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
-    public async Task<ActionResult<ApiResponse<RoleAccessMatrixResponse[]>>> GetRoleAccessMatrix()
+    public ActionResult<ApiResponse<RoleAccessMatrixResponse[]>> GetRoleAccessMatrix()
     {
-        var rows = await _accessControlService.BuildRoleAccessMatrixAsync();
-        return Ok(new ApiResponse<RoleAccessMatrixResponse[]>(true, rows));
+        return StatusCode(StatusCodes.Status410Gone,
+            new ApiResponse<RoleAccessMatrixResponse[]>(false, null, "This unbounded route is retired. Use the /role-access-matrix/page endpoint."));
     }
 
     [HttpGet("system-coverage-audit")]

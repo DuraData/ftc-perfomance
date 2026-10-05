@@ -3,6 +3,56 @@ namespace FTCERP.Tests;
 public class DynamicSecurityTests
 {
     [Fact]
+    public async Task Role_access_matrix_pages_tenant_roles_and_uses_effective_dynamic_assignments()
+    {
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(7);
+        tenant.SetupGet(item => item.IsSystem).Returns(false);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var municipality = new Municipality { Id = 7, Code = "MATRIX-7", Name = "Matrix Municipality" };
+        var foreignMunicipality = new Municipality { Id = 8, Code = "MATRIX-8", Name = "Foreign Matrix Municipality" };
+        var user = IdpTestFixture.CreateUser("matrix-user", "Matrix", "User"); user.Municipality = municipality;
+        var foreignUser = IdpTestFixture.CreateUser("matrix-foreign", "Foreign", "User"); foreignUser.Municipality = foreignMunicipality;
+        var roles = Enumerable.Range(0, 11).Select(index =>
+        {
+            var role = Role($"matrix-role-{index:00}", $"MATCH_{index:00}");
+            role.Name = $"Match Role {index:00}"; role.NormalizedName = role.Name.ToUpperInvariant(); role.Municipality = municipality; role.CreatedAt = DateTime.UtcNow.AddMinutes(index);
+            return role;
+        }).ToArray();
+        var foreignRole = Role("matrix-role-foreign", "MATCH_FOREIGN"); foreignRole.Name = "Match Foreign Role"; foreignRole.Municipality = foreignMunicipality;
+        var allowed = new Permission { Code = "OPMS_KPI.READ", Module = "Resource", Feature = "OPMS_KPI", Action = "Read", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Read, IsActive = true };
+        var denied = new Permission { Code = "OPMS_KPI.DELETE", Module = "Resource", Feature = "OPMS_KPI", Action = "Delete", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Delete, IsActive = true };
+        context.AddRange(municipality, foreignMunicipality, user, foreignUser);
+        context.Roles.AddRange(roles.Append(foreignRole));
+        context.Permissions.AddRange(allowed, denied);
+        await context.SaveChangesAsync();
+        context.RolePermissions.AddRange(
+            new RolePermission { RoleId = roles[3].Id, PermissionId = allowed.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = roles[3].Id, PermissionId = denied.Id, IsAllowed = false, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        context.SecurityUserRoleAssignments.AddRange(
+            new SecurityUserRoleAssignment { UserId = user.Id, RoleId = roles[3].Id, MunicipalityId = municipality.Id, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), AssignedAt = DateTime.UtcNow, AssignedBy = user.Id },
+            new SecurityUserRoleAssignment { UserId = foreignUser.Id, RoleId = foreignRole.Id, MunicipalityId = foreignMunicipality.Id, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), AssignedAt = DateTime.UtcNow, AssignedBy = foreignUser.Id });
+        await context.SaveChangesAsync();
+        var roleStore = new Mock<IRoleStore<ApplicationRole>>();
+        var roleManager = new Mock<RoleManager<ApplicationRole>>(roleStore.Object, null!, null!, null!, null!);
+        roleManager.SetupGet(manager => manager.Roles).Returns(context.Roles);
+        var service = new AccessControlService(context, IdpTestFixture.CreateUserManagerMock(user).Object, roleManager.Object, tenant.Object);
+
+        var page = await service.BuildRoleAccessMatrixPageAsync(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "code", SortDirection = "asc" });
+
+        page.TotalCount.Should().Be(11);
+        page.Items.Select(item => item.Role).Should().Equal("Match Role 03", "Match Role 04", "Match Role 05");
+        page.Items[0].Permissions.Should().Contain("OPMS_KPI.READ").And.NotContain("OPMS_KPI.DELETE");
+        page.Items[0].TestUser.Should().Be("Matrix User");
+        page.Items[0].Scope.Should().Contain("Municipality:7");
+        page.Items.Should().NotContain(item => item.Role == "Match Foreign Role");
+
+        var controller = new AccessController(service, IdpTestFixture.CreateUserManagerMock(user).Object, context, tenant.Object);
+        (await controller.GetRoleAccessMatrixPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetRoleAccessMatrix().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
+    [Fact]
     public async Task Security_user_directory_pages_only_effective_authorized_municipalities()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

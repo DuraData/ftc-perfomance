@@ -4,7 +4,7 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
-import { getPermissions, getRoleAccessMatrix, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
+import { getPermissions, getRoleAccessMatrixPage, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
 import type { AccessSimulationResult, AdminPermission, AdminUserDetail, RoleAccessMatrixRow, SystemCoverageAuditRow } from '../../types';
 
 function BooleanPill({ value }: { value: boolean }) {
@@ -23,6 +23,13 @@ function BooleanPill({ value }: { value: boolean }) {
 
 export function RoleAccessMatrixPage() {
   const [rows, setRows] = useState<RoleAccessMatrixRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,13 +37,15 @@ export function RoleAccessMatrixPage() {
     let active = true;
     const load = async () => {
       setLoading(true);
-      const result = await getRoleAccessMatrix();
+      const result = await getRoleAccessMatrixPage({ page, pageSize: 25, search, sortBy, sortDirection });
       if (!active) return;
       if (result.success && result.data) {
-        setRows(result.data);
+        setRows(result.data.items);
+        setTotalCount(result.data.totalCount);
+        setTotalPages(result.data.totalPages);
         setError(null);
       } else {
-        setRows([]);
+        setRows([]); setTotalCount(0); setTotalPages(0);
         setError(result.message ?? 'Failed to load role access matrix.');
       }
       setLoading(false);
@@ -45,42 +54,28 @@ export function RoleAccessMatrixPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page, search, sortBy, sortDirection]);
+  useEffect(() => { const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300); return () => window.clearTimeout(timeout); }, [searchInput]);
 
   return (
     <AppShell title="Role Access Matrix" subtitle="Role permissions, scope profile, menus, actions, reports, and demo users">
       <Card className="overflow-hidden">
+        <div className="grid gap-3 border-b border-secondary-200 p-4 dark:border-secondary-700 md:grid-cols-3">
+          <Input label="Search role access matrix" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Role code, name or description" />
+          <Select label="Sort role access matrix by" value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }} options={[{ value: 'name', label: 'Name' }, { value: 'code', label: 'Code' }, { value: 'createdAt', label: 'Created' }]} />
+          <Select label="Role access sort direction" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} />
+        </div>
         {loading ? (
           <div className="px-6 py-8 text-sm text-secondary-500">Loading role access matrix...</div>
         ) : error ? (
           <div className="px-6 py-8 text-sm text-error-600">{error}</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div><div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
-              <thead className="bg-secondary-50 dark:bg-secondary-800/60">
-                <tr>
-                  {['Role', 'Permissions', 'Scope', 'Menus', 'Allowed Actions', 'Reports', 'Test User'].map(header => (
-                    <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
-                {rows.map(row => (
-                  <tr key={row.role}>
-                    <td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}</td>
-                    <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.permissions.join(', ') || '-'}</td>
-                    <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.scope.join(', ') || '-'}</td>
-                    <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.menus.join(', ') || '-'}</td>
-                    <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.allowedActions.join(', ') || '-'}</td>
-                    <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.reports.join(', ') || '-'}</td>
-                    <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Role', 'Permissions', 'Scope', 'Menus', 'Allowed Actions', 'Reports', 'Test User'].map(header => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{header}</th>)}</tr></thead>
+              <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">{rows.map(row => <tr key={row.role}><td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.permissions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.scope.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.menus.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.allowedActions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.reports.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td></tr>)}</tbody>
             </table>
-          </div>
+          </div><div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700"><span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next roles</Button></span></div></div>
         )}
       </Card>
     </AppShell>
@@ -458,6 +453,13 @@ function buildRolePermissionCrudRows(
 
 export function RolePermissionCrudAuditPage() {
   const [rows, setRows] = useState<RolePermissionCrudAuditRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -467,26 +469,28 @@ export function RolePermissionCrudAuditPage() {
     const load = async () => {
       setLoading(true);
       const [matrixResponse, coverageResponse] = await Promise.all([
-        getRoleAccessMatrix(),
+        getRoleAccessMatrixPage({ page, pageSize: 25, search, sortBy, sortDirection }),
         getSystemCoverageAudit(),
       ]);
       if (!active) return;
 
       if (!matrixResponse.success || !matrixResponse.data) {
-        setRows([]);
+        setRows([]); setTotalCount(0); setTotalPages(0);
         setError(matrixResponse.message ?? 'Failed to load role access matrix for CRUD audit.');
         setLoading(false);
         return;
       }
 
       if (!coverageResponse.success || !coverageResponse.data) {
-        setRows([]);
+        setRows([]); setTotalCount(0); setTotalPages(0);
         setError(coverageResponse.message ?? 'Failed to load system coverage audit for CRUD audit.');
         setLoading(false);
         return;
       }
 
-      setRows(buildRolePermissionCrudRows(matrixResponse.data, coverageResponse.data));
+      setRows(buildRolePermissionCrudRows(matrixResponse.data.items, coverageResponse.data));
+      setTotalCount(matrixResponse.data.totalCount);
+      setTotalPages(matrixResponse.data.totalPages);
       setError(null);
       setLoading(false);
     };
@@ -495,7 +499,8 @@ export function RolePermissionCrudAuditPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page, search, sortBy, sortDirection]);
+  useEffect(() => { const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300); return () => window.clearTimeout(timeout); }, [searchInput]);
 
   const passCount = useMemo(() => rows.filter(item => item.status === 'Pass').length, [rows]);
   const partialCount = useMemo(() => rows.filter(item => item.status === 'Partial').length, [rows]);
@@ -507,23 +512,28 @@ export function RolePermissionCrudAuditPage() {
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Roles Audited</p>
-            <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{rows.length}</p>
+            <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{totalCount}</p>
           </Card>
           <Card>
-            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Pass</p>
+            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Pass on page</p>
             <p className="mt-2 text-3xl font-bold text-success-600 dark:text-success-400">{passCount}</p>
           </Card>
           <Card>
-            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Partial</p>
+            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Partial on page</p>
             <p className="mt-2 text-3xl font-bold text-warning-600 dark:text-warning-400">{partialCount}</p>
           </Card>
           <Card>
-            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Security Risk</p>
+            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Risk on page</p>
             <p className="mt-2 text-3xl font-bold text-error-600 dark:text-error-400">{riskCount}</p>
           </Card>
         </div>
 
         <Card className="overflow-hidden">
+          <div className="grid gap-3 border-b border-secondary-200 p-4 dark:border-secondary-700 md:grid-cols-3">
+            <Input label="Search role CRUD audit" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Role code, name or description" />
+            <Select label="Sort role CRUD audit by" value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }} options={[{ value: 'name', label: 'Name' }, { value: 'code', label: 'Code' }, { value: 'createdAt', label: 'Created' }]} />
+            <Select label="Role CRUD sort direction" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} />
+          </div>
           <div className="flex items-center justify-between border-b border-secondary-200 px-6 py-4 dark:border-secondary-700">
             <div>
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Merged Role CRUD Matrix</h3>
@@ -541,7 +551,7 @@ export function RolePermissionCrudAuditPage() {
           ) : error ? (
             <div className="px-6 py-8 text-sm text-error-600 dark:text-error-400">{error}</div>
           ) : (
-            <div className="overflow-x-auto">
+            <div><div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
                 <thead className="bg-secondary-50 dark:bg-secondary-800/60">
                   <tr>
@@ -592,7 +602,7 @@ export function RolePermissionCrudAuditPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div><div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700"><span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous CRUD roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next CRUD roles</Button></span></div></div>
           )}
         </Card>
       </div>

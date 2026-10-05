@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -13,6 +14,7 @@ public interface IAccessControlService
     Task<AccessDecisionResult> CheckPermissionAsync(ApplicationUser user, string permissionCode, AccessScopeContext? scope = null);
     Task<AccessQueryScopeResult> GetQueryScopeAsync(ApplicationUser user, string permissionCode);
     Task<MenuItemResponse[]> GetAuthorizedNavigationAsync(ApplicationUser user);
+    Task<PagedResponse<RoleAccessMatrixResponse>> BuildRoleAccessMatrixPageAsync(PagedQueryRequest request);
     Task<RoleAccessMatrixResponse[]> BuildRoleAccessMatrixAsync();
     Task<SystemCoverageAuditResponse[]> BuildSystemCoverageAuditAsync();
 }
@@ -247,32 +249,78 @@ public class AccessControlService : IAccessControlService
             .ToArray();
     }
 
+    public async Task<PagedResponse<RoleAccessMatrixResponse>> BuildRoleAccessMatrixPageAsync(PagedQueryRequest request)
+    {
+        var query = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
+        if (_tenantContext?.MunicipalityId is long municipalityId)
+            query = query.Where(role => role.MunicipalityId == municipalityId || !role.MunicipalityId.HasValue);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            query = query.Where(role => (role.Name != null && role.Name.ToLower().Contains(search))
+                || role.RoleCode.ToLower().Contains(search)
+                || (role.Description != null && role.Description.ToLower().Contains(search)));
+        }
+        var totalCount = await query.CountAsync();
+        query = request.NormalizedSortBy switch
+        {
+            "code" => request.Descending ? query.OrderByDescending(role => role.RoleCode).ThenBy(role => role.Id) : query.OrderBy(role => role.RoleCode).ThenBy(role => role.Id),
+            "createdat" => request.Descending ? query.OrderByDescending(role => role.CreatedAt).ThenBy(role => role.Id) : query.OrderBy(role => role.CreatedAt).ThenBy(role => role.Id),
+            _ => request.Descending ? query.OrderByDescending(role => role.Name).ThenBy(role => role.Id) : query.OrderBy(role => role.Name).ThenBy(role => role.Id)
+        };
+        var roles = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var rows = await BuildRoleAccessRowsAsync(roles);
+        return PagedResponse<RoleAccessMatrixResponse>.Create(rows, request.Page, request.PageSize, totalCount);
+    }
+
     public async Task<RoleAccessMatrixResponse[]> BuildRoleAccessMatrixAsync()
     {
-        var rolePermissions = await _context.RolePermissions
-            .AsNoTracking()
-            .Include(link => link.Permission)
-            .GroupBy(link => link.RoleId)
-            .ToDictionaryAsync(group => group.Key, group => group.Select(link => link.Permission.Code).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(code => code).ToArray());
+        var query = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
+        if (_tenantContext?.MunicipalityId is long municipalityId)
+            query = query.Where(role => role.MunicipalityId == municipalityId || !role.MunicipalityId.HasValue);
+        var roles = await query.OrderBy(role => role.Name).ToArrayAsync();
+        return await BuildRoleAccessRowsAsync(roles);
+    }
 
-        var roles = await _roleManager.Roles
-            .AsNoTracking()
-            .Where(role => role.IsActive)
-            .OrderBy(role => role.Name)
-            .ToListAsync();
-
-        var userRoles = await _context.UserRoles.AsNoTracking().ToListAsync();
-        var users = await _context.Users.AsNoTracking().ToListAsync();
-        var scopes = await _context.UserScopes.AsNoTracking().Include(scope => scope.Department).Include(scope => scope.Unit).ToListAsync();
+    private async Task<RoleAccessMatrixResponse[]> BuildRoleAccessRowsAsync(ApplicationRole[] roles)
+    {
+        if (roles.Length == 0) return [];
+        var now = DateTime.UtcNow;
+        var roleIds = roles.Select(role => role.Id).ToArray();
+        var rules = await _context.RolePermissions.AsNoTracking()
+            .Where(link => roleIds.Contains(link.RoleId) && link.IsActive && link.EffectiveFrom <= now
+                && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && link.Permission.IsActive)
+            .Select(link => new { link.RoleId, link.Permission.Code, link.IsAllowed }).ToArrayAsync();
+        var rolePermissions = rules.GroupBy(link => link.RoleId).ToDictionary(group => group.Key, group =>
+        {
+            var denied = group.Where(link => !link.IsAllowed).Select(link => link.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return group.Where(link => link.IsAllowed && !denied.Contains(link.Code)).Select(link => link.Code)
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(code => code).ToArray();
+        });
+        var assignmentQuery = _context.SecurityUserRoleAssignments.AsNoTracking()
+            .Where(link => roleIds.Contains(link.RoleId) && link.IsActive && link.EffectiveFrom <= now
+                && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue);
+        if (_tenantContext?.MunicipalityId is long municipalityId)
+            assignmentQuery = assignmentQuery.Where(link => link.MunicipalityId == municipalityId);
+        var assignments = await assignmentQuery.Include(link => link.User).OrderBy(link => link.AssignedAt).ToArrayAsync();
+        var assignedUserIds = assignments.Select(link => link.UserId).Distinct().ToArray();
+        var scopeQuery = _context.UserScopes.AsNoTracking()
+            .Where(scope => assignedUserIds.Contains(scope.UserId) && scope.IsActive && scope.EffectiveFrom <= now
+                && (!scope.EffectiveTo.HasValue || scope.EffectiveTo > now));
+        if (_tenantContext?.MunicipalityId is long scopeMunicipalityId)
+            scopeQuery = scopeQuery.Where(scope => !scope.MunicipalityId.HasValue || scope.MunicipalityId == scopeMunicipalityId);
+        var scopes = await scopeQuery.Include(scope => scope.Department).Include(scope => scope.Unit).ToArrayAsync();
         var navigation = await _context.SecurityNavigationItems.AsNoTracking().Where(item => item.IsActive).OrderBy(item => item.DisplayOrder).ToArrayAsync();
 
         return roles.Select(role =>
         {
             var permissionCodes = rolePermissions.GetValueOrDefault(role.Id, Array.Empty<string>());
-            var testUserId = userRoles.FirstOrDefault(link => link.RoleId == role.Id)?.UserId;
-            var testUser = testUserId != null ? users.FirstOrDefault(user => user.Id == testUserId) : null;
+            var testAssignment = assignments.FirstOrDefault(link => link.RoleId == role.Id);
+            var testUserId = testAssignment?.UserId;
+            var testUser = testAssignment?.User;
             var testScopes = testUserId != null
-                ? scopes.Where(scope => scope.UserId == testUserId).Select(FormatScope).ToArray()
+                ? scopes.Where(scope => scope.UserId == testUserId).Select(FormatScope)
+                    .Concat(testAssignment == null ? [] : FormatAssignmentScopes(testAssignment)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
                 : Array.Empty<string>();
 
             return new RoleAccessMatrixResponse(
@@ -290,8 +338,18 @@ public class AccessControlService : IAccessControlService
     {
         var matrix = await BuildRoleAccessMatrixAsync();
         var rolesByName = await _roleManager.Roles.AsNoTracking().ToDictionaryAsync(role => role.Name!, StringComparer.OrdinalIgnoreCase);
-        var userRoles = await _context.UserRoles.AsNoTracking().ToListAsync();
-        var userScopes = await _context.UserScopes.AsNoTracking().ToListAsync();
+        var now = DateTime.UtcNow;
+        var assignmentQuery = _context.SecurityUserRoleAssignments.AsNoTracking()
+            .Where(link => link.IsActive && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue)
+            .AsQueryable();
+        var scopeQuery = _context.UserScopes.AsNoTracking().AsQueryable();
+        if (_tenantContext?.MunicipalityId is long municipalityId)
+        {
+            assignmentQuery = assignmentQuery.Where(link => link.MunicipalityId == municipalityId);
+            scopeQuery = scopeQuery.Where(scope => !scope.MunicipalityId.HasValue || scope.MunicipalityId == municipalityId);
+        }
+        var userRoles = await assignmentQuery.ToListAsync();
+        var userScopes = await scopeQuery.ToListAsync();
 
         return SecurityModel.OrderedRoles.Select(roleName =>
         {
@@ -438,6 +496,13 @@ public class AccessControlService : IAccessControlService
             ScopeType.AssignedTaskScope => $"Task:{scope.TaskId}",
             _ => scope.ScopeType.ToString()
         };
+    }
+
+    private static IEnumerable<string> FormatAssignmentScopes(SecurityUserRoleAssignment assignment)
+    {
+        if (assignment.MunicipalityId.HasValue) yield return $"Municipality:{assignment.MunicipalityId}";
+        if (assignment.DepartmentId.HasValue) yield return $"Department:{assignment.DepartmentId}";
+        if (assignment.UnitId.HasValue) yield return $"Unit:{assignment.UnitId}";
     }
 
     private static string[] BuildAllowedActions(IEnumerable<string> permissions, bool fullAccess)

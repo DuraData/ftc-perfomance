@@ -1897,8 +1897,8 @@ export async function getRoleImplementationAudit(): Promise<ApiResponse<RoleImpl
   return get<RoleImplementationAuditRow[]>('/role-implementation-audit');
 }
 
-export async function getRoleAccessMatrix(): Promise<ApiResponse<RoleAccessMatrixRow[]>> {
-  return get<RoleAccessMatrixRow[]>('/access/role-access-matrix');
+export async function getRoleAccessMatrixPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RoleAccessMatrixRow>>> {
+  return get<PagedResult<RoleAccessMatrixRow>>(`/access/role-access-matrix/page${registerPageQuery(query)}`);
 }
 
 export async function getSystemCoverageAudit(): Promise<ApiResponse<SystemCoverageAuditRow[]>> {
