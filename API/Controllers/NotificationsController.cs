@@ -28,24 +28,9 @@ public class NotificationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<NotificationResponse[]>>> GetNotifications([FromQuery] bool includeAll = false)
-    {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<NotificationResponse[]>(false, null, "User not found"));
-
-        var permissionCode = includeAll ? "Notifications.Manage" : "Notifications.View";
-        var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode);
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<NotificationResponse[]>(false, null, decision.Reason));
-
-        var query = _context.Notifications.AsNoTracking().OrderByDescending(item => item.CreatedAt).AsQueryable();
-        if (!includeAll)
-        {
-            query = query.Where(item => item.UserId == user.Id);
-        }
-
-        var items = await query.Take(500).ToArrayAsync();
-        return Ok(new ApiResponse<NotificationResponse[]>(true, items.Select(item => item.ToResponse()).ToArray()));
-    }
+    public ActionResult<ApiResponse<NotificationResponse[]>> GetNotifications([FromQuery] bool includeAll = false) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<NotificationResponse[]>(false, null,
+            $"This fixed-limit route is retired. Use /api/v1/notifications/page{(includeAll ? "?includeAll=true" : string.Empty)}."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<NotificationPageResponse>>> GetNotificationsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool includeAll = false)

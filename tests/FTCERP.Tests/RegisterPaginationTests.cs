@@ -276,6 +276,9 @@ public sealed class RegisterPaginationTests
         tenant.SetupGet(value => value.MunicipalityId).Returns(7);
         var controller = new NotificationOperationsController(context, tenant.Object);
 
+        var retired = Assert.IsType<ObjectResult>(controller.GetPending().Result);
+        Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
+
         var result = await controller.GetPendingPage(new PagedQueryRequest
         {
             Page = 1,
@@ -325,6 +328,9 @@ public sealed class RegisterPaginationTests
         {
             ControllerContext = ControllerContext(user.Id)
         };
+
+        var retired = Assert.IsType<ObjectResult>(controller.GetNotifications().Result);
+        Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
 
         var result = await controller.GetNotificationsPage(new PagedQueryRequest
         {

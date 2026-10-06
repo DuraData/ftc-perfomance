@@ -17,18 +17,9 @@ namespace FTCERP.Host.API.Controllers;
 public sealed class NotificationOperationsController(ApplicationDbContext context, ITenantContext tenantContext) : ControllerBase
 {
     [HttpGet("pending")]
-    public async Task<ActionResult<ApiResponse<NotificationOutboxItemDto[]>>> GetPending()
-    {
-        if (tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<NotificationOutboxItemDto[]>(false, null, "Select a municipality context."));
-        var rows = await context.BusinessEventOutbox.AsNoTracking()
-            .Include(item => item.DeliveryAttempts)
-            .Where(item => item.ProcessedAt == null && item.EventType.StartsWith("Notification."))
-            .OrderByDescending(item => item.AttemptCount >= 10)
-            .ThenBy(item => item.AvailableAt)
-            .Take(200)
-            .ToArrayAsync();
-        return Ok(new ApiResponse<NotificationOutboxItemDto[]>(true, rows.Select(ToDto).ToArray()));
-    }
+    public ActionResult<ApiResponse<NotificationOutboxItemDto[]>> GetPending() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<NotificationOutboxItemDto[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/notification-operations/pending/page."));
 
     [HttpGet("pending/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<NotificationOutboxItemDto>>>> GetPendingPage([FromQuery] PagedQueryRequest request)
