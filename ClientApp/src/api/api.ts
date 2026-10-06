@@ -131,6 +131,7 @@ import type {
   StrategicRiskSummaryDto,
   SaveStrategicRiskPayload,
   C88Workspace,
+  C88Indicator,
   C88IndicatorReport,
   C88IndicatorPlan,
   C88ComplianceQuestion,
@@ -2813,6 +2814,16 @@ export async function getC88ReportsPage(query: RegisterPageQuery = {}, municipal
     ? `${pageQuery ? '&' : '?'}municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}`
     : '';
   return get<PagedResult<C88IndicatorReport>>(`/v1/c88/reports/page${pageQuery}${yearQuery}`);
+}
+
+export async function getC88IndicatorsPage(query: RegisterPageQuery = {}, filters: { catalogueVersionPublicId?: string; indicatorPublicId?: string; active?: boolean; valueType?: string } = {}): Promise<ApiResponse<PagedResult<C88Indicator>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.catalogueVersionPublicId) parameters.set('catalogueVersionPublicId', filters.catalogueVersionPublicId);
+  if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  if (filters.valueType) parameters.set('valueType', filters.valueType);
+  return get<PagedResult<C88Indicator>>(`/v1/c88/indicators/page?${parameters.toString()}`);
 }
 
 export async function getC88PlansPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; configurationPublicId?: string; indicatorPublicId?: string } = {}): Promise<ApiResponse<PagedResult<C88IndicatorPlan>>> {

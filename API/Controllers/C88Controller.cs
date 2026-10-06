@@ -41,20 +41,6 @@ public sealed class C88Controller : ControllerBase
         var indicatorRead = await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.READ", Scope());
         var reportRead = await accessControl.CheckPermissionAsync(user, "C88_REPORT.READ", Scope());
         if (!indicatorRead.Allowed && !reportRead.Allowed) return Forbidden<C88WorkspaceResponse>(indicatorRead.Reason);
-        var manager = (await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.UPDATE", Scope())).Allowed;
-        long[] scopedIndicatorIds = [];
-        if (!manager)
-        {
-            var employeeId = await context.MunicipalEmployees.Where(item => item.IdentityUserId == user.Id && item.IsActive).Select(item => (long?)item.Id).SingleOrDefaultAsync();
-            if (employeeId.HasValue)
-            {
-                var now = DateTime.UtcNow;
-                scopedIndicatorIds = await context.C88Assignments.Where(item => item.MunicipalEmployeeId == employeeId.Value && item.IsActive
-                        && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now))
-                    .Select(item => item.C88IndicatorId).Distinct().ToArrayAsync();
-            }
-        }
-
         var configurations = context.C88MunicipalityConfigurations.AsNoTracking()
             .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.CatalogueVersion).AsQueryable();
@@ -67,10 +53,8 @@ public sealed class C88Controller : ControllerBase
 
         var versions = await context.C88CatalogueVersions.AsNoTracking().Where(item => versionIds.Contains(item.Id)).OrderByDescending(item => item.EditionDate).ToArrayAsync();
         var items = await context.C88CatalogueItems.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ParentItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ToArrayAsync();
-        var indicators = await context.C88Indicators.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.SectorItem).Include(item => item.OutcomeItem).Include(item => item.IndicatorTypeItem).Include(item => item.DataElements).Include(item => item.Applicability).ThenInclude(item => item.MunicipalCategoryItem).Include(item => item.Applicability).ThenInclude(item => item.ReadinessTierItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId) && (manager || scopedIndicatorIds.Contains(item.Id))).OrderBy(item => item.Code).ToArrayAsync();
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
-            configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(),
-            indicators.Select(ToResponse).ToArray(), [])));
+            configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(), [])));
     }
 
     [HttpGet("reports/page")]
@@ -125,6 +109,64 @@ public sealed class C88Controller : ControllerBase
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };
+
+    [HttpGet("indicators/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88IndicatorResponse>>>> GetIndicatorsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? catalogueVersionPublicId = null,
+        [FromQuery] Guid? indicatorPublicId = null, [FromQuery] bool? active = null, [FromQuery] C88ValueType? valueType = null)
+    {
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<PagedResponse<C88IndicatorResponse>>("User not found."));
+        if (!tenantContext.MunicipalityId.HasValue) return BadRequest(Fail<PagedResponse<C88IndicatorResponse>>("Municipality context is required."));
+        var indicatorRead = await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.READ", Scope());
+        var reportRead = await accessControl.CheckPermissionAsync(user, "C88_REPORT.READ", Scope());
+        if (!indicatorRead.Allowed && !reportRead.Allowed) return Forbidden<PagedResponse<C88IndicatorResponse>>(indicatorRead.Reason);
+        if (request.NormalizedSortBy is not ("createdat" or "code" or "name" or "valuetype"))
+            return BadRequest(Fail<PagedResponse<C88IndicatorResponse>>("SortBy must be createdAt, code, name, or valueType."));
+
+        var manager = (await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.UPDATE", Scope())).Allowed;
+        long[] scopedIndicatorIds = [];
+        if (!manager)
+        {
+            var employeeId = await context.MunicipalEmployees.Where(item => item.IdentityUserId == user.Id && item.IsActive)
+                .Select(item => (long?)item.Id).SingleOrDefaultAsync();
+            if (employeeId.HasValue)
+            {
+                var now = DateTime.UtcNow;
+                scopedIndicatorIds = await context.C88Assignments.Where(item => item.MunicipalEmployeeId == employeeId.Value && item.IsActive
+                        && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now))
+                    .Select(item => item.C88IndicatorId).Distinct().ToArrayAsync();
+            }
+        }
+
+        var query = context.C88Indicators.AsNoTracking().AsQueryable();
+        if (!manager) query = query.Where(item => scopedIndicatorIds.Contains(item.Id));
+        if (catalogueVersionPublicId.HasValue) query = query.Where(item => item.CatalogueVersion.PublicId == catalogueVersionPublicId.Value);
+        if (indicatorPublicId.HasValue) query = query.Where(item => item.PublicId == indicatorPublicId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (valueType.HasValue) query = query.Where(item => item.ValueType == valueType.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Code.Contains(request.NormalizedSearch)
+            || item.Name.Contains(request.NormalizedSearch) || item.Definition.Contains(request.NormalizedSearch)
+            || item.OfficialTechnicalIndicatorDescription.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.Id),
+            ("valuetype", false) => query.OrderBy(item => item.ValueType).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("valuetype", true) => query.OrderByDescending(item => item.ValueType).ThenByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.CatalogueVersion).Include(item => item.SectorItem).Include(item => item.OutcomeItem)
+            .Include(item => item.IndicatorTypeItem).Include(item => item.DataElements).Include(item => item.Applicability)
+            .ThenInclude(item => item.MunicipalCategoryItem).Include(item => item.Applicability).ThenInclude(item => item.ReadinessTierItem)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88IndicatorResponse>>(true,
+            PagedResponse<C88IndicatorResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
 
     [HttpGet("plans/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<C88IndicatorPlanResponse>>>> GetPlansPage(

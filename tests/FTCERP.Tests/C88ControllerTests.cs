@@ -148,8 +148,8 @@ public class C88ControllerTests
         var reader = Controller(context, seed.User, seed.Municipality.Id,
             permissionRule: permission => permission is "C88_INDICATOR.READ" or "C88_REPORT.READ");
 
-        var beforeAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
-        beforeAssignment.Indicators.Should().BeEmpty();
+        var beforeAssignment = Payload(await reader.GetIndicatorsPage(new PagedQueryRequest(), module.Version.PublicId));
+        beforeAssignment.Items.Should().BeEmpty();
         Payload(await reader.GetAssignmentsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
         Payload(await reader.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
         Payload(await reader.GetPlansPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
@@ -161,8 +161,12 @@ public class C88ControllerTests
             seed.Target.PublicId, C88MappingType.Direct, "Authorized mapping", true, null))).Should().NotBeEmpty();
         Payload(await manager.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
             seed.Employee.PublicId, C88AssignmentRole.Contributor, DateTime.UtcNow.AddDays(-1), null, true, "Grant scoped contribution", null))).Should().NotBeEmpty();
-        var afterAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
-        afterAssignment.Indicators.Should().ContainSingle().Which.PublicId.Should().Be(module.Indicator.PublicId);
+        var afterAssignment = Payload(await reader.GetIndicatorsPage(new PagedQueryRequest(), module.Version.PublicId));
+        afterAssignment.Items.Should().ContainSingle().Which.PublicId.Should().Be(module.Indicator.PublicId);
+        var reportOnlyReader = Controller(context, seed.User, seed.Municipality.Id,
+            permissionRule: permission => permission == "C88_REPORT.READ");
+        Payload(await reportOnlyReader.GetIndicatorsPage(new PagedQueryRequest(), module.Version.PublicId)).Items.Should().ContainSingle()
+            .Which.PublicId.Should().Be(module.Indicator.PublicId);
         Payload(await reader.GetAssignmentsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
             .Which.IndicatorPublicId.Should().Be(module.Indicator.PublicId);
         Payload(await reader.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
@@ -326,6 +330,43 @@ public class C88ControllerTests
 
         var denied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: _ => false);
         (await denied.GetComplianceQuestionsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task Indicator_page_filters_before_count_and_pages_nested_details_stably()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        for (var index = 0; index < 11; index++)
+        {
+            var indicator = new C88Indicator
+            {
+                MunicipalityId = seed.Municipality.Id, C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
+                Code = $"PAGE-{index:00}", Name = $"Paged indicator {index:00}", Definition = $"Paged definition {index:00}",
+                OfficialTechnicalIndicatorDescription = "Official TID", ValueType = index % 2 == 0 ? C88ValueType.Decimal : C88ValueType.Integer,
+                CalculationOperator = C88ControlledCalculationOperator.None, IsActive = true
+            };
+            indicator.DataElements.Add(new C88DataElement
+            {
+                MunicipalityId = seed.Municipality.Id, Code = $"VALUE-{index:00}", Name = "Value", ValueType = indicator.ValueType,
+                IsRequired = true, Sequence = 1
+            });
+            context.C88Indicators.Add(indicator);
+        }
+        await context.SaveChangesAsync();
+
+        var page = Payload(await controller.GetIndicatorsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged indicator", SortBy = "code", SortDirection = "asc" }, module.Version.PublicId, active: true));
+        page.TotalCount.Should().Be(11);
+        page.Items.Select(item => item.Code).Should().Equal("PAGE-03", "PAGE-04", "PAGE-05");
+        page.Items.Should().OnlyContain(item => item.DataElements.Length == 1);
+        var decimals = Payload(await controller.GetIndicatorsPage(new PagedQueryRequest { PageSize = 10 }, module.Version.PublicId, active: true, valueType: C88ValueType.Decimal));
+        decimals.TotalCount.Should().Be(6, "the six even-numbered paged indicators are decimal");
+        (await controller.GetIndicatorsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var denied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: _ => false);
+        (await denied.GetIndicatorsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
