@@ -95,7 +95,7 @@ public sealed class TenantMastersControllerTests
     }
 
     [Fact]
-    public async Task EmployeeEmail_member_permission_redacts_reads_and_rejects_direct_updates()
+    public async Task Employee_sensitive_member_permissions_redact_reads_and_reject_direct_updates()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -104,15 +104,26 @@ public sealed class TenantMastersControllerTests
         await using var context = new ApplicationDbContext(options, tenant);
         await context.Database.EnsureCreatedAsync();
         var municipality = new Municipality { Id = 81, Code = "M81", Name = "Municipality 81" };
+        var otherMunicipality = new Municipality { Id = 82, Code = "M82", Name = "Municipality 82" };
         var user = IdpTestFixture.CreateUser(tenant.UserId!);
         user.MunicipalityId = municipality.Id;
-        var employee = new MunicipalEmployee { MunicipalityId = municipality.Id, EmployeeNumber = "E081", FirstName = "Protected", LastName = "Employee", EmailAddress = "private@example.test", EffectiveFrom = DateTime.UtcNow.AddYears(-1) };
-        context.AddRange(municipality, user, employee);
+        var foreignUser = IdpTestFixture.CreateUser("foreign-login");
+        foreignUser.MunicipalityId = otherMunicipality.Id;
+        var employee = new MunicipalEmployee { MunicipalityId = municipality.Id, EmployeeNumber = "E081", FirstName = "Protected", LastName = "Employee", EmailAddress = "private@example.test", IdentityUserId = user.Id, EffectiveFrom = DateTime.UtcNow.AddYears(-1) };
+        context.AddRange(municipality, otherMunicipality, user, foreignUser, employee);
         await context.SaveChangesAsync();
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmailAddress.READ", It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
         access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmailAddress.UPDATE", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmployeeNumber.READ", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmployeeNumber.UPDATE", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.IdentityUserId.READ", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.IdentityUserId.UPDATE", It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
         var controller = new TenantMastersController(context, tenant, access.Object)
         {
@@ -121,10 +132,16 @@ public sealed class TenantMastersControllerTests
 
         var pageResult = await controller.GetEmployeesPage(new PagedQueryRequest { Page = 1, PageSize = 10, SortBy = "name", SortDirection = "asc" });
         var pageEnvelope = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value);
-        Assert.Null(Assert.Single(pageEnvelope.Data!.Items).EmailAddress);
+        var protectedEmployee = Assert.Single(pageEnvelope.Data!.Items);
+        Assert.Null(protectedEmployee.EmployeeNumber);
+        Assert.Null(protectedEmployee.EmailAddress);
+        Assert.Null(protectedEmployee.IdentityUserId);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetEmployees().Result).StatusCode);
         var hiddenEmailSearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "private@example.test", SortBy = "name", SortDirection = "asc" });
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenEmailSearch.Result).Value).Data!.TotalCount);
+        var hiddenNumberSearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "E081", SortBy = "name", SortDirection = "asc" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenNumberSearch.Result).Value).Data!.TotalCount);
+        Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "employeeNumber" })).Result);
         Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "email" })).Result);
 
         var updateResult = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
@@ -133,6 +150,20 @@ public sealed class TenantMastersControllerTests
 
         Assert.IsType<ForbidResult>(updateResult.Result);
         Assert.Equal("private@example.test", (await context.MunicipalEmployees.SingleAsync()).EmailAddress);
+
+        var identityUpdate = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
+            employee.FirstName, employee.LastName, null, "different-login", true,
+            employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion), false, true));
+        Assert.IsType<ForbidResult>(identityUpdate.Result);
+        Assert.Equal(user.Id, (await context.MunicipalEmployees.SingleAsync()).IdentityUserId);
+
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.IdentityUserId.UPDATE", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var crossTenantLink = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
+            employee.FirstName, employee.LastName, null, foreignUser.Id, true,
+            employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion), false, true));
+        Assert.IsType<BadRequestObjectResult>(crossTenantLink.Result);
+        Assert.Equal(user.Id, (await context.MunicipalEmployees.SingleAsync()).IdentityUserId);
     }
 
     [Fact]
@@ -191,7 +222,15 @@ public sealed class TenantMastersControllerTests
         }
         var tenant = new TestTenantContext(91, "directory-reader");
         await using var context = new ApplicationDbContext(options, tenant);
-        var controller = CreateController(context, tenant);
+        context.Users.Add(IdpTestFixture.CreateUser(tenant.UserId!));
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = new TenantMastersController(context, tenant, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
 
         var result = await controller.GetEmployeesPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "Local", SortBy = "employeeNumber", SortDirection = "asc" });
 

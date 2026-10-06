@@ -1310,7 +1310,7 @@ export async function createMunicipalEmployee(payload: { employeeNumber: string;
   return post<MunicipalEmployeeDto>('/v1/masters/employees', payload);
 }
 
-export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserId?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserId?: string | null; identityUserIdSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
   return put<MunicipalEmployeeDto>(`/v1/masters/employees/${publicId}`, payload);
 }
 

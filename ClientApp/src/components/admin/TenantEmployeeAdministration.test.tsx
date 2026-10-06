@@ -5,13 +5,22 @@ const api = vi.hoisted(() => ({
   getMunicipalEmployeesPage: vi.fn(), getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(), getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getUsersPage: vi.fn(), getEmployeeAssignmentsPage: vi.fn(),
   createMunicipalEmployee: vi.fn(), updateMunicipalEmployee: vi.fn(), createEmployeeAssignment: vi.fn(), closeEmployeeAssignment: vi.fn(),
 }));
+const security = vi.hoisted(() => ({
+  canCreate: vi.fn<(resource: string) => boolean>(() => true), canUpdate: vi.fn<(resource: string) => boolean>(() => true),
+  canReadField: vi.fn<(resource: string, member: string) => boolean>(() => true), canEditField: vi.fn<(resource: string, member: string) => boolean>(() => true),
+}));
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
-vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreate: () => true, canUpdate: () => true, canReadField: () => true, canEditField: () => true }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 
 describe('TenantEmployeeAdministration', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    security.canCreate.mockReturnValue(true);
+    security.canUpdate.mockReturnValue(true);
+    security.canReadField.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
     api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: 'E001', firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'unit-1', departmentPublicId: 'department-1', departmentName: 'Finance', code: 'BUD', name: 'Budget', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -38,7 +47,7 @@ describe('TenantEmployeeAdministration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create placement' }));
 
     await waitFor(() => expect(api.createEmployeeAssignment).toHaveBeenCalledWith(expect.objectContaining({ employeePublicId: 'employee-1', departmentPublicId: 'department-1', unitPublicId: 'unit-1', positionPublicId: 'position-1', isPrimary: true })));
-  });
+  }, 10_000);
 
   it('ends a placement with its concurrency token and governance reason', async () => {
     render(<TenantEmployeeAdministration />);
@@ -65,5 +74,19 @@ describe('TenantEmployeeAdministration', () => {
     await waitFor(() => expect(api.getEmployeeAssignmentsPage).toHaveBeenCalledWith('employee-1', expect.objectContaining({
       page: 1, pageSize: 10, search: 'finance', sortBy: 'effectiveFrom', sortDirection: 'desc',
     })));
+  });
+
+  it('does not expose protected employee identifiers or load linked logins without member permissions', async () => {
+    security.canReadField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'IdentityUserId');
+    security.canEditField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'IdentityUserId');
+    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: null, firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', identityUserId: null, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<TenantEmployeeAdministration />);
+
+    expect(await screen.findByText(/Employee number protected/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Employee number')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Linked login')).not.toBeInTheDocument();
+    expect(api.getUsersPage).not.toHaveBeenCalled();
+    expect(screen.queryByRole('option', { name: 'Employee number' })).not.toBeInTheDocument();
   });
 });

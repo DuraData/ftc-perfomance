@@ -37,6 +37,15 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal(4, await context.Permissions.CountAsync(item => item.ResourceCode == "USER" && item.MemberCode != null));
         Assert.Single(await context.Permissions.Where(item => item.Code == "USER.DELETE").ToArrayAsync());
 
+        var employeeMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "EMPLOYEE")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        employeeMembers.Select(item => item.MemberCode).Should().Contain(["EmployeeNumber", "EmailAddress", "IdentityUserId"]);
+        Assert.All(employeeMembers.Where(item => item.MemberCode is "EmployeeNumber" or "EmailAddress" or "IdentityUserId"), item => Assert.True(item.IsSensitive));
+        Assert.Equal(6, await context.Permissions.CountAsync(item => item.ResourceCode == "EMPLOYEE"
+            && new[] { "EmployeeNumber", "EmailAddress", "IdentityUserId" }.Contains(item.MemberCode)));
+
         foreach (var resourceCode in new[] { "OPMS_SUBMISSION", "IPMS_SUBMISSION" })
         {
             var submissionMembers = await context.SecurityMemberDefinitions

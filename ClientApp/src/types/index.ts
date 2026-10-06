@@ -1498,7 +1498,7 @@ export interface OpmsImportBatchDto { publicId: string; clientRequestId: string;
 
 export interface MunicipalEmployeeDto {
   publicId: string;
-  employeeNumber: string;
+  employeeNumber?: string | null;
   firstName: string;
   lastName: string;
   emailAddress?: string | null;
