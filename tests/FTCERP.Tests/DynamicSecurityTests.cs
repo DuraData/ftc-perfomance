@@ -401,6 +401,44 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task OperationalAssignments_GrantQueryScopeOnlyWhileActiveAndEffective()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var now = DateTime.UtcNow;
+        var user = IdpTestFixture.CreateUser();
+        var role = Role("assigned-target-reader", "ASSIGNED_TARGET_READER");
+        var permission = new Permission
+        {
+            Code = "OPMS_KPI.READ", Module = "Resource", Feature = "OPMS_KPI", Action = "Read",
+            Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Read
+        };
+        context.AddRange(user, role, permission);
+        await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(user, role));
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = role.Id, PermissionId = permission.Id, IsAllowed = true, IsActive = true,
+            EffectiveFrom = now.AddDays(-1), ScopeType = ScopeType.AssignedTargetScope
+        });
+        context.UserAssignments.AddRange(
+            new UserAssignment { UserId = user.Id, AssignmentType = AssignmentType.AdditionalSubmitterAssignment, TargetId = "current-target", IsActive = true, ValidFromUtc = now.AddHours(-1), ValidToUtc = now.AddHours(1) },
+            new UserAssignment { UserId = user.Id, AssignmentType = AssignmentType.AdditionalSubmitterAssignment, TargetId = "expired-target", IsActive = true, ValidFromUtc = now.AddDays(-2), ValidToUtc = now.AddDays(-1) },
+            new UserAssignment { UserId = user.Id, AssignmentType = AssignmentType.AdditionalSubmitterAssignment, TargetId = "future-target", IsActive = true, ValidFromUtc = now.AddDays(1) },
+            new UserAssignment { UserId = user.Id, AssignmentType = AssignmentType.AdditionalSubmitterAssignment, TargetId = "inactive-target", IsActive = false, ValidFromUtc = now.AddDays(-1) });
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context, user);
+        var access = await service.GetEffectiveAccessAsync(user);
+        var queryScope = await service.GetQueryScopeAsync(user, permission.Code);
+
+        access.Assignments.Should().ContainSingle(item => item.TargetId == "current-target");
+        queryScope.TargetIds.Should().Equal("current-target");
+        (await service.CheckPermissionAsync(user, permission.Code, new AccessScopeContext(TargetId: "current-target"))).Allowed.Should().BeTrue();
+        (await service.CheckPermissionAsync(user, permission.Code, new AccessScopeContext(TargetId: "expired-target"))).Allowed.Should().BeFalse();
+        (await service.CheckPermissionAsync(user, permission.Code, new AccessScopeContext(TargetId: "future-target"))).Allowed.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Navigation_ExcludesUnauthorizedLeavesAndEmptyParents()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

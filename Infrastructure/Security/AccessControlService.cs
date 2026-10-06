@@ -113,7 +113,10 @@ public class AccessControlService : IAccessControlService
             .ToArrayAsync();
 
         var assignments = await _context.UserAssignments
-            .Where(assignment => assignment.UserId == user.Id)
+            .Where(assignment => assignment.UserId == user.Id
+                && assignment.IsActive
+                && (!assignment.ValidFromUtc.HasValue || assignment.ValidFromUtc <= now)
+                && (!assignment.ValidToUtc.HasValue || assignment.ValidToUtc > now))
             .OrderBy(assignment => assignment.AssignmentType)
             .ToArrayAsync();
 
