@@ -1346,6 +1346,7 @@ export type OrganizationMasterPageQuery = RegisterPageQuery & {
   active?: boolean;
   departmentPublicId?: string;
   unitPublicId?: string;
+  municipalityFinancialYearPublicId?: string;
 };
 
 function organizationMasterPageQuery(query: OrganizationMasterPageQuery): string {
@@ -1353,6 +1354,7 @@ function organizationMasterPageQuery(query: OrganizationMasterPageQuery): string
   if (query.active !== undefined) parameters.set('active', String(query.active));
   if (query.departmentPublicId) parameters.set('departmentPublicId', query.departmentPublicId);
   if (query.unitPublicId) parameters.set('unitPublicId', query.unitPublicId);
+  if (query.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', query.municipalityFinancialYearPublicId);
   return parameters.size ? `?${parameters.toString()}` : '';
 }
 
@@ -1408,7 +1410,7 @@ export async function getVoteNumberMastersPage(query: OrganizationMasterPageQuer
   return get<PagedResult<import('../types').VoteNumberMasterDto>>(`/v1/masters/vote-numbers/page${organizationMasterPageQuery(query)}`);
 }
 
-export async function saveVoteNumberMaster(publicId: string | null, payload: { departmentPublicId: string; code: string; number: string; name: string; amount: number; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').VoteNumberMasterDto>> {
+export async function saveVoteNumberMaster(publicId: string | null, payload: { departmentPublicId: string; municipalityFinancialYearPublicId: string; code: string; number: string; name: string; amount: number; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').VoteNumberMasterDto>> {
   return publicId ? put<import('../types').VoteNumberMasterDto>(`/v1/masters/vote-numbers/${publicId}`, payload) : post<import('../types').VoteNumberMasterDto>('/v1/masters/vote-numbers', payload);
 }
 

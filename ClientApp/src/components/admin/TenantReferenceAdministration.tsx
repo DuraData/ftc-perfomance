@@ -6,6 +6,7 @@ import { useSecurity } from '../../context/SecurityContext';
 import type { VoteNumberMasterDto, WardMasterDto } from '../../types';
 import { FormPanel, Input, Select, Textarea } from '../common/Form';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 
@@ -14,7 +15,7 @@ type ReferenceRow = WardMasterDto | VoteNumberMasterDto;
 const today = () => new Date().toISOString().slice(0, 10);
 const dateValue = (value?: string | null) => value ? value.slice(0, 10) : '';
 const atUtc = (value: string) => new Date(`${value}T00:00:00Z`).toISOString();
-const emptyForm = () => ({ departmentPublicId: '', code: '', number: '', name: '', amount: '0', isActive: 'true', effectiveFrom: today(), effectiveTo: '', reason: '' });
+const emptyForm = () => ({ departmentPublicId: '', municipalityFinancialYearPublicId: '', code: '', number: '', name: '', amount: '0', isActive: 'true', effectiveFrom: today(), effectiveTo: '', reason: '' });
 
 export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind }) {
   const { pushToast } = useApp();
@@ -66,6 +67,7 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
     setSelected(item);
     setForm({
       departmentPublicId: 'departmentPublicId' in item ? item.departmentPublicId : '',
+      municipalityFinancialYearPublicId: 'municipalityFinancialYearPublicId' in item ? item.municipalityFinancialYearPublicId ?? '' : '',
       code: item.code,
       number: 'number' in item ? item.number : '',
       name: item.name,
@@ -78,14 +80,14 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
   };
 
   const save = async () => {
-    if (!form.code.trim() || !form.name.trim() || (isVote && (!form.departmentPublicId || !form.number.trim()))) { setError('Complete all required fields.'); return; }
+    if (!form.code.trim() || !form.name.trim() || (isVote && (!form.departmentPublicId || !form.municipalityFinancialYearPublicId || !form.number.trim()))) { setError('Complete all required fields.'); return; }
     if (form.reason.trim().length < 10) { setError('A governance reason of at least 10 characters is required.'); return; }
     const amount = Number(form.amount);
     if (isVote && (!Number.isFinite(amount) || amount < 0)) { setError('Amount must be a non-negative number.'); return; }
     setBusy(true); setError(null);
     const common = { code: form.code, name: form.name, isActive: form.isActive === 'true', effectiveFrom: atUtc(form.effectiveFrom), effectiveTo: form.effectiveTo ? atUtc(form.effectiveTo) : null, reason: form.reason.trim(), rowVersion: selected?.rowVersion ?? null };
     const result = isVote
-      ? await saveVoteNumberMaster(selected?.publicId ?? null, { ...common, departmentPublicId: form.departmentPublicId, number: form.number, amount })
+      ? await saveVoteNumberMaster(selected?.publicId ?? null, { ...common, departmentPublicId: form.departmentPublicId, municipalityFinancialYearPublicId: form.municipalityFinancialYearPublicId, number: form.number, amount })
       : await saveWardMaster(selected?.publicId ?? null, common);
     if (!result.success) setError(result.message ?? `${title.slice(0, -1)} could not be saved.`);
     else { pushToast('success', `${title.slice(0, -1)} saved with audit history`); clear(); await load(); }
@@ -106,6 +108,7 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {(selected ? security.canUpdate(resource) : security.canCreate(resource)) && <FormPanel title={selected ? `Edit ${title.slice(0, -1).toLowerCase()}` : `Create ${title.slice(0, -1).toLowerCase()}`} description="Updates are audited, reasoned, and protected by optimistic concurrency." icon={<Landmark className="h-5 w-5" />}>
           {isVote && <OrganizationMasterPicker kind="department" label="Department" value={form.departmentPublicId} selectedLabel={selected && 'departmentName' in selected ? selected.departmentName : undefined} onChange={value => setForm(current => ({ ...current, departmentPublicId: value }))} required />}
+          {isVote && <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" value={form.municipalityFinancialYearPublicId} selectedLabel={selected && 'financialYearCode' in selected ? selected.financialYearCode ?? undefined : undefined} onChange={value => setForm(current => ({ ...current, municipalityFinancialYearPublicId: value }))} required />}
           <div className="grid grid-cols-2 gap-2"><Input label="Code" value={form.code} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} required />{isVote && <Input label="Vote number" value={form.number} onChange={event => setForm(current => ({ ...current, number: event.target.value }))} required />}</div>
           <Input label="Name" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} required />
           {isVote && <Input label="Amount (R)" type="number" min="0" step="0.01" value={form.amount} onChange={event => setForm(current => ({ ...current, amount: event.target.value }))} required />}
@@ -114,7 +117,7 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
           <Textarea label="Governance reason" value={form.reason} onChange={event => setForm(current => ({ ...current, reason: event.target.value }))} required />
           <div className="flex gap-2"><Button icon={<Plus className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{selected ? 'Save changes' : 'Create'}</Button>{selected && <Button variant="outline" onClick={clear}>Cancel</Button>}</div>
         </FormPanel>}
-        <Card className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{title} register</h3><Badge variant="primary">{totalCount}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className="flex w-full items-center justify-between rounded-lg border border-secondary-200 p-3 text-left dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}{'number' in item ? ` · ${item.number} · ${item.departmentName} · R ${item.amount.toLocaleString()}` : ''}</p><p className="mt-1 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open-ended'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages} · {totalCount} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(current => current + 1)}>Next</Button></div></div>}</Card>
+        <Card className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{title} register</h3><Badge variant="primary">{totalCount}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className="flex w-full items-center justify-between rounded-lg border border-secondary-200 p-3 text-left dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}{'number' in item ? ` · ${item.number} · ${item.departmentName} · ${item.financialYearCode ?? 'Historic year pending reconciliation'} · R ${item.amount.toLocaleString()}` : ''}</p><p className="mt-1 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open-ended'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages} · {totalCount} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(current => current + 1)}>Next</Button></div></div>}</Card>
       </div>
     </div>
   </AppShell>;

@@ -320,12 +320,12 @@ describe('versioned API routes', () => {
     await getDepartmentMastersPage({ page: 2, pageSize: 25, search: 'finance', sortBy: 'name', sortDirection: 'asc', active: true });
     await getPositionMastersPage({ page: 1, pageSize: 10, sortBy: 'grade', sortDirection: 'desc', departmentPublicId: 'department-id', unitPublicId: 'unit-id' });
     await getWardMastersPage({ page: 3, pageSize: 25, search: 'ward 12', sortBy: 'code', sortDirection: 'asc' });
-    await getVoteNumberMastersPage({ page: 1, pageSize: 25, sortBy: 'amount', sortDirection: 'desc', active: false, departmentPublicId: 'department-id' });
+    await getVoteNumberMastersPage({ page: 1, pageSize: 25, sortBy: 'amount', sortDirection: 'desc', active: false, departmentPublicId: 'department-id', municipalityFinancialYearPublicId: 'year-id' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/departments/page?page=2&pageSize=25&search=finance&sortBy=name&sortDirection=asc&active=true'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/positions/page?page=1&pageSize=10&sortBy=grade&sortDirection=desc&departmentPublicId=department-id&unitPublicId=unit-id'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/masters/wards/page?page=3&pageSize=25&search=ward+12&sortBy=code&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/vote-numbers/page?page=1&pageSize=25&sortBy=amount&sortDirection=desc&departmentPublicId=department-id&active=false'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/vote-numbers/page?page=1&pageSize=25&sortBy=amount&sortDirection=desc&departmentPublicId=department-id&active=false&municipalityFinancialYearPublicId=year-id'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('uses governed ward and vote-number master routes', async () => {
@@ -334,7 +334,7 @@ describe('versioned API routes', () => {
 
     await getWardMasters();
     await getVoteNumberMasters();
-    await saveVoteNumberMaster('vote-public-id', { departmentPublicId: 'department-public-id', code: 'V01', number: '001', name: 'Operating Vote', amount: 1250, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', reason: 'Council approved budget', rowVersion: 'AQ==' });
+    await saveVoteNumberMaster('vote-public-id', { departmentPublicId: 'department-public-id', municipalityFinancialYearPublicId: 'municipality-year-public-id', code: 'V01', number: '001', name: 'Operating Vote', amount: 1250, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', reason: 'Council approved budget', rowVersion: 'AQ==' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/wards'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/vote-numbers'), expect.objectContaining({ credentials: 'include' }));

@@ -3,6 +3,7 @@ import { TenantReferenceAdministration } from './TenantReferenceAdministration';
 
 const api = vi.hoisted(() => ({
   getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(),
+  getFinancialYearMastersPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getReportingPeriodMastersPage: vi.fn(), getSdbipLayerMastersPage: vi.fn(),
   saveWardMaster: vi.fn(), saveVoteNumberMaster: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -13,7 +14,8 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreat
 describe('TenantReferenceAdministration', () => {
   beforeEach(() => {
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
-    api.getVoteNumberMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'vote-1', id: 1, departmentPublicId: 'department-1', departmentName: 'Finance', code: 'V01', number: '001', name: 'Operating Vote', amount: 1250, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 27, totalPages: 2 } });
+    api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'municipality-year-1', financialYearPublicId: 'year-1', code: '2026-2027', name: '2026/2027', isCurrent: true, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getVoteNumberMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'vote-1', id: 1, departmentPublicId: 'department-1', departmentName: 'Finance', municipalityFinancialYearPublicId: 'municipality-year-1', financialYearCode: '2026-2027', code: 'V01', number: '001', name: 'Operating Vote', amount: 1250, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 27, totalPages: 2 } });
     api.getWardMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.saveVoteNumberMaster.mockResolvedValue({ success: true, data: {} });
   });
@@ -27,7 +29,7 @@ describe('TenantReferenceAdministration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(api.saveVoteNumberMaster).toHaveBeenCalledWith('vote-1', expect.objectContaining({
-      departmentPublicId: 'department-1', code: 'V01', number: '001', amount: 1250, rowVersion: 'Ag==', reason: 'Council approved budget amendment',
+      departmentPublicId: 'department-1', municipalityFinancialYearPublicId: 'municipality-year-1', code: 'V01', number: '001', amount: 1250, rowVersion: 'Ag==', reason: 'Council approved budget amendment',
     })));
   });
 

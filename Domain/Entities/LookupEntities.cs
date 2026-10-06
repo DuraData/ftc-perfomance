@@ -87,6 +87,7 @@ public class VoteNumber
     public int Id { get; set; }
     public Guid PublicId { get; set; } = Guid.NewGuid();
     public long MunicipalityId { get; set; }
+    public long? MunicipalityFinancialYearId { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Number { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -99,5 +100,6 @@ public class VoteNumber
     public byte[] RowVersion { get; set; } = [];
 
     public Municipality Municipality { get; set; } = null!;
+    public MunicipalityFinancialYear? MunicipalityFinancialYear { get; set; }
     public Department Department { get; set; } = null!;
 }

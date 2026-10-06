@@ -1191,8 +1191,11 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<Ward>().Property(w => w.RowVersion));
 
         builder.Entity<VoteNumber>().HasIndex(vn => vn.PublicId).IsUnique();
-        builder.Entity<VoteNumber>().HasIndex(vn => new { vn.MunicipalityId, vn.Code }).IsUnique();
+        builder.Entity<VoteNumber>().HasIndex(vn => new { vn.MunicipalityId, vn.MunicipalityFinancialYearId, vn.Code }).IsUnique().HasFilter("[MunicipalityFinancialYearId] IS NOT NULL");
         builder.Entity<VoteNumber>().HasOne(vn => vn.Municipality).WithMany().HasForeignKey(vn => vn.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<VoteNumber>().HasOne(vn => vn.MunicipalityFinancialYear).WithMany()
+            .HasForeignKey(vn => new { Id = vn.MunicipalityFinancialYearId, vn.MunicipalityId })
+            .HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
         ConfigureRowVersion(builder.Entity<VoteNumber>().Property(vn => vn.RowVersion));
 
         builder.Entity<VoteNumber>()

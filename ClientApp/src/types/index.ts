@@ -1592,6 +1592,8 @@ export interface VoteNumberMasterDto {
   id: number;
   departmentPublicId: string;
   departmentName: string;
+  municipalityFinancialYearPublicId?: string | null;
+  financialYearCode?: string | null;
   code: string;
   number: string;
   name: string;

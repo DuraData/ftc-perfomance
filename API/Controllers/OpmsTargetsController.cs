@@ -179,10 +179,10 @@ public class OpmsTargetsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
-        var mappingError = await ValidateMappingsAsync(request);
-        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
+        var mappingError = await ValidateMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, new HashSet<int>());
+        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, null);
         if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
@@ -277,10 +277,10 @@ public class OpmsTargetsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
-        var mappingError = await ValidateMappingsAsync(request);
-        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
+        var mappingError = await ValidateMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, entity.VoteNumbers.Select(item => item.VoteNumberId).ToHashSet());
+        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
         var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, entity.SdbipLayerId);
         if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
@@ -611,7 +611,7 @@ public class OpmsTargetsController : ControllerBase
         return (layer, null);
     }
 
-    private async Task<string?> ValidateMappingsAsync(SaveOpmsTargetRequest request)
+    private async Task<string?> ValidateMappingsAsync(SaveOpmsTargetRequest request, long municipalityFinancialYearId, IReadOnlySet<int> existingVoteIds)
     {
         var tenantId = _tenantContext.MunicipalityId;
         if (!tenantId.HasValue || tenantId == long.MinValue) return "A municipality context is required.";
@@ -624,8 +624,9 @@ public class OpmsTargetsController : ControllerBase
             return "Every ward must be active and belong to the selected municipality.";
 
         var votes = await _context.VoteNumbers.AsNoTracking().Include(item => item.Department).Where(item => voteIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
-        if (votes.Length != voteIds.Length || votes.Any(item => item.MunicipalityId != tenantId.Value || item.Department.MunicipalityId != tenantId.Value))
-            return "Every vote number must be active and belong to a department in the selected municipality.";
+        if (votes.Length != voteIds.Length || votes.Any(item => item.MunicipalityId != tenantId.Value || item.Department.MunicipalityId != tenantId.Value
+            || item.MunicipalityFinancialYearId != municipalityFinancialYearId && !(item.MunicipalityFinancialYearId == null && existingVoteIds.Contains(item.Id))))
+            return "Every vote number must be active and belong to the selected municipality financial year; unreconciled historical votes may only be retained on their existing KPI.";
 
         var users = await _context.Users.AsNoTracking().Where(item => assigneeIds.Contains(item.Id) && item.IsActive).Select(item => new { item.Id, item.MunicipalityId }).ToArrayAsync();
         var now = DateTime.UtcNow;

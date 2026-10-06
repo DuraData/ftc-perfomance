@@ -274,18 +274,19 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     [HttpGet("vote-numbers")]
     [Authorize(Policy = "Permission:VOTE_NUMBER.READ")]
     public async Task<ActionResult<ApiResponse<VoteNumberMasterDto[]>>> GetVoteNumbers() =>
-        Ok(new ApiResponse<VoteNumberMasterDto[]>(true, await context.VoteNumbers.AsNoTracking().Include(x => x.Department).OrderBy(x => x.Code).ThenBy(x => x.Id).Select(x =>
-            new VoteNumberMasterDto(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+        Ok(new ApiResponse<VoteNumberMasterDto[]>(true, await VoteNumberQuery().OrderBy(x => x.Code).ThenBy(x => x.Id).Select(x =>
+            new VoteNumberMasterDto(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.MunicipalityFinancialYear == null ? null : x.MunicipalityFinancialYear.PublicId, x.MunicipalityFinancialYear == null ? null : x.MunicipalityFinancialYear.FinancialYear.Code, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
 
     [HttpGet("vote-numbers/page")]
     [Authorize(Policy = "Permission:VOTE_NUMBER.READ")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<VoteNumberMasterDto>>>> GetVoteNumbersPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] Guid? departmentPublicId = null)
+    public async Task<ActionResult<ApiResponse<PagedResponse<VoteNumberMasterDto>>>> GetVoteNumbersPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] Guid? departmentPublicId = null, [FromQuery] Guid? municipalityFinancialYearPublicId = null)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<VoteNumberMasterDto>>();
         if (!VoteSortFields.Contains(request.NormalizedSortBy)) return InvalidSort<VoteNumberMasterDto>("createdAt, code, name, department, number, amount, status, or effectiveFrom");
-        var query = context.VoteNumbers.AsNoTracking().Include(item => item.Department).AsQueryable();
+        var query = VoteNumberQuery();
         if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
         if (departmentPublicId.HasValue) query = query.Where(item => item.Department.PublicId == departmentPublicId.Value);
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.MunicipalityFinancialYear != null && item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
         {
             var term = request.NormalizedSearch;
@@ -295,7 +296,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         var total = await query.CountAsync();
         query = OrderVoteNumbers(query, request.NormalizedSortBy, request.Descending);
         var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
-            new VoteNumberMasterDto(item.PublicId, item.Id, item.Department.PublicId, item.Department.Name, item.Code, item.Number, item.Name, item.Amount, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+            new VoteNumberMasterDto(item.PublicId, item.Id, item.Department.PublicId, item.Department.Name, item.MunicipalityFinancialYear == null ? null : item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear == null ? null : item.MunicipalityFinancialYear.FinancialYear.Code, item.Code, item.Number, item.Name, item.Amount, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<VoteNumberMasterDto>>(true, PagedResponse<VoteNumberMasterDto>.Create(rows, request.Page, request.PageSize, total)));
     }
 
@@ -308,9 +309,11 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         if (validation != null) return BadRequest(Fail<VoteNumberMasterDto>(validation));
         var department = await context.Departments.SingleOrDefaultAsync(x => x.PublicId == request.DepartmentPublicId && x.IsActive);
         if (department == null) return BadRequest(Fail<VoteNumberMasterDto>("Select an active department in this municipality."));
+        var year = await ResolveVoteYear(request.MunicipalityFinancialYearPublicId);
+        if (year == null) return BadRequest(Fail<VoteNumberMasterDto>("Select an active municipality financial year."));
         var code = NormalizeCode(request.Code);
-        if (await context.VoteNumbers.AnyAsync(x => x.Code == code)) return Conflict(Fail<VoteNumberMasterDto>("Vote-number code already exists in this municipality."));
-        var entity = new VoteNumber { MunicipalityId = tenantContext.MunicipalityId!.Value, DepartmentId = department.Id, Department = department, Code = code, Number = request.Number.Trim().ToUpperInvariant(), Name = request.Name.Trim(), Amount = request.Amount, IsActive = request.IsActive, EffectiveFrom = request.EffectiveFrom, EffectiveTo = request.EffectiveTo };
+        if (await context.VoteNumbers.AnyAsync(x => x.MunicipalityFinancialYearId == year.Id && x.Code == code)) return Conflict(Fail<VoteNumberMasterDto>("Vote-number code already exists for this municipality financial year."));
+        var entity = new VoteNumber { MunicipalityId = tenantContext.MunicipalityId!.Value, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, DepartmentId = department.Id, Department = department, Code = code, Number = request.Number.Trim().ToUpperInvariant(), Name = request.Name.Trim(), Amount = request.Amount, IsActive = request.IsActive, EffectiveFrom = request.EffectiveFrom, EffectiveTo = request.EffectiveTo };
         context.VoteNumbers.Add(entity); AddAudit(nameof(VoteNumber), entity.PublicId, "Create", null, Snapshot(entity), request.Reason); await context.SaveChangesAsync();
         return Ok(new ApiResponse<VoteNumberMasterDto>(true, ToDto(entity)));
     }
@@ -322,16 +325,18 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         if (!HasTenant()) return TenantRequired<VoteNumberMasterDto>();
         var validation = ValidateVote(request);
         if (validation != null) return BadRequest(Fail<VoteNumberMasterDto>(validation));
-        var entity = await context.VoteNumbers.Include(x => x.Department).SingleOrDefaultAsync(x => x.PublicId == publicId);
+        var entity = await VoteNumberQuery(tracking: true).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<VoteNumberMasterDto>("Vote number not found."));
         var department = await context.Departments.SingleOrDefaultAsync(x => x.PublicId == request.DepartmentPublicId && x.IsActive);
         if (department == null) return BadRequest(Fail<VoteNumberMasterDto>("Select an active department in this municipality."));
+        var year = await ResolveVoteYear(request.MunicipalityFinancialYearPublicId, entity.MunicipalityFinancialYearId);
+        if (year == null) return BadRequest(Fail<VoteNumberMasterDto>("Select an active municipality financial year."));
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<VoteNumberMasterDto>("A valid row version is required."));
         var code = NormalizeCode(request.Code);
-        if (await context.VoteNumbers.AnyAsync(x => x.Id != entity.Id && x.Code == code)) return Conflict(Fail<VoteNumberMasterDto>("Vote-number code already exists in this municipality."));
+        if (await context.VoteNumbers.AnyAsync(x => x.Id != entity.Id && x.MunicipalityFinancialYearId == year.Id && x.Code == code)) return Conflict(Fail<VoteNumberMasterDto>("Vote-number code already exists for this municipality financial year."));
         if (!request.IsActive && await context.OpmsTargetVoteNumbers.AnyAsync(x => x.VoteNumberId == entity.Id)) return Conflict(Fail<VoteNumberMasterDto>("Vote number is referenced by a performance target and cannot be deactivated."));
         var before = Snapshot(entity);
-        entity.DepartmentId = department.Id; entity.Department = department; entity.Code = code; entity.Number = request.Number.Trim().ToUpperInvariant(); entity.Name = request.Name.Trim(); entity.Amount = request.Amount; entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
+        entity.MunicipalityFinancialYearId = year.Id; entity.MunicipalityFinancialYear = year; entity.DepartmentId = department.Id; entity.Department = department; entity.Code = code; entity.Number = request.Number.Trim().ToUpperInvariant(); entity.Name = request.Name.Trim(); entity.Amount = request.Amount; entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
         AddAudit(nameof(VoteNumber), entity.PublicId, "Update", before, Snapshot(entity), request.Reason);
         return await SaveVersioned(entity, ToDto, "Vote number was changed by another user.");
     }
@@ -433,6 +438,18 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         return (department, unit, null);
     }
 
+    private IQueryable<VoteNumber> VoteNumberQuery(bool tracking = false)
+    {
+        var query = context.VoteNumbers.Include(item => item.Department).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear);
+        return tracking ? query : query.AsNoTracking();
+    }
+
+    private async Task<MunicipalityFinancialYear?> ResolveVoteYear(Guid publicId, long? existingId = null)
+    {
+        var year = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.PublicId == publicId);
+        return year != null && (year.IsActive || year.Id == existingId) ? year : null;
+    }
+
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
     private static string NormalizeCode(string value) => value.Trim().ToUpperInvariant();
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -461,21 +478,21 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     private static object Snapshot(Unit x) => new { x.DepartmentId, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo };
     private static object Snapshot(Position x) => new { x.DepartmentId, x.UnitId, x.Code, x.Name, x.Grade, x.IsActive, x.EffectiveFrom, x.EffectiveTo };
     private static object Snapshot(Ward x) => new { x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo };
-    private static object Snapshot(VoteNumber x) => new { x.DepartmentId, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo };
+    private static object Snapshot(VoteNumber x) => new { x.MunicipalityFinancialYearId, x.DepartmentId, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo };
     private static DepartmentMasterDto ToDto(Department x) => new(x.PublicId, x.Code, x.Name, x.Description, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static UnitMasterDto ToDto(Unit x) => new(x.PublicId, x.Department.PublicId, x.Department.Name, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static PositionMasterDto ToDto(Position x) => new(x.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.Code, x.Name, x.Grade, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static WardMasterDto ToDto(Ward x) => new(x.PublicId, x.Id, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
-    private static VoteNumberMasterDto ToDto(VoteNumber x) => new(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
+    private static VoteNumberMasterDto ToDto(VoteNumber x) => new(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.MunicipalityFinancialYear?.PublicId, x.MunicipalityFinancialYear?.FinancialYear.Code, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
 }
 
 public sealed record DepartmentMasterDto(Guid PublicId, string Code, string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record UnitMasterDto(Guid PublicId, Guid DepartmentPublicId, string DepartmentName, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record PositionMasterDto(Guid PublicId, Guid DepartmentPublicId, string DepartmentName, Guid? UnitPublicId, string? UnitName, string Code, string Name, string? Grade, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record WardMasterDto(Guid PublicId, int Id, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record VoteNumberMasterDto(Guid PublicId, int Id, Guid DepartmentPublicId, string DepartmentName, string Code, string Number, string Name, decimal Amount, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record VoteNumberMasterDto(Guid PublicId, int Id, Guid DepartmentPublicId, string DepartmentName, Guid? MunicipalityFinancialYearPublicId, string? FinancialYearCode, string Code, string Number, string Name, decimal Amount, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SaveDepartmentMasterRequest(string Code, string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
 public sealed record SaveUnitMasterRequest(Guid DepartmentPublicId, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
 public sealed record SavePositionMasterRequest(Guid DepartmentPublicId, Guid? UnitPublicId, string Code, string Name, string? Grade, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
 public sealed record SaveWardMasterRequest(string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
-public sealed record SaveVoteNumberMasterRequest(Guid DepartmentPublicId, string Code, string Number, string Name, decimal Amount, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
+public sealed record SaveVoteNumberMasterRequest(Guid DepartmentPublicId, Guid MunicipalityFinancialYearPublicId, string Code, string Number, string Name, decimal Amount, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);

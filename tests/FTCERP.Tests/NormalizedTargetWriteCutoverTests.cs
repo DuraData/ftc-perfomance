@@ -173,6 +173,33 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Empty(await context.OpmsTargets.ToArrayAsync());
     }
 
+    [Fact]
+    public async Task Opms_vote_numbers_must_match_the_target_municipality_financial_year()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var targetYear = await context.MunicipalityFinancialYears.SingleAsync();
+        var department = new Department { MunicipalityId = seed.Municipality.Id, Code = "FIN", Name = "Finance" };
+        var otherFinancialYear = new FinancialYear { Code = "2027/28", Name = "2027/28", StartDate = new DateTime(2027, 7, 1), EndDate = new DateTime(2028, 6, 30), IsActive = true };
+        context.AddRange(department, otherFinancialYear);
+        await context.SaveChangesAsync();
+        var otherMunicipalityYear = new MunicipalityFinancialYear { MunicipalityId = seed.Municipality.Id, FinancialYearId = otherFinancialYear.Id, IsActive = true, EffectiveFrom = otherFinancialYear.StartDate };
+        context.MunicipalityFinancialYears.Add(otherMunicipalityYear);
+        await context.SaveChangesAsync();
+        var currentVote = new VoteNumber { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = targetYear.Id, DepartmentId = department.Id, Code = "CUR", Number = "001", Name = "Current vote", IsActive = true };
+        var futureVote = new VoteNumber { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = otherMunicipalityYear.Id, DepartmentId = department.Id, Code = "FUT", Number = "002", Name = "Future vote", IsActive = true };
+        context.AddRange(currentVote, futureVote);
+        await context.SaveChangesAsync();
+
+        var accepted = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with { VoteNumberIds = [currentVote.Id] });
+        Assert.IsType<OkObjectResult>(accepted.Result);
+        Assert.Equal(currentVote.Id, (await context.OpmsTargetVoteNumbers.SingleAsync()).VoteNumberId);
+
+        var rejected = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget((Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with { IndicatorNumber = "OPMS-2", VoteNumberIds = [futureVote.Id] }));
+        var badRequest = Assert.IsType<BadRequestObjectResult>(rejected.Result);
+        Assert.Contains("selected municipality financial year", Assert.IsType<ApiResponse<OpmsTargetResponse>>(badRequest.Value).Message);
+    }
+
     private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId)
     {
         var access = new Mock<IAccessControlService>();

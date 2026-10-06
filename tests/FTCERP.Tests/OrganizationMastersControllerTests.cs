@@ -20,11 +20,27 @@ public sealed class OrganizationMastersControllerTests
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        Guid scopedYearPublicId;
         await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
         {
             await setup.Database.EnsureCreatedAsync();
             setup.Municipalities.AddRange(new Municipality { Id = 101, Code = "PAGE-A", Name = "Paging A" }, new Municipality { Id = 102, Code = "PAGE-B", Name = "Paging B" });
             await setup.SaveChangesAsync();
+            var financialYears = new[]
+            {
+                new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30) },
+                new FinancialYear { Code = "2027/28", Name = "2027/28", StartDate = new DateTime(2027, 7, 1), EndDate = new DateTime(2028, 6, 30) }
+            };
+            setup.FinancialYears.AddRange(financialYears);
+            await setup.SaveChangesAsync();
+            var municipalityYears = new[]
+            {
+                new MunicipalityFinancialYear { MunicipalityId = 101, FinancialYearId = financialYears[0].Id, IsActive = true, IsCurrent = true, EffectiveFrom = financialYears[0].StartDate },
+                new MunicipalityFinancialYear { MunicipalityId = 101, FinancialYearId = financialYears[1].Id, IsActive = true, EffectiveFrom = financialYears[1].StartDate }
+            };
+            setup.MunicipalityFinancialYears.AddRange(municipalityYears);
+            await setup.SaveChangesAsync();
+            scopedYearPublicId = municipalityYears[0].PublicId;
             var departments = Enumerable.Range(1, 31).Select(index => new Department
             {
                 MunicipalityId = 101, Code = $"D{index:000}", Name = $"Department {index:000}", IsActive = index != 30, EffectiveFrom = DateTime.UtcNow.AddYears(-1)
@@ -36,7 +52,7 @@ public sealed class OrganizationMastersControllerTests
             setup.Units.AddRange(Enumerable.Range(1, 31).Select(index => new Unit { MunicipalityId = 101, DepartmentId = parent.Id, Code = $"U{index:000}", Name = $"Unit {index:000}", EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
             setup.Positions.AddRange(Enumerable.Range(1, 31).Select(index => new Position { MunicipalityId = 101, DepartmentId = parent.Id, Code = $"P{index:000}", Name = $"Position {index:000}", Grade = index == 7 ? "SEARCH-GRADE" : null, EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
             setup.Wards.AddRange(Enumerable.Range(1, 31).Select(index => new Ward { MunicipalityId = 101, LegacyMunicipality = "Paging A", Code = $"W{index:000}", Name = $"Ward {index:000}", EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
-            setup.VoteNumbers.AddRange(Enumerable.Range(1, 31).Select(index => new VoteNumber { MunicipalityId = 101, DepartmentId = parent.Id, Code = $"V{index:000}", Number = $"{index:000}", Name = $"Vote {index:000}", Amount = index, EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
+            setup.VoteNumbers.AddRange(Enumerable.Range(1, 31).Select(index => new VoteNumber { MunicipalityId = 101, MunicipalityFinancialYearId = index <= 15 ? municipalityYears[0].Id : municipalityYears[1].Id, DepartmentId = parent.Id, Code = $"V{index:000}", Number = $"{index:000}", Name = $"Vote {index:000}", Amount = index, EffectiveFrom = DateTime.UtcNow.AddYears(-1) }));
             await setup.SaveChangesAsync();
         }
 
@@ -66,6 +82,10 @@ public sealed class OrganizationMastersControllerTests
         var votesPage = Assert.IsType<ApiResponse<PagedResponse<VoteNumberMasterDto>>>(Assert.IsType<OkObjectResult>(votesResult.Result).Value).Data!;
         Assert.Equal(31m, votesPage.Items[0].Amount);
         Assert.Equal(31, votesPage.TotalCount);
+        var yearVotesResult = await controller.GetVoteNumbersPage(new PagedQueryRequest { PageSize = 25, SortBy = "code" }, municipalityFinancialYearPublicId: scopedYearPublicId);
+        var yearVotesPage = Assert.IsType<ApiResponse<PagedResponse<VoteNumberMasterDto>>>(Assert.IsType<OkObjectResult>(yearVotesResult.Result).Value).Data!;
+        Assert.Equal(15, yearVotesPage.TotalCount);
+        Assert.All(yearVotesPage.Items, item => Assert.Equal(scopedYearPublicId, item.MunicipalityFinancialYearPublicId));
     }
 
     [Fact]
@@ -139,17 +159,71 @@ public sealed class OrganizationMastersControllerTests
         await using var context = NewContext(tenant);
         var municipality = new Municipality { Id = 75, Code = "M75", Name = "Municipality 75" };
         var department = new Department { Id = 11, MunicipalityId = 75, Code = "FIN", Name = "Finance" };
-        context.AddRange(municipality, department); await context.SaveChangesAsync();
+        var financialYear = new FinancialYear { Id = 751, Code = "2026-2027", Name = "2026/2027", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30) };
+        var municipalityYear = new MunicipalityFinancialYear { Id = 752, MunicipalityId = 75, Municipality = municipality, FinancialYearId = financialYear.Id, FinancialYear = financialYear, IsActive = true, EffectiveFrom = financialYear.StartDate };
+        context.AddRange(municipality, department, financialYear, municipalityYear); await context.SaveChangesAsync();
         var controller = CreateController(context, tenant);
 
         var wardResponse = await controller.CreateWard(new SaveWardMasterRequest(" w01 ", "Ward One", true, DateTime.UtcNow.Date, null, "Approved municipal demarcation"));
-        var voteResponse = await controller.CreateVoteNumber(new SaveVoteNumberMasterRequest(department.PublicId, " v01 ", "001", "Operating Vote", 1250m, true, DateTime.UtcNow.Date, null, "Approved annual budget structure"));
+        var voteResponse = await controller.CreateVoteNumber(new SaveVoteNumberMasterRequest(department.PublicId, municipalityYear.PublicId, " v01 ", "001", "Operating Vote", 1250m, true, DateTime.UtcNow.Date, null, "Approved annual budget structure"));
 
         Assert.Equal("W01", Assert.IsType<ApiResponse<WardMasterDto>>(Assert.IsType<OkObjectResult>(wardResponse.Result).Value).Data!.Code);
-        Assert.Equal("V01", Assert.IsType<ApiResponse<VoteNumberMasterDto>>(Assert.IsType<OkObjectResult>(voteResponse.Result).Value).Data!.Code);
+        var vote = Assert.IsType<ApiResponse<VoteNumberMasterDto>>(Assert.IsType<OkObjectResult>(voteResponse.Result).Value).Data!;
+        Assert.Equal("V01", vote.Code);
+        Assert.Equal(municipalityYear.PublicId, vote.MunicipalityFinancialYearPublicId);
+        Assert.Equal("2026-2027", vote.FinancialYearCode);
         Assert.All(await context.AuditTrails.ToArrayAsync(), row => Assert.Equal(75, row.MunicipalityId));
         Assert.Contains(await context.AuditTrails.ToArrayAsync(), row => row.EntityName == nameof(Ward) && row.Reason == "Approved municipal demarcation");
         Assert.Contains(await context.AuditTrails.ToArrayAsync(), row => row.EntityName == nameof(VoteNumber) && row.Reason == "Approved annual budget structure");
+    }
+
+    [Fact]
+    public async Task Sqlite_enforces_vote_number_uniqueness_per_municipality_financial_year_and_tenant_year_fk()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        int departmentId;
+        long[] municipalityYearIds;
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var department = new Department { MunicipalityId = 201, Code = "FIN", Name = "Finance" };
+            var years = new[]
+            {
+                new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30) },
+                new FinancialYear { Code = "2027/28", Name = "2027/28", StartDate = new DateTime(2027, 7, 1), EndDate = new DateTime(2028, 6, 30) }
+            };
+            setup.AddRange(new Municipality { Id = 201, Code = "VOTE-A", Name = "Vote Municipality A" }, new Municipality { Id = 202, Code = "VOTE-B", Name = "Vote Municipality B" }, department);
+            setup.FinancialYears.AddRange(years);
+            await setup.SaveChangesAsync();
+            var municipalityYears = new[]
+            {
+                new MunicipalityFinancialYear { MunicipalityId = 201, FinancialYearId = years[0].Id, IsActive = true, EffectiveFrom = years[0].StartDate },
+                new MunicipalityFinancialYear { MunicipalityId = 201, FinancialYearId = years[1].Id, IsActive = true, EffectiveFrom = years[1].StartDate },
+                new MunicipalityFinancialYear { MunicipalityId = 202, FinancialYearId = years[0].Id, IsActive = true, EffectiveFrom = years[0].StartDate }
+            };
+            setup.MunicipalityFinancialYears.AddRange(municipalityYears);
+            await setup.SaveChangesAsync();
+            departmentId = department.Id;
+            municipalityYearIds = municipalityYears.Select(item => item.Id).ToArray();
+        }
+
+        await using var context = new ApplicationDbContext(options, new TenantContext(201, "reference-admin"));
+
+        context.VoteNumbers.AddRange(
+            new VoteNumber { MunicipalityId = 201, MunicipalityFinancialYearId = municipalityYearIds[0], DepartmentId = departmentId, Code = "V01", Number = "001", Name = "Vote 2026" },
+            new VoteNumber { MunicipalityId = 201, MunicipalityFinancialYearId = municipalityYearIds[1], DepartmentId = departmentId, Code = "V01", Number = "001", Name = "Vote 2027" });
+        await context.SaveChangesAsync();
+
+        var duplicate = new VoteNumber { MunicipalityId = 201, MunicipalityFinancialYearId = municipalityYearIds[0], DepartmentId = departmentId, Code = "V01", Number = "009", Name = "Duplicate" };
+        context.VoteNumbers.Add(duplicate);
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        context.Entry(duplicate).State = EntityState.Detached;
+
+        var crossTenantYear = new VoteNumber { MunicipalityId = 201, MunicipalityFinancialYearId = municipalityYearIds[2], DepartmentId = departmentId, Code = "V02", Number = "002", Name = "Wrong tenant year" };
+        context.VoteNumbers.Add(crossTenantYear);
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
     }
 
     [Fact]

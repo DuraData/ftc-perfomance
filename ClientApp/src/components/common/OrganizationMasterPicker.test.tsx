@@ -21,6 +21,13 @@ describe('OrganizationMasterPicker', () => {
         page: 1, pageSize: 25, totalCount: 26, totalPages: 2,
       },
     });
+    api.getVoteNumberMastersPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{ publicId: 'vote-1', departmentPublicId: 'department-1', departmentName: 'Finance', municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', code: 'V01', number: '001', name: 'Operating Vote', amount: 1000, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'AQ==' }],
+        page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+      },
+    });
   });
 
   it('uses bounded dependent search and returns the authoritative option', async () => {
@@ -38,5 +45,14 @@ describe('OrganizationMasterPicker', () => {
   it('preserves a selected value outside the current page', async () => {
     render(<OrganizationMasterPicker kind="unit" label="Unit" value="historic-unit" selectedLabel="Historic unit" onChange={vi.fn()} />);
     expect(await screen.findByRole('option', { name: 'Historic unit' })).toHaveValue('historic-unit');
+  });
+
+  it('scopes vote-number options to the selected municipality financial year', async () => {
+    render(<OrganizationMasterPicker kind="vote-number" label="Vote Number" value="" municipalityFinancialYearPublicId="year-1" onChange={vi.fn()} />);
+    await waitFor(() => expect(api.getVoteNumberMastersPage).toHaveBeenCalledWith(expect.objectContaining({
+      active: true,
+      municipalityFinancialYearPublicId: 'year-1',
+    })));
+    expect(await screen.findByRole('option', { name: 'V01 · 001 · Operating Vote' })).toHaveValue('vote-1');
   });
 });

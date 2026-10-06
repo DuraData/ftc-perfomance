@@ -1063,16 +1063,27 @@ public static class DbInitializer
 
         // Seed Vote Numbers
         var departments = await context.Departments.ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
-        var existingVotes = await context.VoteNumbers.IgnoreQueryFilters().ToDictionaryAsync(v => $"{v.MunicipalityId}:{v.Code}", StringComparer.OrdinalIgnoreCase);
+        var currentVoteYears = (await context.MunicipalityFinancialYears.IgnoreQueryFilters().AsNoTracking()
+                .Where(item => item.IsActive && item.IsCurrent)
+                .Select(item => new { item.Id, item.MunicipalityId }).ToArrayAsync())
+            .GroupBy(item => item.MunicipalityId)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single().Id);
+        var existingVotes = await context.VoteNumbers.IgnoreQueryFilters().ToListAsync();
         foreach (var voteSeed in GetVoteNumberSeeds())
         {
             if (voteSeed.DepartmentCode == null || !departments.TryGetValue(voteSeed.DepartmentCode, out var department) || !department.MunicipalityId.HasValue) continue;
-            var voteKey = $"{department.MunicipalityId.Value}:{voteSeed.Code}";
-            if (!existingVotes.TryGetValue(voteKey, out var vote))
+            var municipalityId = department.MunicipalityId.Value;
+            if (!currentVoteYears.TryGetValue(municipalityId, out var municipalityFinancialYearId)) continue;
+            var candidates = existingVotes.Where(item => item.MunicipalityId == municipalityId && string.Equals(item.Code, voteSeed.Code, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var vote = candidates.SingleOrDefault(item => item.MunicipalityFinancialYearId == municipalityFinancialYearId)
+                ?? (candidates.Count(item => item.MunicipalityFinancialYearId == null) == 1 ? candidates.Single(item => item.MunicipalityFinancialYearId == null) : null);
+            if (vote == null)
             {
                 vote = new VoteNumber
                 {
-                    MunicipalityId = department.MunicipalityId.Value,
+                    MunicipalityId = municipalityId,
+                    MunicipalityFinancialYearId = municipalityFinancialYearId,
                     Code = voteSeed.Code,
                     Number = voteSeed.Code,
                     Name = voteSeed.Name,
@@ -1081,9 +1092,11 @@ public static class DbInitializer
                     IsActive = voteSeed.IsActive
                 };
                 context.VoteNumbers.Add(vote);
+                existingVotes.Add(vote);
             }
             else
             {
+                vote.MunicipalityFinancialYearId = municipalityFinancialYearId;
                 vote.Number = voteSeed.Code;
                 vote.Name = voteSeed.Name;
                 vote.DepartmentId = department.Id;

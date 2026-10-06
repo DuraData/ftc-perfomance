@@ -25,6 +25,7 @@ type Props = {
   activeOnly?: boolean;
   departmentPublicId?: string;
   unitPublicId?: string;
+  municipalityFinancialYearPublicId?: string;
   selectedLabel?: string;
   excludedValues?: string[];
   refreshKey?: string | number;
@@ -75,6 +76,7 @@ export function OrganizationMasterPicker({
   activeOnly = true,
   departmentPublicId,
   unitPublicId,
+  municipalityFinancialYearPublicId,
   selectedLabel,
   excludedValues = [],
   refreshKey,
@@ -101,7 +103,7 @@ export function OrganizationMasterPicker({
 
   useEffect(() => {
     setPage(1);
-  }, [activeOnly, departmentPublicId, kind, unitPublicId]);
+  }, [activeOnly, departmentPublicId, kind, municipalityFinancialYearPublicId, unitPublicId]);
 
   useEffect(() => {
     if (!value) setSelectedOption(undefined);
@@ -121,6 +123,7 @@ export function OrganizationMasterPicker({
         active: activeOnly ? true : undefined,
         departmentPublicId,
         unitPublicId,
+        municipalityFinancialYearPublicId,
       });
       if (cancelled) return;
       if (!result.success || !result.data) {
@@ -141,7 +144,7 @@ export function OrganizationMasterPicker({
     };
     void load();
     return () => { cancelled = true; };
-  }, [activeOnly, departmentPublicId, excludedKey, kind, page, refreshKey, search, settings.noun, settings.sortBy, unitPublicId, value]);
+  }, [activeOnly, departmentPublicId, excludedKey, kind, municipalityFinancialYearPublicId, page, refreshKey, search, settings.noun, settings.sortBy, unitPublicId, value]);
 
   const options = useMemo(() => {
     const values = items.map(item => ({ value: item.publicId, label: labelFor(kind, item) }));
