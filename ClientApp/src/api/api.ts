@@ -133,6 +133,8 @@ import type {
   C88Workspace,
   C88IndicatorReport,
   C88IndicatorPlan,
+  C88ReportingCalendar,
+  C88Workflow,
   C88Assignment,
   C88Mapping,
   EnterpriseSignInOptions,
@@ -2819,6 +2821,25 @@ export async function getC88PlansPage(query: RegisterPageQuery = {}, filters: { 
   if (filters.configurationPublicId) parameters.set('configurationPublicId', filters.configurationPublicId);
   if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
   return get<PagedResult<C88IndicatorPlan>>(`/v1/c88/plans/page?${parameters.toString()}`);
+}
+
+export async function getC88CalendarsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; configurationPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88ReportingCalendar>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.configurationPublicId) parameters.set('configurationPublicId', filters.configurationPublicId);
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  return get<PagedResult<C88ReportingCalendar>>(`/v1/c88/calendars/page?${parameters.toString()}`);
+}
+
+export async function getC88WorkflowsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; configurationPublicId?: string; current?: boolean; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Workflow>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.configurationPublicId) parameters.set('configurationPublicId', filters.configurationPublicId);
+  if (filters.current !== undefined) parameters.set('current', String(filters.current));
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  return get<PagedResult<C88Workflow>>(`/v1/c88/workflows/page?${parameters.toString()}`);
 }
 
 export async function getC88AssignmentsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; indicatorPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Assignment>>> {

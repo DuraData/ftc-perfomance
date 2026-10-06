@@ -253,6 +253,53 @@ public class C88ControllerTests
         (await controller.GetPlansPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
+    [Fact]
+    public async Task Calendar_and_workflow_pages_filter_before_count_and_page_stably()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var effectiveFrom = new DateTime(2035, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            var workflow = new C88WorkflowDefinition
+            {
+                MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration,
+                VersionNumber = index + 1, IsCurrent = index == 10, IsActive = true, EffectiveFrom = effectiveFrom.AddDays(index),
+                EffectiveTo = index == 10 ? null : effectiveFrom.AddDays(index + 1), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
+            };
+            workflow.Stages.Add(new C88WorkflowStage
+            {
+                MunicipalityId = seed.Municipality.Id, Sequence = 1, Kind = C88WorkflowStageKind.ReviewerVerifier,
+                Name = $"Verify stage {index:00}", RequiredRole = C88AssignmentRole.ReviewerVerifier, IsActive = true
+            });
+            context.AddRange(
+                new C88ReportingCalendar
+                {
+                    MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration,
+                    ReportTypeItemId = module.ReportType.Id, ReportTypeItem = module.ReportType, Code = $"CAL-{index:00}", Name = $"Paged calendar {index:00}",
+                    OpensAt = effectiveFrom.AddDays(index), ClosesAt = effectiveFrom.AddDays(index + 1), DueAt = effectiveFrom.AddDays(index + 2), IsActive = true
+                },
+                workflow);
+        }
+        await context.SaveChangesAsync();
+
+        var calendars = Payload(await controller.GetCalendarsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "calendar", SortBy = "code", SortDirection = "asc" }, seed.Year.PublicId));
+        calendars.TotalCount.Should().Be(11);
+        calendars.Items.Select(item => item.Code).Should().Equal("CAL-03", "CAL-04", "CAL-05");
+        var workflows = Payload(await controller.GetWorkflowsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Verify", SortBy = "versionNumber", SortDirection = "asc" }, seed.Year.PublicId));
+        workflows.TotalCount.Should().Be(11);
+        workflows.Items.Select(item => item.VersionNumber).Should().Equal(4, 5, 6);
+        Payload(await controller.GetWorkflowsPage(new PagedQueryRequest(), configurationPublicId: module.Configuration.PublicId, current: true)).Items.Should().ContainSingle().Which.VersionNumber.Should().Be(11);
+        (await controller.GetCalendarsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetWorkflowsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var denied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: _ => false);
+        (await denied.GetCalendarsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await denied.GetWorkflowsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
     {
         var versionId = Payload(await controller.CreateCatalogueVersion(new("2026.1", "Treasury C88 2026", DateTime.UtcNow.Date,

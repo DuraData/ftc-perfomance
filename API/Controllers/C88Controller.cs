@@ -61,7 +61,6 @@ public sealed class C88Controller : ControllerBase
         if (municipalityFinancialYearPublicId.HasValue)
             configurations = configurations.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
         var configRows = await configurations.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ToArrayAsync();
-        var configIds = configRows.Select(item => item.Id).ToArray();
         var versionIds = configRows.Select(item => item.C88CatalogueVersionId).Distinct().ToArray();
         if (!municipalityFinancialYearPublicId.HasValue)
             versionIds = await context.C88CatalogueVersions.AsNoTracking().Select(item => item.Id).ToArrayAsync();
@@ -70,13 +69,9 @@ public sealed class C88Controller : ControllerBase
         var items = await context.C88CatalogueItems.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ParentItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ToArrayAsync();
         var indicators = await context.C88Indicators.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.SectorItem).Include(item => item.OutcomeItem).Include(item => item.IndicatorTypeItem).Include(item => item.DataElements).Include(item => item.Applicability).ThenInclude(item => item.MunicipalCategoryItem).Include(item => item.Applicability).ThenInclude(item => item.ReadinessTierItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId) && (manager || scopedIndicatorIds.Contains(item.Id))).OrderBy(item => item.Code).ToArrayAsync();
         var questions = await context.C88ComplianceQuestions.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ReportTypeItem).Include(item => item.ResponseTypeItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Sequence).ToArrayAsync();
-        var calendars = await context.C88ReportingCalendars.AsNoTracking().Include(item => item.Configuration).Include(item => item.ReportTypeItem).Include(item => item.ReportingPeriod).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.OpensAt).ToArrayAsync();
-        var workflows = await context.C88WorkflowDefinitions.AsNoTracking().Include(item => item.Configuration).Include(item => item.Stages).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.VersionNumber).ToArrayAsync();
-
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
             configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(),
-            indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), calendars.Select(ToResponse).ToArray(),
-            [], workflows.Select(ToResponse).ToArray())));
+            indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), [])));
     }
 
     [HttpGet("reports/page")]
@@ -166,6 +161,71 @@ public sealed class C88Controller : ControllerBase
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<C88IndicatorPlanResponse>>(true,
             PagedResponse<C88IndicatorPlanResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
+
+    [HttpGet("calendars/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88ReportingCalendarResponse>>>> GetCalendarsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] Guid? configurationPublicId = null, [FromQuery] bool? active = null)
+    {
+        var readError = await WorkspaceRead<C88ReportingCalendarResponse>();
+        if (readError != null) return readError;
+        if (request.NormalizedSortBy is not ("createdat" or "opensat" or "dueat" or "code" or "name"))
+            return BadRequest(Fail<PagedResponse<C88ReportingCalendarResponse>>("SortBy must be opensAt, dueAt, code, or name."));
+        var query = context.C88ReportingCalendars.AsNoTracking().AsQueryable();
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.Configuration.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (configurationPublicId.HasValue) query = query.Where(item => item.Configuration.PublicId == configurationPublicId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Code.Contains(request.NormalizedSearch)
+            || item.Name.Contains(request.NormalizedSearch) || item.ReportTypeItem.Code.Contains(request.NormalizedSearch)
+            || item.ReportTypeItem.Name.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("dueat", false) => query.OrderBy(item => item.DueAt).ThenBy(item => item.Id),
+            ("dueat", true) => query.OrderByDescending(item => item.DueAt).ThenByDescending(item => item.Id),
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.OpensAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.OpensAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.Configuration).Include(item => item.ReportTypeItem).Include(item => item.ReportingPeriod)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88ReportingCalendarResponse>>(true,
+            PagedResponse<C88ReportingCalendarResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
+
+    [HttpGet("workflows/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88WorkflowResponse>>>> GetWorkflowsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] Guid? configurationPublicId = null, [FromQuery] bool? current = null, [FromQuery] bool? active = null)
+    {
+        var readError = await WorkspaceRead<C88WorkflowResponse>();
+        if (readError != null) return readError;
+        if (request.NormalizedSortBy is not ("createdat" or "effectivefrom" or "versionnumber" or "current"))
+            return BadRequest(Fail<PagedResponse<C88WorkflowResponse>>("SortBy must be effectiveFrom, versionNumber, or current."));
+        var query = context.C88WorkflowDefinitions.AsNoTracking().AsQueryable();
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.Configuration.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (configurationPublicId.HasValue) query = query.Where(item => item.Configuration.PublicId == configurationPublicId.Value);
+        if (current.HasValue) query = query.Where(item => item.IsCurrent == current.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Stages.Any(stage => stage.Name.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.Id),
+            ("versionnumber", true) => query.OrderByDescending(item => item.VersionNumber).ThenByDescending(item => item.Id),
+            ("current", false) => query.OrderBy(item => item.IsCurrent).ThenBy(item => item.Id),
+            ("current", true) => query.OrderByDescending(item => item.IsCurrent).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.Configuration).Include(item => item.Stages)
+            .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88WorkflowResponse>>(true,
+            PagedResponse<C88WorkflowResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("assignments/page")]
@@ -854,6 +914,15 @@ public sealed class C88Controller : ControllerBase
                 && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now))
             .Select(item => item.C88IndicatorId).Distinct().ToArrayAsync();
         return (false, indicatorIds, null);
+    }
+    private async Task<ActionResult<ApiResponse<PagedResponse<T>>>?> WorkspaceRead<T>()
+    {
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<PagedResponse<T>>("User not found."));
+        if (!tenantContext.MunicipalityId.HasValue) return BadRequest(Fail<PagedResponse<T>>("Municipality context is required."));
+        var indicatorRead = await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.READ", Scope());
+        var reportRead = await accessControl.CheckPermissionAsync(user, "C88_REPORT.READ", Scope());
+        return indicatorRead.Allowed || reportRead.Allowed ? null : Forbidden<PagedResponse<T>>(indicatorRead.Reason);
     }
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ActionResult<ApiResponse<T>> Forbidden<T>(string? message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message ?? "Permission denied."));

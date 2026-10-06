@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   configureC88: vi.fn(), createC88Assignment: vi.fn(), createC88Calendar: vi.fn(), createC88CatalogueItem: vi.fn(),
   createC88CatalogueVersion: vi.fn(), createC88ComplianceQuestion: vi.fn(), createC88Indicator: vi.fn(),
   createC88Mapping: vi.fn(), createC88ReportVersion: vi.fn(), createC88Workflow: vi.fn(), finalSubmitC88Report: vi.fn(),
-  getC88AssignmentsPage: vi.fn(), getC88MappingsPage: vi.fn(), getC88PlansPage: vi.fn(), getC88ReportsPage: vi.fn(), getC88Workspace: vi.fn(), getMunicipalEmployeesPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
+  getC88AssignmentsPage: vi.fn(), getC88CalendarsPage: vi.fn(), getC88MappingsPage: vi.fn(), getC88PlansPage: vi.fn(), getC88ReportsPage: vi.fn(), getC88WorkflowsPage: vi.fn(), getC88Workspace: vi.fn(), getMunicipalEmployeesPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
   returnC88Report: vi.fn(), saveC88IndicatorPlan: vi.fn(), submitC88Report: vi.fn(), updateC88CatalogueVersion: vi.fn(), verifyC88Report: vi.fn(),
 }));
 
@@ -26,10 +26,9 @@ const workspace = {
   catalogueItems: [{ publicId: 'report-type-1', catalogueVersionPublicId: 'version-1', kind: 'ReportType', code: 'Q', name: 'Quarterly', displayOrder: 1, isActive: true, rowVersion: 'AQ==' }],
   indicators: [{ publicId: 'indicator-1', catalogueVersionPublicId: 'version-1', code: 'C88-1', name: 'Official indicator', definition: 'Definition', officialTechnicalIndicatorDescription: 'TID', valueType: 'Decimal', calculationOperator: 'None', requiresBaseline: true, requiresMediumTermTarget: true, requiresAnnualTarget: true, isActive: true, rowVersion: 'AQ==', dataElements: [{ publicId: 'element-1', code: 'VALUE', name: 'Value', valueType: 'Decimal', isRequired: true, sequence: 1, rowVersion: 'AQ==' }], applicability: [] }],
   complianceQuestions: [],
-  calendars: [{ publicId: 'calendar-1', configurationPublicId: 'config-1', reportTypePublicId: 'report-type-1', code: 'Q1', name: 'Quarter 1', opensAt: '2026-07-01', closesAt: '2027-06-30', dueAt: '2027-07-01', isActive: true, rowVersion: 'AQ==' }],
   reports: [{ publicId: 'report-1', reportFamilyId: 'family-1', versionNumber: 1, isCurrent: true, configurationPublicId: 'config-1', calendarPublicId: 'calendar-1', indicatorPublicId: 'indicator-1', indicatorCode: 'C88-1', state: 'Draft', currentStageSequence: 1, calculatedValue: '42', createdAt: '2026-08-01', rowVersion: 'Ag==', dataElementValues: [], complianceResponses: [], workflowActions: [] }],
-  workflows: [],
 };
+const calendar = { publicId: 'calendar-1', configurationPublicId: 'config-1', reportTypePublicId: 'report-type-1', code: 'Q1', name: 'Quarter 1', opensAt: '2026-07-01', closesAt: '2027-06-30', dueAt: '2027-07-01', isActive: true, rowVersion: 'AQ==' };
 const year = { publicId: 'year-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'AQ==' };
 
 describe('Circular 88 workspace', () => {
@@ -41,6 +40,8 @@ describe('Circular 88 workspace', () => {
     api.getC88AssignmentsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
     api.getC88MappingsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
     api.getC88PlansPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
+    api.getC88CalendarsPage.mockResolvedValue({ success: true, data: { items: [calendar], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
+    api.getC88WorkflowsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getOpmsTargetOptions.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
@@ -55,6 +56,8 @@ describe('Circular 88 workspace', () => {
     expect(api.getC88AssignmentsPage).toHaveBeenCalled();
     expect(api.getC88MappingsPage).toHaveBeenCalled();
     expect(api.getC88PlansPage).toHaveBeenCalledWith(expect.objectContaining({ pageSize: 10 }), expect.objectContaining({ municipalityFinancialYearPublicId: undefined }));
+    expect(api.getC88CalendarsPage).toHaveBeenCalled();
+    expect(api.getC88WorkflowsPage).toHaveBeenCalled();
     expect(screen.queryByText('Versioned Treasury catalogue')).not.toBeInTheDocument();
     expect(screen.getByText('Calculated value: 42 · Stage 1')).toBeInTheDocument();
   });
