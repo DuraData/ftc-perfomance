@@ -58,16 +58,58 @@ public sealed class StrategicDocumentsController : ControllerBase
     }
 
     [HttpGet("types")]
-    public async Task<ActionResult<ApiResponse<StrategicDocumentTypeResponse[]>>> GetTypes([FromQuery] bool includeInactive = false)
+    public ActionResult<ApiResponse<StrategicDocumentTypeResponse[]>> GetTypes([FromQuery] bool includeInactive = false)
     {
-        var session = await SessionAsync<StrategicDocumentTypeResponse[]>("STRATEGIC_DOCUMENT.READ");
+        _ = includeInactive;
+        return StatusCode(StatusCodes.Status410Gone, Fail<StrategicDocumentTypeResponse[]>(
+            "This unbounded route is retired. Use /api/v1/strategic-documents/types/page."));
+    }
+
+    [HttpGet("types/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<StrategicDocumentTypeResponse>>>> GetTypesPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? active = null,
+        [FromQuery] Guid? publicId = null)
+    {
+        var session = await SessionAsync<PagedResponse<StrategicDocumentTypeResponse>>("STRATEGIC_DOCUMENT.READ");
         if (session.Error != null) return session.Error;
+        var sortBy = request.SortBy == null ? "displayorder" : request.NormalizedSortBy;
+        if (!StrategicDocumentTypeSortFields.Contains(sortBy))
+            return BadRequest(Fail<PagedResponse<StrategicDocumentTypeResponse>>(
+                "SortBy must be displayOrder, code, name, or status."));
+
         var canManage = (await accessControl.CheckPermissionAsync(session.User!, "STRATEGIC_DOCUMENT.MANAGE_TYPES", MunicipalityScope())).Allowed;
         var query = context.StrategicDocumentTypes.AsNoTracking();
-        if (!includeInactive || !canManage) query = query.Where(item => item.IsActive);
-        var rows = await query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).ToArrayAsync();
-        return Ok(new ApiResponse<StrategicDocumentTypeResponse[]>(true, rows.Select(ToResponse).ToArray()));
+        if (!canManage) query = query.Where(item => item.IsActive);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (publicId.HasValue) query = query.Where(item => item.PublicId == publicId.Value);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Code.Contains(request.NormalizedSearch)
+                || item.Name.Contains(request.NormalizedSearch));
+
+        var totalCount = await query.CountAsync();
+        var rows = await ApplyDocumentTypeOrdering(query, sortBy, request.Descending)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<StrategicDocumentTypeResponse>>(true,
+            PagedResponse<StrategicDocumentTypeResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> StrategicDocumentTypeSortFields = ["displayorder", "code", "name", "status"];
+
+    private static IOrderedQueryable<StrategicDocumentType> ApplyDocumentTypeOrdering(
+        IQueryable<StrategicDocumentType> query,
+        string sortBy,
+        bool descending) => (sortBy, descending) switch
+        {
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.PublicId),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.PublicId),
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.PublicId),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.PublicId),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Name).ThenBy(item => item.PublicId)
+        };
 
     [HttpPost("types")]
     public async Task<ActionResult<ApiResponse<StrategicDocumentTypeResponse>>> CreateType([FromBody] SaveStrategicDocumentTypeRequest request)

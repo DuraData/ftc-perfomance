@@ -2585,8 +2585,14 @@ export async function downloadTidSourceDocument(document: TidSourceDocument): Pr
   return { success: true, data: true };
 }
 
-export async function getStrategicDocumentTypes(includeInactive = false): Promise<ApiResponse<StrategicDocumentType[]>> {
-  return get<StrategicDocumentType[]>(`/v1/strategic-documents/types${includeInactive ? '?includeInactive=true' : ''}`);
+export async function getStrategicDocumentTypesPage(query: RegisterPageQuery = {}, options?: {
+  active?: boolean; publicId?: string;
+}): Promise<ApiResponse<PagedResult<StrategicDocumentType>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (options?.active !== undefined) parameters.set('active', String(options.active));
+  if (options?.publicId?.trim()) parameters.set('publicId', options.publicId.trim());
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PagedResult<StrategicDocumentType>>(`/v1/strategic-documents/types/page${suffix}`);
 }
 
 export async function createStrategicDocumentType(payload: {

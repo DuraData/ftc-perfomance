@@ -10,7 +10,7 @@ const capabilities = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   approveStrategicDocument: vi.fn(), createStrategicDocumentType: vi.fn(), createStrategicDocumentVersion: vi.fn(),
   downloadStrategicDocument: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getStrategicDocumentHistory: vi.fn(),
-  getStrategicDocumentsPage: vi.fn(), getStrategicDocumentTypes: vi.fn(), publishStrategicDocument: vi.fn(),
+  getStrategicDocumentsPage: vi.fn(), getStrategicDocumentTypesPage: vi.fn(), publishStrategicDocument: vi.fn(),
   rescanStrategicDocument: vi.fn(), retireStrategicDocument: vi.fn(), updateStrategicDocumentType: vi.fn(),
 }));
 
@@ -40,7 +40,7 @@ describe('Strategic documents workspace', () => {
     capabilities.canCreate.mockReturnValue(true);
     capabilities.canUpdate.mockReturnValue(true);
     capabilities.canExecute.mockReturnValue(true);
-    api.getStrategicDocumentTypes.mockResolvedValue({ success: true, data: [type] });
+    api.getStrategicDocumentTypesPage.mockResolvedValue({ success: true, data: { items: [type], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentHistory.mockResolvedValue({ success: true, data: [document] });
@@ -102,6 +102,18 @@ describe('Strategic documents workspace', () => {
     await waitFor(() => expect(api.getStrategicDocumentsPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }),
       { municipalityFinancialYearPublicId: undefined },
+    ));
+  });
+
+  it('loads and pages controlled document types through the bounded register', async () => {
+    api.getStrategicDocumentTypesPage.mockResolvedValue({ success: true, data: { items: [type], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
+    render(<StrategicDocumentsWorkspace />);
+
+    expect(await screen.findByText('26 controlled document types')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next controlled types' }));
+
+    await waitFor(() => expect(api.getStrategicDocumentTypesPage).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'displayOrder', sortDirection: 'asc' }),
     ));
   });
 });

@@ -154,6 +154,45 @@ public class StrategicDocumentsControllerTests
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
+    [Fact]
+    public async Task Document_types_are_searchable_paged_and_inactive_rows_require_management()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        for (var index = 1; index <= 26; index++)
+        {
+            var type = Type(setup.Municipality.Id, setup.User.Id, $"TYPE{index:00}");
+            type.DisplayOrder = index;
+            context.StrategicDocumentTypes.Add(type);
+        }
+        var inactive = Type(setup.Municipality.Id, setup.User.Id, "ARCHIVE");
+        inactive.IsActive = false;
+        context.StrategicDocumentTypes.Add(inactive);
+        await context.SaveChangesAsync();
+        var manager = Controller(context, setup.User, setup.Municipality.Id);
+
+        var page = Payload(await manager.GetTypesPage(new PagedQueryRequest
+        {
+            Page = 2, PageSize = 10, Search = "TYPE", SortBy = "code", SortDirection = "asc"
+        }));
+        page.TotalCount.Should().Be(26);
+        page.TotalPages.Should().Be(3);
+        page.Items.Should().HaveCount(10);
+        page.Items.First().Code.Should().Be("TYPE11");
+
+        var ordinary = Controller(context, setup.User, setup.Municipality.Id, manager: false);
+        Payload(await ordinary.GetTypesPage(new PagedQueryRequest { PageSize = 100 })).Items
+            .Should().NotContain(item => item.Code == "ARCHIVE");
+        Payload(await ordinary.GetTypesPage(new PagedQueryRequest(), active: false)).Items.Should().BeEmpty();
+        Payload(await manager.GetTypesPage(new PagedQueryRequest(), active: false)).Items
+            .Should().ContainSingle().Which.Code.Should().Be("ARCHIVE");
+
+        (await manager.GetTypesPage(new PagedQueryRequest { SortBy = "raw-sql" })).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        manager.GetTypes().Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
     private static StrategicDocumentsController Controller(
         ApplicationDbContext context,
         ApplicationUser user,

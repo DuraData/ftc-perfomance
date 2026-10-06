@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   approveStrategicDocument,
   createStrategicDocumentType,
@@ -6,7 +6,7 @@ import {
   downloadStrategicDocument,
   getStrategicDocumentHistory,
   getStrategicDocumentsPage,
-  getStrategicDocumentTypes,
+  getStrategicDocumentTypesPage,
   publishStrategicDocument,
   rescanStrategicDocument,
   retireStrategicDocument,
@@ -18,6 +18,7 @@ import type { SaveStrategicDocumentVersionPayload, StrategicDocument, StrategicD
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState } from '../ui';
+import { StrategicDocumentTypePicker } from './StrategicDocumentTypePicker';
 
 const fieldClass = 'mt-1 w-full rounded border border-secondary-300 bg-white px-2 py-1.5 text-sm text-secondary-900 dark:border-secondary-700 dark:bg-secondary-900 dark:text-white';
 const areaClass = `${fieldClass} min-h-20`;
@@ -40,6 +41,13 @@ export function StrategicDocumentsWorkspace() {
   const canManage = canCreate('STRATEGIC_DOCUMENT') || canUpdate('STRATEGIC_DOCUMENT');
   const canManageTypes = canExecute('STRATEGIC_DOCUMENT.MANAGE_TYPES');
   const [types, setTypes] = useState<StrategicDocumentType[]>([]);
+  const [typePage, setTypePage] = useState(1);
+  const [typeTotalCount, setTypeTotalCount] = useState(0);
+  const [typeTotalPages, setTypeTotalPages] = useState(0);
+  const [typeSearchInput, setTypeSearchInput] = useState('');
+  const [typeSearch, setTypeSearch] = useState('');
+  const [typeSortBy, setTypeSortBy] = useState('displayOrder');
+  const [typeSortDirection, setTypeSortDirection] = useState<'asc' | 'desc'>('asc');
   const [documents, setDocuments] = useState<StrategicDocument[]>([]);
   const [history, setHistory] = useState<StrategicDocument[]>([]);
   const [selected, setSelected] = useState<StrategicDocument | null>(null);
@@ -52,6 +60,7 @@ export function StrategicDocumentsWorkspace() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [draft, setDraft] = useState<SaveStrategicDocumentVersionPayload>(emptyDocument);
+  const [selectedType, setSelectedType] = useState<StrategicDocumentType>();
   const [typeDraft, setTypeDraft] = useState(emptyType);
   const [contentMode, setContentMode] = useState<'file' | 'link'>('file');
   const [actionReason, setActionReason] = useState('');
@@ -62,21 +71,29 @@ export function StrategicDocumentsWorkspace() {
   const load = useCallback(async () => {
     if (!canRead('STRATEGIC_DOCUMENT')) return;
     const [typeResult, documentResult] = await Promise.all([
-      getStrategicDocumentTypes(canManageTypes),
+      canManageTypes
+        ? getStrategicDocumentTypesPage(
+          { page: typePage, pageSize: 25, search: typeSearch, sortBy: typeSortBy, sortDirection: typeSortDirection },
+        )
+        : Promise.resolve(null),
       getStrategicDocumentsPage(
         { page, pageSize: 25, search, sortBy, sortDirection },
         { municipalityFinancialYearPublicId: yearFilter || undefined },
       ),
     ]);
-    if (!typeResult.success) pushToast('error', typeResult.message ?? 'Unable to load strategic-document types.');
-    else setTypes(typeResult.data ?? []);
+    if (typeResult && !typeResult.success) pushToast('error', typeResult.message ?? 'Unable to load strategic-document types.');
+    else if (typeResult) {
+      setTypes(typeResult.data?.items ?? []);
+      setTypeTotalCount(typeResult.data?.totalCount ?? 0);
+      setTypeTotalPages(typeResult.data?.totalPages ?? 0);
+    }
     if (!documentResult.success) pushToast('error', documentResult.message ?? 'Unable to load strategic documents.');
     else {
       setDocuments(documentResult.data?.items ?? []);
       setTotalCount(documentResult.data?.totalCount ?? 0);
       setTotalPages(documentResult.data?.totalPages ?? 0);
     }
-  }, [canManageTypes, canRead, page, pushToast, search, sortBy, sortDirection, yearFilter]);
+  }, [canManageTypes, canRead, page, pushToast, search, sortBy, sortDirection, typePage, typeSearch, typeSortBy, typeSortDirection, yearFilter]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -86,11 +103,16 @@ export function StrategicDocumentsWorkspace() {
     return () => window.clearTimeout(timeout);
   }, [search, searchInput]);
   useEffect(() => {
-    setDraft(current => ({
-      ...current,
-      documentTypePublicId: current.documentTypePublicId || types.find(item => item.isActive)?.publicId || '',
-    }));
-  }, [types]);
+    const nextSearch = typeSearchInput.trim();
+    if (nextSearch === typeSearch) return;
+    const timeout = window.setTimeout(() => { setTypePage(1); setTypeSearch(nextSearch); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [typeSearch, typeSearchInput]);
+
+  const selectType = useCallback((publicId: string, option?: StrategicDocumentType) => {
+    setDraft(current => ({ ...current, documentTypePublicId: publicId }));
+    setSelectedType(option);
+  }, []);
 
   const selectDocument = async (document: StrategicDocument) => {
     setSelected(document);
@@ -102,6 +124,7 @@ export function StrategicDocumentsWorkspace() {
 
   const startSuccessor = (document: StrategicDocument) => {
     setSelected(document);
+    setSelectedType(undefined);
     setContentMode(document.externalUrl ? 'link' : 'file');
     setDraft({
       municipalityFinancialYearPublicId: document.municipalityFinancialYearPublicId,
@@ -139,6 +162,7 @@ export function StrategicDocumentsWorkspace() {
       if (!result.success || !result.data) return pushToast('error', result.message ?? 'Unable to create the strategic-document version.');
       pushToast(result.data.isQuarantined ? 'info' : 'success', result.message ?? `Version ${result.data.versionNumber} created.`);
       setDraft(emptyDocument());
+      setSelectedType(undefined);
       setSelected(result.data);
       await load();
       const historyResult = await getStrategicDocumentHistory(result.data.documentFamilyId);
@@ -189,8 +213,6 @@ export function StrategicDocumentsWorkspace() {
     } finally { setBusy(false); }
   };
 
-  const selectedType = useMemo(() => types.find(item => item.publicId === draft.documentTypePublicId), [draft.documentTypePublicId, types]);
-
   return (
     <AppShell title="Strategic Documents" subtitle="Controlled municipality and financial-year publications with governed versions, approval, and private file delivery">
       <div className="space-y-4">
@@ -207,6 +229,11 @@ export function StrategicDocumentsWorkspace() {
         {canManageTypes ? (
           <Card>
             <h2 className="font-semibold">Controlled document types</h2>
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_12rem_10rem]">
+              <label className="text-xs text-secondary-600">Search types<input aria-label="Search document types" className={fieldClass} value={typeSearchInput} onChange={event => setTypeSearchInput(event.target.value)} /></label>
+              <label className="text-xs text-secondary-600">Sort types<select aria-label="Sort document types" className={fieldClass} value={typeSortBy} onChange={event => { setTypeSortBy(event.target.value); setTypePage(1); }}><option value="displayOrder">Display order</option><option value="code">Code</option><option value="name">Name</option><option value="status">Status</option></select></label>
+              <label className="text-xs text-secondary-600">Direction<select aria-label="Document type sort direction" className={fieldClass} value={typeSortDirection} onChange={event => { setTypeSortDirection(event.target.value as 'asc' | 'desc'); setTypePage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+            </div>
             <div className="mt-3 grid gap-3 md:grid-cols-4">
               <label className="text-xs text-secondary-600">Code<input aria-label="Document type code" className={fieldClass} value={typeDraft.code} onChange={event => setTypeDraft({ ...typeDraft, code: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Name<input aria-label="Document type name" className={fieldClass} value={typeDraft.name} onChange={event => setTypeDraft({ ...typeDraft, name: event.target.value })} /></label>
@@ -217,6 +244,7 @@ export function StrategicDocumentsWorkspace() {
               <div className="self-end"><Button disabled={busy} onClick={() => void saveType()}>{typeDraft.publicId ? 'Update Type' : 'Add Type'}</Button></div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">{types.map(type => <button key={type.publicId} className="rounded border border-secondary-200 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => setTypeDraft({ ...type, description: type.description ?? '', reason: '' })}>{type.code} · {type.name}{!type.isActive ? ' (inactive)' : ''}</button>)}</div>
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs text-secondary-500" aria-live="polite"><span>{typeTotalCount} controlled document type{typeTotalCount === 1 ? '' : 's'}</span><span className="flex items-center gap-2"><Button type="button" size="sm" variant="ghost" disabled={busy || typePage <= 1} onClick={() => setTypePage(current => Math.max(1, current - 1))}>Previous controlled types</Button><span>Page {typePage} of {Math.max(typeTotalPages, 1)}</span><Button type="button" size="sm" variant="ghost" disabled={busy || typePage >= typeTotalPages} onClick={() => setTypePage(current => current + 1)}>Next controlled types</Button></span></div>
           </Card>
         ) : null}
 
@@ -225,7 +253,7 @@ export function StrategicDocumentsWorkspace() {
             <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{draft.previousVersionPublicId ? 'Create successor version' : 'Add strategic document'}</h2><p className="text-xs text-secondary-500">A successor preserves its predecessor and becomes the administrative current version. Existing published content remains visible until the successor is published.</p></div>{draft.previousVersionPublicId ? <Button variant="ghost" onClick={() => setDraft(emptyDocument())}>Cancel successor</Button> : null}</div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <CalendarMasterPicker kind="municipality-financial-year" label="Strategic document financial year" value={draft.municipalityFinancialYearPublicId} selectedLabel={selected?.financialYearCode} onChange={value => setDraft({ ...draft, municipalityFinancialYearPublicId: value })} required />
-              <label className="text-xs text-secondary-600">Document type<select aria-label="Strategic document type" className={fieldClass} value={draft.documentTypePublicId} onChange={event => setDraft({ ...draft, documentTypePublicId: event.target.value })}>{types.filter(type => type.isActive).map(type => <option key={type.publicId} value={type.publicId}>{type.code} — {type.name}</option>)}</select></label>
+              <StrategicDocumentTypePicker value={draft.documentTypePublicId} selectedLabel={selected ? `${selected.documentTypeCode} · ${selected.documentTypeName}` : undefined} onChange={selectType} disabled={busy} />
               <label className="text-xs text-secondary-600">Optional SDBIP layer<input aria-label="Strategic document SDBIP layer" className={fieldClass} value={draft.sdbipLayer ?? ''} onChange={event => setDraft({ ...draft, sdbipLayer: event.target.value })} /></label>
               <label className="text-xs text-secondary-600 md:col-span-2">User-facing title<input aria-label="Strategic document title" className={fieldClass} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Document date<input aria-label="Strategic document date" type="date" className={fieldClass} value={draft.documentDate.slice(0, 10)} onChange={event => setDraft({ ...draft, documentDate: event.target.value })} /></label>
