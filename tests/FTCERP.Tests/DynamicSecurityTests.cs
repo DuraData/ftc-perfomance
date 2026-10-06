@@ -453,6 +453,11 @@ public class DynamicSecurityTests
         var created = createdResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<SecurityNavigationDto>>().Subject.Data!;
         created.ParentPublicId.Should().Be(parent.PublicId);
         created.PublicId.Should().NotBeEmpty();
+        var pageResult = await controller.GetNavigationRegistryPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "Child", SortBy = "parent", SortDirection = "asc" }, true);
+        pageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityNavigationDto>>>()
+            .Subject.Data!.Items.Should().ContainSingle(item => item.PublicId == created.PublicId && item.ParentCode == parent.Code && item.ParentName == parent.Name);
+        (await controller.GetNavigationRegistryPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetNavigationRegistry().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
 
         var cycleResult = await controller.UpdateNavigationItem(parent.PublicId, new UpdateSecurityNavigationRequest(
             created.PublicId, parent.Name, null, null, parent.DisplayOrder, null, true, Convert.ToBase64String(parent.RowVersion), "Attempt invalid cyclic move"));

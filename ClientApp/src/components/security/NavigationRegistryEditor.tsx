@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { createSecurityNavigationItem, getSecurityNavigationRegistry, getSecurityPermissionDefinitionsPage, updateSecurityNavigationItem } from '../../api/api';
+import { useEffect, useState } from 'react';
+import { createSecurityNavigationItem, getSecurityNavigationRegistryPage, getSecurityPermissionDefinitionsPage, updateSecurityNavigationItem } from '../../api/api';
 import type { SecurityNavigationItemDto, SecurityPermissionDefinition } from '../../types';
 
 type Draft = { code: string; parentPublicId: string; name: string; route: string; iconKey: string; displayOrder: string; requiredPermissionCode: string; isActive: boolean; reason: string };
@@ -7,6 +7,16 @@ const blank = (): Draft => ({ code: '', parentPublicId: '', name: '', route: '',
 
 export function NavigationRegistryEditor({ refreshToken = 0 }: { refreshToken?: number }) {
   const [items, setItems] = useState<SecurityNavigationItemDto[]>([]);
+  const [navigationPage, setNavigationPage] = useState(1);
+  const [navigationSearch, setNavigationSearch] = useState('');
+  const [navigationTotalCount, setNavigationTotalCount] = useState(0);
+  const [navigationTotalPages, setNavigationTotalPages] = useState(0);
+  const [navigationRefreshToken, setNavigationRefreshToken] = useState(0);
+  const [parentOptions, setParentOptions] = useState<SecurityNavigationItemDto[]>([]);
+  const [parentPage, setParentPage] = useState(1);
+  const [parentSearch, setParentSearch] = useState('');
+  const [parentTotalCount, setParentTotalCount] = useState(0);
+  const [parentTotalPages, setParentTotalPages] = useState(0);
   const [permissionOptions, setPermissionOptions] = useState<SecurityPermissionDefinition[]>([]);
   const [permissionPage, setPermissionPage] = useState(1);
   const [permissionSearch, setPermissionSearch] = useState('');
@@ -17,12 +27,22 @@ export function NavigationRegistryEditor({ refreshToken = 0 }: { refreshToken?: 
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = async () => {
-    const result = await getSecurityNavigationRegistry();
-    if (!result.success) setMessage(result.message ?? 'Navigation registry could not be loaded.');
-    else setItems(result.data ?? []);
-  };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void getSecurityNavigationRegistryPage({ page: navigationPage, pageSize: 25, search: navigationSearch, sortBy: 'order', sortDirection: 'asc' }).then(result => {
+      setItems(result.data?.items ?? []);
+      setNavigationTotalCount(result.data?.totalCount ?? 0);
+      setNavigationTotalPages(result.data?.totalPages ?? 0);
+      if (!result.success) setMessage(result.message ?? 'Navigation registry could not be loaded.');
+    });
+  }, [navigationPage, navigationSearch, navigationRefreshToken]);
+  useEffect(() => {
+    void getSecurityNavigationRegistryPage({ page: parentPage, pageSize: 25, search: parentSearch, sortBy: 'name', sortDirection: 'asc' }, true).then(result => {
+      setParentOptions(result.data?.items ?? []);
+      setParentTotalCount(result.data?.totalCount ?? 0);
+      setParentTotalPages(result.data?.totalPages ?? 0);
+      if (!result.success) setMessage(result.message ?? 'Navigation parent choices could not be loaded.');
+    });
+  }, [parentPage, parentSearch, navigationRefreshToken]);
   useEffect(() => {
     void getSecurityPermissionDefinitionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' }, ['Navigation', 'Action']).then(result => {
       setPermissionOptions(result.data?.items ?? []);
@@ -31,19 +51,6 @@ export function NavigationRegistryEditor({ refreshToken = 0 }: { refreshToken?: 
       if (!result.success) setMessage(result.message ?? 'Navigation permission choices could not be loaded.');
     });
   }, [permissionPage, permissionSearch, refreshToken]);
-
-  const ordered = useMemo(() => {
-    const byParent = new Map<string, SecurityNavigationItemDto[]>();
-    for (const item of items) {
-      const key = item.parentPublicId ?? '';
-      byParent.set(key, [...(byParent.get(key) ?? []), item]);
-    }
-    for (const values of byParent.values()) values.sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
-    const rows: Array<{ item: SecurityNavigationItemDto; depth: number }> = [];
-    const visit = (parent: string, depth: number) => { for (const item of byParent.get(parent) ?? []) { rows.push({ item, depth }); visit(item.publicId, depth + 1); } };
-    visit('', 0);
-    return rows;
-  }, [items]);
 
   const edit = (item: SecurityNavigationItemDto | null) => {
     setSelected(item);
@@ -58,18 +65,23 @@ export function NavigationRegistryEditor({ refreshToken = 0 }: { refreshToken?: 
       ? await updateSecurityNavigationItem(selected, { ...common, isActive: draft.isActive })
       : await createSecurityNavigationItem({ ...common, code: draft.code });
     if (!result.success) setMessage(result.message ?? 'Navigation item could not be saved.');
-    else { setMessage('Navigation registry saved and audited.'); edit(result.data ?? null); await load(); }
+    else {
+      edit(result.data ?? null);
+      if (result.data) { setNavigationSearch(result.data.code); setNavigationPage(1); }
+      setNavigationRefreshToken(value => value + 1);
+      setMessage('Navigation registry saved and audited.');
+    }
     setBusy(false);
   };
 
   return <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Navigation registry</h2><p className="text-sm text-gray-600">Edit the authoritative hierarchy used by login and My Menu. Stable codes are immutable.</p></div><button type="button" onClick={() => edit(null)} className="rounded border border-blue-700 px-3 py-2 text-sm text-blue-700">New item</button></div>
     <div className="mt-4 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-      <div className="max-h-[32rem] overflow-auto rounded border border-gray-200">{ordered.map(({ item, depth }) => <button type="button" key={item.publicId} onClick={() => edit(item)} className={`block w-full border-b border-gray-100 px-3 py-2 text-left text-sm ${selected?.publicId === item.publicId ? 'bg-blue-50' : 'hover:bg-gray-50'}`} style={{ paddingLeft: `${12 + depth * 20}px` }}><span className={item.isActive ? 'font-medium' : 'text-gray-400 line-through'}>{item.name}</span><span className="ml-2 font-mono text-xs text-gray-500">{item.code}</span></button>)}{!ordered.length && <p className="p-4 text-sm text-gray-500">No navigation definitions.</p>}</div>
+      <div><input aria-label="Search navigation registry" placeholder="Search code, name, parent, route or permission" className="mb-2 w-full rounded border border-gray-300 p-2 text-sm" value={navigationSearch} onChange={event => { setNavigationSearch(event.target.value); setNavigationPage(1); edit(null); }} /><div className="max-h-[28rem] overflow-auto rounded border border-gray-200">{items.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className={`block w-full border-b border-gray-100 px-3 py-2 text-left text-sm ${selected?.publicId === item.publicId ? 'bg-blue-50' : 'hover:bg-gray-50'}`}><span className={item.isActive ? 'font-medium' : 'text-gray-400 line-through'}>{item.name}</span><span className="ml-2 font-mono text-xs text-gray-500">{item.code}</span><span className="block text-xs text-gray-500">Parent: {item.parentName ?? 'Root'} · Order {item.displayOrder}</span></button>)}{!items.length && <p className="p-4 text-sm text-gray-500">No navigation definitions.</p>}</div><div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500"><span>{navigationTotalCount} items · Page {navigationPage} of {Math.max(navigationTotalPages, 1)}</span><span className="flex gap-1"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={navigationPage <= 1} onClick={() => { setNavigationPage(value => Math.max(1, value - 1)); edit(null); }}>Previous navigation items</button><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={navigationPage >= navigationTotalPages} onClick={() => { setNavigationPage(value => value + 1); edit(null); }}>Next navigation items</button></span></div></div>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm">Stable code<input aria-label="Navigation code" disabled={!!selected} className="mt-1 w-full rounded border border-gray-300 p-2 font-mono disabled:bg-gray-100" value={draft.code} onChange={event => setDraft(value => ({ ...value, code: event.target.value.toUpperCase() }))} /></label>
         <label className="text-sm">Name<input aria-label="Navigation name" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.name} onChange={event => setDraft(value => ({ ...value, name: event.target.value }))} /></label>
-        <label className="text-sm">Parent<select aria-label="Navigation parent" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.parentPublicId} onChange={event => setDraft(value => ({ ...value, parentPublicId: event.target.value }))}><option value="">Root</option>{ordered.filter(row => row.item.publicId !== selected?.publicId && row.item.isActive).map(({ item, depth }) => <option key={item.publicId} value={item.publicId}>{'—'.repeat(depth)} {item.name}</option>)}</select></label>
+        <div className="text-sm"><label htmlFor="navigation-parent-search">Parent</label><input id="navigation-parent-search" aria-label="Search navigation parents" placeholder="Search active parent items" className="mt-1 w-full rounded border border-gray-300 p-2" value={parentSearch} onChange={event => { setParentSearch(event.target.value); setParentPage(1); }} /><select aria-label="Navigation parent" className="mt-2 w-full rounded border border-gray-300 p-2" value={draft.parentPublicId} onChange={event => setDraft(value => ({ ...value, parentPublicId: event.target.value }))}><option value="">Root</option>{draft.parentPublicId && !parentOptions.some(item => item.publicId === draft.parentPublicId) && <option value={draft.parentPublicId}>{selected?.parentName ?? selected?.parentCode ?? draft.parentPublicId}</option>}{parentOptions.filter(item => item.publicId !== selected?.publicId).map(item => <option key={item.publicId} value={item.publicId}>{item.name} ({item.code})</option>)}</select><div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500"><span>{parentTotalCount} active · Page {parentPage} of {Math.max(parentTotalPages, 1)}</span><span className="flex gap-1"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={parentPage <= 1} onClick={() => setParentPage(value => Math.max(1, value - 1))}>Previous parents</button><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={parentPage >= parentTotalPages} onClick={() => setParentPage(value => value + 1)}>Next parents</button></span></div></div>
         <label className="text-sm">Display order<input aria-label="Navigation display order" type="number" min="0" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.displayOrder} onChange={event => setDraft(value => ({ ...value, displayOrder: event.target.value }))} /></label>
         <label className="text-sm">Route<input aria-label="Navigation route" placeholder="/reports" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.route} onChange={event => setDraft(value => ({ ...value, route: event.target.value }))} /></label>
         <label className="text-sm">Icon key<input aria-label="Navigation icon" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.iconKey} onChange={event => setDraft(value => ({ ...value, iconKey: event.target.value }))} /></label>

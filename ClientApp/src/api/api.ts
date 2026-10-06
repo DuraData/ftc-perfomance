@@ -1853,8 +1853,10 @@ export async function getSecurityPermissionDefinitionsPage(query: RegisterPageQu
   return get<PagedResult<SecurityPermissionDefinition>>(`/v1/security/permissions/page?${parameters.toString()}`);
 }
 
-export async function getSecurityNavigationRegistry(): Promise<ApiResponse<SecurityNavigationItemDto[]>> {
-  return get<SecurityNavigationItemDto[]>('/v1/security/navigation/registry');
+export async function getSecurityNavigationRegistryPage(query: RegisterPageQuery = {}, active?: boolean): Promise<ApiResponse<PagedResult<SecurityNavigationItemDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (active !== undefined) parameters.set('active', String(active));
+  return get<PagedResult<SecurityNavigationItemDto>>(`/v1/security/navigation/registry/page?${parameters.toString()}`);
 }
 
 export async function createSecurityNavigationItem(payload: Omit<SecurityNavigationItemDto, 'publicId' | 'rowVersion' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityNavigationItemDto>> {

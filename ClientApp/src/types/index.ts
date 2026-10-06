@@ -2213,6 +2213,8 @@ export interface SecurityNavigationItemDto {
   publicId: string;
   code: string;
   parentPublicId?: string | null;
+  parentCode?: string | null;
+  parentName?: string | null;
   name: string;
   route?: string | null;
   iconKey?: string | null;

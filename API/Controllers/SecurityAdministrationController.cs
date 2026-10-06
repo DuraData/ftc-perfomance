@@ -509,11 +509,51 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("navigation/registry")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<SecurityNavigationDto[]>>> GetNavigationRegistry()
+    public ActionResult<ApiResponse<SecurityNavigationDto[]>> GetNavigationRegistry() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityNavigationDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/security/navigation/registry/page."));
+
+    [HttpGet("navigation/registry/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityNavigationDto>>>> GetNavigationRegistryPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? active = null)
     {
-        var items = await _context.SecurityNavigationItems.AsNoTracking().Include(item => item.Parent).OrderBy(item => item.ParentId).ThenBy(item => item.DisplayOrder).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityNavigationDto[]>(true, items.Select(ToNavigationDto).ToArray()));
+        var sortBy = request.SortBy == null ? "order" : request.NormalizedSortBy;
+        if (!SecurityNavigationSortFields.Contains(sortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityNavigationDto>>(false, null,
+                "SortBy must be order, name, code, parent, route, or status."));
+        var query = _context.SecurityNavigationItems.AsNoTracking().Include(item => item.Parent).AsQueryable();
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term)
+                || (item.Route != null && item.Route.Contains(term)) || (item.RequiredPermissionCode != null && item.RequiredPermissionCode.Contains(term))
+                || (item.Parent != null && (item.Parent.Code.Contains(term) || item.Parent.Name.Contains(term))));
+        }
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+            ("parent", false) => query.OrderBy(item => item.Parent == null ? string.Empty : item.Parent.Name).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Id),
+            ("parent", true) => query.OrderByDescending(item => item.Parent == null ? string.Empty : item.Parent.Name).ThenByDescending(item => item.DisplayOrder).ThenBy(item => item.Id),
+            ("route", false) => query.OrderBy(item => item.Route).ThenBy(item => item.Id),
+            ("route", true) => query.OrderByDescending(item => item.Route).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("order", true) => query.OrderByDescending(item => item.ParentId).ThenByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Name).ThenBy(item => item.Id),
+            _ => query.OrderBy(item => item.ParentId).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Name).ThenBy(item => item.Id)
+        };
+        var items = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<SecurityNavigationDto>>(true,
+            PagedResponse<SecurityNavigationDto>.Create(items.Select(ToNavigationDto), request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> SecurityNavigationSortFields = ["order", "name", "code", "parent", "route", "status"];
 
     [HttpPost("navigation/registry")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_NAVIGATION")]
@@ -821,7 +861,7 @@ public sealed class SecurityAdministrationController : ControllerBase
     }
 
     private static SecurityRoleDto ToRoleDto(ApplicationRole item) => new(item.Id, item.PublicId, item.RoleCode, item.Name ?? item.RoleCode, item.Description, item.MunicipalityId, item.IsSystemRole, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion));
-    private static SecurityNavigationDto ToNavigationDto(SecurityNavigationItem item) => new(item.PublicId, item.Code, item.Parent?.PublicId, item.Name, item.Route, item.IconKey, item.DisplayOrder, item.RequiredPermissionCode, item.IsActive, Convert.ToBase64String(item.RowVersion));
+    private static SecurityNavigationDto ToNavigationDto(SecurityNavigationItem item) => new(item.PublicId, item.Code, item.Parent?.PublicId, item.Name, item.Route, item.IconKey, item.DisplayOrder, item.RequiredPermissionCode, item.IsActive, Convert.ToBase64String(item.RowVersion), item.Parent?.Code, item.Parent?.Name);
 
     private async Task<bool> CanManageGlobalRegistryAsync(ApplicationUser actor)
     {
@@ -1021,7 +1061,7 @@ public sealed record ExpectedUserRoleAssignment(long AssignmentId, string RowVer
 public sealed record UpdateUserRoleAssignment(string RoleId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo, Guid? DepartmentPublicId = null, Guid? UnitPublicId = null);
 public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments);
 public sealed record SecurityActionDto(Guid PublicId, string Code, string Name, string ResourceCode, string? Description, bool IsActive, string RowVersion);
-public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion);
+public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string? ParentCode = null, string? ParentName = null);
 public sealed record SecurityMemberDto(Guid PublicId, string ResourceCode, string MemberCode, string DisplayName, bool IsSensitive, bool IsSystemManaged, bool IsActive, string RowVersion);
 public sealed record SecurityPermissionDefinitionDto(string Code, string? Description, string Kind, string? ResourceCode, string? Operation, string? MemberCode, string? NavigationCode, string? ActionCode);
 public sealed record RoleSecurityPermissionDto(string PermissionCode, string Kind, string? ResourceCode, string? MemberCode, string? NavigationCode, string? ActionCode, string State, string? ScopeType, string RowVersion);
