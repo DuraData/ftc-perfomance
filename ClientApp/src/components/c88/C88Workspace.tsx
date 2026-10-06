@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88AssignmentsPage, getC88MappingsPage, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage,
+  finalSubmitC88Report, getC88AssignmentsPage, getC88MappingsPage, getC88PlansPage, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { C88Assignment, C88CatalogueItemKind, C88IndicatorReport, C88Mapping, C88Workspace, MunicipalEmployeeDto } from '../../types';
+import type { C88Assignment, C88CatalogueItemKind, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88Workspace, MunicipalEmployeeDto } from '../../types';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { TargetPicker } from '../common/TargetPicker';
@@ -15,7 +15,7 @@ import { Badge, Button, Card, EmptyState } from '../ui';
 
 const field = 'mt-1 w-full rounded border border-secondary-300 bg-white px-2 py-1.5 text-sm dark:border-secondary-700 dark:bg-secondary-900';
 const today = () => new Date().toISOString().slice(0, 10);
-const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], indicators: [], complianceQuestions: [], plans: [], calendars: [], reports: [], workflows: [] };
+const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], indicators: [], complianceQuestions: [], calendars: [], reports: [], workflows: [] };
 function Section({ title, children }: { title: string; children: ReactNode }) { return <Card><h2 className="mb-3 text-lg font-semibold">{title}</h2>{children}</Card>; }
 
 export function C88Workspace() {
@@ -50,6 +50,12 @@ export function C88Workspace() {
   const [mappingTotalPages, setMappingTotalPages] = useState(0);
   const [mappingTotalCount, setMappingTotalCount] = useState(0);
   const [mappingSearch, setMappingSearch] = useState('');
+  const [planRows, setPlanRows] = useState<C88IndicatorPlan[]>([]);
+  const [planPage, setPlanPage] = useState(1);
+  const [planTotalPages, setPlanTotalPages] = useState(0);
+  const [planTotalCount, setPlanTotalCount] = useState(0);
+  const [planSearch, setPlanSearch] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState<C88IndicatorPlan | null>(null);
   const [edition, setEdition] = useState({ code: '', name: '', editionDate: today(), effectiveFrom: today() });
   const [catalogueItem, setCatalogueItem] = useState({ catalogueVersionPublicId: '', kind: 'Sector' as C88CatalogueItemKind, code: '', name: '', parentItemPublicId: '' });
   const [indicatorDraft, setIndicatorDraft] = useState({ catalogueVersionPublicId: '', code: '', name: '', definition: '', officialTechnicalIndicatorDescription: '', valueType: 'Decimal', calculationOperator: 'None', elementCode: '', elementName: '', municipalCategoryPublicId: '', readinessTierPublicId: '' });
@@ -61,6 +67,7 @@ export function C88Workspace() {
   const [responses, setResponses] = useState<Record<string, string>>({});
 
   const canReadModule = canRead('C88_INDICATOR') || canRead('C88_REPORT');
+  const canReadIndicators = canRead('C88_INDICATOR');
   const canReadReports = canRead('C88_REPORT');
   const effectiveConfigurationId = configurationId || data.configurations[0]?.publicId || '';
   const configuration = data.configurations.find(item => item.publicId === effectiveConfigurationId);
@@ -73,11 +80,14 @@ export function C88Workspace() {
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, reportResult, assignmentResult, mappingResult] = await Promise.all([
+    const [workspace, reportResult, planResult, assignmentResult, mappingResult] = await Promise.all([
       getC88Workspace(yearId || undefined),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
         : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }, message: undefined }),
+      canReadIndicators
+        ? getC88PlansPage({ page: planPage, pageSize: 10, search: planSearch, sortBy: 'indicatorCode', sortDirection: 'asc' }, { municipalityFinancialYearPublicId: yearId || undefined })
+        : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 }, message: undefined }),
       getC88AssignmentsPage({ page: assignmentPage, pageSize: 10, search: assignmentSearch, sortBy: 'effectiveFrom', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined }),
       getC88MappingsPage({ page: mappingPage, pageSize: 10, search: mappingSearch, sortBy: 'createdAt', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined }),
     ]);
@@ -86,11 +96,13 @@ export function C88Workspace() {
     if (!reportResult.success) pushToast('error', reportResult.message ?? 'Unable to load Circular 88 reports.');
     setReportTotalCount(reportResult.data?.totalCount ?? 0);
     setReportTotalPages(reportResult.data?.totalPages ?? 0);
+    setPlanRows(planResult.data?.items ?? []); setPlanTotalCount(planResult.data?.totalCount ?? 0); setPlanTotalPages(planResult.data?.totalPages ?? 0);
     setAssignmentRows(assignmentResult.data?.items ?? []); setAssignmentTotalCount(assignmentResult.data?.totalCount ?? 0); setAssignmentTotalPages(assignmentResult.data?.totalPages ?? 0);
     setMappingRows(mappingResult.data?.items ?? []); setMappingTotalCount(mappingResult.data?.totalCount ?? 0); setMappingTotalPages(mappingResult.data?.totalPages ?? 0);
     if (!assignmentResult.success) pushToast('error', assignmentResult.message ?? 'Unable to load C88 assignments.');
     if (!mappingResult.success) pushToast('error', mappingResult.message ?? 'Unable to load C88 mappings.');
-  }, [assignmentPage, assignmentSearch, canReadModule, canReadReports, mappingPage, mappingSearch, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
+    if (!planResult.success) pushToast('error', planResult.message ?? 'Unable to load C88 plans.');
+  }, [assignmentPage, assignmentSearch, canReadIndicators, canReadModule, canReadReports, mappingPage, mappingSearch, planPage, planSearch, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -112,6 +124,19 @@ export function C88Workspace() {
     setIndicatorId(value => data.indicators.some(item => item.publicId === value && item.catalogueVersionPublicId === configuration?.catalogueVersionPublicId) ? value : firstIndicator?.publicId ?? '');
     setCalendarId(value => data.calendars.some(item => item.publicId === value && item.configurationPublicId === effectiveConfigurationId) ? value : data.calendars.find(item => item.configurationPublicId === effectiveConfigurationId)?.publicId ?? '');
   }, [configuration?.catalogueVersionPublicId, data.calendars, data.indicators, effectiveConfigurationId]);
+  useEffect(() => {
+    if (!canReadIndicators || !effectiveConfigurationId || !indicatorId) {
+      setSelectedPlan(null);
+      setPlan({ baselineValue: '', mediumTermTarget: '', annualTarget: '', missingDataExplanation: '', estimatedAvailability: '' });
+      return;
+    }
+    void getC88PlansPage({ page: 1, pageSize: 1, sortBy: 'createdAt', sortDirection: 'desc' }, { configurationPublicId: effectiveConfigurationId, indicatorPublicId: indicatorId }).then(result => {
+      const current = result.data?.items[0] ?? null;
+      setSelectedPlan(current);
+      setPlan({ baselineValue: current?.baselineValue ?? '', mediumTermTarget: current?.mediumTermTarget ?? '', annualTarget: current?.annualTarget ?? '', missingDataExplanation: current?.missingDataExplanation ?? '', estimatedAvailability: current?.estimatedAvailability?.slice(0, 10) ?? '' });
+      if (!result.success) pushToast('error', result.message ?? 'Unable to load the selected C88 plan.');
+    });
+  }, [canReadIndicators, effectiveConfigurationId, indicatorId, pushToast]);
 
   const run = async (operation: () => Promise<{ success: boolean; message?: string }>, success: string) => {
     setBusy(true);
@@ -132,7 +157,7 @@ export function C88Workspace() {
 
       <Section title="Municipality and financial-year configuration">
         <div className="grid gap-3 md:grid-cols-4">
-          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setReportPage(1); }} />
+          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setReportPage(1); setPlanPage(1); }} />
           <label className="text-sm">Configuration<select className={field} value={effectiveConfigurationId} onChange={event => setConfigurationId(event.target.value)}><option value="">Not configured</option>{data.configurations.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} · {item.catalogueVersionCode}</option>)}</select></label>
           <label className="text-sm">Published edition<select className={field} value={configuration?.catalogueVersionPublicId ?? catalogueItem.catalogueVersionPublicId} onChange={event => setCatalogueItem(value => ({ ...value, catalogueVersionPublicId: event.target.value }))}><option value="">Select edition</option>{publishedVersions.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label>
           <div className="flex items-end"><Badge variant={configuration?.isEnabled ? 'success' : 'warning'}>{configuration?.isEnabled ? 'Enabled' : 'Disabled'}</Badge></div>
@@ -148,10 +173,11 @@ export function C88Workspace() {
       </Section>}
 
       <Section title="Planning, assignments, workflow and mappings">
-        <div className="grid gap-3 md:grid-cols-3"><label className="text-sm">Indicator<select className={field} value={indicatorId} onChange={e => setIndicatorId(e.target.value)}>{data.indicators.filter(item => item.catalogueVersionPublicId === configuration?.catalogueVersionPublicId).map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label><input className={field} placeholder="Baseline" value={plan.baselineValue} onChange={e => setPlan({ ...plan, baselineValue: e.target.value })} /><input className={field} placeholder="Medium-term target" value={plan.mediumTermTarget} onChange={e => setPlan({ ...plan, mediumTermTarget: e.target.value })} /><input className={field} placeholder="Annual target" value={plan.annualTarget} onChange={e => setPlan({ ...plan, annualTarget: e.target.value })} />{canUpdate('C88_INDICATOR') && <Button disabled={busy || !configurationId || !indicatorId || !reason} onClick={() => void run(() => saveC88IndicatorPlan({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...plan, estimatedAvailability: plan.estimatedAvailability || null, reason, rowVersion: data.plans.find(item => item.configurationPublicId === configurationId && item.indicatorPublicId === indicatorId)?.rowVersion ?? null }), 'C88 plan saved.')}>Save plan</Button>}</div>
+        <div className="grid gap-3 md:grid-cols-3"><label className="text-sm">Indicator<select className={field} value={indicatorId} onChange={e => setIndicatorId(e.target.value)}>{data.indicators.filter(item => item.catalogueVersionPublicId === configuration?.catalogueVersionPublicId).map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label><input className={field} placeholder="Baseline" value={plan.baselineValue} onChange={e => setPlan({ ...plan, baselineValue: e.target.value })} /><input className={field} placeholder="Medium-term target" value={plan.mediumTermTarget} onChange={e => setPlan({ ...plan, mediumTermTarget: e.target.value })} /><input className={field} placeholder="Annual target" value={plan.annualTarget} onChange={e => setPlan({ ...plan, annualTarget: e.target.value })} />{canUpdate('C88_INDICATOR') && <Button disabled={busy || !effectiveConfigurationId || !indicatorId || !reason} onClick={() => void run(() => saveC88IndicatorPlan({ configurationPublicId: effectiveConfigurationId, indicatorPublicId: indicatorId, ...plan, estimatedAvailability: plan.estimatedAvailability || null, reason, rowVersion: selectedPlan?.rowVersion ?? null }), 'C88 plan saved.')}>Save plan</Button>}</div>
         {canExecute('C88_INDICATOR.MANAGE_ASSIGNMENTS') && <div className="mt-3 space-y-2"><div className="grid gap-2 md:grid-cols-4"><input aria-label="Search C88 assignment employees" className={field} placeholder="Search employees" value={employeeSearch} onChange={e => { setEmployeeSearch(e.target.value); setEmployeePage(1); }} /><select aria-label="C88 assignment employee" className={field} value={assignment.employeePublicId} onChange={e => setAssignment({ ...assignment, employeePublicId: e.target.value })}><option value="">Employee</option>{employees.map(item => <option key={item.publicId} value={item.publicId}>{item.firstName} {item.lastName}</option>)}</select><select aria-label="C88 assignment role" className={field} value={assignment.role} onChange={e => setAssignment({ ...assignment, role: e.target.value })}>{['PrimaryCapturer','Contributor','ReviewerVerifier','FinalSubmitter'].map(role => <option key={role}>{role}</option>)}</select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Assignment({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...assignment, effectiveFrom: new Date().toISOString(), effectiveTo: null, isActive: true, reason, rowVersion: null }), 'Assignment created.')}>Assign</Button></div>{employeeTotalPages > 1 && <div className="flex items-center justify-end gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div>}</div>}
         {canExecute('C88_INDICATOR.MANAGE_WORKFLOW') && <div className="mt-3"><Button disabled={busy || !configurationId || !reason} onClick={() => { const previous = data.workflows.find(item => item.configurationPublicId === configurationId && item.isCurrent); void run(() => createC88Workflow({ configurationPublicId: configurationId, effectiveFrom: new Date().toISOString(), effectiveTo: null, stages: [{ sequence: 1, kind: 'Capturer', name: 'Capturer', requiredRole: 'PrimaryCapturer', isActive: true }, { sequence: 2, kind: 'ReviewerVerifier', name: 'Reviewer / Verifier', requiredRole: 'ReviewerVerifier', isActive: true }, { sequence: 3, kind: 'FinalSubmission', name: 'Final Submission', requiredRole: 'FinalSubmitter', isActive: true }], reason, previousWorkflowPublicId: previous?.publicId ?? null, previousWorkflowRowVersion: previous?.rowVersion ?? null }), 'Independent C88 workflow version created.'); }}>Create workflow version</Button></div>}
         {canExecute('C88_INDICATOR.MANAGE_MAPPING') && <div className="mt-3 grid gap-2 md:grid-cols-4"><TargetPicker kind="opms" label="OPMS KPI" value={mapping.opmsTargetPublicId} valueField="publicId" onChange={value => setMapping({ ...mapping, opmsTargetPublicId: value })} /><select aria-label="Mapping type" className={field} value={mapping.mappingType} onChange={e => setMapping({ ...mapping, mappingType: e.target.value })}><option>Direct</option><option>Contributing</option></select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Mapping({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...mapping, reason, isActive: true, rowVersion: null }), 'Alignment-only mapping created.')}>Map without copying</Button></div>}
+        {canReadIndicators && <div className="mt-4"><div className="flex items-end justify-between gap-2"><label className="text-sm">Search plans<input aria-label="Search C88 plans" className={field} value={planSearch} onChange={event => { setPlanSearch(event.target.value); setPlanPage(1); }} /></label><span className="text-xs text-secondary-500">{planTotalCount} plans</span></div><div className="mt-2 grid gap-2 md:grid-cols-2">{planRows.map(item => <button type="button" key={item.publicId} onClick={() => { setConfigurationId(item.configurationPublicId); setIndicatorId(item.indicatorPublicId); }} className="rounded border p-2 text-left text-xs"><strong>{item.indicatorCode}</strong><br /><span className="text-secondary-500">Baseline: {item.baselineValue ?? 'Not set'} · Annual: {item.annualTarget ?? 'Not set'}</span></button>)}</div>{planTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={planPage <= 1} onClick={() => setPlanPage(value => value - 1)}>Previous plans</Button><span className="self-center text-xs">{planPage}/{planTotalPages}</span><Button size="sm" variant="outline" disabled={planPage >= planTotalPages} onClick={() => setPlanPage(value => value + 1)}>Next plans</Button></div>}</div>}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div><div className="flex items-end justify-between gap-2"><label className="text-sm">Search assignments<input aria-label="Search C88 assignments" className={field} value={assignmentSearch} onChange={event => { setAssignmentSearch(event.target.value); setAssignmentPage(1); }} /></label><span className="text-xs text-secondary-500">{assignmentTotalCount} assignments</span></div><div className="mt-2 space-y-1">{assignmentRows.map(item => <div key={item.publicId} className="rounded border p-2 text-xs"><strong>{item.employeeName}</strong> · {item.role}<br /><span className="text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} · {item.isActive ? 'Active' : 'Inactive'}</span></div>)}</div>{assignmentTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={assignmentPage <= 1} onClick={() => setAssignmentPage(value => value - 1)}>Previous</Button><span className="self-center text-xs">{assignmentPage}/{assignmentTotalPages}</span><Button size="sm" variant="outline" disabled={assignmentPage >= assignmentTotalPages} onClick={() => setAssignmentPage(value => value + 1)}>Next</Button></div>}</div>
           <div><div className="flex items-end justify-between gap-2"><label className="text-sm">Search mappings<input aria-label="Search C88 mappings" className={field} value={mappingSearch} onChange={event => { setMappingSearch(event.target.value); setMappingPage(1); }} /></label><span className="text-xs text-secondary-500">{mappingTotalCount} mappings</span></div><div className="mt-2 space-y-1">{mappingRows.map(item => <div key={item.publicId} className="rounded border p-2 text-xs"><strong>{item.opmsIndicatorNumber}</strong> · {item.mappingType}<br /><span className="text-secondary-500">{item.reason} · {item.isActive ? 'Active' : 'Inactive'}</span></div>)}</div>{mappingTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={mappingPage <= 1} onClick={() => setMappingPage(value => value - 1)}>Previous</Button><span className="self-center text-xs">{mappingPage}/{mappingTotalPages}</span><Button size="sm" variant="outline" disabled={mappingPage >= mappingTotalPages} onClick={() => setMappingPage(value => value + 1)}>Next</Button></div>}</div>

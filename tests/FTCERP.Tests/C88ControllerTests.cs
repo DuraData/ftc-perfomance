@@ -72,6 +72,9 @@ public class C88ControllerTests
         completed.CurrentStageSequence.Should().Be(3);
         var workspace = Payload(await controller.GetWorkspace(seed.Year.PublicId));
         workspace.Reports.Should().BeEmpty("report history is loaded only through the bounded page contract");
+        var planPage = Payload(await controller.GetPlansPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "indicatorCode", SortDirection = "asc" }, seed.Year.PublicId));
+        planPage.TotalCount.Should().Be(1);
+        planPage.Items.Should().ContainSingle().Which.PublicId.Should().Be(planId);
         var page = Payload(await controller.GetReportsPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "indicatorCode", SortDirection = "asc" }, seed.Year.PublicId));
         page.TotalCount.Should().Be(1);
         page.Items.Should().ContainSingle().Which.IndicatorCode.Should().Be("C88-001");
@@ -140,6 +143,8 @@ public class C88ControllerTests
         var seed = await SeedAsync(context);
         var manager = Controller(context, seed.User, seed.Municipality.Id);
         var module = await CreateCatalogueAsync(context, manager, seed);
+        Payload(await manager.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            "10", "20", "30", null, null, "Create scoped plan", null))).Should().NotBeEmpty();
         var reader = Controller(context, seed.User, seed.Municipality.Id,
             permissionRule: permission => permission is "C88_INDICATOR.READ" or "C88_REPORT.READ");
 
@@ -147,6 +152,7 @@ public class C88ControllerTests
         beforeAssignment.Indicators.Should().BeEmpty();
         Payload(await reader.GetAssignmentsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
         Payload(await reader.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
+        Payload(await reader.GetPlansPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
         var denied = await reader.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
             seed.Target.PublicId, C88MappingType.Direct, "Must be denied", true, null));
         denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
@@ -160,6 +166,8 @@ public class C88ControllerTests
         Payload(await reader.GetAssignmentsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
             .Which.IndicatorPublicId.Should().Be(module.Indicator.PublicId);
         Payload(await reader.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
+            .Which.IndicatorPublicId.Should().Be(module.Indicator.PublicId);
+        Payload(await reader.GetPlansPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
             .Which.IndicatorPublicId.Should().Be(module.Indicator.PublicId);
     }
 
@@ -211,6 +219,38 @@ public class C88ControllerTests
         mappings.Items.Select(item => item.OpmsIndicatorNumber).Should().Equal("OPMS-03", "OPMS-04", "OPMS-05");
         (await controller.GetAssignmentsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetMappingsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task Plan_page_filters_before_count_and_pages_stably()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var createdAt = new DateTime(2035, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            var indicator = new C88Indicator
+            {
+                MunicipalityId = seed.Municipality.Id, C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
+                Code = $"PLAN-{index:00}", Name = $"Paged plan {index:00}", Definition = "Definition",
+                OfficialTechnicalIndicatorDescription = "Official TID", ValueType = C88ValueType.Decimal,
+                CalculationOperator = C88ControlledCalculationOperator.None, IsActive = true
+            };
+            context.AddRange(indicator, new C88IndicatorPlan
+            {
+                MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration,
+                Indicator = indicator, BaselineValue = $"baseline {index:00}", AnnualTarget = $"annual {index:00}",
+                CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
+            });
+        }
+        await context.SaveChangesAsync();
+
+        var page = Payload(await controller.GetPlansPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "baseline", SortBy = "indicatorCode", SortDirection = "asc" }, seed.Year.PublicId));
+        page.TotalCount.Should().Be(11);
+        page.Items.Select(item => item.IndicatorCode).Should().Equal("PLAN-03", "PLAN-04", "PLAN-05");
+        (await controller.GetPlansPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)

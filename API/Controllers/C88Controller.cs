@@ -70,14 +70,13 @@ public sealed class C88Controller : ControllerBase
         var items = await context.C88CatalogueItems.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ParentItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ToArrayAsync();
         var indicators = await context.C88Indicators.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.SectorItem).Include(item => item.OutcomeItem).Include(item => item.IndicatorTypeItem).Include(item => item.DataElements).Include(item => item.Applicability).ThenInclude(item => item.MunicipalCategoryItem).Include(item => item.Applicability).ThenInclude(item => item.ReadinessTierItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId) && (manager || scopedIndicatorIds.Contains(item.Id))).OrderBy(item => item.Code).ToArrayAsync();
         var questions = await context.C88ComplianceQuestions.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ReportTypeItem).Include(item => item.ResponseTypeItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Sequence).ToArrayAsync();
-        var plans = await context.C88IndicatorPlans.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ToArrayAsync();
         var calendars = await context.C88ReportingCalendars.AsNoTracking().Include(item => item.Configuration).Include(item => item.ReportTypeItem).Include(item => item.ReportingPeriod).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.OpensAt).ToArrayAsync();
         var workflows = await context.C88WorkflowDefinitions.AsNoTracking().Include(item => item.Configuration).Include(item => item.Stages).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.VersionNumber).ToArrayAsync();
 
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
             configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(),
-            indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), plans.Select(ToResponse).ToArray(),
-            calendars.Select(ToResponse).ToArray(), [], workflows.Select(ToResponse).ToArray())));
+            indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), calendars.Select(ToResponse).ToArray(),
+            [], workflows.Select(ToResponse).ToArray())));
     }
 
     [HttpGet("reports/page")]
@@ -132,6 +131,42 @@ public sealed class C88Controller : ControllerBase
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };
+
+    [HttpGet("plans/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88IndicatorPlanResponse>>>> GetPlansPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] Guid? configurationPublicId = null, [FromQuery] Guid? indicatorPublicId = null)
+    {
+        var visibility = await IndicatorVisibility<C88IndicatorPlanResponse>();
+        if (visibility.Error != null) return visibility.Error;
+        if (request.NormalizedSortBy is not ("createdat" or "indicatorcode" or "baseline" or "annualtarget"))
+            return BadRequest(Fail<PagedResponse<C88IndicatorPlanResponse>>("SortBy must be createdAt, indicatorCode, baseline, or annualTarget."));
+        var query = context.C88IndicatorPlans.AsNoTracking().AsQueryable();
+        if (!visibility.Manager) query = query.Where(item => visibility.IndicatorIds.Contains(item.C88IndicatorId));
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.Configuration.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (configurationPublicId.HasValue) query = query.Where(item => item.Configuration.PublicId == configurationPublicId.Value);
+        if (indicatorPublicId.HasValue) query = query.Where(item => item.Indicator.PublicId == indicatorPublicId.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Indicator.Code.Contains(request.NormalizedSearch)
+            || item.Indicator.Name.Contains(request.NormalizedSearch)
+            || item.BaselineValue != null && item.BaselineValue.Contains(request.NormalizedSearch)
+            || item.AnnualTarget != null && item.AnnualTarget.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("indicatorcode", false) => query.OrderBy(item => item.Indicator.Code).ThenBy(item => item.Id),
+            ("indicatorcode", true) => query.OrderByDescending(item => item.Indicator.Code).ThenByDescending(item => item.Id),
+            ("baseline", false) => query.OrderBy(item => item.BaselineValue).ThenBy(item => item.Id),
+            ("baseline", true) => query.OrderByDescending(item => item.BaselineValue).ThenByDescending(item => item.Id),
+            ("annualtarget", false) => query.OrderBy(item => item.AnnualTarget).ThenBy(item => item.Id),
+            ("annualtarget", true) => query.OrderByDescending(item => item.AnnualTarget).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.Configuration).Include(item => item.Indicator)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88IndicatorPlanResponse>>(true,
+            PagedResponse<C88IndicatorPlanResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
 
     [HttpGet("assignments/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<C88AssignmentResponse>>>> GetAssignmentsPage(

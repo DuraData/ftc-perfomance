@@ -132,6 +132,7 @@ import type {
   SaveStrategicRiskPayload,
   C88Workspace,
   C88IndicatorReport,
+  C88IndicatorPlan,
   C88Assignment,
   C88Mapping,
   EnterpriseSignInOptions,
@@ -2809,6 +2810,15 @@ export async function getC88ReportsPage(query: RegisterPageQuery = {}, municipal
     ? `${pageQuery ? '&' : '?'}municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}`
     : '';
   return get<PagedResult<C88IndicatorReport>>(`/v1/c88/reports/page${pageQuery}${yearQuery}`);
+}
+
+export async function getC88PlansPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; configurationPublicId?: string; indicatorPublicId?: string } = {}): Promise<ApiResponse<PagedResult<C88IndicatorPlan>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.configurationPublicId) parameters.set('configurationPublicId', filters.configurationPublicId);
+  if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
+  return get<PagedResult<C88IndicatorPlan>>(`/v1/c88/plans/page?${parameters.toString()}`);
 }
 
 export async function getC88AssignmentsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; indicatorPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Assignment>>> {
