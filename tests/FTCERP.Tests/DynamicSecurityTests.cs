@@ -154,6 +154,8 @@ public class DynamicSecurityTests
         payload.Items.Should().ContainSingle();
         payload.TotalPages.Should().Be(2);
         payload.Items.Should().NotContain(item => item.Id == foreign.Id || item.Id == expired.Id);
+        controller.GetUsers().Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]

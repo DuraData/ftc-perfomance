@@ -1778,10 +1778,6 @@ export async function downloadOfficialReport(publicId: string, fileName: string)
   return { success: true, data: true };
 }
 
-export async function getUsers(): Promise<ApiResponse<AdminUserDetail[]>> {
-  return get<AdminUserDetail[]>('/users');
-}
-
 export async function getUsersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<AdminUserDetail>>> {
   return get<PagedResult<AdminUserDetail>>(`/users/page${registerPageQuery(query)}`);
 }
@@ -1920,10 +1916,6 @@ export async function createSecurityRole(payload: { roleCode: string; name: stri
 
 export async function updateSecurityRole(role: SecurityRoleSummary, payload: { name: string; description?: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
   return put<SecurityRoleSummary>(`/v1/security/roles/${role.id}`, { ...payload, rowVersion: role.rowVersion });
-}
-
-export async function getSecurityUsers(): Promise<ApiResponse<SecurityUserSummary[]>> {
-  return get<SecurityUserSummary[]>('/v1/security/users');
 }
 
 export async function getSecurityUsersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SecurityUserSummary>>> {

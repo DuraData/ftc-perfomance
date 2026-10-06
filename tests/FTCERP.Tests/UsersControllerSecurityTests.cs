@@ -73,14 +73,15 @@ public sealed class UsersControllerSecurityTests
             [otherTenant.Id] = otherTenant
         }, access.Object);
 
-        var list = await controller.GetUsers();
-        var envelope = Assert.IsType<ApiResponse<UserDetailResponse[]>>(Assert.IsType<OkObjectResult>(list.Result).Value);
-        Assert.Equal(2, envelope.Data!.Length);
-        Assert.All(envelope.Data, item =>
+        var list = await controller.GetUsersPage(new PagedQueryRequest { PageSize = 100, SortBy = "name" });
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<UserDetailResponse>>>(Assert.IsType<OkObjectResult>(list.Result).Value);
+        Assert.Equal(2, envelope.Data!.TotalCount);
+        Assert.All(envelope.Data.Items, item =>
         {
             Assert.Null(item.User.Email);
             Assert.Null(item.User.PhoneNumber);
         });
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUsers().Result).StatusCode);
 
         var crossTenant = await controller.GetUser(otherTenant.Id);
         Assert.IsType<NotFoundObjectResult>(crossTenant.Result);

@@ -33,18 +33,9 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<UserDetailResponse[]>>> GetUsers()
-    {
-        var actor = await GetCurrentActorAsync();
-        if (actor == null) return Unauthorized(Fail<UserDetailResponse[]>("User not found"));
-        if (!await IsAllowedAsync(actor, "USER.READ")) return Forbid();
-        var canReadEmail = await IsAllowedAsync(actor, "USER.Email.READ");
-        var canReadPhone = await IsAllowedAsync(actor, "USER.PhoneNumber.READ");
-        var users = await TenantUsers().AsNoTracking().OrderBy(u => u.Email).ThenBy(u => u.Id).Take(100).ToArrayAsync();
-        var result = await ToUserDetailsAsync(users, canReadEmail, canReadPhone);
-
-        return Ok(new ApiResponse<UserDetailResponse[]>(true, result));
-    }
+    public ActionResult<ApiResponse<UserDetailResponse[]>> GetUsers() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<UserDetailResponse[]>(
+            "This fixed-limit route is retired. Use /api/users/page."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<UserDetailResponse>>>> GetUsersPage([FromQuery] PagedQueryRequest request)

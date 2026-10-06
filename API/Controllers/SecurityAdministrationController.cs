@@ -107,22 +107,9 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("users")]
     [Authorize(Policy = "Permission:SECURITY.VIEW_EFFECTIVE")]
-    public async Task<ActionResult<ApiResponse<SecurityUserDto[]>>> GetUsers()
-    {
-        var actor = await GetCurrentUserAsync();
-        if (actor == null) return Unauthorized(new ApiResponse<SecurityUserDto[]>(false, null, "User not found"));
-        var access = await _accessControl.GetEffectiveAccessAsync(actor);
-        var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
-        var municipalities = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
-        var query = _context.Users.AsNoTracking().Where(item => item.IsActive);
-        var now = DateTime.UtcNow;
-        if (!system)
-            query = query.Where(user => _context.SecurityUserRoleAssignments.Any(link => link.UserId == user.Id && link.IsActive && !link.RevokedAt.HasValue
-                && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now)
-                && link.MunicipalityId.HasValue && municipalities.Contains(link.MunicipalityId.Value)));
-        var users = await query.OrderBy(item => item.FirstName).ThenBy(item => item.LastName).ThenBy(item => item.Id).Take(100).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityUserDto[]>(true, users.Select(item => new SecurityUserDto(item.Id, item.FullName, item.Email ?? item.UserName ?? item.Id)).ToArray()));
-    }
+    public ActionResult<ApiResponse<SecurityUserDto[]>> GetUsers() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityUserDto[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/security/users/page."));
 
     [HttpGet("users/page")]
     [Authorize(Policy = "Permission:SECURITY.VIEW_EFFECTIVE")]

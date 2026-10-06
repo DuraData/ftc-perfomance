@@ -119,13 +119,10 @@ public sealed class TenantMastersControllerTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
 
-        var readResult = await controller.GetEmployees();
-        var readEnvelope = Assert.IsType<ApiResponse<EmployeeDto[]>>(Assert.IsType<OkObjectResult>(readResult.Result).Value);
-        Assert.Null(Assert.Single(readEnvelope.Data!).EmailAddress);
-
         var pageResult = await controller.GetEmployeesPage(new PagedQueryRequest { Page = 1, PageSize = 10, SortBy = "name", SortDirection = "asc" });
         var pageEnvelope = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value);
         Assert.Null(Assert.Single(pageEnvelope.Data!.Items).EmailAddress);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetEmployees().Result).StatusCode);
         var hiddenEmailSearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "private@example.test", SortBy = "name", SortDirection = "asc" });
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenEmailSearch.Result).Value).Data!.TotalCount);
         Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "email" })).Result);

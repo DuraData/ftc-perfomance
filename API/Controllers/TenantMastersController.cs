@@ -275,15 +275,9 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
 
     [HttpGet("employees")]
     [Authorize(Policy = "Permission:EMPLOYEE.READ")]
-    public async Task<ActionResult<ApiResponse<EmployeeDto[]>>> GetEmployees()
-    {
-        if (!HasTenant()) return TenantRequired<EmployeeDto[]>();
-        var canReadEmail = await CanAccessEmployeeEmailAsync(SecurityOperation.Read);
-        var rows = await context.MunicipalEmployees.AsNoTracking().OrderBy(x => x.LastName).ThenBy(x => x.FirstName)
-            .ThenBy(x => x.Id).Take(100)
-            .Select(x => new EmployeeDto(x.PublicId, x.EmployeeNumber, x.FirstName, x.LastName, canReadEmail ? x.EmailAddress : null, x.IdentityUserId, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
-        return Ok(new ApiResponse<EmployeeDto[]>(true, rows));
-    }
+    public ActionResult<ApiResponse<EmployeeDto[]>> GetEmployees() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<EmployeeDto[]>(
+            "This fixed-limit route is retired. Use /api/v1/masters/employees/page."));
 
     [HttpGet("employees/page")]
     [Authorize(Policy = "Permission:EMPLOYEE.READ")]
