@@ -70,6 +70,8 @@ public class C88ControllerTests
         completed.State.Should().Be(C88ReportState.FinalSubmitted);
         completed.WorkflowActions.Select(item => item.Action).Should().Equal(C88WorkflowActionKind.Created, C88WorkflowActionKind.Submitted, C88WorkflowActionKind.Verified, C88WorkflowActionKind.FinalSubmitted);
         completed.CurrentStageSequence.Should().Be(3);
+        var workspace = Payload(await controller.GetWorkspace(seed.Year.PublicId));
+        workspace.Reports.Should().BeEmpty("report history is loaded only through the bounded page contract");
         var page = Payload(await controller.GetReportsPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "indicatorCode", SortDirection = "asc" }, seed.Year.PublicId));
         page.TotalCount.Should().Be(1);
         page.Items.Should().ContainSingle().Which.IndicatorCode.Should().Be("C88-001");

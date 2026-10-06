@@ -33,7 +33,7 @@ public sealed class C88Controller : ControllerBase
     }
 
     [HttpGet("workspace")]
-    public async Task<ActionResult<ApiResponse<C88WorkspaceResponse>>> GetWorkspace([FromQuery] Guid? municipalityFinancialYearPublicId = null, [FromQuery] bool includeReports = true)
+    public async Task<ActionResult<ApiResponse<C88WorkspaceResponse>>> GetWorkspace([FromQuery] Guid? municipalityFinancialYearPublicId = null)
     {
         var user = await CurrentUserAsync();
         if (user == null) return Unauthorized(Fail<C88WorkspaceResponse>("User not found."));
@@ -72,9 +72,6 @@ public sealed class C88Controller : ControllerBase
         var questions = await context.C88ComplianceQuestions.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ReportTypeItem).Include(item => item.ResponseTypeItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Sequence).ToArrayAsync();
         var plans = await context.C88IndicatorPlans.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ToArrayAsync();
         var calendars = await context.C88ReportingCalendars.AsNoTracking().Include(item => item.Configuration).Include(item => item.ReportTypeItem).Include(item => item.ReportingPeriod).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.OpensAt).ToArrayAsync();
-        var reports = includeReports && reportRead.Allowed
-            ? await ReportQuery().AsNoTracking().Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderByDescending(item => item.CreatedAt).Take(500).ToArrayAsync()
-            : [];
         var assignments = await context.C88Assignments.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.MunicipalEmployee).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ThenBy(item => item.Role).ToArrayAsync();
         var workflows = await context.C88WorkflowDefinitions.AsNoTracking().Include(item => item.Configuration).Include(item => item.Stages).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.VersionNumber).ToArrayAsync();
         var mappings = await context.C88OpmsMappings.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.OpmsTarget).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ToArrayAsync();
@@ -82,7 +79,7 @@ public sealed class C88Controller : ControllerBase
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
             configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(),
             indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), plans.Select(ToResponse).ToArray(),
-            calendars.Select(ToResponse).ToArray(), reports.Select(ToResponse).ToArray(), assignments.Select(ToResponse).ToArray(),
+            calendars.Select(ToResponse).ToArray(), [], assignments.Select(ToResponse).ToArray(),
             workflows.Select(ToResponse).ToArray(), mappings.Select(ToResponse).ToArray())));
     }
 

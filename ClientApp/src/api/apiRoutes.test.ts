@@ -537,14 +537,14 @@ describe('versioned API routes', () => {
     await getIpmsTargetsPage({ page: 1, pageSize: 100, sortBy: 'createdAt', sortDirection: 'desc' });
     await getPendingNotificationDeliveries({ page: 3, pageSize: 10, search: ' timeout ', sortBy: 'attemptCount', sortDirection: 'desc' });
     await getNotifications({ page: 1, pageSize: 8, sortBy: 'createdAt', sortDirection: 'desc' });
-    await getC88Workspace('year-1', false);
+    await getC88Workspace('year-1');
     await getC88ReportsPage({ page: 2, pageSize: 25, search: ' water ', sortBy: 'indicatorCode', sortDirection: 'asc' }, 'year-1');
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/page?page=2&pageSize=25&search=water&sortBy=targetName&sortDirection=asc&departmentPublicId=department-1&lifecycle=revised'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-targets/page?page=1&pageSize=100&sortBy=createdAt&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/notification-operations/pending/page?page=3&pageSize=10&search=timeout&sortBy=attemptCount&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/notifications/page?page=1&pageSize=8&sortBy=createdAt&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/c88/workspace?municipalityFinancialYearPublicId=year-1&includeReports=false'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/c88/workspace?municipalityFinancialYearPublicId=year-1'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining('/v1/c88/reports/page?page=2&pageSize=25&search=water&sortBy=indicatorCode&sortDirection=asc&municipalityFinancialYearPublicId=year-1'), expect.objectContaining({ credentials: 'include' }));
   });
 

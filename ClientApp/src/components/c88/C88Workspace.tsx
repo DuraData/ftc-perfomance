@@ -64,7 +64,7 @@ export function C88Workspace() {
   const load = useCallback(async () => {
     if (!canReadModule) return;
     const [workspace, reportResult] = await Promise.all([
-      getC88Workspace(yearId || undefined, false),
+      getC88Workspace(yearId || undefined),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
         : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }, message: undefined }),

@@ -2717,10 +2717,9 @@ export function unlinkStrategicRisk(publicId: string, payload: { reason: string;
   return post<StrategicRiskKpiLinkDto>(`/v1/strategic-risks/links/${encodeURIComponent(publicId)}/unlink`, payload);
 }
 
-export async function getC88Workspace(municipalityFinancialYearPublicId?: string, includeReports = true): Promise<ApiResponse<C88Workspace>> {
+export async function getC88Workspace(municipalityFinancialYearPublicId?: string): Promise<ApiResponse<C88Workspace>> {
   const parameters = new URLSearchParams();
   if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
-  if (!includeReports) parameters.set('includeReports', 'false');
   const query = parameters.size ? `?${parameters.toString()}` : '';
   return get<C88Workspace>(`/v1/c88/workspace${query}`);
 }

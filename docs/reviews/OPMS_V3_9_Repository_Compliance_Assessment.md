@@ -1156,7 +1156,7 @@ The top bar now requests only the newest eight notifications instead of loading 
 
 **Requirement:** R-45 and R-51 / bounded, assignment-scoped access to the governed Circular 88 report register.
 
-**Implementation:** `/api/v1/c88/reports/page` now requires `C88_REPORT.READ`, resolves the same effective-dated indicator assignments used by the Circular 88 workspace, and applies assignment and tenant scope before search, count and paging. It returns current report versions only, can restrict the query to a municipality financial year, searches indicator code/name, accepts only `createdAt`, `indicatorCode`, `state` or `versionNumber` sort keys, and uses PublicId as the deterministic tie-breaker. Detailed data-element, compliance-response and workflow-action children are materialized only after the page is selected through a split query. The compatibility workspace can still include its bounded report array for existing consumers, but it now omits that query entirely when `includeReports=false` and never includes report rows without the report-read decision.
+**Implementation:** `/api/v1/c88/reports/page` now requires `C88_REPORT.READ`, resolves the same effective-dated indicator assignments used by the Circular 88 workspace, and applies assignment and tenant scope before search, count and paging. It returns current report versions only, can restrict the query to a municipality financial year, searches indicator code/name, accepts only `createdAt`, `indicatorCode`, `state` or `versionNumber` sort keys, and uses PublicId as the deterministic tie-breaker. Detailed data-element, compliance-response and workflow-action children are materialized only after the page is selected through a split query. Section 11.136 subsequently removes the compatibility workspace's embedded report array, making this bounded contract the only production report-collection path.
 
 The Circular 88 SPA uses the metadata workspace without reports and loads the governed report register independently in 25-row pages. Debounced search, explicit allow-listed sorting, financial-year resets, authoritative totals and bounded previous/next controls prevent the browser from loading the former fixed 500-row report collection. Catalogue/configuration metadata and the OPMS mapping selector remain compatibility collections and are not represented as paged by this change.
 
@@ -2036,6 +2036,16 @@ Status: **CLOSED AT REPOSITORY LEVEL FOR USER NOTIFICATIONS AND NOTIFICATION DEL
 
 R-42 now records thirty-one retired collection reads. R-45 remains **PARTIALLY COMPLIANT** pending the audited cardinality/consumer disposition of remaining business detail collections and representative native SQL Server query-plan/load acceptance.
 
+### 11.136 Circular 88 workspace/report separation
+
+Status: **CLOSED AT REPOSITORY LEVEL FOR THE EMBEDDED C88 REPORT SNAPSHOT — remaining audited business detail collections and native SQL Server query-plan acceptance remain**
+
+- Removed the alternate C88 workspace path that could materialize up to 500 complete report graphs. The workspace contract now returns configuration, catalogue, indicator, planning, calendar, assignment, workflow and mapping data only; its report collection is deliberately empty.
+- The production C88 workspace loads reports exclusively through `/api/v1/c88/reports/page`, with authorization/assignment scope applied before count, search, stable allow-listed sorting, 100-row maximum, authoritative totals and database paging. The client API no longer accepts an `includeReports` escape hatch.
+- Focused verification passes **6/6 backend** and **44/44 frontend** tests, including evidence that the workspace snapshot cannot return report history while the page contract returns the authorized report. The complete suites pass **429 backend tests** with one explicitly environment-gated SQL Server skip and **224/224 frontend tests across 60 files**. TypeScript, ESLint, accessibility, Release build, `git diff --check` and the **73-chunk** bundle budget pass; the largest JavaScript chunk remains **400.0 KiB**.
+
+R-42 remains at thirty-one retired collection reads because this cutover removes an embedded collection rather than retiring another route. R-45 remains **PARTIALLY COMPLIANT** pending the audited cardinality/consumer disposition of remaining business detail collections and representative native SQL Server query-plan/load acceptance.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -2164,6 +2174,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Added a searchable, allow-listed permission-catalogue page, moved user-override administration and access simulation to cross-page-safe selectors, and retired the unbounded legacy permission read with HTTP 410.
 - Retired fixed-limit login/audit collection routes, removed the obsolete client array read and paged OPMS/IPMS target audit histories with authoritative totals and tenant-scoped relational evidence.
 - Retired the fixed-limit user-notification and pending-delivery routes after confirming the top bar and operations workspace use their bounded searchable page contracts.
+- Removed the embedded 500-report Circular 88 workspace snapshot so production report retrieval has exactly one authorization-scoped bounded page contract.
 - Replaced post-materialization official-generation scope filtering with immutable normalized scope grants and a guarded historic backfill, then added scope-before-count database paging and an independent searchable SPA generation register.
 - Added a real ASP.NET Core HTTP tenant-isolation matrix covering list, fetch, edit, approve, POE upload/download, performance reporting and audit, plus forged municipality-header rejection, using dynamically persisted permissions and two relational tenants.
 - Corrected clean-runner CI restore/install reproducibility, synchronized the frontend lockfile, upgraded the frontend quality toolchain to supported releases and reduced the audited dependency result to zero known vulnerabilities.
