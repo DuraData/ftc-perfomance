@@ -3,7 +3,7 @@ import { approveStrategicDocument, changePassword, closeEmployeeAssignment, comm
 import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
 import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
 import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
-import { getEmployeeAssignmentsPage } from './api';
+import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -295,6 +295,21 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/v1/performance-period-targets/target-value-public-id/revisions/page?page=2&pageSize=10&search=council&sortBy=recordedAt&sortDirection=desc'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('loads Internal Audit assessment history through the encoded bounded route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 10, totalCount: 0, totalPages: 0 } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getInternalAuditAssessmentsPage(1, 'submission/id', { page: 2, pageSize: 10, search: ' evidence ', sortBy: 'assessedAt', sortDirection: 'desc' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/internal-audit/submissions/1/submission%2Fid/assessments/page?page=2&pageSize=10&search=evidence&sortBy=assessedAt&sortDirection=desc'),
       expect.objectContaining({ credentials: 'include' }),
     );
   });

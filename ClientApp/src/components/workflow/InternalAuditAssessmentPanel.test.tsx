@@ -3,6 +3,7 @@ import { InternalAuditAssessmentPanel } from './InternalAuditAssessmentPanel';
 
 const api = vi.hoisted(() => ({
   getInternalAuditSubmission: vi.fn(),
+  getInternalAuditAssessmentsPage: vi.fn(),
   saveInternalAuditAssessment: vi.fn(),
 }));
 
@@ -15,9 +16,10 @@ describe('InternalAuditAssessmentPanel', () => {
       success: true,
       data: {
         configuration: { publicId: 'config-1', municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', model: 2, version: 1, isCurrent: true, effectiveFrom: '2026-07-01T00:00:00Z', reason: 'Approved model', rowVersion: 'AQ==' },
-        assessments: [],
+        latestAssessment: null,
       },
     });
+    api.getInternalAuditAssessmentsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
     api.saveInternalAuditAssessment.mockResolvedValue({ success: true, data: { publicId: 'assessment-1' } });
   });
 
@@ -44,13 +46,15 @@ describe('InternalAuditAssessmentPanel', () => {
       success: true,
       data: {
         configuration: { publicId: 'config-1', municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', model: 2, version: 1, isCurrent: true, effectiveFrom: '2026-07-01T00:00:00Z', reason: 'Approved model', rowVersion: 'AQ==' },
-        assessments: [{ publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserId: 'auditor-1', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' }],
+        latestAssessment: { publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserId: 'auditor-1', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' },
       },
     });
+    api.getInternalAuditAssessmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserId: 'auditor-1', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     render(<InternalAuditAssessmentPanel submissionId="submission-1" canAssess={false} />);
 
     expect(await screen.findByText('Evidence is incomplete.')).toBeInTheDocument();
     expect(screen.getByText(/IA RFI due/)).toBeInTheDocument();
+    expect(api.getInternalAuditAssessmentsPage).toHaveBeenCalledWith(1, 'submission-1', expect.objectContaining({ page: 1, pageSize: 10, sortBy: 'assessedAt' }));
     expect(screen.queryByRole('button', { name: /assessment/i })).not.toBeInTheDocument();
   });
 });

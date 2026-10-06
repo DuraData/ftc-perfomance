@@ -170,6 +170,61 @@ public sealed class InternalAuditAssessmentTests
         controller.Configurations().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
+    [Fact]
+    public async Task Assessment_history_filters_before_count_pages_stably_and_bootstrap_returns_only_latest()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, InternalAuditAssessmentModel.SatisfactoryNotSatisfactory);
+        var instance = await context.SubmissionWorkflowInstances.SingleAsync();
+        var configuration = await context.InternalAuditAssessmentConfigurations.SingleAsync();
+        InternalAuditAssessment? previous = null;
+        var assessedAt = new DateTime(2035, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            var assessment = new InternalAuditAssessment
+            {
+                MunicipalityId = seed.Municipality.Id,
+                SubmissionWorkflowInstanceId = instance.Id,
+                SubmissionWorkflowInstance = instance,
+                ConfigurationId = configuration.Id,
+                Configuration = configuration,
+                PreviousAssessmentId = previous?.Id,
+                PreviousAssessment = previous,
+                Outcome = InternalAuditAssessmentOutcome.Satisfactory,
+                DetailedObservation = $"match assessment {index:00}",
+                AssessedByUserId = seed.User.Id,
+                AssessedByUser = seed.User,
+                AssessedAt = assessedAt.AddMinutes(index),
+                CorrelationId = $"assessment-{index:00}"
+            };
+            context.InternalAuditAssessments.Add(assessment);
+            await context.SaveChangesAsync();
+            previous = assessment;
+        }
+        context.InternalAuditAssessments.Add(new InternalAuditAssessment
+        {
+            MunicipalityId = seed.Municipality.Id, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
+            ConfigurationId = configuration.Id, Configuration = configuration, PreviousAssessmentId = previous!.Id, PreviousAssessment = previous,
+            Outcome = InternalAuditAssessmentOutcome.NotSatisfactory, DetailedObservation = "outside history search",
+            AssessedByUserId = seed.User.Id, AssessedByUser = seed.User, AssessedAt = assessedAt.AddMinutes(20), CorrelationId = "outside"
+        });
+        await context.SaveChangesAsync();
+        var controller = Controller(context, seed, allowed: true);
+
+        var result = await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.Id,
+            new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "assessedAt", SortDirection = "asc" });
+        var page = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<InternalAuditAssessmentDto>>>().Subject.Data!;
+        page.TotalCount.Should().Be(11);
+        page.Items.Select(item => item.DetailedObservation).Should().Equal("match assessment 03", "match assessment 04", "match assessment 05");
+        (await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { SortBy = "unsafe" }))
+            .Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var bootstrap = Data<InternalAuditSubmissionDto>((await controller.Submission(SubmissionKind.Opms, seed.Submission.Id)).Result!);
+        bootstrap.LatestAssessment.Should().NotBeNull();
+        bootstrap.LatestAssessment!.DetailedObservation.Should().Be("outside history search");
+    }
+
     private static T Data<T>(IActionResult result) where T : class =>
         Assert.IsType<ApiResponse<T>>(Assert.IsType<OkObjectResult>(result).Value).Data!;
 

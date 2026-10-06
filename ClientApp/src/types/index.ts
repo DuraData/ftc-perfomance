@@ -1970,7 +1970,7 @@ export interface InternalAuditAssessmentDto {
 
 export interface InternalAuditSubmissionDto {
   configuration: InternalAuditConfigurationDto;
-  assessments: InternalAuditAssessmentDto[];
+  latestAssessment?: InternalAuditAssessmentDto | null;
 }
 
 export interface RfiEvidenceDto {

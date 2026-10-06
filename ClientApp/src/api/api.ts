@@ -1566,6 +1566,10 @@ export async function getInternalAuditSubmission(kind: 1 | 2, submissionId: stri
   return get<InternalAuditSubmissionDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}`);
 }
 
+export async function getInternalAuditAssessmentsPage(kind: 1 | 2, submissionId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<InternalAuditAssessmentDto>>> {
+  return get<PagedResult<InternalAuditAssessmentDto>>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments/page${registerPageQuery(query)}`);
+}
+
 export async function saveInternalAuditAssessment(kind: 1 | 2, submissionId: string, payload: { outcome: 1 | 2 | 3 | 4; detailedObservation: string; comment?: string; findings?: string; recommendation?: string; score?: number; responseDueAt?: string; previousAssessmentPublicId?: string }): Promise<ApiResponse<InternalAuditAssessmentDto>> {
   return post<InternalAuditAssessmentDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments`, payload);
 }
