@@ -14,6 +14,8 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security })
 const api = vi.hoisted(() => ({
   getOpmsSubmissionAttachmentsPage: vi.fn(),
   getIpmsSubmissionAttachmentsPage: vi.fn(),
+  getOpmsConsolidationHistoryPage: vi.fn(),
+  getIpmsConsolidationHistoryPage: vi.fn(),
 }));
 
 vi.mock('../../api/api', () => api);
@@ -55,6 +57,14 @@ describe('SubmissionWorkspace member security', () => {
     api.getIpmsSubmissionAttachmentsPage.mockResolvedValue({
       success: true,
       data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
+    api.getOpmsConsolidationHistoryPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
+    });
+    api.getIpmsConsolidationHistoryPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
     });
   });
 
@@ -98,5 +108,27 @@ describe('SubmissionWorkspace member security', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next evidence' }));
     await waitFor(() => expect(screen.getByText('last.pdf')).toBeInTheDocument());
     expect(api.getOpmsSubmissionAttachmentsPage).toHaveBeenLastCalledWith('7', expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'uploadedAt' }));
+  });
+
+  it('loads and navigates the bounded consolidation history register', async () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    const midyear = { ...submission, quarter: 'Mid-Year', systemSuggestedActualPerformance: '50' } as OPMSSubmission;
+    api.getOpmsConsolidationHistoryPage
+      .mockResolvedValueOnce({
+        success: true,
+        data: { items: [{ publicId: 'event-1', eventType: 'Edited', systemSuggestedActualPerformance: '50', actualPerformance: '45', wasSystemSuggestionEdited: true, sourcePeriods: ['Q1', 'Q2'], actorUserId: 'user-1', reason: 'Reviewed evidence', occurredAt: '2026-10-02T00:00:00Z', correlationId: 'correlation-1' }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { items: [{ publicId: 'event-11', eventType: 'Generated', systemSuggestedActualPerformance: '50', actualPerformance: '50', wasSystemSuggestionEdited: false, sourcePeriods: ['Q1', 'Q2'], actorUserId: 'user-1', occurredAt: '2026-10-01T00:00:00Z', correlationId: 'correlation-11' }], page: 2, pageSize: 10, totalCount: 11, totalPages: 2 },
+      });
+
+    render(<SubmissionWorkspace submission={midyear} submissionType="OPMS" />);
+
+    await waitFor(() => expect(screen.getByText(/Reason: Reviewed evidence/)).toBeInTheDocument());
+    expect(screen.getByText('11 immutable events')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next suggestion history' }));
+    await waitFor(() => expect(screen.getByText('Generated')).toBeInTheDocument());
+    expect(api.getOpmsConsolidationHistoryPage).toHaveBeenLastCalledWith('7', expect.objectContaining({ page: 2, pageSize: 10, sortBy: 'occurredAt' }));
   });
 });

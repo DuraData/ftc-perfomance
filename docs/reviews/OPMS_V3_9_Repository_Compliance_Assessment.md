@@ -2144,6 +2144,18 @@ Status: **CLOSED AT REPOSITORY LEVEL FOR SUBMISSION POE REGISTERS — native sto
 
 R-42 now records forty-three retired collection reads. R-45 remains **PARTIALLY COMPLIANT** pending the audited disposition of remaining secondary/detail collections and representative native SQL Server query-plan/load acceptance.
 
+### 11.146 Governed OPMS/IPMS consolidation-history registers and array retirement
+
+Status: **CLOSED AT REPOSITORY LEVEL FOR CONSOLIDATION-SUGGESTION HISTORY — native SQL Server acceptance remains**
+
+- Replaced both unbounded per-submission consolidation-history arrays with `/api/v1/opms-submissions/{id}/consolidation-history/page` and `/api/v1/ipms-submissions/{id}/consolidation-history/page`. Each contract re-authorizes the parent submission and protected Actual Performance member before querying, filters before counting, caps pages at 100 and applies stable allow-listed sorting before materialization. The superseded array routes return HTTP 410 with exact replacements.
+- Added reason, actor, correlation, suggested-value and final-value search plus Generated/Accepted/Edited event filtering. The shared Mid-Year/Annual submission workspace now exposes authoritative totals, debounced search, event-type filtering and previous/next paging, including an empty ledger before the first suggestion rather than hiding history behind the current suggestion projection.
+- Existing append-only persistence remains authoritative: generated, accepted and edited events cannot be updated or deleted, retain source periods, actor, reason, correlation and calculation evidence, and stay protected by direct server-side entity/member permission evaluation even when UI controls are hidden.
+- Relational SQLite coverage proves filter-before-count behavior, stable bounded paging, direct permission evaluation, invalid-sort rejection and HTTP 410 retirement. Client coverage verifies encoded OPMS/IPMS page/filter routes and authoritative workspace page transitions.
+- Full verification passes **434 backend tests** with one explicit native SQL Server-environment skip and **240 frontend tests across 63 files**. TypeScript, ESLint, accessibility automation, Release build, SQL Server-provider model/snapshot consistency, the **634,541-byte** idempotent migration script, recovery-contract validation, production frontend build, the 400.5 KiB bundle budget and zero-vulnerability frontend audit are green.
+
+R-42 now records forty-five retired collection reads. R-45 remains **PARTIALLY COMPLIANT** pending the audited disposition of remaining secondary/detail collections and representative native SQL Server query-plan/load acceptance.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -2164,7 +2176,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | 6 | Normalized period target model | Partially Compliant | New OPMS target writes require an active persisted SDBIP layer for the exact canonical municipality financial year, and OPMS/IPMS target writes and public DTOs use typed `PerformancePeriodTarget` rows exclusively; the general form cannot bypass revision history. A governed production console previews and executes permission-protected, bounded reconciliation with explicit actor/reason/audit evidence while refusing ambiguous legacy revisions. Physical legacy columns and historic layer assignment remain solely for controlled reconciliation until execution is verified. |
 | 7 | Canonical target value and actual performance | Partially Compliant | Submission persistence/contracts use only canonical `ActualPerformance`, with legacy values losslessly archived before the competing columns are removed. Target save/response contracts now likewise use only canonical typed period rows, including non-numeric and period-specific units. Historic target reconciliation and physical legacy-column retirement remain deployment cutover work. |
 | 8 | Dynamic unit, variance and performance engine | Compliant | The exact 12 OPMS Unit and 10 Performance Direction masters are database-backed with stable IDs, metadata, defaults, active state and RowVersion. Canonical relationships persist per period target, active masters drive new writes and production selectors, explicit direction overrides are supported, and central calculation/variance behavior retains automated coverage. Native provider execution is tracked separately under area 31. |
-| 9 | Mid-term and annual consolidation suggestions and history | Compliant | The central engine implements all nine calculation types and fail-closed unit/missing-value behavior. OPMS/IPMS APIs generate from exact submitted source quarters, preserve suggested versus final values, require reasons for edits, recalculate metrics and append generated/accepted/edited history; member permissions protect direct calls and the SPA exposes the governed workflow. |
+| 9 | Mid-term and annual consolidation suggestions and history | Compliant | The central engine implements all nine calculation types and fail-closed unit/missing-value behavior. OPMS/IPMS APIs generate from exact submitted source quarters, preserve suggested versus final values, require reasons for edits, recalculate metrics and append generated/accepted/edited history; member permissions protect direct calls and the SPA exposes the governed workflow through independently searchable, filtered and paged immutable ledgers. |
 | 10 | Target revisions, ordering and withdrawal | Compliant | KPI number, target name, KPI wording, period target/unit, applicable budget and ordering retain independent original/revised state; governed budget type/source relationships are canonical master data and revision imports cannot mutate them. Q1/Q2/Mid-Term versus Q3/Q4/Annual resolution, governed scoped revision actions, RowVersion, immutable field history and withdrawal are implemented and tested end to end. |
 | 11 | Canonical submission identity and base state | Compliant | Constrained `IN_PROGRESS`/`SUBMITTED` base state, migration backfill and regression tests are present. |
 | 12 | Configurable workflow, ledger and optional verifier | Compliant | Effective tenant/year/type workflows, fail-closed behavior and append-only transition evidence are implemented and tested. |
@@ -2252,6 +2264,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Replaced unbounded authentication identity and event-history reads with independent tenant-filtered page contracts, authoritative totals, stable allow-listed sorting and debounced administration-ledger controls; retired both legacy array routes with HTTP 410.
 - Replaced the eager IDP import-history graph with server-paged batch summaries and on-demand reconciliation detail, aligned read access with either dynamic KPI/hierarchy import capability, and retired the legacy array route with HTTP 410.
 - Replaced unbounded per-submission RFI histories and both OPMS/IPMS POE registers with scope-before-count page contracts and searchable lifecycle controls, while retaining direct dynamic authorization and retiring all legacy array routes with HTTP 410.
+- Replaced both unbounded OPMS/IPMS consolidation-suggestion histories with parent-reauthorized, member-protected searchable pages, authoritative SPA totals and HTTP 410 retirement of the legacy arrays.
 - Replaced unbounded per-submission workflow-action and stage-rating histories with scope-before-count page contracts, deterministic allow-listed sorting, a paged immutable-rating workspace and HTTP 410 retirement of both legacy array routes.
 - Replaced unbounded workflow definition, reporting-window, rating-scheme and Internal Audit configuration administration with independently searchable page contracts, authoritative totals, stable sorting, bounded SPA controls and HTTP 410 retirement of all four legacy array routes.
 - Replaced unbounded per-window exception history with selected-window, searchable and scope-filtered server paging, stable sorting, authoritative SPA totals and HTTP 410 retirement of the legacy array route.
@@ -2295,12 +2308,12 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 433; Failed: 0; Skipped: 1; Total: 434.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 238; Failed: 0; Test files: 63/63.** The complete suite passed serially; focused submission-evidence paging, clean-evidence selection, API transport, global-reference and strategic-relationship paging, governed security-registry, canonical OPMS unit/direction catalogue, period serialization/editor, year-filtered vote administration/picker, target mapping, template-resolution, unit-administration and CSV tests also passed. |
+| Backend test suite | **Passed: 434; Failed: 0; Skipped: 1; Total: 435.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 240; Failed: 0; Test files: 63/63.** The complete suite passed serially; focused consolidation-history and submission-evidence paging, clean-evidence selection, API transport, global-reference and strategic-relationship paging, governed security-registry, canonical OPMS unit/direction catalogue, period serialization/editor, year-filtered vote administration/picker, target mapping, template-resolution, unit-administration and CSV tests also passed. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
-| Frontend production build | Passed under Vite 8; 2,105 modules transformed. |
-| Bundle budget | Passed with 73 JavaScript chunks; largest chunk 400.0 KiB. |
+| Frontend production build | Passed under Vite 8; 2,108 modules transformed. |
+| Bundle budget | Passed with 76 JavaScript chunks; largest chunk 400.5 KiB. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed; **0 errors**. The offline vulnerability-metadata lookup emitted one NU1900 warning because NuGet.org was unavailable in the restricted environment; compilation and the locked restore graph succeeded. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |

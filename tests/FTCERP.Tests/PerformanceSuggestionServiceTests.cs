@@ -1,5 +1,6 @@
 using FTCERP.Host.Application.Services;
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Domain.Services;
@@ -111,6 +112,39 @@ public sealed class PerformanceSuggestionServiceTests
         var denied = action.Result.Should().BeOfType<ObjectResult>().Subject;
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         suggestions.Verify(item => item.GenerateOpmsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Consolidation_history_page_filters_before_count_uses_stable_paging_and_retires_array_route()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: false);
+        var service = CreateService(context);
+        await service.GenerateOpmsAsync(seed.OpmsDestination.Id, seed.User.Id, "generated-correlation");
+        var destination = await context.OpmsSubmissions.SingleAsync(item => item.Id == seed.OpmsDestination.Id);
+        await service.RecordFinalOpmsActualAsync(destination.Id, "45", "Reviewed source evidence", Convert.ToBase64String(destination.RowVersion), seed.User.Id, "edited-correlation");
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(seed.User, "OPMS_SUBMISSION.READ", It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync(Decision(true, "Allowed"));
+        access.Setup(item => item.CheckPermissionAsync(seed.User, "OPMS_SUBMISSION.ActualPerformance.READ", It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync(Decision(true, "Allowed"));
+        var controller = CreateController(context, seed.User, access.Object, service);
+
+        var result = await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "evidence", SortBy = "occurredAt", SortDirection = "desc"
+        }, eventType: "Edited");
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(1, envelope.Data!.TotalCount);
+        Assert.Equal(1, envelope.Data.TotalPages);
+        Assert.Equal("Edited", Assert.Single(envelope.Data.Items).EventType);
+        Assert.Equal("Reviewed source evidence", envelope.Data.Items[0].Reason);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetConsolidationHistory(destination.Id).Result).StatusCode);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetConsolidationHistoryPage(destination.Id,
+            new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
 
     private static PerformanceSuggestionService CreateService(ApplicationDbContext context)

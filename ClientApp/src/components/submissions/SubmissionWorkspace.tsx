@@ -32,10 +32,10 @@ import {
   generateOpmsConsolidationSuggestion,
   assessIpmsSubmissionAttachment,
   assessOpmsSubmissionAttachment,
-  getIpmsConsolidationHistory,
+  getIpmsConsolidationHistoryPage,
   getIpmsSubmission,
   getIpmsSubmissionAttachmentsPage,
-  getOpmsConsolidationHistory,
+  getOpmsConsolidationHistoryPage,
   getOpmsSubmission,
   getOpmsSubmissionAttachmentsPage,
   placeIpmsEvidenceLegalHold,
@@ -362,6 +362,15 @@ export function SubmissionWorkspace({
   const [consolidatedActual, setConsolidatedActual] = useState(submission.actualPerformance ?? '');
   const [consolidationReason, setConsolidationReason] = useState('');
   const [consolidationHistory, setConsolidationHistory] = useState<PerformanceSuggestionEvent[]>([]);
+  const [consolidationHistoryPage, setConsolidationHistoryPage] = useState(1);
+  const [consolidationHistoryTotalCount, setConsolidationHistoryTotalCount] = useState(0);
+  const [consolidationHistoryTotalPages, setConsolidationHistoryTotalPages] = useState(0);
+  const [consolidationHistorySearchInput, setConsolidationHistorySearchInput] = useState('');
+  const [consolidationHistorySearch, setConsolidationHistorySearch] = useState('');
+  const [consolidationHistoryEventType, setConsolidationHistoryEventType] = useState('');
+  const [consolidationHistoryBusy, setConsolidationHistoryBusy] = useState(false);
+  const [consolidationHistoryError, setConsolidationHistoryError] = useState('');
+  const [consolidationHistoryRevision, setConsolidationHistoryRevision] = useState(0);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [evidencePage, setEvidencePage] = useState(1);
   const [evidenceTotalCount, setEvidenceTotalCount] = useState(0);
@@ -385,6 +394,13 @@ export function SubmissionWorkspace({
     setConsolidationReason('');
     setConsolidationError('');
     setConsolidationHistory([]);
+    setConsolidationHistoryPage(1);
+    setConsolidationHistoryTotalCount(0);
+    setConsolidationHistoryTotalPages(0);
+    setConsolidationHistorySearchInput('');
+    setConsolidationHistorySearch('');
+    setConsolidationHistoryEventType('');
+    setConsolidationHistoryError('');
     setAttachments([]);
     setEvidencePage(1);
     setEvidenceSearchInput('');
@@ -437,21 +453,62 @@ export function SubmissionWorkspace({
   }, [evidenceRevision, loadEvidence]);
 
   useEffect(() => {
-    if ((submission.quarter !== 'Mid-Year' && submission.quarter !== 'Annual') || !submission.systemSuggestedActualPerformance) return;
+    const normalized = consolidationHistorySearchInput.trim();
+    if (normalized === consolidationHistorySearch) return;
+    const timeout = window.setTimeout(() => {
+      setConsolidationHistoryPage(1);
+      setConsolidationHistorySearch(normalized);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [consolidationHistorySearch, consolidationHistorySearchInput]);
+
+  const loadConsolidationHistory = useCallback(async () => {
+    if (submission.quarter !== 'Mid-Year' && submission.quarter !== 'Annual') return;
+    setConsolidationHistoryBusy(true);
+    setConsolidationHistoryError('');
+    const query = {
+      page: consolidationHistoryPage,
+      pageSize: 10,
+      search: consolidationHistorySearch,
+      eventType: consolidationHistoryEventType
+        ? consolidationHistoryEventType as PerformanceSuggestionEvent['eventType']
+        : undefined,
+      sortBy: 'occurredAt',
+      sortDirection: 'desc' as const,
+    };
+    const response = submissionType === 'OPMS'
+      ? await getOpmsConsolidationHistoryPage(submission.id, query)
+      : await getIpmsConsolidationHistoryPage(submission.id, query);
+    if (response.success && response.data) {
+      setConsolidationHistory(response.data.items);
+      setConsolidationHistoryTotalCount(response.data.totalCount);
+      setConsolidationHistoryTotalPages(response.data.totalPages);
+    } else {
+      setConsolidationHistory([]);
+      setConsolidationHistoryTotalCount(0);
+      setConsolidationHistoryTotalPages(0);
+      setConsolidationHistoryError(response.message ?? 'Suggestion history could not be loaded.');
+    }
+    setConsolidationHistoryBusy(false);
+  }, [consolidationHistoryEventType, consolidationHistoryPage, consolidationHistorySearch, submission.id, submission.quarter, submissionType]);
+
+  useEffect(() => {
+    void consolidationHistoryRevision;
     let active = true;
     const load = async () => {
       try {
-        const response = submissionType === 'OPMS'
-          ? await getOpmsConsolidationHistory(submission.id)
-          : await getIpmsConsolidationHistory(submission.id);
-        if (active && response.success && response.data) setConsolidationHistory(response.data);
+        if (active) await loadConsolidationHistory();
       } catch {
-        // Authorization and transport failures remain represented by the protected API; the rest of the workspace stays usable.
+        if (active) {
+          setConsolidationHistory([]);
+          setConsolidationHistoryError('Suggestion history could not be loaded.');
+          setConsolidationHistoryBusy(false);
+        }
       }
     };
     void load();
     return () => { active = false; };
-  }, [submission.id, submission.quarter, submission.systemSuggestedActualPerformance, submissionType]);
+  }, [consolidationHistoryRevision, loadConsolidationHistory]);
 
   const currentSubmission = draftSubmission;
   const tabs = useMemo(
@@ -577,10 +634,8 @@ export function SubmissionWorkspace({
       setDraftSubmission(response.data);
       setConsolidatedActual(response.data.actualPerformance ?? '');
     }
-    const history = submissionType === 'OPMS'
-      ? await getOpmsConsolidationHistory(currentSubmission.id)
-      : await getIpmsConsolidationHistory(currentSubmission.id);
-    if (history.success && history.data) setConsolidationHistory(history.data);
+    setConsolidationHistoryPage(1);
+    setConsolidationHistoryRevision(value => value + 1);
   };
 
   const generateConsolidation = async () => {
@@ -793,9 +848,35 @@ export function SubmissionWorkspace({
                   </div>
                 </div>
               )}
-              {consolidationHistory.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Suggestion history</h4>
+              <div className="space-y-2">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Suggestion history</h4>
+                      <p className="text-xs text-secondary-500">{consolidationHistoryTotalCount} immutable event{consolidationHistoryTotalCount === 1 ? '' : 's'}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        aria-label="Search suggestion history"
+                        className="min-h-10 rounded-lg border border-secondary-200 bg-white px-3 text-sm dark:border-secondary-700 dark:bg-secondary-800"
+                        placeholder="Search history"
+                        value={consolidationHistorySearchInput}
+                        onChange={event => setConsolidationHistorySearchInput(event.target.value)}
+                      />
+                      <select
+                        aria-label="Filter suggestion history by event type"
+                        className="min-h-10 rounded-lg border border-secondary-200 bg-white px-3 text-sm dark:border-secondary-700 dark:bg-secondary-800"
+                        value={consolidationHistoryEventType}
+                        onChange={event => { setConsolidationHistoryPage(1); setConsolidationHistoryEventType(event.target.value); }}
+                      >
+                        <option value="">All event types</option>
+                        <option value="Generated">Generated</option>
+                        <option value="Accepted">Accepted</option>
+                        <option value="Edited">Edited</option>
+                      </select>
+                    </div>
+                  </div>
+                  {consolidationHistoryError && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-700">{consolidationHistoryError}</div>}
+                  {consolidationHistoryBusy && <p className="text-sm text-secondary-500">Loading suggestion history…</p>}
                   {consolidationHistory.map(event => (
                     <div key={event.publicId} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
                       <div className="flex flex-wrap justify-between gap-2"><span className="font-medium">{event.eventType}</span><span className="text-secondary-500">{formatDateTime(event.occurredAt)}</span></div>
@@ -803,8 +884,17 @@ export function SubmissionWorkspace({
                       {event.reason && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Reason: {event.reason}</p>}
                     </div>
                   ))}
+                  {!consolidationHistoryBusy && !consolidationHistoryError && consolidationHistory.length === 0 && (
+                    <p className="text-sm text-secondary-500">No suggestion history matches the current filters.</p>
+                  )}
+                  {consolidationHistoryTotalPages > 1 && (
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <Button variant="outline" size="sm" aria-label="Previous suggestion history" disabled={consolidationHistoryPage <= 1 || consolidationHistoryBusy} onClick={() => setConsolidationHistoryPage(page => Math.max(1, page - 1))}>Previous</Button>
+                      <span>Page {consolidationHistoryPage} of {consolidationHistoryTotalPages}</span>
+                      <Button variant="outline" size="sm" aria-label="Next suggestion history" disabled={consolidationHistoryPage >= consolidationHistoryTotalPages || consolidationHistoryBusy} onClick={() => setConsolidationHistoryPage(page => page + 1)}>Next</Button>
+                    </div>
+                  )}
                 </div>
-              )}
             </Section>
           )}
 

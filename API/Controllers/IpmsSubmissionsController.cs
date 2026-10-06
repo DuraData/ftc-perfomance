@@ -288,21 +288,56 @@ public class IpmsSubmissionsController : ControllerBase
     }
 
     [HttpGet("{id}/consolidation-history")]
-    public async Task<ActionResult<ApiResponse<PerformanceSuggestionEventResponse[]>>> GetConsolidationHistory(string id)
+    public ActionResult<ApiResponse<PerformanceSuggestionEventResponse[]>> GetConsolidationHistory(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null,
+            $"This unbounded consolidation history route is retired. Use /api/v1/ipms-submissions/{id}/consolidation-history/page."));
+
+    [HttpGet("{id}/consolidation-history/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>>> GetConsolidationHistoryPage(
+        string id,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? eventType = null)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "User not found"));
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null, "IPMS submission not found"));
+        if (entity == null) return NotFound(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "IPMS submission not found"));
         var denial = await ConsolidationPermissionDenialAsync(user, entity, update: false);
-        if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null, denial));
-        var persistedEvents = await _context.PerformanceSuggestionEvents.AsNoTracking().Where(item => item.IpmsSubmissionId == id)
-            .OrderBy(item => item.OccurredAt).ThenBy(item => item.Id).ToArrayAsync();
+        if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, denial));
+        if (request.NormalizedSortBy is not ("createdat" or "occurredat" or "eventtype" or "actoruserid"))
+            return BadRequest(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "SortBy must be occurredAt, eventType, or actorUserId."));
+
+        var query = _context.PerformanceSuggestionEvents.AsNoTracking().Where(item => item.IpmsSubmissionId == id);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => (item.Reason != null && item.Reason.Contains(request.NormalizedSearch))
+                || item.ActorUserId.Contains(request.NormalizedSearch)
+                || item.CorrelationId.Contains(request.NormalizedSearch)
+                || (item.SystemSuggestedActualPerformance != null && item.SystemSuggestedActualPerformance.Contains(request.NormalizedSearch))
+                || (item.ActualPerformance != null && item.ActualPerformance.Contains(request.NormalizedSearch)));
+        if (!string.IsNullOrWhiteSpace(eventType))
+        {
+            if (!Enum.TryParse<PerformanceSuggestionEventType>(eventType.Trim(), true, out var parsedEventType))
+                return BadRequest(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "EventType must be Generated, Accepted, or Edited."));
+            query = query.Where(item => item.EventType == parsedEventType);
+        }
+
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("eventtype", false) => query.OrderBy(item => item.EventType).ThenBy(item => item.PublicId),
+            ("eventtype", true) => query.OrderByDescending(item => item.EventType).ThenByDescending(item => item.PublicId),
+            ("actoruserid", false) => query.OrderBy(item => item.ActorUserId).ThenBy(item => item.PublicId),
+            ("actoruserid", true) => query.OrderByDescending(item => item.ActorUserId).ThenByDescending(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.OccurredAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.OccurredAt).ThenByDescending(item => item.PublicId)
+        };
+        var persistedEvents = await ordered.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         var events = persistedEvents.Select(item => new PerformanceSuggestionEventResponse(item.PublicId, item.EventType.ToString(), item.SystemSuggestedActualPerformance,
             item.ActualPerformance, item.WasSystemSuggestionEdited, item.EffectiveCalculationType?.ToString(),
             item.SourcePeriods.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             item.ActorUserId, item.Reason, item.OccurredAt, item.CorrelationId)).ToArray();
-        return Ok(new ApiResponse<PerformanceSuggestionEventResponse[]>(true, events));
+        return Ok(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(true,
+            PagedResponse<PerformanceSuggestionEventResponse>.Create(events, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpDelete("{id}")]

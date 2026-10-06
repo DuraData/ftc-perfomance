@@ -2278,8 +2278,19 @@ export const generateOpmsConsolidationSuggestion = (id: string): Promise<ApiResp
 export const saveOpmsConsolidatedActual = (id: string, payload: { actualPerformance: string; editReason?: string; rowVersion: string }): Promise<ApiResponse<PerformanceSuggestionResult>> =>
   put<PerformanceSuggestionResult>(`/v1/opms-submissions/${id}/consolidated-actual`, payload);
 
-export const getOpmsConsolidationHistory = (id: string): Promise<ApiResponse<PerformanceSuggestionEvent[]>> =>
-  get<PerformanceSuggestionEvent[]>(`/v1/opms-submissions/${id}/consolidation-history`);
+export type ConsolidationHistoryPageQuery = RegisterPageQuery & {
+  eventType?: PerformanceSuggestionEvent['eventType'];
+};
+
+function consolidationHistoryPageQuery(query: ConsolidationHistoryPageQuery): string {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.eventType) parameters.set('eventType', query.eventType);
+  const value = parameters.toString();
+  return value ? `?${value}` : '';
+}
+
+export const getOpmsConsolidationHistoryPage = (id: string, query: ConsolidationHistoryPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceSuggestionEvent>>> =>
+  get<PagedResult<PerformanceSuggestionEvent>>(`/v1/opms-submissions/${encodeURIComponent(id)}/consolidation-history/page${consolidationHistoryPageQuery(query)}`);
 
 export async function applyOpmsSubmissionWorkflowAction(
   id: string,
@@ -2386,8 +2397,8 @@ export const generateIpmsConsolidationSuggestion = (id: string): Promise<ApiResp
 export const saveIpmsConsolidatedActual = (id: string, payload: { actualPerformance: string; editReason?: string; rowVersion: string }): Promise<ApiResponse<PerformanceSuggestionResult>> =>
   put<PerformanceSuggestionResult>(`/v1/ipms-submissions/${id}/consolidated-actual`, payload);
 
-export const getIpmsConsolidationHistory = (id: string): Promise<ApiResponse<PerformanceSuggestionEvent[]>> =>
-  get<PerformanceSuggestionEvent[]>(`/v1/ipms-submissions/${id}/consolidation-history`);
+export const getIpmsConsolidationHistoryPage = (id: string, query: ConsolidationHistoryPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceSuggestionEvent>>> =>
+  get<PagedResult<PerformanceSuggestionEvent>>(`/v1/ipms-submissions/${encodeURIComponent(id)}/consolidation-history/page${consolidationHistoryPageQuery(query)}`);
 
 export async function applyIpmsSubmissionWorkflowAction(
   id: string,

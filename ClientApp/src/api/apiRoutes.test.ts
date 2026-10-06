@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpAlignmentMatrixPage, getIdpDocumentsPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachmentsPage, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisions, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getStrategicDocumentTypesPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
+import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -560,6 +561,18 @@ describe('versioned API routes', () => {
     });
     expect(attachments.data?.items[0].uploadedBy).toMatchObject({ id: 'uploader-live', displayName: 'Live Uploader' });
     expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/opms-submissions/submission-live/attachments/page?page=2&pageSize=25&search=evidence&scanStatus=Clean&quarantined=false&active=true'), expect.anything());
+  });
+
+  it('routes OPMS and IPMS consolidation history through bounded filtered pages', async () => {
+    const page = { items: [], page: 2, pageSize: 10, totalCount: 0, totalPages: 0 };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getOpmsConsolidationHistoryPage('opms/live', { page: 2, pageSize: 10, search: ' evidence ', eventType: 'Edited', sortBy: 'occurredAt', sortDirection: 'desc' });
+    await getIpmsConsolidationHistoryPage('ipms/live', { page: 1, pageSize: 10, eventType: 'Generated', sortBy: 'eventType', sortDirection: 'asc' });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-submissions/opms%2Flive/consolidation-history/page?page=2&pageSize=10&search=evidence&sortBy=occurredAt&sortDirection=desc&eventType=Edited'), expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-submissions/ipms%2Flive/consolidation-history/page?page=1&pageSize=10&sortBy=eventType&sortDirection=asc&eventType=Generated'), expect.anything());
   });
 
   it('encodes bounded register paging and allow-listed sort parameters', async () => {
