@@ -72,15 +72,12 @@ public sealed class C88Controller : ControllerBase
         var questions = await context.C88ComplianceQuestions.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ReportTypeItem).Include(item => item.ResponseTypeItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Sequence).ToArrayAsync();
         var plans = await context.C88IndicatorPlans.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ToArrayAsync();
         var calendars = await context.C88ReportingCalendars.AsNoTracking().Include(item => item.Configuration).Include(item => item.ReportTypeItem).Include(item => item.ReportingPeriod).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.OpensAt).ToArrayAsync();
-        var assignments = await context.C88Assignments.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.MunicipalEmployee).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ThenBy(item => item.Role).ToArrayAsync();
         var workflows = await context.C88WorkflowDefinitions.AsNoTracking().Include(item => item.Configuration).Include(item => item.Stages).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId)).OrderByDescending(item => item.VersionNumber).ToArrayAsync();
-        var mappings = await context.C88OpmsMappings.AsNoTracking().Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.OpmsTarget).Where(item => configIds.Contains(item.C88MunicipalityConfigurationId) && (manager || scopedIndicatorIds.Contains(item.C88IndicatorId))).OrderBy(item => item.Indicator.Code).ToArrayAsync();
 
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
             configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(),
             indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), plans.Select(ToResponse).ToArray(),
-            calendars.Select(ToResponse).ToArray(), [], assignments.Select(ToResponse).ToArray(),
-            workflows.Select(ToResponse).ToArray(), mappings.Select(ToResponse).ToArray())));
+            calendars.Select(ToResponse).ToArray(), [], workflows.Select(ToResponse).ToArray())));
     }
 
     [HttpGet("reports/page")]
@@ -135,6 +132,70 @@ public sealed class C88Controller : ControllerBase
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };
+
+    [HttpGet("assignments/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88AssignmentResponse>>>> GetAssignmentsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null, [FromQuery] Guid? indicatorPublicId = null, [FromQuery] bool? active = null)
+    {
+        var visibility = await IndicatorVisibility<C88AssignmentResponse>();
+        if (visibility.Error != null) return visibility.Error;
+        if (request.NormalizedSortBy is not ("createdat" or "effectivefrom" or "indicatorcode" or "employeename" or "role"))
+            return BadRequest(Fail<PagedResponse<C88AssignmentResponse>>("SortBy must be effectiveFrom, indicatorCode, employeeName, or role."));
+        var query = context.C88Assignments.AsNoTracking().AsQueryable();
+        if (!visibility.Manager) query = query.Where(item => visibility.IndicatorIds.Contains(item.C88IndicatorId));
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.Configuration.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (indicatorPublicId.HasValue) query = query.Where(item => item.Indicator.PublicId == indicatorPublicId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Indicator.Code.Contains(request.NormalizedSearch)
+            || item.MunicipalEmployee.FirstName.Contains(request.NormalizedSearch) || item.MunicipalEmployee.LastName.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("indicatorcode", false) => query.OrderBy(item => item.Indicator.Code).ThenBy(item => item.Id),
+            ("indicatorcode", true) => query.OrderByDescending(item => item.Indicator.Code).ThenByDescending(item => item.Id),
+            ("employeename", false) => query.OrderBy(item => item.MunicipalEmployee.LastName).ThenBy(item => item.MunicipalEmployee.FirstName).ThenBy(item => item.Id),
+            ("employeename", true) => query.OrderByDescending(item => item.MunicipalEmployee.LastName).ThenByDescending(item => item.MunicipalEmployee.FirstName).ThenByDescending(item => item.Id),
+            ("role", false) => query.OrderBy(item => item.Role).ThenBy(item => item.Id),
+            ("role", true) => query.OrderByDescending(item => item.Role).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.MunicipalEmployee)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88AssignmentResponse>>(true, PagedResponse<C88AssignmentResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
+
+    [HttpGet("mappings/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88MappingResponse>>>> GetMappingsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null, [FromQuery] Guid? indicatorPublicId = null, [FromQuery] bool? active = null)
+    {
+        var visibility = await IndicatorVisibility<C88MappingResponse>();
+        if (visibility.Error != null) return visibility.Error;
+        if (request.NormalizedSortBy is not ("createdat" or "indicatorcode" or "opmsindicator" or "mappingtype"))
+            return BadRequest(Fail<PagedResponse<C88MappingResponse>>("SortBy must be createdAt, indicatorCode, opmsIndicator, or mappingType."));
+        var query = context.C88OpmsMappings.AsNoTracking().AsQueryable();
+        if (!visibility.Manager) query = query.Where(item => visibility.IndicatorIds.Contains(item.C88IndicatorId));
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.Configuration.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (indicatorPublicId.HasValue) query = query.Where(item => item.Indicator.PublicId == indicatorPublicId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Indicator.Code.Contains(request.NormalizedSearch)
+            || item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.Reason.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("indicatorcode", false) => query.OrderBy(item => item.Indicator.Code).ThenBy(item => item.Id),
+            ("indicatorcode", true) => query.OrderByDescending(item => item.Indicator.Code).ThenByDescending(item => item.Id),
+            ("opmsindicator", false) => query.OrderBy(item => item.OpmsTarget.IndicatorNumber).ThenBy(item => item.Id),
+            ("opmsindicator", true) => query.OrderByDescending(item => item.OpmsTarget.IndicatorNumber).ThenByDescending(item => item.Id),
+            ("mappingtype", false) => query.OrderBy(item => item.MappingType).ThenBy(item => item.Id),
+            ("mappingtype", true) => query.OrderByDescending(item => item.MappingType).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.OpmsTarget)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88MappingResponse>>(true, PagedResponse<C88MappingResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
 
     [HttpPost("catalogue-versions")]
     public async Task<ActionResult<ApiResponse<Guid>>> CreateCatalogueVersion([FromBody] SaveC88CatalogueVersionRequest request)
@@ -741,6 +802,24 @@ public sealed class C88Controller : ControllerBase
     private static bool TryVersion(string? value, out byte[] bytes) { bytes = []; try { if (string.IsNullOrWhiteSpace(value)) return false; bytes = Convert.FromBase64String(value); return bytes.Length > 0; } catch (FormatException) { return false; } }
     private static DateTime Utc(DateTime value) => value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
     private static DateTime? NullableUtc(DateTime? value) => value.HasValue ? Utc(value.Value) : null;
+    private async Task<(bool Manager, long[] IndicatorIds, ActionResult<ApiResponse<PagedResponse<T>>>? Error)> IndicatorVisibility<T>()
+    {
+        var user = await CurrentUserAsync();
+        if (user == null) return (false, [], Unauthorized(Fail<PagedResponse<T>>("User not found.")));
+        if (!tenantContext.MunicipalityId.HasValue) return (false, [], BadRequest(Fail<PagedResponse<T>>("Municipality context is required.")));
+        var read = await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.READ", Scope());
+        if (!read.Allowed) return (false, [], Forbidden<PagedResponse<T>>(read.Reason));
+        var manager = (await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.UPDATE", Scope())).Allowed;
+        if (manager) return (true, [], null);
+        var employeeId = await context.MunicipalEmployees.Where(item => item.IdentityUserId == user.Id && item.IsActive)
+            .Select(item => (long?)item.Id).SingleOrDefaultAsync();
+        if (!employeeId.HasValue) return (false, [], null);
+        var now = DateTime.UtcNow;
+        var indicatorIds = await context.C88Assignments.Where(item => item.MunicipalEmployeeId == employeeId.Value && item.IsActive
+                && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now))
+            .Select(item => item.C88IndicatorId).Distinct().ToArrayAsync();
+        return (false, indicatorIds, null);
+    }
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ActionResult<ApiResponse<T>> Forbidden<T>(string? message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message ?? "Permission denied."));
 

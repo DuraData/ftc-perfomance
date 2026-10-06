@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage,
+  finalSubmitC88Report, getC88AssignmentsPage, getC88MappingsPage, getC88ReportsPage, getC88Workspace, getMunicipalEmployeesPage,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { C88CatalogueItemKind, C88IndicatorReport, C88Workspace, MunicipalEmployeeDto } from '../../types';
+import type { C88Assignment, C88CatalogueItemKind, C88IndicatorReport, C88Mapping, C88Workspace, MunicipalEmployeeDto } from '../../types';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { TargetPicker } from '../common/TargetPicker';
@@ -15,7 +15,7 @@ import { Badge, Button, Card, EmptyState } from '../ui';
 
 const field = 'mt-1 w-full rounded border border-secondary-300 bg-white px-2 py-1.5 text-sm dark:border-secondary-700 dark:bg-secondary-900';
 const today = () => new Date().toISOString().slice(0, 10);
-const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], indicators: [], complianceQuestions: [], plans: [], calendars: [], reports: [], assignments: [], workflows: [], mappings: [] };
+const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], indicators: [], complianceQuestions: [], plans: [], calendars: [], reports: [], workflows: [] };
 function Section({ title, children }: { title: string; children: ReactNode }) { return <Card><h2 className="mb-3 text-lg font-semibold">{title}</h2>{children}</Card>; }
 
 export function C88Workspace() {
@@ -40,6 +40,16 @@ export function C88Workspace() {
   const [reportSearch, setReportSearch] = useState('');
   const [reportSortBy, setReportSortBy] = useState('createdAt');
   const [reportSortDirection, setReportSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [assignmentRows, setAssignmentRows] = useState<C88Assignment[]>([]);
+  const [assignmentPage, setAssignmentPage] = useState(1);
+  const [assignmentTotalPages, setAssignmentTotalPages] = useState(0);
+  const [assignmentTotalCount, setAssignmentTotalCount] = useState(0);
+  const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [mappingRows, setMappingRows] = useState<C88Mapping[]>([]);
+  const [mappingPage, setMappingPage] = useState(1);
+  const [mappingTotalPages, setMappingTotalPages] = useState(0);
+  const [mappingTotalCount, setMappingTotalCount] = useState(0);
+  const [mappingSearch, setMappingSearch] = useState('');
   const [edition, setEdition] = useState({ code: '', name: '', editionDate: today(), effectiveFrom: today() });
   const [catalogueItem, setCatalogueItem] = useState({ catalogueVersionPublicId: '', kind: 'Sector' as C88CatalogueItemKind, code: '', name: '', parentItemPublicId: '' });
   const [indicatorDraft, setIndicatorDraft] = useState({ catalogueVersionPublicId: '', code: '', name: '', definition: '', officialTechnicalIndicatorDescription: '', valueType: 'Decimal', calculationOperator: 'None', elementCode: '', elementName: '', municipalCategoryPublicId: '', readinessTierPublicId: '' });
@@ -63,18 +73,24 @@ export function C88Workspace() {
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, reportResult] = await Promise.all([
+    const [workspace, reportResult, assignmentResult, mappingResult] = await Promise.all([
       getC88Workspace(yearId || undefined),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
         : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 }, message: undefined }),
+      getC88AssignmentsPage({ page: assignmentPage, pageSize: 10, search: assignmentSearch, sortBy: 'effectiveFrom', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined }),
+      getC88MappingsPage({ page: mappingPage, pageSize: 10, search: mappingSearch, sortBy: 'createdAt', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined }),
     ]);
     if (!workspace.success) pushToast('error', workspace.message ?? 'Unable to load Circular 88.');
     else setData({ ...(workspace.data ?? emptyWorkspace), reports: reportResult.data?.items ?? [] });
     if (!reportResult.success) pushToast('error', reportResult.message ?? 'Unable to load Circular 88 reports.');
     setReportTotalCount(reportResult.data?.totalCount ?? 0);
     setReportTotalPages(reportResult.data?.totalPages ?? 0);
-  }, [canReadModule, canReadReports, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
+    setAssignmentRows(assignmentResult.data?.items ?? []); setAssignmentTotalCount(assignmentResult.data?.totalCount ?? 0); setAssignmentTotalPages(assignmentResult.data?.totalPages ?? 0);
+    setMappingRows(mappingResult.data?.items ?? []); setMappingTotalCount(mappingResult.data?.totalCount ?? 0); setMappingTotalPages(mappingResult.data?.totalPages ?? 0);
+    if (!assignmentResult.success) pushToast('error', assignmentResult.message ?? 'Unable to load C88 assignments.');
+    if (!mappingResult.success) pushToast('error', mappingResult.message ?? 'Unable to load C88 mappings.');
+  }, [assignmentPage, assignmentSearch, canReadModule, canReadReports, mappingPage, mappingSearch, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, yearId]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -136,6 +152,10 @@ export function C88Workspace() {
         {canExecute('C88_INDICATOR.MANAGE_ASSIGNMENTS') && <div className="mt-3 space-y-2"><div className="grid gap-2 md:grid-cols-4"><input aria-label="Search C88 assignment employees" className={field} placeholder="Search employees" value={employeeSearch} onChange={e => { setEmployeeSearch(e.target.value); setEmployeePage(1); }} /><select aria-label="C88 assignment employee" className={field} value={assignment.employeePublicId} onChange={e => setAssignment({ ...assignment, employeePublicId: e.target.value })}><option value="">Employee</option>{employees.map(item => <option key={item.publicId} value={item.publicId}>{item.firstName} {item.lastName}</option>)}</select><select aria-label="C88 assignment role" className={field} value={assignment.role} onChange={e => setAssignment({ ...assignment, role: e.target.value })}>{['PrimaryCapturer','Contributor','ReviewerVerifier','FinalSubmitter'].map(role => <option key={role}>{role}</option>)}</select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Assignment({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...assignment, effectiveFrom: new Date().toISOString(), effectiveTo: null, isActive: true, reason, rowVersion: null }), 'Assignment created.')}>Assign</Button></div>{employeeTotalPages > 1 && <div className="flex items-center justify-end gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={employeePage <= 1} onClick={() => setEmployeePage(value => Math.max(1, value - 1))}>Previous employees</Button><span>Page {employeePage} of {employeeTotalPages}</span><Button size="sm" variant="outline" disabled={employeePage >= employeeTotalPages} onClick={() => setEmployeePage(value => value + 1)}>Next employees</Button></div>}</div>}
         {canExecute('C88_INDICATOR.MANAGE_WORKFLOW') && <div className="mt-3"><Button disabled={busy || !configurationId || !reason} onClick={() => { const previous = data.workflows.find(item => item.configurationPublicId === configurationId && item.isCurrent); void run(() => createC88Workflow({ configurationPublicId: configurationId, effectiveFrom: new Date().toISOString(), effectiveTo: null, stages: [{ sequence: 1, kind: 'Capturer', name: 'Capturer', requiredRole: 'PrimaryCapturer', isActive: true }, { sequence: 2, kind: 'ReviewerVerifier', name: 'Reviewer / Verifier', requiredRole: 'ReviewerVerifier', isActive: true }, { sequence: 3, kind: 'FinalSubmission', name: 'Final Submission', requiredRole: 'FinalSubmitter', isActive: true }], reason, previousWorkflowPublicId: previous?.publicId ?? null, previousWorkflowRowVersion: previous?.rowVersion ?? null }), 'Independent C88 workflow version created.'); }}>Create workflow version</Button></div>}
         {canExecute('C88_INDICATOR.MANAGE_MAPPING') && <div className="mt-3 grid gap-2 md:grid-cols-4"><TargetPicker kind="opms" label="OPMS KPI" value={mapping.opmsTargetPublicId} valueField="publicId" onChange={value => setMapping({ ...mapping, opmsTargetPublicId: value })} /><select aria-label="Mapping type" className={field} value={mapping.mappingType} onChange={e => setMapping({ ...mapping, mappingType: e.target.value })}><option>Direct</option><option>Contributing</option></select><Button disabled={busy || !reason} onClick={() => void run(() => createC88Mapping({ configurationPublicId: configurationId, indicatorPublicId: indicatorId, ...mapping, reason, isActive: true, rowVersion: null }), 'Alignment-only mapping created.')}>Map without copying</Button></div>}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div><div className="flex items-end justify-between gap-2"><label className="text-sm">Search assignments<input aria-label="Search C88 assignments" className={field} value={assignmentSearch} onChange={event => { setAssignmentSearch(event.target.value); setAssignmentPage(1); }} /></label><span className="text-xs text-secondary-500">{assignmentTotalCount} assignments</span></div><div className="mt-2 space-y-1">{assignmentRows.map(item => <div key={item.publicId} className="rounded border p-2 text-xs"><strong>{item.employeeName}</strong> · {item.role}<br /><span className="text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} · {item.isActive ? 'Active' : 'Inactive'}</span></div>)}</div>{assignmentTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={assignmentPage <= 1} onClick={() => setAssignmentPage(value => value - 1)}>Previous</Button><span className="self-center text-xs">{assignmentPage}/{assignmentTotalPages}</span><Button size="sm" variant="outline" disabled={assignmentPage >= assignmentTotalPages} onClick={() => setAssignmentPage(value => value + 1)}>Next</Button></div>}</div>
+          <div><div className="flex items-end justify-between gap-2"><label className="text-sm">Search mappings<input aria-label="Search C88 mappings" className={field} value={mappingSearch} onChange={event => { setMappingSearch(event.target.value); setMappingPage(1); }} /></label><span className="text-xs text-secondary-500">{mappingTotalCount} mappings</span></div><div className="mt-2 space-y-1">{mappingRows.map(item => <div key={item.publicId} className="rounded border p-2 text-xs"><strong>{item.opmsIndicatorNumber}</strong> · {item.mappingType}<br /><span className="text-secondary-500">{item.reason} · {item.isActive ? 'Active' : 'Inactive'}</span></div>)}</div>{mappingTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={mappingPage <= 1} onClick={() => setMappingPage(value => value - 1)}>Previous</Button><span className="self-center text-xs">{mappingPage}/{mappingTotalPages}</span><Button size="sm" variant="outline" disabled={mappingPage >= mappingTotalPages} onClick={() => setMappingPage(value => value + 1)}>Next</Button></div>}</div>
+        </div>
       </Section>
 
       <Section title="Reporting calendar and capture">

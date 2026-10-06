@@ -132,6 +132,8 @@ import type {
   SaveStrategicRiskPayload,
   C88Workspace,
   C88IndicatorReport,
+  C88Assignment,
+  C88Mapping,
   EnterpriseSignInOptions,
   EnterpriseProviderOption,
   AuthenticationConfiguration,
@@ -2807,6 +2809,24 @@ export async function getC88ReportsPage(query: RegisterPageQuery = {}, municipal
     ? `${pageQuery ? '&' : '?'}municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}`
     : '';
   return get<PagedResult<C88IndicatorReport>>(`/v1/c88/reports/page${pageQuery}${yearQuery}`);
+}
+
+export async function getC88AssignmentsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; indicatorPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Assignment>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  return get<PagedResult<C88Assignment>>(`/v1/c88/assignments/page?${parameters.toString()}`);
+}
+
+export async function getC88MappingsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; indicatorPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Mapping>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  return get<PagedResult<C88Mapping>>(`/v1/c88/mappings/page?${parameters.toString()}`);
 }
 
 export const createC88CatalogueVersion = (payload: unknown): Promise<ApiResponse<string>> => post<string>('/v1/c88/catalogue-versions', payload);

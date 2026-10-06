@@ -145,14 +145,22 @@ public class C88ControllerTests
 
         var beforeAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
         beforeAssignment.Indicators.Should().BeEmpty();
+        Payload(await reader.GetAssignmentsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
+        Payload(await reader.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().BeEmpty();
         var denied = await reader.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
             seed.Target.PublicId, C88MappingType.Direct, "Must be denied", true, null));
         denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
 
+        Payload(await manager.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Target.PublicId, C88MappingType.Direct, "Authorized mapping", true, null))).Should().NotBeEmpty();
         Payload(await manager.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
             seed.Employee.PublicId, C88AssignmentRole.Contributor, DateTime.UtcNow.AddDays(-1), null, true, "Grant scoped contribution", null))).Should().NotBeEmpty();
         var afterAssignment = Payload(await reader.GetWorkspace(seed.Year.PublicId));
         afterAssignment.Indicators.Should().ContainSingle().Which.PublicId.Should().Be(module.Indicator.PublicId);
+        Payload(await reader.GetAssignmentsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
+            .Which.IndicatorPublicId.Should().Be(module.Indicator.PublicId);
+        Payload(await reader.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Should().ContainSingle()
+            .Which.IndicatorPublicId.Should().Be(module.Indicator.PublicId);
     }
 
     [Fact]
@@ -165,6 +173,44 @@ public class C88ControllerTests
         var result = await controller.GetReportsPage(new PagedQueryRequest { SortBy = "calculated-sql" }, seed.Year.PublicId);
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task Assignment_and_mapping_pages_filter_before_count_and_page_stably()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var effectiveFrom = new DateTime(2035, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            var employee = new MunicipalEmployee
+            {
+                MunicipalityId = seed.Municipality.Id, EmployeeNumber = $"C88-{index:00}", FirstName = "Paged", LastName = $"Worker {index:00}",
+                EffectiveFrom = effectiveFrom, IsActive = true
+            };
+            var target = new OpmsTarget
+            {
+                MunicipalityId = seed.Municipality.Id, IndicatorNumber = $"OPMS-{index:00}", KpiDescription = "Mapped KPI", TargetName = "Mapped KPI",
+                PerformanceObjective = "Objective", AnnualTargetDescription = "Target", TargetUnitType = "number"
+            };
+            context.AddRange(employee, target);
+            await context.SaveChangesAsync();
+            context.AddRange(
+                new C88Assignment { MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration, C88IndicatorId = module.Indicator.Id, Indicator = module.Indicator, MunicipalEmployeeId = employee.Id, MunicipalEmployee = employee, Role = C88AssignmentRole.Contributor, EffectiveFrom = effectiveFrom.AddDays(index), IsActive = true },
+                new C88OpmsMapping { MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration, C88IndicatorId = module.Indicator.Id, Indicator = module.Indicator, OpmsTargetId = target.Id, OpmsTarget = target, MappingType = C88MappingType.Contributing, Reason = $"match mapping {index:00}", IsActive = true, CreatedAt = effectiveFrom.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User });
+        }
+        await context.SaveChangesAsync();
+
+        var assignments = Payload(await controller.GetAssignmentsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Worker", SortBy = "employeeName", SortDirection = "asc" }, seed.Year.PublicId));
+        assignments.TotalCount.Should().Be(11);
+        assignments.Items.Select(item => item.EmployeeName).Should().Equal("Paged Worker 03", "Paged Worker 04", "Paged Worker 05");
+        var mappings = Payload(await controller.GetMappingsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "opmsIndicator", SortDirection = "asc" }, seed.Year.PublicId));
+        mappings.TotalCount.Should().Be(11);
+        mappings.Items.Select(item => item.OpmsIndicatorNumber).Should().Equal("OPMS-03", "OPMS-04", "OPMS-05");
+        (await controller.GetAssignmentsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetMappingsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
