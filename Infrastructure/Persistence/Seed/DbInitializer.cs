@@ -333,8 +333,8 @@ public static class DbInitializer
         if (!createResult.Succeeded)
             throw new InvalidOperationException($"Controlled administrator seed failed: {string.Join("; ", createResult.Errors.Select(error => error.Description))}");
         await SyncUserRolesAsync(userManager, defaultUser, [SecurityModel.SuperAdmin]);
-        await ReplaceUserScopesAsync(context, defaultUser.Id, [new UserScope { ScopeType = ScopeType.InstitutionScope }]);
-        await ReplaceUserAssignmentsAsync(context, defaultUser.Id, Array.Empty<UserAssignment>());
+        await SeedInitialUserScopesAsync(context, defaultUser.Id, [new UserScope { ScopeType = ScopeType.InstitutionScope }]);
+        await SeedInitialUserAssignmentsAsync(context, defaultUser.Id, Array.Empty<UserAssignment>());
     }
 
     private static async Task SeedDemoUsersAsync(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IConfiguration configuration)
@@ -381,8 +381,8 @@ public static class DbInitializer
                 await userManager.AddToRoleAsync(user, seed.Role);
             }
 
-            await ReplaceUserScopesAsync(context, user.Id, seed.Scopes.Select(scope => BuildUserScope(scope, departments, units)).ToArray());
-            await ReplaceUserAssignmentsAsync(context, user.Id, seed.Assignments.Select(BuildUserAssignment).ToArray());
+            await SeedInitialUserScopesAsync(context, user.Id, seed.Scopes.Select(scope => BuildUserScope(scope, departments, units)).ToArray());
+            await SeedInitialUserAssignmentsAsync(context, user.Id, seed.Assignments.Select(BuildUserAssignment).ToArray());
         }
     }
 
@@ -412,10 +412,9 @@ public static class DbInitializer
         };
     }
 
-    private static async Task ReplaceUserScopesAsync(ApplicationDbContext context, string userId, IEnumerable<UserScope> scopes)
+    internal static async Task SeedInitialUserScopesAsync(ApplicationDbContext context, string userId, IEnumerable<UserScope> scopes)
     {
-        var existing = await context.UserScopes.Where(scope => scope.UserId == userId).ToListAsync();
-        context.UserScopes.RemoveRange(existing);
+        if (await context.UserScopes.AnyAsync(scope => scope.UserId == userId)) return;
         foreach (var scope in scopes)
         {
             scope.UserId = userId;
@@ -424,10 +423,9 @@ public static class DbInitializer
         await context.SaveChangesAsync();
     }
 
-    private static async Task ReplaceUserAssignmentsAsync(ApplicationDbContext context, string userId, IEnumerable<UserAssignment> assignments)
+    internal static async Task SeedInitialUserAssignmentsAsync(ApplicationDbContext context, string userId, IEnumerable<UserAssignment> assignments)
     {
-        var existing = await context.UserAssignments.Where(assignment => assignment.UserId == userId).ToListAsync();
-        context.UserAssignments.RemoveRange(existing);
+        if (await context.UserAssignments.AnyAsync(assignment => assignment.UserId == userId)) return;
         foreach (var assignment in assignments)
         {
             assignment.UserId = userId;

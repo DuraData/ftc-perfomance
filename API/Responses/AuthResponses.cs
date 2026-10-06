@@ -33,6 +33,7 @@ public record LoginAuditLogResponse(int Id, string? UserId, string Email, string
 public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string? Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
 {
     public Guid PublicId { get; init; }
+    public string RowVersion { get; init; } = string.Empty;
 }
 
 public record UserDetailResponse(UserResponse User, RoleResponse[] Roles);

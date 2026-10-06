@@ -2079,6 +2079,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        if (ChangeTracker.Entries<UserScope>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<UserAssignment>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("User scope and operational-assignment history cannot be hard deleted.");
         if (ChangeTracker.Entries<PerformanceTargetRevision>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Performance target revision history is append-only.");
         if (ChangeTracker.Entries<KpiFieldRevision>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

@@ -505,8 +505,15 @@ public class UsersController : ControllerBase
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before assigning responsibilities"));
         if (!await IsAllowedAsync(actor, "SECURITY.ASSIGN_ROLES")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion))
+            return BadRequest(Fail<bool>("RowVersion must be a valid non-empty base64 concurrency token."));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 5 or > 500)
+            return BadRequest(Fail<bool>("Reason must contain between 5 and 500 characters."));
+        if (request.Assignments == null)
+            return BadRequest(Fail<bool>("Assignments are required."));
 
         var invalidAssignment = request.Assignments.FirstOrDefault(assignment => !Enum.TryParse<AssignmentType>(assignment.AssignmentType, true, out _));
         if (invalidAssignment != null)
@@ -514,8 +521,57 @@ public class UsersController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, $"Invalid assignment type '{invalidAssignment.AssignmentType}'"));
         }
 
+        foreach (var assignment in request.Assignments)
+        {
+            var type = Enum.Parse<AssignmentType>(assignment.AssignmentType, true);
+            if (assignment.ValidFromUtc.HasValue && assignment.ValidToUtc.HasValue && assignment.ValidToUtc <= assignment.ValidFromUtc)
+                return BadRequest(Fail<bool>("Assignment ValidToUtc must be later than ValidFromUtc."));
+            var hasTarget = !string.IsNullOrWhiteSpace(assignment.TargetId) || !string.IsNullOrWhiteSpace(assignment.KpiId);
+            var validSelector = type switch
+            {
+                AssignmentType.AdditionalApproverAssignment or AssignmentType.AdditionalVerifierAssignment or AssignmentType.AdditionalSubmitterAssignment => hasTarget,
+                AssignmentType.ProjectAssignee => !string.IsNullOrWhiteSpace(assignment.ProjectId),
+                AssignmentType.TaskAssignee => !string.IsNullOrWhiteSpace(assignment.TaskId),
+                AssignmentType.DelegatedAssignment => !string.IsNullOrWhiteSpace(assignment.DelegatorUserId)
+                    && (hasTarget || !string.IsNullOrWhiteSpace(assignment.ProjectId) || !string.IsNullOrWhiteSpace(assignment.TaskId)),
+                _ => false
+            };
+            if (!validSelector)
+                return BadRequest(Fail<bool>($"Assignment type '{type}' requires its corresponding record selector."));
+            if (type == AssignmentType.DelegatedAssignment && string.Equals(assignment.DelegatorUserId, id, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(Fail<bool>("A user cannot delegate an assignment to themselves."));
+        }
+
+        var delegatorIds = request.Assignments
+            .Where(item => !string.IsNullOrWhiteSpace(item.DelegatorUserId))
+            .Select(item => item.DelegatorUserId!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (delegatorIds.Length > 0)
+        {
+            var validDelegatorIds = await TenantUsers().AsNoTracking()
+                .Where(item => delegatorIds.Contains(item.Id) && item.IsActive)
+                .Select(item => item.Id)
+                .ToArrayAsync();
+            if (validDelegatorIds.Length != delegatorIds.Length)
+                return BadRequest(Fail<bool>("Every delegator must be an active user in the selected municipality."));
+        }
+
+        var duplicate = request.Assignments
+            .GroupBy(AssignmentKey, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate != null) return BadRequest(Fail<bool>("Duplicate operational assignments are not permitted."));
+
         var existing = await _context.UserAssignments.Where(assignment => assignment.UserId == id).ToListAsync();
-        _context.UserAssignments.RemoveRange(existing);
+        var previouslyActiveCount = existing.Count(item => item.IsActive);
+        var now = DateTime.UtcNow;
+        foreach (var assignment in existing.Where(item => item.IsActive))
+        {
+            assignment.IsActive = false;
+            if ((!assignment.ValidFromUtc.HasValue || assignment.ValidFromUtc <= now)
+                && (!assignment.ValidToUtc.HasValue || assignment.ValidToUtc > now))
+                assignment.ValidToUtc = now;
+        }
 
         foreach (var assignment in request.Assignments)
         {
@@ -523,19 +579,26 @@ public class UsersController : ControllerBase
             {
                 UserId = id,
                 AssignmentType = Enum.Parse<AssignmentType>(assignment.AssignmentType, true),
-                DelegatorUserId = assignment.DelegatorUserId,
+                DelegatorUserId = NullIfWhiteSpace(assignment.DelegatorUserId),
                 IsActive = assignment.IsActive,
                 ValidFromUtc = assignment.ValidFromUtc,
                 ValidToUtc = assignment.ValidToUtc,
-                TargetId = assignment.TargetId,
-                KpiId = assignment.KpiId,
-                ProjectId = assignment.ProjectId,
-                TaskId = assignment.TaskId
+                TargetId = NullIfWhiteSpace(assignment.TargetId),
+                KpiId = NullIfWhiteSpace(assignment.KpiId),
+                ProjectId = NullIfWhiteSpace(assignment.ProjectId),
+                TaskId = NullIfWhiteSpace(assignment.TaskId)
             });
         }
 
-        QueueAudit(user, "UpdateAssignments", new { AssignmentCount = existing.Count }, new { Assignments = request.Assignments }, actor.Id);
-        await _context.SaveChangesAsync();
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
+        user.UpdatedAt = now;
+        user.UpdatedBy = actor.Id;
+        QueueAudit(user, "UpdateAssignments", new { ActiveAssignmentCount = previouslyActiveCount }, new { Assignments = request.Assignments }, actor.Id, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(Fail<bool>("The user assignments changed since they were loaded. Refresh and try again."));
+        }
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -633,9 +696,13 @@ public class UsersController : ControllerBase
     private static UserResponse ToResponse(ApplicationUser user, bool includeEmail, bool includePhone) =>
         new(user.Id, includeEmail ? user.UserName ?? user.Email ?? user.Id : user.Id, user.FirstName, user.LastName,
             user.FullName, includeEmail ? user.Email : null, includePhone ? user.PhoneNumber : null, user.Department,
-            user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt) { PublicId = user.PublicId };
+            user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt)
+        {
+            PublicId = user.PublicId,
+            RowVersion = Convert.ToBase64String(user.RowVersion)
+        };
 
-    private void QueueAudit(ApplicationUser user, string action, object? oldValue, object? newValue, string actorId) =>
+    private void QueueAudit(ApplicationUser user, string action, object? oldValue, object? newValue, string actorId, string reason = "User administration change") =>
         _context.AuditTrails.Add(new AuditTrail
         {
             MunicipalityId = user.MunicipalityId,
@@ -649,8 +716,27 @@ public class UsersController : ControllerBase
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent = Request.Headers.UserAgent.ToString(),
             CorrelationId = HttpContext.TraceIdentifier,
-            Reason = "User administration change"
+            Reason = reason
         });
+
+    private static string AssignmentKey(UserAssignmentItemRequest assignment) => string.Join('|',
+        assignment.AssignmentType.Trim(), assignment.DelegatorUserId?.Trim(), assignment.TargetId?.Trim(), assignment.KpiId?.Trim(),
+        assignment.ProjectId?.Trim(), assignment.TaskId?.Trim(), assignment.ValidFromUtc?.ToUniversalTime().Ticks,
+        assignment.ValidToUtc?.ToUniversalTime().Ticks, assignment.IsActive);
+
+    private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool TryDecodeRowVersion(string? value, out byte[] rowVersion)
+    {
+        rowVersion = [];
+        try
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            rowVersion = Convert.FromBase64String(value);
+            return rowVersion.Length > 0;
+        }
+        catch (FormatException) { return false; }
+    }
 
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
 }

@@ -48,7 +48,7 @@ public record UserAssignmentItemRequest(
     string? ProjectId,
     string? TaskId);
 
-public record UpdateUserAssignmentsRequest(UserAssignmentItemRequest[] Assignments);
+public record UpdateUserAssignmentsRequest(UserAssignmentItemRequest[] Assignments, string RowVersion, string Reason);
 
 public record CreateDepartmentRequest(string Code, string Name, string? Description);
 

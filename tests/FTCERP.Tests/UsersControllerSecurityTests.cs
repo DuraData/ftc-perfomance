@@ -216,6 +216,70 @@ public sealed class UsersControllerSecurityTests
         Assert.IsType<BadRequestObjectResult>((await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
 
+    [Fact]
+    public async Task Assignment_change_preserves_history_validates_tenant_and_advances_user_concurrency()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new FixedTenantContext(501, "actor");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        context.AddRange(new Municipality { Id = 501, Code = "M501", Name = "Municipality 501" },
+            new Municipality { Id = 502, Code = "M502", Name = "Municipality 502" });
+        var actor = User("actor", 501, "actor@example.test", "0111111111");
+        var target = User("target", 501, "target@example.test", "0222222222");
+        var otherTenant = User("other", 502, "other@example.test", "0333333333");
+        context.AddRange(actor, target, otherTenant);
+        var prior = new UserAssignment
+        {
+            UserId = target.Id,
+            AssignmentType = AssignmentType.AdditionalSubmitterAssignment,
+            TargetId = "prior-target",
+            ValidFromUtc = DateTime.UtcNow.AddDays(-1),
+            IsActive = true
+        };
+        context.UserAssignments.Add(prior);
+        await context.SaveChangesAsync();
+        var originalVersion = Convert.ToBase64String(target.RowVersion);
+        context.ChangeTracker.Clear();
+
+        var directory = new[] { actor, target, otherTenant }.ToDictionary(item => item.Id);
+        var controller = Controller(context, tenant, actor, directory, Access(actor, "SECURITY.ASSIGN_ROLES").Object);
+        var now = DateTime.UtcNow;
+        var response = await controller.SetUserAssignments(target.Id, new UpdateUserAssignmentsRequest(
+            [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), actor.Id, true,
+                now.AddMinutes(-1), now.AddDays(1), "delegated-target", null, null, null)],
+            originalVersion, "Approved temporary submission delegation"));
+
+        Assert.IsType<OkObjectResult>(response.Result);
+        var rows = await context.UserAssignments.OrderBy(item => item.Id).ToArrayAsync();
+        Assert.Equal(2, rows.Length);
+        Assert.False(rows[0].IsActive);
+        Assert.NotNull(rows[0].ValidToUtc);
+        Assert.True(rows[1].IsActive);
+        Assert.Equal(actor.Id, rows[1].DelegatorUserId);
+        Assert.NotEqual(originalVersion, Convert.ToBase64String((await context.Users.SingleAsync(item => item.Id == target.Id)).RowVersion));
+        Assert.Equal("Approved temporary submission delegation", (await context.AuditTrails.SingleAsync()).Reason);
+
+        context.ChangeTracker.Clear();
+        var refreshedTarget = await context.Users.SingleAsync(item => item.Id == target.Id);
+        var invalid = await controller.SetUserAssignments(target.Id, new UpdateUserAssignmentsRequest(
+            [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), otherTenant.Id, true,
+                now, now.AddDays(1), "cross-tenant-target", null, null, null)],
+            Convert.ToBase64String(refreshedTarget.RowVersion), "Attempt cross tenant delegation"));
+        Assert.IsType<BadRequestObjectResult>(invalid.Result);
+        Assert.Equal(2, await context.UserAssignments.CountAsync());
+
+        context.ChangeTracker.Clear();
+        var stale = await controller.SetUserAssignments(target.Id, new UpdateUserAssignmentsRequest(
+            [new UserAssignmentItemRequest(nameof(AssignmentType.TaskAssignee), null, true,
+                now, now.AddDays(2), null, null, null, "stale-task")],
+            originalVersion, "Attempt stale assignment update"));
+        Assert.IsType<ConflictObjectResult>(stale.Result);
+        Assert.Equal(2, await context.UserAssignments.CountAsync());
+    }
+
     private static ApplicationUser User(string id, long municipalityId, string email, string phone) => new()
     {
         Id = id,
