@@ -2200,7 +2200,7 @@ R-42 now records fifty-three retired collection reads. R-45 remains **PARTIALLY 
 - The employee page evaluates each member against the selected municipality, redacts denied values before transport, excludes protected values from search predicates and rejects protected sort keys. Create requires employee-number UPDATE; optional login linkage requires its own UPDATE and an active account in the selected municipality; and the update contract distinguishes an omitted link from an authorized request to clear it, preventing deactivation from accidentally changing a hidden field or linking a foreign-tenant account.
 - The production employee workspace hides protected create/link controls, does not load the user directory without linked-login READ, removes denied sort choices and labels redacted identifiers without manufacturing values. TID employee selectors remain usable when employee numbers are redacted by falling back to the governed employee name.
 - Relational tests prove idempotent member/permission generation, response redaction, non-inference through employee-number/email search, direct sort denial, cross-tenant login-link rejection and persistence unchanged after denied email or linked-login mutation. Component coverage proves protected controls and login-directory requests are absent when the same capabilities are denied.
-- Full local verification passes **434 backend tests** with one explicit native SQL Server-environment skip and **246/246 frontend tests across 63 files**. TypeScript and ESLint pass, and the ASP.NET test build completes the production Vite build. Exact clean-runner evidence is recorded after the module commit is pushed.
+- Exact clean-runner verification for commit `ca82578` is green in GitHub Actions run `37476363031`: **434 backend tests** passed with one explicit native SQL Server-environment skip and **246/246 frontend tests across 63 files** passed. TypeScript, ESLint, **2/2** accessibility tests, zero-warning Release build, SQL Server-provider migration generation, recovery-contract validation, production frontend build, the **77-chunk** bundle budget with a largest chunk of **400.0 KiB**, zero-vulnerability backend/frontend audits and the secret scan also passed.
 
 ### 12.1 Final verdict
 
@@ -2356,11 +2356,11 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 | Gate | Result |
 |---|---|
 | Backend test suite | **Passed: 434; Failed: 0; Skipped: 1; Total: 435.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 246; Failed: 0; Test files: 63/63.** The complete local suite passed; focused KPI definition/ordering/period-value revision paging, consolidation-history and submission-evidence paging, clean-evidence selection, API transport, global-reference and strategic-relationship paging, governed security-registry, protected municipal-employee members, canonical OPMS unit/direction catalogue, period serialization/editor, year-filtered vote administration/picker, target mapping, template-resolution, unit-administration and CSV tests also passed. |
+| Frontend Vitest suite | **Passed: 246; Failed: 0; Test files: 63/63.** The exact clean GitHub Actions suite passed; focused KPI definition/ordering/period-value revision paging, consolidation-history and submission-evidence paging, clean-evidence selection, API transport, global-reference and strategic-relationship paging, governed security-registry, protected municipal-employee members, canonical OPMS unit/direction catalogue, period serialization/editor, year-filtered vote administration/picker, target mapping, template-resolution, unit-administration and CSV tests also passed. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,109 modules transformed. |
-| Bundle budget | Passed with 77 JavaScript chunks; largest chunk 400.5 KiB. |
+| Bundle budget | Passed with 77 JavaScript chunks; largest chunk 400.0 KiB. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed; **0 errors**. The offline vulnerability-metadata lookup emitted one NU1900 warning because NuGet.org was unavailable in the restricted environment; compilation and the locked restore graph succeeded. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |
