@@ -1148,7 +1148,7 @@ export function OPMSTargetLibraryList() {
               variant: 'error',
               onClick: () => {
                 void (async () => {
-                  const result = await archiveOpmsTargetTemplateApi(template.id);
+                  const result = await archiveOpmsTargetTemplateApi(template.id, template.rowVersion);
                   if (result.success) {
                     pushToast('success', 'OPMS template archived');
                     await loadTemplates();
@@ -1260,7 +1260,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               icon={<Archive className="h-4 w-4" />}
               onClick={() => {
                 void (async () => {
-                  const result = await archiveOpmsTargetTemplateApi(template.id);
+                  const result = await archiveOpmsTargetTemplateApi(template.id, template.rowVersion);
                   if (result.success) {
                     pushToast('success', 'OPMS template archived');
                     setCurrentPath('/opms/library');
@@ -1389,7 +1389,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     const payload = buildOpmsTemplatePayload(form, referenceData.lookups);
 
     if (template) {
-      const result = await updateOpmsTargetTemplateApi(template.id, payload);
+      const result = await updateOpmsTargetTemplateApi(template.id, { ...payload, rowVersion: template.rowVersion });
       if (result.success && result.data) {
         pushToast('success', 'OPMS template updated');
         setCurrentPath(`/opms/library/${result.data.id}`);
@@ -1770,7 +1770,7 @@ export function IPMSTargetLibraryList() {
               variant: 'error',
               onClick: () => {
                 void (async () => {
-                  const result = await archiveIpmsTargetTemplateApi(template.id);
+                  const result = await archiveIpmsTargetTemplateApi(template.id, template.rowVersion);
                   if (result.success) {
                     pushToast('success', 'IPMS template archived');
                     await loadTemplates();
@@ -1882,7 +1882,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               icon={<Archive className="h-4 w-4" />}
               onClick={() => {
                 void (async () => {
-                  const result = await archiveIpmsTargetTemplateApi(template.id);
+                  const result = await archiveIpmsTargetTemplateApi(template.id, template.rowVersion);
                   if (result.success) {
                     pushToast('success', 'IPMS template archived');
                     setCurrentPath('/ipms/library');
@@ -1989,7 +1989,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     const payload = buildIpmsTemplatePayload(form, referenceData.lookups);
 
     if (template) {
-      const result = await updateIpmsTargetTemplateApi(template.id, payload);
+      const result = await updateIpmsTargetTemplateApi(template.id, { ...payload, rowVersion: template.rowVersion });
       if (result.success && result.data) {
         pushToast('success', 'IPMS template updated');
         setCurrentPath(`/ipms/library/${result.data.id}`);

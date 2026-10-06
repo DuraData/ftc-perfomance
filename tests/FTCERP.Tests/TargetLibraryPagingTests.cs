@@ -8,6 +8,7 @@ using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 
 namespace FTCERP.Tests;
@@ -105,6 +106,80 @@ public sealed class TargetLibraryPagingTests
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(OpmsController(context, user).GetTemplates().Result).StatusCode);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(IpmsController(context, user).GetTemplates().Result).StatusCode);
     }
+
+    [Fact]
+    public async Task Opms_library_uses_public_identity_and_rejects_stale_updates()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("opms-library-editor");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var controller = OpmsController(context, user);
+
+        var createdResult = await controller.CreateTemplate(OpmsRequest("OP-GOV", "Governed template"));
+        var created = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>(createdResult.Result).Value).Data!;
+        created.PublicId.Should().NotBeEmpty();
+        created.RowVersion.Should().NotBeNullOrWhiteSpace();
+        var staleVersion = created.RowVersion;
+
+        var fetchedResult = await controller.GetTemplate(created.PublicId);
+        var fetched = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>(fetchedResult.Result).Value).Data!;
+        fetched.PublicId.Should().Be(created.PublicId);
+
+        var updatedResult = await controller.UpdateTemplate(created.PublicId,
+            OpmsRequest("OP-GOV", "Governed template v2", staleVersion));
+        var updated = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>(updatedResult.Result).Value).Data!;
+        updated.RowVersion.Should().NotBe(staleVersion);
+        (await controller.UpdateTemplate(created.PublicId,
+            OpmsRequest("OP-GOV", "Stale edit", staleVersion))).Result.Should().BeOfType<ConflictObjectResult>();
+
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetTemplate(1).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.UpdateTemplate(1, OpmsRequest("X", "X")).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.ArchiveTemplate(1).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.DuplicateTemplate(1).Result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Ipms_library_requires_row_version_for_mutations_and_preserves_version_identity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("ipms-library-editor");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var controller = IpmsController(context, user);
+
+        var createdResult = await controller.CreateTemplate(IpmsRequest("IP-GOV", "Governed template"));
+        var created = Assert.IsType<ApiResponse<IpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>(createdResult.Result).Value).Data!;
+        created.PublicId.Should().NotBeEmpty();
+        created.RowVersion.Should().NotBeNullOrWhiteSpace();
+        (await controller.UpdateTemplate(created.PublicId, IpmsRequest("IP-GOV", "No token"))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+
+        var archivedResult = await controller.ArchiveTemplate(created.PublicId, new ArchiveTargetTemplateRequest(created.RowVersion));
+        archivedResult.Result.Should().BeOfType<OkObjectResult>();
+        var versions = await context.IpmsTargetTemplateVersions.ToListAsync();
+        versions.Should().ContainSingle();
+        versions[0].PublicId.Should().NotBeEmpty();
+        versions[0].RowVersion.Should().NotBeEmpty();
+    }
+
+    private static SaveOpmsTargetTemplateRequest OpmsRequest(string code, string name, string? rowVersion = null) =>
+        new(TemplateCode: code, TemplateName: name, IndicatorNumber: "KPI-1", TargetName: "Target",
+            KpiDescription: "Description", Baseline: 0, AnnualTarget: 100, AnnualTargetDescription: null,
+            TargetUnitType: "percentage", UnitOfMeasure: "%", NationalKpa: null, MunicipalKpa: null,
+            StrategicGoal: null, StrategicObjective: null, PerformanceObjective: null, Outcome: null, Output: null,
+            PriorityIssue: null, BudgetSource: null, BudgetType: null, Weight: 100, KpiType: null,
+            IndicatorType: null, FunctionalArea: null, StandardClassification: null, IdpReference: null,
+            InternalReference: null, FmsLink: null, DefaultQuarterlyTargetsJson: null,
+            DefaultBudgetInformation: null, DefaultPoeRequirements: null, IsActive: true, RowVersion: rowVersion);
+
+    private static SaveIpmsTargetTemplateRequest IpmsRequest(string code, string name, string? rowVersion = null) =>
+        new(code, name, "Target", "Description", null, null, null, "percentage", "%", 100, null, 100,
+            null, null, null, null, false, null, true, rowVersion);
 
     private static OpmsTargetLibraryController OpmsController(ApplicationDbContext context, ApplicationUser user)
     {

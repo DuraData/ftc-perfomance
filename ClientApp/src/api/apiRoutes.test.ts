@@ -4,6 +4,7 @@ import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage
 import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
 import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
 import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './api';
+import { archiveIpmsTargetTemplate, archiveOpmsTargetTemplate } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -222,6 +223,17 @@ describe('versioned API routes', () => {
     const expected = 'page=2&pageSize=25&search=water&sortBy=templateCode&sortDirection=asc&status=active&primaryArea=Services&functionalArea=Operations&classification=Outcome&targetUnitType=percentage&version=2';
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining(`/v1/opms-target-library/page?${expected}`), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining(`/v1/ipms-target-library/page?${expected}`), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('archives target-library records by public identifier with optimistic concurrency', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await archiveOpmsTargetTemplate('opms-public-id', 'OPMS-ROW-VERSION');
+    await archiveIpmsTargetTemplate('ipms-public-id', 'IPMS-ROW-VERSION');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-target-library/opms-public-id/archive'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'OPMS-ROW-VERSION' }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-target-library/ipms-public-id/archive'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'IPMS-ROW-VERSION' }) }));
   });
 
   it('uses separately authorized hierarchy stage and commit routes', async () => {

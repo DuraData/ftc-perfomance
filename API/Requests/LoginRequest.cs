@@ -113,7 +113,8 @@ public record SaveOpmsTargetTemplateRequest(
     string? DefaultQuarterlyTargetsJson,
     string? DefaultBudgetInformation,
     string? DefaultPoeRequirements,
-    bool IsActive);
+    bool IsActive,
+    string? RowVersion = null);
 
 public record SaveIpmsTargetTemplateRequest(
     string TemplateCode,
@@ -134,7 +135,10 @@ public record SaveIpmsTargetTemplateRequest(
     string? DefaultTaskTemplatesJson,
     bool LinkedOpmsTargetRequired,
     string? FunctionalArea,
-    bool IsActive);
+    bool IsActive,
+    string? RowVersion = null);
+
+public record ArchiveTargetTemplateRequest(string RowVersion);
 
 public record SaveOpmsTargetRequest(
     string? SourceTemplateId,

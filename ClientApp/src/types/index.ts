@@ -897,6 +897,8 @@ export interface TemplateQuarterlyTarget {
 
 export interface OpmsTargetTemplate {
   id: string;
+  publicId: string;
+  rowVersion: string;
   templateCode: string;
   templateName: string;
   indicatorNumber: string;
@@ -938,6 +940,8 @@ export interface OpmsTargetTemplate {
 
 export interface IpmsTargetTemplate {
   id: string;
+  publicId: string;
+  rowVersion: string;
   templateCode: string;
   templateName: string;
   department?: Department;
@@ -2357,7 +2361,7 @@ export interface SystemCoverageAuditRow {
 }
 
 export interface OpmsTargetTemplateDto {
-  id: number;
+  publicId: string;
   templateCode: string;
   templateName: string;
   indicatorNumber: string;
@@ -2394,10 +2398,11 @@ export interface OpmsTargetTemplateDto {
   version: number;
   createdBy?: string | null;
   createdDate: string;
+  rowVersion: string;
 }
 
 export interface IpmsTargetTemplateDto {
-  id: number;
+  publicId: string;
   templateCode: string;
   templateName: string;
   targetName: string;
@@ -2421,6 +2426,7 @@ export interface IpmsTargetTemplateDto {
   version: number;
   createdBy?: string | null;
   createdDate: string;
+  rowVersion: string;
 }
 
 export interface OpmsTargetDto {
@@ -2851,6 +2857,7 @@ export interface SaveOpmsTargetTemplatePayload {
   defaultBudgetInformation?: string | null;
   defaultPoeRequirements?: string | null;
   isActive: boolean;
+  rowVersion?: string | null;
 }
 
 export interface SaveIpmsTargetTemplatePayload {
@@ -2873,6 +2880,7 @@ export interface SaveIpmsTargetTemplatePayload {
   linkedOpmsTargetRequired: boolean;
   functionalArea?: string | null;
   isActive: boolean;
+  rowVersion?: string | null;
 }
 
 export interface SaveOpmsTargetPayload {

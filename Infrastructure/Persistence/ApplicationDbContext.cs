@@ -591,10 +591,26 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<OpmsTargetTemplate>()
             .HasIndex(template => template.TemplateCode)
             .IsUnique();
+        builder.Entity<OpmsTargetTemplate>().HasIndex(template => template.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<OpmsTargetTemplate>().Property(template => template.RowVersion));
 
         builder.Entity<IpmsTargetTemplate>()
             .HasIndex(template => template.TemplateCode)
             .IsUnique();
+        builder.Entity<IpmsTargetTemplate>().HasIndex(template => template.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IpmsTargetTemplate>().Property(template => template.RowVersion));
+
+        builder.Entity<OpmsTargetTemplateVersion>().HasIndex(version => version.PublicId).IsUnique();
+        builder.Entity<OpmsTargetTemplateVersion>()
+            .HasIndex(version => new { version.OpmsTargetTemplateId, version.Version })
+            .IsUnique();
+        ConfigureRowVersion(builder.Entity<OpmsTargetTemplateVersion>().Property(version => version.RowVersion));
+
+        builder.Entity<IpmsTargetTemplateVersion>().HasIndex(version => version.PublicId).IsUnique();
+        builder.Entity<IpmsTargetTemplateVersion>()
+            .HasIndex(version => new { version.IpmsTargetTemplateId, version.Version })
+            .IsUnique();
+        ConfigureRowVersion(builder.Entity<IpmsTargetTemplateVersion>().Property(version => version.RowVersion));
 
         builder.Entity<OpmsTargetTemplateVersion>()
             .HasOne(version => version.OpmsTargetTemplate)

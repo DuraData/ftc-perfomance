@@ -113,7 +113,7 @@ public record SystemCoverageAuditResponse(
     bool Notifications);
 
 public record OpmsTargetTemplateResponse(
-    int Id,
+    Guid PublicId,
     string TemplateCode,
     string TemplateName,
     string IndicatorNumber,
@@ -149,10 +149,11 @@ public record OpmsTargetTemplateResponse(
     bool IsArchived,
     int Version,
     string? CreatedBy,
-    DateTime CreatedDate);
+    DateTime CreatedDate,
+    string RowVersion);
 
 public record IpmsTargetTemplateResponse(
-    int Id,
+    Guid PublicId,
     string TemplateCode,
     string TemplateName,
     string TargetName,
@@ -175,7 +176,8 @@ public record IpmsTargetTemplateResponse(
     bool IsArchived,
     int Version,
     string? CreatedBy,
-    DateTime CreatedDate);
+    DateTime CreatedDate,
+    string RowVersion);
 
 public record OpmsTargetResponse(
     string Id,

@@ -3,6 +3,8 @@ namespace FTCERP.Host.Domain.Entities;
 public class OpmsTargetTemplate
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public byte[] RowVersion { get; set; } = [];
     public string TemplateCode { get; set; } = string.Empty;
     public string TemplateName { get; set; } = string.Empty;
     public string IndicatorNumber { get; set; } = string.Empty;
@@ -46,6 +48,8 @@ public class OpmsTargetTemplate
 public class OpmsTargetTemplateVersion
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public byte[] RowVersion { get; set; } = [];
     public int OpmsTargetTemplateId { get; set; }
     public int Version { get; set; }
     public string SnapshotJson { get; set; } = string.Empty;

@@ -79,7 +79,7 @@ public static class PerformanceApiSupport
 
     public static OpmsTargetTemplateResponse ToResponse(this OpmsTargetTemplate template) =>
         new(
-            template.Id,
+            template.PublicId,
             template.TemplateCode,
             template.TemplateName,
             template.IndicatorNumber,
@@ -115,11 +115,12 @@ public static class PerformanceApiSupport
             template.IsArchived,
             template.Version,
             template.CreatedBy,
-            template.CreatedDate);
+            template.CreatedDate,
+            Convert.ToBase64String(template.RowVersion));
 
     public static IpmsTargetTemplateResponse ToResponse(this IpmsTargetTemplate template) =>
         new(
-            template.Id,
+            template.PublicId,
             template.TemplateCode,
             template.TemplateName,
             template.TargetName,
@@ -142,7 +143,8 @@ public static class PerformanceApiSupport
             template.IsArchived,
             template.Version,
             template.CreatedBy,
-            template.CreatedDate);
+            template.CreatedDate,
+            Convert.ToBase64String(template.RowVersion));
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target) =>
         new(

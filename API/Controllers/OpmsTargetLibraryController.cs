@@ -99,14 +99,19 @@ public class OpmsTargetLibraryController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse>>> GetTemplate(int id)
+    public ActionResult<ApiResponse<OpmsTargetTemplateResponse>> GetTemplate(int id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<OpmsTargetTemplateResponse>(false, null,
+            "Integer template identifiers are retired. Use GET /api/v1/opms-target-library/{publicId}."));
+
+    [HttpGet("{publicId:guid}")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse>>> GetTemplate(Guid publicId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.View");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
 
-        var template = await _context.OpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+        var template = await _context.OpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == publicId);
         return template == null
             ? NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"))
             : Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
@@ -127,62 +132,89 @@ public class OpmsTargetLibraryController : ControllerBase
         _context.OpmsTargetTemplates.Add(template);
         await _context.SaveChangesAsync();
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.Id.ToString(), "Create", null, template, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
     }
 
     [HttpPut("{id:int}")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse>>> UpdateTemplate(int id, [FromBody] SaveOpmsTargetTemplateRequest request)
+    public ActionResult<ApiResponse<OpmsTargetTemplateResponse>> UpdateTemplate(int id, [FromBody] SaveOpmsTargetTemplateRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<OpmsTargetTemplateResponse>(false, null,
+            "Integer template identifiers are retired. Use PUT /api/v1/opms-target-library/{publicId} with RowVersion."));
+
+    [HttpPut("{publicId:guid}")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse>>> UpdateTemplate(Guid publicId, [FromBody] SaveOpmsTargetTemplateRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.Edit");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
 
-        var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.Id == id);
+        var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"));
-        var codeConflict = await _context.OpmsTargetTemplates.AnyAsync(item => item.Id != id && item.TemplateCode == request.TemplateCode);
+        if (!TrySetExpectedVersion(template, request.RowVersion))
+            return BadRequest(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "A valid RowVersion is required."));
+        var codeConflict = await _context.OpmsTargetTemplates.AnyAsync(item => item.PublicId != publicId && item.TemplateCode == request.TemplateCode);
         if (codeConflict) return Conflict(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "Template code already exists"));
 
         var oldValue = template.ToResponse();
         template = Apply(template, request, user.UserName ?? user.Email ?? user.Id);
         template.Version += 1;
-        await _context.SaveChangesAsync();
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "The OPMS target template changed. Reload and retry."));
+        }
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.Id.ToString(), "Edit", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Edit", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
     }
 
     [HttpDelete("{id:int}")]
-    public async Task<ActionResult<ApiResponse<bool>>> ArchiveTemplate(int id)
+    public ActionResult<ApiResponse<bool>> ArchiveTemplate(int id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false,
+            "Integer archive routes are retired. Use POST /api/v1/opms-target-library/{publicId}/archive with RowVersion."));
+
+    [HttpPost("{publicId:guid}/archive")]
+    public async Task<ActionResult<ApiResponse<bool>>> ArchiveTemplate(Guid publicId, [FromBody] ArchiveTargetTemplateRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.Delete");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
 
-        var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.Id == id);
+        var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<bool>(false, false, "OPMS target template not found"));
+        if (!TrySetExpectedVersion(template, request.RowVersion))
+            return BadRequest(new ApiResponse<bool>(false, false, "A valid RowVersion is required."));
 
         var oldValue = template.ToResponse();
         template.IsArchived = true;
         template.IsActive = false;
-        await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.Id.ToString(), "Archive", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new ApiResponse<bool>(false, false, "The OPMS target template changed. Reload and retry."));
+        }
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Archive", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<bool>(true, true));
     }
 
     [HttpPost("{id:int}/duplicate")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse>>> DuplicateTemplate(int id)
+    public ActionResult<ApiResponse<OpmsTargetTemplateResponse>> DuplicateTemplate(int id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<OpmsTargetTemplateResponse>(false, null,
+            "Integer template identifiers are retired. Use POST /api/v1/opms-target-library/{publicId}/duplicate."));
+
+    [HttpPost("{publicId:guid}/duplicate")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse>>> DuplicateTemplate(Guid publicId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.Duplicate");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
 
-        var template = await _context.OpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+        var template = await _context.OpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"));
 
         var duplicate = new OpmsTargetTemplate
@@ -228,7 +260,7 @@ public class OpmsTargetLibraryController : ControllerBase
         _context.OpmsTargetTemplates.Add(duplicate);
         await _context.SaveChangesAsync();
         await AddVersionAsync(duplicate, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", duplicate.Id.ToString(), "Duplicate", template.ToResponse(), duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", duplicate.PublicId.ToString(), "Duplicate", template.ToResponse(), duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, duplicate.ToResponse()));
     }
 
@@ -323,6 +355,18 @@ public class OpmsTargetLibraryController : ControllerBase
             CreatedDate = DateTime.UtcNow
         });
         await _context.SaveChangesAsync();
+    }
+
+    private bool TrySetExpectedVersion(OpmsTargetTemplate template, string? encoded)
+    {
+        try
+        {
+            var expected = Convert.FromBase64String(encoded ?? string.Empty);
+            if (expected.Length == 0) return false;
+            _context.Entry(template).Property(item => item.RowVersion).OriginalValue = expected;
+            return true;
+        }
+        catch (FormatException) { return false; }
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()
