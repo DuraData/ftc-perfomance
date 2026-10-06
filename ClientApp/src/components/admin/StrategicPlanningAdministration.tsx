@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link2, Plus, RefreshCw } from 'lucide-react';
 import {
   disableStrategicPlanningRelationship,
@@ -13,6 +13,7 @@ import { useSecurity } from '../../context/SecurityContext';
 import type { StrategicPlanningMasterDto, StrategicPlanningRelationshipDto } from '../../types';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { FormPanel, Input, Select, Textarea } from '../common/Form';
+import { StrategicPlanningMasterPicker } from '../common/StrategicPlanningMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 
@@ -48,7 +49,6 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
   const [relationshipPage, setRelationshipPage] = useState(1); const [relationshipTotalPages, setRelationshipTotalPages] = useState(0); const [relationshipTotalCount, setRelationshipTotalCount] = useState(0);
   const [relationshipSearchInput, setRelationshipSearchInput] = useState(''); const [relationshipSearch, setRelationshipSearch] = useState('');
   const [relationshipSort, setRelationshipSort] = useState<'parentName' | 'childName' | 'status'>('parentName');
-  const [relationshipOptions, setRelationshipOptions] = useState<Record<string, StrategicPlanningMasterDto[]>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const relationship = relationTypes.find(item => item.value === relationshipType)!;
   const supportsRelationships = ['municipal-kpas', 'strategic-goals', 'strategic-interventions', 'strategic-objectives', 'performance-objectives'].includes(kind);
@@ -72,16 +72,6 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
     const timeout = window.setTimeout(() => { setRelationshipSearch(relationshipSearchInput.trim()); setRelationshipPage(1); }, 250);
     return () => window.clearTimeout(timeout);
   }, [relationshipSearchInput]);
-
-  useEffect(() => {
-    if (!supportsRelationships || !security.canCreate('STRATEGIC_HIERARCHY')) return;
-    let cancelled = false;
-    Promise.all(relationTypes.flatMap(item => [item.parent, item.child]).filter((value, index, values) => values.indexOf(value) === index).map(async optionKind => {
-      const result = await getStrategicPlanningMastersPage(optionKind, { page: 1, pageSize: 100, sortBy: 'name', sortDirection: 'asc' });
-      return [optionKind, result.data?.items ?? []] as const;
-    })).then(entries => { if (!cancelled) setRelationshipOptions(Object.fromEntries(entries)); });
-    return () => { cancelled = true; };
-  }, [security, supportsRelationships]);
 
   const edit = (item: StrategicPlanningMasterDto) => { setSelected(item); setForm({ code: item.code ?? '', name: item.name, description: item.description ?? '', symbol: item.symbol ?? '', from: item.effectiveFromFinancialYearPublicId ?? '', to: item.effectiveToFinancialYearPublicId ?? '', displayOrder: String(item.displayOrder), isActive: String(item.isActive), reason: '' }); };
   const clear = () => { setSelected(null); setForm(empty()); };
@@ -109,9 +99,6 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
     setBusy(true); const result = await disableStrategicPlanningRelationship(item.publicId, relationshipReason, item.rowVersion);
     if (!result.success) setError(result.message ?? 'Relationship could not be disabled.'); else { pushToast('success', 'Relationship disabled'); setRelationshipReason(''); await load(); } setBusy(false);
   };
-  const parentOptions = useMemo(() => [{ value: '', label: 'Select parent' }, ...(relationshipOptions[relationship.parent] ?? []).map(item => ({ value: item.publicId, label: `${item.code ? `${item.code} · ` : ''}${item.name}` }))], [relationship.parent, relationshipOptions]);
-  const childOptions = useMemo(() => [{ value: '', label: 'Select child' }, ...(relationshipOptions[relationship.child] ?? []).map(item => ({ value: item.publicId, label: `${item.code ? `${item.code} · ` : ''}${item.name}` }))], [relationship.child, relationshipOptions]);
-
   return <AppShell title={config.title} subtitle="Municipality-scoped, effective-dated controlled master configuration">
     <div className="space-y-5">
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
@@ -136,8 +123,8 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
         <p className="mt-1 text-sm text-secondary-500">Configure only the relationships your municipality uses; no fixed hierarchy is imposed.</p>
         {security.canCreate('STRATEGIC_HIERARCHY') && <div className="mt-3 grid gap-2 lg:grid-cols-3">
           <Select label="Relationship" value={relationshipType} options={relationTypes.map(item => ({ value: item.value, label: item.label }))} onChange={event => { setRelationshipType(event.target.value as typeof relationshipType); setRelationshipPage(1); setParentId(''); setChildId(''); }} />
-          <Select label="Parent" value={parentId} options={parentOptions} onChange={event => setParentId(event.target.value)} />
-          <Select label="Child" value={childId} options={childOptions} onChange={event => setChildId(event.target.value)} />
+          <StrategicPlanningMasterPicker kind={relationship.parent} label="Parent" value={parentId} onChange={setParentId} />
+          <StrategicPlanningMasterPicker kind={relationship.child} label="Child" value={childId} onChange={setChildId} />
           <div className="lg:col-span-2"><Textarea label="Relationship governance reason" value={relationshipReason} onChange={event => setRelationshipReason(event.target.value)} /></div>
           <Button onClick={() => void link()} disabled={busy}>Create relationship</Button>
         </div>}
