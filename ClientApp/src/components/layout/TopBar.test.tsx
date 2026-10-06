@@ -8,7 +8,13 @@ const app = vi.hoisted(() => ({
   logout: vi.fn(),
   setCurrentPath: vi.fn(),
   pushToast: vi.fn(),
-  tenantContexts: [],
+  tenantContexts: [] as Array<{ id: number; publicId: string; code: string; name: string; isCurrent: boolean }>,
+  tenantContextPage: 1,
+  tenantContextTotalPages: 0,
+  tenantContextTotalCount: 0,
+  tenantContextSearch: '',
+  setTenantContextPage: vi.fn(),
+  setTenantContextSearch: vi.fn(),
   currentMunicipalityId: null,
   switchMunicipality: vi.fn(),
 }));
@@ -18,6 +24,14 @@ vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../../api/api', () => api);
 
 describe('TopBar notification feed', () => {
+  beforeEach(() => {
+    app.tenantContexts = [];
+    app.tenantContextPage = 1;
+    app.tenantContextTotalPages = 0;
+    app.tenantContextTotalCount = 0;
+    vi.clearAllMocks();
+  });
+
   it('loads only the recent server page while displaying the authoritative unread count', async () => {
     api.getNotifications.mockResolvedValue({
       success: true,
@@ -47,5 +61,18 @@ describe('TopBar notification feed', () => {
     fireEvent.click(screen.getByText('First'));
     await waitFor(() => expect(api.markNotificationRead).toHaveBeenCalledWith('n-1'));
     expect(await screen.findByRole('button', { name: 'Notifications, 11 unread' })).toBeInTheDocument();
+  });
+
+  it('searches and pages the municipality context directory', async () => {
+    app.tenantContexts = [{ id: 7, publicId: 'municipality-7', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true }];
+    app.tenantContextTotalCount = 31;
+    app.tenantContextTotalPages = 2;
+    api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
+
+    render(<TopBar />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search municipality contexts' }), { target: { value: ' seventh ' } });
+    await waitFor(() => expect(app.setTenantContextSearch).toHaveBeenCalledWith('seventh'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next municipality contexts' }));
+    expect(app.setTenantContextPage).toHaveBeenCalledWith(2);
   });
 });

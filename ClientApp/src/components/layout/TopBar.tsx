@@ -30,6 +30,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
     setCurrentPath,
     pushToast,
     tenantContexts,
+    tenantContextPage,
+    tenantContextTotalPages,
+    tenantContextTotalCount,
+    tenantContextSearch,
+    setTenantContextPage,
+    setTenantContextSearch,
     currentMunicipalityId,
     switchMunicipality,
   } = useApp();
@@ -39,6 +45,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const [notifications, setNotifications] = useState<NotificationDto[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [tenantSearchInput, setTenantSearchInput] = useState(tenantContextSearch);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setTenantContextSearch(tenantSearchInput.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [setTenantContextSearch, tenantSearchInput]);
 
   const loadNotifications = useCallback(async () => {
     setLoadingNotifications(true);
@@ -111,10 +123,13 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
       {/* Right section */}
       <div className="flex items-center gap-4">
-        {tenantContexts.length > 0 && (
-          <label className="hidden lg:flex items-center gap-2 text-xs text-secondary-500 dark:text-secondary-400">
-            Municipality
+        {(tenantContexts.length > 0 || tenantContextTotalCount > 0 || tenantContextSearch.length > 0) && (
+          <div className="hidden lg:flex items-center gap-1 text-xs text-secondary-500 dark:text-secondary-400">
+            <label className="sr-only" htmlFor="municipality-context-search">Search municipality contexts</label>
+            <input id="municipality-context-search" aria-label="Search municipality contexts" value={tenantSearchInput} onChange={event => setTenantSearchInput(event.target.value)} placeholder="Find municipality" className="w-36 rounded-lg border border-secondary-200 bg-white px-2 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100" />
+            <label className="sr-only" htmlFor="municipality-context">Municipality</label>
             <select
+              id="municipality-context"
               aria-label="Municipality context"
               value={currentMunicipalityId ?? ''}
               onChange={(event) => {
@@ -132,7 +147,8 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                 <option key={context.id} value={context.id}>{context.code} — {context.name}</option>
               ))}
             </select>
-          </label>
+            {tenantContextTotalPages > 1 && <><button type="button" aria-label="Previous municipality contexts" disabled={tenantContextPage <= 1} onClick={() => setTenantContextPage(Math.max(1, tenantContextPage - 1))} className="rounded border px-2 py-1 disabled:opacity-40">‹</button><span aria-label="Municipality context page">{tenantContextPage}/{tenantContextTotalPages}</span><button type="button" aria-label="Next municipality contexts" disabled={tenantContextPage >= tenantContextTotalPages} onClick={() => setTenantContextPage(Math.min(tenantContextTotalPages, tenantContextPage + 1))} className="rounded border px-2 py-1 disabled:opacity-40">›</button></>}
+          </div>
         )}
         {/* Search */}
         <div className="relative">

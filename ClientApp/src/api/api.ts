@@ -1234,8 +1234,10 @@ export async function getMyPermissions(): Promise<ApiResponse<string[]>> {
   return get<string[]>('/access/my-permissions');
 }
 
-export async function getMyTenantContexts(): Promise<ApiResponse<TenantContextDto[]>> {
-  return get<TenantContextDto[]>('/v1/tenancy/my-contexts');
+export async function getMyTenantContextsPage(query: RegisterPageQuery = {}, municipalityId?: number): Promise<ApiResponse<PagedResult<TenantContextDto>>> {
+  const pageQuery = registerPageQuery(query);
+  const exactQuery = municipalityId ? `${pageQuery ? '&' : '?'}municipalityId=${encodeURIComponent(municipalityId)}` : '';
+  return get<PagedResult<TenantContextDto>>(`/v1/tenancy/my-contexts/page${pageQuery}${exactQuery}`);
 }
 
 export type CalendarMasterPageQuery = RegisterPageQuery & {
