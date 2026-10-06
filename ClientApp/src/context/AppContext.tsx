@@ -142,7 +142,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMenuItems([]);
       safeRemoveItem('permissions');
       safeRemoveItem('menu_items');
-      return result.data.length === 0;
+      return result.data.totalCount === 0;
     }
     return refreshTenantAccess(selectedId);
   }, [refreshTenantAccess]);
