@@ -4,7 +4,6 @@ using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace FTCERP.Host.API.Controllers;
 
@@ -13,39 +12,24 @@ namespace FTCERP.Host.API.Controllers;
 [Authorize]
 public class DepartmentsController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
-
     public DepartmentsController(ApplicationDbContext context)
     {
-        _context = context;
+        _ = context;
     }
 
     [HttpGet]
     [Authorize(Policy = "Permission:DEPARTMENT.READ")]
-    public async Task<ActionResult<ApiResponse<DepartmentResponse[]>>> GetDepartments()
-    {
-        var departments = await _context.Departments
-            .AsNoTracking()
-            .OrderBy(department => department.Name)
-            .Select(department => new DepartmentResponse(department.Id, department.Code, department.Name, department.Description) { PublicId = department.PublicId })
-            .ToArrayAsync();
-
-        return Ok(new ApiResponse<DepartmentResponse[]>(true, departments));
-    }
+    public ActionResult<ApiResponse<DepartmentResponse[]>> GetDepartments() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<DepartmentResponse[]>(false, null,
+            "This unbounded compatibility route is retired. Use /api/v1/masters/departments/page."));
 
     [HttpGet("{id:int}")]
     [Authorize(Policy = "Permission:DEPARTMENT.READ")]
-    public async Task<ActionResult<ApiResponse<DepartmentResponse>>> GetDepartment(int id)
+    public ActionResult<ApiResponse<DepartmentResponse>> GetDepartment(int id)
     {
-        var department = await _context.Departments
-            .AsNoTracking()
-            .Where(item => item.Id == id)
-            .Select(item => new DepartmentResponse(item.Id, item.Code, item.Name, item.Description) { PublicId = item.PublicId })
-            .FirstOrDefaultAsync();
-
-        return department == null
-            ? NotFound(new ApiResponse<DepartmentResponse>(false, null, "Department not found"))
-            : Ok(new ApiResponse<DepartmentResponse>(true, department));
+        _ = id;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<DepartmentResponse>(false, null,
+            "This integer-ID compatibility route is retired. Use /api/v1/masters/departments/page with public identifiers."));
     }
 
     [HttpPost]

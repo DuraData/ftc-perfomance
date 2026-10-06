@@ -1985,23 +1985,6 @@ export interface RfiEvidenceDto {
   url: string;
 }
 
-export interface DepartmentLookupDto {
-  id: number;
-  publicId: string;
-  code: string;
-  name: string;
-  description?: string | null;
-}
-
-export interface UnitLookupDto {
-  id: number;
-  publicId: string;
-  departmentId: number;
-  departmentName: string;
-  code: string;
-  name: string;
-}
-
 export interface PerformanceLookupItemDto {
   id: number;
   code: string;

@@ -105,8 +105,6 @@ import type {
   PerformanceTargetRevisionDto,
   KpiFieldRevisionDto,
   ReportingWindowExceptionDto,
-  DepartmentLookupDto,
-  UnitLookupDto,
   PerformanceLookupsDto,
   PerformanceRfiDto,
   StageRatingDto,
@@ -1566,14 +1564,6 @@ export async function getInternalAuditSubmission(kind: 1 | 2, submissionId: stri
 
 export async function saveInternalAuditAssessment(kind: 1 | 2, submissionId: string, payload: { outcome: 1 | 2 | 3 | 4; detailedObservation: string; comment?: string; findings?: string; recommendation?: string; score?: number; responseDueAt?: string; previousAssessmentPublicId?: string }): Promise<ApiResponse<InternalAuditAssessmentDto>> {
   return post<InternalAuditAssessmentDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments`, payload);
-}
-
-export async function getDepartments(): Promise<ApiResponse<DepartmentLookupDto[]>> {
-  return get<DepartmentLookupDto[]>('/departments');
-}
-
-export async function getUnits(): Promise<ApiResponse<UnitLookupDto[]>> {
-  return get<UnitLookupDto[]>('/units');
 }
 
 export async function getPerformanceLookups(): Promise<ApiResponse<PerformanceLookupsDto>> {

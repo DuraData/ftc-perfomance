@@ -335,15 +335,25 @@ public sealed class OrganizationMastersControllerTests
     }
 
     [Fact]
-    public void Legacy_integer_mutation_routes_are_retired()
+    public void Legacy_unbounded_integer_and_mutation_routes_are_retired()
     {
         var tenant = new TenantContext(74, "org-admin");
         using var context = NewContext(tenant);
-        var departmentResult = new DepartmentsController(context).UpdateDepartment(1, new FTCERP.Host.API.Requests.UpdateDepartmentRequest("FIN", "Finance", null));
-        var unitResult = new UnitsController(context).DeleteUnit(1);
+        var departments = new DepartmentsController(context);
+        var units = new UnitsController(context);
+        var departmentCollection = departments.GetDepartments();
+        var departmentDetail = departments.GetDepartment(1);
+        var departmentMutation = departments.UpdateDepartment(1, new FTCERP.Host.API.Requests.UpdateDepartmentRequest("FIN", "Finance", null));
+        var unitCollection = units.GetUnits();
+        var unitDetail = units.GetUnit(1);
+        var unitMutation = units.DeleteUnit(1);
 
-        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(departmentResult.Result).StatusCode);
-        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(unitResult.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(departmentCollection.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(departmentDetail.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(departmentMutation.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(unitCollection.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(unitDetail.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(unitMutation.Result).StatusCode);
     }
 
     private static ApplicationDbContext NewContext(ITenantContext tenant) => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options, tenant);
