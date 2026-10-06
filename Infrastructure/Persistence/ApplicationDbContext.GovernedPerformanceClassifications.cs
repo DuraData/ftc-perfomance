@@ -10,6 +10,7 @@ public partial class ApplicationDbContext
     public DbSet<GovernedIndicatorType> GovernedIndicatorTypes { get; set; } = null!;
     public DbSet<GovernedFunctionalArea> GovernedFunctionalAreas { get; set; } = null!;
     public DbSet<GovernedStandardClassification> GovernedStandardClassifications { get; set; } = null!;
+    public DbSet<GovernedKpiUnitOfMeasure> GovernedKpiUnitOfMeasures { get; set; } = null!;
 
     private void ConfigureGovernedPerformanceClassifications(ModelBuilder builder)
     {
@@ -17,6 +18,8 @@ public partial class ApplicationDbContext
         ConfigurePerformanceMaster(builder.Entity<GovernedIndicatorType>(), "OPMS_IndicatorTypes", "IndicatorTypes");
         ConfigurePerformanceMaster(builder.Entity<GovernedFunctionalArea>(), "OPMS_FunctionalAreas", "FunctionalAreas");
         ConfigurePerformanceMaster(builder.Entity<GovernedStandardClassification>(), "OPMS_StandardClassifications", "StandardClassifications");
+        ConfigurePerformanceMaster(builder.Entity<GovernedKpiUnitOfMeasure>(), "OPMS_KpiUnitOfMeasures", "KpiUnitOfMeasures");
+        builder.Entity<GovernedKpiUnitOfMeasure>().Property(item => item.Symbol).HasMaxLength(40);
 
         builder.Entity<OpmsTarget>().HasOne(item => item.KpiTypeMaster).WithMany().HasForeignKey(item => new { item.KpiTypeMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTarget>().HasOne(item => item.IndicatorTypeMaster).WithMany().HasForeignKey(item => new { item.IndicatorTypeMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
@@ -25,6 +28,8 @@ public partial class ApplicationDbContext
         builder.Entity<IpmsTarget>().HasOne(item => item.KpiTypeMaster).WithMany().HasForeignKey(item => new { item.KpiTypeMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsTarget>().HasOne(item => item.IndicatorTypeMaster).WithMany().HasForeignKey(item => new { item.IndicatorTypeMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsTarget>().HasOne(item => item.FunctionalAreaMaster).WithMany().HasForeignKey(item => new { item.FunctionalAreaMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTarget>().HasOne(item => item.KpiUnitOfMeasureMaster).WithMany().HasForeignKey(item => new { item.KpiUnitOfMeasureMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IpmsTarget>().HasOne(item => item.KpiUnitOfMeasureMaster).WithMany().HasForeignKey(item => new { item.KpiUnitOfMeasureMasterId, item.MunicipalityId }).HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
     }
 
     private void ConfigurePerformanceMaster<TEntity>(EntityTypeBuilder<TEntity> entity, string tableName, string constraintStem)

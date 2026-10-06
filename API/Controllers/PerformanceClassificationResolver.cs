@@ -10,6 +10,11 @@ internal sealed record ResolvedPerformanceClassification(GovernedKpiType? KpiTyp
     public bool IsValid => Error == null;
 }
 
+internal sealed record ResolvedKpiUnitOfMeasure(GovernedKpiUnitOfMeasure? UnitOfMeasure, string? Error)
+{
+    public bool IsValid => Error == null;
+}
+
 internal static class PerformanceClassificationResolver
 {
     public static async Task<ResolvedPerformanceClassification> ResolveAsync(ApplicationDbContext context, long yearId,
@@ -48,6 +53,28 @@ internal static class PerformanceClassificationResolver
         target.KpiTypeMasterId = value.KpiType!.Id; target.KpiType = value.KpiType.Name;
         target.IndicatorTypeMasterId = value.IndicatorType!.Id; target.IndicatorType = value.IndicatorType.Name;
         target.FunctionalAreaMasterId = value.FunctionalArea?.Id; target.FunctionalArea = value.FunctionalArea?.Name;
+    }
+
+    public static async Task<ResolvedKpiUnitOfMeasure> ResolveUnitAsync(ApplicationDbContext context, long yearId,
+        Guid? publicId, long? existingId = null)
+    {
+        var year = await context.MunicipalityFinancialYears.AsNoTracking().Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.Id == yearId);
+        if (year == null) return new(null, "The selected municipality financial year was not found.");
+        if (!publicId.HasValue) return new(null, "KPI Unit of Measure is required.");
+        var resolved = await Resolve(context.GovernedKpiUnitOfMeasures, year, publicId, existingId, "KPI Unit of Measure");
+        return new(resolved.Item, resolved.Error);
+    }
+
+    public static void ApplyUnit(OpmsTarget target, ResolvedKpiUnitOfMeasure value)
+    {
+        target.KpiUnitOfMeasureMasterId = value.UnitOfMeasure!.Id;
+        target.UnitOfMeasureId = null;
+    }
+
+    public static void ApplyUnit(IpmsTarget target, ResolvedKpiUnitOfMeasure value)
+    {
+        target.KpiUnitOfMeasureMasterId = value.UnitOfMeasure!.Id;
+        target.UnitOfMeasureId = null;
     }
 
     private static async Task<(T? Item, string? Error)> Resolve<T>(DbSet<T> set, MunicipalityFinancialYear year, Guid? publicId, long? existingId, string label) where T : StrategicPlanningMasterBase

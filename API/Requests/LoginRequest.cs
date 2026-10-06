@@ -187,6 +187,7 @@ public record SaveOpmsTargetRequest(
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }
     public Guid? StandardClassificationPublicId { get; init; }
+    public Guid? KpiUnitOfMeasurePublicId { get; init; }
 }
 
 public sealed record SaveKpiBudgetSourceRequest(Guid BudgetSourcePublicId, decimal? Amount);
@@ -236,6 +237,7 @@ public record SaveIpmsTargetRequest(
     public Guid? KpiTypePublicId { get; init; }
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }
+    public Guid? KpiUnitOfMeasurePublicId { get; init; }
 }
 
 public record SaveTargetPeriodValueRequest(

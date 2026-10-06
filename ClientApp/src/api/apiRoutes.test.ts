@@ -479,7 +479,7 @@ describe('versioned API routes', () => {
       strategicObjectiveId: 4, performanceObjective: 'Deliver water', targetName: 'Live KPI',
       kpiDescription: 'Server supplied description', baseline: 10, annualTarget: 20,
       annualTargetDescription: 'Twenty', budgetSourceId: 5, budgetTypeId: 6,
-      unitOfMeasureId: 8, weight: 15, kpiType: 'Outcome', indicatorType: 'Quantitative',
+      unitOfMeasureId: 8, kpiUnitOfMeasurePublicId: 'unit-public', kpiUnitOfMeasureName: 'Households', kpiUnitOfMeasureSymbol: '#', weight: 15, kpiType: 'Outcome', indicatorType: 'Quantitative',
       isRevised: false, isWithdrawn: false, targetUnitType: 'absolute_count',
       createdAt: '2026-07-01T00:00:00Z',
     };
@@ -495,6 +495,7 @@ describe('versioned API routes', () => {
       assignedTo: { id: 'employee-live', displayName: 'Live Owner' },
       period: { id: '42', name: 'Reporting period 42' },
       strategicGoal: { id: '3', name: 'Not supplied by API' },
+      kpiUnitOfMeasurePublicId: 'unit-public', unitOfMeasure: { id: 'unit-public', name: 'Households', symbol: '#' },
     });
     expect(target?.submissions).toEqual([]);
     expect(target?.relatedIPMSTargets).toEqual([]);

@@ -46,4 +46,18 @@ describe('StrategicPlanningAdministration', () => {
     expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
     expect(screen.queryByText('Optional strategic relationships')).not.toBeInTheDocument();
   });
+
+  it('persists governed KPI unit symbols without exposing relationship controls', async () => {
+    api.getStrategicPlanningMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'uom-1', code: 'COUNT', name: 'Count', description: null, symbol: '#', effectiveFromFinancialYearPublicId: null, effectiveFromFinancialYearCode: null, effectiveToFinancialYearPublicId: null, effectiveToFinancialYearCode: null, displayOrder: 1, isActive: true, rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    render(<StrategicPlanningAdministration kind="kpi-units-of-measure" />);
+    expect(await screen.findByText('Count (#)')).toBeInTheDocument();
+    expect(api.getStrategicPlanningMastersPage).toHaveBeenCalledWith('kpi-units-of-measure', expect.anything(), { includeInactive: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Display symbol (optional)'), { target: { value: 'items' } });
+    const governanceReason = screen.getAllByRole('textbox').filter(element => element.tagName === 'TEXTAREA')[1];
+    fireEvent.change(governanceReason, { target: { value: 'Approved unit symbol correction' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(api.saveStrategicPlanningMaster).toHaveBeenCalledWith('kpi-units-of-measure', 'uom-1', expect.objectContaining({ symbol: 'items', rowVersion: 'Ag==' })));
+    expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
+  });
 });

@@ -25,21 +25,7 @@ const PermissionSimulationPage = lazy(() => import('./components/admin/AccessGov
 const RoleAccessMatrixPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.RoleAccessMatrixPage })));
 const RolePermissionCrudAuditPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.RolePermissionCrudAuditPage })));
 const SystemCoverageAuditPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.SystemCoverageAuditPage })));
-const CountriesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.CountriesPage })));
-const ProvincesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ProvincesPage })));
-const CitiesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.CitiesPage })));
-const SuburbsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.SuburbsPage })));
-const AddressesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.AddressesPage })));
-const OrganisationsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OrganisationsPage })));
-const IndustriesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.IndustriesPage })));
-const ContactsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ContactsPage })));
-const ResumesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.ResumesPage })));
-const OccupationsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OccupationsPage })));
-const UnitOfMeasurePage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.UnitOfMeasurePage })));
-const DepartmentalObjectivesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.DepartmentalObjectivesPage })));
-const OutputsPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.OutputsPage })));
 const StrategicPlanningAdministration = lazy(() => import('./components/admin/StrategicPlanningAdministration').then(module => ({ default: module.StrategicPlanningAdministration })));
-const PriorityIssuesPage = lazy(() => import('./components/admin/GenericLookupPages').then(module => ({ default: module.PriorityIssuesPage })));
 const IPMSTargetLibraryDetail = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryDetail })));
 const IPMSTargetLibraryList = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryList })));
 const IPMSTargetTemplateFormPage = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetTemplateFormPage })));
@@ -206,15 +192,15 @@ function AppContent() {
       case '/admin/wards':
         return <TenantReferenceAdministration kind="wards" />;
       case '/hr/contacts':
-        return <ContactsPage />;
+        return <TenantEmployeeAdministration />;
       case '/hr/resumes':
-        return <ResumesPage />;
+        return <TenantEmployeeAdministration />;
       case '/tasks':
         return <TaskManagement />;
       case '/admin/periods':
         return <TenantCalendarAdministration />;
       case '/admin/organisations':
-        return <OrganisationsPage />;
+        return <TenantOrganizationAdministration kind="departments" />;
       case '/admin/approval-setup':
         return <WorkflowGovernanceAdminPage />;
       case '/admin/lookups':
@@ -268,35 +254,17 @@ function AppContent() {
       case '/admin/strategic-objectives':
         return <StrategicPlanningAdministration kind="strategic-objectives" />;
       case '/admin/units-measure':
-        return <UnitOfMeasurePage />;
+        return <StrategicPlanningAdministration kind="kpi-units-of-measure" />;
       case '/admin/kpas':
         return <GlobalStrategicReferenceAdministration kind="national-kpas" />;
       case '/admin/back-to-basics-pillars':
         return <GlobalStrategicReferenceAdministration kind="back-to-basics-pillars" />;
       case '/admin/municipal-kpas':
         return <StrategicPlanningAdministration kind="municipal-kpas" />;
-      case '/admin/departmental-objectives':
-        return <DepartmentalObjectivesPage />;
-      case '/admin/outputs':
-        return <OutputsPage />;
       case '/admin/performance-objectives':
         return <StrategicPlanningAdministration kind="performance-objectives" />;
-      case '/admin/priority-issues':
-        return <PriorityIssuesPage />;
       case '/admin/occupations':
-        return <OccupationsPage />;
-      case '/admin/industries':
-        return <IndustriesPage />;
-      case '/location/countries':
-        return <CountriesPage />;
-      case '/location/provinces':
-        return <ProvincesPage />;
-      case '/location/cities':
-        return <CitiesPage />;
-      case '/location/suburbs':
-        return <SuburbsPage />;
-      case '/location/addresses':
-        return <AddressesPage />;
+        return <TenantOrganizationAdministration kind="positions" />;
       case '/reports':
         return <Reports />;
       case '/reports/opms-performance':

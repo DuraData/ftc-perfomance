@@ -166,7 +166,8 @@ type OpmsFormState = {
   indicatorTypeHint: string;
   functionalAreaHint: string;
   standardClassificationHint: string;
-  unitOfMeasureId: string;
+  kpiUnitOfMeasurePublicId: string;
+  unitOfMeasureHint: string;
   weight: string;
   kpiType: string;
   kpiTypePublicId: string;
@@ -249,7 +250,8 @@ type IpmsFormState = {
   kpiTypeHint: string;
   indicatorTypeHint: string;
   functionalAreaHint: string;
-  unitOfMeasureId: string;
+  kpiUnitOfMeasurePublicId: string;
+  unitOfMeasureHint: string;
   weight: string;
   kpiType: string;
   kpiTypePublicId: string;
@@ -355,7 +357,8 @@ function createDefaultOpmsFormState(): OpmsFormState {
     indicatorTypeHint: '',
     functionalAreaHint: '',
     standardClassificationHint: '',
-    unitOfMeasureId: '',
+    kpiUnitOfMeasurePublicId: '',
+    unitOfMeasureHint: '',
     weight: '0',
     kpiType: '',
     kpiTypePublicId: '',
@@ -440,7 +443,8 @@ function createDefaultIpmsFormState(): IpmsFormState {
     kpiTypeHint: '',
     indicatorTypeHint: '',
     functionalAreaHint: '',
-    unitOfMeasureId: '',
+    kpiUnitOfMeasurePublicId: '',
+    unitOfMeasureHint: '',
     weight: '0',
     kpiType: '',
     kpiTypePublicId: '',
@@ -527,7 +531,8 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     indicatorTypeHint: '',
     functionalAreaHint: '',
     standardClassificationHint: '',
-    unitOfMeasureId: target.unitOfMeasure.id,
+    kpiUnitOfMeasurePublicId: target.kpiUnitOfMeasurePublicId ?? target.unitOfMeasure.id,
+    unitOfMeasureHint: '',
     weight: String(target.weight),
     kpiType: target.kpiType,
     kpiTypePublicId: target.kpiTypePublicId ?? '',
@@ -615,7 +620,8 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     kpiTypeHint: '',
     indicatorTypeHint: '',
     functionalAreaHint: '',
-    unitOfMeasureId: target.unitOfMeasure.id,
+    kpiUnitOfMeasurePublicId: target.kpiUnitOfMeasurePublicId ?? target.unitOfMeasure.id,
+    unitOfMeasureHint: '',
     weight: String(target.weight),
     kpiType: target.kpiType,
     kpiTypePublicId: target.kpiTypePublicId ?? '',
@@ -679,7 +685,8 @@ function opmsFormFromTemplate(template: OpmsTargetTemplate): OpmsFormState {
     annualTargetDescription: template.annualTargetDescription,
     budgetTypeHint: template.budgetType?.code || template.budgetType?.name || '',
     budgetSourceHint: template.budgetSource?.code || template.budgetSource?.name || '',
-    unitOfMeasureId: template.unitOfMeasure.id,
+    kpiUnitOfMeasurePublicId: '',
+    unitOfMeasureHint: template.unitOfMeasure.code || template.unitOfMeasure.name,
     weight: String(template.weight),
     kpiTypeHint: template.kpiType,
     indicatorTypeHint: template.indicatorType,
@@ -725,7 +732,8 @@ function ipmsFormFromTemplate(template: IpmsTargetTemplate): IpmsFormState {
     kpiDescription: template.kpiDescription,
     annualTarget: String(template.annualTarget),
     annualTargetDescription: template.annualTargetDescription,
-    unitOfMeasureId: template.unitOfMeasure.id,
+    kpiUnitOfMeasurePublicId: '',
+    unitOfMeasureHint: template.unitOfMeasure.code || template.unitOfMeasure.name,
     weight: String(template.weight),
     functionalAreaHint: template.functionalArea ?? '',
     targetUnitType: toXafUnitType(template.targetUnitType),
@@ -800,7 +808,7 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     baselineDescription: form.baselineDescription || null,
     budgetTypePublicId: form.budgetTypePublicId || null,
     budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount === '' ? null : Number(item.amount) })),
-    unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
+    kpiUnitOfMeasurePublicId: form.kpiUnitOfMeasurePublicId,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
     kpiTypePublicId: form.kpiTypePublicId,
@@ -848,7 +856,7 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     baseline: Number(form.baseline || 0),
     budgetTypePublicId: form.budgetTypePublicId || null,
     budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount === '' ? null : Number(item.amount) })),
-    unitOfMeasureId: form.unitOfMeasureId ? Number(form.unitOfMeasureId) : null,
+    kpiUnitOfMeasurePublicId: form.kpiUnitOfMeasurePublicId,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
     kpiTypePublicId: form.kpiTypePublicId,
@@ -881,7 +889,7 @@ function validateOpmsForm(form: OpmsFormState) {
     { label: 'KPI Description', value: form.kpiDescription },
     { label: 'Annual Target', value: form.annualTarget },
     { label: 'Weight %', value: form.weight },
-    { label: 'Unit of Measure', value: form.unitOfMeasureId },
+    { label: 'Unit of Measure', value: form.kpiUnitOfMeasurePublicId },
     { label: 'KPI Type', value: form.kpiTypePublicId },
     { label: 'Indicator Type', value: form.indicatorTypePublicId },
   ]);
@@ -906,7 +914,7 @@ function validateIpmsForm(form: IpmsFormState) {
     { label: 'KPI Description', value: form.kpiDescription },
     { label: 'Annual Target', value: form.annualTarget },
     { label: 'Weight %', value: form.weight },
-    { label: 'Unit of Measure', value: form.unitOfMeasureId },
+    { label: 'Unit of Measure', value: form.kpiUnitOfMeasurePublicId },
     { label: 'KPI Type', value: form.kpiTypePublicId },
     { label: 'Indicator Type', value: form.indicatorTypePublicId },
   ]);
@@ -990,8 +998,9 @@ export function resolvePerformanceTemplateHints<T extends {
   indicatorType: string; indicatorTypePublicId: string; indicatorTypeHint: string;
   functionalArea: string; functionalAreaPublicId: string; functionalAreaHint: string;
   standardClassification?: string; standardClassificationPublicId?: string; standardClassificationHint?: string;
+  kpiUnitOfMeasurePublicId: string; unitOfMeasureHint: string;
 }>(form: T, catalogue: StrategicClassificationCatalogueDto): T {
-  if (!form.kpiTypeHint && !form.indicatorTypeHint && !form.functionalAreaHint && !form.standardClassificationHint) return form;
+  if (!form.kpiTypeHint && !form.indicatorTypeHint && !form.functionalAreaHint && !form.standardClassificationHint && !form.unitOfMeasureHint) return form;
   const match = (items: StrategicCatalogueItemDto[] | undefined, hint: string | undefined) => {
     const normalized = hint?.trim().toLowerCase();
     return normalized ? items?.find(item => item.code?.trim().toLowerCase() === normalized || item.name.trim().toLowerCase() === normalized) : undefined;
@@ -1000,6 +1009,7 @@ export function resolvePerformanceTemplateHints<T extends {
   const indicatorType = match(catalogue.indicatorTypes, form.indicatorTypeHint);
   const functionalArea = match(catalogue.functionalAreas, form.functionalAreaHint);
   const standardClassification = match(catalogue.standardClassifications, form.standardClassificationHint);
+  const unitOfMeasure = match(catalogue.kpiUnitsOfMeasure, form.unitOfMeasureHint);
   return {
     ...form,
     kpiTypePublicId: kpiType?.publicId ?? form.kpiTypePublicId,
@@ -1008,12 +1018,13 @@ export function resolvePerformanceTemplateHints<T extends {
     indicatorType: indicatorType?.name ?? form.indicatorType,
     functionalAreaPublicId: functionalArea?.publicId ?? form.functionalAreaPublicId,
     functionalArea: functionalArea?.name ?? form.functionalArea,
+    kpiUnitOfMeasurePublicId: unitOfMeasure?.publicId ?? form.kpiUnitOfMeasurePublicId,
     ...(form.standardClassificationPublicId !== undefined ? {
       standardClassificationPublicId: standardClassification?.publicId ?? form.standardClassificationPublicId,
       standardClassification: standardClassification?.name ?? form.standardClassification,
       standardClassificationHint: '',
     } : {}),
-    kpiTypeHint: '', indicatorTypeHint: '', functionalAreaHint: '',
+    kpiTypeHint: '', indicatorTypeHint: '', functionalAreaHint: '', unitOfMeasureHint: '',
   };
 }
 
@@ -1035,7 +1046,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { catalogue, catalogueError } = useStrategicCatalogue('opms', form.municipalityFinancialYearPublicId);
   useEffect(() => {
     if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
-  }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.standardClassificationHint]);
+  }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.standardClassificationHint, form.unitOfMeasureHint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1146,7 +1157,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = referenceLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = referenceLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
-  const selectedUom = lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId);
+  const selectedUom = catalogue?.kpiUnitsOfMeasure?.find(item => item.publicId === form.kpiUnitOfMeasurePublicId);
   const selectedWardIds = parseCsvIds(form.wardIds);
   const selectedAssigneeIds = parseCsvIds(form.additionalAssigneeIds);
   const selectedVoteIds = parseCsvIds(form.voteNumberIds);
@@ -1192,7 +1203,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={2}>
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
-              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', standardClassificationPublicId: '', standardClassification: '' }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', standardClassificationPublicId: '', standardClassification: '', kpiUnitOfMeasurePublicId: '' }))} />
               <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} municipalityFinancialYearId={form.municipalityFinancialYearPublicId || undefined} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={(value, option) => setForm(prev => ({ ...prev, sdbipLayerPublicId: value, municipalityFinancialYearPublicId: (option as SdbipLayerMasterDto | undefined)?.municipalityFinancialYearPublicId ?? prev.municipalityFinancialYearPublicId }))} />
             </FormRow>
             <FormRow cols={2}>
@@ -1350,7 +1361,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Baseline" required type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
               <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
-              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} onChange={(event) => setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: event.target.value }))} options={strategicOptions(catalogue?.kpiUnitsOfMeasure, form.kpiUnitOfMeasurePublicId, existingTarget?.unitOfMeasure.name)} />
             </FormRow>
             <Textarea label="Baseline Description" rows={3} value={form.baselineDescription} onChange={(event) => setForm(prev => ({ ...prev, baselineDescription: event.target.value }))} />
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
@@ -1625,7 +1636,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { catalogue, catalogueError } = useStrategicCatalogue('ipms', form.municipalityFinancialYearPublicId);
   useEffect(() => {
     if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
-  }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint]);
+  }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.unitOfMeasureHint]);
   const [existingTarget, setExistingTarget] = useState<IPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -1766,7 +1777,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Linked OPMS" value={linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not linked')} readOnly />
             </FormRow>
             <FormRow cols={3}>
-              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '' }))} />
+              <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', kpiUnitOfMeasurePublicId: '' }))} />
               <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={lookups.periods.map(item => ({ value: String(item.id), label: item.name }))} />
               <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setOrganizationLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
             </FormRow>
@@ -1807,7 +1818,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Baseline" type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
               <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
-              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
+              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} onChange={(event) => setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: event.target.value }))} options={strategicOptions(catalogue?.kpiUnitsOfMeasure, form.kpiUnitOfMeasurePublicId, existingTarget?.unitOfMeasure.name)} />
             </FormRow>
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
             <FormRow cols={4}>

@@ -2,7 +2,7 @@ import { buildOpmsPayload, childrenFor, getTargetUnitLabel, resolvePerformanceTe
 
 describe('TargetFormPages helpers', () => {
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
-    const payload = buildOpmsPayload({ departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11', nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1', budgetTypePublicId: 'type-1', budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '125.50' }, { budgetSourcePublicId: 'source-2', amount: '' }] } as never);
+    const payload = buildOpmsPayload({ departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '1, 2,2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: '10,11', nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1', budgetTypePublicId: 'type-1', budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '125.50' }, { budgetSourcePublicId: 'source-2', amount: '' }], kpiUnitOfMeasurePublicId: 'unit-master-1' } as never);
     expect(payload.departmentId).toBeNull();
     expect(payload.departmentPublicId).toBe('department-public-id');
     expect(payload.unitId).toBeNull();
@@ -12,6 +12,7 @@ describe('TargetFormPages helpers', () => {
     expect(payload.voteNumberIds).toEqual([10, 11]);
     expect(payload.budgetTypePublicId).toBe('type-1');
     expect(payload.budgetSources).toEqual([{ budgetSourcePublicId: 'source-1', amount: 125.5 }, { budgetSourcePublicId: 'source-2', amount: null }]);
+    expect(payload.kpiUnitOfMeasurePublicId).toBe('unit-master-1');
     expect(payload).toMatchObject({ nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1' });
   });
 
@@ -23,13 +24,13 @@ describe('TargetFormPages helpers', () => {
   });
 
   it('resolves reusable template classification hints to governed catalogue ids', () => {
-    const form = { kpiType: '', kpiTypePublicId: '', kpiTypeHint: 'output', indicatorType: '', indicatorTypePublicId: '', indicatorTypeHint: 'QUANT', functionalArea: '', functionalAreaPublicId: '', functionalAreaHint: 'Technical Services', standardClassification: '', standardClassificationPublicId: '', standardClassificationHint: 'SERVICE' };
+    const form = { kpiType: '', kpiTypePublicId: '', kpiTypeHint: 'output', indicatorType: '', indicatorTypePublicId: '', indicatorTypeHint: 'QUANT', functionalArea: '', functionalAreaPublicId: '', functionalAreaHint: 'Technical Services', standardClassification: '', standardClassificationPublicId: '', standardClassificationHint: 'SERVICE', kpiUnitOfMeasurePublicId: '', unitOfMeasureHint: 'Count' };
     const item = (publicId: string, code: string, name: string) => ({ publicId, code, name, displayOrder: 1 });
-    const catalogue = { kpiTypes: [item('kpi-id', 'OUTPUT', 'Output')], indicatorTypes: [item('indicator-id', 'QUANT', 'Quantitative')], functionalAreas: [item('area-id', 'TECH', 'Technical Services')], standardClassifications: [item('class-id', 'SERVICE', 'Service Delivery')] };
+    const catalogue = { kpiTypes: [item('kpi-id', 'OUTPUT', 'Output')], indicatorTypes: [item('indicator-id', 'QUANT', 'Quantitative')], functionalAreas: [item('area-id', 'TECH', 'Technical Services')], standardClassifications: [item('class-id', 'SERVICE', 'Service Delivery')], kpiUnitsOfMeasure: [item('unit-id', 'COUNT', 'Count')] };
     expect(resolvePerformanceTemplateHints(form, catalogue as never)).toMatchObject({
       kpiTypePublicId: 'kpi-id', kpiType: 'Output', indicatorTypePublicId: 'indicator-id', indicatorType: 'Quantitative',
       functionalAreaPublicId: 'area-id', functionalArea: 'Technical Services', standardClassificationPublicId: 'class-id', standardClassification: 'Service Delivery',
-      kpiTypeHint: '', indicatorTypeHint: '', functionalAreaHint: '', standardClassificationHint: '',
+      kpiUnitOfMeasurePublicId: 'unit-id', kpiTypeHint: '', indicatorTypeHint: '', functionalAreaHint: '', standardClassificationHint: '', unitOfMeasureHint: '',
     });
   });
   it('maps legacy unit type to XAF unit type', () => {

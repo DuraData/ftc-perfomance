@@ -222,7 +222,10 @@ public static class PerformanceApiSupport
             KpiTypePublicId = target.KpiTypeMaster?.PublicId,
             IndicatorTypePublicId = target.IndicatorTypeMaster?.PublicId,
             FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId,
-            StandardClassificationPublicId = target.StandardClassificationMaster?.PublicId
+            StandardClassificationPublicId = target.StandardClassificationMaster?.PublicId,
+            KpiUnitOfMeasurePublicId = target.KpiUnitOfMeasureMaster?.PublicId,
+            KpiUnitOfMeasureName = target.KpiUnitOfMeasureMaster?.Name,
+            KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
@@ -301,7 +304,10 @@ public static class PerformanceApiSupport
                 .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray(),
             KpiTypePublicId = target.KpiTypeMaster?.PublicId,
             IndicatorTypePublicId = target.IndicatorTypeMaster?.PublicId,
-            FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId
+            FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId,
+            KpiUnitOfMeasurePublicId = target.KpiUnitOfMeasureMaster?.PublicId,
+            KpiUnitOfMeasureName = target.KpiUnitOfMeasureMaster?.Name,
+            KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>

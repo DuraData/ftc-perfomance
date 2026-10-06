@@ -45,7 +45,7 @@ function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
     baseline: target.baseline,
     budgetTypePublicId: target.budgetTypePublicId ?? null,
     budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount ?? null })),
-    unitOfMeasureId: target.unitOfMeasure?.id ? Number(target.unitOfMeasure.id) : null,
+    kpiUnitOfMeasurePublicId: target.kpiUnitOfMeasurePublicId ?? target.unitOfMeasure.id,
     weight: target.weight,
     kpiType: target.kpiType,
     kpiTypePublicId: target.kpiTypePublicId!,

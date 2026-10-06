@@ -53,6 +53,7 @@ public static class SecurityRegistrySeeder
             Resource("INDICATOR_TYPE", "Indicator Type", true, true, true, false, true, true),
             Resource("FUNCTIONAL_AREA", "Functional Area", true, true, true, false, true, true),
             Resource("STANDARD_CLASSIFICATION", "Standard Classification", true, true, true, false, true, true),
+            Resource("KPI_UNIT_OF_MEASURE", "KPI Unit of Measure", true, true, true, false, true, true),
             Resource("STRATEGIC_HIERARCHY", "Strategic Planning Relationships", true, true, true, false, false, true),
             Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, false, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
@@ -240,6 +241,7 @@ public static class SecurityRegistrySeeder
             Nav("NAV.CONFIGURATION.INDICATOR_TYPES", "Indicator Types", "/admin/indicator-types", "list", 150, "NAV.CONFIGURATION.INDICATOR_TYPES", rootIds["NAV.CONFIGURATION"]),
             Nav("NAV.CONFIGURATION.FUNCTIONAL_AREAS", "Functional Areas", "/admin/functional-areas", "layers", 160, "NAV.CONFIGURATION.FUNCTIONAL_AREAS", rootIds["NAV.CONFIGURATION"]),
             Nav("NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS", "Standard Classifications", "/admin/standard-classifications", "layers", 170, "NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS", rootIds["NAV.CONFIGURATION"]),
+            Nav("NAV.CONFIGURATION.KPI_UNITS_OF_MEASURE", "KPI Units of Measure", "/admin/units-measure", "ruler", 180, "NAV.CONFIGURATION.KPI_UNITS_OF_MEASURE", rootIds["NAV.CONFIGURATION"]),
             Nav("NAV.ADMIN.USERS", "Users", "/system-administration/users", "users", 10, "NAV.ADMIN.USERS", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.ROLES", "Roles", "/system-administration/roles", "users-group", 20, "NAV.ADMIN.ROLES", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.SECURITY", "Security", "/system-administration/security", "key", 30, "NAV.ADMIN.SECURITY", rootIds["NAV.ADMIN"]),
@@ -318,8 +320,9 @@ public static class SecurityRegistrySeeder
             "INDICATOR_TYPE.READ", "INDICATOR_TYPE.CREATE", "INDICATOR_TYPE.UPDATE",
             "FUNCTIONAL_AREA.READ", "FUNCTIONAL_AREA.CREATE", "FUNCTIONAL_AREA.UPDATE",
             "STANDARD_CLASSIFICATION.READ", "STANDARD_CLASSIFICATION.CREATE", "STANDARD_CLASSIFICATION.UPDATE",
+            "KPI_UNIT_OF_MEASURE.READ", "KPI_UNIT_OF_MEASURE.CREATE", "KPI_UNIT_OF_MEASURE.UPDATE",
             "NAV.CONFIGURATION.KPI_TYPES", "NAV.CONFIGURATION.INDICATOR_TYPES",
-            "NAV.CONFIGURATION.FUNCTIONAL_AREAS", "NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS"];
+            "NAV.CONFIGURATION.FUNCTIONAL_AREAS", "NAV.CONFIGURATION.STANDARD_CLASSIFICATIONS", "NAV.CONFIGURATION.KPI_UNITS_OF_MEASURE"];
         var codes = mappings.Keys.Concat(mappings.Values.SelectMany(value => value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var definitions = await context.Permissions.Where(item => codes.Contains(item.Code)).ToDictionaryAsync(item => item.Code, StringComparer.OrdinalIgnoreCase);
         var current = await context.RolePermissions.AsNoTracking().Where(item => definitions.Values.Select(permission => permission.Id).Contains(item.PermissionId)).ToListAsync();

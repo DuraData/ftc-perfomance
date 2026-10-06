@@ -110,6 +110,8 @@ public sealed class OpmsImportControllerTests
         target.IndicatorTypeMasterId.Should().Be(setup.IndicatorType.Id);
         target.FunctionalAreaMasterId.Should().Be(setup.FunctionalArea.Id);
         target.StandardClassificationMasterId.Should().Be(setup.StandardClassification.Id);
+        target.KpiUnitOfMeasureMasterId.Should().Be(setup.KpiUnitOfMeasure.Id);
+        target.UnitOfMeasureId.Should().BeNull();
         target.FunctionalArea.Should().Be(setup.FunctionalArea.Name);
         target.StandardClassification.Should().Be(setup.StandardClassification.Name);
     }
@@ -182,6 +184,7 @@ public sealed class OpmsImportControllerTests
             StrategicObjectiveMasterId = setup.StrategicObjective.Id, PerformanceObjectiveId = setup.PerformanceObjective.Id,
             BudgetTypeMasterId = setup.BudgetType.Id, KpiTypeMasterId = setup.KpiType.Id, IndicatorTypeMasterId = setup.IndicatorType.Id,
             FunctionalAreaMasterId = setup.FunctionalArea.Id, StandardClassificationMasterId = setup.StandardClassification.Id,
+            KpiUnitOfMeasureMasterId = setup.KpiUnitOfMeasure.Id,
             KpiType = "Output", IndicatorType = "Quantitative", AnnualTargetDescription = "Annual", Weight = 10
         };
         target.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = setup.Municipality.Id, BudgetSourceId = setup.BudgetSourceA.Id, Amount = 125.50m });
@@ -201,7 +204,7 @@ public sealed class OpmsImportControllerTests
         csv.Should().Contain("\"KPI-REV\",\"KPI-REV\",\"3\"");
         csv.Should().Contain("\"'=Revised target\"");
         csv.Should().Contain("\"CAPEX\",\"MIG:125.5\"");
-        csv.Should().Contain("\"Output\",\"Quantitative\",\"TECHNICAL\",\"SERVICE\"");
+        csv.Should().Contain("\"Output\",\"Quantitative\",\"TECHNICAL\",\"SERVICE\",\"COUNT\"");
         csv.Should().Contain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
     }
 
@@ -212,7 +215,8 @@ public sealed class OpmsImportControllerTests
         "Water connections", "Households connected", department, null, "Basic Services", "Service Delivery", "Improve access",
         "Strategic Goal", "Strategic Intervention", "Strategic Objective", "Performance Objective",
         0, 10, "Output", "Quantitative",
-        [new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.AbsoluteCount, PerformanceDirection.HigherIsBetter, "100", 1000, "Annual")]);
+        [new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.AbsoluteCount, PerformanceDirection.HigherIsBetter, "100", 1000, "Annual")],
+        KpiUnitOfMeasure: "COUNT");
 
     private static OpmsImportsController Controller(ApplicationDbContext context, Setup setup)
     {
@@ -254,14 +258,15 @@ public sealed class OpmsImportControllerTests
         var indicatorType = new GovernedIndicatorType { MunicipalityId = municipality.Id, Code = "Quantitative", Name = "Quantitative" };
         var functionalArea = new GovernedFunctionalArea { MunicipalityId = municipality.Id, Code = "TECHNICAL", Name = "Technical Services" };
         var standardClassification = new GovernedStandardClassification { MunicipalityId = municipality.Id, Code = "SERVICE", Name = "Service Delivery" };
-        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB, kpiType, indicatorType, functionalArea, standardClassification);
+        var kpiUnitOfMeasure = new GovernedKpiUnitOfMeasure { MunicipalityId = municipality.Id, Code = "COUNT", Name = "Count", Symbol = "#" };
+        context.AddRange(nationalKpa, municipalKpa, backToBasics, strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB, kpiType, indicatorType, functionalArea, standardClassification, kpiUnitOfMeasure);
         await context.SaveChangesAsync();
         var reportingPeriod = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANNUAL", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
         var layer = new SdbipLayer { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, Code = "TOP", Name = "Top Layer", IsActive = true };
         context.AddRange(reportingPeriod, layer); await context.SaveChangesAsync();
         return new Setup(municipality, user, department, layer, reportingPeriod, legacy, nationalKpa, municipalKpa, backToBasics,
             strategicGoal, strategicIntervention, strategicObjective, performanceObjective, budgetType, budgetSourceA, budgetSourceB,
-            kpiType, indicatorType, functionalArea, standardClassification);
+            kpiType, indicatorType, functionalArea, standardClassification, kpiUnitOfMeasure);
     }
 
     private sealed record Setup(Municipality Municipality, ApplicationUser User, Department Department, SdbipLayer Layer, ReportingPeriod Annual, Period LegacyPeriod,
@@ -269,6 +274,6 @@ public sealed class OpmsImportControllerTests
         StrategicIntervention StrategicIntervention, MunicipalStrategicObjective StrategicObjective, PerformanceObjective PerformanceObjective,
         GovernedBudgetType BudgetType, GovernedBudgetSource BudgetSourceA, GovernedBudgetSource BudgetSourceB,
         GovernedKpiType KpiType, GovernedIndicatorType IndicatorType, GovernedFunctionalArea FunctionalArea,
-        GovernedStandardClassification StandardClassification);
+        GovernedStandardClassification StandardClassification, GovernedKpiUnitOfMeasure KpiUnitOfMeasure);
     private sealed class Tenant(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
 }

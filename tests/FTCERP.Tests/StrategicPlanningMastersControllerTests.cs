@@ -264,13 +264,64 @@ public sealed class StrategicPlanningMastersControllerTests
     }
 
     [Fact]
+    public async Task GovernedKpiUnitsOfMeasurePreserveSymbolTenantEffectiveDatesAuditAndConcurrency()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Guid foreignPublicId;
+        await using (var tenantB = fixture.Context(fixture.MunicipalityB.Id))
+            foreignPublicId = Data(await Controller(tenantB, fixture.MunicipalityB.Id).CreateKpiUnitOfMeasure(
+                new("FOREIGN", "Foreign unit", null, null, null, 1, true, "Create foreign unit", Symbol: "F"))).PublicId;
+
+        Guid currentPublicId; string staleVersion;
+        await using (var context = fixture.Context(fixture.MunicipalityA.Id))
+        {
+            var controller = Controller(context, fixture.MunicipalityA.Id);
+            var current = Data(await controller.CreateKpiUnitOfMeasure(new("COUNT", "Count", "Items counted",
+                fixture.Year2026.PublicId, null, 1, true, "Create governed unit", Symbol: "#")));
+            _ = Data(await controller.CreateKpiUnitOfMeasure(new("OLD", "Historic unit", null,
+                fixture.Year2025.PublicId, fixture.Year2025.PublicId, 2, true, "Create historic unit", Symbol: "H")));
+            currentPublicId = current.PublicId; staleVersion = current.RowVersion;
+            Assert.Equal("#", current.Symbol);
+
+            var catalogueResult = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
+            var catalogue = Assert.IsType<OkObjectResult>(catalogueResult.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
+            Assert.Collection(catalogue.KpiUnitsOfMeasure, item => { Assert.Equal(current.PublicId, item.PublicId); Assert.Equal("#", item.Symbol); });
+
+            var foreign = await PerformanceClassificationResolver.ResolveUnitAsync(context, fixture.Year2026.Id, foreignPublicId);
+            Assert.False(foreign.IsValid); Assert.Contains("this municipality", foreign.Error, StringComparison.OrdinalIgnoreCase);
+            var historic = await context.GovernedKpiUnitOfMeasures.SingleAsync(item => item.Code == "OLD");
+            var expired = await PerformanceClassificationResolver.ResolveUnitAsync(context, fixture.Year2026.Id, historic.PublicId);
+            Assert.False(expired.IsValid); Assert.Contains("not valid", expired.Error, StringComparison.OrdinalIgnoreCase);
+            var resolved = await PerformanceClassificationResolver.ResolveUnitAsync(context, fixture.Year2026.Id, current.PublicId);
+            Assert.True(resolved.IsValid);
+            var target = new OpmsTarget { MunicipalityId = fixture.MunicipalityA.Id, UnitOfMeasureId = 7 };
+            PerformanceClassificationResolver.ApplyUnit(target, resolved);
+            Assert.Equal(resolved.UnitOfMeasure!.Id, target.KpiUnitOfMeasureMasterId); Assert.Null(target.UnitOfMeasureId);
+            Assert.Contains(await context.AuditTrails.ToArrayAsync(), item => item.EntityId == current.PublicId.ToString() && item.Action == "Create");
+        }
+
+        await using (var writer = fixture.Context(fixture.MunicipalityA.Id))
+        {
+            var entity = await writer.GovernedKpiUnitOfMeasures.SingleAsync(item => item.PublicId == currentPublicId);
+            entity.Symbol = "items"; await writer.SaveChangesAsync();
+        }
+        await using (var stale = fixture.Context(fixture.MunicipalityA.Id))
+        {
+            var result = await Controller(stale, fixture.MunicipalityA.Id).UpdateKpiUnitOfMeasure(currentPublicId,
+                new("COUNT", "Count", "Items counted", fixture.Year2026.PublicId, null, 1, true, "Attempt stale unit update", staleVersion, "#"));
+            Assert.IsType<ConflictObjectResult>(result.Result);
+        }
+    }
+
+    [Fact]
     public async Task SecurityRegistrySeedsAllMastersHierarchyAndNavigation()
     {
         await using var fixture = await Fixture.CreateAsync(); await using var context = fixture.SystemContext(); await SecurityRegistrySeeder.SeedAsync(context);
         var resources = await context.SecurityResources.Select(item => item.Code).ToArrayAsync();
-        Assert.Contains("MUNICIPAL_KPA", resources); Assert.Contains("STRATEGIC_GOAL", resources); Assert.Contains("STRATEGIC_INTERVENTION", resources); Assert.Contains("STRATEGIC_OBJECTIVE", resources); Assert.Contains("PERFORMANCE_OBJECTIVE", resources); Assert.Contains("STRATEGIC_HIERARCHY", resources); Assert.Contains("BUDGET_SOURCE", resources); Assert.Contains("BUDGET_TYPE", resources);
+        Assert.Contains("MUNICIPAL_KPA", resources); Assert.Contains("STRATEGIC_GOAL", resources); Assert.Contains("STRATEGIC_INTERVENTION", resources); Assert.Contains("STRATEGIC_OBJECTIVE", resources); Assert.Contains("PERFORMANCE_OBJECTIVE", resources); Assert.Contains("STRATEGIC_HIERARCHY", resources); Assert.Contains("BUDGET_SOURCE", resources); Assert.Contains("BUDGET_TYPE", resources); Assert.Contains("KPI_UNIT_OF_MEASURE", resources);
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/strategic-interventions" && item.RequiredPermissionCode == "NAV.CONFIGURATION.STRATEGIC_INTERVENTIONS");
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/budget-sources" && item.RequiredPermissionCode == "NAV.CONFIGURATION.BUDGET_SOURCES");
+        Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/units-measure" && item.RequiredPermissionCode == "NAV.CONFIGURATION.KPI_UNITS_OF_MEASURE");
     }
 
     [Theory]
@@ -279,6 +330,7 @@ public sealed class StrategicPlanningMastersControllerTests
     [InlineData(nameof(StrategicPlanningMastersController.GetStrategicInterventions), "Permission:STRATEGIC_INTERVENTION.READ")]
     [InlineData(nameof(StrategicPlanningMastersController.CreateBudgetSource), "Permission:BUDGET_SOURCE.CREATE")]
     [InlineData(nameof(StrategicPlanningMastersController.UpdateBudgetType), "Permission:BUDGET_TYPE.UPDATE")]
+    [InlineData(nameof(StrategicPlanningMastersController.CreateKpiUnitOfMeasure), "Permission:KPI_UNIT_OF_MEASURE.CREATE")]
     [InlineData(nameof(StrategicPlanningMastersController.LinkGoalToObjective), "Permission:STRATEGIC_HIERARCHY.CREATE")]
     public void EndpointsCarryDynamicPermissionPolicies(string methodName, string policy)
     {

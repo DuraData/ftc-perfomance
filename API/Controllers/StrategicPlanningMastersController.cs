@@ -50,6 +50,8 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetFunctionalAreas([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedFunctionalAreas, request);
     [HttpGet("standard-classifications/page"), Authorize(Policy = "Permission:STANDARD_CLASSIFICATION.READ")]
     public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetStandardClassifications([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedStandardClassifications, request);
+    [HttpGet("kpi-units-of-measure/page"), Authorize(Policy = "Permission:KPI_UNIT_OF_MEASURE.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetKpiUnitsOfMeasure([FromQuery] StrategicPlanningPageRequest request) => Page(context.GovernedKpiUnitOfMeasures, request);
 
     [HttpPost("municipal-kpas"), Authorize(Policy = "Permission:MUNICIPAL_KPA.CREATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateMunicipalKpa(SaveStrategicPlanningMasterRequest request) => Create(context.MunicipalKpas, () => new MunicipalKpa(), nameof(MunicipalKpa), request);
@@ -80,6 +82,8 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateFunctionalArea(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedFunctionalAreas, () => new GovernedFunctionalArea(), nameof(GovernedFunctionalArea), request);
     [HttpPost("standard-classifications"), Authorize(Policy = "Permission:STANDARD_CLASSIFICATION.CREATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateStandardClassification(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedStandardClassifications, () => new GovernedStandardClassification(), nameof(GovernedStandardClassification), request);
+    [HttpPost("kpi-units-of-measure"), Authorize(Policy = "Permission:KPI_UNIT_OF_MEASURE.CREATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> CreateKpiUnitOfMeasure(SaveStrategicPlanningMasterRequest request) => Create(context.GovernedKpiUnitOfMeasures, () => new GovernedKpiUnitOfMeasure(), nameof(GovernedKpiUnitOfMeasure), request);
 
     [HttpPut("municipal-kpas/{publicId:guid}"), Authorize(Policy = "Permission:MUNICIPAL_KPA.UPDATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateMunicipalKpa(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.MunicipalKpas, publicId, nameof(MunicipalKpa), request);
@@ -110,6 +114,8 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateFunctionalArea(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedFunctionalAreas, publicId, nameof(GovernedFunctionalArea), request);
     [HttpPut("standard-classifications/{publicId:guid}"), Authorize(Policy = "Permission:STANDARD_CLASSIFICATION.UPDATE")]
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateStandardClassification(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedStandardClassifications, publicId, nameof(GovernedStandardClassification), request);
+    [HttpPut("kpi-units-of-measure/{publicId:guid}"), Authorize(Policy = "Permission:KPI_UNIT_OF_MEASURE.UPDATE")]
+    public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateKpiUnitOfMeasure(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedKpiUnitOfMeasures, publicId, nameof(GovernedKpiUnitOfMeasure), request);
 
     [HttpGet("relationships"), Authorize(Policy = "Permission:STRATEGIC_HIERARCHY.READ")]
     public async Task<ActionResult<ApiResponse<StrategicPlanningRelationshipDto[]>>> GetRelationships([FromQuery] bool includeInactive = false)
@@ -220,13 +226,18 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         var budgetSources = await CatalogueRows(context.GovernedBudgetSources, year); var budgetTypes = await CatalogueRows(context.GovernedBudgetTypes, year);
         var kpiTypes = await CatalogueRows(context.GovernedKpiTypes, year); var indicatorTypes = await CatalogueRows(context.GovernedIndicatorTypes, year);
         var functionalAreas = await CatalogueRows(context.GovernedFunctionalAreas, year); var standardClassifications = await CatalogueRows(context.GovernedStandardClassifications, year);
+        var kpiUnitsOfMeasure = await context.GovernedKpiUnitOfMeasures.AsNoTracking().Where(item => item.IsActive
+                && (!item.EffectiveFromFinancialYearId.HasValue || item.EffectiveFromFinancialYear!.FinancialYear.StartDate <= year.FinancialYear.StartDate)
+                && (!item.EffectiveToFinancialYearId.HasValue || item.EffectiveToFinancialYear!.FinancialYear.EndDate >= year.FinancialYear.EndDate))
+            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000)
+            .Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder, item.Symbol)).ToArrayAsync();
         var relationships = new List<StrategicCatalogueRelationshipDto>();
         relationships.AddRange(await context.MunicipalKpaStrategicGoals.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("municipal-kpa-strategic-goal", item.MunicipalKpa.PublicId, item.StrategicGoal.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicGoalInterventions.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-intervention", item.StrategicGoal.PublicId, item.StrategicIntervention.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicGoalObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-objective", item.StrategicGoal.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicInterventionObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-intervention-objective", item.StrategicIntervention.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
         relationships.AddRange(await context.StrategicObjectivePerformanceObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-objective-performance-objective", item.StrategicObjective.PublicId, item.PerformanceObjective.PublicId)).ToArrayAsync());
-        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, budgetSources, budgetTypes, kpiTypes, indicatorTypes, functionalAreas, standardClassifications, relationships.ToArray())));
+        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, budgetSources, budgetTypes, kpiTypes, indicatorTypes, functionalAreas, standardClassifications, kpiUnitsOfMeasure, relationships.ToArray())));
     }
 
     private static Task<StrategicCatalogueItemDto[]> CatalogueRows<TEntity>(DbSet<TEntity> set, MunicipalityFinancialYear year) where TEntity : StrategicPlanningMasterBase =>
@@ -260,7 +271,7 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     private async Task<(string? Code, MunicipalityFinancialYear? From, MunicipalityFinancialYear? To, string? Error)> ValidateMaster<TEntity>(DbSet<TEntity> set, SaveStrategicPlanningMasterRequest request, long? excludeId) where TEntity : StrategicPlanningMasterBase
     {
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 500) return (null, null, null, "Name is required and may not exceed 500 characters.");
-        if (request.Code?.Trim().Length > 80 || request.Description?.Trim().Length > 2000 || request.DisplayOrder < 0) return (null, null, null, "Code, description, or display order is invalid.");
+        if (request.Code?.Trim().Length > 80 || request.Description?.Trim().Length > 2000 || request.Symbol?.Trim().Length > 40 || request.DisplayOrder < 0) return (null, null, null, "Code, description, symbol, or display order is invalid.");
         var reasonError = ValidateReason(request.Reason); if (reasonError != null) return (null, null, null, reasonError);
         var code = Clean(request.Code)?.ToUpperInvariant();
         if (code != null && await set.AnyAsync(item => item.Code == code && (!excludeId.HasValue || item.Id != excludeId.Value))) return (null, null, null, "A record with this code already exists.");
@@ -320,10 +331,10 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         return rows.Select(item => { var p = getParent(item); var c = getChild(item); return new StrategicPlanningRelationshipDto(item.PublicId, type, p.PublicId, p.Name, c.PublicId, c.Name, item.IsActive, Convert.ToBase64String(item.RowVersion)); }).ToArray();
     }
 
-    private void Apply(StrategicPlanningMasterBase entity, SaveStrategicPlanningMasterRequest request, string? code, MunicipalityFinancialYear? from, MunicipalityFinancialYear? to) { entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Clean(request.Description); entity.EffectiveFromFinancialYearId = from?.Id; entity.EffectiveToFinancialYearId = to?.Id; entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; }
+    private void Apply(StrategicPlanningMasterBase entity, SaveStrategicPlanningMasterRequest request, string? code, MunicipalityFinancialYear? from, MunicipalityFinancialYear? to) { entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Clean(request.Description); entity.EffectiveFromFinancialYearId = from?.Id; entity.EffectiveToFinancialYearId = to?.Id; entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; if (entity is GovernedKpiUnitOfMeasure unit) unit.Symbol = Clean(request.Symbol); }
     private async Task LoadYears(StrategicPlanningMasterBase entity) { if (entity.EffectiveFromFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveFromFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); if (entity.EffectiveToFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveToFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); }
-    private static StrategicPlanningMasterDto ToDto(StrategicPlanningMasterBase item) => new(item.PublicId, item.Code, item.Name, item.Description, item.EffectiveFromFinancialYear?.PublicId, item.EffectiveFromFinancialYear?.FinancialYear.Code, item.EffectiveToFinancialYear?.PublicId, item.EffectiveToFinancialYear?.FinancialYear.Code, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion));
-    private static object Snapshot(StrategicPlanningMasterBase item) => new { item.Code, item.Name, item.Description, item.EffectiveFromFinancialYearId, item.EffectiveToFinancialYearId, item.DisplayOrder, item.IsActive };
+    private static StrategicPlanningMasterDto ToDto(StrategicPlanningMasterBase item) => new(item.PublicId, item.Code, item.Name, item.Description, item.EffectiveFromFinancialYear?.PublicId, item.EffectiveFromFinancialYear?.FinancialYear.Code, item.EffectiveToFinancialYear?.PublicId, item.EffectiveToFinancialYear?.FinancialYear.Code, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion), (item as GovernedKpiUnitOfMeasure)?.Symbol);
+    private static object Snapshot(StrategicPlanningMasterBase item) => new { item.Code, item.Name, item.Description, Symbol = (item as GovernedKpiUnitOfMeasure)?.Symbol, item.EffectiveFromFinancialYearId, item.EffectiveToFinancialYearId, item.DisplayOrder, item.IsActive };
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string? ValidateReason(string? reason) => string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 10 || reason.Trim().Length > 1000 ? "A governance reason between 10 and 1000 characters is required." : null;
     private static bool TryVersion(string? value, out byte[] version) { version = []; if (string.IsNullOrWhiteSpace(value)) return false; try { version = Convert.FromBase64String(value); return version.Length > 0; } catch (FormatException) { return false; } }
@@ -348,12 +359,12 @@ public sealed class StrategicPlanningPageRequest
     public string NormalizedSortBy => SortBy?.Trim().ToLowerInvariant() ?? "displayorder";
 }
 
-public sealed record StrategicPlanningMasterDto(Guid PublicId, string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, string? EffectiveFromFinancialYearCode, Guid? EffectiveToFinancialYearPublicId, string? EffectiveToFinancialYearCode, int DisplayOrder, bool IsActive, string RowVersion);
-public sealed record SaveStrategicPlanningMasterRequest(string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, Guid? EffectiveToFinancialYearPublicId, int DisplayOrder, bool IsActive, string Reason, string? RowVersion = null);
+public sealed record StrategicPlanningMasterDto(Guid PublicId, string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, string? EffectiveFromFinancialYearCode, Guid? EffectiveToFinancialYearPublicId, string? EffectiveToFinancialYearCode, int DisplayOrder, bool IsActive, string RowVersion, string? Symbol = null);
+public sealed record SaveStrategicPlanningMasterRequest(string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, Guid? EffectiveToFinancialYearPublicId, int DisplayOrder, bool IsActive, string Reason, string? RowVersion = null, string? Symbol = null);
 public sealed record StrategicPlanningRelationshipDto(Guid PublicId, string RelationshipType, Guid ParentPublicId, string ParentName, Guid ChildPublicId, string ChildName, bool IsActive, string RowVersion);
 public sealed record LinkStrategicPlanningRequest(Guid ParentPublicId, Guid ChildPublicId, string Reason, string? RowVersion = null);
 public sealed record DisableStrategicPlanningRelationshipRequest(string Reason, string RowVersion);
-public sealed record StrategicCatalogueItemDto(Guid PublicId, string? Code, string Name, int DisplayOrder);
+public sealed record StrategicCatalogueItemDto(Guid PublicId, string? Code, string Name, int DisplayOrder, string? Symbol = null);
 public sealed record StrategicCatalogueRelationshipDto(string RelationshipType, Guid ParentPublicId, Guid ChildPublicId);
 public sealed record StrategicClassificationCatalogueDto(
     StrategicCatalogueItemDto[] NationalKpas,
@@ -369,4 +380,5 @@ public sealed record StrategicClassificationCatalogueDto(
     StrategicCatalogueItemDto[] IndicatorTypes,
     StrategicCatalogueItemDto[] FunctionalAreas,
     StrategicCatalogueItemDto[] StandardClassifications,
+    StrategicCatalogueItemDto[] KpiUnitsOfMeasure,
     StrategicCatalogueRelationshipDto[] Relationships);

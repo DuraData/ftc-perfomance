@@ -376,12 +376,13 @@ function toBudgetTypeReference(id?: number | string | null, name?: string | null
   };
 }
 
-function toUnitOfMeasureReference(id?: number | null, name?: string | null): UnitOfMeasure {
+function toUnitOfMeasureReference(id?: number | string | null, name?: string | null, symbol?: string | null): UnitOfMeasure {
   const normalizedName = normalizeOptionalString(name);
   return {
     id: id === null || id === undefined ? '' : String(id),
     name: normalizedName ?? NOT_SUPPLIED,
     code: normalizedName ?? '',
+    symbol: normalizeOptionalString(symbol),
     isActive: true,
   };
 }
@@ -557,7 +558,8 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     budgetTypePublicId: dto.budgetTypePublicId ?? undefined,
     budgetTypeName: dto.budgetTypeName ?? undefined,
     budgetSources: dto.budgetSources ?? [],
-    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
+    unitOfMeasure: toUnitOfMeasureReference(dto.kpiUnitOfMeasurePublicId ?? dto.unitOfMeasureId, dto.kpiUnitOfMeasureName ?? canonicalUnitType, dto.kpiUnitOfMeasureSymbol),
+    kpiUnitOfMeasurePublicId: dto.kpiUnitOfMeasurePublicId ?? undefined,
     weight: dto.weight,
     kpiType: dto.kpiType,
     kpiTypePublicId: dto.kpiTypePublicId ?? undefined,
@@ -653,7 +655,8 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     budgetTypePublicId: dto.budgetTypePublicId ?? undefined,
     budgetTypeName: dto.budgetTypeName ?? undefined,
     budgetSources: dto.budgetSources ?? [],
-    unitOfMeasure: toUnitOfMeasureReference(dto.unitOfMeasureId, canonicalUnitType),
+    unitOfMeasure: toUnitOfMeasureReference(dto.kpiUnitOfMeasurePublicId ?? dto.unitOfMeasureId, dto.kpiUnitOfMeasureName ?? canonicalUnitType, dto.kpiUnitOfMeasureSymbol),
+    kpiUnitOfMeasurePublicId: dto.kpiUnitOfMeasurePublicId ?? undefined,
     weight: dto.weight,
     kpiType: dto.kpiType,
     kpiTypePublicId: dto.kpiTypePublicId ?? undefined,
@@ -1423,7 +1426,7 @@ export async function setGlobalStrategicReferenceAvailability(kind: GlobalStrate
   return put<GlobalStrategicReferenceDto>(`/v1/masters/${kind}/${publicId}/municipality-availability`, payload);
 }
 
-export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives' | 'budget-sources' | 'budget-types' | 'kpi-types' | 'indicator-types' | 'functional-areas' | 'standard-classifications';
+export type StrategicPlanningMasterKind = 'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives' | 'budget-sources' | 'budget-types' | 'kpi-types' | 'indicator-types' | 'functional-areas' | 'standard-classifications' | 'kpi-units-of-measure';
 
 export async function getStrategicPlanningMastersPage(kind: StrategicPlanningMasterKind, query: RegisterPageQuery = {}, options: { municipalityFinancialYearPublicId?: string; includeInactive?: boolean } = {}): Promise<ApiResponse<PagedResult<StrategicPlanningMasterDto>>> {
   const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
@@ -1432,7 +1435,7 @@ export async function getStrategicPlanningMastersPage(kind: StrategicPlanningMas
   return get<PagedResult<StrategicPlanningMasterDto>>(`/v1/strategic-planning/${kind}/page?${parameters.toString()}`);
 }
 
-export function saveStrategicPlanningMaster(kind: StrategicPlanningMasterKind, publicId: string | null, payload: { code?: string | null; name: string; description?: string | null; effectiveFromFinancialYearPublicId?: string | null; effectiveToFinancialYearPublicId?: string | null; displayOrder: number; isActive: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<StrategicPlanningMasterDto>> {
+export function saveStrategicPlanningMaster(kind: StrategicPlanningMasterKind, publicId: string | null, payload: { code?: string | null; name: string; description?: string | null; symbol?: string | null; effectiveFromFinancialYearPublicId?: string | null; effectiveToFinancialYearPublicId?: string | null; displayOrder: number; isActive: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<StrategicPlanningMasterDto>> {
   return publicId ? put<StrategicPlanningMasterDto>(`/v1/strategic-planning/${kind}/${encodeURIComponent(publicId)}`, payload) : post<StrategicPlanningMasterDto>(`/v1/strategic-planning/${kind}`, payload);
 }
 

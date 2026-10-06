@@ -421,6 +421,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   budgetTypeName?: string;
   budgetSources?: KpiBudgetSource[];
   unitOfMeasure: UnitOfMeasure;
+  kpiUnitOfMeasurePublicId?: string;
   weight: number;
   kpiType: string;
   kpiTypePublicId?: string;
@@ -520,6 +521,7 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   budgetTypeName?: string;
   budgetSources?: KpiBudgetSource[];
   unitOfMeasure: UnitOfMeasure;
+  kpiUnitOfMeasurePublicId?: string;
   weight: number;
   kpiType: string;
   kpiTypePublicId?: string;
@@ -1625,6 +1627,7 @@ export interface StrategicPlanningMasterDto {
   displayOrder: number;
   isActive: boolean;
   rowVersion: string;
+  symbol?: string | null;
 }
 
 export interface StrategicPlanningRelationshipDto {
@@ -1643,6 +1646,7 @@ export interface StrategicCatalogueItemDto {
   code?: string | null;
   name: string;
   displayOrder: number;
+  symbol?: string | null;
 }
 
 export interface StrategicCatalogueRelationshipDto {
@@ -1665,6 +1669,7 @@ export interface StrategicClassificationCatalogueDto {
   indicatorTypes?: StrategicCatalogueItemDto[];
   functionalAreas?: StrategicCatalogueItemDto[];
   standardClassifications?: StrategicCatalogueItemDto[];
+  kpiUnitsOfMeasure?: StrategicCatalogueItemDto[];
   relationships: StrategicCatalogueRelationshipDto[];
 }
 
@@ -2432,6 +2437,9 @@ export interface OpmsTargetDto {
   budgetTypeName?: string | null;
   budgetSources?: KpiBudgetSource[];
   unitOfMeasureId?: number | null;
+  kpiUnitOfMeasurePublicId?: string | null;
+  kpiUnitOfMeasureName?: string | null;
+  kpiUnitOfMeasureSymbol?: string | null;
   weight: number;
   kpiType: string;
   kpiTypePublicId?: string | null;
@@ -2503,6 +2511,9 @@ export interface IpmsTargetDto {
   budgetTypeName?: string | null;
   budgetSources?: KpiBudgetSource[];
   unitOfMeasureId?: number | null;
+  kpiUnitOfMeasurePublicId?: string | null;
+  kpiUnitOfMeasureName?: string | null;
+  kpiUnitOfMeasureSymbol?: string | null;
   weight: number;
   kpiType: string;
   kpiTypePublicId?: string | null;
@@ -2856,7 +2867,7 @@ export interface SaveOpmsTargetPayload {
   baselineDescription?: string | null;
   budgetTypePublicId?: string | null;
   budgetSources: Array<{ budgetSourcePublicId: string; amount?: number | null }>;
-  unitOfMeasureId?: number | null;
+  kpiUnitOfMeasurePublicId: string;
   weight: number;
   kpiType: string;
   kpiTypePublicId: string;
@@ -2903,7 +2914,7 @@ export interface SaveIpmsTargetPayload {
   baseline: number;
   budgetTypePublicId?: string | null;
   budgetSources: Array<{ budgetSourcePublicId: string; amount?: number | null }>;
-  unitOfMeasureId?: number | null;
+  kpiUnitOfMeasurePublicId: string;
   weight: number;
   kpiType: string;
   kpiTypePublicId: string;

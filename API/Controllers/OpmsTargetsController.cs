@@ -86,7 +86,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
             .Include(item => item.BudgetTypeMaster).Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
             .Include(item => item.KpiTypeMaster).Include(item => item.IndicatorTypeMaster)
-            .Include(item => item.FunctionalAreaMaster).Include(item => item.StandardClassificationMaster)
+            .Include(item => item.FunctionalAreaMaster).Include(item => item.StandardClassificationMaster).Include(item => item.KpiUnitOfMeasureMaster)
             .AsSplitQuery()
             .ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
@@ -195,6 +195,9 @@ public class OpmsTargetsController : ControllerBase
         var performanceClassification = await PerformanceClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
             request.KpiTypePublicId, request.IndicatorTypePublicId, request.FunctionalAreaPublicId, request.StandardClassificationPublicId, true);
         if (!performanceClassification.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, performanceClassification.Error));
+        var kpiUnit = await PerformanceClassificationResolver.ResolveUnitAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            request.KpiUnitOfMeasurePublicId);
+        if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, kpiUnit.Error));
 
         var entity = new OpmsTarget
         {
@@ -234,6 +237,7 @@ public class OpmsTargetsController : ControllerBase
         StrategicClassificationResolver.Apply(entity, strategicClassification);
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
+        PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
         ApplyMappings(entity, request);
 
         _context.OpmsTargets.Add(entity);
@@ -293,6 +297,9 @@ public class OpmsTargetsController : ControllerBase
             request.KpiTypePublicId, request.IndicatorTypePublicId, request.FunctionalAreaPublicId, request.StandardClassificationPublicId, true,
             entity.KpiTypeMasterId, entity.IndicatorTypeMasterId, entity.FunctionalAreaMasterId, entity.StandardClassificationMasterId);
         if (!performanceClassification.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, performanceClassification.Error));
+        var kpiUnit = await PerformanceClassificationResolver.ResolveUnitAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            request.KpiUnitOfMeasurePublicId, entity.KpiUnitOfMeasureMasterId);
+        if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, kpiUnit.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, entity.Id, null);
         if (periodChangeError != null) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -327,6 +334,7 @@ public class OpmsTargetsController : ControllerBase
         StrategicClassificationResolver.Apply(entity, strategicClassification);
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
+        PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
         _context.OpmsTargetWards.RemoveRange(entity.Wards);
         _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
         _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
@@ -585,7 +593,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.PerformanceObjectiveReference)
             .Include(item => item.BudgetTypeMaster)
             .Include(item => item.KpiTypeMaster).Include(item => item.IndicatorTypeMaster)
-            .Include(item => item.FunctionalAreaMaster).Include(item => item.StandardClassificationMaster)
+            .Include(item => item.FunctionalAreaMaster).Include(item => item.StandardClassificationMaster).Include(item => item.KpiUnitOfMeasureMaster)
             .Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);

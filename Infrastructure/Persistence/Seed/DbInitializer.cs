@@ -77,6 +77,8 @@ public static class DbInitializer
             .Select(item => new { MunicipalityId = item.MunicipalityId!.Value, item.KpiType, item.IndicatorType, item.FunctionalArea, item.StandardClassification }).ToArrayAsync();
         var ipms = await context.IpmsTargets.IgnoreQueryFilters().AsNoTracking().Where(item => item.MunicipalityId.HasValue)
             .Select(item => new { MunicipalityId = item.MunicipalityId!.Value, item.KpiType, item.IndicatorType, item.FunctionalArea }).ToArrayAsync();
+        var legacyUnits = await context.UnitOfMeasures.AsNoTracking().Where(item => item.IsActive)
+            .Select(item => new { item.Id, item.Code, item.Name, item.Symbol }).ToArrayAsync();
 
         await SeedPerformanceMaster(context.GovernedKpiTypes, municipalities, ["Quantitative", "Qualitative"],
             opms.Select(item => (item.MunicipalityId, (string?)item.KpiType)).Concat(ipms.Select(item => (item.MunicipalityId, (string?)item.KpiType))));
@@ -86,7 +88,27 @@ public static class DbInitializer
             opms.Select(item => (item.MunicipalityId, item.FunctionalArea)).Concat(ipms.Select(item => (item.MunicipalityId, item.FunctionalArea))));
         await SeedPerformanceMaster(context.GovernedStandardClassifications, municipalities, Array.Empty<string>(),
             opms.Select(item => (item.MunicipalityId, item.StandardClassification)));
+        await SeedKpiUnitsOfMeasure(context, municipalities, legacyUnits.Select(item => (item.Id, item.Code, item.Name, item.Symbol)).ToArray());
         await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedKpiUnitsOfMeasure(ApplicationDbContext context, long[] municipalities,
+        IReadOnlyCollection<(int Id, string Code, string Name, string? Symbol)> legacyUnits)
+    {
+        var existing = await context.GovernedKpiUnitOfMeasures.IgnoreQueryFilters().AsNoTracking()
+            .Select(item => new { item.MunicipalityId, item.Code }).ToArrayAsync();
+        var keys = existing.Select(item => $"{item.MunicipalityId}:{item.Code}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var municipalityId in municipalities)
+        foreach (var legacy in legacyUnits.OrderBy(item => item.Id))
+        {
+            var code = string.IsNullOrWhiteSpace(legacy.Code) ? $"LEGACY-UOM-{legacy.Id}" : legacy.Code.Trim();
+            if (!keys.Add($"{municipalityId}:{code}")) continue;
+            context.GovernedKpiUnitOfMeasures.Add(new GovernedKpiUnitOfMeasure
+            {
+                MunicipalityId = municipalityId, Code = code, Name = legacy.Name.Trim(), Symbol = legacy.Symbol?.Trim(),
+                DisplayOrder = legacy.Id, IsActive = true
+            });
+        }
     }
 
     private static async Task SeedPerformanceMaster<TEntity>(DbSet<TEntity> set, long[] municipalities, IReadOnlyCollection<string> defaults,
