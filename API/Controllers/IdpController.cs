@@ -1032,19 +1032,70 @@ public class IdpController : ControllerBase
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents")]
     [Authorize(Policy = "Permission:IDP.Documents.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpDocumentResponse[]>>> GetDocuments(Guid planPublicId)
+    public ActionResult<ApiResponse<IdpDocumentResponse[]>> GetDocuments(Guid planPublicId)
     {
-        var documents = await _context.IdpDocuments
+        _ = planPublicId;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpDocumentResponse[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/idp/plans/{planPublicId}/documents/page."));
+    }
+
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents/page")]
+    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpDocumentResponse>>>> GetDocumentsPage(
+        Guid planPublicId,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? category = null,
+        [FromQuery] string? scanStatus = null,
+        [FromQuery] bool? quarantined = null)
+    {
+        if (request.NormalizedSortBy is not ("createdat" or "uploadedat" or "title" or "filename" or "category" or "scanstatus" or "versionnumber"))
+            return BadRequest(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null,
+                "SortBy must be createdAt, uploadedAt, title, fileName, category, scanStatus, or versionNumber."));
+        if (!string.IsNullOrWhiteSpace(category) && !TryParseEnum(category, out IdpDocumentCategory _))
+            return BadRequest(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null, "Invalid document category."));
+
+        var planExists = await _context.IdpPlans.AsNoTracking().AnyAsync(item => item.PublicId == planPublicId);
+        if (!planExists)
+            return NotFound(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null, "IDP plan not found."));
+
+        IQueryable<IdpDocument> query = _context.IdpDocuments
             .AsNoTracking()
             .Include(item => item.IdpPlan)
             .Include(item => item.IdpPlanVersion)
             .Include(item => item.UploadedByUser)
             .Include(item => item.Blob)
-            .Where(item => item.IdpPlan.PublicId == planPublicId && item.IsActive)
-            .OrderByDescending(item => item.UploadedAt)
-            .ToListAsync();
+            .Where(item => item.IdpPlan.PublicId == planPublicId && item.IsActive);
 
-        return Ok(new ApiResponse<IdpDocumentResponse[]>(true, documents.Select(ToDocumentResponse).ToArray()));
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(item => item.Title.Contains(search) || item.FileName.Contains(search));
+        }
+        if (!string.IsNullOrWhiteSpace(category) && TryParseEnum(category, out IdpDocumentCategory parsedCategory))
+            query = query.Where(item => item.Category == parsedCategory);
+        if (!string.IsNullOrWhiteSpace(scanStatus))
+        {
+            var normalizedScanStatus = scanStatus.Trim();
+            query = query.Where(item => item.Blob.ScanStatus == normalizedScanStatus);
+        }
+        if (quarantined.HasValue)
+            query = query.Where(item => item.Blob.IsQuarantined == quarantined.Value);
+
+        var totalCount = await query.CountAsync();
+        var descending = request.Descending;
+        query = request.NormalizedSortBy switch
+        {
+            "title" => descending ? query.OrderByDescending(item => item.Title).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.Title).ThenBy(item => item.PublicId),
+            "filename" => descending ? query.OrderByDescending(item => item.FileName).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.FileName).ThenBy(item => item.PublicId),
+            "category" => descending ? query.OrderByDescending(item => item.Category).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.Category).ThenBy(item => item.PublicId),
+            "scanstatus" => descending ? query.OrderByDescending(item => item.Blob.ScanStatus).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.Blob.ScanStatus).ThenBy(item => item.PublicId),
+            "versionnumber" => descending ? query.OrderByDescending(item => item.VersionNumber).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.VersionNumber).ThenBy(item => item.PublicId),
+            _ => descending ? query.OrderByDescending(item => item.UploadedAt).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.UploadedAt).ThenBy(item => item.PublicId)
+        };
+        var documents = await query.Skip(request.Offset).Take(request.PageSize).ToListAsync();
+
+        return Ok(new ApiResponse<PagedResponse<IdpDocumentResponse>>(true,
+            PagedResponse<IdpDocumentResponse>.Create(documents.Select(ToDocumentResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("~/api/v1/idp/plans/{planPublicId:guid}/documents")]

@@ -762,12 +762,26 @@ public class IdpControllerFunctionalityTests
     }
 
     [Fact]
-    public async Task GetDocuments_ShouldExposePublicIdsAndReleaseOnlyCleanDocuments()
+    public async Task GetDocumentsPage_ShouldBoundFilterAndReleaseOnlyCleanDocuments()
     {
-        await using var context = IdpTestFixture.CreateContext();
         var user = IdpTestFixture.CreateUser();
-        var plan = new IdpPlan
+        var tenant = IdpTestFixture.Tenant(71, user.Id);
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        IdpPlan plan;
+        IdpDocument clean;
+        IdpDocument quarantined;
+        IdpPlan outsidePlan;
+        await using (var setup = new ApplicationDbContext(options, IdpTestFixture.Tenant(null, "system", true)))
         {
+        await setup.Database.EnsureCreatedAsync();
+        setup.Municipalities.AddRange(
+            new Municipality { Id = 71, Code = "M71", Name = "Blue Hills" },
+            new Municipality { Id = 72, Code = "M72", Name = "Other Municipality" });
+        plan = new IdpPlan
+        {
+            MunicipalityId = 71,
             MunicipalityName = "Blue Hills",
             PlanTitle = "IDP",
             PlanCode = "IDP-DOC",
@@ -775,47 +789,88 @@ public class IdpControllerFunctionalityTests
             EndFinancialYear = 2031,
             CreatedByUserId = user.Id
         };
-        var clean = new IdpDocument
+        clean = new IdpDocument
         {
             IdpPlan = plan,
-            Category = IdpDocumentCategory.Governance,
+            Category = IdpDocumentCategory.Policy,
             Title = "Approved plan",
             FileName = "approved.pdf",
-            Blob = new EvidenceBlob { StorageKey = "idp/private-clean.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean", IsQuarantined = false },
+            UploadedAt = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc),
+            Blob = new EvidenceBlob { MunicipalityId = 71, StorageKey = "idp/private-clean.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean", IsQuarantined = false },
             UploadedByUserId = user.Id,
             UploadedByUser = user
         };
-        var quarantined = new IdpDocument
+        quarantined = new IdpDocument
         {
             IdpPlan = plan,
             Category = IdpDocumentCategory.Governance,
             Title = "Pending plan",
             FileName = "pending.pdf",
-            Blob = new EvidenceBlob { StorageKey = "idp/private-pending.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('b', 64), SignatureVerified = true, ScanStatus = "ScannerUnavailable", IsQuarantined = true },
+            UploadedAt = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc),
+            Blob = new EvidenceBlob { MunicipalityId = 71, StorageKey = "idp/private-pending.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('b', 64), SignatureVerified = true, ScanStatus = "ScannerUnavailable", IsQuarantined = true },
             UploadedByUserId = user.Id,
             UploadedByUser = user
         };
-        context.AddRange(user, plan, clean, quarantined);
-        await context.SaveChangesAsync();
+        outsidePlan = new IdpPlan
+        {
+            MunicipalityId = 72,
+            MunicipalityName = "Other Municipality",
+            PlanTitle = "Outside IDP",
+            PlanCode = "IDP-OUTSIDE",
+            StartFinancialYear = 2026,
+            EndFinancialYear = 2031,
+            CreatedByUserId = user.Id
+        };
+        var outsideDocument = new IdpDocument
+        {
+            IdpPlan = outsidePlan,
+            Category = IdpDocumentCategory.Policy,
+            Title = "Outside plan",
+            FileName = "outside.pdf",
+            Blob = new EvidenceBlob { MunicipalityId = 72, StorageKey = "idp/outside.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('c', 64), SignatureVerified = true, ScanStatus = "Clean" },
+            UploadedByUserId = user.Id,
+            UploadedByUser = user
+        };
+        setup.AddRange(user, plan, clean, quarantined, outsidePlan, outsideDocument);
+        await setup.SaveChangesAsync();
+        }
+
+        await using var context = new ApplicationDbContext(options, tenant);
 
         var controller = IdpTestFixture.CreateController(
             context,
             IdpTestFixture.CreateUserManagerMock(user).Object,
             Mock.Of<IWorkflowGovernanceService>(),
-            user.Id);
+            user.Id,
+            tenant);
         controller.HttpContext.Request.Scheme = "https";
         controller.HttpContext.Request.Host = new HostString("opms.test");
 
-        var result = await controller.GetDocuments(plan.PublicId);
+        var result = await controller.GetDocumentsPage(plan.PublicId,
+            new PagedQueryRequest { Page = 1, PageSize = 1, Search = "plan", SortBy = "title", SortDirection = "asc" });
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var payload = ok.Value.Should().BeOfType<ApiResponse<IdpDocumentResponse[]>>().Subject;
-        var documents = payload.Data.Should().NotBeNull().And.Subject;
-        documents.Should().HaveCount(2);
-        documents.Single(item => item.PublicId == clean.PublicId).DownloadUrl.Should().Contain(clean.PublicId.ToString());
-        documents.Single(item => item.PublicId == quarantined.PublicId).DownloadUrl.Should().BeEmpty();
-        documents.Should().OnlyContain(item => item.IdpPlanPublicId == plan.PublicId);
-        documents.Select(item => item.EvidenceBlobPublicId).Should().OnlyHaveUniqueItems();
-        documents.Single(item => item.PublicId == clean.PublicId).EvidenceBlobPublicId.Should().Be(clean.Blob.PublicId);
-        documents.Should().OnlyContain(item => !item.IsContentDeleted);
+        var payload = ok.Value.Should().BeOfType<ApiResponse<PagedResponse<IdpDocumentResponse>>>().Subject;
+        payload.Data.Should().NotBeNull();
+        var page = payload.Data!;
+        page.TotalCount.Should().Be(2);
+        page.TotalPages.Should().Be(2);
+        page.Items.Should().ContainSingle();
+        page.Items[0].PublicId.Should().Be(clean.PublicId);
+        page.Items[0].DownloadUrl.Should().Contain(clean.PublicId.ToString());
+        page.Items[0].IdpPlanPublicId.Should().Be(plan.PublicId);
+        page.Items[0].EvidenceBlobPublicId.Should().Be(clean.Blob.PublicId);
+        page.Items[0].IsContentDeleted.Should().BeFalse();
+
+        var quarantineResult = await controller.GetDocumentsPage(plan.PublicId,
+            new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "scanStatus" },
+            category: "Governance", scanStatus: "ScannerUnavailable", quarantined: true);
+        var quarantinePage = quarantineResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<IdpDocumentResponse>>>().Subject.Data!;
+        quarantinePage.Items.Should().ContainSingle(item => item.PublicId == quarantined.PublicId && item.DownloadUrl == string.Empty);
+        quarantinePage.Items.Select(item => item.EvidenceBlobPublicId).Should().OnlyHaveUniqueItems();
+
+        (await controller.GetDocumentsPage(plan.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetDocumentsPage(outsidePlan.PublicId, new PagedQueryRequest())).Result.Should().BeOfType<NotFoundObjectResult>();
+        controller.GetDocuments(plan.PublicId).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 }

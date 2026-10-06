@@ -3327,6 +3327,35 @@ export interface IdpBudgetSnapshot {
   capturedAt: string;
 }
 
+export interface IdpDocument {
+  publicId: string;
+  idpPlanPublicId: string;
+  planVersionNumber?: number | null;
+  category: string;
+  title: string;
+  fileName: string;
+  downloadUrl: string;
+  contentType?: string | null;
+  sizeInBytes: number;
+  versionNumber: number;
+  isApproved: boolean;
+  uploadedAt: string;
+  uploadedByUserId: string;
+  uploadedByName?: string | null;
+  sha256: string;
+  signatureVerified: boolean;
+  scanStatus: string;
+  isQuarantined: boolean;
+  scannerProvider?: string | null;
+  scannerReference?: string | null;
+  scanDetail?: string | null;
+  scannedAt?: string | null;
+  retainUntil?: string | null;
+  evidenceBlobPublicId: string;
+  isContentDeleted: boolean;
+  rowVersion: string;
+}
+
 export interface IdpWardParticipation {
   wardId: number;
   wardName: string;

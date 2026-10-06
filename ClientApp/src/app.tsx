@@ -45,6 +45,7 @@ const TenantCalendarAdministration = lazy(() => import('./components/admin/Tenan
 const TenantEmployeeAdministration = lazy(() => import('./components/admin/TenantEmployeeAdministration').then(module => ({ default: module.TenantEmployeeAdministration })));
 const IdpAlignmentMatrixPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpAlignmentMatrixPage })));
 const IdpCommunityParticipationPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpCommunityParticipationPage })));
+const IdpDocumentsPage = lazy(() => import('./components/idp/IdpDocumentsPage').then(module => ({ default: module.IdpDocumentsPage })));
 const IdpHierarchyPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpHierarchyPage })));
 const IdpPlanManagementPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpPlanManagementPage })));
 const IdpPlanningDashboardPage = lazy(() => import('./components/idp/IdpWorkspace').then(module => ({ default: module.IdpPlanningDashboardPage })));
@@ -299,6 +300,8 @@ function AppContent() {
         return <IdpCommunityParticipationPage />;
       case '/idp/alignment':
         return <IdpAlignmentMatrixPage />;
+      case '/idp/documents':
+        return <IdpDocumentsPage />;
       case '/idp/reports':
         return <IdpReportsPage />;
       case '/risk/dashboard':

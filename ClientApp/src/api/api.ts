@@ -53,6 +53,7 @@ import type {
   IdpHierarchy,
   IdpDashboard,
   IdpAlignmentMatrixItem,
+  IdpDocument,
   IdpReportDocument,
   CreateIdpPlanPayload,
   CreateIdpPlanVersionPayload,
@@ -2528,6 +2529,51 @@ export async function getIdpAlignmentMatrixPage(
   if (frameworkType?.trim()) parameters.set('frameworkType', frameworkType.trim());
   const suffix = parameters.size ? `?${parameters.toString()}` : '';
   return get<PagedResult<IdpAlignmentMatrixItem>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/alignment-matrix/page${suffix}`);
+}
+
+export async function getIdpDocumentsPage(
+  planPublicId: string,
+  query: RegisterPageQuery = {},
+  filters?: { category?: string; scanStatus?: string; quarantined?: boolean },
+): Promise<ApiResponse<PagedResult<IdpDocument>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (filters?.category?.trim()) parameters.set('category', filters.category.trim());
+  if (filters?.scanStatus?.trim()) parameters.set('scanStatus', filters.scanStatus.trim());
+  if (filters?.quarantined !== undefined) parameters.set('quarantined', String(filters.quarantined));
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PagedResult<IdpDocument>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/documents/page${suffix}`);
+}
+
+export async function uploadIdpDocument(
+  planPublicId: string,
+  payload: { file: File; category: string; title: string; planVersionNumber?: number },
+): Promise<ApiResponse<IdpDocument>> {
+  const form = new FormData();
+  form.append('file', payload.file);
+  form.append('category', payload.category);
+  form.append('title', payload.title);
+  if (payload.planVersionNumber !== undefined) form.append('planVersionNumber', String(payload.planVersionNumber));
+  return postForm<IdpDocument>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/documents`, form);
+}
+
+export async function rescanIdpDocument(planPublicId: string, documentPublicId: string): Promise<ApiResponse<IdpDocument>> {
+  return post<IdpDocument>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/documents/${encodeURIComponent(documentPublicId)}/rescan`);
+}
+
+export async function downloadIdpDocument(document: IdpDocument): Promise<ApiResponse<boolean>> {
+  if (!document.downloadUrl) return { success: false, message: 'Document content is not available for download.' };
+  const headers: Record<string, string> = {};
+  addTenantHeader(headers);
+  const response = await fetch(document.downloadUrl, { headers, credentials: 'include' });
+  if (!response.ok) return readApiResponse<boolean>(response);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = window.document.createElement('a');
+  anchor.href = url;
+  anchor.download = document.fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return { success: true, data: true };
 }
 
 export async function createIdpComment(payload: CreateIdpCommentPayload): Promise<ApiResponse<boolean>> {

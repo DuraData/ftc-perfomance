@@ -109,6 +109,8 @@ public sealed class GlobalStrategicReferencesControllerTests
         Assert.Contains(await context.Permissions.ToArrayAsync(), item => item.Code == "NATIONAL_KPA.READ" && item.Kind == SecurityPermissionKind.Resource);
         Assert.Contains(await context.Permissions.ToArrayAsync(), item => item.Code == "NAV.CONFIGURATION.NATIONAL_KPAS" && item.Kind == SecurityPermissionKind.Navigation);
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/back-to-basics-pillars" && item.RequiredPermissionCode == "NAV.CONFIGURATION.BACK_TO_BASICS");
+        Assert.Contains(await context.Permissions.ToArrayAsync(), item => item.Code == "NAV.IDP.DOCUMENTS" && item.Kind == SecurityPermissionKind.Navigation);
+        Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/idp/documents" && item.RequiredPermissionCode == "NAV.IDP.DOCUMENTS");
     }
 
     private static GlobalStrategicReferencesController Controller(ApplicationDbContext context, long municipalityId, bool isSystem = true)
