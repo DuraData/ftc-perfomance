@@ -2008,11 +2008,6 @@ export async function simulateAccess(payload: {
   return post<AccessSimulationResult>('/access/simulate', payload);
 }
 
-export async function getOpmsTargetTemplates(): Promise<ApiResponse<OpmsTargetTemplate[]>> {
-  const response = await get<OpmsTargetTemplateDto[]>('/v1/opms-target-library');
-  return mapResponse(response, items => items.map(toOpmsTemplateModel));
-}
-
 export type TargetLibraryPageQuery = RegisterPageQuery & {
   status?: 'all' | 'active' | 'archived';
   primaryArea?: string;
@@ -2064,11 +2059,6 @@ export async function archiveOpmsTargetTemplate(id: string | number): Promise<Ap
 export async function duplicateOpmsTargetTemplate(id: string | number): Promise<ApiResponse<OpmsTargetTemplate>> {
   const response = await post<OpmsTargetTemplateDto>(`/v1/opms-target-library/${id}/duplicate`);
   return mapResponse(response, toOpmsTemplateModel);
-}
-
-export async function getIpmsTargetTemplates(): Promise<ApiResponse<IpmsTargetTemplate[]>> {
-  const response = await get<IpmsTargetTemplateDto[]>('/v1/ipms-target-library');
-  return mapResponse(response, items => items.map(toIpmsTemplateModel));
 }
 
 export async function getIpmsTargetTemplatesPage(query: TargetLibraryPageQuery = {}): Promise<ApiResponse<PagedResult<IpmsTargetTemplate>>> {

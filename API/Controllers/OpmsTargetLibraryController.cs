@@ -35,22 +35,9 @@ public class OpmsTargetLibraryController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<OpmsTargetTemplateResponse[]>>> GetTemplates()
-    {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse[]>(false, null, "User not found"));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.View");
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse[]>(false, null, decision.Reason));
-
-        var templates = await _context.OpmsTargetTemplates
-            .AsNoTracking()
-            .OrderByDescending(item => item.CreatedDate)
-            .ThenByDescending(item => item.Id)
-            .Take(100)
-            .ToArrayAsync();
-
-        return Ok(new ApiResponse<OpmsTargetTemplateResponse[]>(true, templates.Select(item => item.ToResponse()).ToArray()));
-    }
+    public ActionResult<ApiResponse<OpmsTargetTemplateResponse[]>> GetTemplates() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<OpmsTargetTemplateResponse[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/opms-target-library/page."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>>> GetTemplatesPage(

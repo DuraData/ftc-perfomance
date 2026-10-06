@@ -95,29 +95,15 @@ public sealed class TargetLibraryPagingTests
     }
 
     [Fact]
-    public async Task Compatibility_target_library_reads_are_capped_at_one_hundred_rows()
+    public async Task Compatibility_target_library_reads_are_retired()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var user = IdpTestFixture.CreateUser("compatibility-library-reader");
         context.Users.Add(user);
-        context.OpmsTargetTemplates.AddRange(Enumerable.Range(1, 101).Select(index => new OpmsTargetTemplate
-        {
-            TemplateCode = $"OP-C-{index:000}", TemplateName = $"OPMS {index:000}", IndicatorNumber = $"K-{index:000}",
-            TargetName = $"Target {index:000}", KpiDescription = "Description", TargetUnitType = "percentage"
-        }));
-        context.IpmsTargetTemplates.AddRange(Enumerable.Range(1, 101).Select(index => new IpmsTargetTemplate
-        {
-            TemplateCode = $"IP-C-{index:000}", TemplateName = $"IPMS {index:000}", TargetName = $"Target {index:000}",
-            KpiDescription = "Description", TargetUnitType = "percentage"
-        }));
         await context.SaveChangesAsync();
 
-        var opms = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse[]>>(
-            Assert.IsType<OkObjectResult>((await OpmsController(context, user).GetTemplates()).Result).Value).Data!;
-        var ipms = Assert.IsType<ApiResponse<IpmsTargetTemplateResponse[]>>(
-            Assert.IsType<OkObjectResult>((await IpmsController(context, user).GetTemplates()).Result).Value).Data!;
-        opms.Should().HaveCount(100);
-        ipms.Should().HaveCount(100);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(OpmsController(context, user).GetTemplates().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(IpmsController(context, user).GetTemplates().Result).StatusCode);
     }
 
     private static OpmsTargetLibraryController OpmsController(ApplicationDbContext context, ApplicationUser user)
