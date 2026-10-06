@@ -1,15 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { History, Save } from 'lucide-react';
 import {
-  getIpmsTargetFieldRevisions,
-  getOpmsTargetFieldRevisions,
   reviseIpmsTargetDefinition,
   reviseOpmsTargetDefinition,
 } from '../../api/api';
 import { useSecurity } from '../../context/SecurityContext';
-import type { IPMSTarget, KpiFieldRevisionDto, OPMSTarget } from '../../types';
+import type { IPMSTarget, OPMSTarget } from '../../types';
 import { Input, Textarea } from '../common/Form';
 import { Button, Card } from '../ui';
+import { RevisionHistoryRegister } from './RevisionHistoryRegister';
 
 type Props = {
   kind: 'opms' | 'ipms';
@@ -29,17 +28,9 @@ export function KpiDefinitionRevisionEditor({ kind, target, onUpdated }: Props) 
   const [reason, setReason] = useState('');
   const [approvalReference, setApprovalReference] = useState('');
   const [effectiveAt, setEffectiveAt] = useState(new Date().toISOString().slice(0, 16));
-  const [history, setHistory] = useState<KpiFieldRevisionDto[]>([]);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    const load = kind === 'opms' ? getOpmsTargetFieldRevisions : getIpmsTargetFieldRevisions;
-    void load(target.id).then(result => {
-      if (result.success) setHistory((result.data ?? []).filter(item => ['IndicatorNumber', 'TargetName', 'KpiDescription'].includes(item.fieldName)));
-      else setError(result.message ?? 'Revision history could not be loaded.');
-    });
-  }, [kind, target.id]);
 
   const save = async () => {
     if (!reason.trim() || !approvalReference.trim() || !effectiveAt) { setError('Revision reason, external approval reference and effective date are required.'); return; }
@@ -57,8 +48,7 @@ export function KpiDefinitionRevisionEditor({ kind, target, onUpdated }: Props) 
       : await reviseIpmsTargetDefinition(target.id, payload);
     if (!result.success || !result.data) { setError(result.message ?? 'The approved revision could not be recorded.'); setBusy(false); return; }
     onUpdated(result.data);
-    const revisions = await (kind === 'opms' ? getOpmsTargetFieldRevisions : getIpmsTargetFieldRevisions)(target.id);
-    setHistory((revisions.data ?? []).filter(item => ['IndicatorNumber', 'TargetName', 'KpiDescription'].includes(item.fieldName)));
+    setHistoryRefresh(value => value + 1);
     setReason(''); setApprovalReference(''); setBusy(false);
   };
 
@@ -72,6 +62,6 @@ export function KpiDefinitionRevisionEditor({ kind, target, onUpdated }: Props) 
       <section><p className="text-xs text-secondary-500">Original KPI wording: {target.kpiDescription}</p><label className="mt-2 flex gap-2 text-sm"><input type="checkbox" checked={kpiFlag} disabled={!canRevise} onChange={event => setKpiFlag(event.target.checked)} /> Revised KPI wording</label><Textarea label="Revised KPI wording" value={kpi} disabled={!canRevise || !kpiFlag} onChange={event => setKpi(event.target.value)} /></section>
     </div>
     {canRevise && <div className="mt-4 grid gap-3 md:grid-cols-2"><Input label="External approval reference" value={approvalReference} onChange={event => setApprovalReference(event.target.value)} required /><Input label="Effective at" type="datetime-local" value={effectiveAt} onChange={event => setEffectiveAt(event.target.value)} required /><div className="md:col-span-2"><Textarea label="Revision reason" value={reason} onChange={event => setReason(event.target.value)} required /></div><Button variant="primary" icon={<Save className="h-4 w-4" />} disabled={busy} onClick={() => void save()}>Record approved revision</Button></div>}
-    <div className="mt-5"><h3 className="text-sm font-medium">Immutable revision history</h3>{history.length === 0 ? <p className="mt-2 text-xs text-secondary-500">No KPI wording revisions recorded.</p> : <ul className="mt-2 space-y-1 text-xs text-secondary-600">{history.map(item => <li key={item.publicId}>{new Date(item.recordedAt).toLocaleString()} · {item.fieldName}: {item.originalValue ?? '—'} → {item.revisedValue ?? '—'} · {item.approvalReference}</li>)}</ul>}</div>
+    <RevisionHistoryRegister key={`${kind}-${target.id}-definition`} source="definition" kind={kind} parentId={target.id} title="Immutable revision history" emptyMessage="No KPI wording revisions recorded." refreshKey={historyRefresh} compact />
   </Card>;
 }

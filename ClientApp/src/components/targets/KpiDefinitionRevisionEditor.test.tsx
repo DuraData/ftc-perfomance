@@ -3,8 +3,8 @@ import { KpiDefinitionRevisionEditor } from './KpiDefinitionRevisionEditor';
 import type { OPMSTarget } from '../../types';
 
 const api = vi.hoisted(() => ({
-  getIpmsTargetFieldRevisions: vi.fn(),
-  getOpmsTargetFieldRevisions: vi.fn(),
+  getIpmsTargetFieldRevisionsPage: vi.fn(),
+  getOpmsTargetFieldRevisionsPage: vi.fn(),
   reviseIpmsTargetDefinition: vi.fn(),
   reviseOpmsTargetDefinition: vi.fn(),
 }));
@@ -22,11 +22,11 @@ const target = {
 
 describe('KpiDefinitionRevisionEditor', () => {
   beforeEach(() => {
-    api.getOpmsTargetFieldRevisions.mockResolvedValue({ success: true, data: [{
+    api.getOpmsTargetFieldRevisionsPage.mockResolvedValue({ success: true, data: { items: [{
       publicId: 'revision-1', fieldName: 'IndicatorNumber', originalValue: 'KPI-0', revisedValue: 'KPI-1',
       reason: 'Earlier approval', approvalReference: 'COUNCIL-1', effectiveAt: '2026-09-01T00:00:00Z',
       revisedByUserId: 'user', recordedAt: '2026-09-01T00:00:00Z',
-    }] });
+    }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.reviseOpmsTargetDefinition.mockResolvedValue({ success: true, data: { ...target, isIndicatorNumberRevised: true, revisedIndicatorNumber: 'KPI-2', rowVersion: 'Ag==' } });
   });
 

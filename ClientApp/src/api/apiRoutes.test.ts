@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpAlignmentMatrixPage, getIdpDocumentsPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachmentsPage, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisions, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getStrategicDocumentTypesPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpAlignmentMatrixPage, getIdpDocumentsPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachmentsPage, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisionsPage, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getStrategicDocumentTypesPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
 import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
+import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -289,12 +290,29 @@ describe('versioned API routes', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await getPerformanceTargetRevisions('target-value-public-id');
+    await getPerformanceTargetRevisionsPage('target-value-public-id', { page: 2, pageSize: 10, search: ' council ', sortBy: 'recordedAt', sortDirection: 'desc' });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/performance-period-targets/target-value-public-id/revisions'),
+      expect.stringContaining('/v1/performance-period-targets/target-value-public-id/revisions/page?page=2&pageSize=10&search=council&sortBy=recordedAt&sortDirection=desc'),
       expect.objectContaining({ credentials: 'include' }),
     );
+  });
+
+  it('routes OPMS and IPMS definition and ordering histories through bounded pages', async () => {
+    const page = { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const query = { page: 1, pageSize: 10, search: ' approved ', sortBy: 'recordedAt', sortDirection: 'desc' as const };
+    await getOpmsTargetFieldRevisionsPage('opms/id', query);
+    await getOpmsTargetOrderingRevisionsPage('opms/id', query);
+    await getIpmsTargetFieldRevisionsPage('ipms/id', query);
+    await getIpmsTargetOrderingRevisionsPage('ipms/id', query);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-targets/opms%2Fid/field-revisions/page?page=1&pageSize=10&search=approved&sortBy=recordedAt&sortDirection=desc'), expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/opms-targets/opms%2Fid/ordering-revisions/page?page=1&pageSize=10&search=approved&sortBy=recordedAt&sortDirection=desc'), expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/ipms-targets/ipms%2Fid/field-revisions/page?page=1&pageSize=10&search=approved&sortBy=recordedAt&sortDirection=desc'), expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/ipms-targets/ipms%2Fid/ordering-revisions/page?page=1&pageSize=10&search=approved&sortBy=recordedAt&sortDirection=desc'), expect.anything());
   });
 
   it('uses the versioned tenant-master routes for periods and governed assignment closure', async () => {

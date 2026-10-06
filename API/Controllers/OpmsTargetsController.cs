@@ -430,25 +430,55 @@ public class OpmsTargetsController : ControllerBase
     }
 
     [HttpGet("{id}/ordering-revisions")]
-    public async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetOrderingRevisions(string id)
-        => await GetRevisions(id, [nameof(OpmsTarget.OriginalOrderNumber), nameof(OpmsTarget.RevisedOrderNumber)]);
+    public ActionResult<ApiResponse<KpiFieldRevisionResponse[]>> GetOrderingRevisions(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<KpiFieldRevisionResponse[]>(false, null,
+            $"This unbounded ordering-revision route is retired. Use /api/v1/opms-targets/{id}/ordering-revisions/page."));
+
+    [HttpGet("{id}/ordering-revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetOrderingRevisionsPage(string id, [FromQuery] PagedQueryRequest request)
+        => await GetRevisionsPage(id, [nameof(OpmsTarget.OriginalOrderNumber), nameof(OpmsTarget.RevisedOrderNumber)], request);
 
     [HttpGet("{id}/field-revisions")]
-    public async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetFieldRevisions(string id)
-        => await GetRevisions(id, [nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.TargetName), nameof(OpmsTarget.KpiDescription)]);
+    public ActionResult<ApiResponse<KpiFieldRevisionResponse[]>> GetFieldRevisions(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<KpiFieldRevisionResponse[]>(false, null,
+            $"This unbounded field-revision route is retired. Use /api/v1/opms-targets/{id}/field-revisions/page."));
 
-    private async Task<ActionResult<ApiResponse<KpiFieldRevisionResponse[]>>> GetRevisions(string id, string[] fieldNames)
+    [HttpGet("{id}/field-revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetFieldRevisionsPage(string id, [FromQuery] PagedQueryRequest request)
+        => await GetRevisionsPage(id, [nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.TargetName), nameof(OpmsTarget.KpiDescription)], request);
+
+    private async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetRevisionsPage(string id, string[] fieldNames, PagedQueryRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<KpiFieldRevisionResponse[]>(false, null, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "User not found"));
         var entity = await _context.OpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<KpiFieldRevisionResponse[]>(false, null, "OPMS target not found"));
+        if (entity == null) return NotFound(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "OPMS target not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", BuildScope(entity));
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<KpiFieldRevisionResponse[]>(false, null, decision.Reason));
-        var rows = await _context.KpiFieldRevisions.AsNoTracking().Where(item => item.OpmsTargetId == entity.Id && fieldNames.Contains(item.FieldName))
-            .OrderBy(item => item.RecordedAt).ThenBy(item => item.Id)
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, decision.Reason));
+        if (request.NormalizedSortBy is not ("createdat" or "recordedat" or "effectiveat" or "fieldname" or "revisedbyuserid"))
+            return BadRequest(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "SortBy must be recordedAt, effectiveAt, fieldName, or revisedByUserId."));
+        var query = _context.KpiFieldRevisions.AsNoTracking().Where(item => item.OpmsTargetId == entity.Id && fieldNames.Contains(item.FieldName));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.FieldName.Contains(request.NormalizedSearch) || item.Reason.Contains(request.NormalizedSearch)
+                || item.ApprovalReference.Contains(request.NormalizedSearch) || item.RevisedByUserId.Contains(request.NormalizedSearch)
+                || (item.OriginalValue != null && item.OriginalValue.Contains(request.NormalizedSearch))
+                || (item.RevisedValue != null && item.RevisedValue.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("effectiveat", false) => query.OrderBy(item => item.EffectiveAt).ThenBy(item => item.PublicId),
+            ("effectiveat", true) => query.OrderByDescending(item => item.EffectiveAt).ThenByDescending(item => item.PublicId),
+            ("fieldname", false) => query.OrderBy(item => item.FieldName).ThenBy(item => item.PublicId),
+            ("fieldname", true) => query.OrderByDescending(item => item.FieldName).ThenByDescending(item => item.PublicId),
+            ("revisedbyuserid", false) => query.OrderBy(item => item.RevisedByUserId).ThenBy(item => item.PublicId),
+            ("revisedbyuserid", true) => query.OrderByDescending(item => item.RevisedByUserId).ThenByDescending(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.RecordedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.RecordedAt).ThenByDescending(item => item.PublicId)
+        };
+        var rows = await ordered.Skip(request.Offset).Take(request.PageSize)
             .Select(item => new KpiFieldRevisionResponse(item.PublicId, item.FieldName, item.OriginalValue, item.RevisedValue, item.Reason, item.ApprovalReference, item.EffectiveAt, item.RevisedByUserId, item.RecordedAt)).ToArrayAsync();
-        return Ok(new ApiResponse<KpiFieldRevisionResponse[]>(true, rows));
+        return Ok(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(true,
+            PagedResponse<KpiFieldRevisionResponse>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpDelete("{id}")]

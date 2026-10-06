@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Domain.Services;
@@ -161,22 +162,48 @@ public sealed class PerformancePeriodTargetsController(
     }
 
     [HttpGet("{publicId:guid}/revisions")]
-    public async Task<ActionResult<ApiResponse<PerformanceTargetRevisionDto[]>>> Revisions(Guid publicId)
+    public ActionResult<ApiResponse<PerformanceTargetRevisionDto[]>> Revisions(Guid publicId) =>
+        StatusCode(StatusCodes.Status410Gone, Fail<PerformanceTargetRevisionDto[]>(
+            $"This unbounded period-target revision route is retired. Use /api/v1/performance-period-targets/{publicId}/revisions/page."));
+
+    [HttpGet("{publicId:guid}/revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceTargetRevisionDto>>>> RevisionsPage(Guid publicId, [FromQuery] PagedQueryRequest request)
     {
-        if (!HasTenant()) return TenantRequired<PerformanceTargetRevisionDto[]>();
+        if (!HasTenant()) return TenantRequired<PagedResponse<PerformanceTargetRevisionDto>>();
         var user = await CurrentUser();
-        if (user == null) return Unauthorized(Fail<PerformanceTargetRevisionDto[]>("User not found."));
+        if (user == null) return Unauthorized(Fail<PagedResponse<PerformanceTargetRevisionDto>>("User not found."));
         var entity = await Query().AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == publicId);
-        if (entity == null) return NotFound(Fail<PerformanceTargetRevisionDto[]>("Performance period target not found."));
+        if (entity == null) return NotFound(Fail<PagedResponse<PerformanceTargetRevisionDto>>("Performance period target not found."));
         var permission = entity.OpmsTargetId != null ? "OPMS_KPI.READ" : "IPMS_KPI.READ";
         var departmentId = entity.OpmsTarget?.DepartmentId ?? entity.IpmsTarget?.DepartmentId;
         var unitId = entity.OpmsTarget?.UnitId ?? entity.IpmsTarget?.UnitId;
         var ownerId = entity.OpmsTarget?.AssignedUserId ?? entity.IpmsTarget?.AssignedUserId;
         var targetId = entity.OpmsTargetId ?? entity.IpmsTargetId;
         if (!(await accessControl.CheckPermissionAsync(user, permission, new AccessScopeContext(departmentId, unitId, ownerId, TargetId: targetId, MunicipalityId: entity.MunicipalityId))).Allowed) return Forbid();
-        var rows = await context.PerformanceTargetRevisions.AsNoTracking().Where(x => x.PerformancePeriodTargetId == entity.Id).OrderBy(x => x.RecordedAt)
+        if (request.NormalizedSortBy is not ("createdat" or "recordedat" or "effectiveat" or "fieldname" or "revisedbyuserid"))
+            return BadRequest(Fail<PagedResponse<PerformanceTargetRevisionDto>>("SortBy must be recordedAt, effectiveAt, fieldName, or revisedByUserId."));
+        var query = context.PerformanceTargetRevisions.AsNoTracking().Where(x => x.PerformancePeriodTargetId == entity.Id);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.FieldName.Contains(request.NormalizedSearch) || item.Reason.Contains(request.NormalizedSearch)
+                || item.ApprovalReference.Contains(request.NormalizedSearch) || item.RevisedByUserId.Contains(request.NormalizedSearch)
+                || (item.OriginalValue != null && item.OriginalValue.Contains(request.NormalizedSearch))
+                || (item.RevisedValue != null && item.RevisedValue.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("effectiveat", false) => query.OrderBy(item => item.EffectiveAt).ThenBy(item => item.PublicId),
+            ("effectiveat", true) => query.OrderByDescending(item => item.EffectiveAt).ThenByDescending(item => item.PublicId),
+            ("fieldname", false) => query.OrderBy(item => item.FieldName).ThenBy(item => item.PublicId),
+            ("fieldname", true) => query.OrderByDescending(item => item.FieldName).ThenByDescending(item => item.PublicId),
+            ("revisedbyuserid", false) => query.OrderBy(item => item.RevisedByUserId).ThenBy(item => item.PublicId),
+            ("revisedbyuserid", true) => query.OrderByDescending(item => item.RevisedByUserId).ThenByDescending(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.RecordedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.RecordedAt).ThenByDescending(item => item.PublicId)
+        };
+        var rows = await ordered.Skip(request.Offset).Take(request.PageSize)
             .Select(x => new PerformanceTargetRevisionDto(x.PublicId, x.FieldName, x.OriginalValue, x.RevisedValue, x.Reason, x.ApprovalReference, x.EffectiveAt, x.RevisedByUserId, x.RecordedAt)).ToArrayAsync();
-        return Ok(new ApiResponse<PerformanceTargetRevisionDto[]>(true, rows));
+        return Ok(new ApiResponse<PagedResponse<PerformanceTargetRevisionDto>>(true,
+            PagedResponse<PerformanceTargetRevisionDto>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
 
     private IQueryable<PerformancePeriodTarget> Query() => context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).Include(x => x.OpmsTarget).Include(x => x.IpmsTarget)

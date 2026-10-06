@@ -5,7 +5,7 @@ const api = vi.hoisted(() => ({
   getReportingPeriodMastersPage: vi.fn(),
   getPerformancePeriodTargets: vi.fn(),
   getPerformanceConfigurationCatalogue: vi.fn(),
-  getPerformanceTargetRevisions: vi.fn(),
+  getPerformanceTargetRevisionsPage: vi.fn(),
   createPerformancePeriodTarget: vi.fn(),
   revisePerformancePeriodTarget: vi.fn(),
 }));
@@ -33,9 +33,9 @@ describe('PerformancePeriodTargetEditor', () => {
     api.getPerformancePeriodTargets.mockResolvedValue({ success: true, data: [
       { publicId: 'value-1', reportingPeriodPublicId: 'period-q1', periodCode: 'Q1', periodType: 1, unitKind: 2, direction: 1, opmsUnitPublicId: 'unit-number', opmsUnitCode: 'NUMBER', performanceDirectionPublicId: 'direction-target-or-higher', performanceDirectionCode: 'TARGET_OR_HIGHER', targetValue: '25', budgetValue: 1000, originalUnitKind: 2, originalOpmsUnitPublicId: 'unit-number', originalOpmsUnitCode: 'NUMBER', originalTargetValue: '25', originalBudgetValue: 1000, isTargetRevised: false, isBudgetRevised: false, description: 'Households connected', isActive: true, rowVersion: 'AQ==' },
     ] });
-    api.getPerformanceTargetRevisions.mockResolvedValue({ success: true, data: [
+    api.getPerformanceTargetRevisionsPage.mockResolvedValue({ success: true, data: { items: [
       { publicId: 'revision-1', fieldName: 'TargetValue', originalValue: '20', revisedValue: '25', reason: 'Council adjustment', approvalReference: 'COUNCIL-1', effectiveAt: '2026-10-01T00:00:00Z', revisedByUserId: 'user', recordedAt: '2026-10-01T00:00:00Z' },
-    ] });
+    ], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
   });
 
   it('loads canonical values and opens governed revision history', async () => {
@@ -47,7 +47,7 @@ describe('PerformancePeriodTargetEditor', () => {
     expect(screen.getByText('Number · Target or higher')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Revise/i }));
-    await waitFor(() => expect(api.getPerformanceTargetRevisions).toHaveBeenCalledWith('value-1'));
+    await waitFor(() => expect(api.getPerformanceTargetRevisionsPage).toHaveBeenCalledWith('value-1', expect.objectContaining({ page: 1, pageSize: 10, sortBy: 'recordedAt' })));
     expect(await screen.findByText('Record approved Q1 revision')).toBeInTheDocument();
     expect(await screen.findByLabelText(/approval reference/i)).toBeInTheDocument();
     expect(await screen.findByText(/COUNCIL-1/)).toBeInTheDocument();

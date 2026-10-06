@@ -1458,8 +1458,8 @@ export async function executeTargetNormalization(payload: { targetKind: 1 | 2; t
   return post<TargetNormalizationResultDto>('/v1/target-normalization/execute', payload);
 }
 
-export async function getPerformanceTargetRevisions(publicId: string): Promise<ApiResponse<PerformanceTargetRevisionDto[]>> {
-  return get<PerformanceTargetRevisionDto[]>(`/v1/performance-period-targets/${publicId}/revisions`);
+export async function getPerformanceTargetRevisionsPage(publicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceTargetRevisionDto>>> {
+  return get<PagedResult<PerformanceTargetRevisionDto>>(`/v1/performance-period-targets/${encodeURIComponent(publicId)}/revisions/page${registerPageQuery(query)}`);
 }
 
 export type GovernancePageQuery = RegisterPageQuery & {
@@ -2189,12 +2189,12 @@ export async function reviseOpmsTargetDefinition(id: string, payload: ReviseKpiD
   return mapResponse(response, toOpmsTargetModel);
 }
 
-export function getOpmsTargetFieldRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
-  return get<KpiFieldRevisionDto[]>(`/v1/opms-targets/${id}/field-revisions`);
+export function getOpmsTargetFieldRevisionsPage(id: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<KpiFieldRevisionDto>>> {
+  return get<PagedResult<KpiFieldRevisionDto>>(`/v1/opms-targets/${encodeURIComponent(id)}/field-revisions/page${registerPageQuery(query)}`);
 }
 
-export function getOpmsTargetOrderingRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
-  return get<KpiFieldRevisionDto[]>(`/v1/opms-targets/${id}/ordering-revisions`);
+export function getOpmsTargetOrderingRevisionsPage(id: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<KpiFieldRevisionDto>>> {
+  return get<PagedResult<KpiFieldRevisionDto>>(`/v1/opms-targets/${encodeURIComponent(id)}/ordering-revisions/page${registerPageQuery(query)}`);
 }
 
 export async function getIpmsTargetsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IPMSTarget>>> {
@@ -2236,12 +2236,12 @@ export async function reviseIpmsTargetDefinition(id: string, payload: ReviseKpiD
   return mapResponse(response, toIpmsTargetModel);
 }
 
-export function getIpmsTargetFieldRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
-  return get<KpiFieldRevisionDto[]>(`/v1/ipms-targets/${id}/field-revisions`);
+export function getIpmsTargetFieldRevisionsPage(id: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<KpiFieldRevisionDto>>> {
+  return get<PagedResult<KpiFieldRevisionDto>>(`/v1/ipms-targets/${encodeURIComponent(id)}/field-revisions/page${registerPageQuery(query)}`);
 }
 
-export function getIpmsTargetOrderingRevisions(id: string): Promise<ApiResponse<KpiFieldRevisionDto[]>> {
-  return get<KpiFieldRevisionDto[]>(`/v1/ipms-targets/${id}/ordering-revisions`);
+export function getIpmsTargetOrderingRevisionsPage(id: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<KpiFieldRevisionDto>>> {
+  return get<PagedResult<KpiFieldRevisionDto>>(`/v1/ipms-targets/${encodeURIComponent(id)}/ordering-revisions/page${registerPageQuery(query)}`);
 }
 
 export async function getOpmsSubmissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OPMSSubmission>>> {

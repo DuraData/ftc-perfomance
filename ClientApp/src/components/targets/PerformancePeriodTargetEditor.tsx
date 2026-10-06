@@ -4,15 +4,15 @@ import {
   createPerformancePeriodTarget,
   getPerformanceConfigurationCatalogue,
   getPerformancePeriodTargets,
-  getPerformanceTargetRevisions,
   revisePerformancePeriodTarget,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { PerformanceConfigurationCatalogueDto, PerformancePeriodTargetDto, PerformanceTargetRevisionDto } from '../../types';
+import type { PerformanceConfigurationCatalogueDto, PerformancePeriodTargetDto } from '../../types';
 import { Input, Select, Textarea } from '../common/Form';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { Badge, Button, Card } from '../ui';
+import { RevisionHistoryRegister } from './RevisionHistoryRegister';
 
 const legacyUnits = [
   [1, 'Percentage'], [2, 'Absolute count'], [3, 'Financial'], [4, 'Time'], [5, 'Area'],
@@ -60,7 +60,7 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
   const [rows, setRows] = useState<PeriodTarget[]>([]);
   const [editing, setEditing] = useState<PeriodTarget | null>(null);
   const [creating, setCreating] = useState(false);
-  const [history, setHistory] = useState<PerformanceTargetRevisionDto[]>([]);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const [configuration, setConfiguration] = useState<PerformanceConfigurationCatalogueDto>();
   const [form, setForm] = useState<EditorState>(blank);
   const [busy, setBusy] = useState(false);
@@ -84,7 +84,7 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
   const setValue = <K extends keyof EditorState>(key: K, value: EditorState[K]) => setForm(current => ({ ...current, [key]: value }));
 
   const startCreate = () => {
-    setEditing(null); setCreating(true); setHistory([]); setForm(blank(configuration));
+    setEditing(null); setCreating(true); setForm(blank(configuration));
   };
 
   const startRevision = async (row: PeriodTarget) => {
@@ -102,8 +102,6 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
       isTargetRevised: row.isTargetRevised, isBudgetRevised: row.isBudgetRevised,
       reason: '', approvalReference: '', effectiveAt: new Date().toISOString().slice(0, 16),
     });
-    const result = await getPerformanceTargetRevisions(row.publicId);
-    setHistory(result.data ?? []);
   };
 
   const save = async () => {
@@ -116,7 +114,8 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
       : await createPerformancePeriodTarget({ ...common, targetKind: kind, targetPublicId, reportingPeriodPublicId: form.reportingPeriodPublicId });
     if (!result.success) { setError(result.message ?? 'Period target could not be saved.'); setBusy(false); return; }
     pushToast('success', editing ? 'Period target revision recorded' : 'Period target created');
-    setEditing(null); setCreating(false); setHistory([]); setForm(blank(configuration));
+    if (editing) setHistoryRefresh(value => value + 1);
+    setEditing(null); setCreating(false); setForm(blank(configuration));
     await load();
   };
 
@@ -146,7 +145,7 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
         {rows.map(row => <div key={row.publicId} className="rounded-lg border border-secondary-200 bg-white p-3 dark:border-secondary-700 dark:bg-secondary-900"><div className="flex items-center justify-between"><strong>{row.periodCode}</strong><div className="flex gap-1">{(row.isTargetRevised || row.isBudgetRevised) && <Badge variant="warning">Revised</Badge>}<Badge variant={row.isActive ? 'success' : 'default'}>{row.isActive ? 'Active' : 'Inactive'}</Badge></div></div><p className="mt-2 text-lg font-semibold">{row.targetValue}</p><p className="text-xs text-secondary-500">{unitLabel(row)} · {directionLabel(row)}</p>{row.isTargetRevised && <p className="mt-1 text-xs text-secondary-500">Original: {row.originalTargetValue} ({unitLabel(row, true)})</p>}{row.description && <p className="mt-2 text-xs text-secondary-600">{row.description}</p>}{canRevise && <Button className="mt-3" size="sm" variant="outline" icon={<History className="h-4 w-4" />} onClick={() => void startRevision(row)}>Revise</Button>}</div>)}
         {!rows.length && <p className="text-sm text-secondary-500">{busy ? 'Loading canonical values…' : 'No canonical period targets have been configured.'}</p>}
       </div>
-      {(editing || creating) && <div className="mt-5 rounded-lg border border-secondary-200 bg-white p-4 dark:border-secondary-700 dark:bg-secondary-900"><h3 className="font-medium">{editing ? `Record approved ${editing.periodCode} revision` : 'Add reporting-period target'}</h3><div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3"><CalendarMasterPicker kind="reporting-period" label="Reporting period" value={form.reportingPeriodPublicId} disabled={!!editing} selectedLabel={editing ? `${editing.periodCode} · ${editing.periodName}` : undefined} excludedValues={editing ? [] : rows.map(row => row.reportingPeriodPublicId)} onChange={value => setValue('reportingPeriodPublicId', value)} required />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isTargetRevised} onChange={event => setValue('isTargetRevised', event.target.checked)} /> Revised target and unit</label>}<Select label={editing ? 'Revised OPMS unit' : 'OPMS unit'} value={form.opmsUnitPublicId} disabled={!!editing && !form.isTargetRevised} options={unitOptions} onChange={event => { const unit = configuration?.opmsUnits.find(item => item.publicId === event.target.value); const direction = configuration?.performanceDirections.find(item => item.publicId === unit?.defaultPerformanceDirectionPublicId); setForm(current => ({ ...current, opmsUnitPublicId: event.target.value, unitKind: unit?.engineUnitKind ?? current.unitKind, performanceDirectionPublicId: direction?.publicId ?? current.performanceDirectionPublicId, direction: direction?.engineDirection ?? current.direction })); }} /><Select label="Performance direction" value={form.performanceDirectionPublicId} options={directionOptions} onChange={event => { const direction = configuration?.performanceDirections.find(item => item.publicId === event.target.value); setForm(current => ({ ...current, performanceDirectionPublicId: event.target.value, direction: direction?.engineDirection ?? current.direction })); }} /><Input label={editing ? 'Revised target value' : 'Target value'} value={form.targetValue} disabled={!!editing && !form.isTargetRevised} onChange={event => setValue('targetValue', event.target.value)} required={!editing || form.isTargetRevised} />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isBudgetRevised} onChange={event => setValue('isBudgetRevised', event.target.checked)} /> Revised budget</label>}<Input label={editing ? 'Revised budget value' : 'Budget value'} type="number" min="0" step="0.01" disabled={!!editing && !form.isBudgetRevised} value={form.budgetValue} onChange={event => setValue('budgetValue', event.target.value)} /><Textarea label="Description" value={form.description} onChange={event => setValue('description', event.target.value)} />{editing && <><Input label="External approval reference" value={form.approvalReference} onChange={event => setValue('approvalReference', event.target.value)} required /><Input label="Effective at" type="datetime-local" value={form.effectiveAt} onChange={event => setValue('effectiveAt', event.target.value)} required /><Textarea label="Revision reason" value={form.reason} onChange={event => setValue('reason', event.target.value)} required /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={event => setValue('isActive', event.target.checked)} /> Active value</label></>}</div><div className="mt-4"><Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{editing ? 'Record revision' : 'Create target value'}</Button></div>{editing && history.length > 0 && <div className="mt-4"><h4 className="text-sm font-medium">Revision history</h4><ul className="mt-2 space-y-1 text-xs text-secondary-600">{history.map(item => <li key={item.publicId}>{new Date(item.recordedAt).toLocaleString()} · {item.fieldName}: {item.originalValue ?? '—'} → {item.revisedValue ?? '—'} · {item.approvalReference}</li>)}</ul></div>}</div>}
+      {(editing || creating) && <div className="mt-5 rounded-lg border border-secondary-200 bg-white p-4 dark:border-secondary-700 dark:bg-secondary-900"><h3 className="font-medium">{editing ? `Record approved ${editing.periodCode} revision` : 'Add reporting-period target'}</h3><div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3"><CalendarMasterPicker kind="reporting-period" label="Reporting period" value={form.reportingPeriodPublicId} disabled={!!editing} selectedLabel={editing ? `${editing.periodCode} · ${editing.periodName}` : undefined} excludedValues={editing ? [] : rows.map(row => row.reportingPeriodPublicId)} onChange={value => setValue('reportingPeriodPublicId', value)} required />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isTargetRevised} onChange={event => setValue('isTargetRevised', event.target.checked)} /> Revised target and unit</label>}<Select label={editing ? 'Revised OPMS unit' : 'OPMS unit'} value={form.opmsUnitPublicId} disabled={!!editing && !form.isTargetRevised} options={unitOptions} onChange={event => { const unit = configuration?.opmsUnits.find(item => item.publicId === event.target.value); const direction = configuration?.performanceDirections.find(item => item.publicId === unit?.defaultPerformanceDirectionPublicId); setForm(current => ({ ...current, opmsUnitPublicId: event.target.value, unitKind: unit?.engineUnitKind ?? current.unitKind, performanceDirectionPublicId: direction?.publicId ?? current.performanceDirectionPublicId, direction: direction?.engineDirection ?? current.direction })); }} /><Select label="Performance direction" value={form.performanceDirectionPublicId} options={directionOptions} onChange={event => { const direction = configuration?.performanceDirections.find(item => item.publicId === event.target.value); setForm(current => ({ ...current, performanceDirectionPublicId: event.target.value, direction: direction?.engineDirection ?? current.direction })); }} /><Input label={editing ? 'Revised target value' : 'Target value'} value={form.targetValue} disabled={!!editing && !form.isTargetRevised} onChange={event => setValue('targetValue', event.target.value)} required={!editing || form.isTargetRevised} />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isBudgetRevised} onChange={event => setValue('isBudgetRevised', event.target.checked)} /> Revised budget</label>}<Input label={editing ? 'Revised budget value' : 'Budget value'} type="number" min="0" step="0.01" disabled={!!editing && !form.isBudgetRevised} value={form.budgetValue} onChange={event => setValue('budgetValue', event.target.value)} /><Textarea label="Description" value={form.description} onChange={event => setValue('description', event.target.value)} />{editing && <><Input label="External approval reference" value={form.approvalReference} onChange={event => setValue('approvalReference', event.target.value)} required /><Input label="Effective at" type="datetime-local" value={form.effectiveAt} onChange={event => setValue('effectiveAt', event.target.value)} required /><Textarea label="Revision reason" value={form.reason} onChange={event => setValue('reason', event.target.value)} required /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={event => setValue('isActive', event.target.checked)} /> Active value</label></>}</div><div className="mt-4"><Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{editing ? 'Record revision' : 'Create target value'}</Button></div>{editing && <RevisionHistoryRegister key={editing.publicId} source="period" parentId={editing.publicId} title="Revision history" emptyMessage="No period-target revisions recorded." refreshKey={historyRefresh} compact />}</div>}
     </Card>
   );
 }

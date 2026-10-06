@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-  getIpmsTargetOrderingRevisions,
-  getOpmsTargetOrderingRevisions,
   reviseIpmsTargetOrdering,
   reviseOpmsTargetOrdering,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { KpiFieldRevisionDto } from '../../types';
 import { Input, Textarea } from '../common/Form';
 import { Button, Card } from '../ui';
+import { RevisionHistoryRegister } from './RevisionHistoryRegister';
 
 type Props = {
   kind: 'opms' | 'ipms';
@@ -29,7 +27,7 @@ export function KpiOrderingEditor({ kind, targetId, originalOrderNumber, revised
   const [reason, setReason] = useState('');
   const [approvalReference, setApprovalReference] = useState('');
   const [effectiveAt, setEffectiveAt] = useState(new Date().toISOString().slice(0, 16));
-  const [history, setHistory] = useState<KpiFieldRevisionDto[]>([]);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -37,11 +35,6 @@ export function KpiOrderingEditor({ kind, targetId, originalOrderNumber, revised
     setOriginal(String(originalOrderNumber));
     setRevised(String(revisedOrderNumber));
   }, [originalOrderNumber, revisedOrderNumber]);
-
-  useEffect(() => {
-    const load = kind === 'opms' ? getOpmsTargetOrderingRevisions : getIpmsTargetOrderingRevisions;
-    void load(targetId).then(result => setHistory(result.data ?? []));
-  }, [kind, targetId]);
 
   const save = async () => {
     const originalValue = Number(original);
@@ -71,8 +64,7 @@ export function KpiOrderingEditor({ kind, targetId, originalOrderNumber, revised
       return;
     }
     onUpdated({ originalOrderNumber: result.data.originalOrderNumber, revisedOrderNumber: result.data.revisedOrderNumber, rowVersion: result.data.rowVersion ?? rowVersion });
-    const historyResult = await (kind === 'opms' ? getOpmsTargetOrderingRevisions : getIpmsTargetOrderingRevisions)(targetId);
-    setHistory(historyResult.data ?? []);
+    setHistoryRefresh(value => value + 1);
     setReason('');
     setApprovalReference('');
     pushToast('success', 'Approved KPI ordering revision recorded');
@@ -97,8 +89,7 @@ export function KpiOrderingEditor({ kind, targetId, originalOrderNumber, revised
         {canUpdate && <div className="mt-4"><Button variant="primary" onClick={() => void save()} disabled={busy}>Record ordering revision</Button></div>}
       </Card>
       <Card className="p-4">
-        <h3 className="font-semibold text-secondary-900 dark:text-white">Immutable ordering history</h3>
-        {!history.length ? <p className="mt-2 text-sm text-secondary-500">No ordering revisions recorded.</p> : <ul className="mt-3 space-y-2 text-sm">{history.map(item => <li key={item.publicId} className="rounded border border-secondary-200 p-2 dark:border-secondary-700"><strong>{item.fieldName}</strong>: {item.originalValue ?? '—'} → {item.revisedValue ?? '—'}<div className="text-xs text-secondary-500">{item.approvalReference} · {item.reason} · effective {new Date(item.effectiveAt).toLocaleString()}</div></li>)}</ul>}
+        <RevisionHistoryRegister key={`${kind}-${targetId}-ordering`} source="ordering" kind={kind} parentId={targetId} title="Immutable ordering history" emptyMessage="No ordering revisions recorded." refreshKey={historyRefresh} />
       </Card>
     </div>
   );

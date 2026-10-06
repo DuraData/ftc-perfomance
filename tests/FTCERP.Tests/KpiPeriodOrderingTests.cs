@@ -46,9 +46,13 @@ public sealed class KpiPeriodOrderingTests
         Assert.Equal("KPI-ORIGINAL", revision.OriginalValue);
         Assert.Equal("KPI-REVISED", revision.RevisedValue);
 
-        var fieldHistory = Assert.IsType<ApiResponse<KpiFieldRevisionResponse[]>>(Assert.IsType<OkObjectResult>((await controller.GetFieldRevisions(target.Id)).Result).Value).Data!;
+        var fieldHistoryPage = Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>((await controller.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { PageSize = 10, SortBy = "recordedAt" })).Result).Value).Data!;
+        var fieldHistory = fieldHistoryPage.Items;
         Assert.Single(fieldHistory);
-        var orderingHistory = Assert.IsType<ApiResponse<KpiFieldRevisionResponse[]>>(Assert.IsType<OkObjectResult>((await controller.GetOrderingRevisions(target.Id)).Result).Value).Data!;
+        var orderingHistoryPage = Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>((await controller.GetOrderingRevisionsPage(target.Id, new PagedQueryRequest { PageSize = 10, SortBy = "recordedAt" })).Result).Value).Data!;
+        var orderingHistory = orderingHistoryPage.Items;
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetFieldRevisions(target.Id).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetOrderingRevisions(target.Id).Result).StatusCode);
         Assert.Empty(orderingHistory);
 
         revision.Reason = "Rewritten";
@@ -174,6 +178,14 @@ public sealed class KpiPeriodOrderingTests
         Assert.True(response.IsBudgetRevised);
         Assert.Contains(await context.PerformanceTargetRevisions.ToArrayAsync(), item => item.FieldName == nameof(PerformancePeriodTarget.RevisedTargetValue));
         Assert.Contains(await context.PerformanceTargetRevisions.ToArrayAsync(), item => item.FieldName == nameof(PerformancePeriodTarget.RevisedBudgetValue));
+        var history = Assert.IsType<ApiResponse<PagedResponse<PerformanceTargetRevisionDto>>>(Assert.IsType<OkObjectResult>((await controller.RevisionsPage(
+            annualValue.PublicId, new PagedQueryRequest { Page = 1, PageSize = 1, Search = "ANNUAL-1", SortBy = "recordedAt", SortDirection = "desc" })).Result).Value).Data!;
+        Assert.Equal(await context.PerformanceTargetRevisions.CountAsync(), history.TotalCount);
+        Assert.Equal(history.TotalCount, history.TotalPages);
+        Assert.True(history.TotalCount > 1);
+        Assert.Single(history.Items);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.Revisions(annualValue.PublicId).Result).StatusCode);
+        Assert.IsType<BadRequestObjectResult>((await controller.RevisionsPage(annualValue.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
 
     [Fact]
@@ -318,7 +330,7 @@ public sealed class KpiPeriodOrderingTests
 
         await using var tenantContext = new ApplicationDbContext(options, new TenantContext(tenantAId, user.Id));
         var controller = OpmsController(tenantContext, tenantAId, user);
-        var result = await controller.GetOrderingRevisions("tenant-b-target");
+        var result = await controller.GetOrderingRevisionsPage("tenant-b-target", new PagedQueryRequest());
         Assert.IsType<NotFoundObjectResult>(result.Result);
     }
 
