@@ -14,10 +14,8 @@ public static class PerformanceApiSupport
         .Include(item => item.UploadedByUser)
         .Include(item => item.Assessments).ThenInclude(item => item.AssessedByUser)
         .Include(item => item.ReplacementAsNew).ThenInclude(item => item!.SupersededPoeFile)
-        .Include(item => item.ReplacementAsNew).ThenInclude(item => item!.ReplacementPoeFile)
         .Include(item => item.ReplacementAsNew).ThenInclude(item => item!.ReplacedByUser)
         .Include(item => item.ReplacementsAsOld).ThenInclude(item => item.ReplacementPoeFile)
-        .Include(item => item.ReplacementsAsOld).ThenInclude(item => item.SupersededPoeFile)
         .Include(item => item.ReplacementsAsOld).ThenInclude(item => item.ReplacedByUser)
         .Include(item => item.LegalHoldEvents).ThenInclude(item => item.ActorUser)
         .Include(item => item.DisposalEvents).ThenInclude(item => item.ActorUser);

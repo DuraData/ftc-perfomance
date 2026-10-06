@@ -111,6 +111,71 @@ public sealed class RegisterPaginationTests
     }
 
     [Fact]
+    public async Task Opms_evidence_page_filters_before_count_uses_stable_paging_and_retires_array_route()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("evidence-page-user", "Evidence", "Reader");
+        var target = Target("evidence-target", "KPI-EVIDENCE", "Evidence target", Guid.NewGuid());
+        var submission = new OpmsSubmission { Id = "evidence-submission", OpmsTargetId = target.Id, OpmsTarget = target, Quarter = "Q1", Status = "draft" };
+        var outsideSubmission = new OpmsSubmission { Id = "outside-submission", OpmsTargetId = target.Id, OpmsTarget = target, Quarter = "Q2", Status = "draft" };
+        context.AddRange(user, target, submission, outsideSubmission);
+
+        var timestamps = new[]
+        {
+            new DateTime(2026, 8, 1, 8, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 2, 8, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 3, 8, 0, 0, DateTimeKind.Utc)
+        };
+        for (var index = 0; index < timestamps.Length; index++)
+        {
+            var blob = new EvidenceBlob
+            {
+                Id = $"blob-{index}", StorageKey = $"test/blob-{index}", ContentType = "application/pdf",
+                SizeInBytes = 100 + index, Sha256 = new string((char)('a' + index), 64), SignatureVerified = true,
+                ScanStatus = index == 1 ? "Pending" : "Clean", IsQuarantined = index == 1
+            };
+            context.Add(blob);
+            context.PoeFiles.Add(new PoeFile
+            {
+                Id = $"evidence-{index}", SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
+                FileName = $"water-evidence-{index}.pdf", EvidenceBlobId = blob.Id, Blob = blob,
+                UploadedByUserId = user.Id, UploadedByUser = user, UploadedAt = timestamps[index], IsActive = true
+            });
+        }
+        var outsideBlob = new EvidenceBlob { Id = "outside-blob", StorageKey = "test/outside", SizeInBytes = 10, Sha256 = new string('f', 64), ScanStatus = "Clean" };
+        context.Add(outsideBlob);
+        context.PoeFiles.Add(new PoeFile { Id = "outside-evidence", SubmissionKind = SubmissionKind.Opms, SubmissionId = outsideSubmission.Id, FileName = "water-outside.pdf", EvidenceBlobId = outsideBlob.Id, Blob = outsideBlob, UploadedByUserId = user.Id, UploadedByUser = user });
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, "OPMS_SUBMISSION.READ", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = new OpmsSubmissionsController(
+            context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>(), Mock.Of<ISubmissionValueService>(),
+            Mock.Of<IConfigurableWorkflowService>(), Mock.Of<IReportingWindowService>(), Mock.Of<IEvidenceInspectionService>(),
+            Mock.Of<IEvidenceMalwareScanner>(), Mock.Of<IPerformanceSuggestionService>())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+        var result = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "water", SortBy = "uploadedAt", SortDirection = "desc"
+        }, scanStatus: "Clean", quarantined: false, active: true);
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<PoeFileResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(2, envelope.Data!.TotalCount);
+        Assert.Equal(2, envelope.Data.TotalPages);
+        Assert.Equal("evidence-2", Assert.Single(envelope.Data.Items).Id);
+        var retired = Assert.IsType<ObjectResult>(controller.GetAttachments(submission.Id).Result);
+        Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
+
+        var invalidSort = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest { SortBy = "unsafe" });
+        Assert.IsType<BadRequestObjectResult>(invalidSort.Result);
+    }
+
+    [Fact]
     public async Task Opms_target_page_applies_authorized_scope_before_count_and_uses_stable_server_paging()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

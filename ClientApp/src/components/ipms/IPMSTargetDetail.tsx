@@ -24,7 +24,6 @@ import {
   requestIpmsEvidenceDisposal,
   getAuditTrailsPage,
   withdrawIpmsSubmission as withdrawIpmsSubmissionApi,
-  getIpmsSubmissionAttachments,
   getIpmsSubmissionsPage as getIpmsSubmissionsApi,
   getIpmsTarget as getIpmsTargetApi,
   uploadIpmsSubmissionAttachment,
@@ -251,13 +250,7 @@ function SubmissionsTab({
 }) {
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
 
-  const openSubmission = async (submission: IPMSSubmission) => {
-    const attachmentsResult = await getIpmsSubmissionAttachments(submission.id);
-    setSelectedSubmission({
-      ...submission,
-      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
-    });
-  };
+  const openSubmission = (submission: IPMSSubmission) => setSelectedSubmission(submission);
 
   const columns = [
     { id: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },

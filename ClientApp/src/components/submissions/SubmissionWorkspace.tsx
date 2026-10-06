@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -30,12 +30,28 @@ import type {
 import {
   generateIpmsConsolidationSuggestion,
   generateOpmsConsolidationSuggestion,
+  assessIpmsSubmissionAttachment,
+  assessOpmsSubmissionAttachment,
   getIpmsConsolidationHistory,
   getIpmsSubmission,
+  getIpmsSubmissionAttachmentsPage,
   getOpmsConsolidationHistory,
   getOpmsSubmission,
+  getOpmsSubmissionAttachmentsPage,
+  placeIpmsEvidenceLegalHold,
+  placeOpmsEvidenceLegalHold,
+  releaseIpmsEvidenceLegalHold,
+  releaseOpmsEvidenceLegalHold,
+  replaceIpmsSubmissionAttachment,
+  replaceOpmsSubmissionAttachment,
+  requestIpmsEvidenceDisposal,
+  requestOpmsEvidenceDisposal,
+  rescanIpmsSubmissionAttachment,
+  rescanOpmsSubmissionAttachment,
   saveIpmsConsolidatedActual,
   saveOpmsConsolidatedActual,
+  uploadIpmsSubmissionAttachment,
+  uploadOpmsSubmissionAttachment,
 } from '../../api/api';
 import { PerformanceRfiWorkspace } from '../workflow/PerformanceRfiWorkspace';
 import { StageRatingHistory } from '../workflow/StageRatingHistory';
@@ -54,13 +70,21 @@ interface SubmissionWorkspaceProps {
   mode?: WorkspaceMode;
   onSave?: (submission: SubmissionRecord) => void;
   onWithdraw?: (reason: string) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onAttachmentsChange?: (attachments: Attachment[]) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onUploadAttachments?: (files: File[]) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onRescanAttachment?: (attachmentId: string) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onAssessAttachment?: (attachmentId: string, outcome: 1 | 2 | 3, comment?: string) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onReplaceAttachment?: (attachmentId: string, replacementPublicId: string, reason: string, supersededRowVersion: string, replacementRowVersion: string) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onPlaceAttachmentHold?: (attachmentId: string, holdReference: string, reason: string) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onReleaseAttachmentHold?: (attachmentId: string, holdId: string, reason: string) => void;
+  /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onDisposeAttachment?: (attachmentId: string, approvalReference: string, reason: string, rowVersion: string) => void;
   onWorkflowAction?: (
     action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
@@ -132,10 +156,6 @@ function formatValue(value?: number, suffix?: string) {
 function formatVariance(value?: number) {
   if (value === undefined || value === null) return '-';
   return `${value > 0 ? '+' : ''}${value}%`;
-}
-
-function getAttachments(submission: SubmissionRecord): Attachment[] {
-  return submission.attachments ?? [];
 }
 
 function getComments(submission: SubmissionRecord): SubmissionComment[] {
@@ -324,14 +344,6 @@ export function SubmissionWorkspace({
   mode = 'review',
   onSave,
   onWithdraw,
-  onAttachmentsChange,
-  onUploadAttachments,
-  onRescanAttachment,
-  onAssessAttachment,
-  onReplaceAttachment,
-  onPlaceAttachmentHold,
-  onReleaseAttachmentHold,
-  onDisposeAttachment,
   onWorkflowAction,
   onExtendDueDate,
   workflowBusy = false,
@@ -350,6 +362,18 @@ export function SubmissionWorkspace({
   const [consolidatedActual, setConsolidatedActual] = useState(submission.actualPerformance ?? '');
   const [consolidationReason, setConsolidationReason] = useState('');
   const [consolidationHistory, setConsolidationHistory] = useState<PerformanceSuggestionEvent[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [evidencePage, setEvidencePage] = useState(1);
+  const [evidenceTotalCount, setEvidenceTotalCount] = useState(0);
+  const [evidenceTotalPages, setEvidenceTotalPages] = useState(0);
+  const [evidenceSearchInput, setEvidenceSearchInput] = useState('');
+  const [evidenceSearch, setEvidenceSearch] = useState('');
+  const [evidenceScanStatus, setEvidenceScanStatus] = useState('');
+  const [evidenceLifecycle, setEvidenceLifecycle] = useState('');
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceError, setEvidenceError] = useState('');
+  const [evidenceNotice, setEvidenceNotice] = useState('');
+  const [evidenceRevision, setEvidenceRevision] = useState(0);
   useEffect(() => {
     setDraftSubmission(submission);
     setIsEditing(false);
@@ -361,7 +385,54 @@ export function SubmissionWorkspace({
     setConsolidationReason('');
     setConsolidationError('');
     setConsolidationHistory([]);
+    setAttachments([]);
+    setEvidencePage(1);
+    setEvidenceSearchInput('');
+    setEvidenceSearch('');
+    setEvidenceScanStatus('');
+    setEvidenceLifecycle('');
+    setEvidenceNotice('');
   }, [submission]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setEvidencePage(1); setEvidenceSearch(evidenceSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [evidenceSearchInput]);
+
+  const loadEvidence = useCallback(async () => {
+    if (activeTab !== 'evidence') return;
+    setEvidenceBusy(true);
+    setEvidenceError('');
+    const query = {
+      page: evidencePage,
+      pageSize: 25,
+      search: evidenceSearch,
+      sortBy: 'uploadedAt',
+      sortDirection: 'desc' as const,
+      scanStatus: evidenceScanStatus || undefined,
+      active: evidenceLifecycle === 'active' ? true : evidenceLifecycle === 'retired' ? false : undefined,
+    };
+    const result = submissionType === 'OPMS'
+      ? await getOpmsSubmissionAttachmentsPage(submission.id, query)
+      : await getIpmsSubmissionAttachmentsPage(submission.id, query);
+    if (result.success && result.data) {
+      setAttachments(result.data.items);
+      setEvidenceTotalCount(result.data.totalCount);
+      setEvidenceTotalPages(result.data.totalPages);
+    } else {
+      setAttachments([]);
+      setEvidenceTotalCount(0);
+      setEvidenceTotalPages(0);
+      setEvidenceError(result.message ?? 'Submission evidence could not be loaded.');
+    }
+    setEvidenceBusy(false);
+  }, [activeTab, evidenceLifecycle, evidencePage, evidenceScanStatus, evidenceSearch, submission.id, submissionType]);
+
+  useEffect(() => {
+    // The monotonic revision deliberately re-runs the active page after a governed mutation.
+    void evidenceRevision;
+    void loadEvidence();
+  }, [evidenceRevision, loadEvidence]);
 
   useEffect(() => {
     if ((submission.quarter !== 'Mid-Year' && submission.quarter !== 'Annual') || !submission.systemSuggestedActualPerformance) return;
@@ -394,7 +465,6 @@ export function SubmissionWorkspace({
     [],
   );
 
-  const attachments = getAttachments(currentSubmission);
   const comments = getComments(currentSubmission);
   const score = getScore(currentSubmission);
   const variance = getVariance(currentSubmission);
@@ -425,11 +495,6 @@ export function SubmissionWorkspace({
     setIsEditing(false);
   };
 
-  const syncAttachments = (nextAttachments: Attachment[]) => {
-    updateDraftSubmission(current => ({ ...current, attachments: nextAttachments }));
-    onAttachmentsChange?.(nextAttachments);
-  };
-
   const uploadedFileItems = attachments.map(attachment => ({
     id: attachment.id,
     publicId: attachment.publicId,
@@ -455,24 +520,33 @@ export function SubmissionWorkspace({
     progress: 100,
   }));
 
-  const buildAttachment = (file: File): Attachment => ({
-    id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    fileName: file.name,
-    fileSize: file.size,
-    fileType: file.type,
-    uploadedBy: currentSubmission.submitter ?? getVerifier(currentSubmission) ?? getApprover(currentSubmission) ?? {
-      id: '',
-      firstName: '',
-      lastName: '',
-      displayName: 'Pending server confirmation',
-      email: '',
-      identificationType: '',
-      isActive: true,
-    },
-    uploadedAt: new Date().toISOString(),
-    documentType: 'evidence',
-    url: URL.createObjectURL(file),
-  });
+  const refreshEvidence = () => setEvidenceRevision(value => value + 1);
+
+  const uploadEvidence = async (files: File[]) => {
+    setEvidenceBusy(true);
+    const results = await Promise.all(files.map(file => submissionType === 'OPMS'
+      ? uploadOpmsSubmissionAttachment(submission.id, file)
+      : uploadIpmsSubmissionAttachment(submission.id, file)));
+    const successes = results.filter(result => result.success).length;
+    const failure = results.find(result => !result.success);
+    if (successes) setEvidenceNotice(`${successes} file${successes === 1 ? '' : 's'} uploaded.`);
+    if (failure) setEvidenceError(failure.message ?? 'One or more evidence files could not be uploaded.');
+    setEvidencePage(1);
+    refreshEvidence();
+  };
+
+  const mutateEvidence = async (
+    operation: () => Promise<{ success: boolean; message?: string | null }>,
+    successMessage: string,
+  ) => {
+    setEvidenceBusy(true);
+    setEvidenceError('');
+    setEvidenceNotice('');
+    const result = await operation();
+    if (result.success) setEvidenceNotice(successMessage);
+    else setEvidenceError(result.message ?? 'Evidence operation failed.');
+    refreshEvidence();
+  };
 
   const triggerWorkflowAction = (action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score') => {
     if (action === 'score') {
@@ -756,24 +830,37 @@ export function SubmissionWorkspace({
 
       {activeTab === 'evidence' && (
         <Section title="Proof of Evidence" icon={<FileBadge className="h-4 w-4" />}>
+          <div className="mb-4 flex flex-wrap items-end gap-2">
+            <label className="text-xs text-secondary-600">Search
+              <input aria-label="Search submission evidence" value={evidenceSearchInput} onChange={event => setEvidenceSearchInput(event.target.value)} className="block rounded border border-secondary-300 bg-white px-2 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" />
+            </label>
+            <label className="text-xs text-secondary-600">Scan status
+              <select aria-label="Filter evidence scan status" value={evidenceScanStatus} onChange={event => { setEvidenceScanStatus(event.target.value); setEvidencePage(1); }} className="block rounded border border-secondary-300 bg-white px-2 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900">
+                <option value="">All</option><option value="Clean">Clean</option><option value="Pending">Pending</option><option value="ThreatDetected">Threat detected</option><option value="ScanFailed">Scan failed</option>
+              </select>
+            </label>
+            <label className="text-xs text-secondary-600">Lifecycle
+              <select aria-label="Filter evidence lifecycle" value={evidenceLifecycle} onChange={event => { setEvidenceLifecycle(event.target.value); setEvidencePage(1); }} className="block rounded border border-secondary-300 bg-white px-2 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900">
+                <option value="">All</option><option value="active">Active</option><option value="retired">Retired</option>
+              </select>
+            </label>
+            <span className="pb-2 text-xs text-secondary-500">{evidenceTotalCount} evidence records</span>
+          </div>
+          {evidenceError && <div role="alert" className="mb-3 rounded border border-error-200 bg-error-50 p-2 text-sm text-error-700">{evidenceError}</div>}
+          {evidenceNotice && <div role="status" className="mb-3 rounded border border-success-200 bg-success-50 p-2 text-sm text-success-700">{evidenceNotice}</div>}
           <FileUpload
             existingFiles={uploadedFileItems}
             maxFiles={undefined}
-            disabled={currentSubmission.isDisabled}
-            onUpload={(files) => {
-              if (onUploadAttachments) {
-                onUploadAttachments(files);
-                return;
-              }
-              syncAttachments([...attachments, ...files.map(buildAttachment)]);
-            }}
-            onRescan={onRescanAttachment}
-            onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? onAssessAttachment : undefined}
-            onReplace={security.canExecute(`${submissionType}_POE.REPLACE`) ? onReplaceAttachment : undefined}
-            onPlaceHold={security.canExecute(`${submissionType}_POE.PLACE_HOLD`) ? onPlaceAttachmentHold : undefined}
-            onReleaseHold={security.canExecute(`${submissionType}_POE.RELEASE_HOLD`) ? onReleaseAttachmentHold : undefined}
-            onDispose={security.canExecute(`${submissionType}_POE.DISPOSE`) ? onDisposeAttachment : undefined}
+            disabled={currentSubmission.isDisabled || evidenceBusy}
+            onUpload={(files) => { void uploadEvidence(files); }}
+            onRescan={(attachmentId) => { void mutateEvidence(() => submissionType === 'OPMS' ? rescanOpmsSubmissionAttachment(submission.id, attachmentId) : rescanIpmsSubmissionAttachment(submission.id, attachmentId), 'Evidence scan completed'); }}
+            onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? (attachmentId, outcome, comment) => { void mutateEvidence(() => submissionType === 'OPMS' ? assessOpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }) : assessIpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }), 'Evidence assessment recorded'); } : undefined}
+            onReplace={security.canExecute(`${submissionType}_POE.REPLACE`) ? (attachmentId, replacementPublicId, reason, supersededRowVersion, replacementRowVersion) => { void mutateEvidence(() => submissionType === 'OPMS' ? replaceOpmsSubmissionAttachment(submission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion }) : replaceIpmsSubmissionAttachment(submission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion }), 'Evidence replacement recorded'); } : undefined}
+            onPlaceHold={security.canExecute(`${submissionType}_POE.PLACE_HOLD`) ? (attachmentId, holdReference, reason) => { void mutateEvidence(() => submissionType === 'OPMS' ? placeOpmsEvidenceLegalHold(submission.id, attachmentId, { holdReference, reason }) : placeIpmsEvidenceLegalHold(submission.id, attachmentId, { holdReference, reason }), 'Legal hold placed'); } : undefined}
+            onReleaseHold={security.canExecute(`${submissionType}_POE.RELEASE_HOLD`) ? (attachmentId, holdId, reason) => { void mutateEvidence(() => submissionType === 'OPMS' ? releaseOpmsEvidenceLegalHold(submission.id, attachmentId, holdId, { reason }) : releaseIpmsEvidenceLegalHold(submission.id, attachmentId, holdId, { reason }), 'Legal hold released'); } : undefined}
+            onDispose={security.canExecute(`${submissionType}_POE.DISPOSE`) ? (attachmentId, approvalReference, reason, rowVersion) => { void mutateEvidence(() => submissionType === 'OPMS' ? requestOpmsEvidenceDisposal(submission.id, attachmentId, { approvalReference, reason, rowVersion }) : requestIpmsEvidenceDisposal(submission.id, attachmentId, { approvalReference, reason, rowVersion }), 'Evidence disposal queued'); } : undefined}
           />
+          <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>{evidenceBusy ? 'Loading evidence…' : `Page ${evidencePage} of ${Math.max(1, evidenceTotalPages)}`}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={evidenceBusy || evidencePage <= 1} onClick={() => setEvidencePage(value => value - 1)}>Previous evidence</Button><Button size="sm" variant="outline" disabled={evidenceBusy || evidencePage >= evidenceTotalPages} onClick={() => setEvidencePage(value => value + 1)}>Next evidence</Button></div></div>
         </Section>
       )}
 

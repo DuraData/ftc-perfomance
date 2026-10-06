@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileCheck2, MessageCircleQuestion, RefreshCw } from 'lucide-react';
-import { closePerformanceRfi, getIpmsSubmissionAttachments, getOpmsSubmissionAttachments, getPerformanceRfisPage, raisePerformanceRfi, respondPerformanceRfi } from '../../api/api';
+import { closePerformanceRfi, getIpmsSubmissionAttachmentsPage, getOpmsSubmissionAttachmentsPage, getPerformanceRfisPage, raisePerformanceRfi, respondPerformanceRfi } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import type { Attachment, PerformanceRfiDto } from '../../types';
@@ -29,6 +29,11 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
   const [responseDueAt, setResponseDueAt] = useState(localDate);
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [availableEvidence, setAvailableEvidence] = useState<Attachment[]>([]);
+  const [evidencePage, setEvidencePage] = useState(1);
+  const [evidenceTotalPages, setEvidenceTotalPages] = useState(0);
+  const [evidenceTotalCount, setEvidenceTotalCount] = useState(0);
+  const [evidenceSearchInput, setEvidenceSearchInput] = useState('');
+  const [evidenceSearch, setEvidenceSearch] = useState('');
   const [questionEvidence, setQuestionEvidence] = useState<string[]>([]);
   const [responseEvidence, setResponseEvidence] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
@@ -45,10 +50,13 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
   }, [kind, submissionId, page, search, status, sortBy, sortDirection]);
 
   const loadEvidence = useCallback(async () => {
-    const evidenceResult = kind === 1 ? await getOpmsSubmissionAttachments(submissionId) : await getIpmsSubmissionAttachments(submissionId);
+    const query = { page: evidencePage, pageSize: 25, search: evidenceSearch, sortBy: 'uploadedAt', sortDirection: 'desc' as const, scanStatus: 'Clean', quarantined: false, active: true };
+    const evidenceResult = kind === 1 ? await getOpmsSubmissionAttachmentsPage(submissionId, query) : await getIpmsSubmissionAttachmentsPage(submissionId, query);
     if (!evidenceResult.success) setError(evidenceResult.message ?? 'Submission evidence could not be loaded.');
-    setAvailableEvidence((evidenceResult.data ?? []).filter(file => file.isActive !== false && file.publicId && file.scanStatus === 'Clean' && !file.isQuarantined));
-  }, [kind, submissionId]);
+    setAvailableEvidence((evidenceResult.data?.items ?? []).filter(file => file.publicId));
+    setEvidenceTotalPages(evidenceResult.data?.totalPages ?? 0);
+    setEvidenceTotalCount(evidenceResult.data?.totalCount ?? 0);
+  }, [evidencePage, evidenceSearch, kind, submissionId]);
 
   useEffect(() => { void loadRfis(); }, [loadRfis]);
   useEffect(() => { void loadEvidence(); }, [loadEvidence]);
@@ -56,6 +64,10 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
     return () => window.clearTimeout(timeout);
   }, [searchInput]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setEvidencePage(1); setEvidenceSearch(evidenceSearchInput.trim()); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [evidenceSearchInput]);
 
   const raise = async () => {
     if (!question.trim()) { setError('Question is required.'); return; }
@@ -76,9 +88,12 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     setBusy(false);
   };
 
-  const evidencePicker = (selected: string[], update: (next: string[]) => void, label: string) => availableEvidence.length > 0 && <fieldset className="rounded border border-secondary-200 p-2 dark:border-secondary-700">
+  const evidencePicker = (selected: string[], update: (next: string[]) => void, label: string) => <fieldset className="rounded border border-secondary-200 p-2 dark:border-secondary-700">
     <legend className="px-1 text-xs font-medium text-secondary-600 dark:text-secondary-300">{label}</legend>
+    <div className="mb-2 flex flex-wrap items-center gap-2"><Input aria-label={`${label} search`} value={evidenceSearchInput} onChange={event => setEvidenceSearchInput(event.target.value)} placeholder="Search clean evidence" /><span className="text-xs text-secondary-500">{evidenceTotalCount} available · {selected.length} selected</span></div>
     <div className="space-y-1">{availableEvidence.map(file => <label key={file.publicId} className="flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`${label}: ${file.fileName}`} checked={selected.includes(file.publicId!)} onChange={event => update(event.target.checked ? [...selected, file.publicId!] : selected.filter(id => id !== file.publicId))} /><span>{file.fileName}</span><span className="text-success-700">Clean</span></label>)}</div>
+    {!availableEvidence.length && <p className="text-xs text-secondary-500">No matching clean evidence.</p>}
+    <div className="mt-2 flex items-center justify-between text-xs text-secondary-500"><span>Evidence page {evidencePage} of {Math.max(1, evidenceTotalPages)}</span><div className="flex gap-1"><Button size="sm" variant="outline" disabled={evidencePage <= 1} onClick={() => setEvidencePage(value => value - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={evidencePage >= evidenceTotalPages} onClick={() => setEvidencePage(value => value + 1)}>Next</Button></div></div>
   </fieldset>;
 
   const close = async (row: PerformanceRfiDto) => {

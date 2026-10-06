@@ -382,28 +382,60 @@ public class OpmsSubmissionsController : ControllerBase
     }
 
     [HttpGet("{id}/attachments")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse[]>>> GetAttachments(string id)
+    public ActionResult<ApiResponse<PoeFileResponse[]>> GetAttachments(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<PoeFileResponse[]>(false, null,
+            $"This unbounded evidence route is retired. Use /api/v1/opms-submissions/{id}/attachments/page."));
+
+    [HttpGet("{id}/attachments/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<PoeFileResponse>>>> GetAttachmentsPage(
+        string id,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? scanStatus = null,
+        [FromQuery] bool? quarantined = null,
+        [FromQuery] bool? active = null)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse[]>(false, null, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "User not found"));
 
         var submission = await _context.OpmsSubmissions
             .AsNoTracking()
             .Include(item => item.OpmsTarget)
             .FirstOrDefaultAsync(item => item.Id == id);
-        if (submission == null) return NotFound(new ApiResponse<PoeFileResponse[]>(false, null, "OPMS submission not found"));
+        if (submission == null) return NotFound(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "OPMS submission not found"));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.READ", BuildScope(submission));
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse[]>(false, null, decision.Reason));
+        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, decision.Reason));
 
-        var files = await _context.PoeFiles
-            .AsNoTracking()
-            .IncludePoeGovernance()
-            .Where(item => item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id)
-            .OrderByDescending(item => item.UploadedAt)
-            .ToListAsync();
+        var query = _context.PoeFiles
+            .AsNoTrackingWithIdentityResolution()
+            .Where(item => item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id);
 
-        return Ok(new ApiResponse<PoeFileResponse[]>(true, files.Select(item => item.ToResponse(HttpContext)).ToArray()));
+        if (!string.IsNullOrWhiteSpace(request.NormalizedSearch))
+            query = query.Where(item => item.FileName.Contains(request.NormalizedSearch));
+        if (!string.IsNullOrWhiteSpace(scanStatus))
+            query = query.Where(item => item.Blob.ScanStatus == scanStatus.Trim());
+        if (quarantined.HasValue)
+            query = query.Where(item => item.Blob.IsQuarantined == quarantined.Value);
+        if (active.HasValue)
+            query = query.Where(item => item.IsActive == active.Value);
+
+        var totalCount = await query.CountAsync();
+        var ordered = request.NormalizedSortBy switch
+        {
+            "uploadedat" or "createdat" => request.Descending ? query.OrderByDescending(item => item.UploadedAt).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.UploadedAt).ThenBy(item => item.PublicId),
+            "filename" => request.Descending ? query.OrderByDescending(item => item.FileName).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.FileName).ThenBy(item => item.PublicId),
+            "filesize" => request.Descending ? query.OrderByDescending(item => item.Blob.SizeInBytes).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.Blob.SizeInBytes).ThenBy(item => item.PublicId),
+            "scanstatus" => request.Descending ? query.OrderByDescending(item => item.Blob.ScanStatus).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.Blob.ScanStatus).ThenBy(item => item.PublicId),
+            "retainuntil" => request.Descending ? query.OrderByDescending(item => item.RetainUntil).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.RetainUntil).ThenBy(item => item.PublicId),
+            _ => null
+        };
+        if (ordered == null)
+            return BadRequest(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "SortBy must be uploadedAt, fileName, fileSize, scanStatus, or retainUntil."));
+
+        var files = await ordered.IncludePoeGovernance().Skip(request.Offset).Take(request.PageSize).ToListAsync();
+
+        return Ok(new ApiResponse<PagedResponse<PoeFileResponse>>(true,
+            PagedResponse<PoeFileResponse>.Create(files.Select(item => item.ToResponse(HttpContext)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("{id}/attachments")]

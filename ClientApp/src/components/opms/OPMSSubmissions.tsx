@@ -21,9 +21,7 @@ import {
   withdrawOpmsSubmission,
   extendIpmsSubmissionDueDate,
   extendOpmsSubmissionDueDate,
-  getIpmsSubmissionAttachments,
   getIpmsSubmissionsPage,
-  getOpmsSubmissionAttachments,
   getOpmsSubmissionsPage,
   uploadIpmsSubmissionAttachment,
   uploadOpmsSubmissionAttachment,
@@ -87,15 +85,7 @@ export function OPMSSubmissionsList() {
     void loadData();
   }, [loadData]);
 
-  const openSubmission = async (submission: OPMSSubmission) => {
-    const attachmentsResult = await getOpmsSubmissionAttachments(submission.id);
-    const hydrated = {
-      ...submission,
-      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
-    };
-    setSelectedSubmission(hydrated);
-    setOpmsSubmissions(prev => prev.map(item => item.id === submission.id ? hydrated : item));
-  };
+  const openSubmission = (submission: OPMSSubmission) => setSelectedSubmission(submission);
 
   const resetForm = () => {
     setForm({
@@ -400,15 +390,7 @@ export function IPMSSubmissionsList() {
     void loadData();
   }, [loadData]);
 
-  const openSubmission = async (submission: IPMSSubmission) => {
-    const attachmentsResult = await getIpmsSubmissionAttachments(submission.id);
-    const hydrated = {
-      ...submission,
-      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
-    };
-    setSelectedSubmission(hydrated);
-    setIpmsSubmissions(prev => prev.map(item => item.id === submission.id ? hydrated : item));
-  };
+  const openSubmission = (submission: IPMSSubmission) => setSelectedSubmission(submission);
 
   const resetForm = () => {
     setForm({

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { OPMSSubmission } from '../../types';
 import { SubmissionWorkspace } from './SubmissionWorkspace';
 
@@ -10,6 +10,13 @@ const security = vi.hoisted(() => ({
 }));
 
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
+
+const api = vi.hoisted(() => ({
+  getOpmsSubmissionAttachmentsPage: vi.fn(),
+  getIpmsSubmissionAttachmentsPage: vi.fn(),
+}));
+
+vi.mock('../../api/api', () => api);
 
 const submission = {
   id: '7',
@@ -41,6 +48,14 @@ describe('SubmissionWorkspace member security', () => {
     security.canReadField.mockReturnValue(false);
     security.canEditField.mockReturnValue(false);
     security.canExecute.mockReturnValue(false);
+    api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
+    api.getIpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
   });
 
   it('does not render protected values or editing controls when member access is denied', () => {
@@ -62,5 +77,26 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.getByDisplayValue('Private reason')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('Private corrective action')).not.toBeInTheDocument();
     expect(screen.getByText('Private corrective action')).toBeInTheDocument();
+  });
+
+  it('loads evidence from the bounded register and navigates authoritative pages', async () => {
+    api.getOpmsSubmissionAttachmentsPage
+      .mockResolvedValueOnce({
+        success: true,
+        data: { items: [{ id: 'evidence-1', publicId: 'public-1', fileName: 'first.pdf', fileSize: 10, fileType: 'application/pdf', uploadedBy: { displayName: 'Uploader' }, uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence', url: '/content/1', scanStatus: 'Clean' }], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { items: [{ id: 'evidence-26', publicId: 'public-26', fileName: 'last.pdf', fileSize: 10, fileType: 'application/pdf', uploadedBy: { displayName: 'Uploader' }, uploadedAt: '2026-09-01T00:00:00Z', documentType: 'evidence', url: '/content/26', scanStatus: 'Clean' }], page: 2, pageSize: 25, totalCount: 26, totalPages: 2 },
+      });
+    render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    await waitFor(() => expect(screen.getByText('first.pdf')).toBeInTheDocument());
+    expect(screen.getByText('26 evidence records')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next evidence' }));
+    await waitFor(() => expect(screen.getByText('last.pdf')).toBeInTheDocument());
+    expect(api.getOpmsSubmissionAttachmentsPage).toHaveBeenLastCalledWith('7', expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'uploadedAt' }));
   });
 });

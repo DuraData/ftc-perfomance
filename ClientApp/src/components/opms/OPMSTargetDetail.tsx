@@ -28,7 +28,6 @@ import {
   requestOpmsEvidenceDisposal,
   getAuditTrailsPage,
   withdrawOpmsSubmission as withdrawOpmsSubmissionApi,
-  getOpmsSubmissionAttachments,
   getIpmsTargetsPage as getIpmsTargetsApi,
   getOpmsSubmissionsPage as getOpmsSubmissionsApi,
   getOpmsTarget as getOpmsTargetApi,
@@ -289,13 +288,7 @@ function SubmissionsTab({
 }) {
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
 
-  const openSubmission = async (submission: OPMSSubmission) => {
-    const attachmentsResult = await getOpmsSubmissionAttachments(submission.id);
-    setSelectedSubmission({
-      ...submission,
-      attachments: attachmentsResult.success && attachmentsResult.data ? attachmentsResult.data : submission.attachments,
-    });
-  };
+  const openSubmission = (submission: OPMSSubmission) => setSelectedSubmission(submission);
 
   const columns = [
     { id: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },

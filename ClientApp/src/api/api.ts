@@ -2295,9 +2295,24 @@ export async function extendOpmsSubmissionDueDate(id: string, payload: DueDateEx
   return mapResponse(response, toOpmsSubmissionModel);
 }
 
-export async function getOpmsSubmissionAttachments(id: string) {
-  const response = await get<PoeFileDto[]>(`/opms-submissions/${id}/attachments`);
-  return mapResponse(response, items => items.map(toAttachmentModel));
+export type EvidencePageQuery = RegisterPageQuery & {
+  scanStatus?: string;
+  quarantined?: boolean;
+  active?: boolean;
+};
+
+function evidencePageQuery(query: EvidencePageQuery): string {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (query.scanStatus?.trim()) parameters.set('scanStatus', query.scanStatus.trim());
+  if (query.quarantined !== undefined) parameters.set('quarantined', String(query.quarantined));
+  if (query.active !== undefined) parameters.set('active', String(query.active));
+  const value = parameters.toString();
+  return value ? `?${value}` : '';
+}
+
+export async function getOpmsSubmissionAttachmentsPage(id: string, query: EvidencePageQuery = {}) {
+  const response = await get<PagedResult<PoeFileDto>>(`/opms-submissions/${encodeURIComponent(id)}/attachments/page${evidencePageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(toAttachmentModel) }));
 }
 
 export async function uploadOpmsSubmissionAttachment(id: string, file: File) {
@@ -2388,9 +2403,9 @@ export async function extendIpmsSubmissionDueDate(id: string, payload: DueDateEx
   return mapResponse(response, toIpmsSubmissionModel);
 }
 
-export async function getIpmsSubmissionAttachments(id: string) {
-  const response = await get<PoeFileDto[]>(`/ipms-submissions/${id}/attachments`);
-  return mapResponse(response, items => items.map(toAttachmentModel));
+export async function getIpmsSubmissionAttachmentsPage(id: string, query: EvidencePageQuery = {}) {
+  const response = await get<PagedResult<PoeFileDto>>(`/ipms-submissions/${encodeURIComponent(id)}/attachments/page${evidencePageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(toAttachmentModel) }));
 }
 
 export async function uploadIpmsSubmissionAttachment(id: string, file: File) {
