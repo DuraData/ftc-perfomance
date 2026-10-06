@@ -55,7 +55,7 @@ public static class SecurityRegistrySeeder
             Resource("STANDARD_CLASSIFICATION", "Standard Classification", true, true, true, false, true, true),
             Resource("KPI_UNIT_OF_MEASURE", "KPI Unit of Measure", true, true, true, false, true, true),
             Resource("STRATEGIC_HIERARCHY", "Strategic Planning Relationships", true, true, true, false, false, true),
-            Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, false, true),
+            Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, true, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
@@ -64,6 +64,8 @@ public static class SecurityRegistrySeeder
         context.SecurityResources.AddRange(resources.Where(item => !existingResourceCodes.Contains(item.Code)));
         var existingUserResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "USER", StringComparison.OrdinalIgnoreCase));
         if (existingUserResource != null) existingUserResource.SupportsDelete = true;
+        var existingAuthenticationResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase));
+        if (existingAuthenticationResource != null) existingAuthenticationResource.SupportsFieldSecurity = true;
 
         var actions = new[]
         {
@@ -142,13 +144,20 @@ public static class SecurityRegistrySeeder
             Member("EMPLOYEE", "EmailAddress", "Email Address", sensitive: true),
             Member("EMPLOYEE", "IdentityUserId", "Linked Login", sensitive: true),
             Member("USER", "Email", "Email Address", sensitive: true),
-            Member("USER", "PhoneNumber", "Phone Number", sensitive: true)
+            Member("USER", "PhoneNumber", "Phone Number", sensitive: true),
+            Member("AUTHENTICATION", "UserEmail", "Linked User Email", sensitive: true, systemManaged: true),
+            Member("AUTHENTICATION", "ExpectedEmail", "Expected Enterprise Email", sensitive: true),
+            Member("AUTHENTICATION", "Issuer", "External Identity Issuer", sensitive: true),
+            Member("AUTHENTICATION", "Subject", "External Identity Subject", sensitive: true),
+            Member("AUTHENTICATION", "EventUserId", "Authentication Event User", sensitive: true, systemManaged: true),
+            Member("AUTHENTICATION", "EventIpAddress", "Authentication Event IP Address", sensitive: true, systemManaged: true)
         };
         var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
         var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
         context.SecurityMemberDefinitions.AddRange(members.Where(item => !existing.Contains(item.ResourceCode + "|" + item.MemberCode)));
         foreach (var definition in existingMembers.Where(item =>
                      string.Equals(item.ResourceCode, "USER", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)
                         && new[] { "EmployeeNumber", "SalaryReference", "EmailAddress", "IdentityUserId" }
                             .Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)))
@@ -313,6 +322,8 @@ public static class SecurityRegistrySeeder
             ["Admin.Users.Manage"] = ["NAV.ADMIN.USERS", "USER.CREATE", "USER.READ", "USER.UPDATE", "USER.DELETE", "USER.Email.READ", "USER.Email.UPDATE", "USER.PhoneNumber.READ", "USER.PhoneNumber.UPDATE", "USER.ENABLE", "USER.DISABLE", "EMPLOYEE.EmployeeNumber.READ", "EMPLOYEE.EmployeeNumber.UPDATE", "EMPLOYEE.EmailAddress.READ", "EMPLOYEE.EmailAddress.UPDATE", "EMPLOYEE.IdentityUserId.READ", "EMPLOYEE.IdentityUserId.UPDATE", "ROLE.ASSIGN", "SECURITY.VIEW_EFFECTIVE", "SECURITY.ASSIGN_ROLES"],
             ["Admin.Roles.Manage"] = ["NAV.ADMIN.ROLES", "SECURITY.VIEW", "SECURITY.MANAGE_ROLES", "SECURITY.ASSIGN_ROLES", "SECURITY.VIEW_EFFECTIVE"],
             ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY", "SECURITY.VIEW", "SECURITY.MANAGE_PERMISSIONS", "SECURITY.MANAGE_NAVIGATION", "SECURITY.VIEW_EFFECTIVE"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT"],
+            ["AUTHENTICATION.LINK_IDENTITIES"] = ["AUTHENTICATION.UserEmail.READ", "AUTHENTICATION.ExpectedEmail.READ", "AUTHENTICATION.ExpectedEmail.UPDATE", "AUTHENTICATION.Issuer.READ", "AUTHENTICATION.Issuer.UPDATE", "AUTHENTICATION.Subject.READ", "AUTHENTICATION.Subject.UPDATE"],
+            ["AUTHENTICATION.VIEW_EVENTS"] = ["AUTHENTICATION.EventUserId.READ", "AUTHENTICATION.EventIpAddress.READ"],
             ["Notifications.View"] = ["NAV.NOTIFICATIONS"],
             ["Reports.View"] = ["OPMS_REPORT.READ", "IPMS_REPORT.READ", "NAV.REPORTS"],
             ["Reports.Generate"] = ["OPMS_REPORT.GENERATE", "IPMS_REPORT.GENERATE"],

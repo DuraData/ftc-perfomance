@@ -7,6 +7,7 @@ import {
   getUserAuthenticatorsPage, provisionUserAuthenticator, saveAuthenticationConfiguration, setUserAuthenticatorStatus,
 } from '../../api/api';
 import type { AuthenticationConfiguration, AuthenticationEvent, EnterpriseProviderOption, SecurityUserSummary, UserAuthenticator } from '../../types';
+import { useSecurity } from '../../context/SecurityContext';
 
 const nowLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const modeOptions = [
@@ -15,6 +16,12 @@ const modeOptions = [
 ];
 
 export function AuthenticationAdministrationPage() {
+  const security = useSecurity();
+  const canReadUserEmail = security.canReadField('AUTHENTICATION', 'UserEmail');
+  const canReadExpectedEmail = security.canReadField('AUTHENTICATION', 'ExpectedEmail');
+  const canEditExpectedEmail = security.canEditField('AUTHENTICATION', 'ExpectedEmail');
+  const canReadEventUser = security.canReadField('AUTHENTICATION', 'EventUserId');
+  const canReadEventIp = security.canReadField('AUTHENTICATION', 'EventIpAddress');
   const [configuration, setConfiguration] = useState<AuthenticationConfiguration | null>(null);
   const [providers, setProviders] = useState<EnterpriseProviderOption[]>([]);
   const [users, setUsers] = useState<SecurityUserSummary[]>([]);
@@ -80,7 +87,8 @@ export function AuthenticationAdministrationPage() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void getUserAuthenticatorsPage({
-        page: authenticatorPage, pageSize: 25, search: authenticatorSearch, sortBy: 'email', sortDirection: 'asc',
+        page: authenticatorPage, pageSize: 25, search: authenticatorSearch,
+        sortBy: canReadExpectedEmail ? 'email' : 'createdAt', sortDirection: 'asc',
         active: authenticatorStatus === 'all' ? undefined : authenticatorStatus === 'active',
       }).then(result => {
         setAuthenticators(result.data?.items ?? []);
@@ -89,7 +97,7 @@ export function AuthenticationAdministrationPage() {
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [authenticatorPage, authenticatorRevision, authenticatorSearch, authenticatorStatus]);
+  }, [authenticatorPage, authenticatorRevision, authenticatorSearch, authenticatorStatus, canReadExpectedEmail]);
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void getAuthenticationEventsPage({
@@ -179,18 +187,19 @@ export function AuthenticationAdministrationPage() {
       <h2 className="font-semibold">Pre-provision enterprise identity</h2>
       <div className="grid md:grid-cols-2 gap-4">
         <Input label="Search users" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
-        <Select label="User" options={users.map(item => ({ value: item.id, label: `${item.fullName} — ${item.email}` }))} placeholder="Select user" value={selectedUser} onChange={event => setSelectedUser(event.target.value)} />
-        <Input label="Verified email" value={selectedUserRecord?.email ?? ''} disabled />
+        <Select label="User" options={users.map(item => ({ value: item.id, label: item.email ? `${item.fullName} — ${item.email}` : item.fullName }))} placeholder="Select user" value={selectedUser} onChange={event => setSelectedUser(event.target.value)} />
+        {canReadExpectedEmail ? <Input label="Verified email" value={selectedUserRecord?.email ?? ''} disabled /> : null}
       </div>
       {userTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button variant="outline" size="sm" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</Button><span>Page {userPage} of {userTotalPages}</span><Button variant="outline" size="sm" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</Button></div>}
       <Input id="identity-provisioning-reason" label="Governance reason" value={linkReason} onChange={event => setLinkReason(event.target.value)} required />
-      <Button onClick={provision} loading={busy} disabled={busy || !selectedUserRecord || !providerCode || linkReason.trim().length < 5}>Pre-provision identity</Button>
+      <Button onClick={provision} loading={busy} disabled={busy || !canEditExpectedEmail || !selectedUserRecord?.email || !providerCode || linkReason.trim().length < 5}>Pre-provision identity</Button>
+      {!canEditExpectedEmail ? <p className="text-xs text-secondary-500">Expected enterprise email is protected by member security.</p> : null}
       <div className="grid gap-4 border-t border-secondary-200 pt-4 dark:border-secondary-700 md:grid-cols-2">
         <Input label="Search enterprise identities" value={authenticatorSearch} onChange={event => { setAuthenticatorSearch(event.target.value); setAuthenticatorPage(1); }} />
         <Select label="Identity status" value={authenticatorStatus} options={[{ value: 'all', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Disabled' }]} onChange={event => { setAuthenticatorStatus(event.target.value as 'all' | 'active' | 'inactive'); setAuthenticatorPage(1); }} />
       </div>
       <p className="text-xs text-secondary-500">{authenticatorTotalCount} enterprise identities</p>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-2">User</th><th className="p-2">Provider</th><th className="p-2">Link state</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead><tbody>{authenticators.map(item => <tr key={item.publicId} className="border-t"><td className="p-2">{item.userEmail}</td><td className="p-2">{item.providerRegistrationCode}</td><td className="p-2">{item.linkedAt ? 'Bound' : 'Awaiting first validated sign-in'}</td><td className="p-2">{item.isActive ? 'Active' : 'Disabled'}</td><td className="p-2"><Button variant="secondary" size="sm" onClick={() => toggle(item)} disabled={busy}>{item.isActive ? 'Disable' : 'Enable'}</Button></td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left">{canReadUserEmail ? <th className="p-2">User</th> : null}<th className="p-2">Provider</th><th className="p-2">Link state</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead><tbody>{authenticators.map(item => <tr key={item.publicId} className="border-t">{canReadUserEmail ? <td className="p-2">{item.userEmail ?? 'Protected'}</td> : null}<td className="p-2">{item.providerRegistrationCode}</td><td className="p-2">{item.linkedAt ? 'Bound' : 'Awaiting first validated sign-in'}</td><td className="p-2">{item.isActive ? 'Active' : 'Disabled'}</td><td className="p-2"><Button variant="secondary" size="sm" onClick={() => toggle(item)} disabled={busy}>{item.isActive ? 'Disable' : 'Enable'}</Button></td></tr>)}</tbody></table></div>
       {authenticatorTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><span>Page {authenticatorPage} of {authenticatorTotalPages}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={authenticatorPage <= 1} onClick={() => setAuthenticatorPage(value => Math.max(1, value - 1))}>Previous identities</Button><Button variant="outline" size="sm" disabled={authenticatorPage >= authenticatorTotalPages} onClick={() => setAuthenticatorPage(value => value + 1)}>Next identities</Button></div></div>}
     </section>
     <section className="space-y-4 rounded-xl border border-secondary-200 p-5 dark:border-secondary-700">
@@ -200,7 +209,7 @@ export function AuthenticationAdministrationPage() {
         <Select label="Event result" value={eventResult} options={[{ value: 'all', label: 'All results' }, { value: 'success', label: 'Successful' }, { value: 'failure', label: 'Failed' }]} onChange={event => { setEventResult(event.target.value as 'all' | 'success' | 'failure'); setEventPage(1); }} />
       </div>
       <p className="text-xs text-secondary-500">{eventTotalCount} authentication events</p>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-2">Time</th><th className="p-2">Provider</th><th className="p-2">Event</th><th className="p-2">Result</th><th className="p-2">Correlation</th></tr></thead><tbody>{events.map(item => <tr key={item.publicId} className="border-t"><td className="p-2">{new Date(item.occurredAt).toLocaleString()}</td><td className="p-2">{item.providerCode}</td><td className="p-2">{item.eventType}</td><td className="p-2">{item.success ? 'Success' : item.failureCode ?? 'Failed'}</td><td className="p-2 font-mono text-xs">{item.correlationId}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left"><th className="p-2">Time</th><th className="p-2">Provider</th><th className="p-2">Event</th><th className="p-2">Result</th>{canReadEventUser ? <th className="p-2">User</th> : null}{canReadEventIp ? <th className="p-2">IP address</th> : null}<th className="p-2">Correlation</th></tr></thead><tbody>{events.map(item => <tr key={item.publicId} className="border-t"><td className="p-2">{new Date(item.occurredAt).toLocaleString()}</td><td className="p-2">{item.providerCode}</td><td className="p-2">{item.eventType}</td><td className="p-2">{item.success ? 'Success' : item.failureCode ?? 'Failed'}</td>{canReadEventUser ? <td className="p-2">{item.userId ?? '-'}</td> : null}{canReadEventIp ? <td className="p-2">{item.ipAddress ?? '-'}</td> : null}<td className="p-2 font-mono text-xs">{item.correlationId}</td></tr>)}</tbody></table></div>
       {eventTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><span>Page {eventPage} of {eventTotalPages}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={eventPage <= 1} onClick={() => setEventPage(value => Math.max(1, value - 1))}>Previous events</Button><Button variant="outline" size="sm" disabled={eventPage >= eventTotalPages} onClick={() => setEventPage(value => value + 1)}>Next events</Button></div></div>}
     </section>
   </div>;

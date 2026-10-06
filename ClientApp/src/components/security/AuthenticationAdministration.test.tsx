@@ -6,11 +6,15 @@ const api = vi.hoisted(() => ({
   getSecurityUsersPage: vi.fn(), getUserAuthenticatorsPage: vi.fn(), provisionUserAuthenticator: vi.fn(),
   saveAuthenticationConfiguration: vi.fn(), setUserAuthenticatorStatus: vi.fn(),
 }));
+const security = vi.hoisted(() => ({ canReadField: vi.fn(() => true), canEditField: vi.fn(() => true) }));
 vi.mock('../../api/api', () => api);
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 
 describe('AuthenticationAdministrationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.canReadField.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
     api.getAuthenticationConfiguration.mockResolvedValue({ success: true, data: {
       publicId: 'configuration-1', mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in',
       isActive: true, effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
@@ -58,5 +62,19 @@ describe('AuthenticationAdministrationPage', () => {
 
     await waitFor(() => expect(api.getUserAuthenticatorsPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'person', active: false })));
     await waitFor(() => expect(api.getAuthenticationEventsPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'denied', success: false })));
+  });
+
+  it('hides protected authentication members and avoids sensitive email sorting without grants', async () => {
+    security.canReadField.mockReturnValue(false);
+    security.canEditField.mockReturnValue(false);
+    render(<AuthenticationAdministrationPage />);
+
+    expect(await screen.findByText('31 enterprise identities')).toBeInTheDocument();
+    expect(api.getUserAuthenticatorsPage).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'createdAt' }));
+    expect(screen.queryByRole('columnheader', { name: 'User' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'IP address' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Verified email')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pre-provision identity' })).toBeDisabled();
+    expect(screen.getByText('Expected enterprise email is protected by member security.')).toBeInTheDocument();
   });
 });

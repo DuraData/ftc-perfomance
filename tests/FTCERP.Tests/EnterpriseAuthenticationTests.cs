@@ -8,6 +8,7 @@ using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 
 namespace FTCERP.Tests;
 
@@ -103,6 +104,7 @@ public sealed class EnterpriseAuthenticationTests
         var tenantB = new Municipality { Code = "AUTH-B", Name = "Authentication B" };
         context.AddRange(tenantA, tenantB);
         await context.SaveChangesAsync();
+        context.Users.Add(User("authentication-admin", tenantA));
 
         for (var index = 0; index < 31; index++)
         {
@@ -136,7 +138,10 @@ public sealed class EnterpriseAuthenticationTests
         context.AuthenticationEvents.Add(new AuthenticationEvent { MunicipalityId = tenantB.Id, UserId = outside.Id, ProviderCode = "ENTRA", EventType = "ExternalSignIn", Success = false, FailureCode = "DENIED", CorrelationId = "outside" });
         await context.SaveChangesAsync();
 
-        var controller = new AuthenticationAdministrationController(context, new TenantContext(tenantA.Id), new EnterpriseProviderRegistry([Provider()]));
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "allowed", [], [], []));
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(tenantA.Id), new EnterpriseProviderRegistry([Provider()]), access.Object);
         var authenticators = await controller.GetAuthenticatorsPage(new PagedQueryRequest { Page = 2, PageSize = 10, Search = "person", SortBy = "email", SortDirection = "asc" }, true, null);
         var authenticatorPage = Assert.IsType<ApiResponse<PagedResponse<UserAuthenticatorDto>>>(Assert.IsType<OkObjectResult>(authenticators.Result).Value).Data!;
         Assert.Equal(16, authenticatorPage.TotalCount);
@@ -153,6 +158,63 @@ public sealed class EnterpriseAuthenticationTests
         Assert.IsType<BadRequestObjectResult>(invalid.Result);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetAuthenticators().Result).StatusCode);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetEvents().Result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Authentication_administration_masks_denied_members_and_prevents_search_sort_and_write_inference()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Code = "AUTH-PROTECTED", Name = "Protected Authentication" };
+        var actor = User("authentication-admin", municipality);
+        var linked = User("linked-user", municipality);
+        context.AddRange(municipality, actor, linked);
+        context.UserAuthenticators.Add(new UserAuthenticator
+        {
+            Municipality = municipality, User = linked, ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = "identity-secret@example.test", Issuer = "https://issuer.example.test",
+            Subject = "external-subject-secret", CreatedByUserId = actor.Id
+        });
+        context.AuthenticationEvents.Add(new AuthenticationEvent
+        {
+            Municipality = municipality, User = linked, ProviderCode = "ENTRA", EventType = "ExternalSignIn",
+            Success = false, FailureCode = "DENIED", IpAddress = "203.0.113.91", CorrelationId = "protected-event"
+        });
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "denied", [], [], []));
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id), new EnterpriseProviderRegistry([Provider()]), access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = Http(actor.Id) }
+        };
+
+        var pageResult = await controller.GetAuthenticatorsPage(new PagedQueryRequest { SortBy = "createdAt" });
+        var page = Assert.IsType<ApiResponse<PagedResponse<UserAuthenticatorDto>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value).Data!;
+        var protectedIdentity = Assert.Single(page.Items);
+        Assert.Null(protectedIdentity.UserEmail);
+        Assert.Null(protectedIdentity.ExpectedEmail);
+        Assert.Null(protectedIdentity.Issuer);
+        Assert.Null(protectedIdentity.Subject);
+
+        var emailSort = await controller.GetAuthenticatorsPage(new PagedQueryRequest { SortBy = "email" });
+        Assert.IsType<ForbidResult>(emailSort.Result);
+        var hiddenSearch = await controller.GetAuthenticatorsPage(new PagedQueryRequest { SortBy = "createdAt", Search = "identity-secret" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<UserAuthenticatorDto>>>(Assert.IsType<OkObjectResult>(hiddenSearch.Result).Value).Data!.TotalCount);
+
+        var eventResult = await controller.GetEventsPage(new PagedQueryRequest { Search = "203.0.113.91" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(Assert.IsType<OkObjectResult>(eventResult.Result).Value).Data!.TotalCount);
+        var eventPageResult = await controller.GetEventsPage(new PagedQueryRequest());
+        var protectedEvent = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(Assert.IsType<OkObjectResult>(eventPageResult.Result).Value).Data!.Items);
+        Assert.Null(protectedEvent.UserId);
+        Assert.Null(protectedEvent.IpAddress);
+
+        var write = await controller.Provision(new ProvisionUserAuthenticatorRequest(linked.Id, "ENTRA", linked.Email!, null, null, "Governed link"), default);
+        Assert.IsType<ForbidResult>(write.Result);
     }
 
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -181,6 +243,13 @@ public sealed class EnterpriseAuthenticationTests
     private static ClaimsPrincipal Principal(string issuer, string subject, string email) => new(new ClaimsIdentity([
         new Claim("iss", issuer), new Claim(ClaimTypes.NameIdentifier, subject), new Claim(ClaimTypes.Email, email)
     ], "oidc"));
+
+    private static DefaultHttpContext Http(string actorId)
+    {
+        var http = new DefaultHttpContext();
+        http.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, actorId)], "test"));
+        return http;
+    }
 
     private static EnterpriseProviderRegistration Provider(string authority = "https://login.microsoftonline.com/tenant/v2.0", string clientSecret = "deployment-secret") => new()
     {

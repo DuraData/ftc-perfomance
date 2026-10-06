@@ -18,7 +18,8 @@ namespace FTCERP.Host.API.Controllers;
 public sealed class AuthenticationAdministrationController(
     ApplicationDbContext context,
     ITenantContext tenant,
-    IEnterpriseProviderRegistry providers) : ControllerBase
+    IEnterpriseProviderRegistry providers,
+    IAccessControlService accessControl) : ControllerBase
 {
     [HttpGet("providers")]
     [Authorize(Policy = "Permission:AUTHENTICATION.CONFIGURE")]
@@ -110,6 +111,13 @@ public sealed class AuthenticationAdministrationController(
         if (request.NormalizedSortBy is not ("createdat" or "email" or "provider" or "status" or "linkedat" or "lastauthenticatedat"))
             return BadRequest(Fail<PagedResponse<UserAuthenticatorDto>>("SortBy must be createdAt, email, provider, status, linkedAt, or lastAuthenticatedAt."));
 
+        var canReadUserEmail = await CanAccessMemberAsync("UserEmail", SecurityOperation.Read, municipalityId);
+        var canReadExpectedEmail = await CanAccessMemberAsync("ExpectedEmail", SecurityOperation.Read, municipalityId);
+        var canReadIssuer = await CanAccessMemberAsync("Issuer", SecurityOperation.Read, municipalityId);
+        var canReadSubject = await CanAccessMemberAsync("Subject", SecurityOperation.Read, municipalityId);
+        if (request.NormalizedSortBy == "email" && !canReadExpectedEmail)
+            return Forbid();
+
         var query = context.UserAuthenticators.AsNoTracking().Where(item => item.MunicipalityId == municipalityId);
         if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
         if (!string.IsNullOrWhiteSpace(providerCode))
@@ -120,11 +128,11 @@ public sealed class AuthenticationAdministrationController(
         if (request.NormalizedSearch.Length > 0)
         {
             var term = request.NormalizedSearch;
-            query = query.Where(item => item.ExpectedEmail.Contains(term)
-                || item.User.Email != null && item.User.Email.Contains(term)
-                || item.ProviderRegistrationCode.Contains(term)
-                || item.Issuer != null && item.Issuer.Contains(term)
-                || item.Subject != null && item.Subject.Contains(term));
+            query = query.Where(item => item.ProviderRegistrationCode.Contains(term)
+                || canReadExpectedEmail && item.ExpectedEmail.Contains(term)
+                || canReadUserEmail && item.User.Email != null && item.User.Email.Contains(term)
+                || canReadIssuer && item.Issuer != null && item.Issuer.Contains(term)
+                || canReadSubject && item.Subject != null && item.Subject.Contains(term));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -145,7 +153,8 @@ public sealed class AuthenticationAdministrationController(
         };
         var rows = await query.Skip(request.Offset).Take(request.PageSize).Include(item => item.User).ToArrayAsync(cancellationToken);
         return Ok(new ApiResponse<PagedResponse<UserAuthenticatorDto>>(true,
-            PagedResponse<UserAuthenticatorDto>.Create(rows.Select(item => ToDto(item, item.User)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<UserAuthenticatorDto>.Create(rows.Select(item => ToDto(item, item.User,
+                canReadUserEmail, canReadExpectedEmail, canReadIssuer, canReadSubject)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("authenticators")]
@@ -155,6 +164,10 @@ public sealed class AuthenticationAdministrationController(
         if (!TryTenant(out var municipalityId, out var failure)) return failure!;
         var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(actor)) return Unauthorized();
+        if (!await CanAccessMemberAsync("ExpectedEmail", SecurityOperation.Update, municipalityId)) return Forbid();
+        if ((!string.IsNullOrWhiteSpace(request.Issuer) && !await CanAccessMemberAsync("Issuer", SecurityOperation.Update, municipalityId))
+            || (!string.IsNullOrWhiteSpace(request.Subject) && !await CanAccessMemberAsync("Subject", SecurityOperation.Update, municipalityId)))
+            return Forbid();
         if (!ValidReason(request.Reason)) return BadRequest(Fail<UserAuthenticatorDto>("A governance reason between 5 and 500 characters is required."));
         if (!providers.TryGet(request.ProviderRegistrationCode.Trim(), out var provider)) return BadRequest(Fail<UserAuthenticatorDto>("The provider is not registered by deployment configuration."));
         var user = await context.Users.SingleOrDefaultAsync(item => item.Id == request.UserId && item.MunicipalityId == municipalityId, cancellationToken);
@@ -185,7 +198,7 @@ public sealed class AuthenticationAdministrationController(
             new { user.PublicId, Provider = provider.Code, Prelinked = issuer != null });
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException) { return Conflict(Fail<UserAuthenticatorDto>("That user or external identity is already linked for this provider.")); }
-        return Ok(new ApiResponse<UserAuthenticatorDto>(true, ToDto(row, user)));
+        return Ok(new ApiResponse<UserAuthenticatorDto>(true, await ToAuthorizedDtoAsync(row, user, municipalityId)));
     }
 
     [HttpPut("authenticators/{publicId:guid}/status")]
@@ -206,7 +219,7 @@ public sealed class AuthenticationAdministrationController(
         AddAudit(municipalityId, actor, request.IsActive ? "EnterpriseIdentityEnabled" : "EnterpriseIdentityDisabled", row.PublicId.ToString(), request.Reason, null);
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<UserAuthenticatorDto>("The authenticator changed since it was loaded. Refresh and try again.")); }
-        return Ok(new ApiResponse<UserAuthenticatorDto>(true, ToDto(row, row.User)));
+        return Ok(new ApiResponse<UserAuthenticatorDto>(true, await ToAuthorizedDtoAsync(row, row.User, municipalityId)));
     }
 
     [HttpGet("events")]
@@ -227,6 +240,9 @@ public sealed class AuthenticationAdministrationController(
         if (request.NormalizedSortBy is not ("createdat" or "occurredat" or "provider" or "eventtype" or "result"))
             return BadRequest(Fail<PagedResponse<AuthenticationEventDto>>("SortBy must be createdAt, occurredAt, provider, eventType, or result."));
 
+        var canReadEventUser = await CanAccessMemberAsync("EventUserId", SecurityOperation.Read, municipalityId);
+        var canReadEventIp = await CanAccessMemberAsync("EventIpAddress", SecurityOperation.Read, municipalityId);
+
         var query = context.AuthenticationEvents.AsNoTracking().Where(item => item.MunicipalityId == municipalityId);
         if (success.HasValue) query = query.Where(item => item.Success == success.Value);
         if (!string.IsNullOrWhiteSpace(providerCode))
@@ -244,9 +260,9 @@ public sealed class AuthenticationAdministrationController(
             var term = request.NormalizedSearch;
             query = query.Where(item => item.ProviderCode.Contains(term)
                 || item.EventType.Contains(term)
-                || item.UserId != null && item.UserId.Contains(term)
+                || canReadEventUser && item.UserId != null && item.UserId.Contains(term)
                 || item.FailureCode != null && item.FailureCode.Contains(term)
-                || item.IpAddress != null && item.IpAddress.Contains(term)
+                || canReadEventIp && item.IpAddress != null && item.IpAddress.Contains(term)
                 || item.CorrelationId.Contains(term));
         }
 
@@ -264,7 +280,7 @@ public sealed class AuthenticationAdministrationController(
         };
         var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync(cancellationToken);
         return Ok(new ApiResponse<PagedResponse<AuthenticationEventDto>>(true,
-            PagedResponse<AuthenticationEventDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<AuthenticationEventDto>.Create(rows.Select(item => ToDto(item, canReadEventUser, canReadEventIp)), request.Page, request.PageSize, totalCount)));
     }
 
     private bool TryTenant(out long municipalityId, out ActionResult? failure)
@@ -317,13 +333,37 @@ public sealed class AuthenticationAdministrationController(
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private static AuthenticationConfigurationDto ToDto(AuthenticationConfiguration item) => new(item.PublicId, item.Mode, item.ProviderRegistrationCode, item.DisplayName, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), item.Policy == null ? null : ToDto(item.Policy));
     private static AuthenticationPolicyDto ToDto(AuthenticationPolicy item) => new(item.PublicId, item.MinimumPasswordLength, item.MaximumFailedAttempts, item.LockoutMinutes, item.RequireMfaForPrivilegedLocalUsers, item.RequireMfaForAllLocalUsers, item.RequireFirstLoginPasswordChange, item.SessionIdleTimeoutMinutes, item.SessionAbsoluteTimeoutHours, item.MaximumConcurrentSessions, Convert.ToBase64String(item.RowVersion));
-    private static UserAuthenticatorDto ToDto(UserAuthenticator item, ApplicationUser user) => new(item.PublicId, user.PublicId, user.Email!, item.ProviderRegistrationCode, item.ExpectedEmail, item.Issuer, item.Subject, item.IsActive, item.LinkedAt, item.LastAuthenticatedAt, Convert.ToBase64String(item.RowVersion));
-    private static AuthenticationEventDto ToDto(AuthenticationEvent item) => new(item.PublicId, item.UserId, item.ProviderCode, item.EventType, item.Success, item.FailureCode, item.OccurredAt, item.IpAddress, item.CorrelationId);
+    private static UserAuthenticatorDto ToDto(UserAuthenticator item, ApplicationUser user, bool includeUserEmail, bool includeExpectedEmail, bool includeIssuer, bool includeSubject) =>
+        new(item.PublicId, user.PublicId, includeUserEmail ? user.Email : null, item.ProviderRegistrationCode,
+            includeExpectedEmail ? item.ExpectedEmail : null, includeIssuer ? item.Issuer : null, includeSubject ? item.Subject : null,
+            item.IsActive, item.LinkedAt, item.LastAuthenticatedAt, Convert.ToBase64String(item.RowVersion));
+    private static AuthenticationEventDto ToDto(AuthenticationEvent item, bool includeUserId, bool includeIpAddress) =>
+        new(item.PublicId, includeUserId ? item.UserId : null, item.ProviderCode, item.EventType, item.Success, item.FailureCode,
+            item.OccurredAt, includeIpAddress ? item.IpAddress : null, item.CorrelationId);
+
+    private async Task<UserAuthenticatorDto> ToAuthorizedDtoAsync(UserAuthenticator item, ApplicationUser user, long municipalityId) =>
+        ToDto(item, user,
+            await CanAccessMemberAsync("UserEmail", SecurityOperation.Read, municipalityId),
+            await CanAccessMemberAsync("ExpectedEmail", SecurityOperation.Read, municipalityId),
+            await CanAccessMemberAsync("Issuer", SecurityOperation.Read, municipalityId),
+            await CanAccessMemberAsync("Subject", SecurityOperation.Read, municipalityId));
+
+    private async Task<bool> CanAccessMemberAsync(string memberCode, SecurityOperation operation, long municipalityId)
+    {
+        var actorId = tenant.UserId ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(actorId)) return false;
+        var actor = await context.Users.SingleOrDefaultAsync(item => item.Id == actorId && item.MunicipalityId == municipalityId);
+        if (actor == null) return false;
+        var decision = await accessControl.CheckPermissionAsync(actor,
+            $"AUTHENTICATION.{memberCode}.{operation.ToString().ToUpperInvariant()}",
+            new AccessScopeContext(MunicipalityId: municipalityId));
+        return decision.Allowed;
+    }
 }
 
 public sealed record AuthenticationConfigurationDto(Guid PublicId, AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, AuthenticationPolicyDto? Policy);
 public sealed record AuthenticationPolicyDto(Guid PublicId, int MinimumPasswordLength, int MaximumFailedAttempts, int LockoutMinutes, bool RequireMfaForPrivilegedLocalUsers, bool RequireMfaForAllLocalUsers, bool RequireFirstLoginPasswordChange, int SessionIdleTimeoutMinutes, int SessionAbsoluteTimeoutHours, int MaximumConcurrentSessions, string RowVersion);
-public sealed record UserAuthenticatorDto(Guid PublicId, Guid UserPublicId, string UserEmail, string ProviderRegistrationCode, string ExpectedEmail, string? Issuer, string? Subject, bool IsActive, DateTime? LinkedAt, DateTime? LastAuthenticatedAt, string RowVersion);
+public sealed record UserAuthenticatorDto(Guid PublicId, Guid UserPublicId, string? UserEmail, string ProviderRegistrationCode, string? ExpectedEmail, string? Issuer, string? Subject, bool IsActive, DateTime? LinkedAt, DateTime? LastAuthenticatedAt, string RowVersion);
 public sealed record AuthenticationEventDto(Guid PublicId, string? UserId, string ProviderCode, string EventType, bool Success, string? FailureCode, DateTime OccurredAt, string? IpAddress, string CorrelationId);
 public sealed record AuthenticationPolicyRequest(int MinimumPasswordLength, int MaximumFailedAttempts, int LockoutMinutes, bool RequireMfaForPrivilegedLocalUsers, bool RequireMfaForAllLocalUsers, bool RequireFirstLoginPasswordChange, int SessionIdleTimeoutMinutes, int SessionAbsoluteTimeoutHours, int MaximumConcurrentSessions, string? RowVersion);
 public sealed record SaveAuthenticationConfigurationRequest(AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, AuthenticationPolicyRequest Policy, string Reason, string? RowVersion);

@@ -78,6 +78,16 @@ public sealed class UsersControllerSecurityTests
             submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "SubmittedDate", "InternalAuditObservation"]);
             (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(10);
         }
+
+        var authenticationMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "AUTHENTICATION")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        authenticationMembers.Select(item => item.MemberCode).Should().Equal(
+            "EventIpAddress", "EventUserId", "ExpectedEmail", "Issuer", "Subject", "UserEmail");
+        Assert.All(authenticationMembers, item => Assert.True(item.IsSensitive));
+        Assert.Equal(9, await context.Permissions.CountAsync(item => item.ResourceCode == "AUTHENTICATION" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "AUTHENTICATION")).SupportsFieldSecurity);
     }
 
     [Fact]
