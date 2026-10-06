@@ -3261,12 +3261,13 @@ export interface IdpHierarchyImportRowPayload {
 }
 
 export interface IdpAnnualTarget {
-  id: number;
+  publicId: string;
   idpKpiId: number;
   financialYear: number;
   targetValue: number;
   actualValue?: number | null;
   progressComment?: string | null;
+  rowVersion: string;
 }
 
 export interface IdpAlignmentMatrixItem {
@@ -3280,16 +3281,17 @@ export interface IdpAlignmentMatrixItem {
 }
 
 export interface IdpAlignmentLink {
-  id: number;
+  publicId: string;
   idpStrategicObjectiveId: number;
   frameworkType: string;
   frameworkReferenceCode: string;
   frameworkReferenceTitle: string;
   notes?: string | null;
+  rowVersion: string;
 }
 
 export interface IdpRiskLink {
-  id: number;
+  publicId: string;
   idpStrategicObjectiveId?: number | null;
   idpProjectId?: number | null;
   idpKpiId?: number | null;
@@ -3297,10 +3299,11 @@ export interface IdpRiskLink {
   riskTitle: string;
   mitigationPlan?: string | null;
   riskLevel: string;
+  rowVersion: string;
 }
 
 export interface IdpBudgetSnapshot {
-  id: number;
+  publicId: string;
   idpStrategicObjectiveId?: number | null;
   idpProjectId?: number | null;
   financialYear: number;

@@ -675,7 +675,7 @@ public class IdpController : ControllerBase
 
         _context.IdpStrategicOutcomes.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpStrategicOutcome", entity.Id.ToString(), "Create", null, ToOutcomeResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpStrategicOutcome", entity.PublicId.ToString(), "Create", null, ToOutcomeResponse(entity));
 
         return Ok(new ApiResponse<IdpStrategicOutcomeResponse>(true, ToOutcomeResponse(entity)));
     }
@@ -714,7 +714,7 @@ public class IdpController : ControllerBase
             .Include(item => item.StrategicOwnerUser)
             .FirstAsync(item => item.Id == entity.Id);
 
-        await WriteIdpAudit(user.Id, "IdpStrategicObjective", entity.Id.ToString(), "Create", null, ToObjectiveResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpStrategicObjective", entity.PublicId.ToString(), "Create", null, ToObjectiveResponse(entity));
         return Ok(new ApiResponse<IdpStrategicObjectiveResponse>(true, ToObjectiveResponse(entity)));
     }
 
@@ -722,7 +722,26 @@ public class IdpController : ControllerBase
     [Authorize(Policy = "Permission:IDP.Hierarchy.Manage")]
     public async Task<ActionResult<ApiResponse<IdpDevelopmentPriorityResponse>>> CreatePriority([FromBody] CreateIdpDevelopmentPriorityRequest request)
     {
-        return Ok(new ApiResponse<IdpDevelopmentPriorityResponse>(true, ToPriorityResponse(await CreateEntity(request))));
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpDevelopmentPriorityResponse>(false, null, "User not found"));
+        if (!await _context.IdpStrategicObjectives.AnyAsync(item => item.Id == request.IdpStrategicObjectiveId))
+            return NotFound(new ApiResponse<IdpDevelopmentPriorityResponse>(false, null, "Strategic objective not found"));
+
+        var entity = new IdpDevelopmentPriority
+        {
+            IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
+            PriorityCode = string.IsNullOrWhiteSpace(request.PriorityCode)
+                ? $"PRIORITY-{Guid.NewGuid():N}"[..17].ToUpperInvariant()
+                : request.PriorityCode.Trim().ToUpperInvariant(),
+            Name = request.Name.Trim(),
+            Description = request.Description.Trim(),
+            SortOrder = request.SortOrder
+        };
+        _context.IdpDevelopmentPriorities.Add(entity);
+        await _context.SaveChangesAsync();
+        var response = ToPriorityResponse(entity);
+        await WriteIdpAudit(user.Id, "IdpDevelopmentPriority", entity.PublicId.ToString(), "Create", null, response);
+        return Ok(new ApiResponse<IdpDevelopmentPriorityResponse>(true, response));
     }
 
     [HttpPost("programmes")]
@@ -751,7 +770,7 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpProgrammes.Include(item => item.ResponsibleDepartment).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpProgramme", entity.Id.ToString(), "Create", null, ToProgrammeResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpProgramme", entity.PublicId.ToString(), "Create", null, ToProgrammeResponse(entity));
         return Ok(new ApiResponse<IdpProgrammeResponse>(true, ToProgrammeResponse(entity)));
     }
 
@@ -790,7 +809,7 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpProjects.Include(item => item.Department).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpProject", entity.Id.ToString(), "Create", null, ToProjectResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpProject", entity.PublicId.ToString(), "Create", null, ToProjectResponse(entity));
         return Ok(new ApiResponse<IdpProjectResponse>(true, ToProjectResponse(entity)));
     }
 
@@ -822,7 +841,7 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpKpis.Include(item => item.ResponsibleDepartment).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpKpi", entity.Id.ToString(), "Create", null, ToKpiResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpKpi", entity.PublicId.ToString(), "Create", null, ToKpiResponse(entity));
         return Ok(new ApiResponse<IdpKpiResponse>(true, ToKpiResponse(entity)));
     }
 
@@ -847,7 +866,7 @@ public class IdpController : ControllerBase
 
         _context.IdpAnnualTargets.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.Id.ToString(), "Create", null, ToAnnualTargetResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.PublicId.ToString(), "Create", null, ToAnnualTargetResponse(entity));
 
         return Ok(new ApiResponse<IdpAnnualTargetResponse>(true, ToAnnualTargetResponse(entity)));
     }
@@ -878,7 +897,7 @@ public class IdpController : ControllerBase
 
         _context.IdpAlignmentLinks.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpAlignmentLink", entity.Id.ToString(), "Create", null, ToAlignmentResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpAlignmentLink", entity.PublicId.ToString(), "Create", null, ToAlignmentResponse(entity));
 
         return Ok(new ApiResponse<IdpAlignmentLinkResponse>(true, ToAlignmentResponse(entity)));
     }
@@ -914,7 +933,7 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpCommunitySessions.Include(item => item.Ward).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.Id.ToString(), "Create", null, ToCommunitySessionResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null, ToCommunitySessionResponse(entity));
 
         return Ok(new ApiResponse<IdpCommunitySessionResponse>(true, ToCommunitySessionResponse(entity)));
     }
@@ -940,7 +959,7 @@ public class IdpController : ControllerBase
 
         _context.IdpCommunityNeeds.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpCommunityNeed", entity.Id.ToString(), "Create", null, ToCommunityNeedResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpCommunityNeed", entity.PublicId.ToString(), "Create", null, ToCommunityNeedResponse(entity));
 
         return Ok(new ApiResponse<IdpCommunityNeedResponse>(true, ToCommunityNeedResponse(entity)));
     }
@@ -969,7 +988,7 @@ public class IdpController : ControllerBase
 
         _context.IdpWardInputs.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpWardInput", entity.Id.ToString(), "Create", null, ToWardInputResponse(entity, ward.Name));
+        await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null, ToWardInputResponse(entity, ward.Name));
 
         return Ok(new ApiResponse<IdpWardInputResponse>(true, ToWardInputResponse(entity, ward.Name)));
     }
@@ -996,7 +1015,7 @@ public class IdpController : ControllerBase
 
         _context.IdpStakeholderEngagements.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpStakeholderEngagement", entity.Id.ToString(), "Create", null, ToStakeholderResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpStakeholderEngagement", entity.PublicId.ToString(), "Create", null, ToStakeholderResponse(entity));
 
         return Ok(new ApiResponse<IdpStakeholderEngagementResponse>(true, ToStakeholderResponse(entity)));
     }
@@ -1026,7 +1045,7 @@ public class IdpController : ControllerBase
 
         _context.IdpRiskLinks.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.Id.ToString(), "Create", null, ToRiskResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.PublicId.ToString(), "Create", null, ToRiskResponse(entity));
 
         return Ok(new ApiResponse<IdpRiskLinkResponse>(true, ToRiskResponse(entity)));
     }
@@ -1052,7 +1071,7 @@ public class IdpController : ControllerBase
 
         _context.IdpBudgetSnapshots.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpBudgetSnapshot", entity.Id.ToString(), "Create", null, ToBudgetSnapshotResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpBudgetSnapshot", entity.PublicId.ToString(), "Create", null, ToBudgetSnapshotResponse(entity));
 
         return Ok(new ApiResponse<IdpBudgetSnapshotResponse>(true, ToBudgetSnapshotResponse(entity)));
     }
@@ -1291,7 +1310,7 @@ public class IdpController : ControllerBase
 
         _context.IdpCollaborationComments.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpComment", entity.Id.ToString(), "Create", null, ToCommentResponse(entity, user.FullName));
+        await WriteIdpAudit(user.Id, "IdpComment", entity.PublicId.ToString(), "Create", null, ToCommentResponse(entity, user.FullName));
 
         return Ok(new ApiResponse<IdpCommentResponse>(true, ToCommentResponse(entity, user.FullName)));
     }
@@ -1330,49 +1349,62 @@ public class IdpController : ControllerBase
             "IDP task assigned",
             $"You were assigned IDP task '{entity.Title}'.",
             "IdpTask",
-            entity.Id.ToString());
+            entity.PublicId.ToString());
 
-        await WriteIdpAudit(user.Id, "IdpTask", entity.Id.ToString(), "Create", null, ToTaskResponse(entity, assignee.FullName, user.FullName));
+        await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), "Create", null, ToTaskResponse(entity, assignee.FullName, user.FullName));
         return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, assignee.FullName, user.FullName)));
     }
 
     [HttpPatch("tasks/{id:long}/complete")]
     [Authorize(Policy = "Permission:IDP.Collaboration.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpTaskResponse>>> CompleteTask(long id, [FromBody] CompleteIdpTaskRequest request)
+    public ActionResult<ApiResponse<IdpTaskResponse>> CompleteTask(long id, [FromBody] CompleteIdpTaskRequest request)
+    {
+        _ = id;
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpTaskResponse>(false, null,
+            "This numeric-ID task route is retired. Use /api/v1/idp/tasks/{taskPublicId}/completion."));
+    }
+
+    [HttpPatch("~/api/v1/idp/tasks/{taskPublicId:guid}/completion")]
+    [Authorize(Policy = "Permission:IDP.Collaboration.Manage")]
+    public async Task<ActionResult<ApiResponse<IdpTaskResponse>>> CompleteTaskByPublicId(Guid taskPublicId, [FromBody] CompleteIdpTaskRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpTaskResponse>(false, null, "User not found"));
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length is < 5 or > 500)
+            return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A completion reason between 5 and 500 characters is required."));
 
-        var entity = await _context.IdpTaskAssignments.FirstOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IdpTaskAssignments.FirstOrDefaultAsync(item => item.PublicId == taskPublicId);
         if (entity == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "Task not found"));
+        if (string.IsNullOrWhiteSpace(request.RowVersion))
+            return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
+        try
+        {
+            _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = Convert.FromBase64String(request.RowVersion);
+        }
+        catch (FormatException)
+        {
+            return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
+        }
 
+        var before = ToTaskResponse(entity, null, null);
         entity.IsCompleted = request.IsCompleted;
         entity.CompletedAt = request.IsCompleted ? DateTime.UtcNow : null;
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new ApiResponse<IdpTaskResponse>(false, null, "The task changed since it was loaded. Refresh and try again."));
+        }
 
         var assignee = await _userManager.FindByIdAsync(entity.AssignedToUserId);
         var assigner = await _userManager.FindByIdAsync(entity.AssignedByUserId);
 
-        await WriteIdpAudit(user.Id, "IdpTask", entity.Id.ToString(), "Complete", null, ToTaskResponse(entity, assignee?.FullName, assigner?.FullName));
+        await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
+            new { Task = before, Reason = request.Reason.Trim() }, ToTaskResponse(entity, assignee?.FullName, assigner?.FullName));
         return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, assignee?.FullName, assigner?.FullName)));
-    }
-
-    private async Task<IdpDevelopmentPriority> CreateEntity(CreateIdpDevelopmentPriorityRequest request)
-    {
-        var entity = new IdpDevelopmentPriority
-        {
-            IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
-            PriorityCode = string.IsNullOrWhiteSpace(request.PriorityCode)
-                ? $"PRIORITY-{Guid.NewGuid():N}"[..17].ToUpperInvariant()
-                : request.PriorityCode.Trim().ToUpperInvariant(),
-            Name = request.Name.Trim(),
-            Description = request.Description.Trim(),
-            SortOrder = request.SortOrder
-        };
-
-        _context.IdpDevelopmentPriorities.Add(entity);
-        await _context.SaveChangesAsync();
-        return entity;
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()
@@ -1513,28 +1545,28 @@ public class IdpController : ControllerBase
             Convert.ToBase64String(kpi.RowVersion));
 
     private static IdpAnnualTargetResponse ToAnnualTargetResponse(IdpAnnualTarget annualTarget) =>
-        new(annualTarget.Id, annualTarget.IdpKpiId, annualTarget.FinancialYear, annualTarget.TargetValue, annualTarget.ActualValue, annualTarget.ProgressComment);
+        new(annualTarget.PublicId, annualTarget.IdpKpiId, annualTarget.FinancialYear, annualTarget.TargetValue, annualTarget.ActualValue, annualTarget.ProgressComment, Convert.ToBase64String(annualTarget.RowVersion));
 
     private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link) =>
-        new(link.Id, link.IdpStrategicObjectiveId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes);
+        new(link.PublicId, link.IdpStrategicObjectiveId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
 
     private static IdpCommunitySessionResponse ToCommunitySessionResponse(IdpCommunitySession session) =>
-        new(session.Id, session.IdpPlanId, session.ParticipationType.ToString(), session.SessionDate, session.Venue, session.WardId, session.Ward?.Name, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath);
+        new(session.PublicId, session.IdpPlanId, session.ParticipationType.ToString(), session.SessionDate, session.Venue, session.WardId, session.Ward?.Name, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath, Convert.ToBase64String(session.RowVersion));
 
     private static IdpCommunityNeedResponse ToCommunityNeedResponse(IdpCommunityNeed need) =>
-        new(need.Id, need.IdpCommunitySessionId, need.IssueCategory, need.Description, need.PriorityLevel, need.ProposedIntervention);
+        new(need.PublicId, need.IdpCommunitySessionId, need.IssueCategory, need.Description, need.PriorityLevel, need.ProposedIntervention, Convert.ToBase64String(need.RowVersion));
 
     private static IdpWardInputResponse ToWardInputResponse(IdpWardInput wardInput, string wardName) =>
-        new(wardInput.Id, wardInput.IdpPlanId, wardInput.WardId, wardName, wardInput.WardPlanSummary, wardInput.WardPriorities, wardInput.WardProjects);
+        new(wardInput.PublicId, wardInput.IdpPlanId, wardInput.WardId, wardName, wardInput.WardPlanSummary, wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
 
     private static IdpStakeholderEngagementResponse ToStakeholderResponse(IdpStakeholderEngagement stakeholder) =>
-        new(stakeholder.Id, stakeholder.IdpCommunitySessionId, stakeholder.StakeholderType, stakeholder.StakeholderName, stakeholder.ContactPerson, stakeholder.ContactEmail, stakeholder.KeyInput);
+        new(stakeholder.PublicId, stakeholder.IdpCommunitySessionId, stakeholder.StakeholderType, stakeholder.StakeholderName, stakeholder.ContactPerson, stakeholder.ContactEmail, stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
 
     private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk) =>
-        new(risk.Id, risk.IdpStrategicObjectiveId, risk.IdpProjectId, risk.IdpKpiId, risk.RiskReference, risk.RiskTitle, risk.MitigationPlan, risk.RiskLevel.ToString());
+        new(risk.PublicId, risk.IdpStrategicObjectiveId, risk.IdpProjectId, risk.IdpKpiId, risk.RiskReference, risk.RiskTitle, risk.MitigationPlan, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));
 
     private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot) =>
-        new(snapshot.Id, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear, snapshot.PlannedBudget, snapshot.ApprovedBudget, snapshot.ActualExpenditure, snapshot.SourceSystem, snapshot.CapturedAt);
+        new(snapshot.PublicId, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear, snapshot.PlannedBudget, snapshot.ApprovedBudget, snapshot.ActualExpenditure, snapshot.SourceSystem, snapshot.CapturedAt);
 
     private IdpDocumentResponse ToDocumentResponse(IdpDocument document)
     {
@@ -1571,10 +1603,10 @@ public class IdpController : ControllerBase
     }
 
     private static IdpCommentResponse ToCommentResponse(IdpCollaborationComment comment, string? commentedByName) =>
-        new(comment.Id, comment.IdpPlanId, comment.IdpPlanVersionId, comment.EntityName, comment.EntityId, comment.Comment, comment.CommentedByUserId, commentedByName, comment.CommentedAt);
+        new(comment.PublicId, comment.IdpPlanId, comment.IdpPlanVersionId, comment.EntityName, comment.EntityId, comment.Comment, comment.CommentedByUserId, commentedByName, comment.CommentedAt);
 
     private static IdpTaskResponse ToTaskResponse(IdpTaskAssignment task, string? assignedToName, string? assignedByName) =>
-        new(task.Id, task.IdpPlanId, task.IdpPlanVersionId, task.Title, task.Description, task.AssignedToUserId, assignedToName, task.AssignedByUserId, assignedByName, task.DueDate, task.IsCompleted, task.CompletedAt);
+        new(task.PublicId, task.IdpPlanId, task.IdpPlanVersionId, task.Title, task.Description, task.AssignedToUserId, assignedToName, task.AssignedByUserId, assignedByName, task.DueDate, task.IsCompleted, task.CompletedAt, Convert.ToBase64String(task.RowVersion));
 
     private sealed class IdpHierarchyPathRow
     {

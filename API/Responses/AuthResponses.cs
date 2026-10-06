@@ -792,18 +792,19 @@ public record IdpImportRowResponse(
     string? SuppliedValue,
     string? ErrorMessage);
 
-public record IdpAnnualTargetResponse(int Id, int IdpKpiId, int FinancialYear, decimal TargetValue, decimal? ActualValue, string? ProgressComment);
+public record IdpAnnualTargetResponse(Guid PublicId, int IdpKpiId, int FinancialYear, decimal TargetValue, decimal? ActualValue, string? ProgressComment, string RowVersion);
 
 public record IdpAlignmentLinkResponse(
-    long Id,
+    Guid PublicId,
     int IdpStrategicObjectiveId,
     string FrameworkType,
     string FrameworkReferenceCode,
     string FrameworkReferenceTitle,
-    string? Notes);
+    string? Notes,
+    string RowVersion);
 
 public record IdpCommunitySessionResponse(
-    int Id,
+    Guid PublicId,
     int IdpPlanId,
     string ParticipationType,
     DateTime SessionDate,
@@ -812,33 +813,36 @@ public record IdpCommunitySessionResponse(
     string? WardName,
     int ParticipantsCount,
     string? AttendanceRegisterPath,
-    string? MinutesPath);
+    string? MinutesPath,
+    string RowVersion);
 
-public record IdpCommunityNeedResponse(int Id, int IdpCommunitySessionId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention);
+public record IdpCommunityNeedResponse(Guid PublicId, int IdpCommunitySessionId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
 
-public record IdpWardInputResponse(int Id, int IdpPlanId, int WardId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects);
+public record IdpWardInputResponse(Guid PublicId, int IdpPlanId, int WardId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
 
 public record IdpStakeholderEngagementResponse(
-    int Id,
+    Guid PublicId,
     int IdpCommunitySessionId,
     string StakeholderType,
     string StakeholderName,
     string? ContactPerson,
     string? ContactEmail,
-    string? KeyInput);
+    string? KeyInput,
+    string RowVersion);
 
 public record IdpRiskLinkResponse(
-    long Id,
+    Guid PublicId,
     int? IdpStrategicObjectiveId,
     int? IdpProjectId,
     int? IdpKpiId,
     string RiskReference,
     string RiskTitle,
     string? MitigationPlan,
-    string RiskLevel);
+    string RiskLevel,
+    string RowVersion);
 
 public record IdpBudgetSnapshotResponse(
-    long Id,
+    Guid PublicId,
     int? IdpStrategicObjectiveId,
     int? IdpProjectId,
     int FinancialYear,
@@ -877,7 +881,7 @@ public record IdpDocumentResponse(
     string RowVersion);
 
 public record IdpCommentResponse(
-    long Id,
+    Guid PublicId,
     int IdpPlanId,
     int? IdpPlanVersionId,
     string EntityName,
@@ -888,7 +892,7 @@ public record IdpCommentResponse(
     DateTime CommentedAt);
 
 public record IdpTaskResponse(
-    long Id,
+    Guid PublicId,
     int IdpPlanId,
     int? IdpPlanVersionId,
     string Title,
@@ -899,7 +903,8 @@ public record IdpTaskResponse(
     string? AssignedByName,
     DateTime DueDate,
     bool IsCompleted,
-    DateTime? CompletedAt);
+    DateTime? CompletedAt,
+    string RowVersion);
 
 public record IdpDashboardResponse(
     int PlanId,

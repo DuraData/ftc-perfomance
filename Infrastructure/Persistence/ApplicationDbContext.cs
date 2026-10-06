@@ -1380,6 +1380,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany()
             .HasForeignKey(changeLog => changeLog.ChangedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpChangeLog>().HasIndex(changeLog => changeLog.PublicId).IsUnique();
 
         builder.Entity<IdpStrategicOutcome>()
             .HasIndex(outcome => new { outcome.IdpPlanId, outcome.Code })
@@ -1579,6 +1580,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IdpAnnualTarget>()
             .HasIndex(annualTarget => new { annualTarget.IdpKpiId, annualTarget.FinancialYear })
             .IsUnique();
+        builder.Entity<IdpAnnualTarget>().HasIndex(annualTarget => annualTarget.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpAnnualTarget>().Property(annualTarget => annualTarget.RowVersion));
 
         builder.Entity<IdpAnnualTarget>()
             .HasOne(annualTarget => annualTarget.IdpKpi)
@@ -1599,6 +1602,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany(objective => objective.AlignmentLinks)
             .HasForeignKey(link => link.IdpStrategicObjectiveId)
             .OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<IdpAlignmentLink>().HasIndex(link => link.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpAlignmentLink>().Property(link => link.RowVersion));
 
         builder.Entity<IdpCommunitySession>()
             .HasOne(session => session.IdpPlan)
@@ -1611,12 +1616,16 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany()
             .HasForeignKey(session => session.WardId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpCommunitySession>().HasIndex(session => session.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpCommunitySession>().Property(session => session.RowVersion));
 
         builder.Entity<IdpCommunityNeed>()
             .HasOne(need => need.IdpCommunitySession)
             .WithMany(session => session.CommunityNeeds)
             .HasForeignKey(need => need.IdpCommunitySessionId)
             .OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<IdpCommunityNeed>().HasIndex(need => need.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpCommunityNeed>().Property(need => need.RowVersion));
 
         builder.Entity<IdpWardInput>()
             .HasIndex(wardInput => new { wardInput.IdpPlanId, wardInput.WardId })
@@ -1633,18 +1642,24 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany()
             .HasForeignKey(wardInput => wardInput.WardId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpWardInput>().HasIndex(wardInput => wardInput.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpWardInput>().Property(wardInput => wardInput.RowVersion));
 
         builder.Entity<IdpStakeholderEngagement>()
             .HasOne(engagement => engagement.IdpCommunitySession)
             .WithMany(session => session.StakeholderEngagements)
             .HasForeignKey(engagement => engagement.IdpCommunitySessionId)
             .OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<IdpStakeholderEngagement>().HasIndex(engagement => engagement.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpStakeholderEngagement>().Property(engagement => engagement.RowVersion));
 
         builder.Entity<IdpRiskLink>()
             .HasOne(riskLink => riskLink.IdpStrategicObjective)
             .WithMany(objective => objective.RiskLinks)
             .HasForeignKey(riskLink => riskLink.IdpStrategicObjectiveId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpRiskLink>().HasIndex(riskLink => riskLink.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpRiskLink>().Property(riskLink => riskLink.RowVersion));
 
         builder.Entity<IdpRiskLink>()
             .HasOne(riskLink => riskLink.IdpProject)
@@ -1681,6 +1696,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IdpBudgetSnapshot>()
             .Property(snapshot => snapshot.ActualExpenditure)
             .HasPrecision(18, 2);
+        builder.Entity<IdpBudgetSnapshot>().HasIndex(snapshot => snapshot.PublicId).IsUnique();
 
         builder.Entity<IdpDocument>()
             .HasOne(document => document.IdpPlan)
@@ -1715,6 +1731,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany()
             .HasForeignKey(comment => comment.IdpPlanVersionId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpCollaborationComment>().HasIndex(comment => comment.PublicId).IsUnique();
 
         builder.Entity<IdpCollaborationComment>()
             .HasOne(comment => comment.CommentedByUser)
@@ -1733,6 +1750,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany()
             .HasForeignKey(task => task.IdpPlanVersionId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<IdpTaskAssignment>().HasIndex(task => task.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<IdpTaskAssignment>().Property(task => task.RowVersion));
 
         builder.Entity<IdpTaskAssignment>()
             .HasOne(task => task.AssignedToUser)
@@ -2148,6 +2167,12 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Login audit history is append-only.");
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
+        if (ChangeTracker.Entries<IdpChangeLog>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpBudgetSnapshot>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpCollaborationComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("IDP change, budget-snapshot, and collaboration-comment history is append-only.");
+        if (ChangeTracker.Entries<IdpTaskAssignment>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("IDP task history cannot be hard deleted.");
         if (ChangeTracker.Entries<OpmsImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("OPMS import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<LegacySubmissionValueArchive>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

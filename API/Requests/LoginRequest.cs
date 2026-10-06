@@ -569,4 +569,4 @@ public record CreateIdpTaskRequest(
     string AssignedToUserId,
     DateTime DueDate);
 
-public record CompleteIdpTaskRequest(bool IsCompleted);
+public record CompleteIdpTaskRequest(bool IsCompleted, string RowVersion, string Reason);

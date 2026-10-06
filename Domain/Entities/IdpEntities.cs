@@ -157,6 +157,7 @@ public class IdpPlanVersion
 public class IdpChangeLog
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanVersionId { get; set; }
     public string EntityName { get; set; } = string.Empty;
     public string EntityId { get; set; } = string.Empty;
@@ -349,11 +350,13 @@ public class IdpImportRow
 public class IdpAnnualTarget
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpKpiId { get; set; }
     public int FinancialYear { get; set; }
     public decimal TargetValue { get; set; }
     public decimal? ActualValue { get; set; }
     public string? ProgressComment { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpKpi IdpKpi { get; set; } = null!;
 }
@@ -361,11 +364,13 @@ public class IdpAnnualTarget
 public class IdpAlignmentLink
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpStrategicObjectiveId { get; set; }
     public AlignmentFrameworkType FrameworkType { get; set; }
     public string FrameworkReferenceCode { get; set; } = string.Empty;
     public string FrameworkReferenceTitle { get; set; } = string.Empty;
     public string? Notes { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpStrategicObjective IdpStrategicObjective { get; set; } = null!;
 }
@@ -373,6 +378,7 @@ public class IdpAlignmentLink
 public class IdpCommunitySession
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
     public IdpParticipationType ParticipationType { get; set; } = IdpParticipationType.PublicMeeting;
     public DateTime SessionDate { get; set; }
@@ -381,6 +387,7 @@ public class IdpCommunitySession
     public int ParticipantsCount { get; set; }
     public string? AttendanceRegisterPath { get; set; }
     public string? MinutesPath { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpPlan IdpPlan { get; set; } = null!;
     public Ward? Ward { get; set; }
@@ -391,11 +398,13 @@ public class IdpCommunitySession
 public class IdpCommunityNeed
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpCommunitySessionId { get; set; }
     public string IssueCategory { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string PriorityLevel { get; set; } = "Medium";
     public string? ProposedIntervention { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpCommunitySession IdpCommunitySession { get; set; } = null!;
 }
@@ -403,11 +412,13 @@ public class IdpCommunityNeed
 public class IdpWardInput
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
     public int WardId { get; set; }
     public string WardPlanSummary { get; set; } = string.Empty;
     public string WardPriorities { get; set; } = string.Empty;
     public string WardProjects { get; set; } = string.Empty;
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpPlan IdpPlan { get; set; } = null!;
     public Ward Ward { get; set; } = null!;
@@ -416,12 +427,14 @@ public class IdpWardInput
 public class IdpStakeholderEngagement
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpCommunitySessionId { get; set; }
     public string StakeholderType { get; set; } = string.Empty;
     public string StakeholderName { get; set; } = string.Empty;
     public string? ContactPerson { get; set; }
     public string? ContactEmail { get; set; }
     public string? KeyInput { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpCommunitySession IdpCommunitySession { get; set; } = null!;
 }
@@ -429,6 +442,7 @@ public class IdpStakeholderEngagement
 public class IdpRiskLink
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int? IdpStrategicObjectiveId { get; set; }
     public int? IdpProjectId { get; set; }
     public int? IdpKpiId { get; set; }
@@ -436,6 +450,7 @@ public class IdpRiskLink
     public string RiskTitle { get; set; } = string.Empty;
     public string? MitigationPlan { get; set; }
     public IdpRiskLevel RiskLevel { get; set; } = IdpRiskLevel.Medium;
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpStrategicObjective? IdpStrategicObjective { get; set; }
     public IdpProject? IdpProject { get; set; }
@@ -445,6 +460,7 @@ public class IdpRiskLink
 public class IdpBudgetSnapshot
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int? IdpStrategicObjectiveId { get; set; }
     public int? IdpProjectId { get; set; }
     public int FinancialYear { get; set; }
@@ -485,6 +501,7 @@ public class IdpDocument
 public class IdpCollaborationComment
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
     public int? IdpPlanVersionId { get; set; }
     public string EntityName { get; set; } = string.Empty;
@@ -501,6 +518,7 @@ public class IdpCollaborationComment
 public class IdpTaskAssignment
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public int IdpPlanId { get; set; }
     public int? IdpPlanVersionId { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -510,6 +528,7 @@ public class IdpTaskAssignment
     public DateTime DueDate { get; set; }
     public bool IsCompleted { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public IdpPlan IdpPlan { get; set; } = null!;
     public IdpPlanVersion? IdpPlanVersion { get; set; }

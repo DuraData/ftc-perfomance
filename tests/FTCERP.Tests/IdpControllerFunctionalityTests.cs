@@ -684,7 +684,7 @@ public class IdpControllerFunctionalityTests
     [Fact]
     public async Task CreateTask_AndCompleteTask_ShouldPersistAndNotify()
     {
-        await using var context = IdpTestFixture.CreateContext();
+        await using var context = IdpTestFixture.CreateRelationalContext();
         var creator = IdpTestFixture.CreateUser("creator");
         var assignee = IdpTestFixture.CreateUser("assignee", "Assigned", "Person");
         context.Users.AddRange(creator, assignee);
@@ -720,9 +720,12 @@ public class IdpControllerFunctionalityTests
             assignee.Id,
             DateTime.UtcNow.AddDays(7)));
 
-        createResult.Result.Should().BeOfType<OkObjectResult>();
+        var createPayload = createResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<IdpTaskResponse>>().Subject.Data!;
         var task = await context.IdpTaskAssignments.SingleAsync();
         task.IsCompleted.Should().BeFalse();
+        createPayload.PublicId.Should().Be(task.PublicId);
+        createPayload.RowVersion.Should().Be(Convert.ToBase64String(task.RowVersion));
 
         workflow.Verify(w => w.CreateNotificationAsync(
             assignee.Id,
@@ -730,14 +733,29 @@ public class IdpControllerFunctionalityTests
             It.IsAny<string>(),
             It.IsAny<string>(),
             "IdpTask",
-            task.Id.ToString()), Times.Once);
+            task.PublicId.ToString()), Times.Once);
 
-        var completeResult = await controller.CompleteTask(task.Id, new CompleteIdpTaskRequest(true));
+        task.PublicId.Should().NotBeEmpty();
+        task.RowVersion.Should().NotBeEmpty();
+        var originalVersion = Convert.ToBase64String(task.RowVersion);
+        var legacyResult = controller.CompleteTask(task.Id, new CompleteIdpTaskRequest(true, originalVersion, "Reviewed and accepted"));
+        legacyResult.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+
+        var completeResult = await controller.CompleteTaskByPublicId(task.PublicId,
+            new CompleteIdpTaskRequest(true, originalVersion, "Reviewed and accepted"));
         completeResult.Result.Should().BeOfType<OkObjectResult>();
 
         var updated = await context.IdpTaskAssignments.SingleAsync();
         updated.IsCompleted.Should().BeTrue();
         updated.CompletedAt.Should().NotBeNull();
+        updated.RowVersion.Should().NotEqual(Convert.FromBase64String(originalVersion));
+        workflow.Verify(service => service.WriteAuditTrailAsync(
+            "IdpTask", task.PublicId.ToString(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), creator.Id, It.IsAny<string?>()),
+            Times.Exactly(2));
+
+        var staleResult = await controller.CompleteTaskByPublicId(task.PublicId,
+            new CompleteIdpTaskRequest(false, originalVersion, "Returned for further work"));
+        staleResult.Result.Should().BeOfType<ConflictObjectResult>();
     }
 
     [Fact]
