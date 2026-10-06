@@ -60,6 +60,28 @@ public class TidControllerTests
         page.TotalCount.Should().Be(1);
         page.Items.Should().ContainSingle().Which.CurrentVersion!.IndicatorDefinition.Should().Be("Revised definition");
         controller.GetRegister().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var filteredHistory = Payload(await controller.GetHistoryPage(setup.Target.PublicId, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "Revised", SortBy = "versionNumber", SortDirection = "desc"
+        }));
+        filteredHistory.TotalCount.Should().Be(1);
+        filteredHistory.Items.Should().ContainSingle().Which.PublicId.Should().Be(second.PublicId);
+        var firstHistoryPage = Payload(await controller.GetHistoryPage(setup.Target.PublicId, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, SortBy = "versionNumber", SortDirection = "desc"
+        }));
+        firstHistoryPage.TotalCount.Should().Be(2);
+        firstHistoryPage.TotalPages.Should().Be(2);
+        firstHistoryPage.Items.Should().ContainSingle().Which.PublicId.Should().Be(second.PublicId);
+        var secondHistoryPage = Payload(await controller.GetHistoryPage(setup.Target.PublicId, new PagedQueryRequest
+        {
+            Page = 2, PageSize = 1, SortBy = "versionNumber", SortDirection = "desc"
+        }));
+        secondHistoryPage.Items.Should().ContainSingle().Which.PublicId.Should().Be(first.PublicId);
+        (await controller.GetHistoryPage(setup.Target.PublicId, new PagedQueryRequest { SortBy = "raw-sql" })).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        controller.GetHistory(setup.Target.PublicId).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         var configuration = Payload(await controller.GetConfiguration());
         configuration.MissingTidCount.Should().Be(0);
 
@@ -164,6 +186,8 @@ public class TidControllerTests
         var result = await controller.CreateVersion(setup.Target.PublicId, Request("Denied", DateTime.UtcNow.Date));
 
         result.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await controller.GetHistoryPage(setup.Target.PublicId, new PagedQueryRequest())).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         (await context.TechnicalIndicatorDescriptions.CountAsync()).Should().Be(0);
     }
 

@@ -4,7 +4,7 @@ import {
   downloadTidSourceDocument,
   getMunicipalEmployeesPage,
   getTidConfiguration,
-  getTidHistory,
+  getTidHistoryPage,
   getTidRegisterPage,
   rescanTidSourceDocument,
   updateTidConfiguration,
@@ -40,6 +40,11 @@ export function TidWorkspace() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [selected, setSelected] = useState<TidRegisterItem | null>(null);
   const [history, setHistory] = useState<TidVersion[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalCount, setHistoryTotalCount] = useState(0);
+  const [historyTotalPages, setHistoryTotalPages] = useState(0);
+  const [historySearchInput, setHistorySearchInput] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -83,15 +88,24 @@ export function TidWorkspace() {
     });
   }, [canCreate, canUpdate, employeePage, employeeSearch]);
 
-  const selectItem = async (item: TidRegisterItem) => {
+  const selectItem = useCallback(async (item: TidRegisterItem, requestedPage = 1, requestedSearch = '') => {
     setSelected(item);
-    const result = await getTidHistory(item.targetPublicId);
+    setHistoryPage(requestedPage);
+    if (requestedPage === 1 && !requestedSearch) {
+      setHistorySearch('');
+      setHistorySearchInput('');
+    }
+    const result = await getTidHistoryPage(item.targetPublicId, {
+      page: requestedPage, pageSize: 10, search: requestedSearch || undefined, sortBy: 'versionNumber', sortDirection: 'desc',
+    });
     if (!result.success) {
       pushToast('error', result.message ?? 'Unable to load TID history.');
       return;
     }
-    const versions = result.data ?? [];
+    const versions = result.data?.items ?? [];
     setHistory(versions);
+    setHistoryTotalCount(result.data?.totalCount ?? 0);
+    setHistoryTotalPages(result.data?.totalPages ?? 0);
     const current = versions.find(version => version.isCurrent) ?? item.currentVersion;
     setDraft(current ? {
       indicatorDefinition: current.indicatorDefinition,
@@ -110,7 +124,17 @@ export function TidWorkspace() {
       previousVersionRowVersion: current.rowVersion,
       reason: '',
     } : emptyDraft());
-  };
+  }, [pushToast]);
+
+  useEffect(() => {
+    const normalized = historySearchInput.trim();
+    if (normalized === historySearch) return;
+    const timeout = window.setTimeout(() => {
+      setHistorySearch(normalized);
+      if (selected) void selectItem(selected, 1, normalized);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [historySearch, historySearchInput, selectItem, selected]);
 
   const saveConfiguration = async () => {
     if (!configuration || !configurationReason.trim()) return pushToast('error', 'A configuration reason is required.');
@@ -254,7 +278,7 @@ export function TidWorkspace() {
                   ) : null}
 
                   <Card>
-                    <h3 className="font-semibold">Version history</h3>
+                    <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="font-semibold">Version history</h3><p className="text-xs text-secondary-500">{historyTotalCount} immutable version{historyTotalCount === 1 ? '' : 's'}</p></div><label className="text-xs text-secondary-600">Search history<input aria-label="Search TID version history" className={fieldClass} value={historySearchInput} onChange={event => setHistorySearchInput(event.target.value)} /></label></div>
                     <div className="mt-3 space-y-3">
                       {history.map(version => (
                         <div key={version.publicId} className="rounded border border-secondary-200 p-3 text-sm dark:border-secondary-700">
@@ -267,6 +291,7 @@ export function TidWorkspace() {
                       ))}
                       {!history.length ? <p className="text-sm text-secondary-500">No TID version exists for this KPI.</p> : null}
                     </div>
+                    {historyTotalPages > 1 ? <div className="mt-3 flex items-center justify-between gap-2 text-xs"><Button size="sm" variant="outline" disabled={busy || historyPage <= 1} onClick={() => selected && void selectItem(selected, historyPage - 1, historySearch)}>Previous versions</Button><span>Page {historyPage} of {historyTotalPages}</span><Button size="sm" variant="outline" disabled={busy || historyPage >= historyTotalPages} onClick={() => selected && void selectItem(selected, historyPage + 1, historySearch)}>Next versions</Button></div> : null}
                   </Card>
                 </>
               )}

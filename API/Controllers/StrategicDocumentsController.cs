@@ -229,13 +229,44 @@ public sealed class StrategicDocumentsController : ControllerBase
         };
 
     [HttpGet("families/{familyId:guid}/versions")]
-    public async Task<ActionResult<ApiResponse<StrategicDocumentResponse[]>>> GetVersionHistory(Guid familyId)
+    public ActionResult<ApiResponse<StrategicDocumentResponse[]>> GetVersionHistory(Guid familyId) =>
+        StatusCode(StatusCodes.Status410Gone, Fail<StrategicDocumentResponse[]>(
+            $"This unbounded strategic-document version-history route is retired. Use /api/v1/strategic-documents/families/{familyId}/versions/page."));
+
+    [HttpGet("families/{familyId:guid}/versions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<StrategicDocumentResponse>>>> GetVersionHistoryPage(
+        Guid familyId,
+        [FromQuery] PagedQueryRequest request)
     {
-        var session = await SessionAsync<StrategicDocumentResponse[]>("STRATEGIC_DOCUMENT.UPDATE");
+        var session = await SessionAsync<PagedResponse<StrategicDocumentResponse>>("STRATEGIC_DOCUMENT.UPDATE");
         if (session.Error != null) return session.Error;
-        var rows = await DocumentQuery().Where(item => item.DocumentFamilyId == familyId).OrderByDescending(item => item.VersionNumber).ToArrayAsync();
-        if (rows.Length == 0) return NotFound(Fail<StrategicDocumentResponse[]>("Strategic-document family not found."));
-        return Ok(new ApiResponse<StrategicDocumentResponse[]>(true, rows.Select(item => ToResponse(item, true)).ToArray()));
+        var sortBy = request.SortBy == null ? "versionnumber" : request.NormalizedSortBy;
+        if (sortBy is not ("versionnumber" or "createdat" or "documentdate" or "title"))
+            return BadRequest(Fail<PagedResponse<StrategicDocumentResponse>>(
+                "SortBy must be versionNumber, createdAt, documentDate, or title."));
+        var query = DocumentQuery().Where(item => item.DocumentFamilyId == familyId);
+        if (!await query.AnyAsync()) return NotFound(Fail<PagedResponse<StrategicDocumentResponse>>("Strategic-document family not found."));
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Title.Contains(request.NormalizedSearch)
+                || (item.Description != null && item.Description.Contains(request.NormalizedSearch))
+                || (item.ApprovalReference != null && item.ApprovalReference.Contains(request.NormalizedSearch))
+                || item.CreatedByUserId.Contains(request.NormalizedSearch)
+                || item.Events.Any(eventItem => eventItem.Reason.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        var ordered = (sortBy, request.Descending) switch
+        {
+            ("createdat", false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            ("createdat", true) => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.PublicId),
+            ("documentdate", false) => query.OrderBy(item => item.DocumentDate).ThenBy(item => item.PublicId),
+            ("documentdate", true) => query.OrderByDescending(item => item.DocumentDate).ThenByDescending(item => item.PublicId),
+            ("title", false) => query.OrderBy(item => item.Title).ThenBy(item => item.PublicId),
+            ("title", true) => query.OrderByDescending(item => item.Title).ThenByDescending(item => item.PublicId),
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.VersionNumber).ThenByDescending(item => item.PublicId)
+        };
+        var rows = await ordered.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<StrategicDocumentResponse>>(true,
+            PagedResponse<StrategicDocumentResponse>.Create(rows.Select(item => ToResponse(item, true)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("versions")]

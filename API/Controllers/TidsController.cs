@@ -158,23 +158,60 @@ public class TidsController : ControllerBase
         };
 
     [HttpGet("targets/{targetPublicId:guid}")]
-    public async Task<ActionResult<ApiResponse<TidVersionResponse[]>>> GetHistory(Guid targetPublicId)
+    public ActionResult<ApiResponse<TidVersionResponse[]>> GetHistory(Guid targetPublicId) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<TidVersionResponse[]>(false, null,
+            $"This unbounded TID version-history route is retired. Use /api/v1/tids/targets/{targetPublicId}/versions/page."));
+
+    [HttpGet("targets/{targetPublicId:guid}/versions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<TidVersionResponse>>>> GetHistoryPage(
+        Guid targetPublicId,
+        [FromQuery] PagedQueryRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<TidVersionResponse[]>(false, null, "User not found."));
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<TidVersionResponse>>(false, null, "User not found."));
         var target = await context.OpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == targetPublicId);
-        if (target == null) return NotFound(new ApiResponse<TidVersionResponse[]>(false, null, "OPMS KPI not found."));
+        if (target == null) return NotFound(new ApiResponse<PagedResponse<TidVersionResponse>>(false, null, "OPMS KPI not found."));
         var decision = await accessControl.CheckPermissionAsync(user, "TID.READ", Scope(target));
-        if (!decision.Allowed) return Forbidden<TidVersionResponse[]>(decision.Reason);
-        var versions = await context.TechnicalIndicatorDescriptions.AsNoTracking()
+        if (!decision.Allowed) return Forbidden<PagedResponse<TidVersionResponse>>(decision.Reason);
+        var sortBy = request.SortBy == null ? "versionnumber" : request.NormalizedSortBy;
+        if (sortBy is not ("versionnumber" or "effectivefrom" or "createdat" or "responsibleemployee"))
+            return BadRequest(new ApiResponse<PagedResponse<TidVersionResponse>>(false, null,
+                "SortBy must be versionNumber, effectiveFrom, createdAt, or responsibleEmployee."));
+        var query = context.TechnicalIndicatorDescriptions.AsNoTracking()
             .Include(item => item.OpmsTarget)
             .Include(item => item.PreviousVersion)
             .Include(item => item.ResponsibleEmployee)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
-            .Where(item => item.OpmsTargetId == target.Id)
-            .OrderByDescending(item => item.VersionNumber)
+            .Where(item => item.OpmsTargetId == target.Id);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.IndicatorDefinition.Contains(request.NormalizedSearch)
+                || item.Purpose.Contains(request.NormalizedSearch)
+                || item.DataSource.Contains(request.NormalizedSearch)
+                || item.CollectionMethod.Contains(request.NormalizedSearch)
+                || item.CalculationMethod.Contains(request.NormalizedSearch)
+                || item.VerificationMethod.Contains(request.NormalizedSearch)
+                || (item.Notes != null && item.Notes.Contains(request.NormalizedSearch))
+                || item.CreatedByUserId.Contains(request.NormalizedSearch)
+                || (item.ResponsibleEmployee != null && (item.ResponsibleEmployee.FirstName.Contains(request.NormalizedSearch)
+                    || item.ResponsibleEmployee.LastName.Contains(request.NormalizedSearch))));
+        var totalCount = await query.CountAsync();
+        var ordered = (sortBy, request.Descending) switch
+        {
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.PublicId),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.PublicId),
+            ("createdat", false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            ("createdat", true) => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.PublicId),
+            ("responsibleemployee", false) => query.OrderBy(item => item.ResponsibleEmployee == null ? null : item.ResponsibleEmployee.LastName)
+                .ThenBy(item => item.ResponsibleEmployee == null ? null : item.ResponsibleEmployee.FirstName).ThenBy(item => item.PublicId),
+            ("responsibleemployee", true) => query.OrderByDescending(item => item.ResponsibleEmployee == null ? null : item.ResponsibleEmployee.LastName)
+                .ThenByDescending(item => item.ResponsibleEmployee == null ? null : item.ResponsibleEmployee.FirstName).ThenByDescending(item => item.PublicId),
+            ("versionnumber", false) => query.OrderBy(item => item.VersionNumber).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.VersionNumber).ThenByDescending(item => item.PublicId)
+        };
+        var versions = await ordered.Skip(request.Offset).Take(request.PageSize)
             .ToArrayAsync();
-        return Ok(new ApiResponse<TidVersionResponse[]>(true, versions.Select(ToResponse).ToArray()));
+        return Ok(new ApiResponse<PagedResponse<TidVersionResponse>>(true,
+            PagedResponse<TidVersionResponse>.Create(versions.Select(ToResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("targets/{targetPublicId:guid}/versions")]

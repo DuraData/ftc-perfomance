@@ -4,7 +4,7 @@ import {
   createStrategicDocumentType,
   createStrategicDocumentVersion,
   downloadStrategicDocument,
-  getStrategicDocumentHistory,
+  getStrategicDocumentHistoryPage,
   getStrategicDocumentsPage,
   getStrategicDocumentTypesPage,
   publishStrategicDocument,
@@ -50,6 +50,11 @@ export function StrategicDocumentsWorkspace() {
   const [typeSortDirection, setTypeSortDirection] = useState<'asc' | 'desc'>('asc');
   const [documents, setDocuments] = useState<StrategicDocument[]>([]);
   const [history, setHistory] = useState<StrategicDocument[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalCount, setHistoryTotalCount] = useState(0);
+  const [historyTotalPages, setHistoryTotalPages] = useState(0);
+  const [historySearchInput, setHistorySearchInput] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
   const [selected, setSelected] = useState<StrategicDocument | null>(null);
   const [yearFilter, setYearFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -114,13 +119,34 @@ export function StrategicDocumentsWorkspace() {
     setSelectedType(option);
   }, []);
 
+  const loadHistory = useCallback(async (document: StrategicDocument, requestedPage = 1, requestedSearch = '') => {
+    const result = await getStrategicDocumentHistoryPage(document.documentFamilyId, {
+      page: requestedPage, pageSize: 10, search: requestedSearch || undefined, sortBy: 'versionNumber', sortDirection: 'desc',
+    });
+    if (!result.success) return pushToast('error', result.message ?? 'Unable to load version history.');
+    setHistory(result.data?.items ?? []);
+    setHistoryPage(result.data?.page ?? requestedPage);
+    setHistoryTotalCount(result.data?.totalCount ?? 0);
+    setHistoryTotalPages(result.data?.totalPages ?? 0);
+  }, [pushToast]);
+
   const selectDocument = async (document: StrategicDocument) => {
     setSelected(document);
     if (!canManage) return;
-    const result = await getStrategicDocumentHistory(document.documentFamilyId);
-    if (!result.success) return pushToast('error', result.message ?? 'Unable to load version history.');
-    setHistory(result.data ?? []);
+    setHistorySearch('');
+    setHistorySearchInput('');
+    await loadHistory(document);
   };
+
+  useEffect(() => {
+    const normalized = historySearchInput.trim();
+    if (normalized === historySearch) return;
+    const timeout = window.setTimeout(() => {
+      setHistorySearch(normalized);
+      if (selected && canManage) void loadHistory(selected, 1, normalized);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [canManage, historySearch, historySearchInput, loadHistory, selected]);
 
   const startSuccessor = (document: StrategicDocument) => {
     setSelected(document);
@@ -165,8 +191,7 @@ export function StrategicDocumentsWorkspace() {
       setSelectedType(undefined);
       setSelected(result.data);
       await load();
-      const historyResult = await getStrategicDocumentHistory(result.data.documentFamilyId);
-      setHistory(historyResult.data ?? []);
+      await loadHistory(result.data);
     } finally { setBusy(false); }
   };
 
@@ -208,8 +233,7 @@ export function StrategicDocumentsWorkspace() {
       setApprovalReference('');
       pushToast(result.data.isQuarantined ? 'info' : 'success', result.message ?? `Document ${action} completed.`);
       await load();
-      const historyResult = await getStrategicDocumentHistory(result.data.documentFamilyId);
-      setHistory(historyResult.data ?? []);
+      await loadHistory(result.data, historyPage, historySearch);
     } finally { setBusy(false); }
   };
 
@@ -296,7 +320,7 @@ export function StrategicDocumentsWorkspace() {
                     <div className="flex flex-wrap gap-2">{!selected.isApproved && canExecute('STRATEGIC_DOCUMENT.APPROVE') ? <Button disabled={busy || selected.isQuarantined} onClick={() => void runAction('approve')}>Approve</Button> : null}{selected.isApproved && !selected.isPublished && canExecute('STRATEGIC_DOCUMENT.PUBLISH') ? <Button disabled={busy} onClick={() => void runAction('publish')}>Publish</Button> : null}{selected.isActive && canExecute('STRATEGIC_DOCUMENT.RETIRE') ? <Button variant="outline" disabled={busy} onClick={() => void runAction('retire')}>Retire</Button> : null}{selected.isQuarantined && canExecute('STRATEGIC_DOCUMENT.RESCAN') ? <Button variant="outline" disabled={busy} onClick={() => void runAction('rescan')}>Rescan</Button> : null}</div>
                   </div>
                 ) : null}
-                {canManage && history.length ? <div className="border-t border-secondary-200 pt-3 dark:border-secondary-700"><h3 className="text-sm font-semibold">Version and action history</h3><div className="mt-2 space-y-2">{history.map(version => <div key={version.publicId} className="rounded bg-secondary-50 p-2 text-xs dark:bg-secondary-800"><p className="font-medium">Version {version.versionNumber} · {version.isCurrent ? 'Current' : 'Superseded'}</p>{version.events.map(event => <p key={event.publicId}>{new Date(event.occurredAt).toLocaleString()} · {event.action} · {event.reason}</p>)}</div>)}</div></div> : null}
+                {canManage ? <div className="border-t border-secondary-200 pt-3 dark:border-secondary-700"><div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-sm font-semibold">Version and action history</h3><p className="text-xs text-secondary-500">{historyTotalCount} immutable version{historyTotalCount === 1 ? '' : 's'}</p></div><label className="text-xs text-secondary-600">Search history<input aria-label="Search strategic document version history" className={fieldClass} value={historySearchInput} onChange={event => setHistorySearchInput(event.target.value)} /></label></div><div className="mt-2 space-y-2">{history.map(version => <div key={version.publicId} className="rounded bg-secondary-50 p-2 text-xs dark:bg-secondary-800"><p className="font-medium">Version {version.versionNumber} · {version.isCurrent ? 'Current' : 'Superseded'}</p>{version.events.map(event => <p key={event.publicId}>{new Date(event.occurredAt).toLocaleString()} · {event.action} · {event.reason}</p>)}</div>)}{!history.length ? <p className="text-xs text-secondary-500">No versions match the selected history search.</p> : null}</div>{historyTotalPages > 1 ? <div className="mt-3 flex items-center justify-between gap-2 text-xs"><Button size="sm" variant="outline" disabled={busy || historyPage <= 1} onClick={() => selected && void loadHistory(selected, historyPage - 1, historySearch)}>Previous versions</Button><span>Page {historyPage} of {historyTotalPages}</span><Button size="sm" variant="outline" disabled={busy || historyPage >= historyTotalPages} onClick={() => selected && void loadHistory(selected, historyPage + 1, historySearch)}>Next versions</Button></div> : null}</div> : null}
               </div>
             )}
           </Card>

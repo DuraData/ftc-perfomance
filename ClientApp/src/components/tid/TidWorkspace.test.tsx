@@ -8,7 +8,7 @@ const capabilities = vi.hoisted(() => ({
   canExecute: vi.fn(() => true), canReadField: vi.fn(() => true), canEditField: vi.fn(() => true),
 }));
 const api = vi.hoisted(() => ({
-  getTidConfiguration: vi.fn(), updateTidConfiguration: vi.fn(), getTidRegisterPage: vi.fn(), getTidHistory: vi.fn(),
+  getTidConfiguration: vi.fn(), updateTidConfiguration: vi.fn(), getTidRegisterPage: vi.fn(), getTidHistoryPage: vi.fn(),
   createTidVersion: vi.fn(), uploadTidSourceDocument: vi.fn(), downloadTidSourceDocument: vi.fn(), getMunicipalEmployeesPage: vi.fn(),
 }));
 
@@ -38,7 +38,7 @@ describe('TID workspace', () => {
     api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getTidConfiguration.mockResolvedValue({ success: true, data: configuration });
     api.getTidRegisterPage.mockResolvedValue({ success: true, data: { items: [item], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
-    api.getTidHistory.mockResolvedValue({ success: true, data: [version] });
+    api.getTidHistoryPage.mockResolvedValue({ success: true, data: { items: [version], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.updateTidConfiguration.mockResolvedValue({ success: true, data: { ...configuration, tidEnabled: false, allKpisRequired: false, rowVersion: 'Aw==' } });
     api.createTidVersion.mockResolvedValue({ success: true, data: { ...version, publicId: 'tid-2', versionNumber: 2, previousVersionPublicId: version.publicId, rowVersion: 'Aw==' } });
   });
@@ -95,5 +95,22 @@ describe('TID workspace', () => {
     await waitFor(() => expect(api.getTidRegisterPage).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'indicatorNumber', sortDirection: 'asc' }),
     ));
+  });
+
+  it('searches and pages immutable TID history with authoritative totals', async () => {
+    api.getTidHistoryPage.mockResolvedValue({ success: true, data: { items: [version], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 } });
+    render(<TidWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /KPI-1/i }));
+
+    expect(await screen.findByText('11 immutable versions')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next versions' }));
+    await waitFor(() => expect(api.getTidHistoryPage).toHaveBeenCalledWith('target-1', expect.objectContaining({
+      page: 2, pageSize: 10, sortBy: 'versionNumber', sortDirection: 'desc',
+    })));
+
+    fireEvent.change(screen.getByLabelText('Search TID version history'), { target: { value: 'billing' } });
+    await waitFor(() => expect(api.getTidHistoryPage).toHaveBeenCalledWith('target-1', expect.objectContaining({
+      page: 1, pageSize: 10, search: 'billing', sortBy: 'versionNumber', sortDirection: 'desc',
+    })));
   });
 });

@@ -2630,8 +2630,8 @@ export async function getTidRegisterPage(query: RegisterPageQuery = {}): Promise
   return get<PagedResult<TidRegisterItem>>(`/v1/tids/page${registerPageQuery(query)}`);
 }
 
-export async function getTidHistory(targetPublicId: string): Promise<ApiResponse<TidVersion[]>> {
-  return get<TidVersion[]>(`/v1/tids/targets/${targetPublicId}`);
+export async function getTidHistoryPage(targetPublicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<TidVersion>>> {
+  return get<PagedResult<TidVersion>>(`/v1/tids/targets/${encodeURIComponent(targetPublicId)}/versions/page${registerPageQuery(query)}`);
 }
 
 export async function createTidVersion(targetPublicId: string, payload: SaveTidVersionPayload): Promise<ApiResponse<TidVersion>> {
@@ -2698,8 +2698,8 @@ export async function getStrategicDocumentsPage(page: RegisterPageQuery = {}, op
   return get<PagedResult<StrategicDocument>>(`/v1/strategic-documents/page${suffix}`);
 }
 
-export async function getStrategicDocumentHistory(familyId: string): Promise<ApiResponse<StrategicDocument[]>> {
-  return get<StrategicDocument[]>(`/v1/strategic-documents/families/${familyId}/versions`);
+export async function getStrategicDocumentHistoryPage(familyId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<StrategicDocument>>> {
+  return get<PagedResult<StrategicDocument>>(`/v1/strategic-documents/families/${encodeURIComponent(familyId)}/versions/page${registerPageQuery(query)}`);
 }
 
 export async function createStrategicDocumentVersion(payload: SaveStrategicDocumentVersionPayload): Promise<ApiResponse<StrategicDocument>> {

@@ -9,7 +9,7 @@ const capabilities = vi.hoisted(() => ({
 }));
 const api = vi.hoisted(() => ({
   approveStrategicDocument: vi.fn(), createStrategicDocumentType: vi.fn(), createStrategicDocumentVersion: vi.fn(),
-  downloadStrategicDocument: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getStrategicDocumentHistory: vi.fn(),
+  downloadStrategicDocument: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getStrategicDocumentHistoryPage: vi.fn(),
   getStrategicDocumentsPage: vi.fn(), getStrategicDocumentTypesPage: vi.fn(), publishStrategicDocument: vi.fn(),
   rescanStrategicDocument: vi.fn(), retireStrategicDocument: vi.fn(), updateStrategicDocumentType: vi.fn(),
 }));
@@ -43,7 +43,7 @@ describe('Strategic documents workspace', () => {
     api.getStrategicDocumentTypesPage.mockResolvedValue({ success: true, data: { items: [type], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
-    api.getStrategicDocumentHistory.mockResolvedValue({ success: true, data: [document] });
+    api.getStrategicDocumentHistoryPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.createStrategicDocumentVersion.mockResolvedValue({ success: true, data: { ...document, publicId: 'document-2', title: 'Annual Review' } });
     api.approveStrategicDocument.mockResolvedValue({ success: true, data: { ...document, isApproved: true, approvalReference: 'Council 1/2026', rowVersion: 'Aw==' } });
   });
@@ -115,5 +115,22 @@ describe('Strategic documents workspace', () => {
     await waitFor(() => expect(api.getStrategicDocumentTypesPage).toHaveBeenCalledWith(
       expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'displayOrder', sortDirection: 'asc' }),
     ));
+  });
+
+  it('searches and pages immutable strategic-document history with authoritative totals', async () => {
+    api.getStrategicDocumentHistoryPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 } });
+    render(<StrategicDocumentsWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
+
+    expect(await screen.findByText('11 immutable versions')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next versions' }));
+    await waitFor(() => expect(api.getStrategicDocumentHistoryPage).toHaveBeenCalledWith('family-1', expect.objectContaining({
+      page: 2, pageSize: 10, sortBy: 'versionNumber', sortDirection: 'desc',
+    })));
+
+    fireEvent.change(screen.getByLabelText('Search strategic document version history'), { target: { value: 'council' } });
+    await waitFor(() => expect(api.getStrategicDocumentHistoryPage).toHaveBeenCalledWith('family-1', expect.objectContaining({
+      page: 1, pageSize: 10, search: 'council', sortBy: 'versionNumber', sortDirection: 'desc',
+    })));
   });
 });

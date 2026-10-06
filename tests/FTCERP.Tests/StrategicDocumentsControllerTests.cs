@@ -61,6 +61,30 @@ public class StrategicDocumentsControllerTests
         }, setup.Year.PublicId));
         page.TotalCount.Should().Be(1);
         page.Items.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
+        var filteredHistory = Payload(await manager.GetVersionHistoryPage(first.DocumentFamilyId, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "annual", SortBy = "versionNumber", SortDirection = "desc"
+        }));
+        filteredHistory.TotalCount.Should().Be(1);
+        filteredHistory.Items.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
+        var firstHistoryPage = Payload(await manager.GetVersionHistoryPage(first.DocumentFamilyId, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, SortBy = "versionNumber", SortDirection = "desc"
+        }));
+        firstHistoryPage.TotalCount.Should().Be(2);
+        firstHistoryPage.TotalPages.Should().Be(2);
+        firstHistoryPage.Items.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
+        var secondHistoryPage = Payload(await manager.GetVersionHistoryPage(first.DocumentFamilyId, new PagedQueryRequest
+        {
+            Page = 2, PageSize = 1, SortBy = "versionNumber", SortDirection = "desc"
+        }));
+        secondHistoryPage.Items.Should().ContainSingle().Which.PublicId.Should().Be(first.PublicId);
+        (await manager.GetVersionHistoryPage(first.DocumentFamilyId, new PagedQueryRequest { SortBy = "raw-sql" })).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        manager.GetVersionHistory(first.DocumentFamilyId).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        (await ordinary.GetVersionHistoryPage(first.DocumentFamilyId, new PagedQueryRequest())).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
 
         var persisted = await context.StrategicDocuments.OrderBy(item => item.VersionNumber).ToArrayAsync();
         persisted[0].IsCurrent.Should().BeFalse();
