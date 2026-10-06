@@ -21,9 +21,9 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
 
     [HttpGet("departments")]
     [Authorize(Policy = "Permission:DEPARTMENT.READ")]
-    public async Task<ActionResult<ApiResponse<DepartmentMasterDto[]>>> GetDepartments() =>
-        Ok(new ApiResponse<DepartmentMasterDto[]>(true, await context.Departments.AsNoTracking().OrderBy(x => x.Name).ThenBy(x => x.Id).Select(x =>
-            new DepartmentMasterDto(x.PublicId, x.Code, x.Name, x.Description, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+    public ActionResult<ApiResponse<DepartmentMasterDto[]>> GetDepartments() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<DepartmentMasterDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/departments/page."));
 
     [HttpGet("departments/page")]
     [Authorize(Policy = "Permission:DEPARTMENT.READ")]
@@ -82,9 +82,9 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
 
     [HttpGet("units")]
     [Authorize(Policy = "Permission:UNIT.READ")]
-    public async Task<ActionResult<ApiResponse<UnitMasterDto[]>>> GetUnits() =>
-        Ok(new ApiResponse<UnitMasterDto[]>(true, await context.Units.AsNoTracking().Include(x => x.Department).OrderBy(x => x.Department.Name).ThenBy(x => x.Name).ThenBy(x => x.Id).Select(x =>
-            new UnitMasterDto(x.PublicId, x.Department.PublicId, x.Department.Name, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+    public ActionResult<ApiResponse<UnitMasterDto[]>> GetUnits() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<UnitMasterDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/units/page."));
 
     [HttpGet("units/page")]
     [Authorize(Policy = "Permission:UNIT.READ")]
@@ -146,9 +146,9 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
 
     [HttpGet("positions")]
     [Authorize(Policy = "Permission:POSITION.READ")]
-    public async Task<ActionResult<ApiResponse<PositionMasterDto[]>>> GetPositions() =>
-        Ok(new ApiResponse<PositionMasterDto[]>(true, await context.Positions.AsNoTracking().Include(x => x.Department).Include(x => x.Unit).OrderBy(x => x.Name).ThenBy(x => x.Id).Select(x =>
-            new PositionMasterDto(x.PublicId, x.Department.PublicId, x.Department.Name, x.Unit == null ? null : x.Unit.PublicId, x.Unit == null ? null : x.Unit.Name, x.Code, x.Name, x.Grade, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+    public ActionResult<ApiResponse<PositionMasterDto[]>> GetPositions() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<PositionMasterDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/positions/page."));
 
     [HttpGet("positions/page")]
     [Authorize(Policy = "Permission:POSITION.READ")]
@@ -212,9 +212,9 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
 
     [HttpGet("wards")]
     [Authorize(Policy = "Permission:WARD.READ")]
-    public async Task<ActionResult<ApiResponse<WardMasterDto[]>>> GetWards() =>
-        Ok(new ApiResponse<WardMasterDto[]>(true, await context.Wards.AsNoTracking().OrderBy(x => x.Code).ThenBy(x => x.Id).Select(x =>
-            new WardMasterDto(x.PublicId, x.Id, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+    public ActionResult<ApiResponse<WardMasterDto[]>> GetWards() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<WardMasterDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/wards/page."));
 
     [HttpGet("wards/page")]
     [Authorize(Policy = "Permission:WARD.READ")]
@@ -273,9 +273,9 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
 
     [HttpGet("vote-numbers")]
     [Authorize(Policy = "Permission:VOTE_NUMBER.READ")]
-    public async Task<ActionResult<ApiResponse<VoteNumberMasterDto[]>>> GetVoteNumbers() =>
-        Ok(new ApiResponse<VoteNumberMasterDto[]>(true, await VoteNumberQuery().OrderBy(x => x.Code).ThenBy(x => x.Id).Select(x =>
-            new VoteNumberMasterDto(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.MunicipalityFinancialYear == null ? null : x.MunicipalityFinancialYear.PublicId, x.MunicipalityFinancialYear == null ? null : x.MunicipalityFinancialYear.FinancialYear.Code, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+    public ActionResult<ApiResponse<VoteNumberMasterDto[]>> GetVoteNumbers() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<VoteNumberMasterDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/vote-numbers/page."));
 
     [HttpGet("vote-numbers/page")]
     [Authorize(Policy = "Permission:VOTE_NUMBER.READ")]

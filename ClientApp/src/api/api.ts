@@ -1229,10 +1229,6 @@ export async function getMyTenantContexts(): Promise<ApiResponse<TenantContextDt
   return get<TenantContextDto[]>('/v1/tenancy/my-contexts');
 }
 
-export async function getReportingPeriodMasters(): Promise<ApiResponse<ReportingPeriodMasterDto[]>> {
-  return get<ReportingPeriodMasterDto[]>('/v1/masters/reporting-periods');
-}
-
 export type CalendarMasterPageQuery = RegisterPageQuery & {
   active?: boolean;
   current?: boolean;
@@ -1253,20 +1249,12 @@ export async function getReportingPeriodMastersPage(query: CalendarMasterPageQue
   return get<PagedResult<ReportingPeriodMasterDto>>(`/v1/masters/reporting-periods/page${calendarMasterPageQuery(query)}`);
 }
 
-export async function getFinancialYearMasters(): Promise<ApiResponse<FinancialYearMasterDto[]>> {
-  return get<FinancialYearMasterDto[]>('/v1/masters/financial-years');
-}
-
 export async function getFinancialYearMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<FinancialYearMasterDto>>> {
   return get<PagedResult<FinancialYearMasterDto>>(`/v1/masters/financial-years/page${calendarMasterPageQuery(query)}`);
 }
 
 export async function createFinancialYearMaster(payload: { code: string; name: string; startDate: string; endDate: string }): Promise<ApiResponse<FinancialYearMasterDto>> {
   return post<FinancialYearMasterDto>('/v1/masters/financial-years', payload);
-}
-
-export async function getMunicipalityFinancialYearMasters(): Promise<ApiResponse<MunicipalityFinancialYearMasterDto[]>> {
-  return get<MunicipalityFinancialYearMasterDto[]>('/v1/masters/municipality-financial-years');
 }
 
 export async function getMunicipalityFinancialYearMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<MunicipalityFinancialYearMasterDto>>> {
@@ -1279,13 +1267,6 @@ export async function createMunicipalityFinancialYearMaster(payload: { financial
 
 export async function updateMunicipalityFinancialYearMaster(publicId: string, payload: { isCurrent: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
   return put<MunicipalityFinancialYearMasterDto>(`/v1/masters/municipality-financial-years/${publicId}`, payload);
-}
-
-export async function getSdbipLayerMasters(municipalityFinancialYearPublicId?: string, includeInactive = false): Promise<ApiResponse<SdbipLayerMasterDto[]>> {
-  const query = new URLSearchParams();
-  if (municipalityFinancialYearPublicId) query.set('municipalityFinancialYearId', municipalityFinancialYearPublicId);
-  if (includeInactive) query.set('includeInactive', 'true');
-  return get<SdbipLayerMasterDto[]>(`/v1/masters/sdbip-layers${query.size ? `?${query.toString()}` : ''}`);
 }
 
 export async function getSdbipLayerMastersPage(query: CalendarMasterPageQuery = {}): Promise<ApiResponse<PagedResult<SdbipLayerMasterDto>>> {
@@ -1342,10 +1323,6 @@ export async function createEmployeeAssignment(payload: { employeePublicId: stri
   return post<EmployeeAssignmentMasterDto>('/v1/masters/employee-assignments', payload);
 }
 
-export async function getDepartmentMasters(): Promise<ApiResponse<DepartmentMasterDto[]>> {
-  return get<DepartmentMasterDto[]>('/v1/masters/departments');
-}
-
 export type OrganizationMasterPageQuery = RegisterPageQuery & {
   active?: boolean;
   departmentPublicId?: string;
@@ -1370,20 +1347,12 @@ export async function saveDepartmentMaster(publicId: string | null, payload: { c
   return publicId ? put<DepartmentMasterDto>(`/v1/masters/departments/${publicId}`, payload) : post<DepartmentMasterDto>('/v1/masters/departments', payload);
 }
 
-export async function getUnitMasters(): Promise<ApiResponse<UnitMasterDto[]>> {
-  return get<UnitMasterDto[]>('/v1/masters/units');
-}
-
 export async function getUnitMastersPage(query: OrganizationMasterPageQuery = {}): Promise<ApiResponse<PagedResult<UnitMasterDto>>> {
   return get<PagedResult<UnitMasterDto>>(`/v1/masters/units/page${organizationMasterPageQuery(query)}`);
 }
 
 export async function saveUnitMaster(publicId: string | null, payload: { departmentPublicId: string; code: string; name: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<UnitMasterDto>> {
   return publicId ? put<UnitMasterDto>(`/v1/masters/units/${publicId}`, payload) : post<UnitMasterDto>('/v1/masters/units', payload);
-}
-
-export async function getPositionMasters(): Promise<ApiResponse<PositionMasterDto[]>> {
-  return get<PositionMasterDto[]>('/v1/masters/positions');
 }
 
 export async function getPositionMastersPage(query: OrganizationMasterPageQuery = {}): Promise<ApiResponse<PagedResult<PositionMasterDto>>> {
@@ -1394,20 +1363,12 @@ export async function savePositionMaster(publicId: string | null, payload: { dep
   return publicId ? put<PositionMasterDto>(`/v1/masters/positions/${publicId}`, payload) : post<PositionMasterDto>('/v1/masters/positions', payload);
 }
 
-export async function getWardMasters(): Promise<ApiResponse<import('../types').WardMasterDto[]>> {
-  return get<import('../types').WardMasterDto[]>('/v1/masters/wards');
-}
-
 export async function getWardMastersPage(query: OrganizationMasterPageQuery = {}): Promise<ApiResponse<PagedResult<import('../types').WardMasterDto>>> {
   return get<PagedResult<import('../types').WardMasterDto>>(`/v1/masters/wards/page${organizationMasterPageQuery(query)}`);
 }
 
 export async function saveWardMaster(publicId: string | null, payload: { code: string; name: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').WardMasterDto>> {
   return publicId ? put<import('../types').WardMasterDto>(`/v1/masters/wards/${publicId}`, payload) : post<import('../types').WardMasterDto>('/v1/masters/wards', payload);
-}
-
-export async function getVoteNumberMasters(): Promise<ApiResponse<import('../types').VoteNumberMasterDto[]>> {
-  return get<import('../types').VoteNumberMasterDto[]>('/v1/masters/vote-numbers');
 }
 
 export async function getVoteNumberMastersPage(query: OrganizationMasterPageQuery = {}): Promise<ApiResponse<PagedResult<import('../types').VoteNumberMasterDto>>> {

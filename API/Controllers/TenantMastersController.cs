@@ -24,9 +24,9 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
 
     [HttpGet("financial-years")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
-    public async Task<ActionResult<ApiResponse<FinancialYearDto[]>>> GetFinancialYears() =>
-        Ok(new ApiResponse<FinancialYearDto[]>(true, await context.FinancialYears.AsNoTracking().OrderByDescending(x => x.StartDate)
-            .Select(x => new FinancialYearDto(x.PublicId, x.Code, x.Name, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion))).ToArrayAsync()));
+    public ActionResult<ApiResponse<FinancialYearDto[]>> GetFinancialYears() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<FinancialYearDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/financial-years/page."));
 
     [HttpGet("financial-years/page")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
@@ -78,13 +78,9 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
 
     [HttpGet("municipality-financial-years")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
-    public async Task<ActionResult<ApiResponse<MunicipalityFinancialYearDto[]>>> GetMunicipalityFinancialYears()
-    {
-        if (!HasTenant()) return TenantRequired<MunicipalityFinancialYearDto[]>();
-        var rows = await context.MunicipalityFinancialYears.AsNoTracking().Include(x => x.FinancialYear).OrderByDescending(x => x.FinancialYear.StartDate)
-            .Select(x => new MunicipalityFinancialYearDto(x.PublicId, x.FinancialYear.PublicId, x.FinancialYear.Code, x.FinancialYear.Name, x.IsCurrent, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
-        return Ok(new ApiResponse<MunicipalityFinancialYearDto[]>(true, rows));
-    }
+    public ActionResult<ApiResponse<MunicipalityFinancialYearDto[]>> GetMunicipalityFinancialYears() =>
+        StatusCode(StatusCodes.Status410Gone, Fail<MunicipalityFinancialYearDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/municipality-financial-years/page."));
 
     [HttpGet("municipality-financial-years/page")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
@@ -139,14 +135,11 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
 
     [HttpGet("reporting-periods")]
     [Authorize(Policy = "Permission:REPORTING_PERIOD.READ")]
-    public async Task<ActionResult<ApiResponse<ReportingPeriodDto[]>>> GetReportingPeriods([FromQuery] Guid? municipalityFinancialYearId = null)
+    public ActionResult<ApiResponse<ReportingPeriodDto[]>> GetReportingPeriods([FromQuery] Guid? municipalityFinancialYearId = null)
     {
-        if (!HasTenant()) return TenantRequired<ReportingPeriodDto[]>();
-        var query = context.ReportingPeriods.AsNoTracking().Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear).AsQueryable();
-        if (municipalityFinancialYearId.HasValue) query = query.Where(x => x.MunicipalityFinancialYear.PublicId == municipalityFinancialYearId.Value);
-        var rows = await query.OrderByDescending(x => x.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(x => x.Sequence)
-            .Select(x => new ReportingPeriodDto(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.Code, x.Name, x.PeriodType, x.Sequence, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion))).ToArrayAsync();
-        return Ok(new ApiResponse<ReportingPeriodDto[]>(true, rows));
+        _ = municipalityFinancialYearId;
+        return StatusCode(StatusCodes.Status410Gone, Fail<ReportingPeriodDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/reporting-periods/page."));
     }
 
     [HttpGet("reporting-periods/page")]
@@ -202,16 +195,12 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
 
     [HttpGet("sdbip-layers")]
     [Authorize(Policy = "Permission:SDBIP_LAYER.READ")]
-    public async Task<ActionResult<ApiResponse<SdbipLayerDto[]>>> GetSdbipLayers([FromQuery] Guid? municipalityFinancialYearId = null, [FromQuery] bool includeInactive = false)
+    public ActionResult<ApiResponse<SdbipLayerDto[]>> GetSdbipLayers([FromQuery] Guid? municipalityFinancialYearId = null, [FromQuery] bool includeInactive = false)
     {
-        if (!HasTenant()) return TenantRequired<SdbipLayerDto[]>();
-        var query = context.SdbipLayers.AsNoTracking().Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear).AsQueryable();
-        if (municipalityFinancialYearId.HasValue) query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearId.Value);
-        if (!includeInactive) query = query.Where(item => item.IsActive);
-        var rows = await query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code)
-            .Select(item => new SdbipLayerDto(item.PublicId, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
-                item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
-        return Ok(new ApiResponse<SdbipLayerDto[]>(true, rows));
+        _ = municipalityFinancialYearId;
+        _ = includeInactive;
+        return StatusCode(StatusCodes.Status410Gone, Fail<SdbipLayerDto[]>(
+            "This unbounded route is retired. Use /api/v1/masters/sdbip-layers/page."));
     }
 
     [HttpGet("sdbip-layers/page")]

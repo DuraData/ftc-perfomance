@@ -88,6 +88,10 @@ public sealed class TenantMastersControllerTests
         Assert.IsType<BadRequestObjectResult>((await controller.GetMunicipalityFinancialYearsPage(request)).Result);
         Assert.IsType<BadRequestObjectResult>((await controller.GetReportingPeriodsPage(request)).Result);
         Assert.IsType<BadRequestObjectResult>((await controller.GetSdbipLayersPage(request)).Result);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetFinancialYears().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetMunicipalityFinancialYears().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetReportingPeriods().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetSdbipLayers().Result).StatusCode);
     }
 
     [Fact]

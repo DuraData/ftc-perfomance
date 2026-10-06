@@ -89,7 +89,7 @@ public sealed class OrganizationMastersControllerTests
     }
 
     [Fact]
-    public async Task Organization_pages_reject_unknown_sort_and_compatibility_reads_preserve_existing_consumers()
+    public async Task Organization_pages_reject_unknown_sort_and_unbounded_routes_are_retired()
     {
         var tenant = new TenantContext(103, "master-reader");
         await using var context = NewContext(tenant);
@@ -103,8 +103,14 @@ public sealed class OrganizationMastersControllerTests
         Assert.IsType<BadRequestObjectResult>((await controller.GetPositionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
         Assert.IsType<BadRequestObjectResult>((await controller.GetWardsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
         Assert.IsType<BadRequestObjectResult>((await controller.GetVoteNumbersPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
-        var legacy = Assert.IsType<ApiResponse<WardMasterDto[]>>(Assert.IsType<OkObjectResult>((await controller.GetWards()).Result).Value).Data!;
-        Assert.Equal(105, legacy.Length);
+        var wardPage = Assert.IsType<ApiResponse<PagedResponse<WardMasterDto>>>(Assert.IsType<OkObjectResult>((await controller.GetWardsPage(new PagedQueryRequest { PageSize = 100 })).Result).Value).Data!;
+        Assert.Equal(105, wardPage.TotalCount);
+        Assert.Equal(100, wardPage.Items.Length);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetDepartments().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUnits().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetPositions().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetWards().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetVoteNumbers().Result).StatusCode);
     }
 
     [Fact]

@@ -64,7 +64,10 @@ public sealed class SdbipLayerTests
 
         await using var contextB = new ApplicationDbContext(options, new TestTenantContext(tenantBId, "layer-admin-b"));
         Assert.Empty(await contextB.SdbipLayers.ToArrayAsync());
-        Assert.Empty(Assert.IsType<ApiResponse<SdbipLayerDto[]>>(Assert.IsType<OkObjectResult>((await Controller(contextB, tenantBId, "layer-admin-b").GetSdbipLayers()).Result).Value).Data!);
+        var controllerB = Controller(contextB, tenantBId, "layer-admin-b");
+        var page = Assert.IsType<ApiResponse<PagedResponse<SdbipLayerDto>>>(Assert.IsType<OkObjectResult>((await controllerB.GetSdbipLayersPage(new PagedQueryRequest())).Result).Value).Data!;
+        Assert.Empty(page.Items);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controllerB.GetSdbipLayers().Result).StatusCode);
     }
 
     [Fact]
