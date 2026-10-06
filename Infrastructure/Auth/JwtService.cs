@@ -18,10 +18,13 @@ public interface IJwtService
     Task<RefreshToken?> GetRefreshTokenAsync(string token);
     Task RevokeRefreshTokenAsync(string token, string? ipAddress, string reason = "Logout");
     Task<RefreshToken[]> GetActiveSessionsAsync(string userId);
+    Task<ActiveSessionPage> GetActiveSessionsPageAsync(string userId, int page, int pageSize, string? search, string sortBy, bool descending);
     Task<bool> ValidateAccessSessionAsync(string userId, Guid sessionId, string securityStamp, string? ipAddress);
     Task<bool> RevokeSessionAsync(string userId, Guid sessionId, string? ipAddress, string reason);
     Task<int> RevokeAllSessionsAsync(string userId, string? ipAddress, string reason);
 }
+
+public sealed record ActiveSessionPage(RefreshToken[] Items, int TotalCount);
 
 public class JwtService : IJwtService
 {
@@ -162,15 +165,48 @@ public class JwtService : IJwtService
 
     public async Task<RefreshToken[]> GetActiveSessionsAsync(string userId)
     {
+        var page = await GetActiveSessionsPageAsync(userId, 1, 100, null, "lastusedat", true);
+        return page.Items;
+    }
+
+    public async Task<ActiveSessionPage> GetActiveSessionsPageAsync(string userId, int page, int pageSize, string? search, string sortBy, bool descending)
+    {
         var now = DateTime.UtcNow;
         var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == userId);
-        if (user == null) return [];
+        if (user == null) return new ActiveSessionPage([], 0);
         var policy = await ResolvePolicyAsync(user);
         var idleCutoff = now.AddMinutes(-policy.SessionIdleTimeoutMinutes);
-        var tokens = await _context.RefreshTokens.AsNoTracking()
+        var query = _context.RefreshTokens.AsNoTracking()
             .Where(item => item.UserId == userId && !item.RevokedAt.HasValue && item.ExpiresAt > now && item.AbsoluteExpiresAt > now && item.LastUsedAt > idleCutoff)
-            .OrderByDescending(item => item.LastUsedAt).ToArrayAsync();
-        return tokens.GroupBy(item => item.SessionId).Select(group => group.First()).ToArray();
+            .Where(item => !_context.RefreshTokens.Any(other => other.UserId == userId
+                && other.SessionId == item.SessionId
+                && !other.RevokedAt.HasValue
+                && other.ExpiresAt > now
+                && other.AbsoluteExpiresAt > now
+                && other.LastUsedAt > idleCutoff
+                && (other.LastUsedAt > item.LastUsedAt || other.LastUsedAt == item.LastUsedAt && other.Id > item.Id)));
+        var term = search?.Trim();
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(item => (item.UserAgent != null && item.UserAgent.Contains(term))
+                || item.AuthenticationMethod.Contains(term)
+                || (item.CreatedByIp != null && item.CreatedByIp.Contains(term))
+                || (item.LastUsedByIp != null && item.LastUsedByIp.Contains(term)));
+        var totalCount = await query.CountAsync();
+        query = (sortBy, descending) switch
+        {
+            ("createdat", false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.SessionId),
+            ("createdat", true) => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.SessionId),
+            ("expiresat", false) => query.OrderBy(item => item.AbsoluteExpiresAt).ThenBy(item => item.SessionId),
+            ("expiresat", true) => query.OrderByDescending(item => item.AbsoluteExpiresAt).ThenBy(item => item.SessionId),
+            ("device", false) => query.OrderBy(item => item.UserAgent).ThenBy(item => item.SessionId),
+            ("device", true) => query.OrderByDescending(item => item.UserAgent).ThenBy(item => item.SessionId),
+            ("method", false) => query.OrderBy(item => item.AuthenticationMethod).ThenBy(item => item.SessionId),
+            ("method", true) => query.OrderByDescending(item => item.AuthenticationMethod).ThenBy(item => item.SessionId),
+            ("lastusedat", false) => query.OrderBy(item => item.LastUsedAt).ThenBy(item => item.SessionId),
+            _ => query.OrderByDescending(item => item.LastUsedAt).ThenBy(item => item.SessionId)
+        };
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToArrayAsync();
+        return new ActiveSessionPage(items, totalCount);
     }
 
     public async Task<bool> ValidateAccessSessionAsync(string userId, Guid sessionId, string securityStamp, string? ipAddress)

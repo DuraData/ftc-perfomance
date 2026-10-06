@@ -275,15 +275,29 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpGet("/api/v1/auth/sessions")]
-    public async Task<ActionResult<ApiResponse<AuthSessionResponse[]>>> GetSessions()
+    public ActionResult<ApiResponse<AuthSessionResponse[]>> GetSessions() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<AuthSessionResponse[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/auth/sessions/page."));
+
+    [Authorize]
+    [HttpGet("/api/v1/auth/sessions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<AuthSessionResponse>>>> GetSessionsPage([FromQuery] PagedQueryRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+        var sortBy = request.SortBy == null ? "lastusedat" : request.NormalizedSortBy;
+        if (!AuthSessionSortFields.Contains(sortBy))
+            return BadRequest(new ApiResponse<PagedResponse<AuthSessionResponse>>(false, null,
+                "SortBy must be createdAt, lastUsedAt, expiresAt, device, or method."));
         var current = User.FindFirstValue("sid");
-        var rows = await _jwtService.GetActiveSessionsAsync(userId);
-        var data = rows.Select(item => new AuthSessionResponse(item.SessionId, item.CreatedAt, item.LastUsedAt, item.AbsoluteExpiresAt, item.CreatedByIp, item.LastUsedByIp, item.UserAgent, item.AuthenticationMethod, item.SessionId.ToString() == current)).ToArray();
-        return Ok(new ApiResponse<AuthSessionResponse[]>(true, data));
+        var result = await _jwtService.GetActiveSessionsPageAsync(userId, request.Page, request.PageSize,
+            request.NormalizedSearch, sortBy, request.Descending);
+        var data = result.Items.Select(item => new AuthSessionResponse(item.SessionId, item.CreatedAt, item.LastUsedAt, item.AbsoluteExpiresAt, item.CreatedByIp, item.LastUsedByIp, item.UserAgent, item.AuthenticationMethod, item.SessionId.ToString() == current));
+        return Ok(new ApiResponse<PagedResponse<AuthSessionResponse>>(true,
+            PagedResponse<AuthSessionResponse>.Create(data, request.Page, request.PageSize, result.TotalCount)));
     }
+
+    private static readonly HashSet<string> AuthSessionSortFields = ["createdat", "lastusedat", "expiresat", "device", "method"];
 
     [Authorize]
     [HttpPost("/api/v1/auth/sessions/{sessionId:guid}/revoke")]

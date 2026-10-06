@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { User, Bell, Shield, Palette, Globe, Save, RefreshCw } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card, Badge } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { changePassword, disableMfa, enableMfa, getAuthSessions, getMfaStatus, getMyNotificationPreferences, revokeAllAuthSessions, revokeAuthSession, saveMyNotificationPreferences, setupMfa } from '../../api/api';
+import { changePassword, disableMfa, enableMfa, getAuthSessionsPage, getMfaStatus, getMyNotificationPreferences, revokeAllAuthSessions, revokeAuthSession, saveMyNotificationPreferences, setupMfa } from '../../api/api';
 import type { AuthSessionDto, MfaSetupDto, MfaStatusDto, NotificationPreferenceDto } from '../../types';
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
@@ -139,6 +139,11 @@ function AppearanceSettings() {
 function SecuritySettings() {
   const { pushToast, logout, userProfile } = useApp();
   const [sessions, setSessions] = useState<AuthSessionDto[]>([]);
+  const [sessionPage, setSessionPage] = useState(1);
+  const [sessionTotalCount, setSessionTotalCount] = useState(0);
+  const [sessionTotalPages, setSessionTotalPages] = useState(0);
+  const [sessionSearchInput, setSessionSearchInput] = useState('');
+  const [sessionSearch, setSessionSearch] = useState('');
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mfaStatus, setMfaStatus] = useState<MfaStatusDto | null>(null);
@@ -149,18 +154,26 @@ function SecuritySettings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const loadSessions = async () => {
+  const loadSessions = useCallback(async (requestedPage: number, requestedSearch: string) => {
     setBusy(true); setSessionError(null);
-    const result = await getAuthSessions();
+    let result = await getAuthSessionsPage({ page: requestedPage, pageSize: 10, search: requestedSearch || undefined, sortBy: 'lastUsedAt', sortDirection: 'desc' });
     if (!result.success) setSessionError(result.message ?? 'Sessions could not be loaded.');
-    setSessions(result.data ?? []); setBusy(false);
-  };
-  const loadMfaStatus = async () => {
+    if (result.success && result.data && result.data.totalPages > 0 && requestedPage > result.data.totalPages) {
+      result = await getAuthSessionsPage({ page: result.data.totalPages, pageSize: 10, search: requestedSearch || undefined, sortBy: 'lastUsedAt', sortDirection: 'desc' });
+      if (!result.success) setSessionError(result.message ?? 'Sessions could not be loaded.');
+    }
+    setSessions(result.data?.items ?? []);
+    setSessionPage(result.data?.page ?? requestedPage);
+    setSessionTotalCount(result.data?.totalCount ?? 0);
+    setSessionTotalPages(result.data?.totalPages ?? 0);
+    setBusy(false);
+  }, []);
+  const loadMfaStatus = useCallback(async () => {
     const result = await getMfaStatus();
     if (!result.success) setSessionError(result.message ?? 'MFA status could not be loaded.');
     else setMfaStatus(result.data ?? null);
-  };
-  useEffect(() => { void loadSessions(); void loadMfaStatus(); }, []);
+  }, []);
+  useEffect(() => { void loadSessions(1, ''); void loadMfaStatus(); }, [loadMfaStatus, loadSessions]);
   const beginMfaSetup = async () => {
     setBusy(true); setSessionError(null);
     const result = await setupMfa();
@@ -194,7 +207,7 @@ function SecuritySettings() {
     const result = await revokeAuthSession(session.sessionId, 'User revoked session from account settings');
     if (!result.success) setSessionError(result.message ?? 'Session could not be revoked.');
     else if (session.isCurrent) logout();
-    else { pushToast('success', 'Session revoked'); await loadSessions(); }
+    else { pushToast('success', 'Session revoked'); await loadSessions(sessionPage, sessionSearch); }
     setBusy(false);
   };
   const revokeAll = async () => {
@@ -250,9 +263,10 @@ function SecuritySettings() {
         </div>}
       </FormSection>
       <FormSection title="Sessions">
-        <div className="mb-2 flex justify-end gap-2"><Button variant="ghost" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => void loadSessions()} disabled={busy}>Refresh</Button><Button variant="outline" size="sm" onClick={() => void revokeAll()} disabled={busy || !sessions.length}>Sign out all</Button></div>
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div className="flex items-end gap-2"><Input aria-label="Search sessions" placeholder="Device, method, or IP" value={sessionSearchInput} onChange={event => setSessionSearchInput(event.target.value)} /><Button variant="outline" size="sm" onClick={() => { const value = sessionSearchInput.trim(); setSessionSearch(value); setSessionPage(1); void loadSessions(1, value); }} disabled={busy}>Search</Button></div><div className="flex gap-2"><Button variant="ghost" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => void loadSessions(sessionPage, sessionSearch)} disabled={busy}>Refresh</Button><Button variant="outline" size="sm" onClick={() => void revokeAll()} disabled={busy || sessionTotalCount === 0}>Sign out all</Button></div></div>
         {sessionError && <p role="alert" className="mb-2 text-xs text-error-600">{sessionError}</p>}
         <div className="space-y-2">{sessions.map(session => <div key={session.sessionId} className="flex items-center justify-between gap-3 rounded border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex min-w-0 items-center gap-2"><Globe className="h-4 w-4 shrink-0 text-secondary-400" /><div className="min-w-0"><p className="text-xs font-medium">{session.isCurrent ? 'Current session' : 'Signed-in session'} · {session.authenticationMethod.replace(/_/g, ' ')}</p><p className="truncate text-[10px] text-secondary-500">{session.userAgent || 'Unknown device'} · last active {new Date(session.lastUsedAt).toLocaleString()} · expires {new Date(session.absoluteExpiresAt).toLocaleString()}</p></div></div><div className="flex items-center gap-2"><Badge variant={session.isCurrent ? 'success' : 'default'} size="sm">{session.isCurrent ? 'Current' : 'Active'}</Badge><Button variant="outline" size="sm" onClick={() => void revoke(session)} disabled={busy}>Revoke</Button></div></div>)}{!sessions.length && !busy && <p className="text-xs text-secondary-500">No active sessions.</p>}</div>
+        <div className="mt-2 flex items-center justify-between text-xs text-secondary-500"><span>{sessionTotalCount} active session{sessionTotalCount === 1 ? '' : 's'}{sessionTotalPages > 0 ? ` · page ${sessionPage} of ${sessionTotalPages}` : ''}</span>{sessionTotalPages > 1 && <div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy || sessionPage <= 1} onClick={() => { const page = sessionPage - 1; setSessionPage(page); void loadSessions(page, sessionSearch); }}>Previous</Button><Button variant="outline" size="sm" disabled={busy || sessionPage >= sessionTotalPages} onClick={() => { const page = sessionPage + 1; setSessionPage(page); void loadSessions(page, sessionSearch); }}>Next</Button></div>}</div>
       </FormSection>
     </div>
   );

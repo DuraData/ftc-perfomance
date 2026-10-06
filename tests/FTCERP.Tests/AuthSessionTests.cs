@@ -1,11 +1,15 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
+using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -84,6 +88,71 @@ public sealed class AuthSessionTests
         Assert.Equal(2, active.Length);
         Assert.DoesNotContain(active, item => item.UserAgent == "First");
         Assert.Equal("Concurrent session limit", (await context.RefreshTokens.SingleAsync(item => item.UserAgent == "First")).RevokedReason);
+    }
+
+    [Fact]
+    public async Task Active_session_page_is_distinct_searchable_and_stably_sorted()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var user = User("paged-session-user"); context.Users.Add(user); await context.SaveChangesAsync();
+        var service = CreateService(context, user, maximumSessions: 50);
+        for (var index = 1; index <= 12; index++)
+            await service.GenerateTokensAsync(user, $"10.0.0.{index}", $"Device {index:00}", authenticationMethod: index % 2 == 0 ? "ENTRA" : "LOCAL");
+
+        var secondPage = await service.GetActiveSessionsPageAsync(user.Id, 2, 5, null, "device", false);
+        secondPage.TotalCount.Should().Be(12);
+        secondPage.Items.Select(item => item.UserAgent).Should().Equal("Device 06", "Device 07", "Device 08", "Device 09", "Device 10");
+
+        var filtered = await service.GetActiveSessionsPageAsync(user.Id, 1, 10, "10.0.0.12", "lastusedat", true);
+        filtered.TotalCount.Should().Be(1);
+        filtered.Items.Should().ContainSingle(item => item.UserAgent == "Device 12" && item.AuthenticationMethod == "ENTRA");
+    }
+
+    [Fact]
+    public async Task Session_controller_retires_array_and_returns_authoritative_page()
+    {
+        var sessionId = Guid.NewGuid();
+        var jwt = new Mock<IJwtService>();
+        jwt.Setup(service => service.GetActiveSessionsPageAsync("session-user", 2, 10, "browser", "lastusedat", true))
+            .ReturnsAsync(new ActiveSessionPage([
+                new RefreshToken
+                {
+                    SessionId = sessionId,
+                    CreatedAt = DateTime.UtcNow.AddHours(-2),
+                    LastUsedAt = DateTime.UtcNow.AddMinutes(-2),
+                    AbsoluteExpiresAt = DateTime.UtcNow.AddHours(2),
+                    UserAgent = "Test Browser",
+                    AuthenticationMethod = "LOCAL"
+                }
+            ], 11));
+        var controller = new AuthController(null!, null!, jwt.Object, null!, null!, Options.Create(new JwtSettings()), null!, null!, null!)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([
+                        new Claim(ClaimTypes.NameIdentifier, "session-user"),
+                        new Claim("sid", sessionId.ToString())
+                    ], "test"))
+                }
+            }
+        };
+
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetSessions().Result).StatusCode);
+        var response = await controller.GetSessionsPage(new PagedQueryRequest
+        {
+            Page = 2, PageSize = 10, Search = "browser", SortBy = "lastUsedAt", SortDirection = "desc"
+        });
+        var page = Assert.IsType<ApiResponse<PagedResponse<AuthSessionResponse>>>(Assert.IsType<OkObjectResult>(response.Result).Value).Data!;
+        page.TotalCount.Should().Be(11);
+        page.TotalPages.Should().Be(2);
+        page.Items.Should().ContainSingle(item => item.IsCurrent && item.UserAgent == "Test Browser");
+        Assert.IsType<BadRequestObjectResult>((await controller.GetSessionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
 
     [Fact]

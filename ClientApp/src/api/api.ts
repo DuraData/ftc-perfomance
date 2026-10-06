@@ -1170,8 +1170,8 @@ export async function logout() {
   }
 }
 
-export async function getAuthSessions(): Promise<ApiResponse<AuthSessionDto[]>> {
-  return get<AuthSessionDto[]>('/v1/auth/sessions');
+export async function getAuthSessionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<AuthSessionDto>>> {
+  return get<PagedResult<AuthSessionDto>>(`/v1/auth/sessions/page${registerPageQuery(query)}`);
 }
 
 export async function revokeAuthSession(sessionId: string, reason: string): Promise<ApiResponse<boolean>> {
