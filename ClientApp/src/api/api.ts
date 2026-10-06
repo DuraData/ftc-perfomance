@@ -1406,8 +1406,13 @@ export function saveStrategicPlanningMaster(kind: StrategicPlanningMasterKind, p
   return publicId ? put<StrategicPlanningMasterDto>(`/v1/strategic-planning/${kind}/${encodeURIComponent(publicId)}`, payload) : post<StrategicPlanningMasterDto>(`/v1/strategic-planning/${kind}`, payload);
 }
 
-export function getStrategicPlanningRelationships(includeInactive = false): Promise<ApiResponse<StrategicPlanningRelationshipDto[]>> {
-  return get<StrategicPlanningRelationshipDto[]>(`/v1/strategic-planning/relationships${includeInactive ? '?includeInactive=true' : ''}`);
+export function getStrategicPlanningRelationshipsPage(query: RegisterPageQuery = {}, options: { relationshipType: string; includeInactive?: boolean; parentPublicId?: string; childPublicId?: string }): Promise<ApiResponse<PagedResult<StrategicPlanningRelationshipDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  parameters.set('relationshipType', options.relationshipType);
+  if (options.includeInactive) parameters.set('includeInactive', 'true');
+  if (options.parentPublicId) parameters.set('parentPublicId', options.parentPublicId);
+  if (options.childPublicId) parameters.set('childPublicId', options.childPublicId);
+  return get<PagedResult<StrategicPlanningRelationshipDto>>(`/v1/strategic-planning/relationships/page?${parameters.toString()}`);
 }
 
 export function getStrategicClassificationCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string): Promise<ApiResponse<StrategicClassificationCatalogueDto>> {

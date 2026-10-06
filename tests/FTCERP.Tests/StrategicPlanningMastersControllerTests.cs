@@ -52,9 +52,18 @@ public sealed class StrategicPlanningMastersControllerTests
         var goal = Data(await controller.CreateStrategicGoal(new(null, "Goal", null, null, null, 1, true, "Create goal relationship child")));
         var linked = await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, goal.PublicId, "Council approved optional relationship"));
         var relationship = Assert.IsType<OkObjectResult>(linked.Result).Value.As<ApiResponse<StrategicPlanningRelationshipDto>>().Data!;
+        var pageResult = await controller.GetRelationshipsPage(
+            new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "parentName", SortDirection = "asc" },
+            "municipal-kpa-strategic-goal", true, kpa.PublicId, goal.PublicId);
+        var page = Assert.IsType<OkObjectResult>(pageResult.Result).Value.As<ApiResponse<PagedResponse<StrategicPlanningRelationshipDto>>>().Data!;
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(relationship.PublicId, Assert.Single(page.Items).PublicId);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetRelationships().Result).StatusCode);
         var disabled = await controller.DisableRelationship(relationship.PublicId, new("Relationship superseded by council", relationship.RowVersion));
         var disabledDto = Assert.IsType<OkObjectResult>(disabled.Result).Value.As<ApiResponse<StrategicPlanningRelationshipDto>>().Data!;
         Assert.False((await context.MunicipalKpaStrategicGoals.SingleAsync()).IsActive);
+        var inactiveResult = await controller.GetRelationshipsPage(new PagedQueryRequest(), "municipal-kpa-strategic-goal", true, kpa.PublicId, goal.PublicId);
+        Assert.False(Assert.Single(Assert.IsType<OkObjectResult>(inactiveResult.Result).Value.As<ApiResponse<PagedResponse<StrategicPlanningRelationshipDto>>>().Data!.Items).IsActive);
         Assert.Contains(await context.AuditTrails.ToArrayAsync(), item => item.EntityId == relationship.PublicId.ToString() && item.Action == "DisableRelationship");
         Assert.IsType<ConflictObjectResult>((await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, goal.PublicId, "Attempt unsafe relationship reactivation"))).Result);
         Assert.IsType<OkObjectResult>((await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, goal.PublicId, "Council approved relationship reactivation", disabledDto.RowVersion))).Result);
@@ -331,6 +340,7 @@ public sealed class StrategicPlanningMastersControllerTests
     [InlineData(nameof(StrategicPlanningMastersController.CreateBudgetSource), "Permission:BUDGET_SOURCE.CREATE")]
     [InlineData(nameof(StrategicPlanningMastersController.UpdateBudgetType), "Permission:BUDGET_TYPE.UPDATE")]
     [InlineData(nameof(StrategicPlanningMastersController.CreateKpiUnitOfMeasure), "Permission:KPI_UNIT_OF_MEASURE.CREATE")]
+    [InlineData(nameof(StrategicPlanningMastersController.GetRelationshipsPage), "Permission:STRATEGIC_HIERARCHY.READ")]
     [InlineData(nameof(StrategicPlanningMastersController.LinkGoalToObjective), "Permission:STRATEGIC_HIERARCHY.CREATE")]
     public void EndpointsCarryDynamicPermissionPolicies(string methodName, string policy)
     {

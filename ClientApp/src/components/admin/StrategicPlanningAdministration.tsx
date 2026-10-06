@@ -3,7 +3,7 @@ import { Link2, Plus, RefreshCw } from 'lucide-react';
 import {
   disableStrategicPlanningRelationship,
   getStrategicPlanningMastersPage,
-  getStrategicPlanningRelationships,
+  getStrategicPlanningRelationshipsPage,
   linkStrategicPlanningRelationship,
   saveStrategicPlanningMaster,
   type StrategicPlanningMasterKind,
@@ -45,6 +45,9 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
   const [form, setForm] = useState(empty); const [search, setSearch] = useState(''); const [page, setPage] = useState(1); const [totalPages, setTotalPages] = useState(0);
   const [relationships, setRelationships] = useState<StrategicPlanningRelationshipDto[]>([]); const [relationshipReason, setRelationshipReason] = useState('');
   const [relationshipType, setRelationshipType] = useState(relationTypes[0].value); const [parentId, setParentId] = useState(''); const [childId, setChildId] = useState('');
+  const [relationshipPage, setRelationshipPage] = useState(1); const [relationshipTotalPages, setRelationshipTotalPages] = useState(0); const [relationshipTotalCount, setRelationshipTotalCount] = useState(0);
+  const [relationshipSearchInput, setRelationshipSearchInput] = useState(''); const [relationshipSearch, setRelationshipSearch] = useState('');
+  const [relationshipSort, setRelationshipSort] = useState<'parentName' | 'childName' | 'status'>('parentName');
   const [relationshipOptions, setRelationshipOptions] = useState<Record<string, StrategicPlanningMasterDto[]>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const relationship = relationTypes.find(item => item.value === relationshipType)!;
@@ -54,12 +57,21 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
     setBusy(true); setError(null);
     const [masters, links] = await Promise.all([
       getStrategicPlanningMastersPage(kind, { page, pageSize: 25, search: search || undefined, sortBy: 'displayOrder', sortDirection: 'asc' }, { includeInactive: true }),
-      supportsRelationships && security.canRead('STRATEGIC_HIERARCHY') ? getStrategicPlanningRelationships(true) : Promise.resolve({ success: true, data: [] as StrategicPlanningRelationshipDto[] }),
+      supportsRelationships && security.canRead('STRATEGIC_HIERARCHY') ? getStrategicPlanningRelationshipsPage(
+        { page: relationshipPage, pageSize: 25, search: relationshipSearch || undefined, sortBy: relationshipSort, sortDirection: 'asc' },
+        { relationshipType, includeInactive: true },
+      ) : Promise.resolve({ success: true, message: null, data: { items: [] as StrategicPlanningRelationshipDto[], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } }),
     ]);
     if (!masters.success) setError(masters.message ?? `${config.title} could not be loaded.`);
-    setRows(masters.data?.items ?? []); setTotalPages(masters.data?.totalPages ?? 0); setRelationships(links.data ?? []); setBusy(false);
-  }, [config.title, kind, page, search, security, supportsRelationships]);
+    if (!links.success) setError(links.message ?? 'Strategic relationships could not be loaded.');
+    setRows(masters.data?.items ?? []); setTotalPages(masters.data?.totalPages ?? 0); setRelationships(links.data?.items ?? []); setRelationshipTotalPages(links.data?.totalPages ?? 0); setRelationshipTotalCount(links.data?.totalCount ?? 0); setBusy(false);
+  }, [config.title, kind, page, relationshipPage, relationshipSearch, relationshipSort, relationshipType, search, security, supportsRelationships]);
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setRelationshipSearch(relationshipSearchInput.trim()); setRelationshipPage(1); }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [relationshipSearchInput]);
 
   useEffect(() => {
     if (!supportsRelationships || !security.canCreate('STRATEGIC_HIERARCHY')) return;
@@ -82,8 +94,14 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
   };
   const link = async () => {
     if (!parentId || !childId || relationshipReason.trim().length < 10) { setError('Select both records and enter a reason of at least 10 characters.'); return; }
-    const inactive = relationships.find(item => item.relationshipType === relationshipType && item.parentPublicId === parentId && item.childPublicId === childId && !item.isActive);
-    setBusy(true); const result = await linkStrategicPlanningRelationship(relationshipType, parentId, childId, relationshipReason, inactive?.rowVersion);
+    setBusy(true); setError(null);
+    const exact = await getStrategicPlanningRelationshipsPage(
+      { page: 1, pageSize: 1, sortBy: 'parentName', sortDirection: 'asc' },
+      { relationshipType, includeInactive: true, parentPublicId: parentId, childPublicId: childId },
+    );
+    if (!exact.success) { setError(exact.message ?? 'The existing relationship state could not be checked.'); setBusy(false); return; }
+    const inactive = exact.data?.items.find(item => !item.isActive);
+    const result = await linkStrategicPlanningRelationship(relationshipType, parentId, childId, relationshipReason, inactive?.rowVersion);
     if (!result.success) setError(result.message ?? 'Relationship could not be created.'); else { pushToast('success', 'Optional strategic relationship saved'); setParentId(''); setChildId(''); setRelationshipReason(''); await load(); } setBusy(false);
   };
   const disable = async (item: StrategicPlanningRelationshipDto) => {
@@ -110,7 +128,32 @@ export function StrategicPlanningAdministration({ kind }: { kind: StrategicPlann
         </FormPanel>}
         <Card className="p-4"><div className="flex justify-between"><h3 className="font-semibold">Authoritative register</h3><Badge variant="primary">{rows.length}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <div key={item.publicId} className="flex items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.name}{item.symbol ? ` (${item.symbol})` : ''}</p><p className="text-xs text-secondary-500">{item.code || 'No code'} · order {item.displayOrder} · {item.effectiveFromFinancialYearCode || 'open'} to {item.effectiveToFinancialYearCode || 'open'}</p><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></div>{security.canUpdate(config.resource) && <Button size="sm" variant="outline" onClick={() => edit(item)}>Edit</Button>}</div>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-3 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></div>}</Card>
       </div>
-      {supportsRelationships && security.canRead('STRATEGIC_HIERARCHY') && <Card className="p-4"><div className="flex items-center gap-2"><Link2 className="h-5 w-5" /><h3 className="font-semibold">Optional strategic relationships</h3></div><p className="mt-1 text-sm text-secondary-500">Configure only the relationships your municipality uses; no fixed hierarchy is imposed.</p>{security.canCreate('STRATEGIC_HIERARCHY') && <div className="mt-3 grid gap-2 lg:grid-cols-3"><Select label="Relationship" value={relationshipType} options={relationTypes.map(item => ({ value: item.value, label: item.label }))} onChange={event => { setRelationshipType(event.target.value as typeof relationshipType); setParentId(''); setChildId(''); }} /><Select label="Parent" value={parentId} options={parentOptions} onChange={event => setParentId(event.target.value)} /><Select label="Child" value={childId} options={childOptions} onChange={event => setChildId(event.target.value)} /><div className="lg:col-span-2"><Textarea label="Relationship governance reason" value={relationshipReason} onChange={event => setRelationshipReason(event.target.value)} /></div><Button onClick={() => void link()} disabled={busy}>Create relationship</Button></div>}<div className="mt-4 space-y-2">{relationships.map(item => <div key={item.publicId} className="flex items-center justify-between rounded border border-secondary-200 p-2 text-sm dark:border-secondary-700"><span>{item.parentName} → {item.childName} <Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></span>{item.isActive && security.canUpdate('STRATEGIC_HIERARCHY') && <Button size="sm" variant="ghost" onClick={() => void disable(item)}>Disable</Button>}</div>)}</div></Card>}
+      {supportsRelationships && security.canRead('STRATEGIC_HIERARCHY') && <Card className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><Link2 className="h-5 w-5" /><h3 className="font-semibold">Optional strategic relationships</h3></div>
+          <Badge variant="primary">{relationshipTotalCount}</Badge>
+        </div>
+        <p className="mt-1 text-sm text-secondary-500">Configure only the relationships your municipality uses; no fixed hierarchy is imposed.</p>
+        {security.canCreate('STRATEGIC_HIERARCHY') && <div className="mt-3 grid gap-2 lg:grid-cols-3">
+          <Select label="Relationship" value={relationshipType} options={relationTypes.map(item => ({ value: item.value, label: item.label }))} onChange={event => { setRelationshipType(event.target.value as typeof relationshipType); setRelationshipPage(1); setParentId(''); setChildId(''); }} />
+          <Select label="Parent" value={parentId} options={parentOptions} onChange={event => setParentId(event.target.value)} />
+          <Select label="Child" value={childId} options={childOptions} onChange={event => setChildId(event.target.value)} />
+          <div className="lg:col-span-2"><Textarea label="Relationship governance reason" value={relationshipReason} onChange={event => setRelationshipReason(event.target.value)} /></div>
+          <Button onClick={() => void link()} disabled={busy}>Create relationship</Button>
+        </div>}
+        <div className="mt-4 grid gap-2 md:grid-cols-2">
+          <Input label="Search relationships" value={relationshipSearchInput} onChange={event => setRelationshipSearchInput(event.target.value)} />
+          <Select label="Sort relationships" value={relationshipSort} options={[{ value: 'parentName', label: 'Parent name' }, { value: 'childName', label: 'Child name' }, { value: 'status', label: 'Status' }]} onChange={event => { setRelationshipSort(event.target.value as typeof relationshipSort); setRelationshipPage(1); }} />
+        </div>
+        <div className="mt-4 space-y-2">
+          {relationships.map(item => <div key={item.publicId} className="flex items-center justify-between rounded border border-secondary-200 p-2 text-sm dark:border-secondary-700"><span>{item.parentName} → {item.childName} <Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></span>{item.isActive && security.canUpdate('STRATEGIC_HIERARCHY') && <Button size="sm" variant="ghost" onClick={() => void disable(item)}>Disable</Button>}</div>)}
+          {!relationships.length && <p className="text-sm text-secondary-500">No relationships.</p>}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-secondary-500">
+          <span>Page {relationshipTotalPages === 0 ? 0 : relationshipPage} of {relationshipTotalPages} · {relationshipTotalCount} relationships</span>
+          <div className="flex gap-2"><Button size="sm" variant="outline" disabled={relationshipPage <= 1} onClick={() => setRelationshipPage(value => value - 1)}>Previous relationships</Button><Button size="sm" variant="outline" disabled={relationshipPage >= relationshipTotalPages} onClick={() => setRelationshipPage(value => value + 1)}>Next relationships</Button></div>
+        </div>
+      </Card>}
     </div>
   </AppShell>;
 }

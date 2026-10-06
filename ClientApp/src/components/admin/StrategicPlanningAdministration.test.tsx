@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrategicPlanningAdministration } from './StrategicPlanningAdministration';
 
 const api = vi.hoisted(() => ({
-  getStrategicPlanningMastersPage: vi.fn(), getStrategicPlanningRelationships: vi.fn(), saveStrategicPlanningMaster: vi.fn(), linkStrategicPlanningRelationship: vi.fn(), disableStrategicPlanningRelationship: vi.fn(),
+  getStrategicPlanningMastersPage: vi.fn(), getStrategicPlanningRelationshipsPage: vi.fn(), saveStrategicPlanningMaster: vi.fn(), linkStrategicPlanningRelationship: vi.fn(), disableStrategicPlanningRelationship: vi.fn(),
 }));
 const security = { canRead: () => true, canCreate: () => true, canUpdate: () => true };
 vi.mock('../../api/api', () => api);
@@ -15,7 +15,7 @@ describe('StrategicPlanningAdministration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.getStrategicPlanningMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'goal-1', code: 'SG1', name: 'Inclusive growth', description: null, effectiveFromFinancialYearPublicId: 'year-1', effectiveFromFinancialYearCode: '2025/26', effectiveToFinancialYearPublicId: null, effectiveToFinancialYearCode: null, displayOrder: 10, isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
-    api.getStrategicPlanningRelationships.mockResolvedValue({ success: true, data: [] });
+    api.getStrategicPlanningRelationshipsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.saveStrategicPlanningMaster.mockResolvedValue({ success: true, data: {} }); api.linkStrategicPlanningRelationship.mockResolvedValue({ success: true, data: {} }); api.disableStrategicPlanningRelationship.mockResolvedValue({ success: true, data: {} });
   });
 
@@ -29,13 +29,28 @@ describe('StrategicPlanningAdministration', () => {
   it('exposes configurable optional relationships without enforcing a fixed hierarchy', async () => {
     render(<StrategicPlanningAdministration kind="strategic-goals" />); expect(await screen.findByText('Optional strategic relationships')).toBeInTheDocument();
     expect(screen.getByLabelText('Relationship')).toHaveValue('municipal-kpa-strategic-goal'); expect(screen.getByText(/no fixed hierarchy is imposed/i)).toBeInTheDocument();
+    await waitFor(() => expect(api.getStrategicPlanningRelationshipsPage).toHaveBeenCalledWith(
+      { page: 1, pageSize: 25, search: undefined, sortBy: 'parentName', sortDirection: 'asc' },
+      { relationshipType: 'municipal-kpa-strategic-goal', includeInactive: true },
+    ));
+  });
+
+  it('pages the selected strategic relationship type on the server', async () => {
+    api.getStrategicPlanningRelationshipsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'relationship-1', relationshipType: 'municipal-kpa-strategic-goal', parentPublicId: 'kpa-1', parentName: 'Service delivery', childPublicId: 'goal-1', childName: 'Inclusive growth', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
+    render(<StrategicPlanningAdministration kind="strategic-goals" />);
+    expect(await screen.findByText(/Service delivery/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next relationships' }));
+    await waitFor(() => expect(api.getStrategicPlanningRelationshipsPage).toHaveBeenLastCalledWith(
+      { page: 2, pageSize: 25, search: undefined, sortBy: 'parentName', sortDirection: 'asc' },
+      { relationshipType: 'municipal-kpa-strategic-goal', includeInactive: true },
+    ));
   });
 
   it('uses the governed budget endpoint and does not expose strategic relationship controls', async () => {
     render(<StrategicPlanningAdministration kind="budget-sources" />);
     expect(await screen.findByText('Inclusive growth')).toBeInTheDocument();
     expect(api.getStrategicPlanningMastersPage).toHaveBeenCalledWith('budget-sources', expect.anything(), { includeInactive: true });
-    expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
+    expect(api.getStrategicPlanningRelationshipsPage).not.toHaveBeenCalled();
     expect(screen.queryByText('Optional strategic relationships')).not.toBeInTheDocument();
   });
 
@@ -43,7 +58,7 @@ describe('StrategicPlanningAdministration', () => {
     render(<StrategicPlanningAdministration kind="kpi-types" />);
     expect(await screen.findByText('Inclusive growth')).toBeInTheDocument();
     expect(api.getStrategicPlanningMastersPage).toHaveBeenCalledWith('kpi-types', expect.anything(), { includeInactive: true });
-    expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
+    expect(api.getStrategicPlanningRelationshipsPage).not.toHaveBeenCalled();
     expect(screen.queryByText('Optional strategic relationships')).not.toBeInTheDocument();
   });
 
@@ -58,6 +73,6 @@ describe('StrategicPlanningAdministration', () => {
     fireEvent.change(governanceReason, { target: { value: 'Approved unit symbol correction' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(api.saveStrategicPlanningMaster).toHaveBeenCalledWith('kpi-units-of-measure', 'uom-1', expect.objectContaining({ symbol: 'items', rowVersion: 'Ag==' })));
-    expect(api.getStrategicPlanningRelationships).not.toHaveBeenCalled();
+    expect(api.getStrategicPlanningRelationshipsPage).not.toHaveBeenCalled();
   });
 });

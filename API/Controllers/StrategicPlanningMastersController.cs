@@ -118,17 +118,86 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     public Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> UpdateKpiUnitOfMeasure(Guid publicId, SaveStrategicPlanningMasterRequest request) => Update(context.GovernedKpiUnitOfMeasures, publicId, nameof(GovernedKpiUnitOfMeasure), request);
 
     [HttpGet("relationships"), Authorize(Policy = "Permission:STRATEGIC_HIERARCHY.READ")]
-    public async Task<ActionResult<ApiResponse<StrategicPlanningRelationshipDto[]>>> GetRelationships([FromQuery] bool includeInactive = false)
+    public ActionResult<ApiResponse<StrategicPlanningRelationshipDto[]>> GetRelationships([FromQuery] bool includeInactive = false)
     {
-        if (!TenantSelected()) return TenantRequired<StrategicPlanningRelationshipDto[]>();
-        var result = new List<StrategicPlanningRelationshipDto>();
-        result.AddRange(await RelationshipRows(context.MunicipalKpaStrategicGoals, "municipal-kpa-strategic-goal", item => item.MunicipalKpa, item => item.StrategicGoal, includeInactive));
-        result.AddRange(await RelationshipRows(context.StrategicGoalInterventions, "strategic-goal-intervention", item => item.StrategicGoal, item => item.StrategicIntervention, includeInactive));
-        result.AddRange(await RelationshipRows(context.StrategicGoalObjectives, "strategic-goal-objective", item => item.StrategicGoal, item => item.StrategicObjective, includeInactive));
-        result.AddRange(await RelationshipRows(context.StrategicInterventionObjectives, "strategic-intervention-objective", item => item.StrategicIntervention, item => item.StrategicObjective, includeInactive));
-        result.AddRange(await RelationshipRows(context.StrategicObjectivePerformanceObjectives, "strategic-objective-performance-objective", item => item.StrategicObjective, item => item.PerformanceObjective, includeInactive));
-        return Ok(new ApiResponse<StrategicPlanningRelationshipDto[]>(true, result.OrderBy(item => item.RelationshipType).ThenBy(item => item.ParentName).ThenBy(item => item.ChildName).ToArray()));
+        _ = includeInactive;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<StrategicPlanningRelationshipDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/strategic-planning/relationships/page."));
     }
+
+    [HttpGet("relationships/page"), Authorize(Policy = "Permission:STRATEGIC_HIERARCHY.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningRelationshipDto>>>> GetRelationshipsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? relationshipType,
+        [FromQuery] bool includeInactive = false,
+        [FromQuery] Guid? parentPublicId = null,
+        [FromQuery] Guid? childPublicId = null)
+    {
+        if (!TenantSelected()) return TenantRequired<PagedResponse<StrategicPlanningRelationshipDto>>();
+        var type = relationshipType?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!RelationshipTypes.Contains(type))
+            return BadRequest(Fail<PagedResponse<StrategicPlanningRelationshipDto>>("RelationshipType is invalid."));
+        var sortBy = request.SortBy == null ? "parentname" : request.NormalizedSortBy;
+        if (sortBy is not ("parentname" or "childname" or "status"))
+            return BadRequest(Fail<PagedResponse<StrategicPlanningRelationshipDto>>("SortBy must be parentName, childName, or status."));
+
+        var query = RelationshipQuery(type);
+        if (!includeInactive) query = query.Where(item => item.IsActive);
+        if (parentPublicId.HasValue) query = query.Where(item => item.ParentPublicId == parentPublicId.Value);
+        if (childPublicId.HasValue) query = query.Where(item => item.ChildPublicId == childPublicId.Value);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.ParentName.Contains(request.NormalizedSearch) || item.ChildName.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("childname", false) => query.OrderBy(item => item.ChildName).ThenBy(item => item.ParentName).ThenBy(item => item.PublicId),
+            ("childname", true) => query.OrderByDescending(item => item.ChildName).ThenByDescending(item => item.ParentName).ThenByDescending(item => item.PublicId),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.ParentName).ThenBy(item => item.ChildName).ThenBy(item => item.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.ParentName).ThenBy(item => item.ChildName).ThenBy(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.ParentName).ThenBy(item => item.ChildName).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.ParentName).ThenByDescending(item => item.ChildName).ThenByDescending(item => item.PublicId)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<StrategicPlanningRelationshipDto>>(true,
+            PagedResponse<StrategicPlanningRelationshipDto>.Create(rows.Select(item => new StrategicPlanningRelationshipDto(
+                item.PublicId, item.RelationshipType, item.ParentPublicId, item.ParentName, item.ChildPublicId, item.ChildName,
+                item.IsActive, Convert.ToBase64String(item.RowVersion))), request.Page, request.PageSize, totalCount)));
+    }
+
+    private static readonly HashSet<string> RelationshipTypes =
+    [
+        "municipal-kpa-strategic-goal", "strategic-goal-intervention", "strategic-goal-objective",
+        "strategic-intervention-objective", "strategic-objective-performance-objective"
+    ];
+
+    private IQueryable<StrategicPlanningRelationshipPageRow> RelationshipQuery(string type) => type switch
+    {
+        "municipal-kpa-strategic-goal" => context.MunicipalKpaStrategicGoals.AsNoTracking().Select(item => new StrategicPlanningRelationshipPageRow
+        {
+            PublicId = item.PublicId, RelationshipType = type, ParentPublicId = item.MunicipalKpa.PublicId, ParentName = item.MunicipalKpa.Name,
+            ChildPublicId = item.StrategicGoal.PublicId, ChildName = item.StrategicGoal.Name, IsActive = item.IsActive, RowVersion = item.RowVersion
+        }),
+        "strategic-goal-intervention" => context.StrategicGoalInterventions.AsNoTracking().Select(item => new StrategicPlanningRelationshipPageRow
+        {
+            PublicId = item.PublicId, RelationshipType = type, ParentPublicId = item.StrategicGoal.PublicId, ParentName = item.StrategicGoal.Name,
+            ChildPublicId = item.StrategicIntervention.PublicId, ChildName = item.StrategicIntervention.Name, IsActive = item.IsActive, RowVersion = item.RowVersion
+        }),
+        "strategic-goal-objective" => context.StrategicGoalObjectives.AsNoTracking().Select(item => new StrategicPlanningRelationshipPageRow
+        {
+            PublicId = item.PublicId, RelationshipType = type, ParentPublicId = item.StrategicGoal.PublicId, ParentName = item.StrategicGoal.Name,
+            ChildPublicId = item.StrategicObjective.PublicId, ChildName = item.StrategicObjective.Name, IsActive = item.IsActive, RowVersion = item.RowVersion
+        }),
+        "strategic-intervention-objective" => context.StrategicInterventionObjectives.AsNoTracking().Select(item => new StrategicPlanningRelationshipPageRow
+        {
+            PublicId = item.PublicId, RelationshipType = type, ParentPublicId = item.StrategicIntervention.PublicId, ParentName = item.StrategicIntervention.Name,
+            ChildPublicId = item.StrategicObjective.PublicId, ChildName = item.StrategicObjective.Name, IsActive = item.IsActive, RowVersion = item.RowVersion
+        }),
+        _ => context.StrategicObjectivePerformanceObjectives.AsNoTracking().Select(item => new StrategicPlanningRelationshipPageRow
+        {
+            PublicId = item.PublicId, RelationshipType = type, ParentPublicId = item.StrategicObjective.PublicId, ParentName = item.StrategicObjective.Name,
+            ChildPublicId = item.PerformanceObjective.PublicId, ChildName = item.PerformanceObjective.Name, IsActive = item.IsActive, RowVersion = item.RowVersion
+        })
+    };
 
     [HttpPost("relationships/municipal-kpa-strategic-goal"), Authorize(Policy = "Permission:STRATEGIC_HIERARCHY.CREATE")]
     public async Task<ActionResult<ApiResponse<StrategicPlanningRelationshipDto>>> LinkMunicipalKpaToGoal(LinkStrategicPlanningRequest request)
@@ -323,14 +392,6 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     private static string ParentKey<TEntity>() => typeof(TEntity) == typeof(MunicipalKpaStrategicGoal) ? nameof(MunicipalKpaStrategicGoal.MunicipalKpaId) : typeof(TEntity) == typeof(StrategicGoalIntervention) || typeof(TEntity) == typeof(StrategicGoalObjective) ? nameof(StrategicGoalIntervention.StrategicGoalId) : typeof(TEntity) == typeof(StrategicInterventionObjective) ? nameof(StrategicInterventionObjective.StrategicInterventionId) : nameof(StrategicObjectivePerformanceObjective.StrategicObjectiveId);
     private static string ChildKey<TEntity>() => typeof(TEntity) == typeof(MunicipalKpaStrategicGoal) ? nameof(MunicipalKpaStrategicGoal.StrategicGoalId) : typeof(TEntity) == typeof(StrategicGoalIntervention) ? nameof(StrategicGoalIntervention.StrategicInterventionId) : typeof(TEntity) == typeof(StrategicGoalObjective) || typeof(TEntity) == typeof(StrategicInterventionObjective) ? nameof(StrategicGoalObjective.StrategicObjectiveId) : nameof(StrategicObjectivePerformanceObjective.PerformanceObjectiveId);
 
-    private static async Task<StrategicPlanningRelationshipDto[]> RelationshipRows<TEntity, TParent, TChild>(DbSet<TEntity> set, string type, System.Linq.Expressions.Expression<Func<TEntity, TParent>> parent, System.Linq.Expressions.Expression<Func<TEntity, TChild>> child, bool includeInactive) where TEntity : StrategicPlanningRelationshipBase where TParent : StrategicPlanningMasterBase where TChild : StrategicPlanningMasterBase
-    {
-        var query = set.AsNoTracking().Include(parent).Include(child).AsQueryable(); if (!includeInactive) query = query.Where(item => item.IsActive);
-        var rows = await query.ToArrayAsync();
-        var getParent = parent.Compile(); var getChild = child.Compile();
-        return rows.Select(item => { var p = getParent(item); var c = getChild(item); return new StrategicPlanningRelationshipDto(item.PublicId, type, p.PublicId, p.Name, c.PublicId, c.Name, item.IsActive, Convert.ToBase64String(item.RowVersion)); }).ToArray();
-    }
-
     private void Apply(StrategicPlanningMasterBase entity, SaveStrategicPlanningMasterRequest request, string? code, MunicipalityFinancialYear? from, MunicipalityFinancialYear? to) { entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Clean(request.Description); entity.EffectiveFromFinancialYearId = from?.Id; entity.EffectiveToFinancialYearId = to?.Id; entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; if (entity is GovernedKpiUnitOfMeasure unit) unit.Symbol = Clean(request.Symbol); }
     private async Task LoadYears(StrategicPlanningMasterBase entity) { if (entity.EffectiveFromFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveFromFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); if (entity.EffectiveToFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveToFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); }
     private static StrategicPlanningMasterDto ToDto(StrategicPlanningMasterBase item) => new(item.PublicId, item.Code, item.Name, item.Description, item.EffectiveFromFinancialYear?.PublicId, item.EffectiveFromFinancialYear?.FinancialYear.Code, item.EffectiveToFinancialYear?.PublicId, item.EffectiveToFinancialYear?.FinancialYear.Code, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion), (item as GovernedKpiUnitOfMeasure)?.Symbol);
@@ -362,6 +423,17 @@ public sealed class StrategicPlanningPageRequest
 public sealed record StrategicPlanningMasterDto(Guid PublicId, string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, string? EffectiveFromFinancialYearCode, Guid? EffectiveToFinancialYearPublicId, string? EffectiveToFinancialYearCode, int DisplayOrder, bool IsActive, string RowVersion, string? Symbol = null);
 public sealed record SaveStrategicPlanningMasterRequest(string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, Guid? EffectiveToFinancialYearPublicId, int DisplayOrder, bool IsActive, string Reason, string? RowVersion = null, string? Symbol = null);
 public sealed record StrategicPlanningRelationshipDto(Guid PublicId, string RelationshipType, Guid ParentPublicId, string ParentName, Guid ChildPublicId, string ChildName, bool IsActive, string RowVersion);
+internal sealed class StrategicPlanningRelationshipPageRow
+{
+    public Guid PublicId { get; init; }
+    public string RelationshipType { get; init; } = string.Empty;
+    public Guid ParentPublicId { get; init; }
+    public string ParentName { get; init; } = string.Empty;
+    public Guid ChildPublicId { get; init; }
+    public string ChildName { get; init; } = string.Empty;
+    public bool IsActive { get; init; }
+    public byte[] RowVersion { get; init; } = [];
+}
 public sealed record LinkStrategicPlanningRequest(Guid ParentPublicId, Guid ChildPublicId, string Reason, string? RowVersion = null);
 public sealed record DisableStrategicPlanningRelationshipRequest(string Reason, string RowVersion);
 public sealed record StrategicCatalogueItemDto(Guid PublicId, string? Code, string Name, int DisplayOrder, string? Symbol = null);
