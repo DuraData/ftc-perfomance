@@ -300,16 +300,124 @@ public sealed class SecurityAdministrationController : ControllerBase
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
     public async Task<ActionResult<ApiResponse<SecurityResourceDto[]>>> GetResources()
     {
-        var items = await _context.SecurityResources.AsNoTracking().Where(item => item.IsActive).OrderBy(item => item.Name).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityResourceDto[]>(true, items.Select(item => new SecurityResourceDto(item.Code, item.Name, item.ResourceType, item.SupportsCreate, item.SupportsRead, item.SupportsUpdate, item.SupportsDelete, item.SupportsExport, item.SupportsImport, item.SupportsFieldSecurity, item.SupportsRecordCriteria, Convert.ToBase64String(item.RowVersion))).ToArray()));
+        var items = await _context.SecurityResources.AsNoTracking().OrderBy(item => item.Name).ToArrayAsync();
+        return Ok(new ApiResponse<SecurityResourceDto[]>(true, items.Select(ToResourceDto).ToArray()));
+    }
+
+    [HttpPost("resources")]
+    [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
+    public async Task<ActionResult<ApiResponse<SecurityResourceDto>>> CreateResource([FromBody] CreateSecurityResourceRequest request)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<SecurityResourceDto>(false, null, "User not found"));
+        if (!await CanManageGlobalRegistryAsync(actor)) return Forbid();
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityResourceDto>(false, null, "Select a municipality context to record the registry audit."));
+        var validation = ValidateResourceInput(request.Code, request.Name, request.ResourceType, request.Description, request.Reason,
+            request.SupportsCreate, request.SupportsRead, request.SupportsUpdate, request.SupportsDelete, request.SupportsExport, request.SupportsImport);
+        if (validation != null) return BadRequest(new ApiResponse<SecurityResourceDto>(false, null, validation));
+        var code = request.Code.Trim().ToUpperInvariant();
+        if (await _context.SecurityResources.AnyAsync(item => item.Code == code)) return Conflict(new ApiResponse<SecurityResourceDto>(false, null, "Resource code already exists."));
+
+        var entity = new SecurityResource
+        {
+            Code = code, Name = request.Name.Trim(), ResourceType = request.ResourceType.Trim().ToUpperInvariant(), Description = NullIfWhiteSpace(request.Description),
+            SupportsCreate = request.SupportsCreate, SupportsRead = request.SupportsRead, SupportsUpdate = request.SupportsUpdate,
+            SupportsDelete = request.SupportsDelete, SupportsExport = request.SupportsExport, SupportsImport = request.SupportsImport,
+            SupportsFieldSecurity = request.SupportsFieldSecurity, SupportsRecordCriteria = request.SupportsRecordCriteria, IsActive = true
+        };
+        _context.SecurityResources.Add(entity);
+        await SyncResourcePermissionsAsync(entity);
+        _context.AuditTrails.Add(NewRegistryAudit(actor, nameof(SecurityResource), entity.PublicId, "Create", null, ResourceAuditValue(entity), request.Reason));
+        await _context.SaveChangesAsync();
+        return Ok(new ApiResponse<SecurityResourceDto>(true, ToResourceDto(entity)));
+    }
+
+    [HttpPut("resources/{publicId:guid}")]
+    [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
+    public async Task<ActionResult<ApiResponse<SecurityResourceDto>>> UpdateResource(Guid publicId, [FromBody] UpdateSecurityResourceRequest request)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<SecurityResourceDto>(false, null, "User not found"));
+        if (!await CanManageGlobalRegistryAsync(actor)) return Forbid();
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityResourceDto>(false, null, "Select a municipality context to record the registry audit."));
+        var entity = await _context.SecurityResources.FirstOrDefaultAsync(item => item.PublicId == publicId);
+        if (entity == null) return NotFound(new ApiResponse<SecurityResourceDto>(false, null, "Security resource not found."));
+        var validation = ValidateResourceInput(entity.Code, request.Name, request.ResourceType, request.Description, request.Reason,
+            request.SupportsCreate, request.SupportsRead, request.SupportsUpdate, request.SupportsDelete, request.SupportsExport, request.SupportsImport);
+        if (validation != null) return BadRequest(new ApiResponse<SecurityResourceDto>(false, null, validation));
+        if (!TryDecodeRowVersion(request.RowVersion, out var rowVersion)) return BadRequest(new ApiResponse<SecurityResourceDto>(false, null, "RowVersion is invalid."));
+        _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
+        var oldValue = ResourceAuditValue(entity);
+        entity.Name = request.Name.Trim();
+        entity.ResourceType = request.ResourceType.Trim().ToUpperInvariant();
+        entity.Description = NullIfWhiteSpace(request.Description);
+        entity.SupportsCreate = request.SupportsCreate; entity.SupportsRead = request.SupportsRead; entity.SupportsUpdate = request.SupportsUpdate;
+        entity.SupportsDelete = request.SupportsDelete; entity.SupportsExport = request.SupportsExport; entity.SupportsImport = request.SupportsImport;
+        entity.SupportsFieldSecurity = request.SupportsFieldSecurity; entity.SupportsRecordCriteria = request.SupportsRecordCriteria; entity.IsActive = request.IsActive;
+        await SyncResourcePermissionsAsync(entity);
+        await SyncChildPermissionsAsync(entity.Code, entity.IsActive, entity.SupportsFieldSecurity);
+        _context.AuditTrails.Add(NewRegistryAudit(actor, nameof(SecurityResource), entity.PublicId, "Update", oldValue, ResourceAuditValue(entity), request.Reason));
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<SecurityResourceDto>(false, null, "The security resource changed since it was loaded. Refresh and try again.")); }
+        return Ok(new ApiResponse<SecurityResourceDto>(true, ToResourceDto(entity)));
     }
 
     [HttpGet("actions")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
     public async Task<ActionResult<ApiResponse<SecurityActionDto[]>>> GetActions()
     {
-        var items = await _context.SecurityActionDefinitions.AsNoTracking().Where(item => item.IsActive).OrderBy(item => item.ResourceCode).ThenBy(item => item.Name).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityActionDto[]>(true, items.Select(item => new SecurityActionDto(item.Code, item.Name, item.ResourceCode, item.Description, Convert.ToBase64String(item.RowVersion))).ToArray()));
+        var items = await _context.SecurityActionDefinitions.AsNoTracking().OrderBy(item => item.ResourceCode).ThenBy(item => item.Name).ToArrayAsync();
+        return Ok(new ApiResponse<SecurityActionDto[]>(true, items.Select(ToActionDto).ToArray()));
+    }
+
+    [HttpPost("actions")]
+    [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
+    public async Task<ActionResult<ApiResponse<SecurityActionDto>>> CreateAction([FromBody] CreateSecurityActionRequest request)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<SecurityActionDto>(false, null, "User not found"));
+        if (!await CanManageGlobalRegistryAsync(actor)) return Forbid();
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityActionDto>(false, null, "Select a municipality context to record the registry audit."));
+        var validation = ValidateActionInput(request.Code, request.Name, request.ResourceCode, request.Description, request.Reason);
+        if (validation != null) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, validation));
+        var code = request.Code.Trim().ToUpperInvariant();
+        var resourceCode = request.ResourceCode.Trim().ToUpperInvariant();
+        if (!await _context.SecurityResources.AnyAsync(item => item.Code == resourceCode && item.IsActive)) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, "The action must reference an active registered resource."));
+        if (await _context.SecurityActionDefinitions.AnyAsync(item => item.Code == code)) return Conflict(new ApiResponse<SecurityActionDto>(false, null, "Action code already exists."));
+        var conflictingPermission = await _context.Permissions.AnyAsync(item => item.Code == code && (item.Kind != SecurityPermissionKind.Action || item.ActionCode != code));
+        if (conflictingPermission) return Conflict(new ApiResponse<SecurityActionDto>(false, null, "Action code conflicts with another registered permission."));
+
+        var entity = new SecurityActionDefinition { Code = code, Name = request.Name.Trim(), ResourceCode = resourceCode, Description = NullIfWhiteSpace(request.Description), IsActive = true };
+        _context.SecurityActionDefinitions.Add(entity);
+        await SyncActionPermissionAsync(entity, true);
+        _context.AuditTrails.Add(NewRegistryAudit(actor, nameof(SecurityActionDefinition), entity.PublicId, "Create", null, ActionAuditValue(entity), request.Reason));
+        await _context.SaveChangesAsync();
+        return Ok(new ApiResponse<SecurityActionDto>(true, ToActionDto(entity)));
+    }
+
+    [HttpPut("actions/{publicId:guid}")]
+    [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
+    public async Task<ActionResult<ApiResponse<SecurityActionDto>>> UpdateAction(Guid publicId, [FromBody] UpdateSecurityActionRequest request)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<SecurityActionDto>(false, null, "User not found"));
+        if (!await CanManageGlobalRegistryAsync(actor)) return Forbid();
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityActionDto>(false, null, "Select a municipality context to record the registry audit."));
+        var entity = await _context.SecurityActionDefinitions.FirstOrDefaultAsync(item => item.PublicId == publicId);
+        if (entity == null) return NotFound(new ApiResponse<SecurityActionDto>(false, null, "Security action not found."));
+        var validation = ValidateActionInput(entity.Code, request.Name, entity.ResourceCode, request.Description, request.Reason);
+        if (validation != null) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, validation));
+        if (!TryDecodeRowVersion(request.RowVersion, out var rowVersion)) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, "RowVersion is invalid."));
+        var resourceActive = await _context.SecurityResources.AnyAsync(item => item.Code == entity.ResourceCode && item.IsActive);
+        if (request.IsActive && !resourceActive) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, "An action cannot be activated while its resource is inactive."));
+        _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
+        var oldValue = ActionAuditValue(entity);
+        entity.Name = request.Name.Trim(); entity.Description = NullIfWhiteSpace(request.Description); entity.IsActive = request.IsActive;
+        await SyncActionPermissionAsync(entity, resourceActive);
+        _context.AuditTrails.Add(NewRegistryAudit(actor, nameof(SecurityActionDefinition), entity.PublicId, "Update", oldValue, ActionAuditValue(entity), request.Reason));
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<SecurityActionDto>(false, null, "The security action changed since it was loaded. Refresh and try again.")); }
+        return Ok(new ApiResponse<SecurityActionDto>(true, ToActionDto(entity)));
     }
 
     [HttpGet("navigation/registry")]
@@ -397,11 +505,34 @@ public sealed class SecurityAdministrationController : ControllerBase
     public async Task<ActionResult<ApiResponse<SecurityMemberDto[]>>> GetMembers()
     {
         var items = await _context.SecurityMemberDefinitions.AsNoTracking()
-            .Where(item => item.IsActive)
             .OrderBy(item => item.ResourceCode).ThenBy(item => item.DisplayName)
-            .Select(item => new SecurityMemberDto(item.ResourceCode, item.MemberCode, item.DisplayName, item.IsSensitive, item.IsSystemManaged))
             .ToArrayAsync();
-        return Ok(new ApiResponse<SecurityMemberDto[]>(true, items));
+        return Ok(new ApiResponse<SecurityMemberDto[]>(true, items.Select(ToMemberDto).ToArray()));
+    }
+
+    [HttpPut("members/{publicId:guid}")]
+    [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
+    public async Task<ActionResult<ApiResponse<SecurityMemberDto>>> UpdateMember(Guid publicId, [FromBody] UpdateSecurityMemberRequest request)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<SecurityMemberDto>(false, null, "User not found"));
+        if (!await CanManageGlobalRegistryAsync(actor)) return Forbid();
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityMemberDto>(false, null, "Select a municipality context to record the registry audit."));
+        var entity = await _context.SecurityMemberDefinitions.FirstOrDefaultAsync(item => item.PublicId == publicId);
+        if (entity == null) return NotFound(new ApiResponse<SecurityMemberDto>(false, null, "Security member not found."));
+        if (request.DisplayName.Trim().Length is < 2 or > 120) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "Member display name must be 2-120 characters."));
+        if (request.Reason.Trim().Length is < 5 or > 500) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "An audit reason of 5-500 characters is required."));
+        if (!TryDecodeRowVersion(request.RowVersion, out var rowVersion)) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "RowVersion is invalid."));
+        var resourceActive = await _context.SecurityResources.AnyAsync(item => item.Code == entity.ResourceCode && item.IsActive && item.SupportsFieldSecurity);
+        if (request.IsActive && !resourceActive) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "A member cannot be activated unless its resource is active and supports field security."));
+        _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
+        var oldValue = MemberAuditValue(entity);
+        entity.DisplayName = request.DisplayName.Trim(); entity.IsSensitive = request.IsSensitive; entity.IsActive = request.IsActive;
+        await SyncMemberPermissionsAsync(entity, resourceActive);
+        _context.AuditTrails.Add(NewRegistryAudit(actor, nameof(SecurityMemberDefinition), entity.PublicId, "Update", oldValue, MemberAuditValue(entity), request.Reason));
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<SecurityMemberDto>(false, null, "The security member changed since it was loaded. Refresh and try again.")); }
+        return Ok(new ApiResponse<SecurityMemberDto>(true, ToMemberDto(entity)));
     }
 
     [HttpGet("permissions")]
@@ -582,6 +713,126 @@ public sealed class SecurityAdministrationController : ControllerBase
     private static string? NormalizeRoute(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static SecurityResourceDto ToResourceDto(SecurityResource item) => new(item.PublicId, item.Code, item.Name, item.ResourceType, item.Description,
+        item.SupportsCreate, item.SupportsRead, item.SupportsUpdate, item.SupportsDelete, item.SupportsExport, item.SupportsImport,
+        item.SupportsFieldSecurity, item.SupportsRecordCriteria, item.IsActive, Convert.ToBase64String(item.RowVersion));
+
+    private static SecurityActionDto ToActionDto(SecurityActionDefinition item) => new(item.PublicId, item.Code, item.Name, item.ResourceCode,
+        item.Description, item.IsActive, Convert.ToBase64String(item.RowVersion));
+
+    private static SecurityMemberDto ToMemberDto(SecurityMemberDefinition item) => new(item.PublicId, item.ResourceCode, item.MemberCode,
+        item.DisplayName, item.IsSensitive, item.IsSystemManaged, item.IsActive, Convert.ToBase64String(item.RowVersion));
+
+    private static object ResourceAuditValue(SecurityResource item) => new
+    {
+        item.Code, item.Name, item.ResourceType, item.Description, item.SupportsCreate, item.SupportsRead, item.SupportsUpdate,
+        item.SupportsDelete, item.SupportsExport, item.SupportsImport, item.SupportsFieldSecurity, item.SupportsRecordCriteria, item.IsActive
+    };
+
+    private static object ActionAuditValue(SecurityActionDefinition item) => new { item.Code, item.Name, item.ResourceCode, item.Description, item.IsActive };
+    private static object MemberAuditValue(SecurityMemberDefinition item) => new { item.ResourceCode, item.MemberCode, item.DisplayName, item.IsSensitive, item.IsSystemManaged, item.IsActive };
+
+    private AuditTrail NewRegistryAudit(ApplicationUser actor, string entityName, Guid publicId, string action, object? oldValue, object newValue, string reason) => new()
+    {
+        EntityName = entityName, EntityId = publicId.ToString(), Action = action,
+        OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(newValue),
+        ChangedBy = actor.Id, ChangedAt = DateTime.UtcNow, Reason = reason.Trim(), CorrelationId = HttpContext.TraceIdentifier,
+        IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString()
+    };
+
+    private static string? ValidateResourceInput(string code, string name, string resourceType, string? description, string reason,
+        bool create, bool read, bool update, bool delete, bool export, bool import)
+    {
+        if (!Regex.IsMatch(code.Trim().ToUpperInvariant(), "^[A-Z][A-Z0-9_]{2,63}$")) return "Resource code must be 3-64 uppercase letters, digits or underscores and start with a letter.";
+        if (name.Trim().Length is < 2 or > 120) return "Resource name must be 2-120 characters.";
+        if (!RegistryResourceTypes.Contains(resourceType.Trim().ToUpperInvariant())) return "Resource type must be ENTITY, REPORT, WORKFLOW, or SERVICE.";
+        if (description?.Trim().Length > 500) return "Resource description cannot exceed 500 characters.";
+        if (!(create || read || update || delete || export || import)) return "A resource must support at least one operation.";
+        if (reason.Trim().Length is < 5 or > 500) return "An audit reason of 5-500 characters is required.";
+        return null;
+    }
+
+    private static string? ValidateActionInput(string code, string name, string resourceCode, string? description, string reason)
+    {
+        if (!Regex.IsMatch(code.Trim().ToUpperInvariant(), "^[A-Z][A-Z0-9_]*(\\.[A-Z][A-Z0-9_]*)+$")) return "Action code must contain uppercase dot-separated stable segments.";
+        if (!Regex.IsMatch(resourceCode.Trim().ToUpperInvariant(), "^[A-Z][A-Z0-9_]{2,63}$")) return "Resource code is invalid.";
+        if (name.Trim().Length is < 2 or > 120) return "Action name must be 2-120 characters.";
+        if (description?.Trim().Length > 500) return "Action description cannot exceed 500 characters.";
+        if (reason.Trim().Length is < 5 or > 500) return "An audit reason of 5-500 characters is required.";
+        return null;
+    }
+
+    private static bool TryDecodeRowVersion(string value, out byte[] rowVersion)
+    {
+        try { rowVersion = Convert.FromBase64String(value); return rowVersion.Length > 0; }
+        catch (FormatException) { rowVersion = []; return false; }
+    }
+
+    private async Task SyncResourcePermissionsAsync(SecurityResource resource)
+    {
+        var operations = new Dictionary<SecurityOperation, bool>
+        {
+            [SecurityOperation.Create] = resource.SupportsCreate, [SecurityOperation.Read] = resource.SupportsRead,
+            [SecurityOperation.Update] = resource.SupportsUpdate, [SecurityOperation.Delete] = resource.SupportsDelete,
+            [SecurityOperation.Export] = resource.SupportsExport, [SecurityOperation.Import] = resource.SupportsImport
+        };
+        var codes = operations.Keys.ToDictionary(operation => operation, operation => $"{resource.Code}.{operation.ToString().ToUpperInvariant()}");
+        var existing = await _context.Permissions.Where(item => codes.Values.Contains(item.Code)).ToListAsync();
+        foreach (var (operation, supported) in operations)
+        {
+            var code = codes[operation];
+            var permission = existing.FirstOrDefault(item => item.Code == code);
+            if (permission != null && permission.Kind != SecurityPermissionKind.Resource) continue;
+            if (permission == null)
+            {
+                permission = new Permission { Code = code, Module = "Resource", Feature = resource.Code, Action = operation.ToString(), Kind = SecurityPermissionKind.Resource, ResourceCode = resource.Code, Operation = operation };
+                _context.Permissions.Add(permission);
+            }
+            permission.Description = $"{operation} {resource.Name}";
+            permission.IsActive = resource.IsActive && supported;
+        }
+    }
+
+    private async Task SyncChildPermissionsAsync(string resourceCode, bool resourceActive, bool supportsFieldSecurity)
+    {
+        var actions = await _context.SecurityActionDefinitions.Where(item => item.ResourceCode == resourceCode).ToArrayAsync();
+        foreach (var action in actions) await SyncActionPermissionAsync(action, resourceActive);
+        var members = await _context.SecurityMemberDefinitions.Where(item => item.ResourceCode == resourceCode).ToArrayAsync();
+        foreach (var member in members) await SyncMemberPermissionsAsync(member, resourceActive && supportsFieldSecurity);
+    }
+
+    private async Task SyncActionPermissionAsync(SecurityActionDefinition action, bool resourceActive)
+    {
+        var permission = await _context.Permissions.FirstOrDefaultAsync(item => item.Code == action.Code);
+        if (permission == null)
+        {
+            permission = new Permission { Code = action.Code, Module = "Action", Feature = action.ResourceCode, Action = action.Code.Split('.').Last(), Kind = SecurityPermissionKind.Action, ResourceCode = action.ResourceCode, Operation = SecurityOperation.Execute, ActionCode = action.Code };
+            _context.Permissions.Add(permission);
+        }
+        if (permission.Kind != SecurityPermissionKind.Action || (!string.IsNullOrWhiteSpace(permission.ActionCode) && permission.ActionCode != action.Code)) return;
+        permission.Module = "Action"; permission.Feature = action.ResourceCode; permission.ResourceCode = action.ResourceCode;
+        permission.Operation = SecurityOperation.Execute; permission.ActionCode = action.Code; permission.Description = action.Description ?? action.Name;
+        permission.IsActive = resourceActive && action.IsActive;
+    }
+
+    private async Task SyncMemberPermissionsAsync(SecurityMemberDefinition member, bool resourceActive)
+    {
+        foreach (var operation in new[] { SecurityOperation.Read, SecurityOperation.Update })
+        {
+            var code = $"{member.ResourceCode}.{member.MemberCode}.{operation.ToString().ToUpperInvariant()}";
+            var permission = await _context.Permissions.FirstOrDefaultAsync(item => item.Code == code);
+            if (permission == null)
+            {
+                permission = new Permission { Code = code, Module = "Member", Feature = member.ResourceCode, Action = operation.ToString(), Kind = SecurityPermissionKind.Member, ResourceCode = member.ResourceCode, MemberCode = member.MemberCode, Operation = operation };
+                _context.Permissions.Add(permission);
+            }
+            permission.Description = $"{operation} {member.DisplayName}";
+            permission.IsActive = resourceActive && member.IsActive && (operation == SecurityOperation.Read || !member.IsSystemManaged);
+        }
+    }
+
+    private static readonly HashSet<string> RegistryResourceTypes = ["ENTITY", "REPORT", "WORKFLOW", "SERVICE"];
+
     private async Task<bool> CanAdministerRoleAsync(ApplicationUser actor, ApplicationRole role)
     {
         var access = await _accessControl.GetEffectiveAccessAsync(actor);
@@ -600,7 +851,7 @@ public sealed class SecurityAdministrationController : ControllerBase
     }
 }
 
-public sealed record SecurityResourceDto(string Code, string Name, string Type, bool CanCreate, bool CanRead, bool CanUpdate, bool CanDelete, bool CanExport, bool CanImport, bool SupportsMembers, bool SupportsCriteria, string RowVersion);
+public sealed record SecurityResourceDto(Guid PublicId, string Code, string Name, string Type, string? Description, bool CanCreate, bool CanRead, bool CanUpdate, bool CanDelete, bool CanExport, bool CanImport, bool SupportsMembers, bool SupportsCriteria, bool IsActive, string RowVersion);
 public sealed record SecurityRoleDto(string Id, Guid PublicId, string RoleCode, string Name, string? Description, long? MunicipalityId, bool IsSystemRole, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SecurityUserDto(string Id, string FullName, string Email);
 public sealed record UserRoleAssignmentDto(long Id, string RoleId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName);
@@ -608,9 +859,9 @@ public sealed record UserRoleSecurityConfigurationDto(string UserId, string User
 public sealed record ExpectedUserRoleAssignment(long AssignmentId, string RowVersion);
 public sealed record UpdateUserRoleAssignment(string RoleId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo, Guid? DepartmentPublicId = null, Guid? UnitPublicId = null);
 public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments);
-public sealed record SecurityActionDto(string Code, string Name, string ResourceCode, string? Description, string RowVersion);
+public sealed record SecurityActionDto(Guid PublicId, string Code, string Name, string ResourceCode, string? Description, bool IsActive, string RowVersion);
 public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion);
-public sealed record SecurityMemberDto(string ResourceCode, string MemberCode, string DisplayName, bool IsSensitive, bool IsSystemManaged);
+public sealed record SecurityMemberDto(Guid PublicId, string ResourceCode, string MemberCode, string DisplayName, bool IsSensitive, bool IsSystemManaged, bool IsActive, string RowVersion);
 public sealed record SecurityPermissionDefinitionDto(string Code, string? Description, string Kind, string? ResourceCode, string? Operation, string? MemberCode, string? NavigationCode, string? ActionCode);
 public sealed record RoleSecurityPermissionDto(string PermissionCode, string Kind, string? ResourceCode, string? MemberCode, string? NavigationCode, string? ActionCode, string State, string? ScopeType, string RowVersion);
 public sealed record RoleSecurityConfigurationDto(string RoleId, Guid PublicId, string Name, string RoleRowVersion, RoleSecurityPermissionDto[] Permissions);
@@ -621,3 +872,8 @@ public sealed record CreateSecurityRoleRequest(string RoleCode, string Name, str
 public sealed record UpdateSecurityRoleRequest(string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record CreateSecurityNavigationRequest(string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, string Reason);
 public sealed record UpdateSecurityNavigationRequest(Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string Reason);
+public sealed record CreateSecurityResourceRequest(string Code, string Name, string ResourceType, string? Description, bool SupportsCreate, bool SupportsRead, bool SupportsUpdate, bool SupportsDelete, bool SupportsExport, bool SupportsImport, bool SupportsFieldSecurity, bool SupportsRecordCriteria, string Reason);
+public sealed record UpdateSecurityResourceRequest(string Name, string ResourceType, string? Description, bool SupportsCreate, bool SupportsRead, bool SupportsUpdate, bool SupportsDelete, bool SupportsExport, bool SupportsImport, bool SupportsFieldSecurity, bool SupportsRecordCriteria, bool IsActive, string RowVersion, string Reason);
+public sealed record CreateSecurityActionRequest(string Code, string Name, string ResourceCode, string? Description, string Reason);
+public sealed record UpdateSecurityActionRequest(string Name, string? Description, bool IsActive, string RowVersion, string Reason);
+public sealed record UpdateSecurityMemberRequest(string DisplayName, bool IsSensitive, bool IsActive, string RowVersion, string Reason);

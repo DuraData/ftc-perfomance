@@ -419,6 +419,85 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task SecurityRegistry_DefinitionsAreVersionedAuditedAndSynchronizeEffectivePermissions()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("registry-system-admin");
+        var role = Role("registry-system-role", "SYSTEM_ADMIN");
+        var systemPermission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action };
+        context.AddRange(user, role, systemPermission);
+        await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(user, role));
+        context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = systemPermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        await context.SaveChangesAsync();
+
+        var tenant = new Mock<ITenantContext>(); tenant.SetupGet(item => item.MunicipalityId).Returns(7); tenant.SetupGet(item => item.IsSystem).Returns(true);
+        var controller = new SecurityAdministrationController(context, CreateService(context, user), IdpTestFixture.CreateUserManagerMock(user).Object, tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+        };
+
+        var resourceResult = await controller.CreateResource(new CreateSecurityResourceRequest(
+            "TEST_CASE", "Test Case", "ENTITY", "Governed test resource", true, true, true, false, false, false, true, true, "Register test resource"));
+        var resource = resourceResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<SecurityResourceDto>>().Subject.Data!;
+        resource.PublicId.Should().NotBeEmpty();
+        (await context.Permissions.Where(item => item.ResourceCode == "TEST_CASE" && item.Kind == SecurityPermissionKind.Resource && item.IsActive).Select(item => item.Code).ToArrayAsync())
+            .Should().BeEquivalentTo("TEST_CASE.CREATE", "TEST_CASE.READ", "TEST_CASE.UPDATE");
+
+        var actionResult = await controller.CreateAction(new CreateSecurityActionRequest("TEST_CASE.COMPLETE", "Complete Test Case", "TEST_CASE", null, "Register completion action"));
+        var action = actionResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<SecurityActionDto>>().Subject.Data!;
+        action.PublicId.Should().NotBeEmpty();
+        (await context.Permissions.SingleAsync(item => item.Code == "TEST_CASE.COMPLETE")).IsActive.Should().BeTrue();
+
+        var memberEntity = new SecurityMemberDefinition { ResourceCode = "TEST_CASE", MemberCode = "ProtectedValue", DisplayName = "Protected Value" };
+        context.SecurityMemberDefinitions.Add(memberEntity);
+        await context.SaveChangesAsync();
+        var memberResult = await controller.UpdateMember(memberEntity.PublicId, new UpdateSecurityMemberRequest(
+            "Protected Value", true, true, Convert.ToBase64String(memberEntity.RowVersion), "Classify protected member"));
+        memberResult.Result.Should().BeOfType<OkObjectResult>();
+        (await context.Permissions.Where(item => item.ResourceCode == "TEST_CASE" && item.MemberCode == "ProtectedValue" && item.IsActive).CountAsync()).Should().Be(2);
+
+        var updateResult = await controller.UpdateResource(resource.PublicId, new UpdateSecurityResourceRequest(
+            resource.Name, resource.Type, resource.Description, resource.CanCreate, resource.CanRead, resource.CanUpdate, resource.CanDelete,
+            resource.CanExport, resource.CanImport, resource.SupportsMembers, resource.SupportsCriteria, false, resource.RowVersion, "Deactivate test resource"));
+        var updated = updateResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<SecurityResourceDto>>().Subject.Data!;
+        updated.IsActive.Should().BeFalse();
+        (await context.Permissions.Where(item => item.ResourceCode == "TEST_CASE" && item.IsActive).CountAsync()).Should().Be(0);
+        (await context.AuditTrails.Where(item => item.EntityName == nameof(SecurityResource) || item.EntityName == nameof(SecurityActionDefinition) || item.EntityName == nameof(SecurityMemberDefinition)).CountAsync()).Should().Be(4);
+
+        var staleResult = await controller.UpdateResource(resource.PublicId, new UpdateSecurityResourceRequest(
+            resource.Name, resource.Type, resource.Description, resource.CanCreate, resource.CanRead, resource.CanUpdate, resource.CanDelete,
+            resource.CanExport, resource.CanImport, resource.SupportsMembers, resource.SupportsCriteria, true, resource.RowVersion, "Attempt stale registry update"));
+        staleResult.Result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task SecurityRegistry_TenantAdministratorCannotMutateGlobalDefinitions()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("tenant-security-admin");
+        var role = Role("tenant-security-role", "TENANT_SECURITY_ADMIN"); role.MunicipalityId = 7;
+        var managePermission = new Permission { Code = "SECURITY.MANAGE_PERMISSIONS", Module = "Security", Feature = "Role", Action = "Manage", Kind = SecurityPermissionKind.Action };
+        context.AddRange(new Municipality { Id = 7, Code = "TST", Name = "Test Municipality" }, user, role, managePermission);
+        await context.SaveChangesAsync();
+        var assignment = Assignment(user, role); assignment.MunicipalityId = 7;
+        context.SecurityUserRoleAssignments.Add(assignment);
+        context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = managePermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        await context.SaveChangesAsync();
+        var tenant = new Mock<ITenantContext>(); tenant.SetupGet(item => item.MunicipalityId).Returns(7);
+        var controller = new SecurityAdministrationController(context, CreateService(context, user), IdpTestFixture.CreateUserManagerMock(user).Object, tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+        };
+
+        var result = await controller.CreateResource(new CreateSecurityResourceRequest(
+            "ESCALATION", "Escalation", "ENTITY", null, false, true, false, false, false, false, false, true, "Attempt global mutation"));
+
+        result.Result.Should().BeOfType<ForbidResult>();
+        (await context.SecurityResources.AnyAsync(item => item.Code == "ESCALATION")).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task RoleAssignment_RejectsUnitOutsideSelectedDepartment()
     {
         await using var context = IdpTestFixture.CreateContext();

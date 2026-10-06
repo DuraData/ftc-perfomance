@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../api/api', () => api);
 vi.mock('./NavigationRegistryEditor', () => ({ NavigationRegistryEditor: () => <div>Navigation editor</div> }));
+vi.mock('./SecurityRegistryEditor', () => ({ SecurityRegistryEditor: () => <div>Security registry editor</div> }));
 
 describe('SecurityAdministrationPage role assignments', () => {
   beforeEach(() => {

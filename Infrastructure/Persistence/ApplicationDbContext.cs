@@ -453,14 +453,18 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
         builder.Entity<Permission>().HasIndex(item => item.Code).IsUnique();
         builder.Entity<SecurityResource>().HasIndex(item => item.Code).IsUnique();
+        builder.Entity<SecurityResource>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<SecurityResource>().Property(item => item.RowVersion));
         builder.Entity<SecurityNavigationItem>().HasIndex(item => item.Code).IsUnique();
         builder.Entity<SecurityNavigationItem>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<SecurityNavigationItem>().Property(item => item.RowVersion));
         builder.Entity<SecurityNavigationItem>().HasOne(item => item.Parent).WithMany(item => item.Children).HasForeignKey(item => item.ParentId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SecurityActionDefinition>().HasIndex(item => item.Code).IsUnique();
+        builder.Entity<SecurityActionDefinition>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<SecurityActionDefinition>().Property(item => item.RowVersion));
         builder.Entity<SecurityMemberDefinition>().HasIndex(item => new { item.ResourceCode, item.MemberCode }).IsUnique();
+        builder.Entity<SecurityMemberDefinition>().HasIndex(item => item.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<SecurityMemberDefinition>().Property(item => item.RowVersion));
 
         builder.Entity<SecurityUserRoleAssignment>().HasIndex(item => new { item.UserId, item.RoleId, item.MunicipalityId, item.EffectiveFrom });
         ConfigureRowVersion(builder.Entity<SecurityUserRoleAssignment>().Property(item => item.RowVersion));

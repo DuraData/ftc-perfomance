@@ -46,6 +46,7 @@ public class Municipality
 public class SecurityResource
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string ResourceType { get; set; } = "ENTITY";
@@ -84,6 +85,7 @@ public class SecurityNavigationItem
 public class SecurityActionDefinition
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string ResourceCode { get; set; } = string.Empty;
@@ -95,12 +97,14 @@ public class SecurityActionDefinition
 public class SecurityMemberDefinition
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public string ResourceCode { get; set; } = string.Empty;
     public string MemberCode { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public bool IsSensitive { get; set; }
     public bool IsSystemManaged { get; set; }
     public bool IsActive { get; set; } = true;
+    public byte[] RowVersion { get; set; } = [];
 }
 
 public class SecurityUserRoleAssignment

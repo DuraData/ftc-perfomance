@@ -111,6 +111,9 @@ import type {
   PerformanceRfiDto,
   StageRatingDto,
   SecurityNavigationItemDto,
+  SecurityResourceDefinitionDto,
+  SecurityActionDefinitionDto,
+  SecurityMemberDefinitionDto,
   NotificationOutboxItemDto,
   NotificationPolicyDto,
   WorkingCalendarHolidayDto,
@@ -1915,6 +1918,49 @@ export async function createSecurityNavigationItem(payload: Omit<SecurityNavigat
 
 export async function updateSecurityNavigationItem(item: SecurityNavigationItemDto, payload: Omit<SecurityNavigationItemDto, 'publicId' | 'code' | 'rowVersion'> & { reason: string }): Promise<ApiResponse<SecurityNavigationItemDto>> {
   return put<SecurityNavigationItemDto>(`/v1/security/navigation/registry/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
+}
+
+export async function getSecurityResources(): Promise<ApiResponse<SecurityResourceDefinitionDto[]>> {
+  return get<SecurityResourceDefinitionDto[]>('/v1/security/resources');
+}
+
+export async function createSecurityResource(payload: Omit<SecurityResourceDefinitionDto, 'publicId' | 'rowVersion' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityResourceDefinitionDto>> {
+  return post<SecurityResourceDefinitionDto>('/v1/security/resources', {
+    code: payload.code, name: payload.name, resourceType: payload.type, description: payload.description,
+    supportsCreate: payload.canCreate, supportsRead: payload.canRead, supportsUpdate: payload.canUpdate,
+    supportsDelete: payload.canDelete, supportsExport: payload.canExport, supportsImport: payload.canImport,
+    supportsFieldSecurity: payload.supportsMembers, supportsRecordCriteria: payload.supportsCriteria, reason: payload.reason,
+  });
+}
+
+export async function updateSecurityResource(item: SecurityResourceDefinitionDto, payload: Omit<SecurityResourceDefinitionDto, 'publicId' | 'code' | 'rowVersion'> & { reason: string }): Promise<ApiResponse<SecurityResourceDefinitionDto>> {
+  return put<SecurityResourceDefinitionDto>(`/v1/security/resources/${item.publicId}`, {
+    name: payload.name, resourceType: payload.type, description: payload.description,
+    supportsCreate: payload.canCreate, supportsRead: payload.canRead, supportsUpdate: payload.canUpdate,
+    supportsDelete: payload.canDelete, supportsExport: payload.canExport, supportsImport: payload.canImport,
+    supportsFieldSecurity: payload.supportsMembers, supportsRecordCriteria: payload.supportsCriteria,
+    isActive: payload.isActive, rowVersion: item.rowVersion, reason: payload.reason,
+  });
+}
+
+export async function getSecurityActions(): Promise<ApiResponse<SecurityActionDefinitionDto[]>> {
+  return get<SecurityActionDefinitionDto[]>('/v1/security/actions');
+}
+
+export async function createSecurityAction(payload: Pick<SecurityActionDefinitionDto, 'code' | 'name' | 'resourceCode' | 'description'> & { reason: string }): Promise<ApiResponse<SecurityActionDefinitionDto>> {
+  return post<SecurityActionDefinitionDto>('/v1/security/actions', payload);
+}
+
+export async function updateSecurityAction(item: SecurityActionDefinitionDto, payload: Pick<SecurityActionDefinitionDto, 'name' | 'description' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityActionDefinitionDto>> {
+  return put<SecurityActionDefinitionDto>(`/v1/security/actions/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
+}
+
+export async function getSecurityMembers(): Promise<ApiResponse<SecurityMemberDefinitionDto[]>> {
+  return get<SecurityMemberDefinitionDto[]>('/v1/security/members');
+}
+
+export async function updateSecurityMember(item: SecurityMemberDefinitionDto, payload: Pick<SecurityMemberDefinitionDto, 'displayName' | 'isSensitive' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityMemberDefinitionDto>> {
+  return put<SecurityMemberDefinitionDto>(`/v1/security/members/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
 }
 
 export async function getSecurityRoles(): Promise<ApiResponse<SecurityRoleSummary[]>> {

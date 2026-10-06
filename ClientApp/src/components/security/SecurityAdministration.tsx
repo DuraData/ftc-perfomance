@@ -21,6 +21,7 @@ import type {
   SecurityPermissionState,
 } from '../../types';
 import { NavigationRegistryEditor } from './NavigationRegistryEditor';
+import { SecurityRegistryEditor } from './SecurityRegistryEditor';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 
 type EditableRule = Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>;
@@ -252,6 +253,8 @@ export function SecurityAdministrationPage() {
       </section>
 
       <NavigationRegistryEditor permissions={definitions} />
+
+      <SecurityRegistryEditor onDefinitionsChanged={() => { void getSecurityPermissionDefinitions().then(result => setDefinitions(result.data ?? [])); }} />
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Effective permission preview</h2>

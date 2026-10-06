@@ -2222,6 +2222,45 @@ export interface SecurityNavigationItemDto {
   rowVersion: string;
 }
 
+export interface SecurityResourceDefinitionDto {
+  publicId: string;
+  code: string;
+  name: string;
+  type: 'ENTITY' | 'REPORT' | 'WORKFLOW' | 'SERVICE';
+  description?: string | null;
+  canCreate: boolean;
+  canRead: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+  canExport: boolean;
+  canImport: boolean;
+  supportsMembers: boolean;
+  supportsCriteria: boolean;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface SecurityActionDefinitionDto {
+  publicId: string;
+  code: string;
+  name: string;
+  resourceCode: string;
+  description?: string | null;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface SecurityMemberDefinitionDto {
+  publicId: string;
+  resourceCode: string;
+  memberCode: string;
+  displayName: string;
+  isSensitive: boolean;
+  isSystemManaged: boolean;
+  isActive: boolean;
+  rowVersion: string;
+}
+
 export interface RoleSecurityPermission {
   permissionCode: string;
   kind: string;
