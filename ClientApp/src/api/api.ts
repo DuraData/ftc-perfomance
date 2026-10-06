@@ -2451,13 +2451,6 @@ export async function markNotificationRead(id: string): Promise<ApiResponse<bool
   return patch<boolean>(`/notifications/${id}/read`);
 }
 
-export async function getAuditTrails(take = 200, filter: { entityName?: string; entityId?: string } = {}): Promise<ApiResponse<AuditTrailEntryDto[]>> {
-  const parameters = new URLSearchParams({ take: String(take) });
-  if (filter.entityName?.trim()) parameters.set('entityName', filter.entityName.trim());
-  if (filter.entityId?.trim()) parameters.set('entityId', filter.entityId.trim());
-  return get<AuditTrailEntryDto[]>(`/v1/audit/trails?${parameters.toString()}`);
-}
-
 export async function getAuditTrailsPage(query: RegisterPageQuery = {}, filter: { entityName?: string; entityId?: string } = {}): Promise<ApiResponse<PagedResult<AuditTrailEntryDto>>> {
   const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
   if (filter.entityName?.trim()) parameters.set('entityName', filter.entityName.trim());

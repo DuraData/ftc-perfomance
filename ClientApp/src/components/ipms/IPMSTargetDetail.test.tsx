@@ -6,7 +6,7 @@ import { GeneralInfoTab, IPMSTargetDetail } from './IPMSTargetDetail';
 const api = vi.hoisted(() => ({
   getIpmsTarget: vi.fn(),
   getIpmsSubmissionsPage: vi.fn(),
-  getAuditTrails: vi.fn(),
+  getAuditTrailsPage: vi.fn(),
 }));
 
 vi.mock('../../api/api', async importOriginal => ({ ...(await importOriginal<typeof import('../../api/api')>()), ...api }));
@@ -48,13 +48,19 @@ describe('IPMS target detail', () => {
     } as unknown as IPMSTarget;
     api.getIpmsTarget.mockResolvedValue({ success: true, data: target });
     api.getIpmsSubmissionsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
-    api.getAuditTrails.mockResolvedValue({ success: true, data: [] });
+    api.getAuditTrailsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
 
     render(<IPMSTargetDetail targetId="target-public" />);
     await waitFor(() => expect(api.getIpmsSubmissionsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, targetPublicId: 'target-public' }));
+    await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }, { entityName: 'IpmsTarget', entityId: 'target-public' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Submissions 26' }));
     expect(screen.getByText('26 submissions · Page 1 of 2')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next submissions' }));
     await waitFor(() => expect(api.getIpmsSubmissionsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, targetPublicId: 'target-public' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Audit' }));
+    expect(screen.getByText('26 audit entries · Page 1 of 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next audit entries' }));
+    await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }, { entityName: 'IpmsTarget', entityId: 'target-public' }));
   });
 });

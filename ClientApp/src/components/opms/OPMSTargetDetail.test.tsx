@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({
   getOpmsTarget: vi.fn(),
   getOpmsSubmissionsPage: vi.fn(),
   getIpmsTargetsPage: vi.fn(),
-  getAuditTrails: vi.fn(),
+  getAuditTrailsPage: vi.fn(),
 }));
 
 vi.mock('../../api/api', async importOriginal => ({ ...(await importOriginal<typeof import('../../api/api')>()), ...api }));
@@ -51,11 +51,12 @@ describe('OPMS target relational tabs', () => {
     api.getOpmsTarget.mockResolvedValue({ success: true, data: detailTarget });
     api.getOpmsSubmissionsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
     api.getIpmsTargetsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 27, totalPages: 2 } }));
-    api.getAuditTrails.mockResolvedValue({ success: true, data: [] });
+    api.getAuditTrailsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
 
     render(<OPMSTargetDetail targetId="target-public" />);
     await waitFor(() => expect(api.getOpmsSubmissionsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, targetPublicId: 'target-public' }));
     await waitFor(() => expect(api.getIpmsTargetsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, relatedOpmsTargetPublicId: 'target-public' }));
+    await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }, { entityName: 'OpmsTarget', entityId: 'target-public' }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Submissions 26' }));
     expect(screen.getByText('26 submissions · Page 1 of 2')).toBeInTheDocument();
@@ -66,5 +67,10 @@ describe('OPMS target relational tabs', () => {
     expect(screen.getByText('27 linked targets · Page 1 of 2')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next linked targets' }));
     await waitFor(() => expect(api.getIpmsTargetsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, relatedOpmsTargetPublicId: 'target-public' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Audit' }));
+    expect(screen.getByText('26 audit entries · Page 1 of 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next audit entries' }));
+    await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }, { entityName: 'OpmsTarget', entityId: 'target-public' }));
   });
 });

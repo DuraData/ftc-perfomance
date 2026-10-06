@@ -37,11 +37,11 @@ public sealed class AuditGovernanceTests
     [Fact]
     public void Audit_trail_endpoint_requires_the_dynamic_view_permission()
     {
-        var method = typeof(AuditController).GetMethod(nameof(AuditController.GetAuditTrails))!;
+        var method = typeof(AuditController).GetMethod(nameof(AuditController.GetAuditTrailsPage))!;
         var authorization = method.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().Single();
         authorization.Policy.Should().Be("Permission:Audit.Trails.View");
         method.GetCustomAttributes(typeof(HttpGetAttribute), true).Cast<HttpGetAttribute>().Select(item => item.Template)
-            .Should().Contain("/api/v1/audit/trails");
+            .Should().Contain("/api/v1/audit/trails/page");
     }
 
     private sealed class AuditTenantContext(long municipalityId) : ITenantContext

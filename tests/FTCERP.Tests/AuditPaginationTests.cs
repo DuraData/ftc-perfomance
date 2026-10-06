@@ -41,6 +41,9 @@ public sealed class AuditPaginationTests
         await using var tenantAContext = new ApplicationDbContext(options, new TenantContext(tenantAId));
         var controller = new AuditController(tenantAContext);
 
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetLoginLogs().Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetAuditTrails().Result).StatusCode);
+
         var loginResult = await controller.GetLoginLogsPage(new PagedQueryRequest
         {
             Page = 1, PageSize = 1, Search = "a", SortBy = "email", SortDirection = "asc"

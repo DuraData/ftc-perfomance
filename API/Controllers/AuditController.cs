@@ -20,18 +20,9 @@ public class AuditController : ControllerBase
 
     [HttpGet("login-logs")]
     [Authorize(Policy = "Permission:Audit.LoginLogs.View")]
-    public async Task<ActionResult<ApiResponse<LoginAuditLogResponse[]>>> GetLoginLogs([FromQuery] int take = 200)
-    {
-        take = Math.Clamp(take, 1, 1000);
-
-        var logs = await _context.LoginAuditLogs.AsNoTracking()
-            .OrderByDescending(l => l.LoggedAt)
-            .Take(take)
-            .Select(l => new LoginAuditLogResponse(l.Id, l.UserId, l.Email, l.IpAddress, l.UserAgent, l.Success, l.FailureReason, l.LoggedAt))
-            .ToArrayAsync();
-
-        return Ok(new ApiResponse<LoginAuditLogResponse[]>(true, logs));
-    }
+    public ActionResult<ApiResponse<LoginAuditLogResponse[]>> GetLoginLogs() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<LoginAuditLogResponse[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/audit/login-logs/page."));
 
     [HttpGet("/api/v1/audit/login-logs/page")]
     [Authorize(Policy = "Permission:Audit.LoginLogs.View")]
@@ -80,22 +71,9 @@ public class AuditController : ControllerBase
     [HttpGet("trails")]
     [HttpGet("/api/v1/audit/trails")]
     [Authorize(Policy = "Permission:Audit.Trails.View")]
-    public async Task<ActionResult<ApiResponse<AuditTrailEntryResponse[]>>> GetAuditTrails([FromQuery] string? entityName = null, [FromQuery] string? entityId = null, [FromQuery] int take = 500)
-    {
-        take = Math.Clamp(take, 1, 1000);
-        var query = _context.AuditTrails.AsNoTracking().OrderByDescending(item => item.ChangedAt).AsQueryable();
-        if (!string.IsNullOrWhiteSpace(entityName))
-        {
-            query = query.Where(item => item.EntityName == entityName);
-        }
-        if (!string.IsNullOrWhiteSpace(entityId))
-        {
-            query = query.Where(item => item.EntityId == entityId);
-        }
-
-        var rows = await query.Take(take).ToArrayAsync();
-        return Ok(new ApiResponse<AuditTrailEntryResponse[]>(true, rows.Select(item => item.ToResponse()).ToArray()));
-    }
+    public ActionResult<ApiResponse<AuditTrailEntryResponse[]>> GetAuditTrails() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<AuditTrailEntryResponse[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/audit/trails/page."));
 
     [HttpGet("/api/v1/audit/trails/page")]
     [Authorize(Policy = "Permission:Audit.Trails.View")]

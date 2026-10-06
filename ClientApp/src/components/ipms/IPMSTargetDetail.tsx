@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft,
   FileText,
@@ -22,7 +22,7 @@ import {
   placeIpmsEvidenceLegalHold,
   releaseIpmsEvidenceLegalHold,
   requestIpmsEvidenceDisposal,
-  getAuditTrails,
+  getAuditTrailsPage,
   withdrawIpmsSubmission as withdrawIpmsSubmissionApi,
   getIpmsSubmissionAttachments,
   getIpmsSubmissionsPage as getIpmsSubmissionsApi,
@@ -381,28 +381,31 @@ function AttachmentsTab({ target }: { target: IPMSTarget }) {
   );
 }
 
-function HistoryTab({ entries }: { entries: AuditTrailEntryDto[] }) {
+function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { entries: AuditTrailEntryDto[]; page: number; totalPages: number; totalCount: number; onPageChange: (page: number) => void }) {
   return (
-    <div className="relative">
-      <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-secondary-200 dark:bg-secondary-700" />
-      {entries.length === 0 && (
-        <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
-          No audit trail entries recorded yet.
-        </div>
-      )}
-      {entries.map((item) => (
-        <div key={item.id} className="relative pl-8 pb-3 last:pb-0">
-          <div className="absolute left-1.5 w-2.5 h-2.5 bg-primary-600 rounded-full border-2 border-white dark:border-secondary-900" />
-          <div className="bg-secondary-50 dark:bg-secondary-800 rounded p-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-secondary-900 dark:text-white">{item.action}</span>
-              <span className="text-[10px] text-secondary-500">{new Date(item.changedAt).toLocaleDateString()}</span>
-            </div>
-            <p className="text-xs text-secondary-600">{item.entityName} {item.entityId}</p>
-            <p className="text-[10px] text-secondary-500 mt-0.5">By: {item.changedBy}</p>
+    <div>
+      <div className="relative">
+        <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-secondary-200 dark:bg-secondary-700" />
+        {entries.length === 0 && (
+          <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
+            No audit trail entries recorded yet.
           </div>
-        </div>
-      ))}
+        )}
+        {entries.map((item) => (
+          <div key={item.id} className="relative pl-8 pb-3 last:pb-0">
+            <div className="absolute left-1.5 w-2.5 h-2.5 bg-primary-600 rounded-full border-2 border-white dark:border-secondary-900" />
+            <div className="bg-secondary-50 dark:bg-secondary-800 rounded p-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-secondary-900 dark:text-white">{item.action}</span>
+                <span className="text-[10px] text-secondary-500">{new Date(item.changedAt).toLocaleDateString()}</span>
+              </div>
+              <p className="text-xs text-secondary-600">{item.entityName} {item.entityId}</p>
+              <p className="text-[10px] text-secondary-500 mt-0.5">By: {item.changedBy}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <DetailCollectionPaging label="audit entries" page={page} totalPages={totalPages} totalCount={totalCount} onPageChange={onPageChange} />
     </div>
   );
 }
@@ -415,6 +418,8 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const [submissionPage, setSubmissionPage] = useState(1);
   const [submissionMeta, setSubmissionMeta] = useState({ totalCount: 0, totalPages: 0 });
   const [auditEntries, setAuditEntries] = useState<AuditTrailEntryDto[]>([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditMeta, setAuditMeta] = useState({ totalCount: 0, totalPages: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -447,16 +452,12 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     if (result.success && result.data) { setIpmsSubmissions(result.data.items); setSubmissionMeta({ totalCount: result.data.totalCount, totalPages: result.data.totalPages }); setSubmissionPage(page); }
   };
 
-  useEffect(() => {
-    const loadAudit = async () => {
-      const auditResult = await getAuditTrails(250, { entityName: 'IpmsTarget', entityId: targetId });
-      if (auditResult.success && auditResult.data) {
-        setAuditEntries(auditResult.data);
-      }
-    };
-
-    void loadAudit();
+  const loadAuditPage = useCallback(async (page: number) => {
+    const result = await getAuditTrailsPage({ page, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }, { entityName: 'IpmsTarget', entityId: targetId });
+    if (result.success && result.data) { setAuditEntries(result.data.items); setAuditMeta({ totalCount: result.data.totalCount, totalPages: result.data.totalPages }); setAuditPage(page); }
   }, [targetId]);
+
+  useEffect(() => { setAuditPage(1); void loadAuditPage(1); }, [loadAuditPage]);
 
   if (isLoading) {
     return (
@@ -530,7 +531,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         />
       );
       case 'attachments': return <AttachmentsTab target={target} />;
-      case 'history': return <HistoryTab entries={auditEntries} />;
+      case 'history': return <HistoryTab entries={auditEntries} page={auditPage} totalPages={auditMeta.totalPages} totalCount={auditMeta.totalCount} onPageChange={page => void loadAuditPage(page)} />;
       default: return <GeneralInfoTab target={target} />;
     }
   };
