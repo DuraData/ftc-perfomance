@@ -63,10 +63,9 @@ public class AuditController : ControllerBase
 
     [HttpGet("security-events")]
     [Authorize(Policy = "Permission:Audit.View")]
-    public ActionResult<ApiResponse<object[]>> GetSecurityEvents()
-    {
-        return Ok(new ApiResponse<object[]>(true, Array.Empty<object>()));
-    }
+    public ActionResult<ApiResponse<object[]>> GetSecurityEvents() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object[]>(false, null,
+            "This placeholder route is retired. Use /api/v1/audit/trails/page for governed security and business audit events."));
 
     [HttpGet("trails")]
     [HttpGet("/api/v1/audit/trails")]
