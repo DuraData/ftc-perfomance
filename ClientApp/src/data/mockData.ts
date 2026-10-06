@@ -366,7 +366,9 @@ export const mockKPAs: KPA[] = [
 
 export const mockOpmsTargetTemplates: OpmsTargetTemplate[] = [
   {
-    id: 'opms-template-1',
+    id: '40000000-0000-0000-0000-000000000001',
+    publicId: '40000000-0000-0000-0000-000000000001',
+    rowVersion: 'AQ==',
     templateCode: 'OPMS-LIB-001',
     templateName: 'Road Maintenance Service Coverage',
     department: mockDepartments[0],
@@ -410,7 +412,9 @@ export const mockOpmsTargetTemplates: OpmsTargetTemplate[] = [
     createdDate: '2026-01-15T08:30:00',
   },
   {
-    id: 'opms-template-2',
+    id: '40000000-0000-0000-0000-000000000002',
+    publicId: '40000000-0000-0000-0000-000000000002',
+    rowVersion: 'Ag==',
     templateCode: 'OPMS-LIB-002',
     templateName: 'Revenue Collection Efficiency',
     department: mockDepartments[2],
@@ -454,7 +458,9 @@ export const mockOpmsTargetTemplates: OpmsTargetTemplate[] = [
     createdDate: '2026-02-04T10:15:00',
   },
   {
-    id: 'opms-template-3',
+    id: '40000000-0000-0000-0000-000000000003',
+    publicId: '40000000-0000-0000-0000-000000000003',
+    rowVersion: 'Aw==',
     templateCode: 'OPMS-LIB-003',
     templateName: 'Water Connections Rollout',
     department: mockDepartments[0],
@@ -502,7 +508,9 @@ export const mockOpmsTargetTemplates: OpmsTargetTemplate[] = [
 
 export const mockIpmsTargetTemplates: IpmsTargetTemplate[] = [
   {
-    id: 'ipms-template-1',
+    id: '50000000-0000-0000-0000-000000000001',
+    publicId: '50000000-0000-0000-0000-000000000001',
+    rowVersion: 'AQ==',
     templateCode: 'IPMS-LIB-001',
     templateName: 'Project Completion Rate',
     department: mockDepartments[0],
@@ -528,7 +536,9 @@ export const mockIpmsTargetTemplates: IpmsTargetTemplate[] = [
     createdDate: '2026-01-22T09:00:00',
   },
   {
-    id: 'ipms-template-2',
+    id: '50000000-0000-0000-0000-000000000002',
+    publicId: '50000000-0000-0000-0000-000000000002',
+    rowVersion: 'Ag==',
     templateCode: 'IPMS-LIB-002',
     templateName: 'Water Loss Reduction',
     department: mockDepartments[0],
@@ -554,7 +564,9 @@ export const mockIpmsTargetTemplates: IpmsTargetTemplate[] = [
     createdDate: '2026-02-10T12:20:00',
   },
   {
-    id: 'ipms-template-3',
+    id: '50000000-0000-0000-0000-000000000003',
+    publicId: '50000000-0000-0000-0000-000000000003',
+    rowVersion: 'Aw==',
     templateCode: 'IPMS-LIB-003',
     templateName: 'Audit Action Closure',
     department: mockDepartments[3],
