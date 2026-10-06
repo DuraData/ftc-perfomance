@@ -3359,19 +3359,26 @@ export interface IdpDashboard {
   alignmentCount: number;
 }
 
-export interface IdpHierarchy {
-  plan: IdpPlanSummary;
-  versions: IdpPlanVersion[];
-  outcomes: IdpStrategicOutcome[];
-  objectives: IdpStrategicObjective[];
-  priorities: IdpDevelopmentPriority[];
-  programmes: IdpProgramme[];
-  projects: IdpProject[];
-  kpis: IdpKpi[];
-  annualTargets: IdpAnnualTarget[];
-  alignmentLinks: IdpAlignmentLink[];
-  riskLinks: IdpRiskLink[];
-  budgetSnapshots: IdpBudgetSnapshot[];
+export interface IdpHierarchyPath {
+  idpPlanPublicId: string;
+  outcomePublicId: string;
+  outcomeCode: string;
+  outcomeName: string;
+  objectivePublicId: string;
+  objectiveCode: string;
+  objectiveName: string;
+  priorityPublicId: string;
+  priorityCode: string;
+  priorityName: string;
+  programmePublicId: string;
+  programmeCode: string;
+  programmeName: string;
+  projectPublicId: string;
+  projectCode: string;
+  projectName: string;
+  kpiPublicId: string;
+  kpiCode: string;
+  kpiName: string;
 }
 
 export interface IdpReportDocument {

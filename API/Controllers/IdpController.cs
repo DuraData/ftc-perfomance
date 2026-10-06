@@ -313,109 +313,145 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/hierarchy")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]
-    public async Task<ActionResult<ApiResponse<IdpHierarchyResponse>>> GetHierarchy(int id)
+    public ActionResult<ApiResponse<object>> GetHierarchy(int id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "This unbounded numeric-ID hierarchy route is retired. Use /api/v1/idp/plans/{planPublicId}/hierarchy-paths/page and /api/v1/idp/plans/{planPublicId}/versions/page."));
+
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/versions/page")]
+    [Authorize(Policy = "Permission:IDP.Plan.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpPlanVersionResponse>>>> GetPlanVersionsPage(
+        Guid planPublicId,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? active = null)
     {
-        var plan = await _context.IdpPlans.AsNoTracking().Include(item => item.PredecessorPlan).FirstOrDefaultAsync(item => item.Id == id);
-        if (plan == null)
+        if (request.NormalizedSortBy is not ("createdat" or "versionnumber" or "versionlabel" or "versiontype" or "effectivefrom"))
+            return BadRequest(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(false, null,
+                "SortBy must be createdAt, versionNumber, versionLabel, versionType, or effectiveFrom."));
+
+        var planId = await _context.IdpPlans.AsNoTracking()
+            .Where(plan => plan.PublicId == planPublicId)
+            .Select(plan => (int?)plan.Id)
+            .SingleOrDefaultAsync();
+        if (!planId.HasValue)
+            return NotFound(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(false, null, "IDP plan not found."));
+
+        IQueryable<IdpPlanVersion> query = _context.IdpPlanVersions.AsNoTracking()
+            .Where(version => version.IdpPlanId == planId.Value);
+        if (active.HasValue) query = query.Where(version => version.IsActive == active.Value);
+        if (!string.IsNullOrWhiteSpace(request.NormalizedSearch))
         {
-            return NotFound(new ApiResponse<IdpHierarchyResponse>(false, null, "IDP plan not found"));
+            var search = request.NormalizedSearch;
+            query = query.Where(version =>
+                version.VersionLabel.Contains(search) ||
+                (version.ReviewYear != null && version.ReviewYear.Contains(search)) ||
+                (version.SummaryOfChanges != null && version.SummaryOfChanges.Contains(search)) ||
+                (version.PublicationReference != null && version.PublicationReference.Contains(search)));
         }
 
-        var versions = await _context.IdpPlanVersions
-            .AsNoTracking()
-            .Include(item => item.PredecessorVersion)
-            .Where(item => item.IdpPlanId == id)
-            .OrderByDescending(item => item.VersionNumber)
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("versionnumber", false) => query.OrderBy(version => version.VersionNumber).ThenBy(version => version.Id),
+            ("versionnumber", true) => query.OrderByDescending(version => version.VersionNumber).ThenByDescending(version => version.Id),
+            ("versionlabel", false) => query.OrderBy(version => version.VersionLabel).ThenBy(version => version.Id),
+            ("versionlabel", true) => query.OrderByDescending(version => version.VersionLabel).ThenByDescending(version => version.Id),
+            ("versiontype", false) => query.OrderBy(version => version.VersionType).ThenBy(version => version.Id),
+            ("versiontype", true) => query.OrderByDescending(version => version.VersionType).ThenByDescending(version => version.Id),
+            ("effectivefrom", false) => query.OrderBy(version => version.EffectiveFrom).ThenBy(version => version.Id),
+            ("effectivefrom", true) => query.OrderByDescending(version => version.EffectiveFrom).ThenByDescending(version => version.Id),
+            (_, false) => query.OrderBy(version => version.CreatedAt).ThenBy(version => version.Id),
+            _ => query.OrderByDescending(version => version.CreatedAt).ThenByDescending(version => version.Id)
+        };
+
+        var rows = await query.Include(version => version.PredecessorVersion)
+            .Skip(request.Offset)
+            .Take(request.PageSize)
             .ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(true,
+            PagedResponse<IdpPlanVersionResponse>.Create(rows.Select(ToVersionResponse), request.Page, request.PageSize, totalCount)));
+    }
 
-        var outcomes = await _context.IdpStrategicOutcomes
-            .AsNoTracking()
-            .Where(item => item.IdpPlanId == id)
-            .OrderBy(item => item.SortOrder)
-            .ToArrayAsync();
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/hierarchy-paths/page")]
+    [Authorize(Policy = "Permission:IDP.Plan.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpHierarchyPathResponse>>>> GetHierarchyPathsPage(
+        Guid planPublicId,
+        [FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("createdat" or "outcome" or "objective" or "priority" or "programme" or "project" or "kpi"))
+            return BadRequest(new ApiResponse<PagedResponse<IdpHierarchyPathResponse>>(false, null,
+                "SortBy must be outcome, objective, priority, programme, project, or kpi."));
 
-        var outcomeIds = outcomes.Select(item => item.Id).ToArray();
+        var planId = await _context.IdpPlans.AsNoTracking()
+            .Where(plan => plan.PublicId == planPublicId)
+            .Select(plan => (int?)plan.Id)
+            .SingleOrDefaultAsync();
+        if (!planId.HasValue)
+            return NotFound(new ApiResponse<PagedResponse<IdpHierarchyPathResponse>>(false, null, "IDP plan not found."));
 
-        var objectives = await _context.IdpStrategicObjectives
-            .AsNoTracking()
-            .Include(item => item.ResponsibleDepartment)
-            .Include(item => item.StrategicOwnerUser)
-            .Where(item => outcomeIds.Contains(item.IdpStrategicOutcomeId))
-            .OrderBy(item => item.SortOrder)
-            .ToArrayAsync();
+        IQueryable<IdpKpi> query = _context.IdpKpis.AsNoTracking()
+            .Where(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == planId.Value);
+        if (!string.IsNullOrWhiteSpace(request.NormalizedSearch))
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(kpi =>
+                kpi.KpiCode.Contains(search) || kpi.KpiName.Contains(search) ||
+                kpi.IdpProject.ProjectCode.Contains(search) || kpi.IdpProject.ProjectName.Contains(search) ||
+                kpi.IdpProject.IdpProgramme.ProgrammeCode.Contains(search) || kpi.IdpProject.IdpProgramme.Name.Contains(search) ||
+                kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PriorityCode.Contains(search) || kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.Name.Contains(search) ||
+                kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Code.Contains(search) || kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Name.Contains(search) ||
+                kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.Code.Contains(search) ||
+                kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.Name.Contains(search));
+        }
 
-        var objectiveIds = objectives.Select(item => item.Id).ToArray();
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("objective", false) => query.OrderBy(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Code).ThenBy(kpi => kpi.KpiCode).ThenBy(kpi => kpi.Id),
+            ("objective", true) => query.OrderByDescending(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Code).ThenByDescending(kpi => kpi.KpiCode).ThenByDescending(kpi => kpi.Id),
+            ("priority", false) => query.OrderBy(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PriorityCode).ThenBy(kpi => kpi.KpiCode).ThenBy(kpi => kpi.Id),
+            ("priority", true) => query.OrderByDescending(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PriorityCode).ThenByDescending(kpi => kpi.KpiCode).ThenByDescending(kpi => kpi.Id),
+            ("programme", false) => query.OrderBy(kpi => kpi.IdpProject.IdpProgramme.ProgrammeCode).ThenBy(kpi => kpi.KpiCode).ThenBy(kpi => kpi.Id),
+            ("programme", true) => query.OrderByDescending(kpi => kpi.IdpProject.IdpProgramme.ProgrammeCode).ThenByDescending(kpi => kpi.KpiCode).ThenByDescending(kpi => kpi.Id),
+            ("project", false) => query.OrderBy(kpi => kpi.IdpProject.ProjectCode).ThenBy(kpi => kpi.KpiCode).ThenBy(kpi => kpi.Id),
+            ("project", true) => query.OrderByDescending(kpi => kpi.IdpProject.ProjectCode).ThenByDescending(kpi => kpi.KpiCode).ThenByDescending(kpi => kpi.Id),
+            ("kpi", false) => query.OrderBy(kpi => kpi.KpiCode).ThenBy(kpi => kpi.Id),
+            ("kpi", true) => query.OrderByDescending(kpi => kpi.KpiCode).ThenByDescending(kpi => kpi.Id),
+            (_, false) => query.OrderBy(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.SortOrder)
+                .ThenBy(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.SortOrder)
+                .ThenBy(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.SortOrder)
+                .ThenBy(kpi => kpi.KpiCode).ThenBy(kpi => kpi.Id),
+            _ => query.OrderByDescending(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.SortOrder)
+                .ThenByDescending(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.SortOrder)
+                .ThenByDescending(kpi => kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.SortOrder)
+                .ThenByDescending(kpi => kpi.KpiCode).ThenByDescending(kpi => kpi.Id)
+        };
 
-        var priorities = await _context.IdpDevelopmentPriorities
-            .AsNoTracking()
-            .Where(item => objectiveIds.Contains(item.IdpStrategicObjectiveId))
-            .OrderBy(item => item.SortOrder)
-            .ToArrayAsync();
+        var rows = await query.Skip(request.Offset).Take(request.PageSize)
+            .Select(kpi => new IdpHierarchyPathRow
+            {
+                IdpPlanPublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.PublicId,
+                OutcomePublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.PublicId,
+                OutcomeCode = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.Code,
+                OutcomeName = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.Name,
+                ObjectivePublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.PublicId,
+                ObjectiveCode = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Code,
+                ObjectiveName = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Name,
+                PriorityPublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PublicId,
+                PriorityCode = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PriorityCode,
+                PriorityName = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.Name,
+                ProgrammePublicId = kpi.IdpProject.IdpProgramme.PublicId,
+                ProgrammeCode = kpi.IdpProject.IdpProgramme.ProgrammeCode,
+                ProgrammeName = kpi.IdpProject.IdpProgramme.Name,
+                ProjectPublicId = kpi.IdpProject.PublicId,
+                ProjectCode = kpi.IdpProject.ProjectCode,
+                ProjectName = kpi.IdpProject.ProjectName,
+                KpiPublicId = kpi.PublicId,
+                KpiCode = kpi.KpiCode,
+                KpiName = kpi.KpiName
+            }).ToArrayAsync();
 
-        var priorityIds = priorities.Select(item => item.Id).ToArray();
-
-        var programmes = await _context.IdpProgrammes
-            .AsNoTracking()
-            .Include(item => item.ResponsibleDepartment)
-            .Where(item => priorityIds.Contains(item.IdpDevelopmentPriorityId))
-            .ToArrayAsync();
-
-        var programmeIds = programmes.Select(item => item.Id).ToArray();
-
-        var projects = await _context.IdpProjects
-            .AsNoTracking()
-            .Include(item => item.Department)
-            .Where(item => programmeIds.Contains(item.IdpProgrammeId))
-            .ToArrayAsync();
-
-        var projectIds = projects.Select(item => item.Id).ToArray();
-
-        var kpis = await _context.IdpKpis
-            .AsNoTracking()
-            .Include(item => item.ResponsibleDepartment)
-            .Where(item => projectIds.Contains(item.IdpProjectId))
-            .ToArrayAsync();
-
-        var kpiIds = kpis.Select(item => item.Id).ToArray();
-
-        var annualTargets = await _context.IdpAnnualTargets
-            .AsNoTracking()
-            .Where(item => kpiIds.Contains(item.IdpKpiId))
-            .ToArrayAsync();
-
-        var alignmentLinks = await _context.IdpAlignmentLinks
-            .AsNoTracking()
-            .Where(item => objectiveIds.Contains(item.IdpStrategicObjectiveId))
-            .ToArrayAsync();
-
-        var riskLinks = await _context.IdpRiskLinks
-            .AsNoTracking()
-            .Where(item => (item.IdpStrategicObjectiveId.HasValue && objectiveIds.Contains(item.IdpStrategicObjectiveId.Value))
-                || (item.IdpProjectId.HasValue && projectIds.Contains(item.IdpProjectId.Value))
-                || (item.IdpKpiId.HasValue && kpiIds.Contains(item.IdpKpiId.Value)))
-            .ToArrayAsync();
-
-        var budgetSnapshots = await _context.IdpBudgetSnapshots
-            .AsNoTracking()
-            .Where(item => (item.IdpStrategicObjectiveId.HasValue && objectiveIds.Contains(item.IdpStrategicObjectiveId.Value))
-                || (item.IdpProjectId.HasValue && projectIds.Contains(item.IdpProjectId.Value)))
-            .ToArrayAsync();
-
-        var response = new IdpHierarchyResponse(
-            ToSummaryResponse(plan),
-            versions.Select(ToVersionResponse).ToArray(),
-            outcomes.Select(ToOutcomeResponse).ToArray(),
-            objectives.Select(ToObjectiveResponse).ToArray(),
-            priorities.Select(ToPriorityResponse).ToArray(),
-            programmes.Select(ToProgrammeResponse).ToArray(),
-            projects.Select(ToProjectResponse).ToArray(),
-            kpis.Select(ToKpiResponse).ToArray(),
-            annualTargets.Select(ToAnnualTargetResponse).ToArray(),
-            alignmentLinks.Select(ToAlignmentResponse).ToArray(),
-            riskLinks.Select(ToRiskResponse).ToArray(),
-            budgetSnapshots.Select(ToBudgetSnapshotResponse).ToArray());
-
-        return Ok(new ApiResponse<IdpHierarchyResponse>(true, response));
+        return Ok(new ApiResponse<PagedResponse<IdpHierarchyPathResponse>>(true,
+            PagedResponse<IdpHierarchyPathResponse>.Create(rows.Select(row => row.ToResponse()), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("plans/{id:int}/dashboard")]
@@ -1539,4 +1575,48 @@ public class IdpController : ControllerBase
 
     private static IdpTaskResponse ToTaskResponse(IdpTaskAssignment task, string? assignedToName, string? assignedByName) =>
         new(task.Id, task.IdpPlanId, task.IdpPlanVersionId, task.Title, task.Description, task.AssignedToUserId, assignedToName, task.AssignedByUserId, assignedByName, task.DueDate, task.IsCompleted, task.CompletedAt);
+
+    private sealed class IdpHierarchyPathRow
+    {
+        public Guid IdpPlanPublicId { get; init; }
+        public Guid OutcomePublicId { get; init; }
+        public string OutcomeCode { get; init; } = string.Empty;
+        public string OutcomeName { get; init; } = string.Empty;
+        public Guid ObjectivePublicId { get; init; }
+        public string ObjectiveCode { get; init; } = string.Empty;
+        public string ObjectiveName { get; init; } = string.Empty;
+        public Guid PriorityPublicId { get; init; }
+        public string PriorityCode { get; init; } = string.Empty;
+        public string PriorityName { get; init; } = string.Empty;
+        public Guid ProgrammePublicId { get; init; }
+        public string ProgrammeCode { get; init; } = string.Empty;
+        public string ProgrammeName { get; init; } = string.Empty;
+        public Guid ProjectPublicId { get; init; }
+        public string ProjectCode { get; init; } = string.Empty;
+        public string ProjectName { get; init; } = string.Empty;
+        public Guid KpiPublicId { get; init; }
+        public string KpiCode { get; init; } = string.Empty;
+        public string KpiName { get; init; } = string.Empty;
+
+        public IdpHierarchyPathResponse ToResponse() => new(
+            IdpPlanPublicId,
+            OutcomePublicId,
+            OutcomeCode,
+            OutcomeName,
+            ObjectivePublicId,
+            ObjectiveCode,
+            ObjectiveName,
+            PriorityPublicId,
+            PriorityCode,
+            PriorityName,
+            ProgrammePublicId,
+            ProgrammeCode,
+            ProgrammeName,
+            ProjectPublicId,
+            ProjectCode,
+            ProjectName,
+            KpiPublicId,
+            KpiCode,
+            KpiName);
+    }
 }

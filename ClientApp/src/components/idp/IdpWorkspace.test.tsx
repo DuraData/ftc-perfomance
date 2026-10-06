@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { IdpAlignmentMatrixPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
+import { IdpAlignmentMatrixPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
 const security = vi.hoisted(() => ({ canImport: vi.fn(() => true) }));
@@ -7,7 +7,8 @@ const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
   getIdpPlansPage: vi.fn(),
-  getIdpPlanHierarchy: vi.fn(),
+  getIdpHierarchyPathsPage: vi.fn(),
+  getIdpPlanVersionsPage: vi.fn(),
   getIdpDashboard: vi.fn(),
   getIdpAlignmentMatrixPage: vi.fn(),
   getIdpImportBatch: vi.fn(),
@@ -58,7 +59,22 @@ describe('IDP plan lineage workspace', () => {
       success: true,
       data: { items: [predecessor], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
     });
-    api.getIdpPlanHierarchy.mockResolvedValue({ success: true, data: { versions: [] } });
+    api.getIdpPlanVersionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getIdpHierarchyPathsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          idpPlanPublicId: predecessor.publicId,
+          outcomePublicId: 'outcome-id', outcomeCode: 'SO1', outcomeName: 'Growth',
+          objectivePublicId: 'objective-id', objectiveCode: 'OBJ1', objectiveName: 'Reliable services',
+          priorityPublicId: 'priority-id', priorityCode: 'PRI1', priorityName: 'Water',
+          programmePublicId: 'programme-id', programmeCode: 'PRG1', programmeName: 'Water programme',
+          projectPublicId: 'project-id', projectCode: 'PROJ1', projectName: 'Pipeline',
+          kpiPublicId: 'kpi-id', kpiCode: 'KPI1', kpiName: 'Households served',
+        }],
+        page: 1, pageSize: 25, totalCount: 26, totalPages: 2,
+      },
+    });
     api.getIdpDashboard.mockResolvedValue({ success: true, data: null });
     api.getIdpAlignmentMatrixPage.mockResolvedValue({
       success: true,
@@ -146,6 +162,36 @@ describe('IDP plan lineage workspace', () => {
       pageSize: 25,
       search: '2031',
     })));
+  });
+
+  it('loads version control through bounded server paging and search', async () => {
+    api.getIdpPlanVersionsPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 },
+    });
+    render(<IdpPlanManagementPage />);
+
+    expect(await screen.findByText('26 versions')).toBeInTheDocument();
+    expect(api.getIdpPlanVersionsPage).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({
+      page: 1, pageSize: 25, sortBy: 'versionNumber', sortDirection: 'desc',
+    }));
+    fireEvent.change(screen.getByLabelText('Search IDP versions'), { target: { value: 'annual review' } });
+    await waitFor(() => expect(api.getIdpPlanVersionsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ search: 'annual review' })), { timeout: 1500 });
+  });
+
+  it('pages and searches flattened hierarchy paths without loading a full graph', async () => {
+    render(<IdpHierarchyPage />);
+
+    expect(await screen.findByText('26 KPI paths')).toBeInTheDocument();
+    await waitFor(() => expect(api.getIdpHierarchyPathsPage).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({
+      page: 1, pageSize: 25, sortBy: 'outcome', sortDirection: 'asc',
+    })));
+    expect(screen.getByText('KPI1 - Households served')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search IDP hierarchy paths'), { target: { value: 'pipeline' } });
+    await waitFor(() => expect(api.getIdpHierarchyPathsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ search: 'pipeline' })), { timeout: 1500 });
+    fireEvent.click(screen.getByRole('button', { name: 'Next paths' }));
+    await waitFor(() => expect(api.getIdpHierarchyPathsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ page: 2, search: 'pipeline' })));
+    expect(api.getIdpPlanVersionsPage).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({ pageSize: 1 }), true);
   });
 
   it('pages and filters IDP import summaries without loading reconciliation rows', async () => {

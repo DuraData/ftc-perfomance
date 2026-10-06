@@ -614,6 +614,27 @@ public record IdpPlanVersionResponse(
     string? PublicationReference,
     string RowVersion);
 
+public record IdpHierarchyPathResponse(
+    Guid IdpPlanPublicId,
+    Guid OutcomePublicId,
+    string OutcomeCode,
+    string OutcomeName,
+    Guid ObjectivePublicId,
+    string ObjectiveCode,
+    string ObjectiveName,
+    Guid PriorityPublicId,
+    string PriorityCode,
+    string PriorityName,
+    Guid ProgrammePublicId,
+    string ProgrammeCode,
+    string ProgrammeName,
+    Guid ProjectPublicId,
+    string ProjectCode,
+    string ProjectName,
+    Guid KpiPublicId,
+    string KpiCode,
+    string KpiName);
+
 public record IdpStrategicOutcomeResponse(int Id, int IdpPlanId, string Code, string Name, string Description, int SortOrder)
 {
     public Guid PublicId { get; init; }
@@ -863,20 +884,6 @@ public record IdpTaskResponse(
     DateTime DueDate,
     bool IsCompleted,
     DateTime? CompletedAt);
-
-public record IdpHierarchyResponse(
-    IdpPlanSummaryResponse Plan,
-    IdpPlanVersionResponse[] Versions,
-    IdpStrategicOutcomeResponse[] Outcomes,
-    IdpStrategicObjectiveResponse[] Objectives,
-    IdpDevelopmentPriorityResponse[] Priorities,
-    IdpProgrammeResponse[] Programmes,
-    IdpProjectResponse[] Projects,
-    IdpKpiResponse[] Kpis,
-    IdpAnnualTargetResponse[] AnnualTargets,
-    IdpAlignmentLinkResponse[] AlignmentLinks,
-    IdpRiskLinkResponse[] RiskLinks,
-    IdpBudgetSnapshotResponse[] BudgetSnapshots);
 
 public record IdpDashboardResponse(
     int PlanId,

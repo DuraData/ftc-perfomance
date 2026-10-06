@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BarChart3, FileText, Layers, Map, RefreshCcw, Users } from 'lucide-react';
 import {
   createIdpComment,
@@ -11,7 +11,8 @@ import {
   getIdpAlignmentMatrixPage,
   getIdpDashboard,
   getIdpPlansPage,
-  getIdpPlanHierarchy,
+  getIdpHierarchyPathsPage,
+  getIdpPlanVersionsPage,
   getIdpReport,
   stageIdpHierarchyImport,
   stageIdpKpiImport,
@@ -25,7 +26,7 @@ import { Badge, Button, Card, EmptyState } from '../ui';
 import type {
   IdpAlignmentMatrixItem,
   IdpDashboard,
-  IdpHierarchy,
+  IdpHierarchyPath,
   IdpImportBatch,
   IdpImportBatchSummary,
   IdpHierarchyImportRowPayload,
@@ -171,6 +172,12 @@ export function IdpPlanManagementPage() {
   const [planSortBy, setPlanSortBy] = useState('createdAt');
   const [planSortDirection, setPlanSortDirection] = useState<'asc' | 'desc'>('desc');
   const [versions, setVersions] = useState<IdpPlanVersion[]>([]);
+  const [versionPage, setVersionPage] = useState(1);
+  const [versionTotalCount, setVersionTotalCount] = useState(0);
+  const [versionTotalPages, setVersionTotalPages] = useState(0);
+  const [versionSearchInput, setVersionSearchInput] = useState('');
+  const [versionSearch, setVersionSearch] = useState('');
+  const [versionRevision, setVersionRevision] = useState(0);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [importMode, setImportMode] = useState<'KPI' | 'HIERARCHY'>(canImportHierarchy ? 'HIERARCHY' : 'KPI');
   const [importRows, setImportRows] = useState<Array<IdpKpiImportRowPayload | IdpHierarchyImportRowPayload>>([]);
@@ -225,12 +232,10 @@ export function IdpPlanManagementPage() {
     const planId = loadedPlans.some(plan => plan.id === selectedPlanId) ? selectedPlanId : loadedPlans[0]?.id ?? null;
     setSelectedPlanId(planId);
 
-    if (planId) {
-      const hierarchyResult = await getIdpPlanHierarchy(planId);
-      const hierarchy = hierarchyResult.data;
-      setVersions(hierarchy?.versions ?? []);
-    } else {
+    if (!planId) {
       setVersions([]);
+      setVersionTotalCount(0);
+      setVersionTotalPages(0);
       setImportHistory([]);
     }
   };
@@ -240,15 +245,42 @@ export function IdpPlanManagementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planPage, planSearch, planSortBy, planSortDirection]);
 
-  const selectPlan = async (planId: number) => {
+  const selectPlan = (planId: number) => {
     setSelectedPlanId(planId);
-    const hierarchyResult = await getIdpPlanHierarchy(planId);
-    setVersions(hierarchyResult.data?.versions ?? []);
+    setVersionPage(1);
     setImportHistoryPage(1);
     setImportBatch(null);
   };
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setVersionPage(1);
+      setVersionSearch(versionSearchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [versionSearchInput]);
+
+  useEffect(() => {
+    if (!selectedPlan) {
+      setVersions([]);
+      setVersionTotalCount(0);
+      setVersionTotalPages(0);
+      return;
+    }
+    void getIdpPlanVersionsPage(selectedPlan.publicId, {
+      page: versionPage,
+      pageSize: 25,
+      search: versionSearch,
+      sortBy: 'versionNumber',
+      sortDirection: 'desc',
+    }).then(result => {
+      setVersions(result.data?.items ?? []);
+      setVersionTotalCount(result.data?.totalCount ?? 0);
+      setVersionTotalPages(result.data?.totalPages ?? 0);
+    });
+  }, [selectedPlan, versionPage, versionSearch, versionRevision]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -387,7 +419,8 @@ export function IdpPlanManagementPage() {
     if (result.success) {
       pushToast('success', 'IDP version created and linked to its predecessor.');
       setVersionDraft(draft => ({ ...draft, versionLabel: '', summaryOfChanges: '', publicationReference: '' }));
-      await selectPlan(selectedPlanId);
+      setVersionPage(1);
+      setVersionRevision(value => value + 1);
     } else {
       pushToast('error', result.message ?? 'Failed to create version.');
     }
@@ -435,7 +468,7 @@ export function IdpPlanManagementPage() {
               {plans.map(plan => (
                 <button
                   key={plan.id}
-                  onClick={() => void selectPlan(plan.id)}
+                  onClick={() => selectPlan(plan.id)}
                   className={`w-full rounded border px-3 py-2 text-left ${selectedPlanId === plan.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}
                 >
                   <p className="font-medium text-secondary-900 dark:text-secondary-100">{plan.planCode} - {plan.planTitle}</p>
@@ -451,6 +484,7 @@ export function IdpPlanManagementPage() {
           <Card>
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Version Control</h3>
+              <Badge variant="primary">{versionTotalCount} versions</Badge>
             </div>
             {canManagePlan ? (
               <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -463,6 +497,9 @@ export function IdpPlanManagementPage() {
                 <div className="md:col-span-2"><Button variant="outline" disabled={!selectedPlanId} onClick={() => void submitVersion()}>Create Version</Button></div>
               </div>
             ) : null}
+            <div className="mt-3">
+              <input aria-label="Search IDP versions" placeholder="Label, review year, changes, or publication" className={fieldClass} value={versionSearchInput} onChange={event => setVersionSearchInput(event.target.value)} />
+            </div>
             <div className="mt-3 space-y-2">
               {versions.map(version => (
                 <div key={version.id} className="rounded border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
@@ -472,6 +509,10 @@ export function IdpPlanManagementPage() {
                 </div>
               ))}
               {!versions.length ? <p className="text-sm text-secondary-500">No versions available.</p> : null}
+            </div>
+            <div className="mt-3 flex items-center justify-between text-xs text-secondary-500">
+              <span>Page {versionPage} of {Math.max(1, versionTotalPages)}</span>
+              <div className="flex gap-2"><Button size="sm" variant="outline" disabled={versionPage <= 1} onClick={() => setVersionPage(value => value - 1)}>Previous versions</Button><Button size="sm" variant="outline" disabled={versionPage >= versionTotalPages} onClick={() => setVersionPage(value => value + 1)}>Next versions</Button></div>
             </div>
           </Card>
         </div>
@@ -576,57 +617,63 @@ export function IdpPlanManagementPage() {
 export function IdpHierarchyPage() {
   const { pushToast } = useApp();
   const canManageHierarchy = useHasAnyPermission(['IDP.Hierarchy.Manage', 'IDP.Collaboration.Manage']);
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
-  const [hierarchy, setHierarchy] = useState<IdpHierarchy | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<IdpPlanSummary | null>(null);
+  const [pathRows, setPathRows] = useState<IdpHierarchyPath[]>([]);
+  const [activeVersionId, setActiveVersionId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('outcome');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const load = async (planId = selectedPlanId) => {
-    if (planId) {
-      const hierarchyResult = await getIdpPlanHierarchy(planId);
-      setHierarchy(hierarchyResult.data ?? null);
-    } else {
-      setHierarchy(null);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!selectedPlan) {
+      setPathRows([]);
+      setActiveVersionId(null);
+      setTotalCount(0);
+      setTotalPages(0);
+      return;
     }
-  };
-
-  const pathRows = useMemo(() => {
-    if (!hierarchy) return [];
-
-    return hierarchy.outcomes.flatMap(outcome => {
-      const objectives = hierarchy.objectives.filter(objective => objective.idpStrategicOutcomeId === outcome.id);
-      return objectives.flatMap(objective => {
-        const priorities = hierarchy.priorities.filter(priority => priority.idpStrategicObjectiveId === objective.id);
-        return priorities.flatMap(priority => {
-          const programmes = hierarchy.programmes.filter(programme => programme.idpDevelopmentPriorityId === priority.id);
-          return programmes.flatMap(programme => {
-            const projects = hierarchy.projects.filter(project => project.idpProgrammeId === programme.id);
-            return projects.flatMap(project => {
-              const kpis = hierarchy.kpis.filter(kpi => kpi.idpProjectId === project.id);
-              return kpis.map(kpi => ({ outcome, objective, priority, programme, project, kpi }));
-            });
-          });
-        });
-      });
+    void Promise.all([
+      getIdpHierarchyPathsPage(selectedPlan.publicId, { page, pageSize: 25, search, sortBy, sortDirection }),
+      getIdpPlanVersionsPage(selectedPlan.publicId, { page: 1, pageSize: 1, sortBy: 'versionNumber', sortDirection: 'desc' }, true),
+    ]).then(([pathsResult, versionsResult]) => {
+      setPathRows(pathsResult.data?.items ?? []);
+      setTotalCount(pathsResult.data?.totalCount ?? 0);
+      setTotalPages(pathsResult.data?.totalPages ?? 0);
+      setActiveVersionId(versionsResult.data?.items[0]?.id ?? null);
     });
-  }, [hierarchy]);
+  }, [page, refreshKey, search, selectedPlan, sortBy, sortDirection]);
 
   return (
-    <AppShell title="Planning Hierarchy" subtitle="Outcome to annual target traceability across the full IDP chain">
+    <AppShell title="Planning Hierarchy" subtitle="Outcome-to-KPI traceability across the governed IDP chain">
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => void load()}>Refresh</Button>
+            <Button variant="outline" onClick={() => setRefreshKey(value => value + 1)}>Refresh</Button>
             {!canManageHierarchy ? <Badge variant="warning">Read Only</Badge> : null}
-            <IdpPlanPicker label="Hierarchy plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
+            <IdpPlanPicker label="Hierarchy plan" value={selectedPlan?.publicId ?? ''} valueField="publicId" autoSelectFirst onChange={(_value, plan) => { setSelectedPlan(plan ?? null); setPage(1); }} />
             {canManageHierarchy ? (
               <Button
                 variant="outline"
                 onClick={async () => {
-                  if (!selectedPlanId) return;
+                  if (!selectedPlan) return;
                   const result = await createIdpComment({
-                    idpPlanId: selectedPlanId,
-                    idpPlanVersionId: hierarchy?.versions.find(v => v.isActive)?.id ?? null,
+                    idpPlanId: selectedPlan.id,
+                    idpPlanVersionId: activeVersionId,
                     entityName: 'IdpHierarchy',
-                    entityId: selectedPlanId.toString(),
+                    entityId: selectedPlan.publicId,
                     comment: 'Hierarchy review checkpoint captured from planning workspace',
                   });
 
@@ -640,7 +687,15 @@ export function IdpHierarchyPage() {
         </Card>
 
         <Card>
-          <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Hierarchy Drill-Down</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Hierarchy Drill-Down</h3>
+            <Badge variant="primary">{totalCount} KPI paths</Badge>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_10rem_9rem]">
+            <input aria-label="Search IDP hierarchy paths" placeholder="Search any hierarchy level" className="w-full rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100" value={searchInput} onChange={event => setSearchInput(event.target.value)} />
+            <select aria-label="Sort IDP hierarchy paths" className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }}><option value="outcome">Outcome</option><option value="objective">Objective</option><option value="priority">Priority</option><option value="programme">Programme</option><option value="project">Project</option><option value="kpi">KPI</option></select>
+            <select aria-label="IDP hierarchy sort direction" className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select>
+          </div>
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700">
@@ -655,18 +710,22 @@ export function IdpHierarchyPage() {
               </thead>
               <tbody>
                 {pathRows.map(row => (
-                  <tr key={`${row.kpi.id}`} className="border-b border-secondary-100 dark:border-secondary-800">
-                    <td className="px-2 py-2">{row.outcome.code} - {row.outcome.name}</td>
-                    <td className="px-2 py-2">{row.objective.code} - {row.objective.name}</td>
-                    <td className="px-2 py-2">{row.priority.name}</td>
-                    <td className="px-2 py-2">{row.programme.programmeCode}</td>
-                    <td className="px-2 py-2">{row.project.projectCode}</td>
-                    <td className="px-2 py-2">{row.kpi.kpiCode}</td>
+                  <tr key={row.kpiPublicId} className="border-b border-secondary-100 dark:border-secondary-800">
+                    <td className="px-2 py-2">{row.outcomeCode} - {row.outcomeName}</td>
+                    <td className="px-2 py-2">{row.objectiveCode} - {row.objectiveName}</td>
+                    <td className="px-2 py-2">{row.priorityCode} - {row.priorityName}</td>
+                    <td className="px-2 py-2">{row.programmeCode} - {row.programmeName}</td>
+                    <td className="px-2 py-2">{row.projectCode} - {row.projectName}</td>
+                    <td className="px-2 py-2">{row.kpiCode} - {row.kpiName}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {!pathRows.length ? <p className="p-3 text-sm text-secondary-500">No hierarchy records available for this plan.</p> : null}
+          </div>
+          <div className="mt-3 flex items-center justify-between text-xs text-secondary-500">
+            <span>Page {page} of {Math.max(1, totalPages)}</span>
+            <div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous paths</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next paths</Button></div>
           </div>
         </Card>
       </div>

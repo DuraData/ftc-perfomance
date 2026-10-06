@@ -9,6 +9,7 @@ public class IdpControllerFunctionalityTests
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
         var systemTenant = IdpTestFixture.Tenant(null, "system", true);
+        var foreignPlanPublicId = Guid.NewGuid();
         await using (var setup = new ApplicationDbContext(options, systemTenant))
         {
             await setup.Database.EnsureCreatedAsync();
@@ -31,6 +32,7 @@ public class IdpControllerFunctionalityTests
             }));
             setup.IdpPlans.Add(new IdpPlan
             {
+                PublicId = foreignPlanPublicId,
                 MunicipalityId = 72,
                 MunicipalityName = "Municipality 72",
                 PlanCode = "IDP-FOREIGN",
@@ -67,6 +69,8 @@ public class IdpControllerFunctionalityTests
         Assert.Equal(10, page.Items.Length);
         Assert.Equal("IDP-011", page.Items[0].PlanCode);
         Assert.DoesNotContain(page.Items, item => item.PlanCode == "IDP-FOREIGN");
+        Assert.IsType<NotFoundObjectResult>((await controller.GetPlanVersionsPage(foreignPlanPublicId, new PagedQueryRequest())).Result);
+        Assert.IsType<NotFoundObjectResult>((await controller.GetHierarchyPathsPage(foreignPlanPublicId, new PagedQueryRequest())).Result);
     }
 
     [Fact]
@@ -342,7 +346,7 @@ public class IdpControllerFunctionalityTests
     }
 
     [Fact]
-    public async Task CreateAndRetrieveHierarchy_ShouldReturnNestedRecords()
+    public async Task HierarchyPathsAndVersions_AreBoundedSearchableAndLegacyAggregateIsRetired()
     {
         await using var context = IdpTestFixture.CreateContext();
         var user = IdpTestFixture.CreateUser("creator");
@@ -398,8 +402,26 @@ public class IdpControllerFunctionalityTests
         context.IdpProjects.Add(project);
         await context.SaveChangesAsync();
 
-        var kpi = new IdpKpi { IdpProjectId = project.Id, KpiCode = "KPI1", KpiName = "KPI", Description = "Desc", Formula = "x/y", Baseline = 1, AnnualTarget = 2, FiveYearTarget = 3, ResponsibleDepartmentId = dept.Id, DataSource = "System", ReportingFrequency = "Quarterly", IndicatorType = IdpKpiIndicatorType.Outcome, Circular88Linked = true, TreasuryTidLinked = true };
+        var kpi = new IdpKpi { IdpProjectId = project.Id, KpiCode = "KPI-001", KpiName = "KPI 001", Description = "Desc", Formula = "x/y", Baseline = 1, AnnualTarget = 2, FiveYearTarget = 3, ResponsibleDepartmentId = dept.Id, DataSource = "System", ReportingFrequency = "Quarterly", IndicatorType = IdpKpiIndicatorType.Outcome, Circular88Linked = true, TreasuryTidLinked = true };
         context.IdpKpis.Add(kpi);
+        context.IdpKpis.AddRange(Enumerable.Range(2, 30).Select(index => new IdpKpi
+        {
+            IdpProjectId = project.Id,
+            KpiCode = $"KPI-{index:000}",
+            KpiName = $"KPI {index:000}",
+            Description = "Paged hierarchy KPI",
+            Formula = "x/y",
+            Baseline = 1,
+            AnnualTarget = 2,
+            FiveYearTarget = 3,
+            DataSource = "System",
+            ReportingFrequency = "Quarterly",
+            IndicatorType = IdpKpiIndicatorType.Outcome
+        }));
+        context.IdpPlanVersions.AddRange(
+            new IdpPlanVersion { IdpPlanId = plan.Id, VersionNumber = 1, VersionLabel = "Original council plan", VersionType = IdpVersionType.Original, EffectiveFrom = DateTime.UtcNow.AddYears(-2), IsActive = false, CreatedByUserId = user.Id },
+            new IdpPlanVersion { IdpPlanId = plan.Id, VersionNumber = 2, VersionLabel = "Annual review one", VersionType = IdpVersionType.AnnualReview, EffectiveFrom = DateTime.UtcNow.AddYears(-1), IsActive = false, CreatedByUserId = user.Id },
+            new IdpPlanVersion { IdpPlanId = plan.Id, VersionNumber = 3, VersionLabel = "Annual review current", VersionType = IdpVersionType.AnnualReview, EffectiveFrom = DateTime.UtcNow, IsActive = true, CreatedByUserId = user.Id });
         await context.SaveChangesAsync();
 
         context.IdpAnnualTargets.Add(new IdpAnnualTarget { IdpKpiId = kpi.Id, FinancialYear = 2026, TargetValue = 2, ActualValue = 1.8m, ProgressComment = "On track" });
@@ -412,20 +434,43 @@ public class IdpControllerFunctionalityTests
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
 
-        var action = await controller.GetHierarchy(plan.Id);
-        var ok = action.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var payload = ok.Value.Should().BeOfType<ApiResponse<IdpHierarchyResponse>>().Subject;
+        var pathsResult = await controller.GetHierarchyPathsPage(plan.PublicId, new PagedQueryRequest
+        {
+            Page = 2,
+            PageSize = 10,
+            Search = "KPI",
+            SortBy = "kpi",
+            SortDirection = "asc"
+        });
+        var paths = pathsResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<IdpHierarchyPathResponse>>>().Subject.Data!;
+        paths.TotalCount.Should().Be(31);
+        paths.TotalPages.Should().Be(4);
+        paths.Items.Should().HaveCount(10);
+        paths.Items[0].KpiCode.Should().Be("KPI-011");
+        paths.Items[0].OutcomePublicId.Should().Be(outcome.PublicId);
+        paths.Items[0].ObjectivePublicId.Should().Be(objective.PublicId);
+        paths.Items[0].PriorityPublicId.Should().Be(priority.PublicId);
+        paths.Items[0].ProgrammePublicId.Should().Be(programme.PublicId);
+        paths.Items[0].ProjectPublicId.Should().Be(project.PublicId);
+        paths.Items.Select(item => item.KpiPublicId).Should().OnlyHaveUniqueItems();
 
-        payload.Success.Should().BeTrue();
-        payload.Data.Should().NotBeNull();
-        payload.Data!.Outcomes.Should().HaveCount(1);
-        payload.Data.Objectives.Should().HaveCount(1);
-        payload.Data.Projects.Should().HaveCount(1);
-        payload.Data.Kpis.Should().HaveCount(1);
-        payload.Data.AnnualTargets.Should().HaveCount(1);
-        payload.Data.AlignmentLinks.Should().HaveCount(1);
-        payload.Data.RiskLinks.Should().HaveCount(1);
-        payload.Data.BudgetSnapshots.Should().HaveCount(1);
+        var versionsResult = await controller.GetPlanVersionsPage(plan.PublicId, new PagedQueryRequest
+        {
+            Page = 1,
+            PageSize = 1,
+            Search = "Annual",
+            SortBy = "versionNumber",
+            SortDirection = "desc"
+        }, active: true);
+        var versions = versionsResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<IdpPlanVersionResponse>>>().Subject.Data!;
+        versions.TotalCount.Should().Be(1);
+        versions.Items.Should().ContainSingle().Which.VersionNumber.Should().Be(3);
+
+        (await controller.GetHierarchyPathsPage(plan.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetPlanVersionsPage(plan.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetHierarchy(plan.Id).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]

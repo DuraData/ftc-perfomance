@@ -50,7 +50,7 @@ import type {
   TargetUnitType,
   IdpPlanSummary,
   IdpPlanVersion,
-  IdpHierarchy,
+  IdpHierarchyPath,
   IdpDashboard,
   IdpAlignmentMatrixItem,
   IdpDocument,
@@ -2515,8 +2515,22 @@ export async function createIdpPlanVersion(planId: number, payload: CreateIdpPla
   return post<IdpPlanVersion>(`/idp/plans/${planId}/versions`, payload);
 }
 
-export async function getIdpPlanHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {
-  return get<IdpHierarchy>(`/idp/plans/${planId}/hierarchy`);
+export async function getIdpPlanVersionsPage(
+  planPublicId: string,
+  query: RegisterPageQuery = {},
+  active?: boolean,
+): Promise<ApiResponse<PagedResult<IdpPlanVersion>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (active !== undefined) parameters.set('active', String(active));
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PagedResult<IdpPlanVersion>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/versions/page${suffix}`);
+}
+
+export async function getIdpHierarchyPathsPage(
+  planPublicId: string,
+  query: RegisterPageQuery = {},
+): Promise<ApiResponse<PagedResult<IdpHierarchyPath>>> {
+  return get<PagedResult<IdpHierarchyPath>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/hierarchy-paths/page${registerPageQuery(query)}`);
 }
 
 export type IdpImportBatchPageQuery = RegisterPageQuery & {
@@ -2565,10 +2579,6 @@ export async function commitIdpHierarchyImport(
   payload: { rowVersion: string; reason: string },
 ): Promise<ApiResponse<IdpImportBatch>> {
   return post<IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit-hierarchy`, payload);
-}
-
-export async function getIdpHierarchy(planId: number): Promise<ApiResponse<IdpHierarchy>> {
-  return getIdpPlanHierarchy(planId);
 }
 
 export async function getIdpDashboard(planId: number): Promise<ApiResponse<IdpDashboard>> {
