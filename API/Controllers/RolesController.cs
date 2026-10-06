@@ -61,19 +61,9 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet("{id}/permissions")]
-    public async Task<ActionResult<ApiResponse<RolePermissionResponse[]>>> GetRolePermissions(string id)
-    {
-        var role = await TenantRoles().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
-        if (role == null) return NotFound(new ApiResponse<RolePermissionResponse[]>(false, null, "Role not found"));
-
-        var permissions = await _context.RolePermissions
-            .Where(rp => rp.RoleId == id)
-            .OrderBy(rp => rp.Permission.Code)
-            .Select(rp => new RolePermissionResponse(rp.PermissionId, rp.Permission.Code, rp.IsAllowed))
-            .ToArrayAsync();
-
-        return Ok(new ApiResponse<RolePermissionResponse[]>(true, permissions));
-    }
+    public ActionResult<ApiResponse<RolePermissionResponse[]>> GetRolePermissions(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<RolePermissionResponse[]>(false, null,
+            "This legacy role-permission collection is retired. Use /api/v1/security/roles/{roleId}/permissions with /api/v1/security/permissions/page."));
 
     [HttpPut("{id}/permissions")]
     public async Task<ActionResult<ApiResponse<bool>>> SetRolePermissions(string id, [FromBody] UpdateRolePermissionsRequest request)

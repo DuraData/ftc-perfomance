@@ -13,7 +13,7 @@ namespace FTCERP.Tests;
 public sealed class LegacySecurityEndpointRetirementTests
 {
     [Fact]
-    public async Task Legacy_role_collection_and_mutations_are_gone_while_detail_reads_remain_tenant_scoped()
+    public async Task Legacy_role_and_permission_collections_and_mutations_are_gone_while_role_detail_remains_tenant_scoped()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -31,7 +31,8 @@ public sealed class LegacySecurityEndpointRetirementTests
 
         AssertGone(controller.GetRoles().Result);
         Assert.IsType<NotFoundObjectResult>((await controller.GetRole("role-b")).Result);
-        Assert.IsType<NotFoundObjectResult>((await controller.GetRolePermissions("role-b")).Result);
+        AssertGone(controller.GetRolePermissions("role-a").Result);
+        AssertGone(controller.GetRolePermissions("role-b").Result);
 
         AssertGone((await controller.CreateRole(new CreateRoleRequest("Bypass", null))).Result);
         AssertGone((await controller.UpdateRole("role-a", new UpdateRoleRequest("Bypass", null))).Result);
@@ -53,6 +54,7 @@ public sealed class LegacySecurityEndpointRetirementTests
         var controller = new PermissionsController(context);
 
         AssertGone(controller.GetPermissions().Result);
+        AssertGone(controller.GetGrouped().Result);
         var pageResult = await controller.GetPermissionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "USER", SortBy = "code", SortDirection = "asc" });
         var page = Assert.IsType<ApiResponse<PagedResponse<PermissionResponse>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value).Data!;
         Assert.Equal(1, page.TotalCount);

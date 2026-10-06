@@ -64,24 +64,9 @@ public class PermissionsController : ControllerBase
     private static readonly HashSet<string> PermissionSortFields = ["createdat", "module", "feature", "action", "code", "status"];
 
     [HttpGet("grouped")]
-    public async Task<ActionResult<ApiResponse<PermissionGroupResponse[]>>> GetGrouped()
-    {
-        var permissions = await _context.Permissions.AsNoTracking()
-            .OrderBy(p => p.Module).ThenBy(p => p.Feature).ThenBy(p => p.Action)
-            .ToListAsync();
-
-        var grouped = permissions
-            .GroupBy(p => new { p.Module, p.Feature })
-            .Select(g => new PermissionGroupResponse(
-                g.Key.Module,
-                g.Key.Feature,
-                g.Select(p => new PermissionResponse(p.Id, p.Module, p.Feature, p.Action, p.Code, p.Description, p.IsActive)).ToArray()
-            ))
-            .OrderBy(g => g.Module).ThenBy(g => g.Feature)
-            .ToArray();
-
-        return Ok(new ApiResponse<PermissionGroupResponse[]>(true, grouped));
-    }
+    public ActionResult<ApiResponse<PermissionGroupResponse[]>> GetGrouped() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<PermissionGroupResponse[]>(false, null,
+            "This unbounded legacy route is retired. Use /api/v1/security/permissions/page with a kind filter."));
 
     [HttpPost]
     public async Task<ActionResult<ApiResponse<PermissionResponse>>> CreatePermission([FromBody] CreatePermissionRequest request)
