@@ -319,20 +319,54 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{id}/scopes")]
-    public async Task<ActionResult<ApiResponse<UserScopeResponse[]>>> GetUserScopes(string id)
+    public ActionResult<ApiResponse<UserScopeResponse[]>> GetUserScopes(string id) =>
+        StatusCode(StatusCodes.Status410Gone, Fail<UserScopeResponse[]>(
+            $"This unbounded route is retired. Use /api/users/{id}/scopes/page."));
+
+    [HttpGet("{id}/scopes/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UserScopeResponse>>>> GetUserScopesPage(string id, [FromQuery] PagedQueryRequest request)
     {
         var actor = await GetCurrentActorAsync();
-        if (actor == null) return Unauthorized(Fail<UserScopeResponse[]>("User not found"));
+        if (actor == null) return Unauthorized(Fail<PagedResponse<UserScopeResponse>>("User not found"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
         var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
-        if (user == null) return NotFound(new ApiResponse<UserScopeResponse[]>(false, null, "User not found"));
+        if (user == null) return NotFound(Fail<PagedResponse<UserScopeResponse>>("User not found"));
+        if (!UserScopeSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<UserScopeResponse>>("SortBy must be createdAt, effectiveFrom, type, department, or unit."));
 
-        var scopes = await _context.UserScopes
+        var query = _context.UserScopes
             .AsNoTracking()
             .Where(scope => scope.UserId == id)
             .Include(scope => scope.Department)
             .Include(scope => scope.Unit)
-            .OrderBy(scope => scope.ScopeType)
+            .AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            var hasType = Enum.TryParse<ScopeType>(term, true, out var scopeType);
+            query = query.Where(scope => (hasType && scope.ScopeType == scopeType)
+                || (scope.Department != null && scope.Department.Name.Contains(term))
+                || (scope.Unit != null && scope.Unit.Name.Contains(term))
+                || (scope.TargetId != null && scope.TargetId.Contains(term))
+                || (scope.KpiId != null && scope.KpiId.Contains(term))
+                || (scope.ProjectId != null && scope.ProjectId.Contains(term))
+                || (scope.TaskId != null && scope.TaskId.Contains(term)));
+        }
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("effectivefrom", false) => query.OrderBy(scope => scope.EffectiveFrom).ThenBy(scope => scope.Id),
+            ("effectivefrom", true) => query.OrderByDescending(scope => scope.EffectiveFrom).ThenBy(scope => scope.Id),
+            ("type", false) => query.OrderBy(scope => scope.ScopeType).ThenBy(scope => scope.Id),
+            ("type", true) => query.OrderByDescending(scope => scope.ScopeType).ThenBy(scope => scope.Id),
+            ("department", false) => query.OrderBy(scope => scope.Department != null ? scope.Department.Name : null).ThenBy(scope => scope.Id),
+            ("department", true) => query.OrderByDescending(scope => scope.Department != null ? scope.Department.Name : null).ThenBy(scope => scope.Id),
+            ("unit", false) => query.OrderBy(scope => scope.Unit != null ? scope.Unit.Name : null).ThenBy(scope => scope.Id),
+            ("unit", true) => query.OrderByDescending(scope => scope.Unit != null ? scope.Unit.Name : null).ThenBy(scope => scope.Id),
+            (_, false) => query.OrderBy(scope => scope.CreatedAt).ThenBy(scope => scope.Id),
+            _ => query.OrderByDescending(scope => scope.CreatedAt).ThenBy(scope => scope.Id)
+        };
+        var scopes = await query.Skip(request.Offset).Take(request.PageSize)
             .Select(scope => new UserScopeResponse(
                 scope.Id,
                 scope.ScopeType.ToString(),
@@ -346,7 +380,8 @@ public class UsersController : ControllerBase
                 scope.TaskId))
             .ToArrayAsync();
 
-        return Ok(new ApiResponse<UserScopeResponse[]>(true, scopes));
+        return Ok(new ApiResponse<PagedResponse<UserScopeResponse>>(true,
+            PagedResponse<UserScopeResponse>.Create(scopes, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPut("{id}/scopes")]
@@ -402,18 +437,50 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{id}/assignments")]
-    public async Task<ActionResult<ApiResponse<UserAssignmentResponse[]>>> GetUserAssignments(string id)
+    public ActionResult<ApiResponse<UserAssignmentResponse[]>> GetUserAssignments(string id) =>
+        StatusCode(StatusCodes.Status410Gone, Fail<UserAssignmentResponse[]>(
+            $"This unbounded route is retired. Use /api/users/{id}/assignments/page."));
+
+    [HttpGet("{id}/assignments/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UserAssignmentResponse>>>> GetUserAssignmentsPage(string id, [FromQuery] PagedQueryRequest request)
     {
         var actor = await GetCurrentActorAsync();
-        if (actor == null) return Unauthorized(Fail<UserAssignmentResponse[]>("User not found"));
+        if (actor == null) return Unauthorized(Fail<PagedResponse<UserAssignmentResponse>>("User not found"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
         var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
-        if (user == null) return NotFound(new ApiResponse<UserAssignmentResponse[]>(false, null, "User not found"));
+        if (user == null) return NotFound(Fail<PagedResponse<UserAssignmentResponse>>("User not found"));
+        if (!UserAssignmentSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(Fail<PagedResponse<UserAssignmentResponse>>("SortBy must be createdAt, validFrom, validTo, type, or status."));
 
-        var assignments = await _context.UserAssignments
+        var query = _context.UserAssignments
             .AsNoTracking()
-            .Where(assignment => assignment.UserId == id)
-            .OrderBy(assignment => assignment.AssignmentType)
+            .Where(assignment => assignment.UserId == id);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            var hasType = Enum.TryParse<AssignmentType>(term, true, out var assignmentType);
+            query = query.Where(assignment => (hasType && assignment.AssignmentType == assignmentType)
+                || (assignment.DelegatorUserId != null && assignment.DelegatorUserId.Contains(term))
+                || (assignment.TargetId != null && assignment.TargetId.Contains(term))
+                || (assignment.KpiId != null && assignment.KpiId.Contains(term))
+                || (assignment.ProjectId != null && assignment.ProjectId.Contains(term))
+                || (assignment.TaskId != null && assignment.TaskId.Contains(term)));
+        }
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("validfrom", false) => query.OrderBy(item => item.ValidFromUtc).ThenBy(item => item.Id),
+            ("validfrom", true) => query.OrderByDescending(item => item.ValidFromUtc).ThenBy(item => item.Id),
+            ("validto", false) => query.OrderBy(item => item.ValidToUtc).ThenBy(item => item.Id),
+            ("validto", true) => query.OrderByDescending(item => item.ValidToUtc).ThenBy(item => item.Id),
+            ("type", false) => query.OrderBy(item => item.AssignmentType).ThenBy(item => item.Id),
+            ("type", true) => query.OrderByDescending(item => item.AssignmentType).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+        };
+        var assignments = await query.Skip(request.Offset).Take(request.PageSize)
             .Select(assignment => new UserAssignmentResponse(
                 assignment.Id,
                 assignment.AssignmentType.ToString(),
@@ -427,7 +494,8 @@ public class UsersController : ControllerBase
                 assignment.TaskId))
             .ToArrayAsync();
 
-        return Ok(new ApiResponse<UserAssignmentResponse[]>(true, assignments));
+        return Ok(new ApiResponse<PagedResponse<UserAssignmentResponse>>(true,
+            PagedResponse<UserAssignmentResponse>.Create(assignments, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPut("{id}/assignments")]
@@ -526,6 +594,8 @@ public class UsersController : ControllerBase
     }
 
     private static readonly HashSet<string> UserSortFields = ["createdat", "name", "email", "status"];
+    private static readonly HashSet<string> UserScopeSortFields = ["createdat", "effectivefrom", "type", "department", "unit"];
+    private static readonly HashSet<string> UserAssignmentSortFields = ["createdat", "validfrom", "validto", "type", "status"];
 
     private async Task<UserDetailResponse[]> ToUserDetailsAsync(ApplicationUser[] users, bool canReadEmail, bool canReadPhone)
     {

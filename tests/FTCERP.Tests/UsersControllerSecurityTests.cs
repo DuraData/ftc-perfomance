@@ -158,6 +158,64 @@ public sealed class UsersControllerSecurityTests
         Assert.DoesNotContain(envelope.Data.Items, item => item.User.Id == other.Id);
     }
 
+    [Fact]
+    public async Task User_scope_and_assignment_histories_are_tenant_authorized_searchable_pages()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new FixedTenantContext(401, "actor");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        context.AddRange(new Municipality { Id = 401, Code = "M401", Name = "Municipality 401" },
+            new Municipality { Id = 402, Code = "M402", Name = "Municipality 402" });
+        var actor = User("actor", 401, "actor@example.test", "0111111111");
+        var target = User("target", 401, "target@example.test", "0222222222");
+        var other = User("other", 402, "other@example.test", "0333333333");
+        context.AddRange(actor, target, other);
+        await context.SaveChangesAsync();
+        for (var index = 1; index <= 12; index++)
+        {
+            context.UserScopes.Add(new UserScope
+            {
+                UserId = target.Id, MunicipalityId = 401, ScopeType = ScopeType.AssignedTargetScope,
+                TargetId = $"target-{index:00}", EffectiveFrom = DateTime.UtcNow.AddDays(-index), IsActive = true
+            });
+            context.UserAssignments.Add(new UserAssignment
+            {
+                UserId = target.Id, AssignmentType = AssignmentType.AdditionalSubmitterAssignment,
+                TargetId = $"target-{index:00}", ValidFromUtc = DateTime.UtcNow.AddDays(-index), IsActive = index % 2 == 0
+            });
+        }
+        context.UserScopes.Add(new UserScope { UserId = other.Id, MunicipalityId = 402, ScopeType = ScopeType.System, IsActive = true });
+        context.UserAssignments.Add(new UserAssignment { UserId = other.Id, AssignmentType = AssignmentType.DelegatedAssignment, IsActive = true });
+        await context.SaveChangesAsync();
+        var directory = new[] { actor, target, other }.ToDictionary(item => item.Id);
+        var controller = Controller(context, tenant, actor, directory, Access(actor, "SECURITY.VIEW_EFFECTIVE").Object);
+
+        var scopesResult = await controller.GetUserScopesPage(target.Id, new PagedQueryRequest
+        {
+            Page = 2, PageSize = 5, SortBy = "effectiveFrom", SortDirection = "desc"
+        });
+        var scopes = Assert.IsType<ApiResponse<PagedResponse<UserScopeResponse>>>(Assert.IsType<OkObjectResult>(scopesResult.Result).Value).Data!;
+        Assert.Equal(12, scopes.TotalCount);
+        Assert.Equal(5, scopes.Items.Length);
+        Assert.Equal(3, scopes.TotalPages);
+
+        var assignmentsResult = await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 10, Search = "target-12", SortBy = "validFrom", SortDirection = "asc"
+        });
+        var assignments = Assert.IsType<ApiResponse<PagedResponse<UserAssignmentResponse>>>(Assert.IsType<OkObjectResult>(assignmentsResult.Result).Value).Data!;
+        Assert.Equal(1, assignments.TotalCount);
+        Assert.Equal("target-12", Assert.Single(assignments.Items).TargetId);
+
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserScopes(target.Id).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserAssignments(target.Id).Result).StatusCode);
+        Assert.IsType<NotFoundObjectResult>((await controller.GetUserScopesPage(other.Id, new PagedQueryRequest())).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result);
+    }
+
     private static ApplicationUser User(string id, long municipalityId, string email, string phone) => new()
     {
         Id = id,
