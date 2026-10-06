@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Layers3, Plus, RefreshCw } from 'lucide-react';
-import { getGlobalStrategicReferences, saveGlobalStrategicReference, setGlobalStrategicReferenceAvailability, type GlobalStrategicReferenceKind } from '../../api/api';
+import { getGlobalStrategicReferencesPage, saveGlobalStrategicReference, setGlobalStrategicReferenceAvailability, type GlobalStrategicReferenceKind } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import type { GlobalStrategicReferenceDto } from '../../types';
@@ -17,6 +17,12 @@ export function GlobalStrategicReferenceAdministration({ kind }: { kind: GlobalS
   const [selected, setSelected] = useState<GlobalStrategicReferenceDto | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [availabilityReason, setAvailabilityReason] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortBy, setSortBy] = useState<'displayOrder' | 'code' | 'name' | 'status' | 'availability'>('displayOrder');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isNationalKpa = kind === 'national-kpas';
@@ -25,13 +31,17 @@ export function GlobalStrategicReferenceAdministration({ kind }: { kind: GlobalS
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
-    const result = await getGlobalStrategicReferences(kind);
+    const result = await getGlobalStrategicReferencesPage(kind, { page, pageSize: 25, search: search || undefined, sortBy, sortDirection: 'asc' });
     if (!result.success) setError(result.message ?? `${title} could not be loaded.`);
-    setRows(result.data ?? []);
+    setRows(result.data?.items ?? []); setTotalPages(result.data?.totalPages ?? 0); setTotalCount(result.data?.totalCount ?? 0);
     setBusy(false);
-  }, [kind, title]);
+  }, [kind, page, search, sortBy, title]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   const clear = () => { setSelected(null); setForm(emptyForm()); };
   const edit = (item: GlobalStrategicReferenceDto) => {
@@ -61,7 +71,7 @@ export function GlobalStrategicReferenceAdministration({ kind }: { kind: GlobalS
 
   return <AppShell title={title} subtitle="Global references with optional municipality availability controls">
     <div className="space-y-5">
-      <div className="flex justify-end"><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button></div>
+      <div className="grid gap-2 md:grid-cols-[1fr_220px_auto]"><Input label="Search register" value={searchInput} onChange={event => setSearchInput(event.target.value)} /><Select label="Sort register" value={sortBy} options={[{ value: 'displayOrder', label: 'Display order' }, { value: 'code', label: 'Code' }, { value: 'name', label: 'Name' }, { value: 'status', label: 'Global status' }, { value: 'availability', label: 'Municipality availability' }]} onChange={event => { setSortBy(event.target.value as typeof sortBy); setPage(1); }} /><Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button></div>
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {(selected ? security.canUpdate(resource) : security.canCreate(resource)) && <FormPanel title={selected ? `Edit ${title.slice(0, -1)}` : `Create ${title.slice(0, -1)}`} description="Global changes require system scope and are protected by optimistic concurrency." icon={<Layers3 className="h-5 w-5" />}>
@@ -73,9 +83,10 @@ export function GlobalStrategicReferenceAdministration({ kind }: { kind: GlobalS
           <div className="flex gap-2"><Button icon={<Plus className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{selected ? 'Save changes' : 'Create'}</Button>{selected && <Button variant="outline" onClick={clear}>Cancel</Button>}</div>
         </FormPanel>}
         <Card className="p-4">
-          <div className="flex items-center justify-between"><h3 className="font-semibold">Authoritative register</h3><Badge variant="primary">{rows.length}</Badge></div>
+          <div className="flex items-center justify-between"><h3 className="font-semibold">Authoritative register</h3><Badge variant="primary">{totalCount}</Badge></div>
           {security.canUpdate(resource) && <div className="mt-3"><Textarea label="Municipality availability reason" value={availabilityReason} onChange={event => setAvailabilityReason(event.target.value)} /></div>}
           <div className="mt-3 space-y-2">{rows.map(item => <div key={item.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code} · order {item.displayOrder}</p><div className="mt-2 flex gap-2"><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Globally active' : 'Globally inactive'}</Badge><Badge variant={item.isEnabledForMunicipality ? 'success' : 'warning'}>{item.isEnabledForMunicipality ? 'Available here' : 'Hidden here'}</Badge></div></div><div className="flex gap-2">{security.canUpdate(resource) && <Button size="sm" variant="outline" onClick={() => edit(item)}>Edit</Button>}{security.canUpdate(resource) && <Button size="sm" variant="ghost" onClick={() => void setAvailability(item)} disabled={busy}>{item.isEnabledForMunicipality ? 'Hide for municipality' : 'Enable for municipality'}</Button>}</div></div>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>
+          <div className="mt-3 flex items-center justify-between gap-2 text-sm text-secondary-500"><span>Page {totalPages === 0 ? 0 : page} of {totalPages} · {totalCount} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous references</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next references</Button></div></div>
         </Card>
       </div>
     </div>

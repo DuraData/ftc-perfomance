@@ -1,9 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessions, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachments, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisions, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistory, getStrategicDocumentsPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistory, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
-import { getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
+import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('transports bounded global strategic reference filters', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getGlobalStrategicReferencesPage('national-kpas', { page: 2, pageSize: 25, search: 'service', sortBy: 'name', sortDirection: 'asc' }, { active: true, enabledForMunicipality: false });
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/masters/national-kpas/page?page=2&pageSize=25&search=service&sortBy=name&sortDirection=asc&active=true&enabledForMunicipality=false'), expect.objectContaining({ credentials: 'include' }));
+  });
 
   it('transports bounded strategic relationship filters and stable identifiers', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));

@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -29,15 +30,19 @@ public sealed class GlobalStrategicReferencesControllerTests
         await using (var tenantA = fixture.Context(fixture.MunicipalityA.Id))
         {
             var controller = Controller(tenantA, fixture.MunicipalityA.Id);
-            var response = Assert.IsType<OkObjectResult>((await controller.GetNationalKpas()).Result);
-            Assert.False(response.Value.As<ApiResponse<GlobalStrategicReferenceDto[]>>().Data!.Single().IsEnabledForMunicipality);
-            var available = Assert.IsType<OkObjectResult>((await controller.GetNationalKpas(activeOnly: true)).Result);
-            Assert.Empty(available.Value.As<ApiResponse<GlobalStrategicReferenceDto[]>>().Data!);
+            var response = Assert.IsType<OkObjectResult>((await controller.GetNationalKpasPage(new PagedQueryRequest { SortBy = "displayOrder", SortDirection = "asc" })).Result);
+            Assert.False(response.Value.As<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>>().Data!.Items.Single().IsEnabledForMunicipality);
+            var available = Assert.IsType<OkObjectResult>((await controller.GetNationalKpasPage(new PagedQueryRequest(), active: true, enabledForMunicipality: true)).Result);
+            Assert.Empty(available.Value.As<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>>().Data!.Items);
+            Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetNationalKpas().Result).StatusCode);
+            Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetBackToBasicsPillars().Result).StatusCode);
+            Assert.Empty(Assert.IsType<OkObjectResult>((await controller.GetBackToBasicsPillarsPage(new PagedQueryRequest())).Result).Value.As<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>>().Data!.Items);
+            Assert.IsType<BadRequestObjectResult>((await controller.GetNationalKpasPage(new PagedQueryRequest { SortBy = "unsafe" })).Result);
         }
         await using (var tenantB = fixture.Context(fixture.MunicipalityB.Id))
         {
-            var response = Assert.IsType<OkObjectResult>((await Controller(tenantB, fixture.MunicipalityB.Id).GetNationalKpas()).Result);
-            var dto = response.Value.As<ApiResponse<GlobalStrategicReferenceDto[]>>().Data!.Single();
+            var response = Assert.IsType<OkObjectResult>((await Controller(tenantB, fixture.MunicipalityB.Id).GetNationalKpasPage(new PagedQueryRequest())).Result);
+            var dto = response.Value.As<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>>().Data!.Items.Single();
             Assert.True(dto.IsEnabledForMunicipality);
             Assert.Null(dto.AvailabilityPublicId);
         }
@@ -83,10 +88,10 @@ public sealed class GlobalStrategicReferencesControllerTests
     }
 
     [Theory]
-    [InlineData(nameof(GlobalStrategicReferencesController.GetNationalKpas), "Permission:NATIONAL_KPA.READ")]
+    [InlineData(nameof(GlobalStrategicReferencesController.GetNationalKpasPage), "Permission:NATIONAL_KPA.READ")]
     [InlineData(nameof(GlobalStrategicReferencesController.CreateNationalKpa), "Permission:NATIONAL_KPA.CREATE")]
     [InlineData(nameof(GlobalStrategicReferencesController.UpdateNationalKpa), "Permission:NATIONAL_KPA.UPDATE")]
-    [InlineData(nameof(GlobalStrategicReferencesController.GetBackToBasicsPillars), "Permission:BACK_TO_BASICS_PILLAR.READ")]
+    [InlineData(nameof(GlobalStrategicReferencesController.GetBackToBasicsPillarsPage), "Permission:BACK_TO_BASICS_PILLAR.READ")]
     public void EndpointsCarryDynamicPermissionPolicies(string methodName, string policy)
     {
         var method = typeof(GlobalStrategicReferencesController).GetMethods().Single(item => item.Name == methodName);

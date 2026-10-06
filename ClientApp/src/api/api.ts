@@ -1379,8 +1379,11 @@ export async function saveVoteNumberMaster(publicId: string | null, payload: { d
 
 export type GlobalStrategicReferenceKind = 'national-kpas' | 'back-to-basics-pillars';
 
-export async function getGlobalStrategicReferences(kind: GlobalStrategicReferenceKind, activeOnly = false): Promise<ApiResponse<GlobalStrategicReferenceDto[]>> {
-  return get<GlobalStrategicReferenceDto[]>(`/v1/masters/${kind}${activeOnly ? '?activeOnly=true' : ''}`);
+export async function getGlobalStrategicReferencesPage(kind: GlobalStrategicReferenceKind, query: RegisterPageQuery = {}, options: { active?: boolean; enabledForMunicipality?: boolean } = {}): Promise<ApiResponse<PagedResult<GlobalStrategicReferenceDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (options.active !== undefined) parameters.set('active', String(options.active));
+  if (options.enabledForMunicipality !== undefined) parameters.set('enabledForMunicipality', String(options.enabledForMunicipality));
+  return get<PagedResult<GlobalStrategicReferenceDto>>(`/v1/masters/${kind}/page?${parameters.toString()}`);
 }
 
 export async function saveGlobalStrategicReference(kind: GlobalStrategicReferenceKind, publicId: string | null, payload: { code: string; name: string; description?: string | null; displayOrder: number; isActive: boolean; reason: string; rowVersion?: string | null }): Promise<ApiResponse<GlobalStrategicReferenceDto>> {

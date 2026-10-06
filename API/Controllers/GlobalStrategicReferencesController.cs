@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -16,34 +17,72 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
 {
     [HttpGet("national-kpas")]
     [Authorize(Policy = "Permission:NATIONAL_KPA.READ")]
-    public async Task<ActionResult<ApiResponse<GlobalStrategicReferenceDto[]>>> GetNationalKpas([FromQuery] bool activeOnly = false)
+    public ActionResult<ApiResponse<GlobalStrategicReferenceDto[]>> GetNationalKpas([FromQuery] bool activeOnly = false)
+    {
+        _ = activeOnly;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<GlobalStrategicReferenceDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/masters/national-kpas/page."));
+    }
+
+    [HttpGet("national-kpas/page")]
+    [Authorize(Policy = "Permission:NATIONAL_KPA.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>>> GetNationalKpasPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] bool? enabledForMunicipality = null)
     {
         var tenantId = tenantContext.MunicipalityId;
+        var sortBy = request.SortBy == null ? "displayorder" : request.NormalizedSortBy;
+        if (sortBy is not ("displayorder" or "code" or "name" or "status" or "availability"))
+            return InvalidGlobalSort();
         var query = context.NationalKpas.AsNoTracking().AsQueryable();
-        if (activeOnly) query = query.Where(item => item.IsActive && (!tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)));
-        var rows = await query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Select(item =>
-            new GlobalStrategicReferenceDto(item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive,
-                !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled),
-                item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => (Guid?)mapping.PublicId).FirstOrDefault(),
-                item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => mapping.RowVersion).FirstOrDefault(),
-                item.RowVersion)).ToArrayAsync();
-        return Ok(new ApiResponse<GlobalStrategicReferenceDto[]>(true, rows.Select(ToDto).ToArray()));
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (enabledForMunicipality.HasValue)
+            query = query.Where(item => (!tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)) == enabledForMunicipality.Value);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Code.Contains(request.NormalizedSearch) || item.Name.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        query = ApplyNationalKpaOrdering(query, sortBy, request.Descending, tenantId);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item => new GlobalStrategicReferenceDto(
+            item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive,
+            !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled),
+            item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => (Guid?)mapping.PublicId).FirstOrDefault(),
+            item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => mapping.RowVersion).FirstOrDefault(), item.RowVersion)).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>(true,
+            PagedResponse<GlobalStrategicReferenceDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("back-to-basics-pillars")]
     [Authorize(Policy = "Permission:BACK_TO_BASICS_PILLAR.READ")]
-    public async Task<ActionResult<ApiResponse<GlobalStrategicReferenceDto[]>>> GetBackToBasicsPillars([FromQuery] bool activeOnly = false)
+    public ActionResult<ApiResponse<GlobalStrategicReferenceDto[]>> GetBackToBasicsPillars([FromQuery] bool activeOnly = false)
+    {
+        _ = activeOnly;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<GlobalStrategicReferenceDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/masters/back-to-basics-pillars/page."));
+    }
+
+    [HttpGet("back-to-basics-pillars/page")]
+    [Authorize(Policy = "Permission:BACK_TO_BASICS_PILLAR.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>>> GetBackToBasicsPillarsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] bool? enabledForMunicipality = null)
     {
         var tenantId = tenantContext.MunicipalityId;
+        var sortBy = request.SortBy == null ? "displayorder" : request.NormalizedSortBy;
+        if (sortBy is not ("displayorder" or "code" or "name" or "status" or "availability"))
+            return InvalidGlobalSort();
         var query = context.BackToBasicsPillars.AsNoTracking().AsQueryable();
-        if (activeOnly) query = query.Where(item => item.IsActive && (!tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)));
-        var rows = await query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Select(item =>
-            new GlobalStrategicReferenceDto(item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive,
-                !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled),
-                item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => (Guid?)mapping.PublicId).FirstOrDefault(),
-                item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => mapping.RowVersion).FirstOrDefault(),
-                item.RowVersion)).ToArrayAsync();
-        return Ok(new ApiResponse<GlobalStrategicReferenceDto[]>(true, rows.Select(ToDto).ToArray()));
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (enabledForMunicipality.HasValue)
+            query = query.Where(item => (!tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)) == enabledForMunicipality.Value);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Code.Contains(request.NormalizedSearch) || item.Name.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        query = ApplyBackToBasicsOrdering(query, sortBy, request.Descending, tenantId);
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item => new GlobalStrategicReferenceDto(
+            item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive,
+            !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled),
+            item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => (Guid?)mapping.PublicId).FirstOrDefault(),
+            item.MunicipalityMappings.Where(mapping => tenantId.HasValue && mapping.MunicipalityId == tenantId.Value).Select(mapping => mapping.RowVersion).FirstOrDefault(), item.RowVersion)).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>(true,
+            PagedResponse<GlobalStrategicReferenceDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("national-kpas")]
@@ -153,6 +192,37 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<GlobalStrategicReferenceDto>("Back-to-Basics pillar availability was changed by another user.")); }
         return Ok(new ApiResponse<GlobalStrategicReferenceDto>(true, ToDto(entity, mapping)));
     }
+
+    private static IQueryable<NationalKpa> ApplyNationalKpaOrdering(IQueryable<NationalKpa> query, string sortBy, bool descending, long? tenantId) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.PublicId),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.PublicId),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.PublicId),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.PublicId),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        ("availability", false) => query.OrderBy(item => !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        ("availability", true) => query.OrderByDescending(item => !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        (_, false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).ThenBy(item => item.PublicId),
+        _ => query.OrderByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Name).ThenByDescending(item => item.PublicId)
+    };
+
+    private static IQueryable<BackToBasicsPillar> ApplyBackToBasicsOrdering(IQueryable<BackToBasicsPillar> query, string sortBy, bool descending, long? tenantId) => (sortBy, descending) switch
+    {
+        ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.PublicId),
+        ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.PublicId),
+        ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.PublicId),
+        ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.PublicId),
+        ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        ("availability", false) => query.OrderBy(item => !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        ("availability", true) => query.OrderByDescending(item => !tenantId.HasValue || !item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value) || item.MunicipalityMappings.Any(mapping => mapping.MunicipalityId == tenantId.Value && mapping.IsEnabled)).ThenBy(item => item.DisplayOrder).ThenBy(item => item.PublicId),
+        (_, false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).ThenBy(item => item.PublicId),
+        _ => query.OrderByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Name).ThenByDescending(item => item.PublicId)
+    };
+
+    private ActionResult<ApiResponse<PagedResponse<GlobalStrategicReferenceDto>>> InvalidGlobalSort() =>
+        BadRequest(Fail<PagedResponse<GlobalStrategicReferenceDto>>("SortBy must be displayOrder, code, name, status, or availability."));
 
     private static string? Validate(SaveGlobalStrategicReferenceRequest request)
     {
