@@ -2519,8 +2519,15 @@ export async function getIdpDashboard(planId: number): Promise<ApiResponse<IdpDa
   return get<IdpDashboard>(`/idp/plans/${planId}/dashboard`);
 }
 
-export async function getIdpAlignmentMatrix(planId: number): Promise<ApiResponse<IdpAlignmentMatrixItem[]>> {
-  return get<IdpAlignmentMatrixItem[]>(`/idp/plans/${planId}/alignment-matrix`);
+export async function getIdpAlignmentMatrixPage(
+  planPublicId: string,
+  query: RegisterPageQuery = {},
+  frameworkType?: string,
+): Promise<ApiResponse<PagedResult<IdpAlignmentMatrixItem>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (frameworkType?.trim()) parameters.set('frameworkType', frameworkType.trim());
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PagedResult<IdpAlignmentMatrixItem>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/alignment-matrix/page${suffix}`);
 }
 
 export async function createIdpComment(payload: CreateIdpCommentPayload): Promise<ApiResponse<boolean>> {

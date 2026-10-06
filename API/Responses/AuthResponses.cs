@@ -892,7 +892,7 @@ public record IdpDashboardResponse(
     decimal KpiAchievementRate,
     string[] TopRiskTitles,
     IdpWardParticipationResponse[] WardParticipation,
-    IdpAlignmentMatrixItemResponse[] AlignmentMatrix);
+    int AlignmentCount);
 
 public record IdpWardParticipationResponse(int WardId, string WardName, int MeetingCount, int ParticipantsCount, int NeedsCaptured);
 

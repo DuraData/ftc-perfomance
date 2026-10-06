@@ -543,7 +543,56 @@ public class IdpControllerFunctionalityTests
         payload.Data.TopRiskTitles.Should().Contain("Funding Risk");
         payload.Data.KpiAchievementRate.Should().Be(50);
         payload.Data.WardParticipation.Should().ContainSingle();
-        payload.Data.AlignmentMatrix.Should().ContainSingle();
+        payload.Data.AlignmentCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Alignment_matrix_uses_public_id_search_filter_sort_and_server_paging()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("alignment-reader");
+        var plan = new IdpPlan
+        {
+            MunicipalityName = "Blue Hills", PlanTitle = "Alignment Plan", PlanCode = "IDP-ALIGN",
+            StartFinancialYear = 2026, EndFinancialYear = 2031, CreatedByUserId = user.Id
+        };
+        var outcome = new IdpStrategicOutcome { IdpPlan = plan, Code = "SO1", Name = "Outcome", Description = "Outcome", SortOrder = 1 };
+        var objective = new IdpStrategicObjective
+        {
+            IdpStrategicOutcome = outcome, Code = "OBJ1", Name = "Objective", Description = "Objective",
+            StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(1), SortOrder = 1
+        };
+        context.AddRange(user, plan, outcome, objective);
+        for (var index = 1; index <= 26; index++)
+            context.IdpAlignmentLinks.Add(new IdpAlignmentLink
+            {
+                IdpStrategicObjective = objective,
+                FrameworkType = index % 2 == 0 ? AlignmentFrameworkType.Circular88 : AlignmentFrameworkType.NationalDevelopmentPlan,
+                FrameworkReferenceCode = $"REF{index:00}", FrameworkReferenceTitle = $"Reference {index:00}"
+            });
+        await context.SaveChangesAsync();
+        var controller = IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(user).Object,
+            new Mock<IWorkflowGovernanceService>().Object, user.Id);
+
+        var action = await controller.GetAlignmentMatrixPage(plan.PublicId, new PagedQueryRequest
+        {
+            Page = 2, PageSize = 10, Search = "Reference", SortBy = "reference", SortDirection = "asc"
+        });
+        var page = ((action.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>)!.Data!;
+        page.TotalCount.Should().Be(26);
+        page.TotalPages.Should().Be(3);
+        page.Items.Should().HaveCount(10);
+        page.Items.First().FrameworkReferenceCode.Should().Be("REF11");
+
+        var filtered = await controller.GetAlignmentMatrixPage(plan.PublicId,
+            new PagedQueryRequest { PageSize = 100 }, "Circular88");
+        var filteredPage = ((filtered.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>)!.Data!;
+        filteredPage.TotalCount.Should().Be(13);
+        filteredPage.Items.Should().OnlyContain(item => item.FrameworkType == "Circular88");
+        (await controller.GetAlignmentMatrixPage(plan.PublicId, new PagedQueryRequest { SortBy = "raw-sql" })).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        controller.GetAlignmentMatrix(plan.Id).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]

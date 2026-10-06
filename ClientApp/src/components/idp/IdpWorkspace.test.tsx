@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
+import { IdpAlignmentMatrixPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
 const security = vi.hoisted(() => ({ canImport: vi.fn(() => true) }));
@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   getIdpPlansPage: vi.fn(),
   getIdpPlanHierarchy: vi.fn(),
   getIdpDashboard: vi.fn(),
+  getIdpAlignmentMatrixPage: vi.fn(),
   getIdpImportBatch: vi.fn(),
   getIdpImportBatchesPage: vi.fn(),
   stageIdpKpiImport: vi.fn(),
@@ -24,7 +25,6 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 vi.mock('../../api/api', () => ({
   ...api,
   createIdpComment: vi.fn(),
-  getIdpAlignmentMatrix: vi.fn(),
   getIdpReport: vi.fn(),
   createIdpCommunitySession: vi.fn(),
 }));
@@ -60,6 +60,13 @@ describe('IDP plan lineage workspace', () => {
     });
     api.getIdpPlanHierarchy.mockResolvedValue({ success: true, data: { versions: [] } });
     api.getIdpDashboard.mockResolvedValue({ success: true, data: null });
+    api.getIdpAlignmentMatrixPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{ strategicOutcomeCode: 'SO1', strategicOutcomeName: 'Outcome', objectiveCode: 'OBJ1', objectiveName: 'Objective', frameworkType: 'Circular88', frameworkReferenceCode: 'C88-1', frameworkReferenceTitle: 'Service delivery' }],
+        page: 1, pageSize: 25, totalCount: 26, totalPages: 2,
+      },
+    });
     api.getIdpImportBatch.mockResolvedValue({ success: true, data: null });
     api.getIdpImportBatchesPage.mockResolvedValue({
       success: true,
@@ -166,5 +173,29 @@ describe('IDP plan lineage workspace', () => {
       status: 'Committed',
       importType: 'KPI',
     })));
+  });
+
+  it('pages, searches and filters the alignment matrix by plan public ID', async () => {
+    render(<IdpAlignmentMatrixPage />);
+
+    expect(await screen.findByText('26 alignment links')).toBeInTheDocument();
+    await waitFor(() => expect(api.getIdpAlignmentMatrixPage).toHaveBeenCalledWith(
+      predecessor.publicId,
+      expect.objectContaining({ page: 1, pageSize: 25, sortBy: 'objective', sortDirection: 'asc' }),
+      undefined,
+    ));
+    fireEvent.change(screen.getByLabelText('Search IDP alignment matrix'), { target: { value: 'service' } });
+    fireEvent.change(screen.getByLabelText('Filter IDP alignment framework'), { target: { value: 'Circular88' } });
+    await waitFor(() => expect(api.getIdpAlignmentMatrixPage).toHaveBeenCalledWith(
+      predecessor.publicId,
+      expect.objectContaining({ page: 1, search: 'service' }),
+      'Circular88',
+    ));
+    fireEvent.click(screen.getByRole('button', { name: 'Next alignments' }));
+    await waitFor(() => expect(api.getIdpAlignmentMatrixPage).toHaveBeenCalledWith(
+      predecessor.publicId,
+      expect.objectContaining({ page: 2, search: 'service' }),
+      'Circular88',
+    ));
   });
 });

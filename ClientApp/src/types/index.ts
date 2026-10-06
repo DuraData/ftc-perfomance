@@ -3350,7 +3350,7 @@ export interface IdpDashboard {
   kpiAchievementRate: number;
   topRiskTitles: string[];
   wardParticipation: IdpWardParticipation[];
-  alignmentMatrix: IdpAlignmentMatrixItem[];
+  alignmentCount: number;
 }
 
 export interface IdpHierarchy {

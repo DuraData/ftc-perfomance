@@ -498,7 +498,8 @@ public class IdpController : ControllerBase
             .OrderByDescending(item => item.ParticipantsCount)
             .ToArray();
 
-        var matrix = await BuildAlignmentMatrixAsync(id);
+        var alignmentCount = await _context.IdpAlignmentLinks
+            .CountAsync(item => item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == id);
 
         var response = new IdpDashboardResponse(
             id,
@@ -515,17 +516,80 @@ public class IdpController : ControllerBase
             decimal.Round(kpiAchievementRate, 2),
             topRiskTitles,
             wardParticipation,
-            matrix);
+            alignmentCount);
 
         return Ok(new ApiResponse<IdpDashboardResponse>(true, response));
     }
 
     [HttpGet("plans/{id:int}/alignment-matrix")]
     [Authorize(Policy = "Permission:IDP.Alignment.View")]
-    public async Task<ActionResult<ApiResponse<IdpAlignmentMatrixItemResponse[]>>> GetAlignmentMatrix(int id)
+    public ActionResult<ApiResponse<IdpAlignmentMatrixItemResponse[]>> GetAlignmentMatrix(int id)
     {
-        var matrix = await BuildAlignmentMatrixAsync(id);
-        return Ok(new ApiResponse<IdpAlignmentMatrixItemResponse[]>(true, matrix));
+        _ = id;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpAlignmentMatrixItemResponse[]>(false, null,
+            "This unbounded numeric-ID route is retired. Use /api/v1/idp/plans/{planPublicId}/alignment-matrix/page."));
+    }
+
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/alignment-matrix/page")]
+    [Authorize(Policy = "Permission:IDP.Alignment.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>>> GetAlignmentMatrixPage(
+        Guid planPublicId,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? frameworkType = null)
+    {
+        var sortBy = request.SortBy == null ? "objective" : request.NormalizedSortBy;
+        if (sortBy is not ("outcome" or "objective" or "framework" or "reference"))
+            return BadRequest(new ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>(false, null,
+                "SortBy must be outcome, objective, framework, or reference."));
+        AlignmentFrameworkType? frameworkFilter = null;
+        if (!string.IsNullOrWhiteSpace(frameworkType))
+        {
+            if (!TryParseEnum(frameworkType, out AlignmentFrameworkType parsedFramework))
+                return BadRequest(new ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>(false, null,
+                    "FrameworkType is invalid."));
+            frameworkFilter = parsedFramework;
+        }
+        if (!await _context.IdpPlans.AsNoTracking().AnyAsync(item => item.PublicId == planPublicId))
+            return NotFound(new ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>(false, null, "IDP plan not found."));
+
+        var query = _context.IdpAlignmentLinks.AsNoTracking()
+            .Where(item => item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.PublicId == planPublicId);
+        if (frameworkFilter.HasValue) query = query.Where(item => item.FrameworkType == frameworkFilter.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(item => item.IdpStrategicObjective.IdpStrategicOutcome.Code.Contains(search)
+                || item.IdpStrategicObjective.IdpStrategicOutcome.Name.Contains(search)
+                || item.IdpStrategicObjective.Code.Contains(search)
+                || item.IdpStrategicObjective.Name.Contains(search)
+                || item.FrameworkReferenceCode.Contains(search)
+                || item.FrameworkReferenceTitle.Contains(search));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("outcome", false) => query.OrderBy(item => item.IdpStrategicObjective.IdpStrategicOutcome.Code).ThenBy(item => item.Id),
+            ("outcome", true) => query.OrderByDescending(item => item.IdpStrategicObjective.IdpStrategicOutcome.Code).ThenBy(item => item.Id),
+            ("framework", false) => query.OrderBy(item => item.FrameworkType).ThenBy(item => item.Id),
+            ("framework", true) => query.OrderByDescending(item => item.FrameworkType).ThenBy(item => item.Id),
+            ("reference", false) => query.OrderBy(item => item.FrameworkReferenceCode).ThenBy(item => item.Id),
+            ("reference", true) => query.OrderByDescending(item => item.FrameworkReferenceCode).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.IdpStrategicObjective.Code).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.IdpStrategicObjective.Code).ThenBy(item => item.Id)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize)
+            .Select(item => new IdpAlignmentMatrixItemResponse(
+                item.IdpStrategicObjective.IdpStrategicOutcome.Code,
+                item.IdpStrategicObjective.IdpStrategicOutcome.Name,
+                item.IdpStrategicObjective.Code,
+                item.IdpStrategicObjective.Name,
+                item.FrameworkType.ToString(),
+                item.FrameworkReferenceCode,
+                item.FrameworkReferenceTitle))
+            .ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>(true,
+            PagedResponse<IdpAlignmentMatrixItemResponse>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("plans/{id:int}/reports/{reportType}")]
@@ -1222,26 +1286,6 @@ public class IdpController : ControllerBase
         _context.IdpDevelopmentPriorities.Add(entity);
         await _context.SaveChangesAsync();
         return entity;
-    }
-
-    private async Task<IdpAlignmentMatrixItemResponse[]> BuildAlignmentMatrixAsync(int planId)
-    {
-        return await _context.IdpAlignmentLinks
-            .AsNoTracking()
-            .Include(item => item.IdpStrategicObjective)
-            .ThenInclude(item => item.IdpStrategicOutcome)
-            .Where(item => item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == planId)
-            .OrderBy(item => item.IdpStrategicObjective.IdpStrategicOutcome.SortOrder)
-            .ThenBy(item => item.IdpStrategicObjective.SortOrder)
-            .Select(item => new IdpAlignmentMatrixItemResponse(
-                item.IdpStrategicObjective.IdpStrategicOutcome.Code,
-                item.IdpStrategicObjective.IdpStrategicOutcome.Name,
-                item.IdpStrategicObjective.Code,
-                item.IdpStrategicObjective.Name,
-                item.FrameworkType.ToString(),
-                item.FrameworkReferenceCode,
-                item.FrameworkReferenceTitle))
-            .ToArrayAsync();
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()

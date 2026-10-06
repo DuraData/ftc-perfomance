@@ -8,7 +8,7 @@ import {
     commitIdpImport,
   getIdpImportBatch,
   getIdpImportBatchesPage,
-  getIdpAlignmentMatrix,
+  getIdpAlignmentMatrixPage,
   getIdpDashboard,
   getIdpPlansPage,
   getIdpPlanHierarchy,
@@ -751,26 +751,58 @@ export function IdpCommunityParticipationPage() {
 
 export function IdpAlignmentMatrixPage() {
   const canManageAlignment = useHasAnyPermission(['IDP.Alignment.Manage']);
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [matrix, setMatrix] = useState<IdpAlignmentMatrixItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [frameworkType, setFrameworkType] = useState('');
+  const [sortBy, setSortBy] = useState('objective');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const fieldClass = 'w-full rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100';
 
-  const load = async (planId = selectedPlanId) => {
-    if (planId) {
-      const matrixResult = await getIdpAlignmentMatrix(planId);
-      setMatrix(matrixResult.data ?? []);
-    } else {
-      setMatrix([]);
-    }
-  };
+  useEffect(() => {
+    const nextSearch = searchInput.trim();
+    if (nextSearch === search) return;
+    const timeout = window.setTimeout(() => { setPage(1); setSearch(nextSearch); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search, searchInput]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!selectedPlanPublicId) {
+        setMatrix([]); setTotalCount(0); setTotalPages(0);
+        return;
+      }
+      const result = await getIdpAlignmentMatrixPage(
+        selectedPlanPublicId,
+        { page, pageSize: 25, search: search || undefined, sortBy, sortDirection },
+        frameworkType || undefined,
+      );
+      if (cancelled) return;
+      setMatrix(result.data?.items ?? []);
+      setTotalCount(result.data?.totalCount ?? 0);
+      setTotalPages(result.data?.totalPages ?? 0);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [frameworkType, page, refreshKey, search, selectedPlanPublicId, sortBy, sortDirection]);
 
   return (
     <AppShell title="Alignment Matrix" subtitle="NDP, PGDS, DDM, sector, and municipal alignment mapping">
       <div className="space-y-4">
         <Card>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => void load()}>Refresh</Button>
-            {!canManageAlignment ? <Badge variant="warning">Read Only</Badge> : null}
-            <IdpPlanPicker label="Alignment plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_12rem_12rem_10rem_auto] xl:items-end">
+            <IdpPlanPicker label="Alignment plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); setPage(1); }} />
+            <label className="text-xs text-secondary-600">Search matrix<input aria-label="Search IDP alignment matrix" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
+            <label className="text-xs text-secondary-600">Framework<select aria-label="Filter IDP alignment framework" className={fieldClass} value={frameworkType} onChange={event => { setFrameworkType(event.target.value); setPage(1); }}><option value="">All frameworks</option><option value="NationalDevelopmentPlan">NDP</option><option value="ProvincialGrowthStrategy">PGDS</option><option value="DistrictDevelopmentModel">DDM</option><option value="SectorPlan">Sector plan</option><option value="MunicipalGoal">Municipal goal</option><option value="Circular88">Circular 88</option><option value="TreasuryTid">Treasury TID</option></select></label>
+            <label className="text-xs text-secondary-600">Sort<select aria-label="Sort IDP alignment matrix" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }}><option value="objective">Objective</option><option value="outcome">Outcome</option><option value="framework">Framework</option><option value="reference">Reference</option></select></label>
+            <label className="text-xs text-secondary-600">Direction<select aria-label="IDP alignment sort direction" className={fieldClass} value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+            <div className="flex items-center gap-2"><Button variant="outline" onClick={() => setRefreshKey(value => value + 1)}>Refresh</Button>{!canManageAlignment ? <Badge variant="warning">Read Only</Badge> : null}</div>
           </div>
         </Card>
 
@@ -798,6 +830,7 @@ export function IdpAlignmentMatrixPage() {
             </table>
             {!matrix.length ? <p className="p-3 text-sm text-secondary-500">No alignment links available for this plan.</p> : null}
           </div>
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-secondary-500"><span>{totalCount} alignment link{totalCount === 1 ? '' : 's'}</span><span className="flex items-center gap-2"><Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous alignments</Button><span>Page {page} of {Math.max(totalPages, 1)}</span><Button size="sm" variant="ghost" disabled={page >= totalPages} onClick={() => setPage(current => current + 1)}>Next alignments</Button></span></div>
         </Card>
       </div>
     </AppShell>
