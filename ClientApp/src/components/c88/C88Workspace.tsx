@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88AssignmentsPage, getC88CalendarsPage, getC88MappingsPage, getC88PlansPage, getC88ReportsPage, getC88WorkflowsPage, getC88Workspace, getMunicipalEmployeesPage,
+  finalSubmitC88Report, getC88AssignmentsPage, getC88CalendarsPage, getC88ComplianceQuestionsPage, getC88MappingsPage, getC88PlansPage, getC88ReportsPage, getC88WorkflowsPage, getC88Workspace, getMunicipalEmployeesPage,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { C88Assignment, C88CatalogueItemKind, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88ReportingCalendar, C88Workflow, C88Workspace, MunicipalEmployeeDto } from '../../types';
+import type { C88Assignment, C88CatalogueItemKind, C88ComplianceQuestion, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88ReportingCalendar, C88Workflow, C88Workspace, MunicipalEmployeeDto } from '../../types';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { TargetPicker } from '../common/TargetPicker';
@@ -15,7 +15,7 @@ import { Badge, Button, Card, EmptyState } from '../ui';
 
 const field = 'mt-1 w-full rounded border border-secondary-300 bg-white px-2 py-1.5 text-sm dark:border-secondary-700 dark:bg-secondary-900';
 const today = () => new Date().toISOString().slice(0, 10);
-const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], indicators: [], complianceQuestions: [], reports: [] };
+const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], indicators: [], reports: [] };
 function Section({ title, children }: { title: string; children: ReactNode }) { return <Card><h2 className="mb-3 text-lg font-semibold">{title}</h2>{children}</Card>; }
 
 export function C88Workspace() {
@@ -67,6 +67,14 @@ export function C88Workspace() {
   const [workflowTotalCount, setWorkflowTotalCount] = useState(0);
   const [workflowSearch, setWorkflowSearch] = useState('');
   const [currentWorkflow, setCurrentWorkflow] = useState<C88Workflow | null>(null);
+  const [questionRows, setQuestionRows] = useState<C88ComplianceQuestion[]>([]);
+  const [questionPage, setQuestionPage] = useState(1);
+  const [questionTotalPages, setQuestionTotalPages] = useState(0);
+  const [questionTotalCount, setQuestionTotalCount] = useState(0);
+  const [questionSearch, setQuestionSearch] = useState('');
+  const [captureQuestions, setCaptureQuestions] = useState<C88ComplianceQuestion[]>([]);
+  const [captureQuestionPage, setCaptureQuestionPage] = useState(1);
+  const [captureQuestionTotalPages, setCaptureQuestionTotalPages] = useState(0);
   const [edition, setEdition] = useState({ code: '', name: '', editionDate: today(), effectiveFrom: today() });
   const [catalogueItem, setCatalogueItem] = useState({ catalogueVersionPublicId: '', kind: 'Sector' as C88CatalogueItemKind, code: '', name: '', parentItemPublicId: '' });
   const [indicatorDraft, setIndicatorDraft] = useState({ catalogueVersionPublicId: '', code: '', name: '', definition: '', officialTechnicalIndicatorDescription: '', valueType: 'Decimal', calculationOperator: 'None', elementCode: '', elementName: '', municipalCategoryPublicId: '', readinessTierPublicId: '' });
@@ -87,11 +95,11 @@ export function C88Workspace() {
   const reportTypes = data.catalogueItems.filter(item => item.catalogueVersionPublicId === activeVersionId && item.kind === 'ReportType' && item.isActive);
   const draftReportTypes = data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId && item.kind === 'ReportType' && item.isActive);
   const draftResponseTypes = data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId && item.kind === 'ResponseType' && item.isActive);
-  const questions = useMemo(() => data.complianceQuestions.filter(item => item.reportTypePublicId === calendar.reportTypePublicId && item.isActive), [calendar.reportTypePublicId, data.complianceQuestions]);
+  const selectedCalendar = calendarRows.find(item => item.publicId === calendarId);
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, reportResult, planResult, assignmentResult, mappingResult, calendarResult, workflowResult] = await Promise.all([
+    const [workspace, reportResult, planResult, assignmentResult, mappingResult, calendarResult, workflowResult, questionResult] = await Promise.all([
       getC88Workspace(yearId || undefined),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
@@ -103,6 +111,7 @@ export function C88Workspace() {
       getC88MappingsPage({ page: mappingPage, pageSize: 10, search: mappingSearch, sortBy: 'createdAt', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined }),
       getC88CalendarsPage({ page: calendarPage, pageSize: 10, search: calendarSearch, sortBy: 'opensAt', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined, configurationPublicId: effectiveConfigurationId || undefined }),
       getC88WorkflowsPage({ page: workflowPage, pageSize: 10, search: workflowSearch, sortBy: 'versionNumber', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined, configurationPublicId: effectiveConfigurationId || undefined }),
+      getC88ComplianceQuestionsPage({ page: questionPage, pageSize: 10, search: questionSearch, sortBy: 'sequence', sortDirection: 'asc' }, { catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId || activeVersionId || undefined }),
     ]);
     if (!workspace.success) pushToast('error', workspace.message ?? 'Unable to load Circular 88.');
     else setData({ ...(workspace.data ?? emptyWorkspace), reports: reportResult.data?.items ?? [] });
@@ -114,12 +123,14 @@ export function C88Workspace() {
     setMappingRows(mappingResult.data?.items ?? []); setMappingTotalCount(mappingResult.data?.totalCount ?? 0); setMappingTotalPages(mappingResult.data?.totalPages ?? 0);
     setCalendarRows(calendarResult.data?.items ?? []); setCalendarTotalCount(calendarResult.data?.totalCount ?? 0); setCalendarTotalPages(calendarResult.data?.totalPages ?? 0);
     setWorkflowRows(workflowResult.data?.items ?? []); setWorkflowTotalCount(workflowResult.data?.totalCount ?? 0); setWorkflowTotalPages(workflowResult.data?.totalPages ?? 0);
+    setQuestionRows(questionResult.data?.items ?? []); setQuestionTotalCount(questionResult.data?.totalCount ?? 0); setQuestionTotalPages(questionResult.data?.totalPages ?? 0);
     if (!assignmentResult.success) pushToast('error', assignmentResult.message ?? 'Unable to load C88 assignments.');
     if (!mappingResult.success) pushToast('error', mappingResult.message ?? 'Unable to load C88 mappings.');
     if (!planResult.success) pushToast('error', planResult.message ?? 'Unable to load C88 plans.');
     if (!calendarResult.success) pushToast('error', calendarResult.message ?? 'Unable to load C88 reporting calendars.');
     if (!workflowResult.success) pushToast('error', workflowResult.message ?? 'Unable to load C88 workflows.');
-  }, [assignmentPage, assignmentSearch, calendarPage, calendarSearch, canReadIndicators, canReadModule, canReadReports, effectiveConfigurationId, mappingPage, mappingSearch, planPage, planSearch, pushToast, reportPage, reportSearch, reportSortBy, reportSortDirection, workflowPage, workflowSearch, yearId]);
+    if (!questionResult.success) pushToast('error', questionResult.message ?? 'Unable to load C88 compliance questions.');
+  }, [activeVersionId, assignmentPage, assignmentSearch, calendarPage, calendarSearch, canReadIndicators, canReadModule, canReadReports, catalogueItem.catalogueVersionPublicId, effectiveConfigurationId, mappingPage, mappingSearch, planPage, planSearch, pushToast, questionPage, questionSearch, reportPage, reportSearch, reportSortBy, reportSortDirection, workflowPage, workflowSearch, yearId]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -161,6 +172,22 @@ export function C88Workspace() {
       if (!result.success) pushToast('error', result.message ?? 'Unable to load the current C88 workflow.');
     });
   }, [effectiveConfigurationId, pushToast]);
+  useEffect(() => {
+    if (!selectedCalendar?.reportTypePublicId) {
+      setCaptureQuestions([]);
+      setCaptureQuestionTotalPages(0);
+      return;
+    }
+    void getC88ComplianceQuestionsPage(
+      { page: captureQuestionPage, pageSize: 10, sortBy: 'sequence', sortDirection: 'asc' },
+      { catalogueVersionPublicId: activeVersionId || undefined, reportTypePublicId: selectedCalendar.reportTypePublicId, active: true },
+    ).then(result => {
+      setCaptureQuestions(result.data?.items ?? []);
+      setCaptureQuestionTotalPages(result.data?.totalPages ?? 0);
+      if (!result.success) pushToast('error', result.message ?? 'Unable to load C88 capture questions.');
+    });
+  }, [activeVersionId, captureQuestionPage, pushToast, selectedCalendar?.reportTypePublicId]);
+  useEffect(() => { setCaptureQuestionPage(1); }, [calendarId]);
 
   const run = async (operation: () => Promise<{ success: boolean; message?: string }>, success: string) => {
     setBusy(true);
@@ -212,7 +239,8 @@ export function C88Workspace() {
       <Section title="Reporting calendar and capture">
         {canExecute('C88_INDICATOR.MANAGE_WORKFLOW') && <div className="grid gap-2 md:grid-cols-5"><select className={field} value={calendar.reportTypePublicId} onChange={e => setCalendar({ ...calendar, reportTypePublicId: e.target.value })}><option value="">Report type</option>{reportTypes.map(item => <option key={item.publicId} value={item.publicId}>{item.name}</option>)}</select><input className={field} placeholder="Calendar code" value={calendar.code} onChange={e => setCalendar({ ...calendar, code: e.target.value })} /><input className={field} placeholder="Calendar name" value={calendar.name} onChange={e => setCalendar({ ...calendar, name: e.target.value })} /><Button disabled={busy || !effectiveConfigurationId || !reason} onClick={() => void run(() => createC88Calendar({ configurationPublicId: effectiveConfigurationId, ...calendar, reportingPeriodPublicId: null, isActive: true, reason, rowVersion: null }), 'Reporting calendar created.')}>Create calendar</Button></div>}
         <div className="mt-3 flex items-end justify-between gap-2"><label className="text-sm">Search calendars<input aria-label="Search C88 calendars" className={field} value={calendarSearch} onChange={event => { setCalendarSearch(event.target.value); setCalendarPage(1); }} /></label><span className="text-xs text-secondary-500">{calendarTotalCount} calendars</span></div>
-        <div className="mt-3 grid gap-2 md:grid-cols-3"><select className={field} value={calendarId} onChange={e => setCalendarId(e.target.value)}><option value="">Calendar</option>{calendarRows.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select>{indicator?.dataElements.map(element => <input key={element.publicId} className={field} placeholder={`${element.code} · ${element.name}`} value={reportValues[element.publicId] ?? ''} onChange={e => setReportValues({ ...reportValues, [element.publicId]: e.target.value })} />)}{questions.map(question => <input key={question.publicId} className={field} placeholder={question.prompt} value={responses[question.publicId] ?? ''} onChange={e => setResponses({ ...responses, [question.publicId]: e.target.value })} />)}{canCreate('C88_REPORT') && <Button disabled={busy || !reason || !calendarId || !indicatorId} onClick={() => void run(() => createC88ReportVersion({ configurationPublicId: effectiveConfigurationId, calendarPublicId: calendarId, indicatorPublicId: indicatorId, previousReportPublicId: selectedReport?.publicId ?? null, previousReportRowVersion: selectedReport?.rowVersion ?? null, missingDataExplanation: null, estimatedAvailability: null, dataElementValues: indicator?.dataElements.map(element => ({ dataElementPublicId: element.publicId, value: reportValues[element.publicId] || null, missingDataExplanation: null, estimatedAvailability: null })) ?? [], complianceResponses: questions.map(question => ({ questionPublicId: question.publicId, response: responses[question.publicId] || null, comment: null })), reason }), 'C88 report version created.')}>Save report version</Button>}</div>
+        <div className="mt-3 grid gap-2 md:grid-cols-3"><select className={field} value={calendarId} onChange={e => { setCalendarId(e.target.value); setCaptureQuestionPage(1); }}><option value="">Calendar</option>{calendarRows.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select>{indicator?.dataElements.map(element => <input key={element.publicId} className={field} placeholder={`${element.code} · ${element.name}`} value={reportValues[element.publicId] ?? ''} onChange={e => setReportValues({ ...reportValues, [element.publicId]: e.target.value })} />)}{captureQuestions.map(question => <input key={question.publicId} className={field} placeholder={question.prompt} value={responses[question.publicId] ?? ''} onChange={e => setResponses({ ...responses, [question.publicId]: e.target.value })} />)}{canCreate('C88_REPORT') && <Button disabled={busy || !reason || !calendarId || !indicatorId} onClick={() => void run(() => createC88ReportVersion({ configurationPublicId: effectiveConfigurationId, calendarPublicId: calendarId, indicatorPublicId: indicatorId, previousReportPublicId: selectedReport?.publicId ?? null, previousReportRowVersion: selectedReport?.rowVersion ?? null, missingDataExplanation: null, estimatedAvailability: null, dataElementValues: indicator?.dataElements.map(element => ({ dataElementPublicId: element.publicId, value: reportValues[element.publicId] || null, missingDataExplanation: null, estimatedAvailability: null })) ?? [], complianceResponses: Object.entries(responses).map(([questionPublicId, response]) => ({ questionPublicId, response: response || null, comment: null })), reason }), 'C88 report version created.')}>Save report version</Button>}</div>
+        {captureQuestionTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={captureQuestionPage <= 1} onClick={() => setCaptureQuestionPage(value => value - 1)}>Previous questions</Button><span className="self-center text-xs">Question page {captureQuestionPage}/{captureQuestionTotalPages}</span><Button size="sm" variant="outline" disabled={captureQuestionPage >= captureQuestionTotalPages} onClick={() => setCaptureQuestionPage(value => value + 1)}>Next questions</Button></div>}
         {calendarTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={calendarPage <= 1} onClick={() => setCalendarPage(value => value - 1)}>Previous calendars</Button><span className="self-center text-xs">{calendarPage}/{calendarTotalPages}</span><Button size="sm" variant="outline" disabled={calendarPage >= calendarTotalPages} onClick={() => setCalendarPage(value => value + 1)}>Next calendars</Button></div>}
       </Section>
 
@@ -223,7 +251,7 @@ export function C88Workspace() {
         {selectedReport && <div className="mt-3 flex flex-wrap gap-2"><input className={field} placeholder="Workflow reason" value={reason} onChange={e => setReason(e.target.value)} />{canExecute('C88_REPORT.SUBMIT') && ['Draft','Rework'].includes(selectedReport.state) && <Button disabled={busy || !reason} onClick={() => void run(() => submitC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report submitted.')}>Submit</Button>}{canExecute('C88_REPORT.VERIFY') && selectedReport.state === 'Submitted' && <Button disabled={busy || !reason} onClick={() => void run(() => verifyC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report verified.')}>Verify</Button>}{canExecute('C88_REPORT.RETURN') && ['Submitted','Verified'].includes(selectedReport.state) && <Button variant="secondary" disabled={busy || !reason} onClick={() => void run(() => returnC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report returned for rework.')}>Return</Button>}{canExecute('C88_REPORT.FINAL_SUBMIT') && selectedReport.state === 'Verified' && <Button disabled={busy || !reason} onClick={() => void run(() => finalSubmitC88Report(selectedReport.publicId, selectedReport.rowVersion, reason), 'Report finally submitted.')}>Final submit</Button>}</div>}
       </Section>
 
-      {canExecute('C88_INDICATOR.MANAGE_CATALOGUE') && draftReportTypes.length > 0 && draftResponseTypes.length > 0 && <Section title="Compliance question administration"><Button disabled={busy || !reason} onClick={() => void run(() => createC88ComplianceQuestion({ catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId, reportTypePublicId: draftReportTypes[0].publicId, responseTypePublicId: draftResponseTypes[0].publicId, code: `Q${data.complianceQuestions.length + 1}`, prompt: 'New governed compliance question', isRequired: true, sequence: data.complianceQuestions.length + 1, isActive: true, reason }), 'Compliance question created.')}>Add required question</Button></Section>}
+      {canExecute('C88_INDICATOR.MANAGE_CATALOGUE') && draftReportTypes.length > 0 && draftResponseTypes.length > 0 && <Section title="Compliance question administration"><div className="flex items-end justify-between gap-2"><label className="text-sm">Search questions<input aria-label="Search C88 compliance questions" className={field} value={questionSearch} onChange={event => { setQuestionSearch(event.target.value); setQuestionPage(1); }} /></label><span className="text-xs text-secondary-500">{questionTotalCount} questions</span></div><div className="mt-2 space-y-1">{questionRows.map(item => <div key={item.publicId} className="rounded border p-2 text-xs"><strong>{item.code}</strong> · {item.prompt}<br /><span className="text-secondary-500">Sequence {item.sequence} · {item.isRequired ? 'Required' : 'Optional'} · {item.isActive ? 'Active' : 'Inactive'}</span></div>)}</div>{questionTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={questionPage <= 1} onClick={() => setQuestionPage(value => value - 1)}>Previous</Button><span className="self-center text-xs">{questionPage}/{questionTotalPages}</span><Button size="sm" variant="outline" disabled={questionPage >= questionTotalPages} onClick={() => setQuestionPage(value => value + 1)}>Next</Button></div>}<Button className="mt-3" disabled={busy || !reason} onClick={() => void run(async () => { const latest = await getC88ComplianceQuestionsPage({ page: 1, pageSize: 1, sortBy: 'sequence', sortDirection: 'desc' }, { catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId }); if (!latest.success) return latest; const sequence = (latest.data?.items[0]?.sequence ?? 0) + 1; return createC88ComplianceQuestion({ catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId, reportTypePublicId: draftReportTypes[0].publicId, responseTypePublicId: draftResponseTypes[0].publicId, code: `Q${sequence}`, prompt: 'New governed compliance question', isRequired: true, sequence, isActive: true, reason }); }, 'Compliance question created.')}>Add required question</Button></Section>}
     </div>
   </AppShell>;
 }

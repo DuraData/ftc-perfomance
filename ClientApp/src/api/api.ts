@@ -133,6 +133,7 @@ import type {
   C88Workspace,
   C88IndicatorReport,
   C88IndicatorPlan,
+  C88ComplianceQuestion,
   C88ReportingCalendar,
   C88Workflow,
   C88Assignment,
@@ -2821,6 +2822,16 @@ export async function getC88PlansPage(query: RegisterPageQuery = {}, filters: { 
   if (filters.configurationPublicId) parameters.set('configurationPublicId', filters.configurationPublicId);
   if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
   return get<PagedResult<C88IndicatorPlan>>(`/v1/c88/plans/page?${parameters.toString()}`);
+}
+
+export async function getC88ComplianceQuestionsPage(query: RegisterPageQuery = {}, filters: { catalogueVersionPublicId?: string; reportTypePublicId?: string; active?: boolean; required?: boolean } = {}): Promise<ApiResponse<PagedResult<C88ComplianceQuestion>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.catalogueVersionPublicId) parameters.set('catalogueVersionPublicId', filters.catalogueVersionPublicId);
+  if (filters.reportTypePublicId) parameters.set('reportTypePublicId', filters.reportTypePublicId);
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  if (filters.required !== undefined) parameters.set('required', String(filters.required));
+  return get<PagedResult<C88ComplianceQuestion>>(`/v1/c88/compliance-questions/page?${parameters.toString()}`);
 }
 
 export async function getC88CalendarsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; configurationPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88ReportingCalendar>>> {

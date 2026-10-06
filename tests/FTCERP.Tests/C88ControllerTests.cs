@@ -300,6 +300,34 @@ public class C88ControllerTests
         (await denied.GetWorkflowsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
+    [Fact]
+    public async Task Compliance_question_page_filters_before_count_and_pages_stably()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var responseType = await context.C88CatalogueItems.SingleAsync(item => item.C88CatalogueVersionId == module.Version.Id && item.Kind == C88CatalogueItemKind.ResponseType);
+        for (var index = 0; index < 11; index++)
+            context.C88ComplianceQuestions.Add(new C88ComplianceQuestion
+            {
+                MunicipalityId = seed.Municipality.Id, C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
+                ReportTypeItemId = module.ReportType.Id, ReportTypeItem = module.ReportType, ResponseTypeItemId = responseType.Id, ResponseTypeItem = responseType,
+                Code = $"PAGE-{index:00}", Prompt = $"Paged prompt {index:00}", IsRequired = index % 2 == 0, Sequence = 100 + index, IsActive = true
+            });
+        await context.SaveChangesAsync();
+
+        var page = Payload(await controller.GetComplianceQuestionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged prompt", SortBy = "sequence", SortDirection = "asc" }, module.Version.PublicId, module.ReportType.PublicId, true));
+        page.TotalCount.Should().Be(11);
+        page.Items.Select(item => item.Code).Should().Equal("PAGE-03", "PAGE-04", "PAGE-05");
+        var required = Payload(await controller.GetComplianceQuestionsPage(new PagedQueryRequest { PageSize = 10 }, module.Version.PublicId, module.ReportType.PublicId, true, true));
+        required.TotalCount.Should().Be(7, "the original required question and six even-numbered paged questions match");
+        (await controller.GetComplianceQuestionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var denied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: _ => false);
+        (await denied.GetComplianceQuestionsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
     {
         var versionId = Payload(await controller.CreateCatalogueVersion(new("2026.1", "Treasury C88 2026", DateTime.UtcNow.Date,

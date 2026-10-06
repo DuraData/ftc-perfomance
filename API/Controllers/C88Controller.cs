@@ -68,10 +68,9 @@ public sealed class C88Controller : ControllerBase
         var versions = await context.C88CatalogueVersions.AsNoTracking().Where(item => versionIds.Contains(item.Id)).OrderByDescending(item => item.EditionDate).ToArrayAsync();
         var items = await context.C88CatalogueItems.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ParentItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ToArrayAsync();
         var indicators = await context.C88Indicators.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.SectorItem).Include(item => item.OutcomeItem).Include(item => item.IndicatorTypeItem).Include(item => item.DataElements).Include(item => item.Applicability).ThenInclude(item => item.MunicipalCategoryItem).Include(item => item.Applicability).ThenInclude(item => item.ReadinessTierItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId) && (manager || scopedIndicatorIds.Contains(item.Id))).OrderBy(item => item.Code).ToArrayAsync();
-        var questions = await context.C88ComplianceQuestions.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ReportTypeItem).Include(item => item.ResponseTypeItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Sequence).ToArrayAsync();
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
             configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(),
-            indicators.Select(ToResponse).ToArray(), questions.Select(ToResponse).ToArray(), [])));
+            indicators.Select(ToResponse).ToArray(), [])));
     }
 
     [HttpGet("reports/page")]
@@ -161,6 +160,41 @@ public sealed class C88Controller : ControllerBase
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<C88IndicatorPlanResponse>>(true,
             PagedResponse<C88IndicatorPlanResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
+
+    [HttpGet("compliance-questions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88ComplianceQuestionResponse>>>> GetComplianceQuestionsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? catalogueVersionPublicId = null,
+        [FromQuery] Guid? reportTypePublicId = null, [FromQuery] bool? active = null, [FromQuery] bool? required = null)
+    {
+        var readError = await WorkspaceRead<C88ComplianceQuestionResponse>();
+        if (readError != null) return readError;
+        if (request.NormalizedSortBy is not ("createdat" or "sequence" or "code" or "reporttype" or "required"))
+            return BadRequest(Fail<PagedResponse<C88ComplianceQuestionResponse>>("SortBy must be sequence, code, reportType, or required."));
+        var query = context.C88ComplianceQuestions.AsNoTracking().AsQueryable();
+        if (catalogueVersionPublicId.HasValue) query = query.Where(item => item.CatalogueVersion.PublicId == catalogueVersionPublicId.Value);
+        if (reportTypePublicId.HasValue) query = query.Where(item => item.ReportTypeItem.PublicId == reportTypePublicId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (required.HasValue) query = query.Where(item => item.IsRequired == required.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Code.Contains(request.NormalizedSearch)
+            || item.Prompt.Contains(request.NormalizedSearch) || item.ReportTypeItem.Code.Contains(request.NormalizedSearch)
+            || item.ReportTypeItem.Name.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            ("reporttype", false) => query.OrderBy(item => item.ReportTypeItem.Code).ThenBy(item => item.Sequence).ThenBy(item => item.Id),
+            ("reporttype", true) => query.OrderByDescending(item => item.ReportTypeItem.Code).ThenByDescending(item => item.Sequence).ThenByDescending(item => item.Id),
+            ("required", false) => query.OrderBy(item => item.IsRequired).ThenBy(item => item.Sequence).ThenBy(item => item.Id),
+            ("required", true) => query.OrderByDescending(item => item.IsRequired).ThenBy(item => item.Sequence).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.Sequence).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.Sequence).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.CatalogueVersion).Include(item => item.ReportTypeItem).Include(item => item.ResponseTypeItem)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88ComplianceQuestionResponse>>(true,
+            PagedResponse<C88ComplianceQuestionResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("calendars/page")]
