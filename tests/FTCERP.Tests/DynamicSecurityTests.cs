@@ -499,6 +499,22 @@ public class DynamicSecurityTests
         memberResult.Result.Should().BeOfType<OkObjectResult>();
         (await context.Permissions.Where(item => item.ResourceCode == "TEST_CASE" && item.MemberCode == "ProtectedValue" && item.IsActive).CountAsync()).Should().Be(2);
 
+        var resourcePageResult = await controller.GetResourcesPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "TEST_CASE", SortBy = "code", SortDirection = "asc" });
+        resourcePageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityResourceDto>>>()
+            .Subject.Data!.Items.Should().ContainSingle(item => item.PublicId == resource.PublicId);
+        var actionPageResult = await controller.GetActionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "COMPLETE", SortBy = "resource", SortDirection = "asc" });
+        actionPageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityActionDto>>>()
+            .Subject.Data!.Items.Should().ContainSingle(item => item.PublicId == action.PublicId);
+        var memberPageResult = await controller.GetMembersPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "Protected", SortBy = "resource", SortDirection = "asc" });
+        memberPageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityMemberDto>>>()
+            .Subject.Data!.Items.Should().ContainSingle(item => item.PublicId == memberEntity.PublicId);
+        (await controller.GetResourcesPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetActionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetMembersPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetResources().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetActions().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetMembers().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+
         var updateResult = await controller.UpdateResource(resource.PublicId, new UpdateSecurityResourceRequest(
             resource.Name, resource.Type, resource.Description, resource.CanCreate, resource.CanRead, resource.CanUpdate, resource.CanDelete,
             resource.CanExport, resource.CanImport, resource.SupportsMembers, resource.SupportsCriteria, false, resource.RowVersion, "Deactivate test resource"));

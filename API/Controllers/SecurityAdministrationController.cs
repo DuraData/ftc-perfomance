@@ -321,11 +321,43 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("resources")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<SecurityResourceDto[]>>> GetResources()
+    public ActionResult<ApiResponse<SecurityResourceDto[]>> GetResources() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityResourceDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/security/resources/page."));
+
+    [HttpGet("resources/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityResourceDto>>>> GetResourcesPage([FromQuery] PagedQueryRequest request)
     {
-        var items = await _context.SecurityResources.AsNoTracking().OrderBy(item => item.Name).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityResourceDto[]>(true, items.Select(ToResourceDto).ToArray()));
+        var sortBy = request.SortBy == null ? "code" : request.NormalizedSortBy;
+        if (!SecurityResourceSortFields.Contains(sortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityResourceDto>>(false, null,
+                "SortBy must be name, code, type, or status."));
+        var query = _context.SecurityResources.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term)
+                || item.ResourceType.Contains(term) || (item.Description != null && item.Description.Contains(term)));
+        }
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+            ("type", false) => query.OrderBy(item => item.ResourceType).ThenBy(item => item.Name).ThenBy(item => item.Id),
+            ("type", true) => query.OrderByDescending(item => item.ResourceType).ThenByDescending(item => item.Name).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+            _ => query.OrderBy(item => item.Code).ThenBy(item => item.Id)
+        };
+        var items = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<SecurityResourceDto>>(true,
+            PagedResponse<SecurityResourceDto>.Create(items.Select(ToResourceDto), request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> SecurityResourceSortFields = ["name", "code", "type", "status"];
 
     [HttpPost("resources")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
@@ -387,11 +419,43 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("actions")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<SecurityActionDto[]>>> GetActions()
+    public ActionResult<ApiResponse<SecurityActionDto[]>> GetActions() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityActionDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/security/actions/page."));
+
+    [HttpGet("actions/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityActionDto>>>> GetActionsPage([FromQuery] PagedQueryRequest request)
     {
-        var items = await _context.SecurityActionDefinitions.AsNoTracking().OrderBy(item => item.ResourceCode).ThenBy(item => item.Name).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityActionDto[]>(true, items.Select(ToActionDto).ToArray()));
+        var sortBy = request.SortBy == null ? "code" : request.NormalizedSortBy;
+        if (!SecurityActionSortFields.Contains(sortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityActionDto>>(false, null,
+                "SortBy must be name, code, resource, or status."));
+        var query = _context.SecurityActionDefinitions.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || item.Name.Contains(term)
+                || item.ResourceCode.Contains(term) || (item.Description != null && item.Description.Contains(term)));
+        }
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+            ("resource", false) => query.OrderBy(item => item.ResourceCode).ThenBy(item => item.Name).ThenBy(item => item.Id),
+            ("resource", true) => query.OrderByDescending(item => item.ResourceCode).ThenByDescending(item => item.Name).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+            _ => query.OrderBy(item => item.Code).ThenBy(item => item.Id)
+        };
+        var items = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<SecurityActionDto>>(true,
+            PagedResponse<SecurityActionDto>.Create(items.Select(ToActionDto), request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> SecurityActionSortFields = ["name", "code", "resource", "status"];
 
     [HttpPost("actions")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
@@ -525,13 +589,44 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("members")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<SecurityMemberDto[]>>> GetMembers()
+    public ActionResult<ApiResponse<SecurityMemberDto[]>> GetMembers() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityMemberDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/security/members/page."));
+
+    [HttpGet("members/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityMemberDto>>>> GetMembersPage([FromQuery] PagedQueryRequest request)
     {
-        var items = await _context.SecurityMemberDefinitions.AsNoTracking()
-            .OrderBy(item => item.ResourceCode).ThenBy(item => item.DisplayName)
-            .ToArrayAsync();
-        return Ok(new ApiResponse<SecurityMemberDto[]>(true, items.Select(ToMemberDto).ToArray()));
+        var sortBy = request.SortBy == null ? "resource" : request.NormalizedSortBy;
+        if (!SecurityMemberSortFields.Contains(sortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityMemberDto>>(false, null,
+                "SortBy must be name, code, resource, sensitive, or status."));
+        var query = _context.SecurityMemberDefinitions.AsNoTracking().AsQueryable();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.ResourceCode.Contains(term) || item.MemberCode.Contains(term) || item.DisplayName.Contains(term));
+        }
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.DisplayName).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.DisplayName).ThenBy(item => item.Id),
+            ("resource", false) => query.OrderBy(item => item.ResourceCode).ThenBy(item => item.DisplayName).ThenBy(item => item.Id),
+            ("resource", true) => query.OrderByDescending(item => item.ResourceCode).ThenByDescending(item => item.DisplayName).ThenBy(item => item.Id),
+            ("sensitive", false) => query.OrderBy(item => item.IsSensitive).ThenBy(item => item.ResourceCode).ThenBy(item => item.Id),
+            ("sensitive", true) => query.OrderByDescending(item => item.IsSensitive).ThenBy(item => item.ResourceCode).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.ResourceCode).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.ResourceCode).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.MemberCode).ThenBy(item => item.Id),
+            _ => query.OrderBy(item => item.MemberCode).ThenBy(item => item.Id)
+        };
+        var items = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<SecurityMemberDto>>(true,
+            PagedResponse<SecurityMemberDto>.Create(items.Select(ToMemberDto), request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> SecurityMemberSortFields = ["name", "code", "resource", "sensitive", "status"];
 
     [HttpPut("members/{publicId:guid}")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]

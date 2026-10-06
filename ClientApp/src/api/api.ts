@@ -1863,8 +1863,8 @@ export async function updateSecurityNavigationItem(item: SecurityNavigationItemD
   return put<SecurityNavigationItemDto>(`/v1/security/navigation/registry/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
 }
 
-export async function getSecurityResources(): Promise<ApiResponse<SecurityResourceDefinitionDto[]>> {
-  return get<SecurityResourceDefinitionDto[]>('/v1/security/resources');
+export async function getSecurityResourcesPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SecurityResourceDefinitionDto>>> {
+  return get<PagedResult<SecurityResourceDefinitionDto>>(`/v1/security/resources/page${registerPageQuery(query)}`);
 }
 
 export async function createSecurityResource(payload: Omit<SecurityResourceDefinitionDto, 'publicId' | 'rowVersion' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityResourceDefinitionDto>> {
@@ -1886,8 +1886,8 @@ export async function updateSecurityResource(item: SecurityResourceDefinitionDto
   });
 }
 
-export async function getSecurityActions(): Promise<ApiResponse<SecurityActionDefinitionDto[]>> {
-  return get<SecurityActionDefinitionDto[]>('/v1/security/actions');
+export async function getSecurityActionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SecurityActionDefinitionDto>>> {
+  return get<PagedResult<SecurityActionDefinitionDto>>(`/v1/security/actions/page${registerPageQuery(query)}`);
 }
 
 export async function createSecurityAction(payload: Pick<SecurityActionDefinitionDto, 'code' | 'name' | 'resourceCode' | 'description'> & { reason: string }): Promise<ApiResponse<SecurityActionDefinitionDto>> {
@@ -1898,8 +1898,8 @@ export async function updateSecurityAction(item: SecurityActionDefinitionDto, pa
   return put<SecurityActionDefinitionDto>(`/v1/security/actions/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
 }
 
-export async function getSecurityMembers(): Promise<ApiResponse<SecurityMemberDefinitionDto[]>> {
-  return get<SecurityMemberDefinitionDto[]>('/v1/security/members');
+export async function getSecurityMembersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SecurityMemberDefinitionDto>>> {
+  return get<PagedResult<SecurityMemberDefinitionDto>>(`/v1/security/members/page${registerPageQuery(query)}`);
 }
 
 export async function updateSecurityMember(item: SecurityMemberDefinitionDto, payload: Pick<SecurityMemberDefinitionDto, 'displayName' | 'isSensitive' | 'isActive'> & { reason: string }): Promise<ApiResponse<SecurityMemberDefinitionDto>> {

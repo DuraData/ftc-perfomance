@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SecurityRegistryEditor } from './SecurityRegistryEditor';
 
 const api = vi.hoisted(() => ({
-  getSecurityResources: vi.fn(), getSecurityActions: vi.fn(), getSecurityMembers: vi.fn(),
+  getSecurityResourcesPage: vi.fn(), getSecurityActionsPage: vi.fn(), getSecurityMembersPage: vi.fn(),
   createSecurityResource: vi.fn(), updateSecurityResource: vi.fn(), createSecurityAction: vi.fn(),
   updateSecurityAction: vi.fn(), updateSecurityMember: vi.fn(),
 }));
@@ -11,15 +11,16 @@ vi.mock('../../api/api', () => api);
 describe('SecurityRegistryEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.getSecurityResources.mockResolvedValue({ success: true, data: [] });
-    api.getSecurityActions.mockResolvedValue({ success: true, data: [] });
-    api.getSecurityMembers.mockResolvedValue({ success: true, data: [] });
+    api.getSecurityResourcesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getSecurityActionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getSecurityMembersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.createSecurityResource.mockResolvedValue({ success: true, data: { publicId: 'resource-1', code: 'CASE_FILE', name: 'Case File', type: 'ENTITY', canCreate: false, canRead: true, canUpdate: false, canDelete: false, canExport: false, canImport: false, supportsMembers: false, supportsCriteria: false, isActive: true, rowVersion: 'AQ==' } });
   });
 
   it('creates a governed resource definition with an audit reason', async () => {
     render(<SecurityRegistryEditor />);
     await screen.findByRole('combobox', { name: 'Registered resources' });
+    expect(api.getSecurityResourcesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' });
     fireEvent.change(screen.getByLabelText('Resource code'), { target: { value: 'case_file' } });
     fireEvent.change(screen.getByLabelText('Resource name'), { target: { value: 'Case File' } });
     fireEvent.change(screen.getByLabelText('Registry audit reason'), { target: { value: 'Register case files' } });
@@ -32,7 +33,7 @@ describe('SecurityRegistryEditor', () => {
 
   it('edits only an approved member definition', async () => {
     const member = { publicId: 'member-1', resourceCode: 'EMPLOYEE', memberCode: 'SalaryReference', displayName: 'Salary Reference', isSensitive: true, isSystemManaged: false, isActive: true, rowVersion: 'AQ==' };
-    api.getSecurityMembers.mockResolvedValue({ success: true, data: [member] });
+    api.getSecurityMembersPage.mockResolvedValue({ success: true, data: { items: [member], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.updateSecurityMember.mockResolvedValue({ success: true, data: member });
     render(<SecurityRegistryEditor />);
     fireEvent.click(await screen.findByRole('tab', { name: 'members' }));
