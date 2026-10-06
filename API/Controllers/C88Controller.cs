@@ -51,10 +51,81 @@ public sealed class C88Controller : ControllerBase
         if (!municipalityFinancialYearPublicId.HasValue)
             versionIds = await context.C88CatalogueVersions.AsNoTracking().Select(item => item.Id).ToArrayAsync();
 
-        var versions = await context.C88CatalogueVersions.AsNoTracking().Where(item => versionIds.Contains(item.Id)).OrderByDescending(item => item.EditionDate).ToArrayAsync();
         var items = await context.C88CatalogueItems.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ParentItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ToArrayAsync();
         return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
-            configRows.Select(ToResponse).ToArray(), versions.Select(ToResponse).ToArray(), items.Select(ToResponse).ToArray(), [])));
+            items.Select(ToResponse).ToArray(), [])));
+    }
+
+    [HttpGet("configurations/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88ConfigurationResponse>>>> GetConfigurationsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? configurationPublicId = null,
+        [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] Guid? catalogueVersionPublicId = null, [FromQuery] bool? enabled = null)
+    {
+        var readError = await WorkspaceRead<C88ConfigurationResponse>();
+        if (readError != null) return readError;
+        if (request.NormalizedSortBy is not ("createdat" or "effectivefrom" or "financialyear" or "catalogueversion" or "enabled"))
+            return BadRequest(Fail<PagedResponse<C88ConfigurationResponse>>("SortBy must be createdAt, effectiveFrom, financialYear, catalogueVersion, or enabled."));
+        var query = context.C88MunicipalityConfigurations.AsNoTracking().AsQueryable();
+        if (configurationPublicId.HasValue) query = query.Where(item => item.PublicId == configurationPublicId.Value);
+        if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
+        if (catalogueVersionPublicId.HasValue) query = query.Where(item => item.CatalogueVersion.PublicId == catalogueVersionPublicId.Value);
+        if (enabled.HasValue) query = query.Where(item => item.IsEnabled == enabled.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.MunicipalityFinancialYear.FinancialYear.Code.Contains(request.NormalizedSearch)
+            || item.CatalogueVersion.Code.Contains(request.NormalizedSearch) || item.CatalogueVersion.Name.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.Id),
+            ("financialyear", false) => query.OrderBy(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenBy(item => item.Id),
+            ("financialyear", true) => query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ThenByDescending(item => item.Id),
+            ("catalogueversion", false) => query.OrderBy(item => item.CatalogueVersion.Code).ThenBy(item => item.Id),
+            ("catalogueversion", true) => query.OrderByDescending(item => item.CatalogueVersion.Code).ThenByDescending(item => item.Id),
+            ("enabled", false) => query.OrderBy(item => item.IsEnabled).ThenBy(item => item.Id),
+            ("enabled", true) => query.OrderByDescending(item => item.IsEnabled).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
+            .Include(item => item.CatalogueVersion).Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88ConfigurationResponse>>(true,
+            PagedResponse<C88ConfigurationResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+    }
+
+    [HttpGet("catalogue-versions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88CatalogueVersionResponse>>>> GetCatalogueVersionsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? catalogueVersionPublicId = null,
+        [FromQuery] bool? published = null, [FromQuery] bool? active = null)
+    {
+        var readError = await WorkspaceRead<C88CatalogueVersionResponse>();
+        if (readError != null) return readError;
+        if (request.NormalizedSortBy is not ("createdat" or "editiondate" or "effectivefrom" or "code" or "name" or "published"))
+            return BadRequest(Fail<PagedResponse<C88CatalogueVersionResponse>>("SortBy must be createdAt, editionDate, effectiveFrom, code, name, or published."));
+        var query = context.C88CatalogueVersions.AsNoTracking().AsQueryable();
+        if (catalogueVersionPublicId.HasValue) query = query.Where(item => item.PublicId == catalogueVersionPublicId.Value);
+        if (published.HasValue) query = query.Where(item => item.IsPublished == published.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Code.Contains(request.NormalizedSearch) || item.Name.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("editiondate", false) => query.OrderBy(item => item.EditionDate).ThenBy(item => item.Id),
+            ("editiondate", true) => query.OrderByDescending(item => item.EditionDate).ThenByDescending(item => item.Id),
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.Id),
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.Id),
+            ("published", false) => query.OrderBy(item => item.IsPublished).ThenBy(item => item.EditionDate).ThenBy(item => item.Id),
+            ("published", true) => query.OrderByDescending(item => item.IsPublished).ThenByDescending(item => item.EditionDate).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88CatalogueVersionResponse>>(true,
+            PagedResponse<C88CatalogueVersionResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("reports/page")]

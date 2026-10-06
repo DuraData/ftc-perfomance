@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   configureC88, createC88Assignment, createC88Calendar, createC88CatalogueItem, createC88CatalogueVersion,
   createC88ComplianceQuestion, createC88Indicator, createC88Mapping, createC88ReportVersion, createC88Workflow,
-  finalSubmitC88Report, getC88AssignmentsPage, getC88CalendarsPage, getC88ComplianceQuestionsPage, getC88IndicatorsPage, getC88MappingsPage, getC88PlansPage, getC88ReportsPage, getC88WorkflowsPage, getC88Workspace, getMunicipalEmployeesPage,
+  finalSubmitC88Report, getC88AssignmentsPage, getC88CalendarsPage, getC88CatalogueVersionsPage, getC88ComplianceQuestionsPage, getC88ConfigurationsPage, getC88IndicatorsPage, getC88MappingsPage, getC88PlansPage, getC88ReportsPage, getC88WorkflowsPage, getC88Workspace, getMunicipalEmployeesPage,
   returnC88Report, saveC88IndicatorPlan, submitC88Report, updateC88CatalogueVersion, verifyC88Report,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { C88Assignment, C88CatalogueItemKind, C88ComplianceQuestion, C88Indicator, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88ReportingCalendar, C88Workflow, C88Workspace, MunicipalEmployeeDto } from '../../types';
+import type { C88Assignment, C88CatalogueItemKind, C88CatalogueVersion, C88ComplianceQuestion, C88Configuration, C88Indicator, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88ReportingCalendar, C88Workflow, C88Workspace, MunicipalEmployeeDto } from '../../types';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { TargetPicker } from '../common/TargetPicker';
@@ -15,7 +15,7 @@ import { Badge, Button, Card, EmptyState } from '../ui';
 
 const field = 'mt-1 w-full rounded border border-secondary-300 bg-white px-2 py-1.5 text-sm dark:border-secondary-700 dark:bg-secondary-900';
 const today = () => new Date().toISOString().slice(0, 10);
-const emptyWorkspace: C88Workspace = { configurations: [], catalogueVersions: [], catalogueItems: [], reports: [] };
+const emptyWorkspace: C88Workspace = { catalogueItems: [], reports: [] };
 function Section({ title, children }: { title: string; children: ReactNode }) { return <Card><h2 className="mb-3 text-lg font-semibold">{title}</h2>{children}</Card>; }
 
 export function C88Workspace() {
@@ -40,6 +40,19 @@ export function C88Workspace() {
   const [reportSearch, setReportSearch] = useState('');
   const [reportSortBy, setReportSortBy] = useState('createdAt');
   const [reportSortDirection, setReportSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [configurationRows, setConfigurationRows] = useState<C88Configuration[]>([]);
+  const [configurationPage, setConfigurationPage] = useState(1);
+  const [configurationTotalPages, setConfigurationTotalPages] = useState(0);
+  const [configurationTotalCount, setConfigurationTotalCount] = useState(0);
+  const [configurationSearch, setConfigurationSearch] = useState('');
+  const [selectedConfiguration, setSelectedConfiguration] = useState<C88Configuration | null>(null);
+  const [versionRows, setVersionRows] = useState<C88CatalogueVersion[]>([]);
+  const [versionPage, setVersionPage] = useState(1);
+  const [versionTotalPages, setVersionTotalPages] = useState(0);
+  const [versionTotalCount, setVersionTotalCount] = useState(0);
+  const [versionSearch, setVersionSearch] = useState('');
+  const [configuredVersion, setConfiguredVersion] = useState<C88CatalogueVersion | null>(null);
+  const [selectedCatalogueVersion, setSelectedCatalogueVersion] = useState<C88CatalogueVersion | null>(null);
   const [indicatorRows, setIndicatorRows] = useState<C88Indicator[]>([]);
   const [indicatorPage, setIndicatorPage] = useState(1);
   const [indicatorTotalPages, setIndicatorTotalPages] = useState(0);
@@ -94,8 +107,9 @@ export function C88Workspace() {
   const canReadModule = canRead('C88_INDICATOR') || canRead('C88_REPORT');
   const canReadIndicators = canRead('C88_INDICATOR');
   const canReadReports = canRead('C88_REPORT');
-  const effectiveConfigurationId = configurationId || data.configurations[0]?.publicId || '';
-  const configuration = data.configurations.find(item => item.publicId === effectiveConfigurationId);
+  const visibleConfigurations = yearId ? configurationRows.filter(item => item.municipalityFinancialYearPublicId === yearId) : configurationRows;
+  const effectiveConfigurationId = configurationId || visibleConfigurations[0]?.publicId || '';
+  const configuration = configurationRows.find(item => item.publicId === effectiveConfigurationId) ?? selectedConfiguration ?? undefined;
   const indicator = indicatorRows.find(item => item.publicId === indicatorId) ?? selectedIndicator;
   const activeVersionId = configuration?.catalogueVersionPublicId ?? catalogueItem.catalogueVersionPublicId;
   const reportTypes = data.catalogueItems.filter(item => item.catalogueVersionPublicId === activeVersionId && item.kind === 'ReportType' && item.isActive);
@@ -103,11 +117,18 @@ export function C88Workspace() {
   const draftResponseTypes = data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId && item.kind === 'ResponseType' && item.isActive);
   const selectedCalendar = calendarRows.find(item => item.publicId === calendarId);
   const indicatorOptions = indicator && !indicatorRows.some(item => item.publicId === indicator.publicId) ? [indicator, ...indicatorRows] : indicatorRows;
+  const versionOptions = [...versionRows];
+  for (const item of [configuredVersion, selectedCatalogueVersion])
+    if (item && !versionOptions.some(option => option.publicId === item.publicId)) versionOptions.unshift(item);
+  const configurationOptions = selectedConfiguration && !visibleConfigurations.some(item => item.publicId === selectedConfiguration.publicId)
+    ? [selectedConfiguration, ...visibleConfigurations] : visibleConfigurations;
 
   const load = useCallback(async () => {
     if (!canReadModule) return;
-    const [workspace, indicatorResult, reportResult, planResult, assignmentResult, mappingResult, calendarResult, workflowResult, questionResult] = await Promise.all([
+    const [workspace, configurationResult, versionResult, indicatorResult, reportResult, planResult, assignmentResult, mappingResult, calendarResult, workflowResult, questionResult] = await Promise.all([
       getC88Workspace(yearId || undefined),
+      getC88ConfigurationsPage({ page: configurationPage, pageSize: 25, search: configurationSearch, sortBy: 'financialYear', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined }),
+      getC88CatalogueVersionsPage({ page: versionPage, pageSize: 25, search: versionSearch, sortBy: 'editionDate', sortDirection: 'desc' }),
       getC88IndicatorsPage({ page: indicatorPage, pageSize: 10, search: indicatorSearch, sortBy: 'code', sortDirection: 'asc' }, { catalogueVersionPublicId: activeVersionId || undefined, active: true }),
       canReadReports
         ? getC88ReportsPage({ page: reportPage, pageSize: 25, search: reportSearch, sortBy: reportSortBy, sortDirection: reportSortDirection }, yearId || undefined)
@@ -123,8 +144,12 @@ export function C88Workspace() {
     ]);
     if (!workspace.success) pushToast('error', workspace.message ?? 'Unable to load Circular 88.');
     else setData({ ...(workspace.data ?? emptyWorkspace), reports: reportResult.data?.items ?? [] });
+    setConfigurationRows(configurationResult.data?.items ?? []); setConfigurationTotalCount(configurationResult.data?.totalCount ?? 0); setConfigurationTotalPages(configurationResult.data?.totalPages ?? 0);
+    setVersionRows(versionResult.data?.items ?? []); setVersionTotalCount(versionResult.data?.totalCount ?? 0); setVersionTotalPages(versionResult.data?.totalPages ?? 0);
     setIndicatorRows(indicatorResult.data?.items ?? []); setIndicatorTotalCount(indicatorResult.data?.totalCount ?? 0); setIndicatorTotalPages(indicatorResult.data?.totalPages ?? 0);
     if (!reportResult.success) pushToast('error', reportResult.message ?? 'Unable to load Circular 88 reports.');
+    if (!configurationResult.success) pushToast('error', configurationResult.message ?? 'Unable to load C88 configurations.');
+    if (!versionResult.success) pushToast('error', versionResult.message ?? 'Unable to load C88 catalogue versions.');
     if (!indicatorResult.success) pushToast('error', indicatorResult.message ?? 'Unable to load C88 indicators.');
     setReportTotalCount(reportResult.data?.totalCount ?? 0);
     setReportTotalPages(reportResult.data?.totalPages ?? 0);
@@ -140,7 +165,7 @@ export function C88Workspace() {
     if (!calendarResult.success) pushToast('error', calendarResult.message ?? 'Unable to load C88 reporting calendars.');
     if (!workflowResult.success) pushToast('error', workflowResult.message ?? 'Unable to load C88 workflows.');
     if (!questionResult.success) pushToast('error', questionResult.message ?? 'Unable to load C88 compliance questions.');
-  }, [activeVersionId, assignmentPage, assignmentSearch, calendarPage, calendarSearch, canReadIndicators, canReadModule, canReadReports, catalogueItem.catalogueVersionPublicId, effectiveConfigurationId, indicatorPage, indicatorSearch, mappingPage, mappingSearch, planPage, planSearch, pushToast, questionPage, questionSearch, reportPage, reportSearch, reportSortBy, reportSortDirection, workflowPage, workflowSearch, yearId]);
+  }, [activeVersionId, assignmentPage, assignmentSearch, calendarPage, calendarSearch, canReadIndicators, canReadModule, canReadReports, catalogueItem.catalogueVersionPublicId, configurationPage, configurationSearch, effectiveConfigurationId, indicatorPage, indicatorSearch, mappingPage, mappingSearch, planPage, planSearch, pushToast, questionPage, questionSearch, reportPage, reportSearch, reportSortBy, reportSortDirection, versionPage, versionSearch, workflowPage, workflowSearch, yearId]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -155,8 +180,42 @@ export function C88Workspace() {
     return () => window.clearTimeout(timeout);
   }, [reportSearchInput]);
   useEffect(() => {
-    setConfigurationId(value => data.configurations.some(item => item.publicId === value) ? value : data.configurations[0]?.publicId || '');
-  }, [data.configurations]);
+    const eligible = yearId ? configurationRows.filter(item => item.municipalityFinancialYearPublicId === yearId) : configurationRows;
+    const visible = eligible.find(item => item.publicId === configurationId);
+    if (visible) { setSelectedConfiguration(visible); return; }
+    if (!configurationId) {
+      const first = eligible[0] ?? null;
+      setConfigurationId(first?.publicId ?? '');
+      setSelectedConfiguration(first);
+      return;
+    }
+    void getC88ConfigurationsPage({ page: 1, pageSize: 1 }, { configurationPublicId: configurationId, municipalityFinancialYearPublicId: yearId || undefined }).then(result => {
+      const exact = result.data?.items[0] ?? null;
+      setSelectedConfiguration(exact);
+      if (!exact) setConfigurationId('');
+      if (!result.success) pushToast('error', result.message ?? 'Unable to load the selected C88 configuration.');
+    });
+  }, [configurationId, configurationRows, pushToast, yearId]);
+  useEffect(() => {
+    const publicId = configuration?.catalogueVersionPublicId;
+    if (!publicId) { setConfiguredVersion(null); return; }
+    const visible = versionRows.find(item => item.publicId === publicId);
+    if (visible) { setConfiguredVersion(visible); return; }
+    void getC88CatalogueVersionsPage({ page: 1, pageSize: 1 }, { catalogueVersionPublicId: publicId }).then(result => {
+      setConfiguredVersion(result.data?.items[0] ?? null);
+      if (!result.success) pushToast('error', result.message ?? 'Unable to load the configured C88 catalogue version.');
+    });
+  }, [configuration?.catalogueVersionPublicId, pushToast, versionRows]);
+  useEffect(() => {
+    const publicId = catalogueItem.catalogueVersionPublicId;
+    if (!publicId) { setSelectedCatalogueVersion(null); return; }
+    const visible = versionRows.find(item => item.publicId === publicId);
+    if (visible) { setSelectedCatalogueVersion(visible); return; }
+    void getC88CatalogueVersionsPage({ page: 1, pageSize: 1 }, { catalogueVersionPublicId: publicId }).then(result => {
+      setSelectedCatalogueVersion(result.data?.items[0] ?? null);
+      if (!result.success) pushToast('error', result.message ?? 'Unable to load the selected C88 catalogue version.');
+    });
+  }, [catalogueItem.catalogueVersionPublicId, pushToast, versionRows]);
   useEffect(() => {
     setCalendarId(value => calendarRows.some(item => item.publicId === value && item.configurationPublicId === effectiveConfigurationId) ? value : calendarRows.find(item => item.configurationPublicId === effectiveConfigurationId)?.publicId ?? '');
   }, [calendarRows, effectiveConfigurationId]);
@@ -216,7 +275,7 @@ export function C88Workspace() {
 
   if (!canReadModule) return <AppShell><EmptyState title="Circular 88 unavailable" description="Your effective role does not grant C88 indicator or report access." /></AppShell>;
 
-  const publishedVersions = data.catalogueVersions.filter(item => item.isPublished && item.isActive);
+  const publishedVersions = versionOptions.filter(item => item.isPublished && item.isActive);
   const currentReports = data.reports.filter(item => item.isCurrent !== false && item.configurationPublicId === effectiveConfigurationId);
 
   return <AppShell>
@@ -224,20 +283,22 @@ export function C88Workspace() {
       <div><h1 className="text-2xl font-semibold">Circular 88</h1><p className="text-sm text-secondary-500">Independent Treasury catalogue, planning, reporting, compliance and workflow.</p></div>
 
       <Section title="Municipality and financial-year configuration">
+        <div className="mb-3 grid gap-2 md:grid-cols-2"><label className="text-sm">Search configurations<input aria-label="Search C88 configurations" className={field} value={configurationSearch} onChange={event => { setConfigurationSearch(event.target.value); setConfigurationPage(1); }} /></label><label className="text-sm">Search catalogue editions<input aria-label="Search C88 catalogue versions" className={field} value={versionSearch} onChange={event => { setVersionSearch(event.target.value); setVersionPage(1); }} /></label></div>
         <div className="grid gap-3 md:grid-cols-4">
-          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setIndicatorSearch(''); setIndicatorPage(1); setReportPage(1); setPlanPage(1); setCalendarPage(1); setWorkflowPage(1); }} />
-          <label className="text-sm">Configuration<select className={field} value={effectiveConfigurationId} onChange={event => { setConfigurationId(event.target.value); setIndicatorSearch(''); setIndicatorPage(1); setCalendarPage(1); setWorkflowPage(1); }}><option value="">Not configured</option>{data.configurations.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} · {item.catalogueVersionCode}</option>)}</select></label>
+          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setConfigurationId(''); setSelectedConfiguration(null); setConfigurationPage(1); setIndicatorSearch(''); setIndicatorPage(1); setReportPage(1); setPlanPage(1); setCalendarPage(1); setWorkflowPage(1); }} />
+          <label className="text-sm">Configuration<select className={field} value={effectiveConfigurationId} onChange={event => { setConfigurationId(event.target.value); setIndicatorSearch(''); setIndicatorPage(1); setCalendarPage(1); setWorkflowPage(1); }}><option value="">Not configured</option>{configurationOptions.map(item => <option key={item.publicId} value={item.publicId}>{item.financialYearCode} · {item.catalogueVersionCode}</option>)}</select></label>
           <label className="text-sm">Published edition<select className={field} value={configuration?.catalogueVersionPublicId ?? catalogueItem.catalogueVersionPublicId} onChange={event => setCatalogueItem(value => ({ ...value, catalogueVersionPublicId: event.target.value }))}><option value="">Select edition</option>{publishedVersions.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select></label>
           <div className="flex items-end"><Badge variant={configuration?.isEnabled ? 'success' : 'warning'}>{configuration?.isEnabled ? 'Enabled' : 'Disabled'}</Badge></div>
         </div>
+        <div className="mt-2 flex items-center justify-between text-xs text-secondary-500"><span>{configurationTotalCount} configurations · {versionTotalCount} catalogue editions</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={configurationPage <= 1} onClick={() => setConfigurationPage(value => value - 1)}>Previous configurations</Button><Button size="sm" variant="outline" disabled={configurationPage >= configurationTotalPages} onClick={() => setConfigurationPage(value => value + 1)}>Next configurations</Button><Button size="sm" variant="outline" disabled={versionPage <= 1} onClick={() => setVersionPage(value => value - 1)}>Previous editions</Button><Button size="sm" variant="outline" disabled={versionPage >= versionTotalPages} onClick={() => setVersionPage(value => value + 1)}>Next editions</Button></div></div>
         {canExecute('C88_INDICATOR.CONFIGURE') && <div className="mt-3 flex gap-2"><Button disabled={busy || !yearId || !(configuration?.catalogueVersionPublicId || catalogueItem.catalogueVersionPublicId)} onClick={() => void run(() => configureC88({ municipalityFinancialYearPublicId: yearId, catalogueVersionPublicId: configuration?.catalogueVersionPublicId || catalogueItem.catalogueVersionPublicId, isEnabled: !(configuration?.isEnabled ?? false), effectiveFrom: new Date().toISOString(), effectiveTo: null, reason, rowVersion: configuration?.rowVersion ?? null }), configuration?.isEnabled ? 'C88 disabled without changing OPMS.' : 'C88 enabled.')}>{configuration?.isEnabled ? 'Disable C88' : 'Enable C88'}</Button><input className={field} placeholder="Reason" value={reason} onChange={event => setReason(event.target.value)} /></div>}
       </Section>
 
       {canExecute('C88_INDICATOR.MANAGE_CATALOGUE') && <Section title="Versioned Treasury catalogue">
         <div className="grid gap-2 md:grid-cols-5"><input className={field} placeholder="Edition code" value={edition.code} onChange={e => setEdition({ ...edition, code: e.target.value })} /><input className={field} placeholder="Edition name" value={edition.name} onChange={e => setEdition({ ...edition, name: e.target.value })} /><input className={field} type="date" value={edition.editionDate} onChange={e => setEdition({ ...edition, editionDate: e.target.value })} /><input className={field} type="date" value={edition.effectiveFrom} onChange={e => setEdition({ ...edition, effectiveFrom: e.target.value })} /><Button disabled={busy || !reason} onClick={() => void run(() => createC88CatalogueVersion({ ...edition, effectiveTo: null, isPublished: false, isActive: true, reason, rowVersion: null }), 'Catalogue edition created.')}>Create edition</Button></div>
-        <div className="mt-3 grid gap-2 md:grid-cols-6"><select className={field} value={catalogueItem.catalogueVersionPublicId} onChange={e => setCatalogueItem({ ...catalogueItem, catalogueVersionPublicId: e.target.value })}><option value="">Draft edition</option>{data.catalogueVersions.filter(item => !item.isPublished).map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select><select className={field} value={catalogueItem.kind} onChange={e => setCatalogueItem({ ...catalogueItem, kind: e.target.value as C88CatalogueItemKind })}>{['Sector','Outcome','IndicatorType','MunicipalCategory','ReadinessTier','ReportType','ResponseType'].map(kind => <option key={kind}>{kind}</option>)}</select><input className={field} placeholder="Item code" value={catalogueItem.code} onChange={e => setCatalogueItem({ ...catalogueItem, code: e.target.value })} /><input className={field} placeholder="Item name" value={catalogueItem.name} onChange={e => setCatalogueItem({ ...catalogueItem, name: e.target.value })} /><select className={field} value={catalogueItem.parentItemPublicId} onChange={e => setCatalogueItem({ ...catalogueItem, parentItemPublicId: e.target.value })}><option value="">No parent</option>{data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId).map(item => <option key={item.publicId} value={item.publicId}>{item.kind} · {item.code}</option>)}</select><Button disabled={busy || !reason} onClick={() => void run(() => createC88CatalogueItem({ ...catalogueItem, description: null, parentItemPublicId: catalogueItem.parentItemPublicId || null, displayOrder: 0, isActive: true, reason, rowVersion: null }), 'Catalogue item added.')}>Add item</Button></div>
+        <div className="mt-3 grid gap-2 md:grid-cols-6"><select className={field} value={catalogueItem.catalogueVersionPublicId} onChange={e => setCatalogueItem({ ...catalogueItem, catalogueVersionPublicId: e.target.value })}><option value="">Draft edition</option>{versionOptions.filter(item => !item.isPublished).map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select><select className={field} value={catalogueItem.kind} onChange={e => setCatalogueItem({ ...catalogueItem, kind: e.target.value as C88CatalogueItemKind })}>{['Sector','Outcome','IndicatorType','MunicipalCategory','ReadinessTier','ReportType','ResponseType'].map(kind => <option key={kind}>{kind}</option>)}</select><input className={field} placeholder="Item code" value={catalogueItem.code} onChange={e => setCatalogueItem({ ...catalogueItem, code: e.target.value })} /><input className={field} placeholder="Item name" value={catalogueItem.name} onChange={e => setCatalogueItem({ ...catalogueItem, name: e.target.value })} /><select className={field} value={catalogueItem.parentItemPublicId} onChange={e => setCatalogueItem({ ...catalogueItem, parentItemPublicId: e.target.value })}><option value="">No parent</option>{data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId).map(item => <option key={item.publicId} value={item.publicId}>{item.kind} · {item.code}</option>)}</select><Button disabled={busy || !reason} onClick={() => void run(() => createC88CatalogueItem({ ...catalogueItem, description: null, parentItemPublicId: catalogueItem.parentItemPublicId || null, displayOrder: 0, isActive: true, reason, rowVersion: null }), 'Catalogue item added.')}>Add item</Button></div>
         <div className="mt-3 grid gap-2 md:grid-cols-5"><input className={field} placeholder="Indicator code" value={indicatorDraft.code} onChange={e => setIndicatorDraft({ ...indicatorDraft, code: e.target.value, catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId })} /><input className={field} placeholder="Indicator name" value={indicatorDraft.name} onChange={e => setIndicatorDraft({ ...indicatorDraft, name: e.target.value })} /><input className={field} placeholder="Official definition" value={indicatorDraft.definition} onChange={e => setIndicatorDraft({ ...indicatorDraft, definition: e.target.value })} /><input className={field} placeholder="Official TID" value={indicatorDraft.officialTechnicalIndicatorDescription} onChange={e => setIndicatorDraft({ ...indicatorDraft, officialTechnicalIndicatorDescription: e.target.value })} /><Button disabled={busy || !reason} onClick={() => void run(() => createC88Indicator({ ...indicatorDraft, catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId, sectorPublicId: null, outcomePublicId: null, indicatorTypePublicId: null, officialFormulaText: null, requiresBaseline: true, requiresMediumTermTarget: true, requiresAnnualTarget: true, isActive: true, dataElements: indicatorDraft.elementCode ? [{ code: indicatorDraft.elementCode, name: indicatorDraft.elementName, description: null, valueType: indicatorDraft.valueType, isRequired: true, sequence: 1 }] : [], applicability: indicatorDraft.municipalCategoryPublicId ? [{ municipalCategoryPublicId: indicatorDraft.municipalCategoryPublicId, readinessTierPublicId: indicatorDraft.readinessTierPublicId || null, isApplicable: true, notes: null }] : [], reason }), 'Indicator added.')}>Add indicator</Button><input className={field} placeholder="Data-element code" value={indicatorDraft.elementCode} onChange={e => setIndicatorDraft({ ...indicatorDraft, elementCode: e.target.value })} /><input className={field} placeholder="Data-element name" value={indicatorDraft.elementName} onChange={e => setIndicatorDraft({ ...indicatorDraft, elementName: e.target.value })} /><select className={field} value={indicatorDraft.municipalCategoryPublicId} onChange={e => setIndicatorDraft({ ...indicatorDraft, municipalCategoryPublicId: e.target.value })}><option value="">Municipal category</option>{data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId && item.kind === 'MunicipalCategory').map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select><select className={field} value={indicatorDraft.readinessTierPublicId} onChange={e => setIndicatorDraft({ ...indicatorDraft, readinessTierPublicId: e.target.value })}><option value="">Readiness tier</option>{data.catalogueItems.filter(item => item.catalogueVersionPublicId === catalogueItem.catalogueVersionPublicId && item.kind === 'ReadinessTier').map(item => <option key={item.publicId} value={item.publicId}>{item.code}</option>)}</select></div>
-        <div className="mt-3 flex flex-wrap gap-2">{data.catalogueVersions.filter(item => !item.isPublished).map(item => <Button key={item.publicId} variant="secondary" disabled={busy || !reason} onClick={() => void run(() => updateC88CatalogueVersion(item.publicId, { ...item, isPublished: true, reason }), `${item.code} published and locked.`)}>Publish {item.code}</Button>)}</div>
+        <div className="mt-3 flex flex-wrap gap-2">{versionOptions.filter(item => !item.isPublished).map(item => <Button key={item.publicId} variant="secondary" disabled={busy || !reason} onClick={() => void run(() => updateC88CatalogueVersion(item.publicId, { ...item, isPublished: true, reason }), `${item.code} published and locked.`)}>Publish {item.code}</Button>)}</div>
       </Section>}
 
       <Section title="Planning, assignments, workflow and mappings">

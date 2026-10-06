@@ -369,6 +369,59 @@ public class C88ControllerTests
         (await denied.GetIndicatorsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
+    [Fact]
+    public async Task Configuration_and_catalogue_version_pages_filter_before_count_and_page_stably()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var createdAt = new DateTime(2035, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var index = 0; index < 11; index++)
+        {
+            var year = 2040 + index;
+            var financialYear = new FinancialYear
+            {
+                Code = $"{year}/{(year + 1) % 100:00}", Name = $"Paged year {index:00}",
+                StartDate = new DateTime(year, 7, 1), EndDate = new DateTime(year + 1, 6, 30)
+            };
+            var municipalityYear = new MunicipalityFinancialYear
+            {
+                MunicipalityId = seed.Municipality.Id, FinancialYear = financialYear, IsActive = true,
+                EffectiveFrom = financialYear.StartDate
+            };
+            var version = new C88CatalogueVersion
+            {
+                MunicipalityId = seed.Municipality.Id, Code = $"EDITION-{index:00}", Name = $"Paged edition {index:00}",
+                EditionDate = createdAt.AddDays(index), EffectiveFrom = municipalityYear.EffectiveFrom, IsPublished = index % 2 == 0,
+                IsActive = true, CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
+            };
+            context.AddRange(financialYear, municipalityYear, version, new C88MunicipalityConfiguration
+            {
+                MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYear = municipalityYear, CatalogueVersion = version,
+                IsEnabled = index % 2 == 0, EffectiveFrom = municipalityYear.EffectiveFrom,
+                CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
+            });
+        }
+        await context.SaveChangesAsync();
+
+        var configurations = Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged edition", SortBy = "catalogueVersion", SortDirection = "asc" }));
+        configurations.TotalCount.Should().Be(11);
+        configurations.Items.Select(item => item.CatalogueVersionCode).Should().Equal("EDITION-03", "EDITION-04", "EDITION-05");
+        Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { PageSize = 1 }, configurationPublicId: configurations.Items[0].PublicId)).Items
+            .Should().ContainSingle().Which.PublicId.Should().Be(configurations.Items[0].PublicId);
+        var versions = Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged edition", SortBy = "code", SortDirection = "asc" }));
+        versions.TotalCount.Should().Be(11);
+        versions.Items.Select(item => item.Code).Should().Equal("EDITION-03", "EDITION-04", "EDITION-05");
+        Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { PageSize = 10 }, enabled: true)).TotalCount.Should().Be(6);
+        Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { PageSize = 10 }, published: true, active: true)).TotalCount.Should().Be(6);
+        (await controller.GetConfigurationsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetCatalogueVersionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var denied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: _ => false);
+        (await denied.GetConfigurationsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await denied.GetCatalogueVersionsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
     {
         var versionId = Payload(await controller.CreateCatalogueVersion(new("2026.1", "Treasury C88 2026", DateTime.UtcNow.Date,

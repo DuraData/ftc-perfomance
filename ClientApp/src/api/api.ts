@@ -131,6 +131,8 @@ import type {
   StrategicRiskSummaryDto,
   SaveStrategicRiskPayload,
   C88Workspace,
+  C88Configuration,
+  C88CatalogueVersion,
   C88Indicator,
   C88IndicatorReport,
   C88IndicatorPlan,
@@ -2806,6 +2808,25 @@ export async function getC88Workspace(municipalityFinancialYearPublicId?: string
   if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
   const query = parameters.size ? `?${parameters.toString()}` : '';
   return get<C88Workspace>(`/v1/c88/workspace${query}`);
+}
+
+export async function getC88ConfigurationsPage(query: RegisterPageQuery = {}, filters: { configurationPublicId?: string; municipalityFinancialYearPublicId?: string; catalogueVersionPublicId?: string; enabled?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Configuration>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.configurationPublicId) parameters.set('configurationPublicId', filters.configurationPublicId);
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.catalogueVersionPublicId) parameters.set('catalogueVersionPublicId', filters.catalogueVersionPublicId);
+  if (filters.enabled !== undefined) parameters.set('enabled', String(filters.enabled));
+  return get<PagedResult<C88Configuration>>(`/v1/c88/configurations/page?${parameters.toString()}`);
+}
+
+export async function getC88CatalogueVersionsPage(query: RegisterPageQuery = {}, filters: { catalogueVersionPublicId?: string; published?: boolean; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88CatalogueVersion>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.catalogueVersionPublicId) parameters.set('catalogueVersionPublicId', filters.catalogueVersionPublicId);
+  if (filters.published !== undefined) parameters.set('published', String(filters.published));
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  return get<PagedResult<C88CatalogueVersion>>(`/v1/c88/catalogue-versions/page?${parameters.toString()}`);
 }
 
 export async function getC88ReportsPage(query: RegisterPageQuery = {}, municipalityFinancialYearPublicId?: string): Promise<ApiResponse<PagedResult<C88IndicatorReport>>> {
