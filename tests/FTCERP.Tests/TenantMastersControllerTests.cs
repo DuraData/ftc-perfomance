@@ -109,7 +109,7 @@ public sealed class TenantMastersControllerTests
         user.MunicipalityId = municipality.Id;
         var foreignUser = IdpTestFixture.CreateUser("foreign-login");
         foreignUser.MunicipalityId = otherMunicipality.Id;
-        var employee = new MunicipalEmployee { MunicipalityId = municipality.Id, EmployeeNumber = "E081", FirstName = "Protected", LastName = "Employee", EmailAddress = "private@example.test", IdentityUserId = user.Id, EffectiveFrom = DateTime.UtcNow.AddYears(-1) };
+        var employee = new MunicipalEmployee { MunicipalityId = municipality.Id, EmployeeNumber = "E081", SalaryReference = "SALARY-SECRET-081", FirstName = "Protected", LastName = "Employee", EmailAddress = "private@example.test", IdentityUserId = user.Id, EffectiveFrom = DateTime.UtcNow.AddYears(-1) };
         context.AddRange(municipality, otherMunicipality, user, foreignUser, employee);
         await context.SaveChangesAsync();
         var access = new Mock<IAccessControlService>();
@@ -120,6 +120,10 @@ public sealed class TenantMastersControllerTests
         access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmployeeNumber.READ", It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
         access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.EmployeeNumber.UPDATE", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.SalaryReference.READ", It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.SalaryReference.UPDATE", It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
         access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.IdentityUserId.READ", It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
@@ -134,6 +138,7 @@ public sealed class TenantMastersControllerTests
         var pageEnvelope = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value);
         var protectedEmployee = Assert.Single(pageEnvelope.Data!.Items);
         Assert.Null(protectedEmployee.EmployeeNumber);
+        Assert.Null(protectedEmployee.SalaryReference);
         Assert.Null(protectedEmployee.EmailAddress);
         Assert.Null(protectedEmployee.IdentityUserId);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetEmployees().Result).StatusCode);
@@ -141,8 +146,17 @@ public sealed class TenantMastersControllerTests
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenEmailSearch.Result).Value).Data!.TotalCount);
         var hiddenNumberSearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "E081", SortBy = "name", SortDirection = "asc" });
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenNumberSearch.Result).Value).Data!.TotalCount);
+        var hiddenSalarySearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "SALARY-SECRET-081", SortBy = "name", SortDirection = "asc" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenSalarySearch.Result).Value).Data!.TotalCount);
         Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "employeeNumber" })).Result);
+        Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "salaryReference" })).Result);
         Assert.IsType<ForbidResult>((await controller.GetEmployeesPage(new PagedQueryRequest { SortBy = "email" })).Result);
+
+        var salaryUpdate = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
+            employee.FirstName, employee.LastName, null, null, true,
+            employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion), false, false, "EXFILTRATED-SALARY", true));
+        Assert.IsType<ForbidResult>(salaryUpdate.Result);
+        Assert.Equal("SALARY-SECRET-081", (await context.MunicipalEmployees.SingleAsync()).SalaryReference);
 
         var updateResult = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
             employee.FirstName, employee.LastName, "exfiltration@example.test", null, true,
@@ -164,6 +178,41 @@ public sealed class TenantMastersControllerTests
             employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion), false, true));
         Assert.IsType<BadRequestObjectResult>(crossTenantLink.Result);
         Assert.Equal(user.Id, (await context.MunicipalEmployees.SingleAsync()).IdentityUserId);
+    }
+
+    [Fact]
+    public async Task Employee_salary_reference_is_persisted_and_returned_only_through_member_authorized_contracts()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new TestTenantContext(83, "salary-administrator");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Id = 83, Code = "M83", Name = "Municipality 83" };
+        var user = IdpTestFixture.CreateUser(tenant.UserId!);
+        user.MunicipalityId = municipality.Id;
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = new TenantMastersController(context, tenant, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var createdResult = await controller.CreateEmployee(new SaveEmployeeRequest(
+            "E083", "Salary", "Protected", null, null, DateTime.UtcNow.AddDays(-1), null, "SAL-083"));
+        var created = Assert.IsType<ApiResponse<EmployeeDto>>(Assert.IsType<OkObjectResult>(createdResult.Result).Value).Data!;
+        Assert.Equal("SAL-083", created.SalaryReference);
+
+        var updatedResult = await controller.UpdateEmployee(created.PublicId, new UpdateEmployeeRequest(
+            created.FirstName, created.LastName, null, null, true, created.EffectiveFrom, null, created.RowVersion,
+            false, false, "SAL-083-REVISED", true));
+        var updated = Assert.IsType<ApiResponse<EmployeeDto>>(Assert.IsType<OkObjectResult>(updatedResult.Result).Value).Data!;
+        Assert.Equal("SAL-083-REVISED", updated.SalaryReference);
+        Assert.Equal("SAL-083-REVISED", (await context.MunicipalEmployees.SingleAsync()).SalaryReference);
     }
 
     [Fact]
@@ -212,6 +261,7 @@ public sealed class TenantMastersControllerTests
             setup.MunicipalEmployees.AddRange(Enumerable.Range(1, 31).Select(index => new MunicipalEmployee
             {
                 MunicipalityId = 91, EmployeeNumber = $"E{index:000}", FirstName = $"Person{index:000}", LastName = "Local",
+                SalaryReference = index == 15 ? "SALARY-015" : null,
                 EmailAddress = $"person{index:000}@example.test", EffectiveFrom = DateTime.UtcNow.AddYears(-1)
             }));
             setup.MunicipalEmployees.AddRange(
@@ -239,6 +289,9 @@ public sealed class TenantMastersControllerTests
         Assert.Equal(10, payload.Items.Length);
         Assert.Equal(4, payload.TotalPages);
         Assert.DoesNotContain(payload.Items, item => item.EmployeeNumber == "FOREIGN");
+        var salaryResult = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "SALARY-015", SortBy = "salaryReference", SortDirection = "asc" });
+        var salaryPayload = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(salaryResult.Result).Value).Data!;
+        Assert.Equal("SALARY-015", Assert.Single(salaryPayload.Items).SalaryReference);
         var activeResult = await controller.GetEmployeesPage(new PagedQueryRequest { PageSize = 100, SortBy = "name", SortDirection = "asc" }, true);
         var activePayload = Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(activeResult.Result).Value).Data!;
         Assert.Equal(31, activePayload.TotalCount);

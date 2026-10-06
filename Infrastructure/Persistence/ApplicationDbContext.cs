@@ -252,6 +252,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<MunicipalEmployee>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<MunicipalEmployee>().HasIndex(item => new { item.MunicipalityId, item.EmployeeNumber }).IsUnique();
         builder.Entity<MunicipalEmployee>().HasIndex(item => item.IdentityUserId).IsUnique().HasFilter("[IdentityUserId] IS NOT NULL");
+        builder.Entity<MunicipalEmployee>().Property(item => item.SalaryReference).HasMaxLength(120);
         ConfigureRowVersion(builder.Entity<MunicipalEmployee>().Property(item => item.RowVersion));
         builder.Entity<MunicipalEmployee>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<MunicipalEmployee>().HasOne(item => item.IdentityUser).WithMany().HasForeignKey(item => item.IdentityUserId).OnDelete(DeleteBehavior.Restrict);

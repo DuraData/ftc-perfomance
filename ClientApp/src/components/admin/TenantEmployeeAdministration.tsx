@@ -25,6 +25,8 @@ export function TenantEmployeeAdministration() {
   const security = useSecurity();
   const canReadEmployeeNumber = security.canReadField('EMPLOYEE', 'EmployeeNumber');
   const canEditEmployeeNumber = security.canEditField('EMPLOYEE', 'EmployeeNumber');
+  const canReadSalaryReference = security.canReadField('EMPLOYEE', 'SalaryReference');
+  const canEditSalaryReference = security.canEditField('EMPLOYEE', 'SalaryReference');
   const canReadIdentityLink = security.canReadField('EMPLOYEE', 'IdentityUserId');
   const canEditIdentityLink = security.canEditField('EMPLOYEE', 'IdentityUserId');
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
@@ -47,7 +49,7 @@ export function TenantEmployeeAdministration() {
   const [assignmentSearch, setAssignmentSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [employee, setEmployee] = useState({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() });
+  const [employee, setEmployee] = useState({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() });
   const [assignment, setAssignment] = useState({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true });
   const [closure, setClosure] = useState({ effectiveTo: today(), reason: '' });
   const selected = employees.find(item => item.publicId === selectedId) ?? null;
@@ -106,16 +108,16 @@ export function TenantEmployeeAdministration() {
   const saveEmployee = async () => {
     if (!employee.employeeNumber.trim() || !employee.firstName.trim() || !employee.lastName.trim()) { setError('Employee number, first name, and last name are required.'); return; }
     setBusy(true); setError(null);
-    const result = await createMunicipalEmployee({ ...employee, emailAddress: security.canEditField('EMPLOYEE', 'EmailAddress') ? employee.emailAddress || null : null, identityUserId: canEditIdentityLink ? employee.identityUserId || null : null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
+    const result = await createMunicipalEmployee({ ...employee, salaryReference: canEditSalaryReference ? employee.salaryReference || null : null, emailAddress: security.canEditField('EMPLOYEE', 'EmailAddress') ? employee.emailAddress || null : null, identityUserId: canEditIdentityLink ? employee.identityUserId || null : null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
     if (!result.success) setError(result.message ?? 'Employee could not be created.');
-    else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() }); if (page === 1) await loadEmployees(); else setPage(1); }
+    else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() }); if (page === 1) await loadEmployees(); else setPage(1); }
     setBusy(false);
   };
 
   const deactivateEmployee = async () => {
     if (!selected) return;
     setBusy(true); setError(null);
-    const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, emailAddress: null, emailAddressSpecified: false, identityUserId: null, identityUserIdSpecified: false, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
+    const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, salaryReference: null, salaryReferenceSpecified: false, emailAddress: null, emailAddressSpecified: false, identityUserId: null, identityUserIdSpecified: false, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
     if (!result.success) setError(result.message ?? 'Employee could not be deactivated.');
     else { pushToast('success', 'Employee deactivated without deleting placement history'); setSelectedId(''); setAssignments([]); await loadEmployees(); }
     setBusy(false);
@@ -146,6 +148,7 @@ export function TenantEmployeeAdministration() {
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE') && canEditEmployeeNumber && <FormPanel title="Create employee" description="Identity linkage is optional and does not replace the municipal employee record." icon={<UserRound className="h-5 w-5" />}>
           <Input label="Employee number" value={employee.employeeNumber} onChange={event => setEmployee(current => ({ ...current, employeeNumber: event.target.value }))} required />
+          {canReadSalaryReference && <Input label="Salary reference" value={employee.salaryReference} disabled={!canEditSalaryReference} onChange={event => setEmployee(current => ({ ...current, salaryReference: event.target.value }))} />}
           <div className="grid grid-cols-2 gap-2"><Input label="First name" value={employee.firstName} onChange={event => setEmployee(current => ({ ...current, firstName: event.target.value }))} required /><Input label="Last name" value={employee.lastName} onChange={event => setEmployee(current => ({ ...current, lastName: event.target.value }))} required /></div>
           {security.canReadField('EMPLOYEE', 'EmailAddress') && <Input label="Email" type="email" value={employee.emailAddress} disabled={!security.canEditField('EMPLOYEE', 'EmailAddress')} onChange={event => setEmployee(current => ({ ...current, emailAddress: event.target.value }))} />}
           {canReadIdentityLink && <Input label="Search linked logins" value={userSearch} disabled={!canEditIdentityLink} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />}
@@ -154,7 +157,16 @@ export function TenantEmployeeAdministration() {
           <Input label="Effective from" type="date" value={employee.effectiveFrom} onChange={event => setEmployee(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => void saveEmployee()} disabled={busy}>Create employee</Button>
         </FormPanel>}
-        <Card className="p-4"><div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Employee register</h3><Badge variant="primary">{totalCount} employees</Badge></div><div className="mt-3 grid gap-2 md:grid-cols-[1fr_11rem_9rem]"><Input aria-label="Search employees" placeholder={canReadEmployeeNumber ? 'Number, name, or permitted contact fields' : 'Name or permitted contact fields'} value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /><Select aria-label="Sort employees" value={sortBy} options={[{ value: 'name', label: 'Name' }, ...(canReadEmployeeNumber ? [{ value: 'employeeNumber', label: 'Employee number' }] : []), { value: 'status', label: 'Status' }, { value: 'effectiveFrom', label: 'Effective from' }, ...(security.canReadField('EMPLOYEE', 'EmailAddress') ? [{ value: 'email', label: 'Email' }] : [])]} onChange={event => { setSortBy(event.target.value); setPage(1); }} /><Select aria-label="Sort direction" value={sortDirection} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} /></div><div className="mt-3 space-y-2">{employees.map(item => <button type="button" key={item.publicId} onClick={() => void selectEmployee(item.publicId)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left ${selectedId === item.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}><div><p className="font-medium">{item.firstName} {item.lastName}</p><p className="text-xs text-secondary-500">{item.employeeNumber ?? 'Employee number protected'}{security.canReadField('EMPLOYEE', 'EmailAddress') ? ` · ${item.emailAddress || 'No email'}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!busy && employees.length === 0 && <p className="py-6 text-center text-sm text-secondary-500">No employees match the current search.</p>}</div>{totalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></div></div>}</Card>
+        <Card className="p-4">
+          <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Employee register</h3><Badge variant="primary">{totalCount} employees</Badge></div>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_11rem_9rem]">
+            <Input aria-label="Search employees" placeholder={canReadEmployeeNumber ? 'Number, name, or permitted protected fields' : 'Name or permitted protected fields'} value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
+            <Select aria-label="Sort employees" value={sortBy} options={[{ value: 'name', label: 'Name' }, ...(canReadEmployeeNumber ? [{ value: 'employeeNumber', label: 'Employee number' }] : []), ...(canReadSalaryReference ? [{ value: 'salaryReference', label: 'Salary reference' }] : []), { value: 'status', label: 'Status' }, { value: 'effectiveFrom', label: 'Effective from' }, ...(security.canReadField('EMPLOYEE', 'EmailAddress') ? [{ value: 'email', label: 'Email' }] : [])]} onChange={event => { setSortBy(event.target.value); setPage(1); }} />
+            <Select aria-label="Sort direction" value={sortDirection} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} />
+          </div>
+          <div className="mt-3 space-y-2">{employees.map(item => <button type="button" key={item.publicId} onClick={() => void selectEmployee(item.publicId)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left ${selectedId === item.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}><div><p className="font-medium">{item.firstName} {item.lastName}</p><p className="text-xs text-secondary-500">{item.employeeNumber ?? 'Employee number protected'}{canReadSalaryReference ? ` · Salary ${item.salaryReference || 'not set'}` : ''}{security.canReadField('EMPLOYEE', 'EmailAddress') ? ` · ${item.emailAddress || 'No email'}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!busy && employees.length === 0 && <p className="py-6 text-center text-sm text-secondary-500">No employees match the current search.</p>}</div>
+          {totalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></div></div>}
+        </Card>
       </div>
       {selected && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE_ASSIGNMENT') && selected.isActive && <FormPanel title={`New placement · ${selected.firstName} ${selected.lastName}`} description="Overlapping effective dates are rejected by the server." icon={<Briefcase className="h-5 w-5" />}>

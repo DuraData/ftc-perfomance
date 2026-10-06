@@ -81,6 +81,7 @@ public class MunicipalEmployee
     public Guid PublicId { get; set; } = Guid.NewGuid();
     public long MunicipalityId { get; set; }
     public string EmployeeNumber { get; set; } = string.Empty;
+    public string? SalaryReference { get; set; }
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string? EmailAddress { get; set; }

@@ -21,7 +21,7 @@ describe('TenantEmployeeAdministration', () => {
     security.canUpdate.mockReturnValue(true);
     security.canReadField.mockReturnValue(true);
     security.canEditField.mockReturnValue(true);
-    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: 'E001', firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: 'E001', salaryReference: 'SAL-001', firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'department-1', code: 'FIN', name: 'Finance', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'unit-1', departmentPublicId: 'department-1', departmentName: 'Finance', code: 'BUD', name: 'Budget', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getPositionMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'position-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', code: 'CFO', name: 'Chief Financial Officer', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Aw==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -29,6 +29,7 @@ describe('TenantEmployeeAdministration', () => {
     api.getEmployeeAssignmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.createEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
     api.closeEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
+    api.createMunicipalEmployee.mockResolvedValue({ success: true, data: {} });
   });
 
   it('loads tenant employees and creates an effective-dated placement using public identifiers', async () => {
@@ -59,6 +60,19 @@ describe('TenantEmployeeAdministration', () => {
     await waitFor(() => expect(api.closeEmployeeAssignment).toHaveBeenCalledWith('assignment-1', expect.objectContaining({ reason: 'Organizational placement ended', rowVersion: 'Ag==' })));
   });
 
+  it('creates a salary reference only through the protected employee member control', async () => {
+    render(<TenantEmployeeAdministration />);
+    fireEvent.change(await screen.findByLabelText(/Employee number/), { target: { value: 'E002' } });
+    fireEvent.change(screen.getByLabelText('Salary reference'), { target: { value: 'SAL-002' } });
+    fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Lebo' } });
+    fireEvent.change(screen.getByLabelText(/Last name/), { target: { value: 'Dlamini' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create employee' }));
+
+    await waitFor(() => expect(api.createMunicipalEmployee).toHaveBeenCalledWith(expect.objectContaining({
+      employeeNumber: 'E002', salaryReference: 'SAL-002', firstName: 'Lebo', lastName: 'Dlamini',
+    })));
+  });
+
   it('searches and pages retained placement history with authoritative totals', async () => {
     api.getEmployeeAssignmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 } });
     render(<TenantEmployeeAdministration />);
@@ -77,16 +91,18 @@ describe('TenantEmployeeAdministration', () => {
   });
 
   it('does not expose protected employee identifiers or load linked logins without member permissions', async () => {
-    security.canReadField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'IdentityUserId');
-    security.canEditField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'IdentityUserId');
-    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: null, firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', identityUserId: null, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    security.canReadField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'SalaryReference' && member !== 'IdentityUserId');
+    security.canEditField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'SalaryReference' && member !== 'IdentityUserId');
+    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: null, salaryReference: null, firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', identityUserId: null, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
 
     render(<TenantEmployeeAdministration />);
 
     expect(await screen.findByText(/Employee number protected/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Employee number')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Salary reference')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Linked login')).not.toBeInTheDocument();
     expect(api.getUsersPage).not.toHaveBeenCalled();
     expect(screen.queryByRole('option', { name: 'Employee number' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Salary reference' })).not.toBeInTheDocument();
   });
 });
