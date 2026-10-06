@@ -12,6 +12,7 @@ import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
   createIpmsTarget,
   createOpmsTarget,
+  getPerformanceConfigurationCatalogue,
   getStrategicClassificationCatalogue,
   getIpmsTarget,
   getIpmsTargetOptions,
@@ -32,6 +33,7 @@ import type {
   SaveOpmsTargetPayload,
   SaveTargetPeriodValuePayload,
   PerformanceTargetOptionDto,
+  PerformanceConfigurationCatalogueDto,
   StrategicClassificationCatalogueDto,
   StrategicCatalogueItemDto,
   SdbipLayerMasterDto,
@@ -752,9 +754,10 @@ function periodTarget(
   unitValue?: string,
   budgetValue?: string,
   description?: string,
+  configuration?: PerformanceConfigurationCatalogueDto,
 ): SaveTargetPeriodValuePayload | null {
   if (!targetValue?.trim()) return null;
-  return canonicalPeriodTarget(periodType, targetValue, unitValue ?? 'AbsoluteCount', budgetValue ? Number(budgetValue) : null, description);
+  return canonicalPeriodTarget(periodType, targetValue, unitValue ?? 'AbsoluteCount', budgetValue ? Number(budgetValue) : null, description, configuration);
 }
 
 function targetValueInputType(value: string): 'text' | 'number' | 'date' {
@@ -764,18 +767,18 @@ function targetValueInputType(value: string): 'text' | 'number' | 'date' {
   return 'number';
 }
 
-function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState): SaveTargetPeriodValuePayload[] {
+function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveTargetPeriodValuePayload[] {
   return [
-    periodTarget(1, form.q1Target, form.q1UnitType, form.q1Budget, form.q1Description),
-    periodTarget(2, form.q2Target, form.q2UnitType, form.q2Budget, form.q2Description),
-    periodTarget(3, form.midTermTarget, form.midTermUnitType, form.midTermBudget, form.midTermDescription),
-    periodTarget(4, form.q3Target, form.q3UnitType, form.q3Budget, form.q3Description),
-    periodTarget(5, form.q4Target, form.q4UnitType, form.q4Budget, form.q4Description),
-    periodTarget(6, form.annualTarget, form.annualUnitType, '', form.annualTargetDescription),
+    periodTarget(1, form.q1Target, form.q1UnitType, form.q1Budget, form.q1Description, configuration),
+    periodTarget(2, form.q2Target, form.q2UnitType, form.q2Budget, form.q2Description, configuration),
+    periodTarget(3, form.midTermTarget, form.midTermUnitType, form.midTermBudget, form.midTermDescription, configuration),
+    periodTarget(4, form.q3Target, form.q3UnitType, form.q3Budget, form.q3Description, configuration),
+    periodTarget(5, form.q4Target, form.q4UnitType, form.q4Budget, form.q4Description, configuration),
+    periodTarget(6, form.annualTarget, form.annualUnitType, '', form.annualTargetDescription, configuration),
   ].filter((item): item is SaveTargetPeriodValuePayload => item !== null);
 }
 
-export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
+export function buildOpmsPayload(form: OpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveOpmsTargetPayload {
   return {
     sdbipLayerPublicId: form.sdbipLayerPublicId || null,
     sourceTemplateId: form.sourceTemplateId || null,
@@ -822,11 +825,11 @@ export function buildOpmsPayload(form: OpmsFormState): SaveOpmsTargetPayload {
     internalReference: form.internalReference || null,
     fmsLink: form.fmsLink || null,
     isRevised: form.isRevised,
-    periodTargets: buildCanonicalPeriodTargets(form),
+    periodTargets: buildCanonicalPeriodTargets(form, configuration),
   };
 }
 
-function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
+function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveIpmsTargetPayload {
   return {
     sourceTemplateId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
@@ -867,7 +870,7 @@ function buildIpmsPayload(form: IpmsFormState): SaveIpmsTargetPayload {
     idpReference: form.idpReference || null,
     internalReference: form.internalReference || null,
     isRevised: form.isRevised,
-    periodTargets: buildCanonicalPeriodTargets(form),
+    periodTargets: buildCanonicalPeriodTargets(form, configuration),
   };
 }
 
@@ -953,6 +956,36 @@ function useStrategicCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearP
     return () => { cancelled = true; };
   }, [kind, municipalityFinancialYearPublicId]);
   return { catalogue, catalogueError };
+}
+
+function usePerformanceConfiguration() {
+  const [configuration, setConfiguration] = useState<PerformanceConfigurationCatalogueDto>();
+  const [configurationError, setConfigurationError] = useState('');
+  const [configurationLoading, setConfigurationLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    void getPerformanceConfigurationCatalogue().then(result => {
+      if (cancelled) return;
+      if (result.success && result.data) {
+        setConfiguration(result.data);
+        setConfigurationError('');
+      } else {
+        setConfiguration(undefined);
+        setConfigurationError(result.message ?? 'Unable to load OPMS unit and performance-direction configuration.');
+      }
+      setConfigurationLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return { configuration, configurationError, configurationLoading };
+}
+
+function configuredUnitOptions(configuration?: PerformanceConfigurationCatalogueDto): { value: TargetUnitType; label: string }[] {
+  if (!configuration) return targetUnitTypeOptions;
+  return configuration.opmsUnits.map(item => ({
+    value: performanceUnitValue(item.engineUnitKind),
+    label: `${item.name}${item.symbol ? ` (${item.symbol})` : ''}`,
+  }));
 }
 
 export function childrenFor(catalogue: StrategicClassificationCatalogueDto | undefined, relationshipType: string, parentPublicId: string, items: StrategicCatalogueItemDto[]) {
@@ -1044,6 +1077,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
   const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
   const { catalogue, catalogueError } = useStrategicCatalogue('opms', form.municipalityFinancialYearPublicId);
+  const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
+  const performanceUnitOptions = configuredUnitOptions(configuration);
   useEffect(() => {
     if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
   }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.standardClassificationHint, form.unitOfMeasureHint]);
@@ -1112,6 +1147,10 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   }, [pushToast, targetId]);
 
   const handleSave = async () => {
+    if (!configuration) {
+      pushToast('error', configurationError || 'OPMS unit configuration is not available.');
+      return;
+    }
     const errors = validateOpmsForm(form);
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -1120,7 +1159,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     }
 
     setValidationErrors([]);
-    const payload = buildOpmsPayload(form);
+    const payload = buildOpmsPayload(form, configuration);
     const result = targetId
       ? await updateOpmsTarget(targetId, payload)
       : await createOpmsTarget(payload);
@@ -1134,7 +1173,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     pushToast('error', result.message ?? `Failed to ${targetId ? 'update' : 'create'} OPMS target`);
   };
 
-  if (isLoading || referenceData.isLoading) {
+  if (isLoading || referenceData.isLoading || configurationLoading) {
     return (
       <AppShell title={targetId ? 'Edit OPMS Target' : 'Create OPMS Target'} subtitle="Full OPMS target workspace">
         <Card>
@@ -1144,10 +1183,10 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  if (referenceData.error) {
+  if (referenceData.error || configurationError) {
     return (
       <AppShell title={targetId ? 'Edit OPMS Target' : 'Create OPMS Target'} subtitle="Full OPMS target workspace">
-        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
+        <Card><p className="text-sm text-error-600">{referenceData.error || configurationError}</p></Card>
       </AppShell>
     );
   }
@@ -1383,7 +1422,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                     annualUnitType: unitType,
                   }));
                 }}
-                options={targetUnitTypeOptions}
+                options={performanceUnitOptions}
               />
               <Select label="KPI Type" required value={form.kpiTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.kpiTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.kpiTypes, form.kpiTypePublicId, form.kpiType)} />
               <Select label="Indicator Type" required value={form.indicatorTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.indicatorTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.indicatorTypes, form.indicatorTypePublicId, form.indicatorType)} />
@@ -1425,14 +1464,14 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
         <div className={targetId ? 'hidden' : ''} aria-hidden={targetId ? true : undefined}>
         <FormPanel title="Initial legacy quarterly values" description="Used only while creating the KPI. After creation, authoritative values are maintained by reporting period." icon={<CalendarRange className="h-5 w-5" />}>
           <FormRow cols={3}>
-            <Select label="Q1 Unit" value={form.q1UnitType} onChange={(event) => setForm(prev => ({ ...prev, q1UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Q2 Unit" value={form.q2UnitType} onChange={(event) => setForm(prev => ({ ...prev, q2UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Mid-Year Unit" value={form.midTermUnitType} onChange={(event) => setForm(prev => ({ ...prev, midTermUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
+            <Select label="Q1 Unit" value={form.q1UnitType} onChange={(event) => setForm(prev => ({ ...prev, q1UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Q2 Unit" value={form.q2UnitType} onChange={(event) => setForm(prev => ({ ...prev, q2UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Mid-Year Unit" value={form.midTermUnitType} onChange={(event) => setForm(prev => ({ ...prev, midTermUnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
           </FormRow>
           <FormRow cols={3}>
-            <Select label="Q3 Unit" value={form.q3UnitType} onChange={(event) => setForm(prev => ({ ...prev, q3UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Q4 Unit" value={form.q4UnitType} onChange={(event) => setForm(prev => ({ ...prev, q4UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Annual Unit" value={form.annualUnitType} onChange={(event) => setForm(prev => ({ ...prev, annualUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
+            <Select label="Q3 Unit" value={form.q3UnitType} onChange={(event) => setForm(prev => ({ ...prev, q3UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Q4 Unit" value={form.q4UnitType} onChange={(event) => setForm(prev => ({ ...prev, q4UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Annual Unit" value={form.annualUnitType} onChange={(event) => setForm(prev => ({ ...prev, annualUnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
           </FormRow>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {/* Q1 */}
@@ -1634,6 +1673,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
   const { catalogue, catalogueError } = useStrategicCatalogue('ipms', form.municipalityFinancialYearPublicId);
+  const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
+  const performanceUnitOptions = configuredUnitOptions(configuration);
   useEffect(() => {
     if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
   }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.unitOfMeasureHint]);
@@ -1682,6 +1723,10 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   }, [pushToast, targetId]);
 
   const handleSave = async () => {
+    if (!configuration) {
+      pushToast('error', configurationError || 'OPMS unit configuration is not available.');
+      return;
+    }
     const errors = validateIpmsForm(form);
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -1690,7 +1735,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     }
 
     setValidationErrors([]);
-    const payload = buildIpmsPayload(form);
+    const payload = buildIpmsPayload(form, configuration);
     const result = targetId
       ? await updateIpmsTarget(targetId, payload)
       : await createIpmsTarget(payload);
@@ -1704,7 +1749,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     pushToast('error', result.message ?? `Failed to ${targetId ? 'update' : 'create'} IPMS target`);
   };
 
-  if (isLoading || referenceData.isLoading) {
+  if (isLoading || referenceData.isLoading || configurationLoading) {
     return (
       <AppShell title={targetId ? 'Edit IPMS Target' : 'Create IPMS Target'} subtitle="Full IPMS target workspace">
         <Card>
@@ -1714,10 +1759,10 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  if (referenceData.error) {
+  if (referenceData.error || configurationError) {
     return (
       <AppShell title={targetId ? 'Edit IPMS Target' : 'Create IPMS Target'} subtitle="Full IPMS target workspace">
-        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
+        <Card><p className="text-sm text-error-600">{referenceData.error || configurationError}</p></Card>
       </AppShell>
     );
   }
@@ -1839,7 +1884,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                     annualUnitType: unitType,
                   }));
                 }}
-                options={targetUnitTypeOptions}
+                options={performanceUnitOptions}
               />
               <Select label="KPI Type" required value={form.kpiTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.kpiTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.kpiTypes, form.kpiTypePublicId, form.kpiType)} />
               <Select label="Indicator Type" required value={form.indicatorTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.indicatorTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.indicatorTypes, form.indicatorTypePublicId, form.indicatorType)} />
@@ -1882,14 +1927,14 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
         <div className={targetId ? 'hidden' : ''} aria-hidden={targetId ? true : undefined}>
         <FormPanel title="Initial legacy quarterly values" description="Used only while creating the KPI. After creation, authoritative values are maintained by reporting period." icon={<CalendarRange className="h-5 w-5" />}>
           <FormRow cols={3}>
-            <Select label="Q1 Unit" value={form.q1UnitType} onChange={(event) => setForm(prev => ({ ...prev, q1UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Q2 Unit" value={form.q2UnitType} onChange={(event) => setForm(prev => ({ ...prev, q2UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Mid-Year Unit" value={form.midTermUnitType} onChange={(event) => setForm(prev => ({ ...prev, midTermUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
+            <Select label="Q1 Unit" value={form.q1UnitType} onChange={(event) => setForm(prev => ({ ...prev, q1UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Q2 Unit" value={form.q2UnitType} onChange={(event) => setForm(prev => ({ ...prev, q2UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Mid-Year Unit" value={form.midTermUnitType} onChange={(event) => setForm(prev => ({ ...prev, midTermUnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
           </FormRow>
           <FormRow cols={3}>
-            <Select label="Q3 Unit" value={form.q3UnitType} onChange={(event) => setForm(prev => ({ ...prev, q3UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Q4 Unit" value={form.q4UnitType} onChange={(event) => setForm(prev => ({ ...prev, q4UnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
-            <Select label="Annual Unit" value={form.annualUnitType} onChange={(event) => setForm(prev => ({ ...prev, annualUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypeOptions} />
+            <Select label="Q3 Unit" value={form.q3UnitType} onChange={(event) => setForm(prev => ({ ...prev, q3UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Q4 Unit" value={form.q4UnitType} onChange={(event) => setForm(prev => ({ ...prev, q4UnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
+            <Select label="Annual Unit" value={form.annualUnitType} onChange={(event) => setForm(prev => ({ ...prev, annualUnitType: event.target.value as TargetUnitType }))} options={performanceUnitOptions} />
           </FormRow>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {/* Q1 */}

@@ -7,11 +7,14 @@ namespace FTCERP.Host.Infrastructure.Persistence;
 public partial class ApplicationDbContext
 {
     public DbSet<PerformanceCalculationTypeDefinition> PerformanceCalculationTypes { get; set; } = null!;
+    public DbSet<OpmsUnitDefinition> OpmsUnitDefinitions { get; set; } = null!;
+    public DbSet<PerformanceDirectionDefinition> PerformanceDirectionDefinitions { get; set; } = null!;
     public DbSet<MunicipalityConsolidationPolicy> MunicipalityConsolidationPolicies { get; set; } = null!;
     public DbSet<PerformanceSuggestionEvent> PerformanceSuggestionEvents { get; set; } = null!;
 
     private void ConfigurePerformanceConsolidation(ModelBuilder builder)
     {
+        ConfigurePerformanceConfiguration(builder);
         builder.Entity<PerformanceCalculationTypeDefinition>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<PerformanceCalculationTypeDefinition>().HasIndex(item => item.Code).IsUnique();
         builder.Entity<PerformanceCalculationTypeDefinition>().Property(item => item.Code).HasMaxLength(40);
@@ -80,4 +83,80 @@ public partial class ApplicationDbContext
 
     private static PerformanceCalculationTypeDefinition Definition(long id, string code, string name, string description) =>
         new() { Id = id, PublicId = Guid.Parse($"00000000-0000-0000-0000-{id:000000000000}"), Code = code, Name = name, Description = description, IsActive = true };
+
+    private void ConfigurePerformanceConfiguration(ModelBuilder builder)
+    {
+        builder.Entity<PerformanceDirectionDefinition>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<PerformanceDirectionDefinition>().HasIndex(item => item.Code).IsUnique();
+        builder.Entity<PerformanceDirectionDefinition>().Property(item => item.Code).HasMaxLength(50);
+        builder.Entity<PerformanceDirectionDefinition>().Property(item => item.Name).HasMaxLength(150);
+        builder.Entity<PerformanceDirectionDefinition>().Property(item => item.Description).HasMaxLength(1000);
+        ConfigureRowVersion(builder.Entity<PerformanceDirectionDefinition>().Property(item => item.RowVersion));
+        builder.Entity<PerformanceDirectionDefinition>().HasData(PerformanceDirections());
+
+        builder.Entity<OpmsUnitDefinition>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<OpmsUnitDefinition>().HasIndex(item => item.Code).IsUnique();
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.Code).HasMaxLength(50);
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.Name).HasMaxLength(150);
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.InputControlType).HasMaxLength(50);
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.ValueDataType).HasMaxLength(30);
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.Symbol).HasMaxLength(20);
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.MinValue).HasPrecision(19, 6);
+        builder.Entity<OpmsUnitDefinition>().Property(item => item.MaxValue).HasPrecision(19, 6);
+        ConfigureRowVersion(builder.Entity<OpmsUnitDefinition>().Property(item => item.RowVersion));
+        builder.Entity<OpmsUnitDefinition>().HasOne(item => item.DefaultPerformanceDirection).WithMany()
+            .HasForeignKey(item => item.DefaultPerformanceDirectionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsUnitDefinition>().HasData(OpmsUnits());
+
+        builder.Entity<PerformancePeriodTarget>().HasOne(item => item.OpmsUnit).WithMany()
+            .HasForeignKey(item => item.OpmsUnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<PerformancePeriodTarget>().HasOne(item => item.PerformanceDirectionDefinition).WithMany()
+            .HasForeignKey(item => item.PerformanceDirectionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<PerformancePeriodTarget>().HasOne(item => item.RevisedOpmsUnit).WithMany()
+            .HasForeignKey(item => item.RevisedOpmsUnitId).OnDelete(DeleteBehavior.Restrict);
+    }
+
+    private static PerformanceDirectionDefinition[] PerformanceDirections() =>
+    [
+        Direction(1, "TARGET_OR_HIGHER", "Target or higher", "Actual at or above target is achieved.", PerformanceDirection.HigherIsBetter),
+        Direction(2, "TARGET_OR_LOWER", "Target or lower", "Actual at or below target is achieved.", PerformanceDirection.LowerIsBetter),
+        Direction(3, "EXACT", "Exact", "Actual must equal target.", PerformanceDirection.Exact),
+        Direction(4, "HIGHER_BETTER", "Higher is better", "Higher normalized performance is favourable.", PerformanceDirection.HigherIsBetter),
+        Direction(5, "LOWER_BETTER", "Lower is better", "Lower normalized performance is favourable.", PerformanceDirection.LowerIsBetter),
+        Direction(6, "ON_OR_BEFORE_DATE", "On or before date", "Actual date must be on or before the target date.", PerformanceDirection.LowerIsBetter),
+        Direction(7, "ON_OR_AFTER_DATE", "On or after date", "Actual date must be on or after the target date.", PerformanceDirection.HigherIsBetter),
+        Direction(8, "YES_IS_SUCCESS", "Yes is success", "A Yes actual is achieved.", PerformanceDirection.Exact),
+        Direction(9, "NO_IS_SUCCESS", "No is success", "A No actual is achieved.", PerformanceDirection.Exact),
+        Direction(10, "MANUAL", "Manual", "The system does not determine achievement.", PerformanceDirection.Exact),
+    ];
+
+    private static PerformanceDirectionDefinition Direction(long id, string code, string name, string description, PerformanceDirection engineDirection) =>
+        new() { Id = id, PublicId = Guid.Parse($"10000000-0000-0000-0000-{id:000000000000}"), Code = code, Name = name, Description = description, EngineDirection = engineDirection, IsActive = true };
+
+    private static OpmsUnitDefinition[] OpmsUnits() =>
+    [
+        Unit(1, "NUMBER", "Number", "NUMERIC", "DECIMAL", null, 2, 0, null, true, 1, false, false, PerformanceUnitKind.AbsoluteCount),
+        Unit(2, "PERCENT", "Percentage", "NUMERIC", "DECIMAL", "%", 2, 0, 100, true, 1, false, false, PerformanceUnitKind.PercentageBased),
+        Unit(3, "FINANCIAL", "Financial", "CURRENCY", "DECIMAL", "R", 2, 0, null, true, 1, false, false, PerformanceUnitKind.Financial),
+        Unit(4, "DATE", "Date", "DATE", "DATE", null, null, null, null, true, 6, false, false, PerformanceUnitKind.Date),
+        Unit(5, "RATIO", "Ratio", "RATIO", "JSON", null, 6, 0, null, true, 1, true, false, PerformanceUnitKind.Ratios),
+        Unit(6, "TIME", "Time", "NUMERIC_UNIT", "DECIMAL", null, 2, 0, null, true, 2, true, false, PerformanceUnitKind.TimeBased),
+        Unit(7, "AREA", "Area", "NUMERIC_UNIT", "DECIMAL", null, 2, 0, null, true, 1, true, false, PerformanceUnitKind.AreaBased),
+        Unit(8, "VOLUME", "Volume", "NUMERIC_UNIT", "DECIMAL", null, 2, 0, null, true, 1, true, false, PerformanceUnitKind.VolumeBased),
+        Unit(9, "YES_NO", "Yes or No", "SELECT", "BOOLEAN", null, null, null, null, true, 8, false, false, PerformanceUnitKind.Binary),
+        Unit(10, "SCALE_1_3", "Scale 1 to 3", "SELECT", "INTEGER", null, 0, 1, 3, true, 1, false, false, PerformanceUnitKind.ReadinessScale),
+        Unit(11, "ZERO_NUMBER", "Zero number", "NUMERIC", "DECIMAL", null, 2, 0, null, true, 2, false, false, PerformanceUnitKind.ZeroBased),
+        Unit(12, "QUALITATIVE", "Qualitative", "TEXT", "TEXT", null, null, null, null, false, 10, false, true, PerformanceUnitKind.QualitativeTargets),
+    ];
+
+    private static OpmsUnitDefinition Unit(long id, string code, string name, string inputControlType, string valueDataType, string? symbol,
+        int? decimalPlaces, decimal? minValue, decimal? maxValue, bool supportsAutoVariance, long? defaultDirectionId,
+        bool requiresComponentUi, bool isQualitative, PerformanceUnitKind engineUnitKind) => new()
+    {
+        Id = id, PublicId = Guid.Parse($"20000000-0000-0000-0000-{id:000000000000}"), Code = code, Name = name,
+        InputControlType = inputControlType, ValueDataType = valueDataType, Symbol = symbol, DecimalPlaces = decimalPlaces,
+        MinValue = minValue, MaxValue = maxValue, SupportsAutoVariance = supportsAutoVariance,
+        DefaultPerformanceDirectionId = defaultDirectionId, RequiresComponentUi = requiresComponentUi,
+        IsQualitative = isQualitative, EngineUnitKind = engineUnitKind, IsActive = true
+    };
 }

@@ -22,4 +22,18 @@ describe('canonical performance target contract', () => {
     expect(rows).toEqual([{ periodType: 1, unitKind: 8, direction: 1, targetValue: '2:1', budgetValue: 10, description: 'Ratio' }]);
     expect(performanceUnitValue(8)).toBe('Ratios');
   });
+
+  it('uses persisted OPMS unit and performance-direction identifiers when a catalogue is supplied', () => {
+    const result = canonicalPeriodTarget(6, '2027-06-30', 'Date', null, null, {
+      opmsUnits: [{ publicId: 'unit-date', code: 'DATE', name: 'Date', inputControlType: 'DATE', valueDataType: 'DATE', supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-before', requiresComponentUi: false, isQualitative: false, engineUnitKind: 10, isActive: true }],
+      performanceDirections: [{ publicId: 'direction-before', code: 'ON_OR_BEFORE_DATE', name: 'On or before date', description: 'On time.', engineDirection: 2, isActive: true }],
+    });
+
+    expect(result).toMatchObject({
+      unitKind: 10,
+      direction: 2,
+      opmsUnitPublicId: 'unit-date',
+      performanceDirectionPublicId: 'direction-before',
+    });
+  });
 });

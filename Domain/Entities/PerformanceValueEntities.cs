@@ -10,11 +10,14 @@ public class PerformancePeriodTarget
     public long ReportingPeriodId { get; set; }
     public string? OpmsTargetId { get; set; }
     public string? IpmsTargetId { get; set; }
+    public long? OpmsUnitId { get; set; }
+    public long? PerformanceDirectionId { get; set; }
     public PerformanceUnitKind UnitKind { get; set; }
     public PerformanceDirection Direction { get; set; } = PerformanceDirection.HigherIsBetter;
     public string TargetValue { get; set; } = string.Empty;
     public bool IsTargetRevised { get; set; }
     public string? RevisedTargetValue { get; set; }
+    public long? RevisedOpmsUnitId { get; set; }
     public PerformanceUnitKind? RevisedUnitKind { get; set; }
     public decimal? BudgetValue { get; set; }
     public bool IsBudgetRevised { get; set; }
@@ -32,6 +35,9 @@ public class PerformancePeriodTarget
     public ReportingPeriod ReportingPeriod { get; set; } = null!;
     public OpmsTarget? OpmsTarget { get; set; }
     public IpmsTarget? IpmsTarget { get; set; }
+    public OpmsUnitDefinition? OpmsUnit { get; set; }
+    public PerformanceDirectionDefinition? PerformanceDirectionDefinition { get; set; }
+    public OpmsUnitDefinition? RevisedOpmsUnit { get; set; }
     public ApplicationUser CreatedByUser { get; set; } = null!;
     public PerformanceCalculationTypeDefinition? DerivedCalculationType { get; set; }
     public ICollection<PerformanceTargetRevision> Revisions { get; set; } = new List<PerformanceTargetRevision>();

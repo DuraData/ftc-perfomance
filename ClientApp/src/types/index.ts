@@ -1682,12 +1682,18 @@ export interface PerformancePeriodTargetDto {
   periodType: number;
   unitKind: number;
   direction: number;
+  opmsUnitPublicId?: string | null;
+  opmsUnitCode?: string | null;
+  performanceDirectionPublicId?: string | null;
+  performanceDirectionCode?: string | null;
   targetValue: string;
   budgetValue?: number | null;
   description?: string | null;
   isActive: boolean;
   rowVersion: string;
   originalUnitKind: number;
+  originalOpmsUnitPublicId?: string | null;
+  originalOpmsUnitCode?: string | null;
   originalTargetValue: string;
   originalBudgetValue?: number | null;
   isTargetRevised: boolean;
@@ -1695,6 +1701,38 @@ export interface PerformancePeriodTargetDto {
   revisedTargetValue?: string | null;
   isBudgetRevised: boolean;
   revisedBudgetValue?: number | null;
+}
+
+export interface OpmsUnitDefinitionDto {
+  publicId: string;
+  code: string;
+  name: string;
+  inputControlType: string;
+  valueDataType: string;
+  symbol?: string | null;
+  decimalPlaces?: number | null;
+  minValue?: number | null;
+  maxValue?: number | null;
+  supportsAutoVariance: boolean;
+  defaultPerformanceDirectionPublicId?: string | null;
+  requiresComponentUi: boolean;
+  isQualitative: boolean;
+  engineUnitKind: number;
+  isActive: boolean;
+}
+
+export interface PerformanceDirectionDefinitionDto {
+  publicId: string;
+  code: string;
+  name: string;
+  description: string;
+  engineDirection: 1 | 2 | 3;
+  isActive: boolean;
+}
+
+export interface PerformanceConfigurationCatalogueDto {
+  opmsUnits: OpmsUnitDefinitionDto[];
+  performanceDirections: PerformanceDirectionDefinitionDto[];
 }
 
 export interface PerformanceTargetRevisionDto {
@@ -2934,6 +2972,8 @@ export interface SaveTargetPeriodValuePayload {
   periodType: 1 | 2 | 3 | 4 | 5 | 6;
   unitKind: number;
   direction: 1 | 2 | 3;
+  opmsUnitPublicId?: string | null;
+  performanceDirectionPublicId?: string | null;
   targetValue: string;
   budgetValue?: number | null;
   description?: string | null;

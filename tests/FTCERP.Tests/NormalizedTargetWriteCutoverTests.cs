@@ -75,8 +75,15 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Null(stored.StrategicObjectiveId);
         Assert.Equal(0m, stored.AnnualTarget);
         Assert.Null(stored.Q1Target);
-        var normalized = await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).OrderBy(item => item.ReportingPeriod.Sequence).ToArrayAsync();
+        var normalized = await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).OrderBy(item => item.ReportingPeriod.Sequence).ToArrayAsync();
         Assert.Equal(2, normalized.Length);
+        Assert.All(normalized, item =>
+        {
+            Assert.NotNull(item.OpmsUnitId);
+            Assert.Equal("PERCENT", item.OpmsUnit!.Code);
+            Assert.NotNull(item.PerformanceDirectionId);
+            Assert.Equal("TARGET_OR_HIGHER", item.PerformanceDirectionDefinition!.Code);
+        });
         Assert.Contains(normalized, item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter1 && item.TargetValue == "20" && item.BudgetValue == 10m);
         Assert.Contains(normalized, item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
     }
@@ -100,6 +107,37 @@ public sealed class NormalizedTargetWriteCutoverTests
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Quarter1 && item.UnitKind == PerformanceUnitKind.QualitativeTargets && item.TargetValue == "Council approved");
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.UnitKind == PerformanceUnitKind.Date && item.TargetValue == "2027-06-30");
+    }
+
+    [Fact]
+    public async Task Canonical_master_ids_drive_period_unit_and_direction_instead_of_legacy_enums()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var date = await context.OpmsUnitDefinitions.SingleAsync(item => item.Code == "DATE");
+        var onOrBefore = await context.PerformanceDirectionDefinitions.SingleAsync(item => item.Code == "ON_OR_BEFORE_DATE");
+        var request = Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            PeriodTargets =
+            [
+                new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.AbsoluteCount,
+                    PerformanceDirection.HigherIsBetter, "2027-06-30", null, "Completion date")
+                {
+                    OpmsUnitPublicId = date.PublicId,
+                    PerformanceDirectionPublicId = onOrBefore.PublicId
+                }
+            ]
+        };
+
+        var result = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(request);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        var stored = await context.PerformancePeriodTargets.Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).SingleAsync();
+        Assert.Equal(date.Id, stored.OpmsUnitId);
+        Assert.Equal(PerformanceUnitKind.Date, stored.UnitKind);
+        Assert.Equal(onOrBefore.Id, stored.PerformanceDirectionId);
+        Assert.Equal(PerformanceDirection.LowerIsBetter, stored.Direction);
+        Assert.Equal("2027-06-30", stored.TargetValue);
     }
 
     [Fact]

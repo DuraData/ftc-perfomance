@@ -1,4 +1,4 @@
-import type { PerformancePeriodTargetDto, SaveTargetPeriodValuePayload, XafUnitValue } from '../types';
+import type { PerformanceConfigurationCatalogueDto, PerformancePeriodTargetDto, SaveTargetPeriodValuePayload, XafUnitValue } from '../types';
 
 const unitKindByValue: Record<string, number> = {
   none: 0,
@@ -58,25 +58,36 @@ export function canonicalPeriodTarget(
   unit: string,
   budgetValue?: number | null,
   description?: string | null,
+  configuration?: PerformanceConfigurationCatalogueDto,
 ): SaveTargetPeriodValuePayload {
   const unitKind = performanceUnitKind(unit);
-  return {
+  const opmsUnit = configuration?.opmsUnits.find(item => item.engineUnitKind === unitKind);
+  const directionDefinition = configuration?.performanceDirections.find(item => item.publicId === opmsUnit?.defaultPerformanceDirectionPublicId);
+  const result: SaveTargetPeriodValuePayload = {
     periodType,
     unitKind,
-    direction: performanceDirection(unitKind),
+    direction: directionDefinition?.engineDirection ?? performanceDirection(unitKind),
     targetValue: String(targetValue).trim(),
     budgetValue: budgetValue ?? null,
     description: description?.trim() || null,
   };
+  if (opmsUnit) result.opmsUnitPublicId = opmsUnit.publicId;
+  if (directionDefinition) result.performanceDirectionPublicId = directionDefinition.publicId;
+  return result;
 }
 
 export function canonicalSaveRows(rows: PerformancePeriodTargetDto[]): SaveTargetPeriodValuePayload[] {
-  return rows.filter(row => row.isActive).map(row => ({
-    periodType: row.periodType as SaveTargetPeriodValuePayload['periodType'],
-    unitKind: row.unitKind,
-    direction: row.direction as SaveTargetPeriodValuePayload['direction'],
-    targetValue: row.targetValue,
-    budgetValue: row.budgetValue ?? null,
-    description: row.description ?? null,
-  }));
+  return rows.filter(row => row.isActive).map(row => {
+    const result: SaveTargetPeriodValuePayload = {
+      periodType: row.periodType as SaveTargetPeriodValuePayload['periodType'],
+      unitKind: row.unitKind,
+      direction: row.direction as SaveTargetPeriodValuePayload['direction'],
+      targetValue: row.targetValue,
+      budgetValue: row.budgetValue ?? null,
+      description: row.description ?? null,
+    };
+    if (row.opmsUnitPublicId) result.opmsUnitPublicId = row.opmsUnitPublicId;
+    if (row.performanceDirectionPublicId) result.performanceDirectionPublicId = row.performanceDirectionPublicId;
+    return result;
+  });
 }

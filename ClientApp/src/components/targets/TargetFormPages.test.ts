@@ -16,6 +16,21 @@ describe('TargetFormPages helpers', () => {
     expect(payload).toMatchObject({ nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1' });
   });
 
+  it('serializes target periods with canonical OPMS unit and direction ids', () => {
+    const configuration = {
+      opmsUnits: [{ publicId: 'unit-percent', code: 'PERCENT', name: 'Percentage', inputControlType: 'NUMERIC', valueDataType: 'DECIMAL', supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-higher', requiresComponentUi: false, isQualitative: false, engineUnitKind: 1, isActive: true }],
+      performanceDirections: [{ publicId: 'direction-higher', code: 'TARGET_OR_HIGHER', name: 'Target or higher', description: 'At least target.', engineDirection: 1, isActive: true }],
+    };
+    const payload = buildOpmsPayload({ wardIds: '', additionalAssigneeIds: '', voteNumberIds: '', budgetSources: [], q1Target: '25', q1UnitType: 'PercentageBased', q1Budget: '', q1Description: 'Quarter target' } as never, configuration);
+
+    expect(payload.periodTargets).toEqual([expect.objectContaining({
+      periodType: 1,
+      unitKind: 1,
+      opmsUnitPublicId: 'unit-percent',
+      performanceDirectionPublicId: 'direction-higher',
+    })]);
+  });
+
   it('filters children only when the selected parent has configured mappings', () => {
     const items = [{ publicId: 'goal-1', name: 'Goal 1', displayOrder: 1 }, { publicId: 'goal-2', name: 'Goal 2', displayOrder: 2 }];
     const catalogue = { nationalKpas: [], municipalKpas: [], backToBasicsPillars: [], strategicGoals: items, strategicInterventions: [], strategicObjectives: [], performanceObjectives: [], relationships: [{ relationshipType: 'municipal-kpa-strategic-goal', parentPublicId: 'kpa-1', childPublicId: 'goal-2' }] };

@@ -59,7 +59,9 @@ public sealed class PerformancePeriodTargetsController(
         if (user == null) return Unauthorized(Fail<PerformancePeriodTargetDto>("User not found."));
         var period = await context.ReportingPeriods.Include(x => x.MunicipalityFinancialYear).SingleOrDefaultAsync(x => x.PublicId == request.ReportingPeriodPublicId && x.IsActive);
         if (period == null) return BadRequest(Fail<PerformancePeriodTargetDto>("Reporting period not found or inactive."));
-        var normalized = unitEngine.Normalize(request.UnitKind, request.TargetValue);
+        var configuration = await ResolveConfiguration(request.OpmsUnitPublicId, request.UnitKind, request.PerformanceDirectionPublicId, request.Direction);
+        if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
+        var normalized = unitEngine.Normalize(configuration.Unit!.EngineUnitKind, request.TargetValue);
         if (!normalized.IsValid) return BadRequest(Fail<PerformancePeriodTargetDto>(normalized.Error!));
 
         OpmsTarget? opms = null; IpmsTarget? ipms = null; string permission;
@@ -92,7 +94,9 @@ public sealed class PerformancePeriodTargetsController(
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, ReportingPeriodId = period.Id, ReportingPeriod = period,
             OpmsTargetId = opms?.Id, OpmsTarget = opms, IpmsTargetId = ipms?.Id, IpmsTarget = ipms,
-            UnitKind = request.UnitKind, Direction = request.Direction, TargetValue = normalized.CanonicalValue!,
+            OpmsUnitId = configuration.Unit!.Id, OpmsUnit = configuration.Unit,
+            PerformanceDirectionId = configuration.Direction!.Id, PerformanceDirectionDefinition = configuration.Direction,
+            UnitKind = configuration.Unit.EngineUnitKind, Direction = configuration.Direction.EngineDirection, TargetValue = normalized.CanonicalValue!,
             BudgetValue = request.BudgetValue, Description = request.Description?.Trim(), CreatedByUserId = user.Id, CreatedByUser = user
         };
         context.PerformancePeriodTargets.Add(entity);
@@ -119,7 +123,9 @@ public sealed class PerformancePeriodTargetsController(
         var targetId = target is OpmsTarget opmsId ? opmsId.Id : ((IpmsTarget)target).Id;
         if (!(await accessControl.CheckPermissionAsync(user, permission, new AccessScopeContext(departmentId, unitId, ownerId, TargetId: targetId, MunicipalityId: entity.MunicipalityId))).Allowed) return Forbid();
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<PerformancePeriodTargetDto>("A valid row version is required."));
-        var normalized = unitEngine.Normalize(request.UnitKind, request.TargetValue);
+        var configuration = await ResolveConfiguration(request.OpmsUnitPublicId, request.UnitKind, request.PerformanceDirectionPublicId, request.Direction);
+        if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
+        var normalized = unitEngine.Normalize(configuration.Unit!.EngineUnitKind, request.TargetValue);
         if (!normalized.IsValid) return BadRequest(Fail<PerformancePeriodTargetDto>(normalized.Error!));
         if (request.IsTargetRevised && string.IsNullOrWhiteSpace(request.TargetValue))
             return BadRequest(Fail<PerformancePeriodTargetDto>("A revised target value is required when the target revision flag is active."));
@@ -128,8 +134,10 @@ public sealed class PerformancePeriodTargetsController(
         var changes = new Dictionary<string, (string? Old, string? New)>
         {
             [nameof(entity.IsTargetRevised)] = (entity.IsTargetRevised.ToString(), request.IsTargetRevised.ToString()),
-            [nameof(entity.RevisedUnitKind)] = (entity.RevisedUnitKind?.ToString(), request.IsTargetRevised ? request.UnitKind.ToString() : null),
-            [nameof(entity.Direction)] = (entity.Direction.ToString(), request.Direction.ToString()),
+            [nameof(entity.RevisedOpmsUnitId)] = (entity.RevisedOpmsUnitId?.ToString(CultureInfo.InvariantCulture), request.IsTargetRevised ? configuration.Unit!.Id.ToString(CultureInfo.InvariantCulture) : null),
+            [nameof(entity.RevisedUnitKind)] = (entity.RevisedUnitKind?.ToString(), request.IsTargetRevised ? configuration.Unit!.EngineUnitKind.ToString() : null),
+            [nameof(entity.PerformanceDirectionId)] = (entity.PerformanceDirectionId?.ToString(CultureInfo.InvariantCulture), configuration.Direction!.Id.ToString(CultureInfo.InvariantCulture)),
+            [nameof(entity.Direction)] = (entity.Direction.ToString(), configuration.Direction.EngineDirection.ToString()),
             [nameof(entity.RevisedTargetValue)] = (entity.RevisedTargetValue, request.IsTargetRevised ? normalized.CanonicalValue : null),
             [nameof(entity.IsBudgetRevised)] = (entity.IsBudgetRevised.ToString(), request.IsBudgetRevised.ToString()),
             [nameof(entity.RevisedBudgetValue)] = (entity.RevisedBudgetValue?.ToString(CultureInfo.InvariantCulture), request.IsBudgetRevised ? request.BudgetValue?.ToString(CultureInfo.InvariantCulture) : null),
@@ -139,11 +147,14 @@ public sealed class PerformancePeriodTargetsController(
         foreach (var change in changes.Where(x => x.Value.Old != x.Value.New))
             context.PerformanceTargetRevisions.Add(new PerformanceTargetRevision { MunicipalityId = entity.MunicipalityId, PerformancePeriodTargetId = entity.Id, FieldName = change.Key, OriginalValue = change.Value.Old, RevisedValue = change.Value.New, Reason = request.Reason.Trim(), ApprovalReference = request.ApprovalReference.Trim(), EffectiveAt = request.EffectiveAt, RevisedByUserId = user.Id });
         entity.IsTargetRevised = request.IsTargetRevised;
-        entity.RevisedUnitKind = request.IsTargetRevised ? request.UnitKind : null;
+        entity.RevisedOpmsUnitId = request.IsTargetRevised ? configuration.Unit!.Id : null;
+        entity.RevisedOpmsUnit = request.IsTargetRevised ? configuration.Unit : null;
+        entity.RevisedUnitKind = request.IsTargetRevised ? configuration.Unit!.EngineUnitKind : null;
         entity.RevisedTargetValue = request.IsTargetRevised ? normalized.CanonicalValue : null;
         entity.IsBudgetRevised = request.IsBudgetRevised;
         entity.RevisedBudgetValue = request.IsBudgetRevised ? request.BudgetValue : null;
-        entity.Direction = request.Direction; entity.Description = request.Description?.Trim(); entity.IsActive = request.IsActive;
+        entity.PerformanceDirectionId = configuration.Direction!.Id; entity.PerformanceDirectionDefinition = configuration.Direction;
+        entity.Direction = configuration.Direction.EngineDirection; entity.Description = request.Description?.Trim(); entity.IsActive = request.IsActive;
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<PerformancePeriodTargetDto>("Target values changed since they were loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity)));
@@ -168,7 +179,20 @@ public sealed class PerformancePeriodTargetsController(
         return Ok(new ApiResponse<PerformanceTargetRevisionDto[]>(true, rows));
     }
 
-    private IQueryable<PerformancePeriodTarget> Query() => context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).Include(x => x.OpmsTarget).Include(x => x.IpmsTarget);
+    private IQueryable<PerformancePeriodTarget> Query() => context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).Include(x => x.OpmsTarget).Include(x => x.IpmsTarget)
+        .Include(x => x.OpmsUnit).Include(x => x.PerformanceDirectionDefinition).Include(x => x.RevisedOpmsUnit);
+    private async Task<(OpmsUnitDefinition? Unit, PerformanceDirectionDefinition? Direction, string? Error)> ResolveConfiguration(
+        Guid? unitPublicId, PerformanceUnitKind legacyUnit, Guid? directionPublicId, PerformanceDirection legacyDirection)
+    {
+        var unit = unitPublicId.HasValue
+            ? await context.OpmsUnitDefinitions.SingleOrDefaultAsync(item => item.PublicId == unitPublicId.Value && item.IsActive)
+            : await context.OpmsUnitDefinitions.SingleOrDefaultAsync(item => item.Code == TargetPeriodCutover.LegacyUnitCode(legacyUnit) && item.IsActive);
+        if (unit == null) return (null, null, "Select an active OPMS Unit.");
+        var direction = directionPublicId.HasValue
+            ? await context.PerformanceDirectionDefinitions.SingleOrDefaultAsync(item => item.PublicId == directionPublicId.Value && item.IsActive)
+            : await context.PerformanceDirectionDefinitions.SingleOrDefaultAsync(item => item.Code == TargetPeriodCutover.LegacyDirectionCode(legacyDirection) && item.IsActive);
+        return direction == null ? (unit, null, "Select an active Performance Direction.") : (unit, direction, null);
+    }
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
@@ -176,6 +200,12 @@ public sealed class PerformancePeriodTargetsController(
     private bool TrySetVersion(object entity, string value) { try { context.Entry(entity).Property("RowVersion").OriginalValue = Convert.FromBase64String(value); return true; } catch (FormatException) { return false; } }
     private static PerformancePeriodTargetDto ToDto(PerformancePeriodTarget x) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, x.ReportingPeriod.PeriodType, PerformanceRevisionResolver.EffectiveUnitKind(x), x.Direction, PerformanceRevisionResolver.EffectiveTargetValue(x), PerformanceRevisionResolver.EffectiveBudgetValue(x), x.Description, x.IsActive, Convert.ToBase64String(x.RowVersion))
     {
+        OpmsUnitPublicId = (x.IsTargetRevised ? x.RevisedOpmsUnit : x.OpmsUnit)?.PublicId,
+        OpmsUnitCode = (x.IsTargetRevised ? x.RevisedOpmsUnit : x.OpmsUnit)?.Code ?? TargetPeriodCutover.LegacyUnitCode(PerformanceRevisionResolver.EffectiveUnitKind(x)),
+        PerformanceDirectionPublicId = x.PerformanceDirectionDefinition?.PublicId,
+        PerformanceDirectionCode = x.PerformanceDirectionDefinition?.Code ?? TargetPeriodCutover.LegacyDirectionCode(x.Direction),
+        OriginalOpmsUnitPublicId = x.OpmsUnit?.PublicId,
+        OriginalOpmsUnitCode = x.OpmsUnit?.Code ?? TargetPeriodCutover.LegacyUnitCode(x.UnitKind),
         OriginalUnitKind = x.UnitKind,
         OriginalTargetValue = x.TargetValue,
         OriginalBudgetValue = x.BudgetValue,
@@ -189,6 +219,12 @@ public sealed class PerformancePeriodTargetsController(
 
 public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, ReportingPeriodType PeriodType, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string RowVersion)
 {
+    public Guid? OpmsUnitPublicId { get; init; }
+    public string? OpmsUnitCode { get; init; }
+    public Guid? PerformanceDirectionPublicId { get; init; }
+    public string? PerformanceDirectionCode { get; init; }
+    public Guid? OriginalOpmsUnitPublicId { get; init; }
+    public string? OriginalOpmsUnitCode { get; init; }
     public PerformanceUnitKind OriginalUnitKind { get; init; }
     public string OriginalTargetValue { get; init; } = string.Empty;
     public decimal? OriginalBudgetValue { get; init; }
@@ -198,9 +234,15 @@ public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPer
     public bool IsBudgetRevised { get; init; }
     public decimal? RevisedBudgetValue { get; init; }
 }
-public sealed record SavePerformancePeriodTargetRequest(SubmissionKind TargetKind, Guid TargetPublicId, Guid ReportingPeriodPublicId, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description);
+public sealed record SavePerformancePeriodTargetRequest(SubmissionKind TargetKind, Guid TargetPublicId, Guid ReportingPeriodPublicId, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description)
+{
+    public Guid? OpmsUnitPublicId { get; init; }
+    public Guid? PerformanceDirectionPublicId { get; init; }
+}
 public sealed record RevisePerformancePeriodTargetRequest(PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string Reason, string ApprovalReference, DateTime EffectiveAt, string RowVersion)
 {
+    public Guid? OpmsUnitPublicId { get; init; }
+    public Guid? PerformanceDirectionPublicId { get; init; }
     public bool IsTargetRevised { get; init; } = true;
     public bool IsBudgetRevised { get; init; } = true;
 }

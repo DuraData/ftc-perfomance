@@ -246,7 +246,11 @@ public record SaveTargetPeriodValueRequest(
     PerformanceDirection Direction,
     string TargetValue,
     decimal? BudgetValue,
-    string? Description);
+    string? Description)
+{
+    public Guid? OpmsUnitPublicId { get; init; }
+    public Guid? PerformanceDirectionPublicId { get; init; }
+}
 
 public record SaveOpmsSubmissionRequest(
     string OpmsTargetId,

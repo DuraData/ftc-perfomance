@@ -101,6 +101,7 @@ import type {
   OfficialReportScheduleCadence,
   OfficialReportRecipientKind,
   PerformancePeriodTargetDto,
+  PerformanceConfigurationCatalogueDto,
   PerformanceTargetRevisionDto,
   KpiFieldRevisionDto,
   ReportingWindowExceptionDto,
@@ -1466,11 +1467,15 @@ export async function getPerformancePeriodTargets(kind: 1 | 2, targetPublicId: s
   return get<PerformancePeriodTargetDto[]>(`/v1/performance-period-targets?${parameter}=${encodeURIComponent(targetPublicId)}`);
 }
 
-export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2; targetPublicId: string; reportingPeriodPublicId: string; unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+export async function getPerformanceConfigurationCatalogue(): Promise<ApiResponse<PerformanceConfigurationCatalogueDto>> {
+  return get<PerformanceConfigurationCatalogueDto>('/v1/performance-configuration/catalogue');
+}
+
+export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2; targetPublicId: string; reportingPeriodPublicId: string; unitKind: number; direction: number; opmsUnitPublicId?: string | null; performanceDirectionPublicId?: string | null; targetValue: string; budgetValue?: number; description?: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
   return post<PerformancePeriodTargetDto>('/v1/performance-period-targets', payload);
 }
 
-export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; targetValue: string; budgetValue?: number; description?: string; isTargetRevised: boolean; isBudgetRevised: boolean; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; opmsUnitPublicId?: string | null; performanceDirectionPublicId?: string | null; targetValue: string; budgetValue?: number; description?: string; isTargetRevised: boolean; isBudgetRevised: boolean; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
   return put<PerformancePeriodTargetDto>(`/v1/performance-period-targets/${publicId}`, payload);
 }
 

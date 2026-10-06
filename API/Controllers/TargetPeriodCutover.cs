@@ -14,6 +14,8 @@ internal sealed record LegacyPeriodTargetValue(
 
 internal sealed record PlannedPeriodTarget(
     ReportingPeriod ReportingPeriod,
+    long OpmsUnitId,
+    long PerformanceDirectionId,
     PerformanceUnitKind UnitKind,
     PerformanceDirection Direction,
     string TargetValue,
@@ -38,6 +40,7 @@ internal static class TargetPeriodCutover
         if (targets.Count == 0) return;
         var ids = targets.Select(item => item.Id).ToArray();
         var rows = await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).ThenInclude(item => item.MunicipalityFinancialYear)
+            .Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).Include(item => item.RevisedOpmsUnit)
             .Where(item => item.OpmsTargetId != null && ids.Contains(item.OpmsTargetId) && item.IsActive)
             .ToArrayAsync();
         foreach (var target in targets)
@@ -49,6 +52,7 @@ internal static class TargetPeriodCutover
         if (targets.Count == 0) return;
         var ids = targets.Select(item => item.Id).ToArray();
         var rows = await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).ThenInclude(item => item.MunicipalityFinancialYear)
+            .Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).Include(item => item.RevisedOpmsUnit)
             .Where(item => item.IpmsTargetId != null && ids.Contains(item.IpmsTargetId) && item.IsActive)
             .ToArrayAsync();
         foreach (var target in targets)
@@ -101,6 +105,18 @@ internal static class TargetPeriodCutover
                 return TargetPeriodPlan.Invalid($"Performance unit '{value.UnitKind}' is not supported.");
             if (!Enum.IsDefined(value.Direction))
                 return TargetPeriodPlan.Invalid($"Performance direction '{value.Direction}' is not supported.");
+            var unit = value.OpmsUnitPublicId.HasValue
+                ? await context.OpmsUnitDefinitions.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == value.OpmsUnitPublicId.Value && item.IsActive)
+                : await context.OpmsUnitDefinitions.AsNoTracking().SingleOrDefaultAsync(item => item.Code == LegacyUnitCode(value.UnitKind) && item.IsActive);
+            if (unit == null)
+                return TargetPeriodPlan.Invalid($"{value.PeriodType} OPMS Unit is missing or inactive.");
+            var direction = value.PerformanceDirectionPublicId.HasValue
+                ? await context.PerformanceDirectionDefinitions.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == value.PerformanceDirectionPublicId.Value && item.IsActive)
+                : await context.PerformanceDirectionDefinitions.AsNoTracking().SingleOrDefaultAsync(item => item.Code == LegacyDirectionCode(value.Direction) && item.IsActive);
+            if (direction == null)
+                return TargetPeriodPlan.Invalid($"{value.PeriodType} Performance Direction is missing or inactive.");
+            var engineUnit = value.OpmsUnitPublicId.HasValue ? unit.EngineUnitKind : value.UnitKind;
+            var engineDirection = value.PerformanceDirectionPublicId.HasValue ? direction.EngineDirection : value.Direction;
             var matchingPeriods = municipalityYear.ReportingPeriods
                 .Where(item => item.IsActive && item.PeriodType == value.PeriodType)
                 .OrderBy(item => item.Sequence)
@@ -108,11 +124,11 @@ internal static class TargetPeriodCutover
             if (matchingPeriods.Length != 1)
                 return TargetPeriodPlan.Invalid($"Exactly one active {value.PeriodType} reporting period is required for {municipalityYear.FinancialYear.Code}; found {matchingPeriods.Length}.");
 
-            var normalized = unitEngine.Normalize(value.UnitKind, value.TargetValue);
+            var normalized = unitEngine.Normalize(engineUnit, value.TargetValue);
             if (!normalized.IsValid)
                 return TargetPeriodPlan.Invalid($"{value.PeriodType} target is invalid: {normalized.Error}");
             rows.Add(new PlannedPeriodTarget(
-                matchingPeriods[0], value.UnitKind, value.Direction, normalized.CanonicalValue!, value.BudgetValue, value.Description?.Trim()));
+                matchingPeriods[0], unit.Id, direction.Id, engineUnit, engineDirection, normalized.CanonicalValue!, value.BudgetValue, value.Description?.Trim()));
         }
 
         return new TargetPeriodPlan(rows, null);
@@ -149,6 +165,8 @@ internal static class TargetPeriodCutover
                 ReportingPeriodId = row.ReportingPeriod.Id,
                 OpmsTargetId = opmsTargetId,
                 IpmsTargetId = ipmsTargetId,
+                OpmsUnitId = row.OpmsUnitId,
+                PerformanceDirectionId = row.PerformanceDirectionId,
                 UnitKind = row.UnitKind,
                 Direction = row.Direction,
                 TargetValue = row.TargetValue,
@@ -192,7 +210,9 @@ internal static class TargetPeriodCutover
             var current = existing.SingleOrDefault(item => item.ReportingPeriodId == row.ReportingPeriod.Id);
             if (current == null) continue;
 
-            if (current.UnitKind != row.UnitKind || current.Direction != row.Direction || current.TargetValue != row.TargetValue ||
+            if (current.UnitKind != row.UnitKind || current.Direction != row.Direction ||
+                (current.OpmsUnitId.HasValue && current.OpmsUnitId != row.OpmsUnitId) ||
+                (current.PerformanceDirectionId.HasValue && current.PerformanceDirectionId != row.PerformanceDirectionId) || current.TargetValue != row.TargetValue ||
                 current.BudgetValue != row.BudgetValue || current.Description != row.Description)
                 return new([], $"{row.ReportingPeriod.Code} target values are governed records. Revise them through /api/v1/performance-period-targets/{current.PublicId} with a reason, approval reference and RowVersion.");
         }
@@ -240,6 +260,29 @@ internal static class TargetPeriodCutover
         PerformanceUnitKind.ReverseCumulative or PerformanceUnitKind.ReverseNonCumulative or PerformanceUnitKind.TimeBased or PerformanceUnitKind.Date => PerformanceDirection.LowerIsBetter,
         PerformanceUnitKind.Binary or PerformanceUnitKind.BinaryDetermination or PerformanceUnitKind.QualitativeTargets or PerformanceUnitKind.None or PerformanceUnitKind.ZeroBased => PerformanceDirection.Exact,
         _ => PerformanceDirection.HigherIsBetter
+    };
+
+    internal static string LegacyUnitCode(PerformanceUnitKind unitKind) => unitKind switch
+    {
+        PerformanceUnitKind.PercentageBased => "PERCENT",
+        PerformanceUnitKind.Financial => "FINANCIAL",
+        PerformanceUnitKind.TimeBased => "TIME",
+        PerformanceUnitKind.AreaBased => "AREA",
+        PerformanceUnitKind.VolumeBased => "VOLUME",
+        PerformanceUnitKind.Ratios => "RATIO",
+        PerformanceUnitKind.Binary or PerformanceUnitKind.BinaryDetermination => "YES_NO",
+        PerformanceUnitKind.Date => "DATE",
+        PerformanceUnitKind.ReadinessScale or PerformanceUnitKind.IndexScores => "SCALE_1_3",
+        PerformanceUnitKind.ZeroBased => "ZERO_NUMBER",
+        PerformanceUnitKind.None or PerformanceUnitKind.QualitativeTargets => "QUALITATIVE",
+        _ => "NUMBER"
+    };
+
+    internal static string LegacyDirectionCode(PerformanceDirection direction) => direction switch
+    {
+        PerformanceDirection.HigherIsBetter => "TARGET_OR_HIGHER",
+        PerformanceDirection.LowerIsBetter => "TARGET_OR_LOWER",
+        _ => "EXACT"
     };
 
 }
