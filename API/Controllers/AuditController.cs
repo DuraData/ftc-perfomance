@@ -55,7 +55,7 @@ public class AuditController : ControllerBase
             _ => query.OrderByDescending(item => item.LoggedAt).ThenByDescending(item => item.Id)
         };
         var rows = await query.Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new LoginAuditLogResponse(item.Id, item.UserId, item.Email, item.IpAddress, item.UserAgent, item.Success, item.FailureReason, item.LoggedAt))
+            .Select(item => new LoginAuditLogResponse(item.PublicId, item.UserId, item.Email, item.IpAddress, item.UserAgent, item.Success, item.FailureReason, item.LoggedAt))
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<LoginAuditLogResponse>>(true,
             PagedResponse<LoginAuditLogResponse>.Create(rows, request.Page, request.PageSize, totalCount)));

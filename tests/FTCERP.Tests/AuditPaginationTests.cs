@@ -53,6 +53,7 @@ public sealed class AuditPaginationTests
         loginPage.TotalCount.Should().Be(2);
         loginPage.TotalPages.Should().Be(2);
         loginPage.Items.Should().ContainSingle().Which.Email.Should().Be("alex@example.test");
+        loginPage.Items.Should().OnlyContain(item => item.PublicId != Guid.Empty);
         loginPage.Items.Should().NotContain(item => item.Email == "other@example.test");
 
         var trailResult = await controller.GetAuditTrailsPage(new PagedQueryRequest

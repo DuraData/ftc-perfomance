@@ -408,6 +408,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatingSchemeValue).WithMany().HasForeignKey(x => x.RatingSchemeValueId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatedByUser).WithMany().HasForeignKey(x => x.RatedByUserId).OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<LoginAuditLog>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<LoginAuditLog>().HasIndex(item => new { item.MunicipalityId, item.LoggedAt });
         builder.Entity<LoginAuditLog>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<LoginAuditLog>().HasOne(item => item.User).WithMany(item => item.LoginAuditLogs).HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.SetNull);
@@ -467,6 +468,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<SecurityMemberDefinition>().HasIndex(item => item.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<SecurityMemberDefinition>().Property(item => item.RowVersion));
 
+        builder.Entity<SecurityUserRoleAssignment>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<SecurityUserRoleAssignment>().HasIndex(item => new { item.UserId, item.RoleId, item.MunicipalityId, item.EffectiveFrom });
         ConfigureRowVersion(builder.Entity<SecurityUserRoleAssignment>().Property(item => item.RowVersion));
         builder.Entity<SecurityUserRoleAssignment>().HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
@@ -565,6 +567,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasForeignKey(us => us.MunicipalityId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<UserScope>().HasIndex(item => item.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<UserScope>().Property(item => item.RowVersion));
+
         builder.Entity<UserScope>()
             .HasOne(us => us.Department)
             .WithMany(d => d.UserScopes)
@@ -587,6 +592,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .WithMany()
             .HasForeignKey(ua => ua.DelegatorUserId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<UserAssignment>().HasIndex(item => item.PublicId).IsUnique();
+        ConfigureRowVersion(builder.Entity<UserAssignment>().Property(item => item.RowVersion));
 
         builder.Entity<OpmsTargetTemplate>()
             .HasIndex(template => template.TemplateCode)

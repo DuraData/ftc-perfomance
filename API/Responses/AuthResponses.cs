@@ -28,7 +28,7 @@ public record PermissionResponse(int Id, string Module, string Feature, string A
 
 public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider, string? Code = null);
 
-public record LoginAuditLogResponse(int Id, string? UserId, string Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
+public record LoginAuditLogResponse(Guid PublicId, string? UserId, string Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
 
 public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string? Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
 {
@@ -58,10 +58,24 @@ public record UnitResponse(int Id, int DepartmentId, string DepartmentName, stri
     public Guid PublicId { get; init; }
 }
 
-public record UserScopeResponse(int Id, string ScopeType, int? DepartmentId, string? DepartmentName, int? UnitId, string? UnitName, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
+public record UserScopeResponse(
+    Guid PublicId,
+    string ScopeType,
+    int? DepartmentId,
+    string? DepartmentName,
+    int? UnitId,
+    string? UnitName,
+    string? TargetId,
+    string? KpiId,
+    string? ProjectId,
+    string? TaskId,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    bool IsActive,
+    string RowVersion);
 
 public record UserAssignmentResponse(
-    int Id,
+    Guid PublicId,
     string AssignmentType,
     string? DelegatorUserId,
     bool IsActive,
@@ -70,7 +84,8 @@ public record UserAssignmentResponse(
     string? TargetId,
     string? KpiId,
     string? ProjectId,
-    string? TaskId);
+    string? TaskId,
+    string RowVersion);
 
 public record RoleImplementationAuditResponse(
     string Role,
@@ -561,7 +576,6 @@ public sealed record NotificationPageResponse(
 }
 
 public record AuditTrailEntryResponse(
-    long Id,
     Guid PublicId,
     long? MunicipalityId,
     string EntityName,

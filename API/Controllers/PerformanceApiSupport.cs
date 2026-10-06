@@ -514,7 +514,6 @@ public static class PerformanceApiSupport
 
     public static AuditTrailEntryResponse ToResponse(this AuditTrail audit) =>
         new(
-            audit.Id,
             audit.PublicId,
             audit.MunicipalityId,
             audit.EntityName,

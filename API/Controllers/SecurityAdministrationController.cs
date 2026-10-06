@@ -215,7 +215,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         {
             var department = item.DepartmentId.HasValue && departments.TryGetValue(item.DepartmentId.Value, out var foundDepartment) ? foundDepartment : null;
             var unit = item.UnitId.HasValue && units.TryGetValue(item.UnitId.Value, out var foundUnit) ? foundUnit : null;
-            return new UserRoleAssignmentDto(item.Id, item.RoleId, item.Role.Name ?? item.Role.RoleCode, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), department?.PublicId, department?.Name, unit?.PublicId, unit?.Name);
+            return new UserRoleAssignmentDto(item.PublicId, item.RoleId, item.Role.Name ?? item.Role.RoleCode, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), department?.PublicId, department?.Name, unit?.PublicId, unit?.Name);
         }).ToArray();
         return Ok(new ApiResponse<UserRoleSecurityConfigurationDto>(true, new UserRoleSecurityConfigurationDto(user.Id, user.FullName, assignments)));
     }
@@ -285,16 +285,16 @@ public sealed class SecurityAdministrationController : ControllerBase
 
         var now = DateTime.UtcNow;
         var current = await _context.SecurityUserRoleAssignments.Where(item => item.UserId == userId && item.IsActive && !item.RevokedAt.HasValue).ToArrayAsync();
-        if (request.ExpectedAssignments.Length != current.Length || request.ExpectedAssignments.Select(item => item.AssignmentId).Order().SequenceEqual(current.Select(item => item.Id).Order()) == false)
+        if (request.ExpectedAssignments.Length != current.Length || request.ExpectedAssignments.Select(item => item.AssignmentPublicId).Order().SequenceEqual(current.Select(item => item.PublicId).Order()) == false)
             return Conflict(new ApiResponse<bool>(false, false, "Role assignments changed since they were loaded. Refresh and try again."));
         foreach (var expected in request.ExpectedAssignments)
         {
-            var assignment = current.Single(item => item.Id == expected.AssignmentId);
+            var assignment = current.Single(item => item.PublicId == expected.AssignmentPublicId);
             try { _context.Entry(assignment).Property(item => item.RowVersion).OriginalValue = Convert.FromBase64String(expected.RowVersion); }
             catch (FormatException) { return BadRequest(new ApiResponse<bool>(false, false, "An assignment RowVersion is invalid")); }
         }
 
-        var oldValue = current.Select(item => new { item.Id, item.RoleId, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo }).ToArray();
+        var oldValue = current.Select(item => new { item.PublicId, item.RoleId, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo }).ToArray();
         foreach (var assignment in current)
         {
             assignment.IsActive = false;
@@ -1055,9 +1055,9 @@ public sealed class SecurityAdministrationController : ControllerBase
 public sealed record SecurityResourceDto(Guid PublicId, string Code, string Name, string Type, string? Description, bool CanCreate, bool CanRead, bool CanUpdate, bool CanDelete, bool CanExport, bool CanImport, bool SupportsMembers, bool SupportsCriteria, bool IsActive, string RowVersion);
 public sealed record SecurityRoleDto(string Id, Guid PublicId, string RoleCode, string Name, string? Description, long? MunicipalityId, bool IsSystemRole, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SecurityUserDto(string Id, string FullName, string Email);
-public sealed record UserRoleAssignmentDto(long Id, string RoleId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName);
+public sealed record UserRoleAssignmentDto(Guid PublicId, string RoleId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName);
 public sealed record UserRoleSecurityConfigurationDto(string UserId, string UserName, UserRoleAssignmentDto[] Assignments);
-public sealed record ExpectedUserRoleAssignment(long AssignmentId, string RowVersion);
+public sealed record ExpectedUserRoleAssignment(Guid AssignmentPublicId, string RowVersion);
 public sealed record UpdateUserRoleAssignment(string RoleId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo, Guid? DepartmentPublicId = null, Guid? UnitPublicId = null);
 public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments);
 public sealed record SecurityActionDto(Guid PublicId, string Code, string Name, string ResourceCode, string? Description, bool IsActive, string RowVersion);

@@ -385,7 +385,7 @@ function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { e
           </div>
         )}
         {entries.map((item) => (
-          <div key={item.id} className="relative pl-8 pb-3 last:pb-0">
+          <div key={item.publicId} className="relative pl-8 pb-3 last:pb-0">
             <div className="absolute left-1.5 w-2.5 h-2.5 bg-primary-600 rounded-full border-2 border-white dark:border-secondary-900" />
             <div className="bg-secondary-50 dark:bg-secondary-800 rounded p-2">
               <div className="flex items-center justify-between mb-1">

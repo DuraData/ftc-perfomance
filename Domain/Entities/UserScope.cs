@@ -16,6 +16,7 @@ public enum ScopeType
 public class UserScope
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public string UserId { get; set; } = string.Empty;
     public ScopeType ScopeType { get; set; }
     public long? MunicipalityId { get; set; }
@@ -30,6 +31,7 @@ public class UserScope
     public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
     public DateTime? EffectiveTo { get; set; }
     public bool IsActive { get; set; } = true;
+    public byte[] RowVersion { get; set; } = [];
 
     public ApplicationUser User { get; set; } = null!;
     public Department? Department { get; set; }

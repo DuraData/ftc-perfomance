@@ -13,6 +13,7 @@ public enum AssignmentType
 public class UserAssignment
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public string UserId { get; set; } = string.Empty;
     public AssignmentType AssignmentType { get; set; }
     public string? DelegatorUserId { get; set; }
@@ -24,6 +25,7 @@ public class UserAssignment
     public string? ProjectId { get; set; }
     public string? TaskId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
     public ApplicationUser User { get; set; } = null!;
 }

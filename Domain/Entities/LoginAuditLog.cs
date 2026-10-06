@@ -3,6 +3,7 @@ namespace FTCERP.Host.Domain.Entities;
 public class LoginAuditLog
 {
     public int Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public long? MunicipalityId { get; set; }
     public Municipality? Municipality { get; set; }
     public string? UserId { get; set; }

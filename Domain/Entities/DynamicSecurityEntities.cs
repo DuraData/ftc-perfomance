@@ -110,6 +110,7 @@ public class SecurityMemberDefinition
 public class SecurityUserRoleAssignment
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public string UserId { get; set; } = string.Empty;
     public ApplicationUser User { get; set; } = null!;
     public string RoleId { get; set; } = string.Empty;

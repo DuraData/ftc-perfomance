@@ -35,7 +35,7 @@ public record AssignUserRolesRequest(string[] RoleIds);
 
 public record UserScopeItemRequest(string ScopeType, int? DepartmentId, int? UnitId, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
 
-public record UpdateUserScopesRequest(UserScopeItemRequest[] Scopes);
+public record UpdateUserScopesRequest(UserScopeItemRequest[] Scopes, string RowVersion, string Reason);
 
 public record UserAssignmentItemRequest(
     string AssignmentType,

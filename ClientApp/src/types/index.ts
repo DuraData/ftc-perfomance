@@ -2271,7 +2271,7 @@ export interface SecurityUserSummary {
 }
 
 export interface SecurityUserRoleAssignment {
-  id: number;
+  publicId: string;
   roleId: string;
   roleName: string;
   municipalityId?: number;
@@ -2306,7 +2306,7 @@ export interface UserPermissions {
 }
 
 export interface LoginAuditLog {
-  id: number;
+  publicId: string;
   userId?: string | null;
   email: string;
   ipAddress?: string | null;
@@ -2775,7 +2775,6 @@ export interface NotificationPageResult extends PagedResult<NotificationDto> {
 }
 
 export interface AuditTrailEntryDto {
-  id: number;
   publicId: string;
   municipalityId?: number | null;
   entityName: string;

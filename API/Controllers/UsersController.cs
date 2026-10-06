@@ -368,7 +368,7 @@ public class UsersController : ControllerBase
         };
         var scopes = await query.Skip(request.Offset).Take(request.PageSize)
             .Select(scope => new UserScopeResponse(
-                scope.Id,
+                scope.PublicId,
                 scope.ScopeType.ToString(),
                 scope.DepartmentId,
                 scope.Department != null ? scope.Department.Name : null,
@@ -377,7 +377,11 @@ public class UsersController : ControllerBase
                 scope.TargetId,
                 scope.KpiId,
                 scope.ProjectId,
-                scope.TaskId))
+                scope.TaskId,
+                scope.EffectiveFrom,
+                scope.EffectiveTo,
+                scope.IsActive,
+                Convert.ToBase64String(scope.RowVersion)))
             .ToArrayAsync();
 
         return Ok(new ApiResponse<PagedResponse<UserScopeResponse>>(true,
@@ -391,8 +395,14 @@ public class UsersController : ControllerBase
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before assigning scopes"));
         if (!await IsAllowedAsync(actor, "SECURITY.ASSIGN_ROLES")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion))
+            return BadRequest(Fail<bool>("RowVersion must be a valid non-empty base64 concurrency token."));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 5 or > 500)
+            return BadRequest(Fail<bool>("Reason must contain between 5 and 500 characters."));
+        if (request.Scopes == null) return BadRequest(Fail<bool>("Scopes are required."));
 
         var invalidScope = request.Scopes.FirstOrDefault(scope => !Enum.TryParse<ScopeType>(scope.ScopeType, true, out _));
         if (invalidScope != null)
@@ -431,8 +441,15 @@ public class UsersController : ControllerBase
             });
         }
 
-        QueueAudit(user, "UpdateScopes", new { ActiveScopeCount = existing.Count }, new { Scopes = request.Scopes }, actor.Id);
-        await _context.SaveChangesAsync();
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
+        user.UpdatedAt = now;
+        user.UpdatedBy = actor.Id;
+        QueueAudit(user, "UpdateScopes", new { ActiveScopeCount = existing.Count }, new { Scopes = request.Scopes }, actor.Id, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(Fail<bool>("The user scopes changed since they were loaded. Refresh and try again."));
+        }
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -482,7 +499,7 @@ public class UsersController : ControllerBase
         };
         var assignments = await query.Skip(request.Offset).Take(request.PageSize)
             .Select(assignment => new UserAssignmentResponse(
-                assignment.Id,
+                assignment.PublicId,
                 assignment.AssignmentType.ToString(),
                 assignment.DelegatorUserId,
                 assignment.IsActive,
@@ -491,7 +508,8 @@ public class UsersController : ControllerBase
                 assignment.TargetId,
                 assignment.KpiId,
                 assignment.ProjectId,
-                assignment.TaskId))
+                assignment.TaskId,
+                Convert.ToBase64String(assignment.RowVersion)))
             .ToArrayAsync();
 
         return Ok(new ApiResponse<PagedResponse<UserAssignmentResponse>>(true,

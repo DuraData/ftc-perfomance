@@ -5,6 +5,7 @@ import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from
 import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
 import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './api';
 import { archiveIpmsTargetTemplate, archiveOpmsTargetTemplate } from './api';
+import { saveSecurityUserRoles } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -50,6 +51,26 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/access/simulate'), expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ userId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' }),
+    }));
+  });
+
+  it('uses stable public identity and concurrency for security role assignments', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await saveSecurityUserRoles('user-1', {
+      userId: 'user-1', userName: 'Review User', assignments: [{
+        publicId: 'assignment-public-id', roleId: 'role-1', roleName: 'Reviewer', municipalityId: 7,
+        effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==',
+      }],
+    }, [{ roleId: 'role-1', municipalityId: 7 }]);
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/security/users/user-1/roles'), expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({
+        expectedAssignments: [{ assignmentPublicId: 'assignment-public-id', rowVersion: 'AQ==' }],
+        assignments: [{ roleId: 'role-1', municipalityId: 7 }],
+      }),
     }));
   });
 

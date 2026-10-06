@@ -1966,7 +1966,7 @@ export async function getSecurityUserRoles(userId: string): Promise<ApiResponse<
 
 export async function saveSecurityUserRoles(userId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ roleId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; unitId?: number; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
   return put<boolean>(`/v1/security/users/${userId}/roles`, {
-    expectedAssignments: current.assignments.map(item => ({ assignmentId: item.id, rowVersion: item.rowVersion })),
+    expectedAssignments: current.assignments.map(item => ({ assignmentPublicId: item.publicId, rowVersion: item.rowVersion })),
     assignments,
   });
 }

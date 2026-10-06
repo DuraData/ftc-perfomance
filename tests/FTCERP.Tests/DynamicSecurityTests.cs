@@ -672,6 +672,8 @@ public class DynamicSecurityTests
         var loadedResult = await controller.GetUserRoles(target.Id);
         var loaded = loadedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!;
         var assignment = loaded.Assignments.Should().ContainSingle().Subject;
+        assignment.PublicId.Should().Be(stored.PublicId);
+        assignment.PublicId.Should().NotBe(Guid.Empty);
         assignment.DepartmentPublicId.Should().Be(department.PublicId);
         assignment.DepartmentName.Should().Be("Finance");
         assignment.UnitPublicId.Should().Be(unit.PublicId);

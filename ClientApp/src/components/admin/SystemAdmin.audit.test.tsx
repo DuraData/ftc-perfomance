@@ -16,11 +16,11 @@ vi.mock('../../context/AppContext', () => ({
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
 const login = {
-  id: 1, userId: 'user-a', email: 'anna@example.test', ipAddress: '127.0.0.1', userAgent: 'test',
+  publicId: '22222222-2222-2222-2222-222222222222', userId: 'user-a', email: 'anna@example.test', ipAddress: '127.0.0.1', userAgent: 'test',
   success: false, failureReason: 'Account locked', loggedAt: '2026-01-03T00:00:00Z',
 };
 const trail = {
-  id: 7, publicId: '11111111-1111-1111-1111-111111111111', municipalityId: 1,
+  publicId: '11111111-1111-1111-1111-111111111111', municipalityId: 1,
   entityName: 'OpmsSubmission', entityId: 'submission-a', action: 'Approve', changedBy: 'auditor-a',
   changedAt: '2026-01-03T00:00:00Z', correlationId: 'correlation-a',
 };

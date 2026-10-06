@@ -17,6 +17,29 @@ namespace FTCERP.Tests;
 public sealed class UsersControllerSecurityTests
 {
     [Fact]
+    public async Task Security_history_model_has_unique_public_identity_and_portable_concurrency()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new FixedTenantContext(null, "system", true));
+        await context.Database.EnsureCreatedAsync();
+
+        foreach (var type in new[] { typeof(LoginAuditLog), typeof(SecurityUserRoleAssignment), typeof(UserScope), typeof(UserAssignment) })
+        {
+            var entity = context.Model.FindEntityType(type)!;
+            entity.GetIndexes().Should().ContainSingle(index => index.IsUnique
+                && index.Properties.Count == 1 && index.Properties[0].Name == "PublicId");
+        }
+
+        foreach (var type in new[] { typeof(UserScope), typeof(UserAssignment) })
+        {
+            var property = context.Model.FindEntityType(type)!.FindProperty("RowVersion")!;
+            property.IsConcurrencyToken.Should().BeTrue();
+        }
+    }
+
+    [Fact]
     public async Task Security_registry_idempotently_catalogues_user_contact_members_and_soft_delete()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -201,6 +224,11 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal(12, scopes.TotalCount);
         Assert.Equal(5, scopes.Items.Length);
         Assert.Equal(3, scopes.TotalPages);
+        Assert.All(scopes.Items, item =>
+        {
+            Assert.NotEqual(Guid.Empty, item.PublicId);
+            Assert.False(string.IsNullOrWhiteSpace(item.RowVersion));
+        });
 
         var assignmentsResult = await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest
         {
@@ -208,12 +236,59 @@ public sealed class UsersControllerSecurityTests
         });
         var assignments = Assert.IsType<ApiResponse<PagedResponse<UserAssignmentResponse>>>(Assert.IsType<OkObjectResult>(assignmentsResult.Result).Value).Data!;
         Assert.Equal(1, assignments.TotalCount);
-        Assert.Equal("target-12", Assert.Single(assignments.Items).TargetId);
+        var assignment = Assert.Single(assignments.Items);
+        Assert.Equal("target-12", assignment.TargetId);
+        Assert.NotEqual(Guid.Empty, assignment.PublicId);
+        Assert.False(string.IsNullOrWhiteSpace(assignment.RowVersion));
 
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserScopes(target.Id).Result).StatusCode);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserAssignments(target.Id).Result).StatusCode);
         Assert.IsType<NotFoundObjectResult>((await controller.GetUserScopesPage(other.Id, new PagedQueryRequest())).Result);
         Assert.IsType<BadRequestObjectResult>((await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result);
+    }
+
+    [Fact]
+    public async Task Scope_change_requires_reason_and_user_concurrency_and_preserves_stable_history()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new FixedTenantContext(451, "actor");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Id = 451, Code = "M451", Name = "Municipality 451" };
+        var actor = User("actor", 451, "actor@example.test", "0111111111");
+        var target = User("target", 451, "target@example.test", "0222222222");
+        var prior = new UserScope { UserId = target.Id, MunicipalityId = 451, ScopeType = ScopeType.InstitutionScope, IsActive = true };
+        context.AddRange(municipality, actor, target, prior);
+        await context.SaveChangesAsync();
+        var originalUserVersion = Convert.ToBase64String(target.RowVersion);
+        var priorPublicId = prior.PublicId;
+        context.ChangeTracker.Clear();
+
+        var controller = Controller(context, tenant, actor, new[] { actor, target }.ToDictionary(item => item.Id),
+            Access(actor, "SECURITY.ASSIGN_ROLES").Object);
+        var response = await controller.SetUserScopes(target.Id, new UpdateUserScopesRequest(
+            [new UserScopeItemRequest(nameof(ScopeType.AssignedTargetScope), null, null, "target-451", null, null, null)],
+            originalUserVersion, "Approved target responsibility scope"));
+
+        Assert.IsType<OkObjectResult>(response.Result);
+        var history = await context.UserScopes.OrderBy(item => item.Id).ToArrayAsync();
+        Assert.Equal(2, history.Length);
+        Assert.Equal(priorPublicId, history[0].PublicId);
+        Assert.False(history[0].IsActive);
+        Assert.NotNull(history[0].EffectiveTo);
+        Assert.NotEqual(Guid.Empty, history[1].PublicId);
+        Assert.True(history[1].IsActive);
+        Assert.All(history, item => Assert.NotEmpty(item.RowVersion));
+        Assert.Equal("Approved target responsibility scope", (await context.AuditTrails.SingleAsync()).Reason);
+
+        context.ChangeTracker.Clear();
+        var stale = await controller.SetUserScopes(target.Id, new UpdateUserScopesRequest(
+            [new UserScopeItemRequest(nameof(ScopeType.System), null, null, null, null, null, null)],
+            originalUserVersion, "Attempt stale scope replacement"));
+        Assert.IsType<ConflictObjectResult>(stale.Result);
+        Assert.Equal(2, await context.UserScopes.CountAsync());
     }
 
     [Fact]
