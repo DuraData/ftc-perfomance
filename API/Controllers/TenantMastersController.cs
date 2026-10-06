@@ -21,6 +21,7 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     private static readonly HashSet<string> MunicipalityYearSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "startdate", "effectivefrom", "status", "current" };
     private static readonly HashSet<string> PeriodSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "sequence", "startdate", "enddate", "status" };
     private static readonly HashSet<string> LayerSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "displayorder", "financialyear", "status" };
+    private static readonly HashSet<string> AssignmentSortFields = new(StringComparer.OrdinalIgnoreCase) { "effectivefrom", "effectiveto", "position", "department", "unit", "status", "primary" };
 
     [HttpGet("financial-years")]
     [Authorize(Policy = "Permission:FINANCIAL_YEAR.READ")]
@@ -365,13 +366,58 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
 
     [HttpGet("employees/{employeePublicId:guid}/assignments")]
     [Authorize(Policy = "Permission:EMPLOYEE_ASSIGNMENT.READ")]
-    public async Task<ActionResult<ApiResponse<EmployeeAssignmentDto[]>>> GetAssignments(Guid employeePublicId)
+    public ActionResult<ApiResponse<EmployeeAssignmentDto[]>> GetAssignments(Guid employeePublicId) =>
+        StatusCode(StatusCodes.Status410Gone, Fail<EmployeeAssignmentDto[]>(
+            $"This unbounded employee placement-history route is retired. Use /api/v1/masters/employees/{employeePublicId}/assignments/page."));
+
+    [HttpGet("employees/{employeePublicId:guid}/assignments/page")]
+    [Authorize(Policy = "Permission:EMPLOYEE_ASSIGNMENT.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<EmployeeAssignmentDto>>>> GetAssignmentsPage(
+        Guid employeePublicId,
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool? active = null)
     {
-        if (!HasTenant()) return TenantRequired<EmployeeAssignmentDto[]>();
-        var rows = await context.EmployeeAssignments.AsNoTracking().Include(x => x.MunicipalEmployee).Include(x => x.Department).Include(x => x.Unit).Include(x => x.Position)
-            .Where(x => x.MunicipalEmployee.PublicId == employeePublicId).OrderByDescending(x => x.EffectiveFrom)
-            .Select(x => new EmployeeAssignmentDto(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit == null ? null : x.Unit.PublicId, x.Unit == null ? null : x.Unit.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Position == null ? null : x.Position.PublicId)).ToArrayAsync();
-        return Ok(new ApiResponse<EmployeeAssignmentDto[]>(true, rows));
+        if (!HasTenant()) return TenantRequired<PagedResponse<EmployeeAssignmentDto>>();
+        var sortBy = request.SortBy == null ? "effectivefrom" : request.NormalizedSortBy;
+        if (!AssignmentSortFields.Contains(sortBy)) return InvalidSort<EmployeeAssignmentDto>("effectiveFrom, effectiveTo, position, department, unit, status, or primary");
+        if (!await context.MunicipalEmployees.AsNoTracking().AnyAsync(item => item.PublicId == employeePublicId))
+            return NotFound(Fail<PagedResponse<EmployeeAssignmentDto>>("Employee not found."));
+        var query = context.EmployeeAssignments.AsNoTracking()
+            .Include(item => item.MunicipalEmployee).Include(item => item.Department).Include(item => item.Unit).Include(item => item.Position)
+            .Where(item => item.MunicipalEmployee.PublicId == employeePublicId);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.PositionCode.Contains(term) || item.PositionName.Contains(term)
+                || item.Department.Code.Contains(term) || item.Department.Name.Contains(term)
+                || (item.Unit != null && (item.Unit.Code.Contains(term) || item.Unit.Name.Contains(term))));
+        }
+        var total = await query.CountAsync();
+        var ordered = (sortBy, request.Descending) switch
+        {
+            ("effectiveto", false) => query.OrderBy(item => item.EffectiveTo).ThenBy(item => item.PublicId),
+            ("effectiveto", true) => query.OrderByDescending(item => item.EffectiveTo).ThenByDescending(item => item.PublicId),
+            ("position", false) => query.OrderBy(item => item.PositionName).ThenBy(item => item.PositionCode).ThenBy(item => item.PublicId),
+            ("position", true) => query.OrderByDescending(item => item.PositionName).ThenByDescending(item => item.PositionCode).ThenByDescending(item => item.PublicId),
+            ("department", false) => query.OrderBy(item => item.Department.Name).ThenBy(item => item.PublicId),
+            ("department", true) => query.OrderByDescending(item => item.Department.Name).ThenByDescending(item => item.PublicId),
+            ("unit", false) => query.OrderBy(item => item.Unit == null ? null : item.Unit.Name).ThenBy(item => item.PublicId),
+            ("unit", true) => query.OrderByDescending(item => item.Unit == null ? null : item.Unit.Name).ThenByDescending(item => item.PublicId),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenByDescending(item => item.PublicId),
+            ("primary", false) => query.OrderBy(item => item.IsPrimary).ThenBy(item => item.PublicId),
+            ("primary", true) => query.OrderByDescending(item => item.IsPrimary).ThenByDescending(item => item.PublicId),
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.PublicId)
+        };
+        var rows = await ordered.Skip(request.Offset).Take(request.PageSize).Select(item =>
+            new EmployeeAssignmentDto(item.PublicId, item.MunicipalEmployee.PublicId, item.Department.PublicId, item.Department.Name,
+                item.Unit == null ? null : item.Unit.PublicId, item.Unit == null ? null : item.Unit.Name, item.PositionCode, item.PositionName,
+                item.EffectiveFrom, item.EffectiveTo, item.IsPrimary, item.IsActive, Convert.ToBase64String(item.RowVersion),
+                item.Position == null ? null : item.Position.PublicId)).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<EmployeeAssignmentDto>>(true,
+            PagedResponse<EmployeeAssignmentDto>.Create(rows, request.Page, request.PageSize, total)));
     }
 
     [HttpPost("employee-assignments")]

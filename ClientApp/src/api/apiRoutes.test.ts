@@ -3,6 +3,7 @@ import { approveStrategicDocument, changePassword, closeEmployeeAssignment, comm
 import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
 import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
 import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
+import { getEmployeeAssignmentsPage } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -323,10 +324,12 @@ describe('versioned API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await getReportingPeriodMastersPage({ page: 1, pageSize: 100 });
+    await getEmployeeAssignmentsPage('employee/id', { page: 2, pageSize: 10, search: 'finance', sortBy: 'effectiveFrom', sortDirection: 'desc' });
     await closeEmployeeAssignment('assignment-public-id', { effectiveTo: '2026-10-02T00:00:00Z', reason: 'Employee transferred to Finance', rowVersion: 'AQ==' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/reporting-periods/page?page=1&pageSize=100'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/employee-assignments/assignment-public-id/close'), expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/employees/employee%2Fid/assignments/page?page=2&pageSize=10&search=finance&sortBy=effectiveFrom&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/masters/employee-assignments/assignment-public-id/close'), expect.objectContaining({
       method: 'PUT',
       body: JSON.stringify({ effectiveTo: '2026-10-02T00:00:00Z', reason: 'Employee transferred to Finance', rowVersion: 'AQ==' }),
     }));

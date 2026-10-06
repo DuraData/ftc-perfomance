@@ -238,10 +238,42 @@ public sealed class TenantMastersControllerTests
             EffectiveFrom = DateTime.UtcNow.AddMonths(-3),
             RowVersion = [1]
         };
-        context.AddRange(municipality, department, employee, assignment);
+        var historicalAssignment = new EmployeeAssignment
+        {
+            Id = 14,
+            MunicipalityId = 41,
+            MunicipalEmployee = employee,
+            MunicipalEmployeeId = employee.Id,
+            Department = department,
+            DepartmentId = department.Id,
+            PositionCode = "ANL",
+            PositionName = "Financial Analyst",
+            EffectiveFrom = DateTime.UtcNow.AddYears(-1),
+            EffectiveTo = DateTime.UtcNow.AddMonths(-4),
+            IsActive = false,
+            RowVersion = [2]
+        };
+        context.AddRange(municipality, department, employee, assignment, historicalAssignment);
         await context.SaveChangesAsync();
 
         var controller = CreateController(context, tenant);
+        var firstPageResult = await controller.GetAssignmentsPage(employee.PublicId, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, SortBy = "effectiveFrom", SortDirection = "desc"
+        });
+        var firstPage = Assert.IsType<ApiResponse<PagedResponse<EmployeeAssignmentDto>>>(Assert.IsType<OkObjectResult>(firstPageResult.Result).Value).Data!;
+        Assert.Equal(2, firstPage.TotalCount);
+        Assert.Equal(2, firstPage.TotalPages);
+        Assert.Equal(assignment.PublicId, Assert.Single(firstPage.Items).PublicId);
+        var filteredResult = await controller.GetAssignmentsPage(employee.PublicId, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 10, Search = "Analyst", SortBy = "position", SortDirection = "asc"
+        });
+        var filtered = Assert.IsType<ApiResponse<PagedResponse<EmployeeAssignmentDto>>>(Assert.IsType<OkObjectResult>(filteredResult.Result).Value).Data!;
+        Assert.Equal(1, filtered.TotalCount);
+        Assert.Equal(historicalAssignment.PublicId, Assert.Single(filtered.Items).PublicId);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetAssignmentsPage(employee.PublicId, new PagedQueryRequest { SortBy = "raw-sql" })).Result);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetAssignments(employee.PublicId).Result).StatusCode);
         var effectiveTo = DateTime.UtcNow.AddDays(-1);
         var response = await controller.CloseAssignment(
             assignment.PublicId,

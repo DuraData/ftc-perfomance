@@ -1314,8 +1314,8 @@ export async function updateMunicipalEmployee(publicId: string, payload: { first
   return put<MunicipalEmployeeDto>(`/v1/masters/employees/${publicId}`, payload);
 }
 
-export async function getEmployeeAssignments(employeePublicId: string): Promise<ApiResponse<EmployeeAssignmentMasterDto[]>> {
-  return get<EmployeeAssignmentMasterDto[]>(`/v1/masters/employees/${employeePublicId}/assignments`);
+export async function getEmployeeAssignmentsPage(employeePublicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<EmployeeAssignmentMasterDto>>> {
+  return get<PagedResult<EmployeeAssignmentMasterDto>>(`/v1/masters/employees/${encodeURIComponent(employeePublicId)}/assignments/page${registerPageQuery(query)}`);
 }
 
 export async function createEmployeeAssignment(payload: { employeePublicId: string; departmentPublicId: string; unitPublicId?: string | null; positionPublicId?: string | null; positionCode?: string | null; positionName?: string | null; effectiveFrom: string; effectiveTo?: string | null; isPrimary: boolean }): Promise<ApiResponse<EmployeeAssignmentMasterDto>> {

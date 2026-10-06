@@ -10,7 +10,7 @@ import {
   closeEmployeeAssignment,
   createEmployeeAssignment,
   createMunicipalEmployee,
-  getEmployeeAssignments,
+  getEmployeeAssignmentsPage,
   getMunicipalEmployeesPage,
   getUsersPage,
   updateMunicipalEmployee,
@@ -36,6 +36,11 @@ export function TenantEmployeeAdministration() {
   const [userSearch, setUserSearch] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [assignments, setAssignments] = useState<EmployeeAssignmentMasterDto[]>([]);
+  const [assignmentPage, setAssignmentPage] = useState(1);
+  const [assignmentTotalCount, setAssignmentTotalCount] = useState(0);
+  const [assignmentTotalPages, setAssignmentTotalPages] = useState(0);
+  const [assignmentSearchInput, setAssignmentSearchInput] = useState('');
+  const [assignmentSearch, setAssignmentSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [employee, setEmployee] = useState({ employeeNumber: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() });
@@ -63,12 +68,35 @@ export function TenantEmployeeAdministration() {
   useEffect(() => { void loadEmployees(); }, [loadEmployees]);
   useEffect(() => { void loadUsers(); }, [loadUsers]);
 
-  const selectEmployee = async (publicId: string) => {
-    setSelectedId(publicId); setBusy(true); setError(null);
-    const result = await getEmployeeAssignments(publicId);
+  const loadAssignments = useCallback(async (publicId: string, requestedPage = 1, requestedSearch = '') => {
+    setBusy(true); setError(null);
+    const result = await getEmployeeAssignmentsPage(publicId, {
+      page: requestedPage, pageSize: 10, search: requestedSearch || undefined, sortBy: 'effectiveFrom', sortDirection: 'desc',
+    });
     if (!result.success) setError(result.message ?? 'Placement history could not be loaded.');
-    setAssignments(result.data ?? []); setBusy(false);
+    setAssignments(result.data?.items ?? []);
+    setAssignmentPage(result.data?.page ?? requestedPage);
+    setAssignmentTotalCount(result.data?.totalCount ?? 0);
+    setAssignmentTotalPages(result.data?.totalPages ?? 0);
+    setBusy(false);
+  }, []);
+
+  const selectEmployee = async (publicId: string) => {
+    setSelectedId(publicId);
+    setAssignmentSearch('');
+    setAssignmentSearchInput('');
+    await loadAssignments(publicId);
   };
+
+  useEffect(() => {
+    const normalized = assignmentSearchInput.trim();
+    if (normalized === assignmentSearch) return;
+    const timeout = window.setTimeout(() => {
+      setAssignmentSearch(normalized);
+      if (selectedId) void loadAssignments(selectedId, 1, normalized);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [assignmentSearch, assignmentSearchInput, loadAssignments, selectedId]);
 
   const saveEmployee = async () => {
     if (!employee.employeeNumber.trim() || !employee.firstName.trim() || !employee.lastName.trim()) { setError('Employee number, first name, and last name are required.'); return; }
@@ -93,7 +121,7 @@ export function TenantEmployeeAdministration() {
     setBusy(true); setError(null);
     const result = await createEmployeeAssignment({ employeePublicId: selected.publicId, departmentPublicId: assignment.departmentPublicId, unitPublicId: assignment.unitPublicId || null, positionPublicId: assignment.positionPublicId, effectiveFrom: atUtc(assignment.effectiveFrom), effectiveTo: assignment.effectiveTo ? atUtc(assignment.effectiveTo) : null, isPrimary: assignment.isPrimary });
     if (!result.success) setError(result.message ?? 'Placement could not be created.');
-    else { pushToast('success', 'Effective-dated placement created'); setAssignment({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true }); await selectEmployee(selected.publicId); }
+    else { pushToast('success', 'Effective-dated placement created'); setAssignment({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true }); await loadAssignments(selected.publicId, 1, assignmentSearch); }
     setBusy(false);
   };
 
@@ -102,7 +130,7 @@ export function TenantEmployeeAdministration() {
     setBusy(true); setError(null);
     const result = await closeEmployeeAssignment(item.publicId, { effectiveTo: atUtc(closure.effectiveTo), reason: closure.reason.trim(), rowVersion: item.rowVersion });
     if (!result.success) setError(result.message ?? 'Placement could not be ended.');
-    else { pushToast('success', 'Placement ended with its history retained'); setClosure({ effectiveTo: today(), reason: '' }); await selectEmployee(item.employeePublicId); }
+    else { pushToast('success', 'Placement ended with its history retained'); setClosure({ effectiveTo: today(), reason: '' }); await loadAssignments(item.employeePublicId, assignmentPage, assignmentSearch); }
     setBusy(false);
   };
 
@@ -132,7 +160,7 @@ export function TenantEmployeeAdministration() {
           <Checkbox label="Primary placement" checked={assignment.isPrimary} onChange={event => setAssignment(current => ({ ...current, isPrimary: event.target.checked }))} />
           <Button onClick={() => void saveAssignment()} disabled={busy}>Create placement</Button>
         </FormPanel>}
-        <Card className="p-4"><div className="flex items-center justify-between gap-2"><div><h3 className="font-semibold">Placement history</h3><p className="text-xs text-secondary-500">{selected.employeeNumber} · immutable historical rows</p></div>{security.canUpdate('EMPLOYEE') && selected.isActive && <Button size="sm" variant="outline" onClick={() => void deactivateEmployee()} disabled={busy}>Deactivate employee</Button>}</div><div className="mt-3 space-y-2">{assignments.map(item => <div key={item.publicId} className="rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between gap-3"><div><p className="font-medium">{item.positionName}</p><p className="text-xs text-secondary-500">{item.positionCode} · {item.departmentName}{item.unitName ? ` / ${item.unitName}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isPrimary ? 'Primary' : 'Additional'}</Badge></div><p className="mt-1 text-xs text-secondary-500">{new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'Current'}</p>{item.isActive && security.canUpdate('EMPLOYEE_ASSIGNMENT') && <div className="mt-3 space-y-2 rounded-lg bg-secondary-50 p-3 dark:bg-secondary-800"><p className="text-xs font-semibold text-secondary-700 dark:text-secondary-200">End this placement</p><Input label="Placement end date" type="date" value={closure.effectiveTo} onChange={event => setClosure(current => ({ ...current, effectiveTo: event.target.value }))} /><Input label="Closure reason" value={closure.reason} onChange={event => setClosure(current => ({ ...current, reason: event.target.value }))} required /><Button size="sm" variant="outline" onClick={() => void closeAssignment(item)} disabled={busy}>End placement</Button></div>}</div>)}{!assignments.length && <p className="text-sm text-secondary-500">No placement history.</p>}</div></Card>
+        <Card className="p-4"><div className="flex flex-wrap items-end justify-between gap-2"><div><h3 className="font-semibold">Placement history</h3><p className="text-xs text-secondary-500">{selected.employeeNumber} · {assignmentTotalCount} retained placement{assignmentTotalCount === 1 ? '' : 's'}</p></div><div className="flex flex-wrap items-end gap-2"><Input aria-label="Search placement history" placeholder="Position, department, or unit" value={assignmentSearchInput} onChange={event => setAssignmentSearchInput(event.target.value)} />{security.canUpdate('EMPLOYEE') && selected.isActive && <Button size="sm" variant="outline" onClick={() => void deactivateEmployee()} disabled={busy}>Deactivate employee</Button>}</div></div><div className="mt-3 space-y-2">{assignments.map(item => <div key={item.publicId} className="rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between gap-3"><div><p className="font-medium">{item.positionName}</p><p className="text-xs text-secondary-500">{item.positionCode} · {item.departmentName}{item.unitName ? ` / ${item.unitName}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isPrimary ? 'Primary' : 'Additional'}</Badge></div><p className="mt-1 text-xs text-secondary-500">{new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'Current'}</p>{item.isActive && security.canUpdate('EMPLOYEE_ASSIGNMENT') && <div className="mt-3 space-y-2 rounded-lg bg-secondary-50 p-3 dark:bg-secondary-800"><p className="text-xs font-semibold text-secondary-700 dark:text-secondary-200">End this placement</p><Input label="Placement end date" type="date" value={closure.effectiveTo} onChange={event => setClosure(current => ({ ...current, effectiveTo: event.target.value }))} /><Input label="Closure reason" value={closure.reason} onChange={event => setClosure(current => ({ ...current, reason: event.target.value }))} required /><Button size="sm" variant="outline" onClick={() => void closeAssignment(item)} disabled={busy}>End placement</Button></div>}</div>)}{!assignments.length && <p className="text-sm text-secondary-500">No placements match the current history search.</p>}</div>{assignmentTotalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Placement page {assignmentPage} of {assignmentTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || assignmentPage <= 1} onClick={() => void loadAssignments(selected.publicId, assignmentPage - 1, assignmentSearch)}>Previous placements</Button><Button size="sm" variant="outline" disabled={busy || assignmentPage >= assignmentTotalPages} onClick={() => void loadAssignments(selected.publicId, assignmentPage + 1, assignmentSearch)}>Next placements</Button></div></div>}</Card>
       </div>}
     </div>
   </AppShell>;

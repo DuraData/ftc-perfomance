@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TenantEmployeeAdministration } from './TenantEmployeeAdministration';
 
 const api = vi.hoisted(() => ({
-  getMunicipalEmployeesPage: vi.fn(), getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(), getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getUsersPage: vi.fn(), getEmployeeAssignments: vi.fn(),
+  getMunicipalEmployeesPage: vi.fn(), getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(), getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getUsersPage: vi.fn(), getEmployeeAssignmentsPage: vi.fn(),
   createMunicipalEmployee: vi.fn(), updateMunicipalEmployee: vi.fn(), createEmployeeAssignment: vi.fn(), closeEmployeeAssignment: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
@@ -17,7 +17,7 @@ describe('TenantEmployeeAdministration', () => {
     api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'unit-1', departmentPublicId: 'department-1', departmentName: 'Finance', code: 'BUD', name: 'Budget', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Ag==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getPositionMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'position-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', code: 'CFO', name: 'Chief Financial Officer', isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'Aw==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
-    api.getEmployeeAssignments.mockResolvedValue({ success: true, data: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }] });
+    api.getEmployeeAssignmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.createEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
     api.closeEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
   });
@@ -27,7 +27,9 @@ describe('TenantEmployeeAdministration', () => {
     const employeeButton = await screen.findByRole('button', { name: /Ada Mokoena/ });
     fireEvent.click(employeeButton);
     expect(api.getMunicipalEmployeesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' });
-    await waitFor(() => expect(api.getEmployeeAssignments).toHaveBeenCalledWith('employee-1'));
+    await waitFor(() => expect(api.getEmployeeAssignmentsPage).toHaveBeenCalledWith('employee-1', {
+      page: 1, pageSize: 10, search: undefined, sortBy: 'effectiveFrom', sortDirection: 'desc',
+    }));
     await waitFor(() => expect(employeeButton).toHaveClass('border-primary-500'));
 
     fireEvent.change(await screen.findByRole('combobox', { name: /Department/ }), { target: { value: 'department-1' } });
@@ -46,5 +48,22 @@ describe('TenantEmployeeAdministration', () => {
     fireEvent.change(await screen.findByLabelText(/Closure reason/), { target: { value: 'Organizational placement ended' } });
     fireEvent.click(screen.getByRole('button', { name: 'End placement' }));
     await waitFor(() => expect(api.closeEmployeeAssignment).toHaveBeenCalledWith('assignment-1', expect.objectContaining({ reason: 'Organizational placement ended', rowVersion: 'Ag==' })));
+  });
+
+  it('searches and pages retained placement history with authoritative totals', async () => {
+    api.getEmployeeAssignmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 } });
+    render(<TenantEmployeeAdministration />);
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Mokoena/ }));
+
+    expect(await screen.findByText(/11 retained placements/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next placements' }));
+    await waitFor(() => expect(api.getEmployeeAssignmentsPage).toHaveBeenCalledWith('employee-1', expect.objectContaining({
+      page: 2, pageSize: 10, sortBy: 'effectiveFrom', sortDirection: 'desc',
+    })));
+
+    fireEvent.change(screen.getByLabelText('Search placement history'), { target: { value: 'finance' } });
+    await waitFor(() => expect(api.getEmployeeAssignmentsPage).toHaveBeenCalledWith('employee-1', expect.objectContaining({
+      page: 1, pageSize: 10, search: 'finance', sortBy: 'effectiveFrom', sortDirection: 'desc',
+    })));
   });
 });
