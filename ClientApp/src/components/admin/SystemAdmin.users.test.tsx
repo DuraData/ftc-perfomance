@@ -4,7 +4,7 @@ import { AdminUsersPage } from './SystemAdmin';
 const api = vi.hoisted(() => ({
   getUsersPage: vi.fn(),
   getSecurityRolesPage: vi.fn(),
-  getPermissions: vi.fn(),
+  getPermissionsPage: vi.fn(),
 }));
 
 vi.mock('../../api/api', async importOriginal => ({
@@ -40,13 +40,14 @@ describe('User administration member permissions', () => {
       }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
     });
     api.getSecurityRolesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
-    api.getPermissions.mockResolvedValue({ success: true, data: [] });
+    api.getPermissionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
 
     render(<AdminUsersPage />);
 
     expect(await screen.findByText('Protected User')).toBeInTheDocument();
     expect(api.getUsersPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' });
     expect(api.getSecurityRolesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' });
+    expect(api.getPermissionsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' });
     expect(screen.queryByText('private@example.test')).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Email' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add User' })).toBeDisabled();

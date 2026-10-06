@@ -4,7 +4,7 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
-import { getPermissions, getRoleAccessMatrixPage, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
+import { getPermissionsPage, getRoleAccessMatrixPage, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
 import type { AccessSimulationResult, AdminPermission, AdminUserDetail, RoleAccessMatrixRow, SystemCoverageAuditRow } from '../../types';
 
 function BooleanPill({ value }: { value: boolean }) {
@@ -90,6 +90,11 @@ export function PermissionSimulationPage() {
   const [userTotalPages, setUserTotalPages] = useState(0);
   const [selectedUserSnapshot, setSelectedUserSnapshot] = useState<AdminUserDetail | null>(null);
   const [permissions, setPermissions] = useState<AdminPermission[]>([]);
+  const [permissionPage, setPermissionPage] = useState(1);
+  const [permissionSearch, setPermissionSearch] = useState('');
+  const [permissionTotalCount, setPermissionTotalCount] = useState(0);
+  const [permissionTotalPages, setPermissionTotalPages] = useState(0);
+  const [selectedPermissionSnapshot, setSelectedPermissionSnapshot] = useState<AdminPermission | null>(null);
   const [result, setResult] = useState<AccessSimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,19 +128,24 @@ export function PermissionSimulationPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const permissionsResult = await getPermissions();
+      const permissionsResult = await getPermissionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' });
       if (!active) return;
-      setPermissions(permissionsResult.data ?? []);
+      setPermissions(permissionsResult.data?.items ?? []);
+      setPermissionTotalCount(permissionsResult.data?.totalCount ?? 0);
+      setPermissionTotalPages(permissionsResult.data?.totalPages ?? 0);
       if (!permissionsResult.success) setError(permissionsResult.message ?? 'Permission catalogue could not be loaded.');
     };
     void load();
     return () => { active = false; };
-  }, []);
+  }, [permissionPage, permissionSearch]);
 
   const selectedUser = users.find(item => item.user.id === form.userId) ?? selectedUserSnapshot;
   const availableUsers = selectedUserSnapshot && !users.some(item => item.user.id === selectedUserSnapshot.user.id)
     ? [...users, selectedUserSnapshot]
     : users;
+  const availablePermissions = selectedPermissionSnapshot && !permissions.some(item => item.id === selectedPermissionSnapshot.id)
+    ? [...permissions, selectedPermissionSnapshot]
+    : permissions;
 
   const simulate = async () => {
     if (!form.userId || !form.permissionCode) {
@@ -182,13 +192,17 @@ export function PermissionSimulationPage() {
               />
               {userTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</Button><span>Page {userPage} of {userTotalPages} · {userTotalCount} users</span><Button size="sm" variant="outline" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</Button></div>}
             </div>
-            <Select
-              label="Permission"
-              value={form.permissionCode}
-              onChange={(event) => setForm(prev => ({ ...prev, permissionCode: event.target.value }))}
-              options={permissions.map(item => ({ value: item.code, label: item.code }))}
-              placeholder="Select permission"
-            />
+            <div className="space-y-2">
+              <Input label="Search permissions" value={permissionSearch} onChange={event => { setPermissionSearch(event.target.value); setPermissionPage(1); }} />
+              <Select
+                label="Permission"
+                value={form.permissionCode}
+                onChange={(event) => { const permissionCode = event.target.value; setSelectedPermissionSnapshot(permissions.find(item => item.code === permissionCode) ?? null); setForm(prev => ({ ...prev, permissionCode })); }}
+                options={availablePermissions.map(item => ({ value: item.code, label: item.code }))}
+                placeholder="Select permission"
+              />
+              {permissionTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={permissionPage <= 1} onClick={() => setPermissionPage(value => Math.max(1, value - 1))}>Previous permissions</Button><span>Page {permissionPage} of {permissionTotalPages} · {permissionTotalCount} permissions</span><Button size="sm" variant="outline" disabled={permissionPage >= permissionTotalPages} onClick={() => setPermissionPage(value => value + 1)}>Next permissions</Button></div>}
+            </div>
             <OrganizationMasterPicker kind="department" label="Department" value={form.departmentId} emptyLabel="Any permitted department" onChange={value => setForm(prev => ({ ...prev, departmentId: value, unitId: '' }))} />
             <OrganizationMasterPicker kind="unit" label="Unit" value={form.unitId} departmentPublicId={form.departmentId || undefined} emptyLabel="Any permitted unit" onChange={value => setForm(prev => ({ ...prev, unitId: value }))} />
             <Input label="Target Id" value={form.targetId} onChange={(event) => setForm(prev => ({ ...prev, targetId: event.target.value }))} />

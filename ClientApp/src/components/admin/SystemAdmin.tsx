@@ -17,6 +17,7 @@ import {
   getAuditTrailsPage,
   getLoginAuditLogs,
   getPermissions,
+  getPermissionsPage,
   getPermissionsGrouped,
   getUserPermissions,
   getRolePermissions,
@@ -75,6 +76,10 @@ export function AdminUsersPage() {
   const [permissionModalOpen, setPermissionModalOpen] = useState(false);
   const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<AdminUserDetail | null>(null);
   const [allPermissions, setAllPermissions] = useState<AdminPermission[]>([]);
+  const [permissionPage, setPermissionPage] = useState(1);
+  const [permissionTotalCount, setPermissionTotalCount] = useState(0);
+  const [permissionTotalPages, setPermissionTotalPages] = useState(0);
+  const [permissionSearch, setPermissionSearch] = useState('');
   const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
   const [overrideMap, setOverrideMap] = useState<Record<number, boolean>>({});
 
@@ -101,11 +106,13 @@ export function AdminUsersPage() {
   useEffect(() => { void loadUsers(); }, [loadUsers]);
 
   useEffect(() => {
-    void getPermissions().then(permsRes => {
+    void getPermissionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' }).then(permsRes => {
       if (!permsRes.success) setError(permsRes.message ?? 'Failed to load permissions');
-      setAllPermissions(permsRes.data ?? []);
+      setAllPermissions(permsRes.data?.items ?? []);
+      setPermissionTotalCount(permsRes.data?.totalCount ?? 0);
+      setPermissionTotalPages(permsRes.data?.totalPages ?? 0);
     });
-  }, []);
+  }, [permissionPage, permissionSearch]);
 
   useEffect(() => {
     void getSecurityRolesPage({ page: rolePage, pageSize: 25, search: roleSearch, sortBy: 'name', sortDirection: 'asc' }).then(rolesRes => {
@@ -244,6 +251,8 @@ export function AdminUsersPage() {
   const openPermissions = async (u: AdminUserDetail) => {
     setError(null);
     setSelectedUserForPermissions(u);
+    setPermissionPage(1);
+    setPermissionSearch('');
     const res = await getUserPermissions(u.user.id);
     if (!res.success || !res.data) {
       setError(res.message ?? 'Failed to load user permissions');
@@ -454,7 +463,9 @@ export function AdminUsersPage() {
             {!userPermissions ? (
               <p className="text-sm text-secondary-500">Loading...</p>
             ) : (
-              <div className="max-h-[55vh] overflow-auto pr-1 space-y-3">
+              <div className="space-y-3">
+                <Input label="Search permissions" value={permissionSearch} onChange={(event) => { setPermissionSearch(event.target.value); setPermissionPage(1); }} />
+                <div className="max-h-[46vh] overflow-auto pr-1 space-y-3">
                 {Object.entries(
                   allPermissions.reduce<Record<string, AdminPermission[]>>((acc, p) => {
                     acc[p.module] = acc[p.module] ? [...acc[p.module], p] : [p];
@@ -531,6 +542,12 @@ export function AdminUsersPage() {
                     </div>
                   );
                 })}
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs text-secondary-500">
+                  <span>{permissionTotalCount} permissions · Page {permissionPage} of {Math.max(permissionTotalPages, 1)}</span>
+                  <span className="flex gap-2"><Button variant="ghost" size="sm" disabled={permissionPage <= 1} onClick={() => setPermissionPage(value => Math.max(1, value - 1))}>Previous</Button><Button variant="ghost" size="sm" disabled={permissionPage >= permissionTotalPages} onClick={() => setPermissionPage(value => value + 1)}>Next</Button></span>
+                </div>
+                <p className="text-xs text-secondary-500">Overrides selected on other permission pages are preserved when you save.</p>
               </div>
             )}
           </div>

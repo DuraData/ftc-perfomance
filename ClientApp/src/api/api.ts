@@ -1951,6 +1951,10 @@ export async function getPermissions(): Promise<ApiResponse<AdminPermission[]>> 
   return get<AdminPermission[]>('/permissions');
 }
 
+export async function getPermissionsPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<AdminPermission>>> {
+  return get<PagedResult<AdminPermission>>(`/permissions/page${registerPageQuery(query)}`);
+}
+
 export async function getPermissionsGrouped(): Promise<ApiResponse<AdminPermissionGroup[]>> {
   return get<AdminPermissionGroup[]>('/permissions/grouped');
 }

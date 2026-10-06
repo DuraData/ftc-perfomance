@@ -47,15 +47,21 @@ public sealed class LegacySecurityEndpointRetirementTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var context = new ApplicationDbContext(options);
         var permission = new Permission { Module = "Resource", Feature = "USER", Action = "Read", Code = "USER.READ", Description = "Read users" };
-        context.Permissions.Add(permission);
+        var secondPermission = new Permission { Module = "Resource", Feature = "ROLE", Action = "Read", Code = "ROLE.READ", Description = "Read roles" };
+        context.Permissions.AddRange(permission, secondPermission);
         await context.SaveChangesAsync();
         var controller = new PermissionsController(context);
 
+        AssertGone(controller.GetPermissions().Result);
+        var pageResult = await controller.GetPermissionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "USER", SortBy = "code", SortDirection = "asc" });
+        var page = Assert.IsType<ApiResponse<PagedResponse<PermissionResponse>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value).Data!;
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal("USER.READ", Assert.Single(page.Items).Code);
         AssertGone((await controller.CreatePermission(new CreatePermissionRequest("Unsafe", "Unsafe", "Grant", "UNSAFE.GRANT", null, true))).Result);
         AssertGone((await controller.UpdatePermission(permission.Id, new UpdatePermissionRequest("Unsafe", "Unsafe", "Grant", "UNSAFE.GRANT", null, true))).Result);
         AssertGone((await controller.DeletePermission(permission.Id)).Result);
 
-        var stored = await context.Permissions.SingleAsync();
+        var stored = await context.Permissions.SingleAsync(item => item.Id == permission.Id);
         Assert.Equal("USER.READ", stored.Code);
         Assert.True(stored.IsActive);
     }
