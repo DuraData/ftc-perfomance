@@ -70,8 +70,7 @@ public class C88ControllerTests
         completed.State.Should().Be(C88ReportState.FinalSubmitted);
         completed.WorkflowActions.Select(item => item.Action).Should().Equal(C88WorkflowActionKind.Created, C88WorkflowActionKind.Submitted, C88WorkflowActionKind.Verified, C88WorkflowActionKind.FinalSubmitted);
         completed.CurrentStageSequence.Should().Be(3);
-        var workspace = Payload(await controller.GetWorkspace(seed.Year.PublicId));
-        workspace.Reports.Should().BeEmpty("report history is loaded only through the bounded page contract");
+        controller.GetWorkspace().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         var planPage = Payload(await controller.GetPlansPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "indicatorCode", SortDirection = "asc" }, seed.Year.PublicId));
         planPage.TotalCount.Should().Be(1);
         planPage.Items.Should().ContainSingle().Which.PublicId.Should().Be(planId);
@@ -370,7 +369,7 @@ public class C88ControllerTests
     }
 
     [Fact]
-    public async Task Configuration_and_catalogue_version_pages_filter_before_count_and_page_stably()
+    public async Task Configuration_and_catalogue_register_pages_filter_before_count_and_page_stably()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
@@ -401,6 +400,12 @@ public class C88ControllerTests
                 IsEnabled = index % 2 == 0, EffectiveFrom = municipalityYear.EffectiveFrom,
                 CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
             });
+            context.Add(new C88CatalogueItem
+            {
+                MunicipalityId = seed.Municipality.Id, Municipality = seed.Municipality, CatalogueVersion = version,
+                Kind = C88CatalogueItemKind.ReportType, Code = $"REPORT-{index:00}", Name = $"Paged report type {index:00}",
+                Description = $"Searchable item {index:00}", DisplayOrder = index, IsActive = index % 2 == 0
+            });
         }
         await context.SaveChangesAsync();
 
@@ -412,14 +417,22 @@ public class C88ControllerTests
         var versions = Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged edition", SortBy = "code", SortDirection = "asc" }));
         versions.TotalCount.Should().Be(11);
         versions.Items.Select(item => item.Code).Should().Equal("EDITION-03", "EDITION-04", "EDITION-05");
+        var items = Payload(await controller.GetCatalogueItemsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged report", SortBy = "displayOrder", SortDirection = "asc" }, kind: C88CatalogueItemKind.ReportType));
+        items.TotalCount.Should().Be(11);
+        items.Items.Select(item => item.Code).Should().Equal("REPORT-03", "REPORT-04", "REPORT-05");
+        Payload(await controller.GetCatalogueItemsPage(new PagedQueryRequest { PageSize = 1 }, catalogueItemPublicId: items.Items[0].PublicId)).Items
+            .Should().ContainSingle().Which.PublicId.Should().Be(items.Items[0].PublicId);
+        Payload(await controller.GetCatalogueItemsPage(new PagedQueryRequest { PageSize = 10 }, kind: C88CatalogueItemKind.ReportType, active: true)).TotalCount.Should().Be(6);
         Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { PageSize = 10 }, enabled: true)).TotalCount.Should().Be(6);
         Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { PageSize = 10 }, published: true, active: true)).TotalCount.Should().Be(6);
         (await controller.GetConfigurationsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetCatalogueVersionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetCatalogueItemsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
 
         var denied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: _ => false);
         (await denied.GetConfigurationsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         (await denied.GetCatalogueVersionsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await denied.GetCatalogueItemsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
     private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)

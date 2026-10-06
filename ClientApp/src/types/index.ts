@@ -3669,7 +3669,6 @@ export interface C88IndicatorReport { publicId: string; reportFamilyId: string; 
 export interface C88Assignment { publicId: string; configurationPublicId: string; indicatorPublicId: string; employeePublicId: string; employeeName: string; role: C88AssignmentRole; effectiveFrom: string; effectiveTo?: string | null; isActive: boolean; rowVersion: string }
 export interface C88Workflow { publicId: string; configurationPublicId: string; versionNumber: number; isCurrent: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string; stages: Array<{ publicId: string; sequence: number; kind: string; name: string; requiredRole: C88AssignmentRole; isActive: boolean }> }
 export interface C88Mapping { publicId: string; configurationPublicId: string; indicatorPublicId: string; opmsTargetPublicId: string; opmsIndicatorNumber: string; mappingType: 'Direct' | 'Contributing'; reason: string; isActive: boolean; rowVersion: string }
-export interface C88Workspace { catalogueItems: C88CatalogueItem[]; reports: C88IndicatorReport[] }
 
 export interface EnterpriseProviderOption { code: string; displayName: string; kind: 'MICROSOFT_ENTRA_ID' | 'ACTIVE_DIRECTORY' }
 export interface EnterpriseSignInOptions { municipalityCode: string; municipalityName: string; localEnabled: boolean; providers: EnterpriseProviderOption[] }

@@ -33,27 +33,43 @@ public sealed class C88Controller : ControllerBase
     }
 
     [HttpGet("workspace")]
-    public async Task<ActionResult<ApiResponse<C88WorkspaceResponse>>> GetWorkspace([FromQuery] Guid? municipalityFinancialYearPublicId = null)
-    {
-        var user = await CurrentUserAsync();
-        if (user == null) return Unauthorized(Fail<C88WorkspaceResponse>("User not found."));
-        if (!tenantContext.MunicipalityId.HasValue) return BadRequest(Fail<C88WorkspaceResponse>("Municipality context is required."));
-        var indicatorRead = await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.READ", Scope());
-        var reportRead = await accessControl.CheckPermissionAsync(user, "C88_REPORT.READ", Scope());
-        if (!indicatorRead.Allowed && !reportRead.Allowed) return Forbidden<C88WorkspaceResponse>(indicatorRead.Reason);
-        var configurations = context.C88MunicipalityConfigurations.AsNoTracking()
-            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
-            .Include(item => item.CatalogueVersion).AsQueryable();
-        if (municipalityFinancialYearPublicId.HasValue)
-            configurations = configurations.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
-        var configRows = await configurations.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate).ToArrayAsync();
-        var versionIds = configRows.Select(item => item.C88CatalogueVersionId).Distinct().ToArray();
-        if (!municipalityFinancialYearPublicId.HasValue)
-            versionIds = await context.C88CatalogueVersions.AsNoTracking().Select(item => item.Id).ToArrayAsync();
+    public ActionResult<ApiResponse<object>> GetWorkspace() => StatusCode(StatusCodes.Status410Gone,
+        Fail<object>("The legacy C88 workspace bootstrap has been retired. Use the bounded register endpoints."));
 
-        var items = await context.C88CatalogueItems.AsNoTracking().Include(item => item.CatalogueVersion).Include(item => item.ParentItem).Where(item => versionIds.Contains(item.C88CatalogueVersionId)).OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ToArrayAsync();
-        return Ok(new ApiResponse<C88WorkspaceResponse>(true, new C88WorkspaceResponse(
-            items.Select(ToResponse).ToArray(), [])));
+    [HttpGet("catalogue-items/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<C88CatalogueItemResponse>>>> GetCatalogueItemsPage(
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? catalogueItemPublicId = null,
+        [FromQuery] Guid? catalogueVersionPublicId = null, [FromQuery] C88CatalogueItemKind? kind = null,
+        [FromQuery] Guid? parentItemPublicId = null, [FromQuery] bool? active = null)
+    {
+        var readError = await WorkspaceRead<C88CatalogueItemResponse>();
+        if (readError != null) return readError;
+        if (request.NormalizedSortBy is not ("createdat" or "kind" or "displayorder" or "code" or "name"))
+            return BadRequest(Fail<PagedResponse<C88CatalogueItemResponse>>("SortBy must be createdAt, kind, displayOrder, code, or name."));
+        var query = context.C88CatalogueItems.AsNoTracking().AsQueryable();
+        if (catalogueItemPublicId.HasValue) query = query.Where(item => item.PublicId == catalogueItemPublicId.Value);
+        if (catalogueVersionPublicId.HasValue) query = query.Where(item => item.CatalogueVersion.PublicId == catalogueVersionPublicId.Value);
+        if (kind.HasValue) query = query.Where(item => item.Kind == kind.Value);
+        if (parentItemPublicId.HasValue) query = query.Where(item => item.ParentItem != null && item.ParentItem.PublicId == parentItemPublicId.Value);
+        if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
+        if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Code.Contains(request.NormalizedSearch)
+            || item.Name.Contains(request.NormalizedSearch) || item.Description != null && item.Description.Contains(request.NormalizedSearch));
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("kind", false) => query.OrderBy(item => item.Kind).ThenBy(item => item.DisplayOrder).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("kind", true) => query.OrderByDescending(item => item.Kind).ThenByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            ("displayorder", false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("displayorder", true) => query.OrderByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Id),
+            _ => query.OrderBy(item => item.Code).ThenBy(item => item.Id)
+        };
+        var rows = await ordered.Include(item => item.CatalogueVersion).Include(item => item.ParentItem)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<C88CatalogueItemResponse>>(true,
+            PagedResponse<C88CatalogueItemResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("configurations/page")]

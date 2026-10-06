@@ -130,9 +130,10 @@ import type {
   StrategicRiskKpiLinkDto,
   StrategicRiskSummaryDto,
   SaveStrategicRiskPayload,
-  C88Workspace,
   C88Configuration,
   C88CatalogueVersion,
+  C88CatalogueItem,
+  C88CatalogueItemKind,
   C88Indicator,
   C88IndicatorReport,
   C88IndicatorPlan,
@@ -2803,11 +2804,22 @@ export function unlinkStrategicRisk(publicId: string, payload: { reason: string;
   return post<StrategicRiskKpiLinkDto>(`/v1/strategic-risks/links/${encodeURIComponent(publicId)}/unlink`, payload);
 }
 
-export async function getC88Workspace(municipalityFinancialYearPublicId?: string): Promise<ApiResponse<C88Workspace>> {
+export async function getC88CatalogueItemsPage(query: RegisterPageQuery = {}, filters: { catalogueItemPublicId?: string; catalogueVersionPublicId?: string; kind?: C88CatalogueItemKind; parentItemPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88CatalogueItem>>> {
+  const pageQuery = registerPageQuery(query);
+  const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
+  if (filters.catalogueItemPublicId) parameters.set('catalogueItemPublicId', filters.catalogueItemPublicId);
+  if (filters.catalogueVersionPublicId) parameters.set('catalogueVersionPublicId', filters.catalogueVersionPublicId);
+  if (filters.kind) parameters.set('kind', filters.kind);
+  if (filters.parentItemPublicId) parameters.set('parentItemPublicId', filters.parentItemPublicId);
+  if (filters.active !== undefined) parameters.set('active', String(filters.active));
+  return get<PagedResult<C88CatalogueItem>>(`/v1/c88/catalogue-items/page?${parameters.toString()}`);
+}
+
+/** @deprecated The server returns 410 Gone. Retained only for explicit legacy-client detection. */
+export async function getC88Workspace(municipalityFinancialYearPublicId?: string): Promise<ApiResponse<object>> {
   const parameters = new URLSearchParams();
   if (municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
-  const query = parameters.size ? `?${parameters.toString()}` : '';
-  return get<C88Workspace>(`/v1/c88/workspace${query}`);
+  return get<object>(`/v1/c88/workspace${parameters.size ? `?${parameters.toString()}` : ''}`);
 }
 
 export async function getC88ConfigurationsPage(query: RegisterPageQuery = {}, filters: { configurationPublicId?: string; municipalityFinancialYearPublicId?: string; catalogueVersionPublicId?: string; enabled?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Configuration>>> {

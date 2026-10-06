@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   configureC88: vi.fn(), createC88Assignment: vi.fn(), createC88Calendar: vi.fn(), createC88CatalogueItem: vi.fn(),
   createC88CatalogueVersion: vi.fn(), createC88ComplianceQuestion: vi.fn(), createC88Indicator: vi.fn(),
   createC88Mapping: vi.fn(), createC88ReportVersion: vi.fn(), createC88Workflow: vi.fn(), finalSubmitC88Report: vi.fn(),
-  getC88AssignmentsPage: vi.fn(), getC88CalendarsPage: vi.fn(), getC88CatalogueVersionsPage: vi.fn(), getC88ComplianceQuestionsPage: vi.fn(), getC88ConfigurationsPage: vi.fn(), getC88IndicatorsPage: vi.fn(), getC88MappingsPage: vi.fn(), getC88PlansPage: vi.fn(), getC88ReportsPage: vi.fn(), getC88WorkflowsPage: vi.fn(), getC88Workspace: vi.fn(), getMunicipalEmployeesPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
+  getC88AssignmentsPage: vi.fn(), getC88CalendarsPage: vi.fn(), getC88CatalogueItemsPage: vi.fn(), getC88CatalogueVersionsPage: vi.fn(), getC88ComplianceQuestionsPage: vi.fn(), getC88ConfigurationsPage: vi.fn(), getC88IndicatorsPage: vi.fn(), getC88MappingsPage: vi.fn(), getC88PlansPage: vi.fn(), getC88ReportsPage: vi.fn(), getC88WorkflowsPage: vi.fn(), getMunicipalEmployeesPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
   returnC88Report: vi.fn(), saveC88IndicatorPlan: vi.fn(), submitC88Report: vi.fn(), updateC88CatalogueVersion: vi.fn(), verifyC88Report: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ describe('Circular 88 workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capabilities.canRead.mockReturnValue(true); capabilities.canCreate.mockReturnValue(true); capabilities.canUpdate.mockReturnValue(true); capabilities.canExecute.mockReturnValue(true);
-    api.getC88Workspace.mockResolvedValue({ success: true, data: workspace });
+    api.getC88CatalogueItemsPage.mockResolvedValue({ success: true, data: { items: workspace.catalogueItems, page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.getC88ConfigurationsPage.mockResolvedValue({ success: true, data: { items: [configuration], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getC88CatalogueVersionsPage.mockResolvedValue({ success: true, data: { items: [catalogueVersion], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getC88IndicatorsPage.mockResolvedValue({ success: true, data: { items: [indicator], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });

@@ -19,4 +19,3 @@ public sealed record C88AssignmentResponse(Guid PublicId, Guid ConfigurationPubl
 public sealed record C88WorkflowStageResponse(Guid PublicId, int Sequence, C88WorkflowStageKind Kind, string Name, C88AssignmentRole RequiredRole, bool IsActive);
 public sealed record C88WorkflowResponse(Guid PublicId, Guid ConfigurationPublicId, int VersionNumber, bool IsCurrent, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, C88WorkflowStageResponse[] Stages);
 public sealed record C88MappingResponse(Guid PublicId, Guid ConfigurationPublicId, Guid IndicatorPublicId, Guid OpmsTargetPublicId, string OpmsIndicatorNumber, C88MappingType MappingType, string Reason, bool IsActive, string RowVersion);
-public sealed record C88WorkspaceResponse(C88CatalogueItemResponse[] CatalogueItems, C88IndicatorReportResponse[] Reports);
