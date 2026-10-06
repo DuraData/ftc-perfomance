@@ -395,9 +395,11 @@ export function SubmissionWorkspace({
   }, [submission]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => { setEvidencePage(1); setEvidenceSearch(evidenceSearchInput.trim()); }, 300);
+    const normalized = evidenceSearchInput.trim();
+    if (normalized === evidenceSearch) return;
+    const timeout = window.setTimeout(() => { setEvidencePage(1); setEvidenceSearch(normalized); }, 300);
     return () => window.clearTimeout(timeout);
-  }, [evidenceSearchInput]);
+  }, [evidenceSearch, evidenceSearchInput]);
 
   const loadEvidence = useCallback(async () => {
     if (activeTab !== 'evidence') return;

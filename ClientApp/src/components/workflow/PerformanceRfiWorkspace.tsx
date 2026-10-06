@@ -65,9 +65,11 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     return () => window.clearTimeout(timeout);
   }, [searchInput]);
   useEffect(() => {
-    const timeout = window.setTimeout(() => { setEvidencePage(1); setEvidenceSearch(evidenceSearchInput.trim()); }, 300);
+    const normalized = evidenceSearchInput.trim();
+    if (normalized === evidenceSearch) return;
+    const timeout = window.setTimeout(() => { setEvidencePage(1); setEvidenceSearch(normalized); }, 300);
     return () => window.clearTimeout(timeout);
-  }, [evidenceSearchInput]);
+  }, [evidenceSearch, evidenceSearchInput]);
 
   const raise = async () => {
     if (!question.trim()) { setError('Question is required.'); return; }
