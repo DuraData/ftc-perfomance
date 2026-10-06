@@ -3,7 +3,7 @@ import {
   getEffectiveSecurityPreview,
   getRoleSecurityConfiguration,
   getSecurityRolesPage,
-  getSecurityPermissionDefinitions,
+  getSecurityPermissionDefinitionsPage,
   getSecurityUsersPage,
   getSecurityUserRoles,
   createSecurityRole,
@@ -40,6 +40,11 @@ export function SecurityAdministrationPage() {
   const [userTotalPages, setUserTotalPages] = useState(0);
   const [userSearch, setUserSearch] = useState('');
   const [definitions, setDefinitions] = useState<SecurityPermissionDefinition[]>([]);
+  const [definitionPage, setDefinitionPage] = useState(1);
+  const [definitionTotalCount, setDefinitionTotalCount] = useState(0);
+  const [definitionTotalPages, setDefinitionTotalPages] = useState(0);
+  const [definitionSearch, setDefinitionSearch] = useState('');
+  const [definitionRefreshToken, setDefinitionRefreshToken] = useState(0);
   const [roleId, setRoleId] = useState('');
   const [roleVersion, setRoleVersion] = useState('');
   const [rules, setRules] = useState<Record<string, EditableRule>>({});
@@ -56,12 +61,6 @@ export function SecurityAdministrationPage() {
   const [roleName, setRoleName] = useState('');
   const [roleDescription, setRoleDescription] = useState('');
   const [roleActive, setRoleActive] = useState(true);
-
-  useEffect(() => {
-    void getSecurityPermissionDefinitions().then(definitionResult => {
-      setDefinitions(definitionResult.data ?? []);
-    });
-  }, []);
 
   useEffect(() => {
     void getSecurityRolesPage({ page: rolePage, pageSize: 25, search: roleSearch, sortBy: 'name', sortDirection: 'asc' }, true).then(roleResult => {
@@ -105,10 +104,16 @@ export function SecurityAdministrationPage() {
     }).finally(() => setBusy(false));
   }, [roleId]);
 
-  const visibleDefinitions = useMemo(
-    () => definitions.filter(definition => definition.kind === kind),
-    [definitions, kind],
-  );
+  useEffect(() => {
+    void getSecurityPermissionDefinitionsPage({ page: definitionPage, pageSize: 25, search: definitionSearch, sortBy: 'code', sortDirection: 'asc' }, [kind]).then(result => {
+      setDefinitions(result.data?.items ?? []);
+      setDefinitionTotalCount(result.data?.totalCount ?? 0);
+      setDefinitionTotalPages(result.data?.totalPages ?? 0);
+      if (!result.success) setMessage(result.message ?? 'Permission definitions could not be loaded.');
+    });
+  }, [definitionPage, definitionSearch, definitionRefreshToken, kind]);
+
+  const visibleDefinitions = useMemo(() => definitions, [definitions]);
 
   const setState = (code: string, state: '' | SecurityPermissionState) => {
     setRules(current => {
@@ -235,10 +240,15 @@ export function SecurityAdministrationPage() {
       <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="flex flex-wrap border-b border-gray-200 px-4 pt-3">
           {kinds.map(item => (
-            <button key={item} type="button" onClick={() => setKind(item)} className={`mr-2 border-b-2 px-3 py-2 text-sm ${kind === item ? 'border-blue-600 font-medium text-blue-700' : 'border-transparent text-gray-600'}`}>
+            <button key={item} type="button" onClick={() => { setKind(item); setDefinitionPage(1); }} className={`mr-2 border-b-2 px-3 py-2 text-sm ${kind === item ? 'border-blue-600 font-medium text-blue-700' : 'border-transparent text-gray-600'}`}>
               {item === 'Resource' ? 'Entity / CRUD' : item}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 p-4">
+          <input aria-label="Search permission definitions" placeholder={`Search ${kind.toLowerCase()} permissions`} className="min-w-72 flex-1 rounded border border-gray-300 p-2" value={definitionSearch} onChange={event => { setDefinitionSearch(event.target.value); setDefinitionPage(1); }} />
+          <span className="text-sm text-gray-600">{definitionTotalCount} permissions · Page {definitionPage} of {Math.max(definitionTotalPages, 1)}</span>
+          <div className="flex gap-2"><button type="button" className="rounded border px-2 py-1 text-sm disabled:opacity-50" disabled={definitionPage <= 1} onClick={() => setDefinitionPage(value => Math.max(1, value - 1))}>Previous permissions</button><button type="button" className="rounded border px-2 py-1 text-sm disabled:opacity-50" disabled={definitionPage >= definitionTotalPages} onClick={() => setDefinitionPage(value => value + 1)}>Next permissions</button></div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -263,9 +273,9 @@ export function SecurityAdministrationPage() {
         </div>
       </section>
 
-      <NavigationRegistryEditor permissions={definitions} />
+      <NavigationRegistryEditor refreshToken={definitionRefreshToken} />
 
-      <SecurityRegistryEditor onDefinitionsChanged={() => { void getSecurityPermissionDefinitions().then(result => setDefinitions(result.data ?? [])); }} />
+      <SecurityRegistryEditor onDefinitionsChanged={() => setDefinitionRefreshToken(value => value + 1)} />
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Effective permission preview</h2>

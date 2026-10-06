@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createSecurityNavigationItem, getSecurityNavigationRegistry, updateSecurityNavigationItem } from '../../api/api';
+import { createSecurityNavigationItem, getSecurityNavigationRegistry, getSecurityPermissionDefinitionsPage, updateSecurityNavigationItem } from '../../api/api';
 import type { SecurityNavigationItemDto, SecurityPermissionDefinition } from '../../types';
 
 type Draft = { code: string; parentPublicId: string; name: string; route: string; iconKey: string; displayOrder: string; requiredPermissionCode: string; isActive: boolean; reason: string };
 const blank = (): Draft => ({ code: '', parentPublicId: '', name: '', route: '', iconKey: '', displayOrder: '100', requiredPermissionCode: '', isActive: true, reason: '' });
 
-export function NavigationRegistryEditor({ permissions }: { permissions: SecurityPermissionDefinition[] }) {
+export function NavigationRegistryEditor({ refreshToken = 0 }: { refreshToken?: number }) {
   const [items, setItems] = useState<SecurityNavigationItemDto[]>([]);
+  const [permissionOptions, setPermissionOptions] = useState<SecurityPermissionDefinition[]>([]);
+  const [permissionPage, setPermissionPage] = useState(1);
+  const [permissionSearch, setPermissionSearch] = useState('');
+  const [permissionTotalCount, setPermissionTotalCount] = useState(0);
+  const [permissionTotalPages, setPermissionTotalPages] = useState(0);
   const [selected, setSelected] = useState<SecurityNavigationItemDto | null>(null);
   const [draft, setDraft] = useState<Draft>(blank);
   const [message, setMessage] = useState('');
@@ -18,6 +23,14 @@ export function NavigationRegistryEditor({ permissions }: { permissions: Securit
     else setItems(result.data ?? []);
   };
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void getSecurityPermissionDefinitionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' }, ['Navigation', 'Action']).then(result => {
+      setPermissionOptions(result.data?.items ?? []);
+      setPermissionTotalCount(result.data?.totalCount ?? 0);
+      setPermissionTotalPages(result.data?.totalPages ?? 0);
+      if (!result.success) setMessage(result.message ?? 'Navigation permission choices could not be loaded.');
+    });
+  }, [permissionPage, permissionSearch, refreshToken]);
 
   const ordered = useMemo(() => {
     const byParent = new Map<string, SecurityNavigationItemDto[]>();
@@ -49,7 +62,6 @@ export function NavigationRegistryEditor({ permissions }: { permissions: Securit
     setBusy(false);
   };
 
-  const permissionOptions = permissions.filter(item => item.kind === 'Navigation' || item.kind === 'Action').sort((a, b) => a.code.localeCompare(b.code));
   return <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
     <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold">Navigation registry</h2><p className="text-sm text-gray-600">Edit the authoritative hierarchy used by login and My Menu. Stable codes are immutable.</p></div><button type="button" onClick={() => edit(null)} className="rounded border border-blue-700 px-3 py-2 text-sm text-blue-700">New item</button></div>
     <div className="mt-4 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -61,7 +73,7 @@ export function NavigationRegistryEditor({ permissions }: { permissions: Securit
         <label className="text-sm">Display order<input aria-label="Navigation display order" type="number" min="0" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.displayOrder} onChange={event => setDraft(value => ({ ...value, displayOrder: event.target.value }))} /></label>
         <label className="text-sm">Route<input aria-label="Navigation route" placeholder="/reports" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.route} onChange={event => setDraft(value => ({ ...value, route: event.target.value }))} /></label>
         <label className="text-sm">Icon key<input aria-label="Navigation icon" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.iconKey} onChange={event => setDraft(value => ({ ...value, iconKey: event.target.value }))} /></label>
-        <label className="text-sm md:col-span-2">Required permission<select aria-label="Navigation permission" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.requiredPermissionCode} onChange={event => setDraft(value => ({ ...value, requiredPermissionCode: event.target.value }))}><option value="">Container (child-derived visibility)</option>{permissionOptions.map(item => <option key={item.code} value={item.code}>{item.code}</option>)}</select></label>
+        <div className="text-sm md:col-span-2"><label htmlFor="navigation-permission-search">Required permission</label><input id="navigation-permission-search" aria-label="Search navigation permissions" placeholder="Search navigation or action permissions" className="mt-1 w-full rounded border border-gray-300 p-2" value={permissionSearch} onChange={event => { setPermissionSearch(event.target.value); setPermissionPage(1); }} /><select aria-label="Navigation permission" className="mt-2 w-full rounded border border-gray-300 p-2" value={draft.requiredPermissionCode} onChange={event => setDraft(value => ({ ...value, requiredPermissionCode: event.target.value }))}><option value="">Container (child-derived visibility)</option>{draft.requiredPermissionCode && !permissionOptions.some(item => item.code === draft.requiredPermissionCode) && <option value={draft.requiredPermissionCode}>{draft.requiredPermissionCode}</option>}{permissionOptions.map(item => <option key={item.code} value={item.code}>{item.code}</option>)}</select><div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500"><span>{permissionTotalCount} permissions · Page {permissionPage} of {Math.max(permissionTotalPages, 1)}</span><span className="flex gap-1"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={permissionPage <= 1} onClick={() => setPermissionPage(value => Math.max(1, value - 1))}>Previous permission choices</button><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={permissionPage >= permissionTotalPages} onClick={() => setPermissionPage(value => value + 1)}>Next permission choices</button></span></div></div>
         {selected && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.isActive} onChange={event => setDraft(value => ({ ...value, isActive: event.target.checked }))} /> Active</label>}
         <label className="text-sm md:col-span-2">Audit reason<textarea aria-label="Navigation audit reason" className="mt-1 w-full rounded border border-gray-300 p-2" value={draft.reason} onChange={event => setDraft(value => ({ ...value, reason: event.target.value }))} /></label>
         <div className="flex items-center justify-between md:col-span-2"><span role="status" className="text-sm text-gray-600">{message}</span><button type="button" onClick={() => void save()} disabled={busy || draft.code.trim().length < 3 || draft.name.trim().length < 2 || draft.reason.trim().length < 5} className="rounded bg-blue-700 px-4 py-2 text-sm text-white disabled:opacity-50">{busy ? 'Saving…' : 'Save navigation item'}</button></div>

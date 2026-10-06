@@ -508,12 +508,18 @@ public class DynamicSecurityTests
         var memberPageResult = await controller.GetMembersPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "Protected", SortBy = "resource", SortDirection = "asc" });
         memberPageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityMemberDto>>>()
             .Subject.Data!.Items.Should().ContainSingle(item => item.PublicId == memberEntity.PublicId);
+        var definitionPageResult = await controller.GetPermissionDefinitionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "TEST_CASE", SortBy = "code", SortDirection = "asc" }, "Resource");
+        definitionPageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityPermissionDefinitionDto>>>()
+            .Subject.Data!.Items.Should().ContainSingle(item => item.Kind == "Resource" && item.Code.StartsWith("TEST_CASE."));
         (await controller.GetResourcesPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetActionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetMembersPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetPermissionDefinitionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GetPermissionDefinitionsPage(new PagedQueryRequest(), "Resource,unsafe")).Result.Should().BeOfType<BadRequestObjectResult>();
         controller.GetResources().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         controller.GetActions().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         controller.GetMembers().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetPermissionDefinitions().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
 
         var updateResult = await controller.UpdateResource(resource.PublicId, new UpdateSecurityResourceRequest(
             resource.Name, resource.Type, resource.Description, resource.CanCreate, resource.CanRead, resource.CanUpdate, resource.CanDelete,

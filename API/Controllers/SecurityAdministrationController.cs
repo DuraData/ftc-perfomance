@@ -655,14 +655,54 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("permissions")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<SecurityPermissionDefinitionDto[]>>> GetPermissionDefinitions()
+    public ActionResult<ApiResponse<SecurityPermissionDefinitionDto[]>> GetPermissionDefinitions() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityPermissionDefinitionDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/security/permissions/page."));
+
+    [HttpGet("permissions/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityPermissionDefinitionDto>>>> GetPermissionDefinitionsPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] string? kinds = null)
     {
-        var definitions = await _context.Permissions.AsNoTracking().Where(item => item.IsActive)
-            .OrderBy(item => item.Kind).ThenBy(item => item.ResourceCode).ThenBy(item => item.Code)
-            .ToArrayAsync();
-        var items = definitions.Select(item => new SecurityPermissionDefinitionDto(item.Code, item.Description, item.Kind.ToString(), item.ResourceCode, item.Operation?.ToString(), item.MemberCode, item.NavigationCode, item.ActionCode)).ToArray();
-        return Ok(new ApiResponse<SecurityPermissionDefinitionDto[]>(true, items));
+        var sortBy = request.SortBy == null ? "code" : request.NormalizedSortBy;
+        if (!SecurityPermissionDefinitionSortFields.Contains(sortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityPermissionDefinitionDto>>(false, null,
+                "SortBy must be code, kind, or resource."));
+        var requestedKinds = new List<SecurityPermissionKind>();
+        foreach (var value in (kinds ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Enum.TryParse<SecurityPermissionKind>(value, true, out var parsedKind))
+                return BadRequest(new ApiResponse<PagedResponse<SecurityPermissionDefinitionDto>>(false, null,
+                    "Kinds must contain only Resource, Navigation, Member, Action, or Report."));
+            if (!requestedKinds.Contains(parsedKind)) requestedKinds.Add(parsedKind);
+        }
+        var query = _context.Permissions.AsNoTracking().Where(item => item.IsActive);
+        if (requestedKinds.Count > 0) query = query.Where(item => requestedKinds.Contains(item.Kind));
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.Code.Contains(term) || (item.Description != null && item.Description.Contains(term))
+                || (item.ResourceCode != null && item.ResourceCode.Contains(term)) || (item.MemberCode != null && item.MemberCode.Contains(term))
+                || (item.NavigationCode != null && item.NavigationCode.Contains(term)) || (item.ActionCode != null && item.ActionCode.Contains(term)));
+        }
+        var totalCount = await query.CountAsync();
+        query = (sortBy, request.Descending) switch
+        {
+            ("kind", false) => query.OrderBy(item => item.Kind).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("kind", true) => query.OrderByDescending(item => item.Kind).ThenByDescending(item => item.Code).ThenBy(item => item.Id),
+            ("resource", false) => query.OrderBy(item => item.ResourceCode).ThenBy(item => item.Code).ThenBy(item => item.Id),
+            ("resource", true) => query.OrderByDescending(item => item.ResourceCode).ThenByDescending(item => item.Code).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
+            _ => query.OrderBy(item => item.Code).ThenBy(item => item.Id)
+        };
+        var definitions = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var items = definitions.Select(ToPermissionDefinitionDto);
+        return Ok(new ApiResponse<PagedResponse<SecurityPermissionDefinitionDto>>(true,
+            PagedResponse<SecurityPermissionDefinitionDto>.Create(items, request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> SecurityPermissionDefinitionSortFields = ["code", "kind", "resource"];
 
     [HttpGet("roles/{roleId}/permissions")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
@@ -840,6 +880,9 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     private static SecurityMemberDto ToMemberDto(SecurityMemberDefinition item) => new(item.PublicId, item.ResourceCode, item.MemberCode,
         item.DisplayName, item.IsSensitive, item.IsSystemManaged, item.IsActive, Convert.ToBase64String(item.RowVersion));
+
+    private static SecurityPermissionDefinitionDto ToPermissionDefinitionDto(Permission item) => new(item.Code, item.Description,
+        item.Kind.ToString(), item.ResourceCode, item.Operation?.ToString(), item.MemberCode, item.NavigationCode, item.ActionCode);
 
     private static object ResourceAuditValue(SecurityResource item) => new
     {

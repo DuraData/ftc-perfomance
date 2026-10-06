@@ -1847,8 +1847,10 @@ export async function setRolePermissions(roleId: string, permissionIds: number[]
   return put<boolean>(`/roles/${roleId}/permissions`, { permissionIds });
 }
 
-export async function getSecurityPermissionDefinitions(): Promise<ApiResponse<SecurityPermissionDefinition[]>> {
-  return get<SecurityPermissionDefinition[]>('/v1/security/permissions');
+export async function getSecurityPermissionDefinitionsPage(query: RegisterPageQuery = {}, kinds: SecurityPermissionDefinition['kind'][] = []): Promise<ApiResponse<PagedResult<SecurityPermissionDefinition>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (kinds.length) parameters.set('kinds', kinds.join(','));
+  return get<PagedResult<SecurityPermissionDefinition>>(`/v1/security/permissions/page?${parameters.toString()}`);
 }
 
 export async function getSecurityNavigationRegistry(): Promise<ApiResponse<SecurityNavigationItemDto[]>> {
