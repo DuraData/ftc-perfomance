@@ -48,13 +48,13 @@ public class StrategicDocumentsControllerTests
         second.VersionNumber.Should().Be(2);
         second.PreviousVersionPublicId.Should().Be(first.PublicId);
         var ordinary = Controller(context, setup.User, setup.Municipality.Id, manager: false);
-        var whileDraft = Payload(await ordinary.GetDocuments(setup.Year.PublicId));
-        whileDraft.Should().ContainSingle().Which.PublicId.Should().Be(first.PublicId);
+        var whileDraft = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest { PageSize = 100 }, setup.Year.PublicId));
+        whileDraft.Items.Should().ContainSingle().Which.PublicId.Should().Be(first.PublicId);
 
         var secondApproved = Payload(await manager.Approve(second.PublicId, new ApproveStrategicDocumentRequest(second.RowVersion, "Council 18/2027", "Approve annual review")));
         var secondPublished = Payload(await manager.Publish(second.PublicId, new PublishStrategicDocumentRequest(secondApproved.RowVersion, DateTime.UtcNow.AddMinutes(-1), "Publish annual review")));
-        var currentPublished = Payload(await ordinary.GetDocuments(setup.Year.PublicId));
-        currentPublished.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
+        var currentPublished = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest { PageSize = 100 }, setup.Year.PublicId));
+        currentPublished.Items.Should().ContainSingle().Which.PublicId.Should().Be(secondPublished.PublicId);
         var page = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest
         {
             Page = 1, PageSize = 1, Search = "annual", SortBy = "title", SortDirection = "asc"
@@ -108,8 +108,8 @@ public class StrategicDocumentsControllerTests
         var approved = Payload(await manager.Approve(created.PublicId, new ApproveStrategicDocumentRequest(rescanned.RowVersion, "Council 20/2026", "Approve clean document")));
         var published = Payload(await manager.Publish(created.PublicId, new PublishStrategicDocumentRequest(approved.RowVersion, DateTime.UtcNow.AddMinutes(-1), "Publish")));
         var ordinary = Controller(context, setup.User, setup.Municipality.Id, manager: false, storage: storage, inspection: inspection, scanner: scanner);
-        var rows = Payload(await ordinary.GetDocuments(setup.Year.PublicId));
-        rows.Should().ContainSingle().Which.Title.Should().Be("Spatial development framework");
+        var rows = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest { PageSize = 100 }, setup.Year.PublicId));
+        rows.Items.Should().ContainSingle().Which.Title.Should().Be("Spatial development framework");
         var download = await ordinary.Download(published.PublicId);
         download.Should().BeOfType<FileContentResult>().Which.FileContents.Should().Equal(bytes);
         (await context.EvidenceBlobs.SingleAsync()).StorageKey.Should().StartWith($"strategic-documents{Path.DirectorySeparatorChar}");
@@ -150,6 +150,8 @@ public class StrategicDocumentsControllerTests
         var response = await controller.GetDocumentsPage(new PagedQueryRequest { SortBy = "raw-sql" }, setup.Year.PublicId);
 
         response.Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetDocuments(setup.Year.PublicId).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     private static StrategicDocumentsController Controller(

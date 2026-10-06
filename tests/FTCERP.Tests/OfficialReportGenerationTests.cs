@@ -218,6 +218,8 @@ public sealed class OfficialReportGenerationTests
         var result = await controller.TemplatesPage(SubmissionKind.Opms, false, null, new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.Templates(SubmissionKind.Opms).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]
@@ -350,6 +352,8 @@ public sealed class OfficialReportGenerationTests
         var result = await controller.GenerationsPage(SubmissionKind.Opms, null, new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.Generations(SubmissionKind.Opms).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     private static async Task SeedGeneration(ApplicationDbContext context, Municipality municipality, string userId)

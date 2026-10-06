@@ -126,26 +126,16 @@ public sealed class StrategicDocumentsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<StrategicDocumentResponse[]>>> GetDocuments(
+    public ActionResult<ApiResponse<StrategicDocumentResponse[]>> GetDocuments(
         [FromQuery] Guid? municipalityFinancialYearPublicId = null,
         [FromQuery] bool includeHistory = false,
         [FromQuery] string? search = null)
     {
-        var session = await SessionAsync<StrategicDocumentResponse[]>("STRATEGIC_DOCUMENT.READ");
-        if (session.Error != null) return session.Error;
-        var manager = (await accessControl.CheckPermissionAsync(session.User!, "STRATEGIC_DOCUMENT.UPDATE", MunicipalityScope())).Allowed;
-        if (includeHistory && !manager) return Forbidden<StrategicDocumentResponse[]>("Document history requires strategic-document administration permission.");
-        var query = VisibleDocumentQuery(manager, includeHistory, DateTime.UtcNow);
-        if (municipalityFinancialYearPublicId.HasValue)
-            query = query.Where(item => item.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim();
-            query = query.Where(item => item.Title.Contains(term) || item.DocumentType.Name.Contains(term) || item.DocumentType.Code.Contains(term));
-        }
-        var rows = await query.OrderByDescending(item => item.MunicipalityFinancialYear.FinancialYear.StartDate)
-            .ThenBy(item => item.DisplayOrder).ThenBy(item => item.Title).ThenByDescending(item => item.VersionNumber).Take(500).ToArrayAsync();
-        return Ok(new ApiResponse<StrategicDocumentResponse[]>(true, rows.Select(item => ToResponse(item, manager)).ToArray()));
+        _ = municipalityFinancialYearPublicId;
+        _ = includeHistory;
+        _ = search;
+        return StatusCode(StatusCodes.Status410Gone, Fail<StrategicDocumentResponse[]>(
+            "This fixed-limit route is retired. Use /api/v1/strategic-documents/page."));
     }
 
     [HttpGet("page")]

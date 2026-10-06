@@ -89,6 +89,8 @@ public sealed class OfficialReportJobTests
         var result = await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.Jobs(SubmissionKind.Opms).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]
@@ -167,6 +169,8 @@ public sealed class OfficialReportJobTests
         var result = await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.Schedules(SubmissionKind.Opms).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]

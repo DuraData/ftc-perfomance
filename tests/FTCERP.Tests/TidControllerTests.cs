@@ -53,15 +53,13 @@ public class TidControllerTests
         versions[1].PreviousVersionId.Should().Be(versions[0].Id);
         (await context.OpmsTargets.SingleAsync()).Should().Match<OpmsTarget>(item => item.AnnualTarget == 100 && item.TargetUnitType == "percentage" && item.Submissions.Count == 0);
 
-        var register = Payload(await controller.GetRegister());
-        register.Should().ContainSingle();
-        register[0].CurrentVersion!.IndicatorDefinition.Should().Be("Revised definition");
         var page = Payload(await controller.GetRegisterPage(new PagedQueryRequest
         {
             Page = 1, PageSize = 1, Search = "KPI-1", SortBy = "indicatorNumber", SortDirection = "asc"
         }));
         page.TotalCount.Should().Be(1);
         page.Items.Should().ContainSingle().Which.CurrentVersion!.IndicatorDefinition.Should().Be("Revised definition");
+        controller.GetRegister().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         var configuration = Payload(await controller.GetConfiguration());
         configuration.MissingTidCount.Should().Be(0);
 

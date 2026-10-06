@@ -55,19 +55,9 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]
-    public async Task<ActionResult<ApiResponse<IdpPlanSummaryResponse[]>>> GetPlans()
-    {
-        var plans = await _context.IdpPlans
-            .AsNoTracking()
-            .Include(plan => plan.PredecessorPlan)
-            .OrderByDescending(plan => plan.CreatedAt)
-            .ThenByDescending(plan => plan.Id)
-            .Take(100)
-            .Select(plan => ToSummaryResponse(plan))
-            .ToArrayAsync();
-
-        return Ok(new ApiResponse<IdpPlanSummaryResponse[]>(true, plans));
-    }
+    public ActionResult<ApiResponse<IdpPlanSummaryResponse[]>> GetPlans() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpPlanSummaryResponse[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/idp/plans/page."));
 
     [HttpGet("plans/page")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]

@@ -22,20 +22,11 @@ public sealed class OfficialReportJobsController(
     IWorkflowGovernanceService governance) : ControllerBase
 {
     [HttpGet("jobs")]
-    public async Task<ActionResult<ApiResponse<OfficialReportJobResponse[]>>> Jobs([FromQuery] SubmissionKind kind)
+    public ActionResult<ApiResponse<OfficialReportJobResponse[]>> Jobs([FromQuery] SubmissionKind kind)
     {
-        var user = await CurrentUser();
-        if (user == null) return Unauthorized(Fail<OfficialReportJobResponse[]>("User not found."));
-        if (!await HasReportResourceAccess(user, kind, "READ")) return ForbidResponse<OfficialReportJobResponse[]>("Official report job history requires report, KPI and submission READ permission.");
-        var canReadAudit = await Granted(user, "Audit.Trails.View");
-        var rows = await context.OfficialReportJobs.AsNoTracking()
-            .Include(item => item.OfficialReportSchedule).Include(item => item.ReportTemplate)
-            .Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
-            .Include(item => item.ReportingPeriod).Include(item => item.Department).Include(item => item.Unit)
-            .Include(item => item.RequestedByUser).Include(item => item.OfficialReportGeneration).Include(item => item.DistributionOutbox)
-            .Where(item => item.ReportTemplate.SubmissionKind == kind && (item.ReportTemplate.ReportType != OfficialReportType.AuditTrail || canReadAudit))
-            .OrderByDescending(item => item.RequestedAt).ThenByDescending(item => item.Id).Take(200).ToArrayAsync();
-        return Ok(new ApiResponse<OfficialReportJobResponse[]>(true, rows.Select(Map).ToArray()));
+        _ = kind;
+        return StatusCode(StatusCodes.Status410Gone, Fail<OfficialReportJobResponse[]>(
+            "This fixed-limit route is retired. Use /api/v1/reports/official/jobs/page."));
     }
 
     [HttpGet("jobs/page")]
@@ -124,15 +115,12 @@ public sealed class OfficialReportJobsController(
     }
 
     [HttpGet("schedules")]
-    public async Task<ActionResult<ApiResponse<OfficialReportScheduleResponse[]>>> Schedules([FromQuery] SubmissionKind kind, [FromQuery] bool includeHistory = false)
+    public ActionResult<ApiResponse<OfficialReportScheduleResponse[]>> Schedules([FromQuery] SubmissionKind kind, [FromQuery] bool includeHistory = false)
     {
-        var user = await CurrentUser();
-        if (user == null) return Unauthorized(Fail<OfficialReportScheduleResponse[]>("User not found."));
-        if (!await Granted(user, ConfigurePermission(kind))) return ForbidResponse<OfficialReportScheduleResponse[]>("Official report schedule configuration is denied.");
-        var query = context.OfficialReportSchedules.AsNoTracking().IncludeAll().Where(item => item.ReportTemplate.SubmissionKind == kind);
-        if (!includeHistory) query = query.Where(item => item.IsCurrent);
-        var rows = await query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id).Take(100).ToArrayAsync();
-        return Ok(new ApiResponse<OfficialReportScheduleResponse[]>(true, rows.Select(Map).ToArray()));
+        _ = kind;
+        _ = includeHistory;
+        return StatusCode(StatusCodes.Status410Gone, Fail<OfficialReportScheduleResponse[]>(
+            "This fixed-limit route is retired. Use /api/v1/reports/official/schedules/page."));
     }
 
     [HttpGet("schedules/page")]

@@ -33,19 +33,12 @@ public sealed class OfficialReportsController(
     private sealed record SubmissionSubject(string SubmissionId, string TargetId, string Indicator, string TargetName, int? DepartmentId, string Department, int? UnitId, string Unit, string Period, string? ActualPerformance, decimal? AchievementPercent, bool? TargetAchieved, string Status, string SubmittedBy, DateTime? SubmittedAt);
 
     [HttpGet("templates")]
-    public async Task<ActionResult<ApiResponse<OfficialReportTemplateResponse[]>>> Templates([FromQuery] SubmissionKind kind, [FromQuery] bool includeHistory = false)
+    public ActionResult<ApiResponse<OfficialReportTemplateResponse[]>> Templates([FromQuery] SubmissionKind kind, [FromQuery] bool includeHistory = false)
     {
-        var user = await CurrentUser();
-        if (user == null) return Unauthorized(Fail<OfficialReportTemplateResponse[]>("User not found."));
-        if (!await Granted(user, ReadPermission(kind))) return ForbidResponse<OfficialReportTemplateResponse[]>("Official report access is denied.");
-        var query = context.OfficialReportTemplates.AsNoTracking().Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear).Where(item => item.SubmissionKind == kind);
-        if (!includeHistory)
-        {
-            var now = DateTime.UtcNow;
-            query = query.Where(item => item.IsCurrent && item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo >= now));
-        }
-        var items = await query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id).Take(100).ToArrayAsync();
-        return Ok(new ApiResponse<OfficialReportTemplateResponse[]>(true, items.Select(Map).ToArray()));
+        _ = kind;
+        _ = includeHistory;
+        return StatusCode(StatusCodes.Status410Gone, Fail<OfficialReportTemplateResponse[]>(
+            "This fixed-limit route is retired. Use /api/v1/reports/official/templates/page."));
     }
 
     [HttpGet("templates/page")]
@@ -175,24 +168,12 @@ public sealed class OfficialReportsController(
     }
 
     [HttpGet("generations")]
-    public async Task<ActionResult<ApiResponse<OfficialReportGenerationResponse[]>>> Generations([FromQuery] SubmissionKind kind, [FromQuery] Guid? reportingPeriodPublicId = null)
+    public ActionResult<ApiResponse<OfficialReportGenerationResponse[]>> Generations([FromQuery] SubmissionKind kind, [FromQuery] Guid? reportingPeriodPublicId = null)
     {
-        var user = await CurrentUser();
-        if (user == null) return Unauthorized(Fail<OfficialReportGenerationResponse[]>("User not found."));
-        var scope = IntersectScopes(
-            IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(kind)),
-                await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
-            await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
-        if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse[]>("Official report history requires report, KPI and submission READ permission.");
-        var canReadAuditTrail = await Granted(user, "Audit.Trails.View");
-        var query = ApplyStoredScope(context.OfficialReportGenerations.AsNoTracking()
-            .Where(item => item.SubmissionKind == kind && (item.ReportType != OfficialReportType.AuditTrail || canReadAuditTrail)), scope);
-        if (reportingPeriodPublicId.HasValue) query = query.Where(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId);
-        var items = await query
-            .OrderByDescending(item => item.GeneratedAt).ThenByDescending(item => item.Id).Take(100)
-            .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
-            .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).ToArrayAsync();
-        return Ok(new ApiResponse<OfficialReportGenerationResponse[]>(true, items.Select(Map).ToArray()));
+        _ = kind;
+        _ = reportingPeriodPublicId;
+        return StatusCode(StatusCodes.Status410Gone, Fail<OfficialReportGenerationResponse[]>(
+            "This fixed-limit route is retired. Use /api/v1/reports/official/generations/page."));
     }
 
     [HttpGet("generations/page")]

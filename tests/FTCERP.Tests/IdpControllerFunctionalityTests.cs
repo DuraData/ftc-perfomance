@@ -83,6 +83,8 @@ public class IdpControllerFunctionalityTests
         var result = await controller.GetPlansPage(new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+        controller.GetPlans().Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
     [Fact]

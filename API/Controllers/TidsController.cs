@@ -97,33 +97,11 @@ public class TidsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<TidRegisterItemResponse[]>>> GetRegister([FromQuery] string? search = null)
+    public ActionResult<ApiResponse<TidRegisterItemResponse[]>> GetRegister([FromQuery] string? search = null)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<TidRegisterItemResponse[]>(false, null, "User not found."));
-        var municipality = await CurrentMunicipalityAsync();
-        if (municipality == null || !municipality.TidEnabled) return Ok(new ApiResponse<TidRegisterItemResponse[]>(true, []));
-        var scope = await accessControl.GetQueryScopeAsync(user, "TID.READ");
-        if (!scope.PermissionGranted) return Ok(new ApiResponse<TidRegisterItemResponse[]>(true, []));
-
-        var query = ApplyScope(context.OpmsTargets.AsNoTracking().Include(item => item.Department).Include(item => item.Unit), scope)
-            .Where(item => !item.IsWithdrawn);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim();
-            query = query.Where(item => item.IndicatorNumber.Contains(term) || item.TargetName.Contains(term));
-        }
-        var targets = await query.OrderBy(item => item.IndicatorNumber).ThenBy(item => item.TargetName).Take(500).ToArrayAsync();
-        var targetIds = targets.Select(item => item.Id).ToArray();
-        var tids = await context.TechnicalIndicatorDescriptions.AsNoTracking()
-            .Include(item => item.OpmsTarget)
-            .Include(item => item.ResponsibleEmployee)
-            .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
-            .Where(item => targetIds.Contains(item.OpmsTargetId) && item.IsCurrent)
-            .ToDictionaryAsync(item => item.OpmsTargetId);
-        return Ok(new ApiResponse<TidRegisterItemResponse[]>(true, targets.Select(target => new TidRegisterItemResponse(
-            target.PublicId, target.IndicatorNumber, target.TargetName, target.Department?.Name, target.Unit?.Name,
-            municipality.TidAllKpisRequired, tids.TryGetValue(target.Id, out var tid) ? ToResponse(tid) : null)).ToArray()));
+        _ = search;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<TidRegisterItemResponse[]>(false, null,
+            "This fixed-limit route is retired. Use /api/v1/tids/page."));
     }
 
     [HttpGet("page")]

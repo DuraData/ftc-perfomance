@@ -1716,10 +1716,6 @@ export async function downloadPerformanceReportCsv(kind: 1 | 2, reportingPeriodP
   return { success: true, data: true };
 }
 
-export async function getOfficialReportTemplates(kind: 1 | 2, includeHistory = false): Promise<ApiResponse<OfficialReportTemplateDto[]>> {
-  return get<OfficialReportTemplateDto[]>(`/v1/reports/official/templates?kind=${kind}&includeHistory=${includeHistory}`);
-}
-
 export async function getOfficialReportTemplatesPage(kind: 1 | 2, includeHistory = false, municipalityFinancialYearPublicId?: string, page: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OfficialReportTemplateDto>>> {
   const parameters = new URLSearchParams(registerPageQuery(page).slice(1));
   parameters.set('kind', String(kind));
@@ -1747,12 +1743,6 @@ export async function saveOfficialReportTemplate(payload: {
   return post<OfficialReportTemplateDto>('/v1/reports/official/templates', payload);
 }
 
-export async function getOfficialReportGenerations(kind: 1 | 2, reportingPeriodPublicId?: string): Promise<ApiResponse<OfficialReportGenerationDto[]>> {
-  const query = new URLSearchParams({ kind: String(kind) });
-  if (reportingPeriodPublicId) query.set('reportingPeriodPublicId', reportingPeriodPublicId);
-  return get<OfficialReportGenerationDto[]>(`/v1/reports/official/generations?${query}`);
-}
-
 export async function getOfficialReportGenerationsPage(kind: 1 | 2, reportingPeriodPublicId?: string, page: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OfficialReportGenerationDto>>> {
   const parameters = new URLSearchParams(registerPageQuery(page).slice(1));
   parameters.set('kind', String(kind));
@@ -1776,10 +1766,6 @@ export async function queueOfficialReportJob(payload: { templatePublicId: string
 
 export async function retryOfficialReportJob(publicId: string, reason: string, rowVersion: string): Promise<ApiResponse<OfficialReportJobDto>> {
   return post<OfficialReportJobDto>(`/v1/reports/official/jobs/${encodeURIComponent(publicId)}/retry`, { reason, rowVersion });
-}
-
-export async function getOfficialReportSchedules(kind: 1 | 2, includeHistory = false): Promise<ApiResponse<OfficialReportScheduleDto[]>> {
-  return get<OfficialReportScheduleDto[]>(`/v1/reports/official/schedules?kind=${kind}&includeHistory=${includeHistory}`);
 }
 
 export async function getOfficialReportSchedulesPage(kind: 1 | 2, includeHistory = false, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<OfficialReportScheduleDto>>> {
@@ -2617,11 +2603,6 @@ export async function updateTidConfiguration(payload: { tidEnabled: boolean; all
   return put<TidConfiguration>('/v1/tids/configuration', payload);
 }
 
-export async function getTidRegister(search?: string): Promise<ApiResponse<TidRegisterItem[]>> {
-  const query = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : '';
-  return get<TidRegisterItem[]>(`/v1/tids${query}`);
-}
-
 export async function getTidRegisterPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<TidRegisterItem>>> {
   return get<PagedResult<TidRegisterItem>>(`/v1/tids/page${registerPageQuery(query)}`);
 }
@@ -2676,17 +2657,6 @@ export async function updateStrategicDocumentType(publicId: string, payload: {
   displayOrder: number; rowVersion: string; reason: string;
 }): Promise<ApiResponse<StrategicDocumentType>> {
   return put<StrategicDocumentType>(`/v1/strategic-documents/types/${publicId}`, payload);
-}
-
-export async function getStrategicDocuments(options?: {
-  municipalityFinancialYearPublicId?: string; includeHistory?: boolean; search?: string;
-}): Promise<ApiResponse<StrategicDocument[]>> {
-  const query = new URLSearchParams();
-  if (options?.municipalityFinancialYearPublicId) query.set('municipalityFinancialYearPublicId', options.municipalityFinancialYearPublicId);
-  if (options?.includeHistory) query.set('includeHistory', 'true');
-  if (options?.search?.trim()) query.set('search', options.search.trim());
-  const suffix = query.size ? `?${query.toString()}` : '';
-  return get<StrategicDocument[]>(`/v1/strategic-documents${suffix}`);
 }
 
 export async function getStrategicDocumentsPage(page: RegisterPageQuery = {}, options?: {
