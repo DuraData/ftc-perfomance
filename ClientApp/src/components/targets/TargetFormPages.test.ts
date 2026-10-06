@@ -1,4 +1,5 @@
 import { buildOpmsPayload, childrenFor, getTargetUnitLabel, resolvePerformanceTemplateHints, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
+import type { PerformanceConfigurationCatalogueDto } from '../../types';
 
 describe('TargetFormPages helpers', () => {
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
@@ -17,7 +18,7 @@ describe('TargetFormPages helpers', () => {
   });
 
   it('serializes target periods with canonical OPMS unit and direction ids', () => {
-    const configuration = {
+    const configuration: PerformanceConfigurationCatalogueDto = {
       opmsUnits: [{ publicId: 'unit-percent', code: 'PERCENT', name: 'Percentage', inputControlType: 'NUMERIC', valueDataType: 'DECIMAL', supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-higher', requiresComponentUi: false, isQualitative: false, engineUnitKind: 1, isActive: true }],
       performanceDirections: [{ publicId: 'direction-higher', code: 'TARGET_OR_HIGHER', name: 'Target or higher', description: 'At least target.', engineDirection: 1, isActive: true }],
     };
