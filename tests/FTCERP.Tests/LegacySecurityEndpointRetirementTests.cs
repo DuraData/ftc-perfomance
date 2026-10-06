@@ -13,7 +13,7 @@ namespace FTCERP.Tests;
 public sealed class LegacySecurityEndpointRetirementTests
 {
     [Fact]
-    public async Task Legacy_role_reads_are_tenant_scoped_and_all_mutations_are_gone()
+    public async Task Legacy_role_collection_and_mutations_are_gone_while_detail_reads_remain_tenant_scoped()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -29,9 +29,7 @@ public sealed class LegacySecurityEndpointRetirementTests
         await context.SaveChangesAsync();
         var controller = new RolesController(context, tenant);
 
-        var list = await controller.GetRoles();
-        var envelope = Assert.IsType<ApiResponse<RoleResponse[]>>(Assert.IsType<OkObjectResult>(list.Result).Value);
-        Assert.Equal("role-a", Assert.Single(envelope.Data!).Id);
+        AssertGone(controller.GetRoles().Result);
         Assert.IsType<NotFoundObjectResult>((await controller.GetRole("role-b")).Result);
         Assert.IsType<NotFoundObjectResult>((await controller.GetRolePermissions("role-b")).Result);
 

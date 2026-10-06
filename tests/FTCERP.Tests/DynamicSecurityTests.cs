@@ -159,6 +159,46 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task Security_role_directory_pages_authorized_municipalities_and_supports_inactive_administration()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("role-directory-admin", "Role", "Admin"); actor.MunicipalityId = 7;
+        var municipalityA = new Municipality { Id = 7, Code = "M007", Name = "Municipality 7" };
+        var municipalityB = new Municipality { Id = 8, Code = "M008", Name = "Municipality 8" };
+        var actorRole = Role("role-directory-owner", "ROLE_DIRECTORY_OWNER"); actorRole.MunicipalityId = 7; actorRole.Name = "Directory Owner";
+        var localRole = Role("role-directory-local", "LOCAL_REVIEWER"); localRole.MunicipalityId = 7; localRole.Name = "Local Reviewer";
+        var inactiveRole = Role("role-directory-inactive", "FORMER_REVIEWER"); inactiveRole.MunicipalityId = 7; inactiveRole.Name = "Former Reviewer"; inactiveRole.IsActive = false;
+        var foreignRole = Role("role-directory-foreign", "FOREIGN_REVIEWER"); foreignRole.MunicipalityId = 8; foreignRole.Name = "Foreign Reviewer";
+        context.AddRange(municipalityA, municipalityB, actor, actorRole, localRole, inactiveRole, foreignRole);
+        await context.SaveChangesAsync();
+        var now = DateTime.UtcNow;
+        context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment
+        {
+            UserId = actor.Id, RoleId = actorRole.Id, MunicipalityId = 7, IsActive = true,
+            EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = actor.Id
+        });
+        await context.SaveChangesAsync();
+        var tenant = new Mock<ITenantContext>(); tenant.SetupGet(item => item.MunicipalityId).Returns(7); tenant.SetupGet(item => item.IsSystem).Returns(false);
+        var controller = new SecurityAdministrationController(context, CreateService(context, actor), IdpTestFixture.CreateUserManagerMock(actor).Object, tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var activeResult = await controller.GetRolesPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "name", SortDirection = "asc" });
+        var active = activeResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityRoleDto>>>().Subject.Data!;
+        active.TotalCount.Should().Be(2);
+        active.Items.Should().ContainSingle();
+        active.TotalPages.Should().Be(2);
+
+        var inactiveResult = await controller.GetRolesPage(new PagedQueryRequest { Search = "FORMER", SortBy = "code", SortDirection = "asc" }, includeInactive: true);
+        var inactive = inactiveResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityRoleDto>>>().Subject.Data!;
+        inactive.Items.Should().ContainSingle(item => item.Id == inactiveRole.Id);
+        inactive.Items.Should().NotContain(item => item.Id == foreignRole.Id);
+        controller.GetRoles().Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
+    [Fact]
     public async Task DynamicallyConfiguredKpiViewerAndDepartmentSubmitter_EnforceMenusCrudAndScope()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

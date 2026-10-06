@@ -33,18 +33,54 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     [HttpGet("roles")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<SecurityRoleDto[]>>> GetRoles()
+    public ActionResult<ApiResponse<SecurityRoleDto[]>> GetRoles() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SecurityRoleDto[]>(false, null,
+            "This unbounded route is retired. Use /api/v1/security/roles/page."));
+
+    [HttpGet("roles/page")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SecurityRoleDto>>>> GetRolesPage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] bool includeInactive = false)
     {
         var actor = await GetCurrentUserAsync();
-        if (actor == null) return Unauthorized(new ApiResponse<SecurityRoleDto[]>(false, null, "User not found"));
+        if (actor == null) return Unauthorized(new ApiResponse<PagedResponse<SecurityRoleDto>>(false, null, "User not found"));
+        if (!SecurityRoleSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<SecurityRoleDto>>(false, null,
+                "SortBy must be createdAt, name, code, status, or effectiveFrom."));
         var access = await _accessControl.GetEffectiveAccessAsync(actor);
         var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
         var municipalities = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
-        var query = _context.Roles.AsNoTracking().Where(item => item.IsActive);
+        var query = _context.Roles.AsNoTracking().AsQueryable();
         if (!system) query = query.Where(item => item.MunicipalityId.HasValue && municipalities.Contains(item.MunicipalityId.Value));
-        var roles = await query.OrderBy(item => item.Name).ToArrayAsync();
-        return Ok(new ApiResponse<SecurityRoleDto[]>(true, roles.Select(ToRoleDto).ToArray()));
+        if (!includeInactive) query = query.Where(item => item.IsActive);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.RoleCode.Contains(term) || (item.Name != null && item.Name.Contains(term))
+                || (item.Description != null && item.Description.Contains(term)));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.Id),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenBy(item => item.Id),
+            ("code", false) => query.OrderBy(item => item.RoleCode).ThenBy(item => item.Id),
+            ("code", true) => query.OrderByDescending(item => item.RoleCode).ThenBy(item => item.Id),
+            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Name).ThenBy(item => item.Id),
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenBy(item => item.Id),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
+        };
+        var roles = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<SecurityRoleDto>>(true,
+            PagedResponse<SecurityRoleDto>.Create(roles.Select(ToRoleDto), request.Page, request.PageSize, totalCount)));
     }
+
+    private static readonly HashSet<string> SecurityRoleSortFields = ["createdat", "name", "code", "status", "effectivefrom"];
 
     [HttpPost("roles")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_ROLES")]

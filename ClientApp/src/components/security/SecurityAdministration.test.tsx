@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SecurityAdministrationPage } from './SecurityAdministration';
 
 const api = vi.hoisted(() => ({
-  getSecurityRoles: vi.fn(), getSecurityUsersPage: vi.fn(), getSecurityPermissionDefinitions: vi.fn(),
+  getSecurityRolesPage: vi.fn(), getSecurityUsersPage: vi.fn(), getSecurityPermissionDefinitions: vi.fn(),
   getDepartmentMastersPage: vi.fn(), getUnitMastersPage: vi.fn(), getPositionMastersPage: vi.fn(), getWardMastersPage: vi.fn(), getVoteNumberMastersPage: vi.fn(), getRoleSecurityConfiguration: vi.fn(),
   getSecurityUserRoles: vi.fn(), saveSecurityUserRoles: vi.fn(), getEffectiveSecurityPreview: vi.fn(),
   createSecurityRole: vi.fn(), saveRoleSecurityConfiguration: vi.fn(), updateSecurityRole: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('./SecurityRegistryEditor', () => ({ SecurityRegistryEditor: () => <div>
 
 describe('SecurityAdministrationPage role assignments', () => {
   beforeEach(() => {
-    api.getSecurityRoles.mockResolvedValue({ success: true, data: [{ id: 'role-1', publicId: 'role-public', roleCode: 'DEPARTMENT_REVIEWER', name: 'Department Reviewer', municipalityId: 7, isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==' }] });
+    api.getSecurityRolesPage.mockResolvedValue({ success: true, data: { items: [{ id: 'role-1', publicId: 'role-public', roleCode: 'DEPARTMENT_REVIEWER', name: 'Department Reviewer', municipalityId: 7, isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [{ id: 'user-1', fullName: 'Review User', email: 'review@example.test' }], page: 1, pageSize: 100, totalCount: 1, totalPages: 1 } });
     api.getSecurityPermissionDefinitions.mockResolvedValue({ success: true, data: [] });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'dep-1', code: 'FIN', name: 'Finance', isActive: true }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -28,6 +28,7 @@ describe('SecurityAdministrationPage role assignments', () => {
 
   it('authors department, unit, and effective dates instead of role ids alone', async () => {
     render(<SecurityAdministrationPage />);
+    await waitFor(() => expect(api.getSecurityRolesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }, true));
     const userSelect = (await screen.findAllByRole('combobox'))[1];
     fireEvent.change(userSelect, { target: { value: 'user-1' } });
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Department Reviewer' }));

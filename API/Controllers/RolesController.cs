@@ -24,12 +24,9 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<RoleResponse[]>>> GetRoles()
-    {
-        var roles = await TenantRoles().AsNoTracking().Where(r => r.IsActive).OrderBy(r => r.Name).ToListAsync();
-        var result = roles.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
-        return Ok(new ApiResponse<RoleResponse[]>(true, result));
-    }
+    public ActionResult<ApiResponse<RoleResponse[]>> GetRoles() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse[]>(false, null,
+            "This unbounded legacy route is retired. Use /api/v1/security/roles/page."));
 
     [HttpGet("{id}")]
     public async Task<ActionResult<ApiResponse<RoleResponse>>> GetRole(string id)

@@ -21,6 +21,7 @@ import {
   getUserPermissions,
   getRolePermissions,
   getRoles,
+  getSecurityRolesPage,
   getUsersPage,
   setRolePermissions,
   setUserPermissionOverrides,
@@ -58,6 +59,9 @@ export function AdminUsersPage() {
   const [sortBy, setSortBy] = useState('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [roles, setRoles] = useState<AdminRole[]>([]);
+  const [rolePage, setRolePage] = useState(1);
+  const [roleTotalPages, setRoleTotalPages] = useState(0);
+  const [roleSearch, setRoleSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,13 +101,19 @@ export function AdminUsersPage() {
   useEffect(() => { void loadUsers(); }, [loadUsers]);
 
   useEffect(() => {
-    void Promise.all([getRoles(), getPermissions()]).then(([rolesRes, permsRes]) => {
-      if (!rolesRes.success) setError(rolesRes.message ?? 'Failed to load roles');
+    void getPermissions().then(permsRes => {
       if (!permsRes.success) setError(permsRes.message ?? 'Failed to load permissions');
-      setRoles(rolesRes.data ?? []);
       setAllPermissions(permsRes.data ?? []);
     });
   }, []);
+
+  useEffect(() => {
+    void getSecurityRolesPage({ page: rolePage, pageSize: 25, search: roleSearch, sortBy: 'name', sortDirection: 'asc' }).then(rolesRes => {
+      if (!rolesRes.success) setError(rolesRes.message ?? 'Failed to load roles');
+      setRoles(rolesRes.data?.items ?? []);
+      setRoleTotalPages(rolesRes.data?.totalPages ?? 0);
+    });
+  }, [rolePage, roleSearch]);
 
   const openCreate = () => {
     setEditing(null);
@@ -206,6 +216,8 @@ export function AdminUsersPage() {
 
   const openRoles = (u: AdminUserDetail) => {
     setSelectedUserForRoles(u);
+    setRolePage(1);
+    setRoleSearch('');
     setRoleModalOpen(true);
   };
 
@@ -404,6 +416,7 @@ export function AdminUsersPage() {
               <Users className="w-4 h-4 text-secondary-400" />
               <p className="text-sm text-secondary-700 dark:text-secondary-300">{selectedUserForRoles?.user.email ?? selectedUserForRoles?.user.fullName}</p>
             </div>
+            <Input label="Search roles" value={roleSearch} onChange={(event) => { setRoleSearch(event.target.value); setRolePage(1); }} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {roles.map(r => (
                 <Checkbox
@@ -413,11 +426,17 @@ export function AdminUsersPage() {
                   checked={selectedRoleIds.includes(r.id)}
                   onChange={(e) => {
                     const checked = e.target.checked;
-                    setSelectedRoleIds(prev => checked ? [...prev, r.id] : prev.filter(x => x !== r.id));
+                    setSelectedRoleIds(prev => checked ? [...new Set([...prev, r.id])] : prev.filter(x => x !== r.id));
                   }}
                 />
               ))}
             </div>
+            {roleTotalPages > 1 && <div className="flex items-center gap-2 text-sm text-secondary-600 dark:text-secondary-300">
+              <Button variant="ghost" size="sm" onClick={() => setRolePage(value => Math.max(1, value - 1))} disabled={rolePage <= 1}>Previous</Button>
+              <span>Role page {rolePage} of {roleTotalPages}</span>
+              <Button variant="ghost" size="sm" onClick={() => setRolePage(value => value + 1)} disabled={rolePage >= roleTotalPages}>Next</Button>
+            </div>}
+            <p className="text-xs text-secondary-500">Selections are preserved while searching or moving between role pages.</p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="ghost" size="sm" onClick={() => setRoleModalOpen(false)}>Cancel</Button>

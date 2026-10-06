@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getEffectiveSecurityPreview,
   getRoleSecurityConfiguration,
-  getSecurityRoles,
+  getSecurityRolesPage,
   getSecurityPermissionDefinitions,
   getSecurityUsersPage,
   getSecurityUserRoles,
@@ -32,6 +32,9 @@ const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).get
 
 export function SecurityAdministrationPage() {
   const [roles, setRoles] = useState<SecurityRoleSummary[]>([]);
+  const [rolePage, setRolePage] = useState(1);
+  const [roleTotalPages, setRoleTotalPages] = useState(0);
+  const [roleSearch, setRoleSearch] = useState('');
   const [users, setUsers] = useState<SecurityUserSummary[]>([]);
   const [userPage, setUserPage] = useState(1);
   const [userTotalPages, setUserTotalPages] = useState(0);
@@ -55,13 +58,19 @@ export function SecurityAdministrationPage() {
   const [roleActive, setRoleActive] = useState(true);
 
   useEffect(() => {
-    void Promise.all([getSecurityRoles(), getSecurityPermissionDefinitions()]).then(([roleResult, definitionResult]) => {
-      const loadedRoles = roleResult.data ?? [];
-      setRoles(loadedRoles);
+    void getSecurityPermissionDefinitions().then(definitionResult => {
       setDefinitions(definitionResult.data ?? []);
-      if (loadedRoles.length) setRoleId(loadedRoles[0].id);
     });
   }, []);
+
+  useEffect(() => {
+    void getSecurityRolesPage({ page: rolePage, pageSize: 25, search: roleSearch, sortBy: 'name', sortDirection: 'asc' }, true).then(roleResult => {
+      const loadedRoles = roleResult.data?.items ?? [];
+      setRoles(loadedRoles);
+      setRoleTotalPages(roleResult.data?.totalPages ?? 0);
+      setRoleId(current => loadedRoles.some(role => role.id === current) ? current : (loadedRoles[0]?.id ?? ''));
+    });
+  }, [rolePage, roleSearch]);
 
   useEffect(() => {
     void getSecurityUsersPage({ page: userPage, pageSize: 25, search: userSearch, sortBy: 'name', sortDirection: 'asc' }).then(result => {
@@ -139,8 +148,8 @@ export function SecurityAdministrationPage() {
     if (!result.success || !result.data) {
       setMessage(result.message ?? 'Role could not be created.'); setBusy(false); return;
     }
-    const refreshed = await getSecurityRoles();
-    setRoles(refreshed.data ?? [...roles, result.data]);
+    setRoleSearch(result.data.roleCode);
+    setRolePage(1);
     setRoleId(result.data.id);
     setNewRoleCode(''); setNewRoleName(''); setNewRoleDescription('');
     setMessage('Tenant role created and audited. Configure its permissions below.');
@@ -197,10 +206,12 @@ export function SecurityAdministrationPage() {
         <div className="grid gap-5 lg:grid-cols-2">
           <div>
             <h2 className="font-semibold text-gray-900">Role details</h2>
+            <input aria-label="Search security roles" placeholder="Search role code, name or description" className="mt-3 w-full rounded border border-gray-300 p-2" value={roleSearch} onChange={event => { setRoleSearch(event.target.value); setRolePage(1); }} />
             <label className="mt-3 block text-sm font-medium text-gray-700" htmlFor="security-role">Role</label>
             <select id="security-role" className="mt-1 w-full rounded border border-gray-300 p-2" value={roleId} onChange={event => setRoleId(event.target.value)}>
               {roles.map(role => <option key={role.id} value={role.id}>{role.name}{role.isSystemRole ? ' (system)' : ''}</option>)}
             </select>
+            {roleTotalPages > 1 && <div className="mt-2 flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={rolePage <= 1} onClick={() => setRolePage(value => Math.max(1, value - 1))}>Previous roles</button><span>Page {rolePage} of {roleTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={rolePage >= roleTotalPages} onClick={() => setRolePage(value => value + 1)}>Next roles</button></div>}
             {selectedRole && <div className="mt-3 grid gap-2">
               <div className="rounded bg-gray-50 px-3 py-2 font-mono text-xs text-gray-600">{selectedRole.roleCode}</div>
               <input aria-label="Role name" className="rounded border border-gray-300 p-2" value={roleName} onChange={event => setRoleName(event.target.value)} disabled={selectedRole.isSystemRole} />
@@ -266,7 +277,8 @@ export function SecurityAdministrationPage() {
         {userTotalPages > 1 && <div className="mt-2 flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</button><span>Page {userPage} of {userTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</button></div>}
         {userRoles && <div className="mt-4 rounded border border-gray-200 p-3">
           <h3 className="font-medium">Effective-dated roles for {userRoles.userName}</h3>
-          <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-3">{roles.map(role => {
+          <p className="mt-3 text-xs text-gray-500">Role choices follow the paged role search above; selections from other pages are preserved.</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-3">{roles.filter(role => role.isActive).map(role => {
             const assigned = assignmentDrafts.some(item => item.roleId === role.id);
             return <label key={role.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { roleId: role.id, municipalityId: role.municipalityId, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.roleId !== role.id))}/><span>{role.name}</span></label>;
           })}</div>

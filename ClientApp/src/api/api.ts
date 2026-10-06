@@ -1906,8 +1906,10 @@ export async function updateSecurityMember(item: SecurityMemberDefinitionDto, pa
   return put<SecurityMemberDefinitionDto>(`/v1/security/members/${item.publicId}`, { ...payload, rowVersion: item.rowVersion });
 }
 
-export async function getSecurityRoles(): Promise<ApiResponse<SecurityRoleSummary[]>> {
-  return get<SecurityRoleSummary[]>('/v1/security/roles');
+export async function getSecurityRolesPage(query: RegisterPageQuery = {}, includeInactive = false): Promise<ApiResponse<PagedResult<SecurityRoleSummary>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (includeInactive) parameters.set('includeInactive', 'true');
+  return get<PagedResult<SecurityRoleSummary>>(`/v1/security/roles/page?${parameters.toString()}`);
 }
 
 export async function createSecurityRole(payload: { roleCode: string; name: string; description?: string; effectiveFrom?: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
