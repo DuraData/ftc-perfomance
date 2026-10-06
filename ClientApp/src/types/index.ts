@@ -1652,30 +1652,6 @@ export interface StrategicCatalogueItemDto {
   symbol?: string | null;
 }
 
-export interface StrategicCatalogueRelationshipDto {
-  relationshipType: string;
-  parentPublicId: string;
-  childPublicId: string;
-}
-
-export interface StrategicClassificationCatalogueDto {
-  nationalKpas: StrategicCatalogueItemDto[];
-  municipalKpas: StrategicCatalogueItemDto[];
-  backToBasicsPillars: StrategicCatalogueItemDto[];
-  strategicGoals: StrategicCatalogueItemDto[];
-  strategicInterventions: StrategicCatalogueItemDto[];
-  strategicObjectives: StrategicCatalogueItemDto[];
-  performanceObjectives: StrategicCatalogueItemDto[];
-  budgetSources?: StrategicCatalogueItemDto[];
-  budgetTypes?: StrategicCatalogueItemDto[];
-  kpiTypes?: StrategicCatalogueItemDto[];
-  indicatorTypes?: StrategicCatalogueItemDto[];
-  functionalAreas?: StrategicCatalogueItemDto[];
-  standardClassifications?: StrategicCatalogueItemDto[];
-  kpiUnitsOfMeasure?: StrategicCatalogueItemDto[];
-  relationships: StrategicCatalogueRelationshipDto[];
-}
-
 export interface PerformancePeriodTargetDto {
   publicId: string;
   reportingPeriodPublicId: string;

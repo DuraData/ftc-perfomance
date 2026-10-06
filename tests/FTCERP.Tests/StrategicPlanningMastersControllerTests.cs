@@ -151,14 +151,15 @@ public sealed class StrategicPlanningMastersControllerTests
     }
 
     [Fact]
-    public async Task CatalogueReturnsOnlyAvailableEffectiveValuesAndActiveRelationships()
+    public async Task CataloguePagesAreBoundedAvailableEffectiveAndHierarchyFiltered()
     {
         await using var fixture = await Fixture.CreateAsync();
         await using (var setup = fixture.SystemContext())
         {
             var available = new NationalKpa { Code = "NKPA-AVAILABLE", Name = "Available", DisplayOrder = 1 };
             var disabled = new NationalKpa { Code = "NKPA-DISABLED", Name = "Disabled", DisplayOrder = 2 };
-            setup.NationalKpas.AddRange(available, disabled);
+            var secondAvailable = new NationalKpa { Code = "NKPA-SECOND", Name = "Second available", DisplayOrder = 3 };
+            setup.NationalKpas.AddRange(available, disabled, secondAvailable);
             await setup.SaveChangesAsync();
             setup.MunicipalityNationalKpas.Add(new MunicipalityNationalKpa { MunicipalityId = fixture.MunicipalityA.Id, NationalKpaId = disabled.Id, IsEnabled = false });
             await setup.SaveChangesAsync();
@@ -167,17 +168,30 @@ public sealed class StrategicPlanningMastersControllerTests
         await using var context = fixture.Context(fixture.MunicipalityA.Id);
         var controller = Controller(context, fixture.MunicipalityA.Id);
         var kpa = Data(await controller.CreateMunicipalKpa(new("KPA-CURRENT", "Current KPA", null, fixture.Year2026.PublicId, null, 1, true, "Create current catalogue KPA")));
+        var unmappedKpa = Data(await controller.CreateMunicipalKpa(new("KPA-UNMAPPED", "Unmapped KPA", null, fixture.Year2026.PublicId, null, 4, true, "Create catalogue KPA without mappings")));
         _ = Data(await controller.CreateMunicipalKpa(new("KPA-EXPIRED", "Expired KPA", null, fixture.Year2025.PublicId, fixture.Year2025.PublicId, 2, true, "Create expired catalogue KPA")));
         _ = Data(await controller.CreateMunicipalKpa(new("KPA-INACTIVE", "Inactive KPA", null, null, null, 3, false, "Create inactive catalogue KPA")));
         var goal = Data(await controller.CreateStrategicGoal(new("GOAL-CURRENT", "Current goal", null, null, null, 1, true, "Create catalogue goal")));
         await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, goal.PublicId, "Configure catalogue relationship"));
 
-        var response = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
-        var catalogue = Assert.IsType<OkObjectResult>(response.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
-        Assert.Collection(catalogue.NationalKpas, item => Assert.Equal("NKPA-AVAILABLE", item.Code));
-        Assert.Collection(catalogue.MunicipalKpas, item => Assert.Equal(kpa.PublicId, item.PublicId));
-        Assert.Contains(catalogue.Relationships, item => item.RelationshipType == "municipal-kpa-strategic-goal"
-            && item.ParentPublicId == kpa.PublicId && item.ChildPublicId == goal.PublicId);
+        var legacy = controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(legacy.Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetIpmsCatalogue(fixture.Year2026.PublicId).Result).StatusCode);
+        var nationalKpas = await CataloguePage(controller, fixture.Year2026.PublicId, "national-kpas", pageSize: 1);
+        Assert.Equal(2, nationalKpas.TotalCount);
+        Assert.Equal(2, nationalKpas.TotalPages);
+        Assert.Collection(nationalKpas.Items, item => Assert.Equal("NKPA-AVAILABLE", item.Code));
+        var municipalKpas = await CataloguePage(controller, fixture.Year2026.PublicId, "municipal-kpas", search: "CURRENT");
+        Assert.Collection(municipalKpas.Items, item => Assert.Equal(kpa.PublicId, item.PublicId));
+        var linkedGoals = await CataloguePage(controller, fixture.Year2026.PublicId, "strategic-goals",
+            parentPublicId: kpa.PublicId, relationshipType: "municipal-kpa-strategic-goal");
+        Assert.Collection(linkedGoals.Items, item => Assert.Equal(goal.PublicId, item.PublicId));
+        var unconfiguredGoals = await CataloguePage(controller, fixture.Year2026.PublicId, "strategic-goals",
+            parentPublicId: unmappedKpa.PublicId, relationshipType: "municipal-kpa-strategic-goal");
+        Assert.Collection(unconfiguredGoals.Items, item => Assert.Equal(goal.PublicId, item.PublicId));
+        var invalidRelationship = await controller.GetOpmsCataloguePage(new PagedQueryRequest(), fixture.Year2026.PublicId,
+            "strategic-goals", kpa.PublicId, "strategic-intervention-objective");
+        Assert.IsType<BadRequestObjectResult>(invalidRelationship.Result);
     }
 
     [Fact]
@@ -198,10 +212,10 @@ public sealed class StrategicPlanningMastersControllerTests
         var historicSource = Data(await controller.CreateBudgetSource(new("OLD", "Historic grant", null, fixture.Year2025.PublicId, fixture.Year2025.PublicId, 30, true, "Create historic governed budget source")));
         var budgetType = Data(await controller.CreateBudgetType(new("CAPEX", "Capital expenditure", null, null, null, 10, true, "Create governed budget type")));
 
-        var catalogueResult = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
-        var catalogue = Assert.IsType<OkObjectResult>(catalogueResult.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
-        Assert.Equal([sourceA.PublicId, sourceB.PublicId], catalogue.BudgetSources.Select(item => item.PublicId));
-        Assert.Collection(catalogue.BudgetTypes, item => Assert.Equal(budgetType.PublicId, item.PublicId));
+        var budgetSources = await CataloguePage(controller, fixture.Year2026.PublicId, "budget-sources");
+        var budgetTypes = await CataloguePage(controller, fixture.Year2026.PublicId, "budget-types");
+        Assert.Equal([sourceA.PublicId, sourceB.PublicId], budgetSources.Items.Select(item => item.PublicId));
+        Assert.Collection(budgetTypes.Items, item => Assert.Equal(budgetType.PublicId, item.PublicId));
 
         var foreign = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, budgetType.PublicId,
             [new(foreignSource, 10m)]);
@@ -251,12 +265,10 @@ public sealed class StrategicPlanningMastersControllerTests
         var functionalArea = Data(await controller.CreateFunctionalArea(new("TECH", "Technical Services", null, fixture.Year2026.PublicId, null, 10, true, "Create governed functional area")));
         var expiredStandard = Data(await controller.CreateStandardClassification(new("OLD", "Historic standard", null, fixture.Year2025.PublicId, fixture.Year2025.PublicId, 10, true, "Create historic standard classification")));
 
-        var catalogueResult = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
-        var catalogue = Assert.IsType<OkObjectResult>(catalogueResult.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
-        Assert.Collection(catalogue.KpiTypes, item => Assert.Equal(kpiType.PublicId, item.PublicId));
-        Assert.Collection(catalogue.IndicatorTypes, item => Assert.Equal(indicatorType.PublicId, item.PublicId));
-        Assert.Collection(catalogue.FunctionalAreas, item => Assert.Equal(functionalArea.PublicId, item.PublicId));
-        Assert.Empty(catalogue.StandardClassifications);
+        Assert.Collection((await CataloguePage(controller, fixture.Year2026.PublicId, "kpi-types")).Items, item => Assert.Equal(kpiType.PublicId, item.PublicId));
+        Assert.Collection((await CataloguePage(controller, fixture.Year2026.PublicId, "indicator-types")).Items, item => Assert.Equal(indicatorType.PublicId, item.PublicId));
+        Assert.Collection((await CataloguePage(controller, fixture.Year2026.PublicId, "functional-areas")).Items, item => Assert.Equal(functionalArea.PublicId, item.PublicId));
+        Assert.Empty((await CataloguePage(controller, fixture.Year2026.PublicId, "standard-classifications")).Items);
 
         var foreign = await PerformanceClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, foreignKpiType, indicatorType.PublicId, null, null, true);
         Assert.False(foreign.IsValid);
@@ -292,9 +304,8 @@ public sealed class StrategicPlanningMastersControllerTests
             currentPublicId = current.PublicId; staleVersion = current.RowVersion;
             Assert.Equal("#", current.Symbol);
 
-            var catalogueResult = await controller.GetOpmsCatalogue(fixture.Year2026.PublicId);
-            var catalogue = Assert.IsType<OkObjectResult>(catalogueResult.Result).Value.As<ApiResponse<StrategicClassificationCatalogueDto>>().Data!;
-            Assert.Collection(catalogue.KpiUnitsOfMeasure, item => { Assert.Equal(current.PublicId, item.PublicId); Assert.Equal("#", item.Symbol); });
+            var units = await CataloguePage(controller, fixture.Year2026.PublicId, "kpi-units-of-measure");
+            Assert.Collection(units.Items, item => { Assert.Equal(current.PublicId, item.PublicId); Assert.Equal("#", item.Symbol); });
 
             var foreign = await PerformanceClassificationResolver.ResolveUnitAsync(context, fixture.Year2026.Id, foreignPublicId);
             Assert.False(foreign.IsValid); Assert.Contains("this municipality", foreign.Error, StringComparison.OrdinalIgnoreCase);
@@ -340,12 +351,29 @@ public sealed class StrategicPlanningMastersControllerTests
     [InlineData(nameof(StrategicPlanningMastersController.CreateBudgetSource), "Permission:BUDGET_SOURCE.CREATE")]
     [InlineData(nameof(StrategicPlanningMastersController.UpdateBudgetType), "Permission:BUDGET_TYPE.UPDATE")]
     [InlineData(nameof(StrategicPlanningMastersController.CreateKpiUnitOfMeasure), "Permission:KPI_UNIT_OF_MEASURE.CREATE")]
+    [InlineData(nameof(StrategicPlanningMastersController.GetOpmsCataloguePage), "Permission:OPMS_KPI.READ")]
+    [InlineData(nameof(StrategicPlanningMastersController.GetIpmsCataloguePage), "Permission:IPMS_KPI.READ")]
     [InlineData(nameof(StrategicPlanningMastersController.GetRelationshipsPage), "Permission:STRATEGIC_HIERARCHY.READ")]
     [InlineData(nameof(StrategicPlanningMastersController.LinkGoalToObjective), "Permission:STRATEGIC_HIERARCHY.CREATE")]
     public void EndpointsCarryDynamicPermissionPolicies(string methodName, string policy)
     {
         var method = typeof(StrategicPlanningMastersController).GetMethods().Single(item => item.Name == methodName);
         Assert.Contains(method.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>(), item => item.Policy == policy);
+    }
+
+    private static async Task<PagedResponse<StrategicCatalogueItemDto>> CataloguePage(
+        StrategicPlanningMastersController controller,
+        Guid municipalityFinancialYearPublicId,
+        string classificationKind,
+        string? search = null,
+        int pageSize = 25,
+        Guid? parentPublicId = null,
+        string? relationshipType = null)
+    {
+        var result = await controller.GetOpmsCataloguePage(
+            new PagedQueryRequest { Page = 1, PageSize = pageSize, Search = search, SortBy = "displayOrder", SortDirection = "asc" },
+            municipalityFinancialYearPublicId, classificationKind, parentPublicId, relationshipType);
+        return Assert.IsType<OkObjectResult>(result.Result).Value.As<ApiResponse<PagedResponse<StrategicCatalogueItemDto>>>().Data!;
     }
 
     private static StrategicPlanningMasterDto Data(Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> task) => Data(task.GetAwaiter().GetResult());

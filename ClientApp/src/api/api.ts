@@ -84,7 +84,7 @@ import type {
   GlobalStrategicReferenceDto,
   StrategicPlanningMasterDto,
   StrategicPlanningRelationshipDto,
-  StrategicClassificationCatalogueDto,
+  StrategicCatalogueItemDto,
   WorkflowDefinitionDto,
   WorkflowDefinitionComparisonDto,
   InternalAuditAssessmentDto,
@@ -1429,8 +1429,21 @@ export function getStrategicPlanningRelationshipsPage(query: RegisterPageQuery =
   return get<PagedResult<StrategicPlanningRelationshipDto>>(`/v1/strategic-planning/relationships/page?${parameters.toString()}`);
 }
 
-export function getStrategicClassificationCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string): Promise<ApiResponse<StrategicClassificationCatalogueDto>> {
-  return get<StrategicClassificationCatalogueDto>(`/v1/strategic-planning/catalogue/${kind}?municipalityFinancialYearPublicId=${encodeURIComponent(municipalityFinancialYearPublicId)}`);
+export type StrategicClassificationKind = 'national-kpas' | 'municipal-kpas' | 'back-to-basics-pillars' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives' | 'budget-sources' | 'budget-types' | 'kpi-types' | 'indicator-types' | 'functional-areas' | 'standard-classifications' | 'kpi-units-of-measure';
+
+export function getStrategicClassificationPage(
+  targetKind: 'opms' | 'ipms',
+  municipalityFinancialYearPublicId: string,
+  classificationKind: StrategicClassificationKind,
+  query: RegisterPageQuery = {},
+  options: { parentPublicId?: string; relationshipType?: string } = {},
+): Promise<ApiResponse<PagedResult<StrategicCatalogueItemDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  parameters.set('municipalityFinancialYearPublicId', municipalityFinancialYearPublicId);
+  parameters.set('classificationKind', classificationKind);
+  if (options.parentPublicId) parameters.set('parentPublicId', options.parentPublicId);
+  if (options.relationshipType) parameters.set('relationshipType', options.relationshipType);
+  return get<PagedResult<StrategicCatalogueItemDto>>(`/v1/strategic-planning/catalogue/${targetKind}/page?${parameters.toString()}`);
 }
 
 export function linkStrategicPlanningRelationship(kind: string, parentPublicId: string, childPublicId: string, reason: string, rowVersion?: string | null): Promise<ApiResponse<StrategicPlanningRelationshipDto>> {

@@ -16,10 +16,38 @@ namespace FTCERP.Host.API.Controllers;
 public sealed class StrategicPlanningMastersController(ApplicationDbContext context, ITenantContext tenantContext) : ControllerBase
 {
     [HttpGet("catalogue/opms"), Authorize(Policy = "Permission:OPMS_KPI.READ")]
-    public Task<ActionResult<ApiResponse<StrategicClassificationCatalogueDto>>> GetOpmsCatalogue([FromQuery] Guid municipalityFinancialYearPublicId) => Catalogue(municipalityFinancialYearPublicId);
+    public ActionResult<ApiResponse<StrategicClassificationCatalogueDto>> GetOpmsCatalogue([FromQuery] Guid municipalityFinancialYearPublicId)
+    {
+        _ = municipalityFinancialYearPublicId;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<StrategicClassificationCatalogueDto>(false, null,
+            "This aggregate catalogue route is retired. Use /api/v1/strategic-planning/catalogue/opms/page with classificationKind and bounded paging."));
+    }
 
     [HttpGet("catalogue/ipms"), Authorize(Policy = "Permission:IPMS_KPI.READ")]
-    public Task<ActionResult<ApiResponse<StrategicClassificationCatalogueDto>>> GetIpmsCatalogue([FromQuery] Guid municipalityFinancialYearPublicId) => Catalogue(municipalityFinancialYearPublicId);
+    public ActionResult<ApiResponse<StrategicClassificationCatalogueDto>> GetIpmsCatalogue([FromQuery] Guid municipalityFinancialYearPublicId)
+    {
+        _ = municipalityFinancialYearPublicId;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<StrategicClassificationCatalogueDto>(false, null,
+            "This aggregate catalogue route is retired. Use /api/v1/strategic-planning/catalogue/ipms/page with classificationKind and bounded paging."));
+    }
+
+    [HttpGet("catalogue/opms/page"), Authorize(Policy = "Permission:OPMS_KPI.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicCatalogueItemDto>>>> GetOpmsCataloguePage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] Guid municipalityFinancialYearPublicId,
+        [FromQuery] string classificationKind,
+        [FromQuery] Guid? parentPublicId = null,
+        [FromQuery] string? relationshipType = null) =>
+        CataloguePage(request, municipalityFinancialYearPublicId, classificationKind, parentPublicId, relationshipType);
+
+    [HttpGet("catalogue/ipms/page"), Authorize(Policy = "Permission:IPMS_KPI.READ")]
+    public Task<ActionResult<ApiResponse<PagedResponse<StrategicCatalogueItemDto>>>> GetIpmsCataloguePage(
+        [FromQuery] PagedQueryRequest request,
+        [FromQuery] Guid municipalityFinancialYearPublicId,
+        [FromQuery] string classificationKind,
+        [FromQuery] Guid? parentPublicId = null,
+        [FromQuery] string? relationshipType = null) =>
+        CataloguePage(request, municipalityFinancialYearPublicId, classificationKind, parentPublicId, relationshipType);
 
     [HttpGet("municipal-kpas/page"), Authorize(Policy = "Permission:MUNICIPAL_KPA.READ")]
     public Task<ActionResult<ApiResponse<PagedResponse<StrategicPlanningMasterDto>>>> GetMunicipalKpas([FromQuery] StrategicPlanningPageRequest request) => Page(context.MunicipalKpas, request);
@@ -278,43 +306,107 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         return Ok(new ApiResponse<PagedResponse<StrategicPlanningMasterDto>>(true, PagedResponse<StrategicPlanningMasterDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, total)));
     }
 
-    private async Task<ActionResult<ApiResponse<StrategicClassificationCatalogueDto>>> Catalogue(Guid municipalityFinancialYearPublicId)
+    private static readonly HashSet<string> CatalogueKinds =
+    [
+        "national-kpas", "municipal-kpas", "back-to-basics-pillars", "strategic-goals", "strategic-interventions",
+        "strategic-objectives", "performance-objectives", "budget-sources", "budget-types", "kpi-types",
+        "indicator-types", "functional-areas", "standard-classifications", "kpi-units-of-measure"
+    ];
+
+    private static readonly IReadOnlyDictionary<string, HashSet<string>> CatalogueRelationshipKinds =
+        new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            ["strategic-goals"] = ["municipal-kpa-strategic-goal"],
+            ["strategic-interventions"] = ["strategic-goal-intervention"],
+            ["strategic-objectives"] = ["strategic-goal-objective", "strategic-intervention-objective"],
+            ["performance-objectives"] = ["strategic-objective-performance-objective"]
+        };
+
+    private async Task<ActionResult<ApiResponse<PagedResponse<StrategicCatalogueItemDto>>>> CataloguePage(
+        PagedQueryRequest request,
+        Guid municipalityFinancialYearPublicId,
+        string classificationKind,
+        Guid? parentPublicId,
+        string? relationshipType)
     {
-        if (!TenantSelected()) return TenantRequired<StrategicClassificationCatalogueDto>();
+        if (!TenantSelected()) return TenantRequired<PagedResponse<StrategicCatalogueItemDto>>();
+        var kind = classificationKind.Trim().ToLowerInvariant();
+        if (!CatalogueKinds.Contains(kind))
+            return BadRequest(Fail<PagedResponse<StrategicCatalogueItemDto>>("ClassificationKind is invalid."));
+        var sortBy = request.SortBy == null ? "displayorder" : request.NormalizedSortBy;
+        if (sortBy is not ("displayorder" or "code" or "name"))
+            return BadRequest(Fail<PagedResponse<StrategicCatalogueItemDto>>("SortBy must be displayOrder, code, or name."));
+        var descending = request.SortBy != null && request.Descending;
         var year = await context.MunicipalityFinancialYears.AsNoTracking().Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.PublicId == municipalityFinancialYearPublicId);
-        if (year == null) return NotFound(Fail<StrategicClassificationCatalogueDto>("Municipality financial year not found."));
-        var nationalKpas = await context.NationalKpas.AsNoTracking().Where(item => item.IsActive
-                && (!item.MunicipalityMappings.Any() || item.MunicipalityMappings.Any(mapping => mapping.IsEnabled)))
-            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000).Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder)).ToArrayAsync();
-        var pillars = await context.BackToBasicsPillars.AsNoTracking().Where(item => item.IsActive
-                && (!item.MunicipalityMappings.Any() || item.MunicipalityMappings.Any(mapping => mapping.IsEnabled)))
-            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000).Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder)).ToArrayAsync();
-        var kpas = await CatalogueRows(context.MunicipalKpas, year); var goals = await CatalogueRows(context.MunicipalStrategicGoals, year);
-        var interventions = await CatalogueRows(context.StrategicInterventions, year); var objectives = await CatalogueRows(context.MunicipalStrategicObjectives, year);
-        var performanceObjectives = await CatalogueRows(context.PerformanceObjectives, year);
-        var budgetSources = await CatalogueRows(context.GovernedBudgetSources, year); var budgetTypes = await CatalogueRows(context.GovernedBudgetTypes, year);
-        var kpiTypes = await CatalogueRows(context.GovernedKpiTypes, year); var indicatorTypes = await CatalogueRows(context.GovernedIndicatorTypes, year);
-        var functionalAreas = await CatalogueRows(context.GovernedFunctionalAreas, year); var standardClassifications = await CatalogueRows(context.GovernedStandardClassifications, year);
-        var kpiUnitsOfMeasure = await context.GovernedKpiUnitOfMeasures.AsNoTracking().Where(item => item.IsActive
-                && (!item.EffectiveFromFinancialYearId.HasValue || item.EffectiveFromFinancialYear!.FinancialYear.StartDate <= year.FinancialYear.StartDate)
-                && (!item.EffectiveToFinancialYearId.HasValue || item.EffectiveToFinancialYear!.FinancialYear.EndDate >= year.FinancialYear.EndDate))
-            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000)
-            .Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder, item.Symbol)).ToArrayAsync();
-        var relationships = new List<StrategicCatalogueRelationshipDto>();
-        relationships.AddRange(await context.MunicipalKpaStrategicGoals.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("municipal-kpa-strategic-goal", item.MunicipalKpa.PublicId, item.StrategicGoal.PublicId)).ToArrayAsync());
-        relationships.AddRange(await context.StrategicGoalInterventions.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-intervention", item.StrategicGoal.PublicId, item.StrategicIntervention.PublicId)).ToArrayAsync());
-        relationships.AddRange(await context.StrategicGoalObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-goal-objective", item.StrategicGoal.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
-        relationships.AddRange(await context.StrategicInterventionObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-intervention-objective", item.StrategicIntervention.PublicId, item.StrategicObjective.PublicId)).ToArrayAsync());
-        relationships.AddRange(await context.StrategicObjectivePerformanceObjectives.AsNoTracking().Where(item => item.IsActive).Select(item => new StrategicCatalogueRelationshipDto("strategic-objective-performance-objective", item.StrategicObjective.PublicId, item.PerformanceObjective.PublicId)).ToArrayAsync());
-        return Ok(new ApiResponse<StrategicClassificationCatalogueDto>(true, new(nationalKpas, kpas, pillars, goals, interventions, objectives, performanceObjectives, budgetSources, budgetTypes, kpiTypes, indicatorTypes, functionalAreas, standardClassifications, kpiUnitsOfMeasure, relationships.ToArray())));
+        if (year == null) return NotFound(Fail<PagedResponse<StrategicCatalogueItemDto>>("Municipality financial year not found."));
+
+        IQueryable<StrategicCataloguePageRow> query = kind switch
+        {
+            "national-kpas" => context.NationalKpas.AsNoTracking().Where(item => item.IsActive
+                    && (!item.MunicipalityMappings.Any() || item.MunicipalityMappings.Any(mapping => mapping.IsEnabled)))
+                .Select(item => new StrategicCataloguePageRow { PublicId = item.PublicId, Code = item.Code, Name = item.Name, DisplayOrder = item.DisplayOrder }),
+            "back-to-basics-pillars" => context.BackToBasicsPillars.AsNoTracking().Where(item => item.IsActive
+                    && (!item.MunicipalityMappings.Any() || item.MunicipalityMappings.Any(mapping => mapping.IsEnabled)))
+                .Select(item => new StrategicCataloguePageRow { PublicId = item.PublicId, Code = item.Code, Name = item.Name, DisplayOrder = item.DisplayOrder }),
+            "municipal-kpas" => CatalogueQuery(context.MunicipalKpas, year),
+            "strategic-goals" => CatalogueQuery(context.MunicipalStrategicGoals, year),
+            "strategic-interventions" => CatalogueQuery(context.StrategicInterventions, year),
+            "strategic-objectives" => CatalogueQuery(context.MunicipalStrategicObjectives, year),
+            "performance-objectives" => CatalogueQuery(context.PerformanceObjectives, year),
+            "budget-sources" => CatalogueQuery(context.GovernedBudgetSources, year),
+            "budget-types" => CatalogueQuery(context.GovernedBudgetTypes, year),
+            "kpi-types" => CatalogueQuery(context.GovernedKpiTypes, year),
+            "indicator-types" => CatalogueQuery(context.GovernedIndicatorTypes, year),
+            "functional-areas" => CatalogueQuery(context.GovernedFunctionalAreas, year),
+            "standard-classifications" => CatalogueQuery(context.GovernedStandardClassifications, year),
+            _ => context.GovernedKpiUnitOfMeasures.AsNoTracking().Where(item => item.IsActive
+                    && (!item.EffectiveFromFinancialYearId.HasValue || item.EffectiveFromFinancialYear!.FinancialYear.StartDate <= year.FinancialYear.StartDate)
+                    && (!item.EffectiveToFinancialYearId.HasValue || item.EffectiveToFinancialYear!.FinancialYear.EndDate >= year.FinancialYear.EndDate))
+                .Select(item => new StrategicCataloguePageRow { PublicId = item.PublicId, Code = item.Code, Name = item.Name, DisplayOrder = item.DisplayOrder, Symbol = item.Symbol })
+        };
+
+        if (parentPublicId.HasValue)
+        {
+            var relationship = relationshipType?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!CatalogueRelationshipKinds.TryGetValue(kind, out var supportedRelationships) || !supportedRelationships.Contains(relationship))
+                return BadRequest(Fail<PagedResponse<StrategicCatalogueItemDto>>("RelationshipType is invalid for this classification kind."));
+            var configuredRelationships = RelationshipQuery(relationship)
+                .Where(item => item.IsActive && item.ParentPublicId == parentPublicId.Value);
+            if (await configuredRelationships.AnyAsync())
+            {
+                var childIds = configuredRelationships.Select(item => item.ChildPublicId);
+                query = query.Where(item => childIds.Contains(item.PublicId));
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(relationshipType))
+        {
+            return BadRequest(Fail<PagedResponse<StrategicCatalogueItemDto>>("ParentPublicId is required when RelationshipType is supplied."));
+        }
+
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => item.Name.Contains(request.NormalizedSearch) || (item.Code != null && item.Code.Contains(request.NormalizedSearch)));
+        var totalCount = await query.CountAsync();
+        query = (sortBy, descending) switch
+        {
+            ("code", false) => query.OrderBy(item => item.Code).ThenBy(item => item.Name).ThenBy(item => item.PublicId),
+            ("code", true) => query.OrderByDescending(item => item.Code).ThenByDescending(item => item.Name).ThenByDescending(item => item.PublicId),
+            ("name", false) => query.OrderBy(item => item.Name).ThenBy(item => item.PublicId),
+            ("name", true) => query.OrderByDescending(item => item.Name).ThenByDescending(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.DisplayOrder).ThenByDescending(item => item.Name).ThenByDescending(item => item.PublicId)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<StrategicCatalogueItemDto>>(true,
+            PagedResponse<StrategicCatalogueItemDto>.Create(
+                rows.Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder, item.Symbol)),
+                request.Page, request.PageSize, totalCount)));
     }
 
-    private static Task<StrategicCatalogueItemDto[]> CatalogueRows<TEntity>(DbSet<TEntity> set, MunicipalityFinancialYear year) where TEntity : StrategicPlanningMasterBase =>
+    private static IQueryable<StrategicCataloguePageRow> CatalogueQuery<TEntity>(DbSet<TEntity> set, MunicipalityFinancialYear year) where TEntity : StrategicPlanningMasterBase =>
         set.AsNoTracking().Where(item => item.IsActive
                 && (!item.EffectiveFromFinancialYearId.HasValue || item.EffectiveFromFinancialYear!.FinancialYear.StartDate <= year.FinancialYear.StartDate)
                 && (!item.EffectiveToFinancialYearId.HasValue || item.EffectiveToFinancialYear!.FinancialYear.EndDate >= year.FinancialYear.EndDate))
-            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Name).Take(1000)
-            .Select(item => new StrategicCatalogueItemDto(item.PublicId, item.Code, item.Name, item.DisplayOrder)).ToArrayAsync();
+            .Select(item => new StrategicCataloguePageRow { PublicId = item.PublicId, Code = item.Code, Name = item.Name, DisplayOrder = item.DisplayOrder });
 
     private async Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> Create<TEntity>(DbSet<TEntity> set, Func<TEntity> factory, string entityName, SaveStrategicPlanningMasterRequest request) where TEntity : StrategicPlanningMasterBase
     {
@@ -433,6 +525,14 @@ internal sealed class StrategicPlanningRelationshipPageRow
     public string ChildName { get; init; } = string.Empty;
     public bool IsActive { get; init; }
     public byte[] RowVersion { get; init; } = [];
+}
+internal sealed class StrategicCataloguePageRow
+{
+    public Guid PublicId { get; init; }
+    public string? Code { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public int DisplayOrder { get; init; }
+    public string? Symbol { get; init; }
 }
 public sealed record LinkStrategicPlanningRequest(Guid ParentPublicId, Guid ChildPublicId, string Reason, string? RowVersion = null);
 public sealed record DisableStrategicPlanningRelationshipRequest(string Reason, string RowVersion);

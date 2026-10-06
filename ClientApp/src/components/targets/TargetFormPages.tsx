@@ -7,13 +7,14 @@ import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from 
 import { TargetPicker } from '../common/TargetPicker';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
+import { StrategicClassificationPicker } from '../common/StrategicClassificationPicker';
 import { useApp } from '../../context/AppContext';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
   createIpmsTarget,
   createOpmsTarget,
   getPerformanceConfigurationCatalogue,
-  getStrategicClassificationCatalogue,
+  getStrategicClassificationPage,
   getIpmsTarget,
   getIpmsTargetOptions,
   getIpmsTargetTemplate,
@@ -34,7 +35,6 @@ import type {
   SaveTargetPeriodValuePayload,
   PerformanceTargetOptionDto,
   PerformanceConfigurationCatalogueDto,
-  StrategicClassificationCatalogueDto,
   StrategicCatalogueItemDto,
   SdbipLayerMasterDto,
   TargetUnitType,
@@ -933,9 +933,30 @@ function validateBudgetSources(sources: Array<{ budgetSourcePublicId: string; am
   return errors;
 }
 
-function useStrategicCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string) {
-  const [catalogue, setCatalogue] = useState<StrategicClassificationCatalogueDto>();
+type StrategicTemplateLookup = {
+  budgetSources?: StrategicCatalogueItemDto[];
+  budgetTypes?: StrategicCatalogueItemDto[];
+  kpiTypes?: StrategicCatalogueItemDto[];
+  indicatorTypes?: StrategicCatalogueItemDto[];
+  functionalAreas?: StrategicCatalogueItemDto[];
+  standardClassifications?: StrategicCatalogueItemDto[];
+  kpiUnitsOfMeasure?: StrategicCatalogueItemDto[];
+};
+
+type StrategicTemplateHints = {
+  budgetSourceHint?: string;
+  budgetTypeHint?: string;
+  kpiTypeHint?: string;
+  indicatorTypeHint?: string;
+  functionalAreaHint?: string;
+  standardClassificationHint?: string;
+  unitOfMeasureHint?: string;
+};
+
+function useStrategicTemplateLookup(kind: 'opms' | 'ipms', municipalityFinancialYearPublicId: string, hints: StrategicTemplateHints) {
+  const [catalogue, setCatalogue] = useState<StrategicTemplateLookup>();
   const [catalogueError, setCatalogueError] = useState('');
+  const { budgetSourceHint, budgetTypeHint, kpiTypeHint, indicatorTypeHint, functionalAreaHint, standardClassificationHint, unitOfMeasureHint } = hints;
   useEffect(() => {
     let cancelled = false;
     if (!municipalityFinancialYearPublicId) {
@@ -943,18 +964,44 @@ function useStrategicCatalogue(kind: 'opms' | 'ipms', municipalityFinancialYearP
       setCatalogueError('');
       return () => { cancelled = true; };
     }
-    void getStrategicClassificationCatalogue(kind, municipalityFinancialYearPublicId).then(result => {
+    const specifications = [
+      ['budgetSources', 'budget-sources', budgetSourceHint],
+      ['budgetTypes', 'budget-types', budgetTypeHint],
+      ['kpiTypes', 'kpi-types', kpiTypeHint],
+      ['indicatorTypes', 'indicator-types', indicatorTypeHint],
+      ['functionalAreas', 'functional-areas', functionalAreaHint],
+      ['standardClassifications', 'standard-classifications', standardClassificationHint],
+      ['kpiUnitsOfMeasure', 'kpi-units-of-measure', unitOfMeasureHint],
+    ] as const;
+    const active = specifications.filter(([, , hint]) => Boolean(hint?.trim()));
+    if (!active.length) {
+      setCatalogue({});
+      setCatalogueError('');
+      return () => { cancelled = true; };
+    }
+    void Promise.all(active.map(async ([property, classificationKind, hint]) => {
+      const result = await getStrategicClassificationPage(kind, municipalityFinancialYearPublicId, classificationKind,
+        { page: 1, pageSize: 25, search: hint!.trim(), sortBy: 'name', sortDirection: 'asc' });
+      return { property, hint: hint!.trim(), result };
+    })).then(results => {
       if (cancelled) return;
-      if (result.success && result.data) {
-        setCatalogue(result.data);
-        setCatalogueError('');
-      } else {
+      const failed = results.find(item => !item.result.success || !item.result.data);
+      if (failed) {
         setCatalogue(undefined);
-        setCatalogueError(result.message ?? 'Unable to load strategic classifications.');
+        setCatalogueError(failed.result.message ?? 'Unable to resolve template classifications.');
+        return;
       }
+      const resolved: StrategicTemplateLookup = {};
+      for (const { property, hint, result } of results) {
+        const normalized = hint.toLowerCase();
+        const exact = result.data!.items.find(item => item.code?.trim().toLowerCase() === normalized || item.name.trim().toLowerCase() === normalized);
+        resolved[property] = exact ? [exact] : [];
+      }
+      setCatalogue(resolved);
+      setCatalogueError('');
     });
     return () => { cancelled = true; };
-  }, [kind, municipalityFinancialYearPublicId]);
+  }, [budgetSourceHint, budgetTypeHint, functionalAreaHint, indicatorTypeHint, kind, kpiTypeHint, municipalityFinancialYearPublicId, standardClassificationHint, unitOfMeasureHint]);
   return { catalogue, catalogueError };
 }
 
@@ -988,29 +1035,17 @@ function configuredUnitOptions(configuration?: PerformanceConfigurationCatalogue
   }));
 }
 
-export function childrenFor(catalogue: StrategicClassificationCatalogueDto | undefined, relationshipType: string, parentPublicId: string, items: StrategicCatalogueItemDto[]) {
-  if (!catalogue || !parentPublicId) return items;
-  const mappings = catalogue.relationships.filter(item => item.relationshipType === relationshipType && item.parentPublicId === parentPublicId);
-  if (mappings.length === 0) return items;
-  const allowed = new Set(mappings.map(item => item.childPublicId));
-  return items.filter(item => allowed.has(item.publicId));
-}
-
-function strategicOptions(items: StrategicCatalogueItemDto[] = [], selectedId = '', selectedName = '') {
-  const options = items.map(item => ({ value: item.publicId, label: `${item.code ? `${item.code} · ` : ''}${item.name}` }));
-  if (selectedId && !options.some(item => item.value === selectedId)) options.unshift({ value: selectedId, label: `${selectedName || 'Historical selection'} · retained` });
-  return [{ value: '', label: 'Select one' }, ...options];
-}
-
-function BudgetSourceEditor({ value, options, onChange }: {
+function BudgetSourceEditor({ targetKind, municipalityFinancialYearPublicId, value, selectedLabels, onChange }: {
+  targetKind: 'opms' | 'ipms';
+  municipalityFinancialYearPublicId: string;
   value: Array<{ budgetSourcePublicId: string; amount: string }>;
-  options: StrategicCatalogueItemDto[];
+  selectedLabels?: Record<string, string>;
   onChange: (value: Array<{ budgetSourcePublicId: string; amount: string }>) => void;
 }) {
   return <div className="space-y-2">
     <div className="flex items-center justify-between"><p className="text-sm font-medium">Budget Sources</p><Button size="sm" variant="outline" onClick={() => onChange([...value, { budgetSourcePublicId: '', amount: '' }])}>Add source</Button></div>
     {value.map((item, index) => <div key={`${index}-${item.budgetSourcePublicId}`} className="grid gap-2 md:grid-cols-[1fr_0.55fr_auto]">
-      <Select label={`Budget Source ${index + 1}`} value={item.budgetSourcePublicId} options={strategicOptions(options, item.budgetSourcePublicId)} onChange={event => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, budgetSourcePublicId: event.target.value } : row))} />
+      <StrategicClassificationPicker targetKind={targetKind} classificationKind="budget-sources" municipalityFinancialYearPublicId={municipalityFinancialYearPublicId} label={`Budget Source ${index + 1}`} value={item.budgetSourcePublicId} selectedLabel={selectedLabels?.[item.budgetSourcePublicId]} onChange={next => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, budgetSourcePublicId: next } : row))} />
       <Input label="Amount (optional)" type="number" min="0" step="0.01" value={item.amount} onChange={event => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
       <div className="self-end"><Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, rowIndex) => rowIndex !== index))}>Remove</Button></div>
     </div>)}
@@ -1018,7 +1053,7 @@ function BudgetSourceEditor({ value, options, onChange }: {
   </div>;
 }
 
-function resolveBudgetTemplateHints<T extends { budgetTypePublicId: string; budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>; budgetTypeHint: string; budgetSourceHint: string }>(form: T, catalogue: StrategicClassificationCatalogueDto): T {
+function resolveBudgetTemplateHints<T extends { budgetTypePublicId: string; budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>; budgetTypeHint: string; budgetSourceHint: string }>(form: T, catalogue: StrategicTemplateLookup): T {
   if (!form.budgetTypeHint && !form.budgetSourceHint) return form;
   const matches = (items: StrategicCatalogueItemDto[] | undefined, hint: string) => items?.find(item => item.code?.toLowerCase() === hint.toLowerCase() || item.name.toLowerCase() === hint.toLowerCase());
   const type = matches(catalogue.budgetTypes, form.budgetTypeHint);
@@ -1032,7 +1067,7 @@ export function resolvePerformanceTemplateHints<T extends {
   functionalArea: string; functionalAreaPublicId: string; functionalAreaHint: string;
   standardClassification?: string; standardClassificationPublicId?: string; standardClassificationHint?: string;
   kpiUnitOfMeasurePublicId: string; unitOfMeasureHint: string;
-}>(form: T, catalogue: StrategicClassificationCatalogueDto): T {
+}>(form: T, catalogue: StrategicTemplateLookup): T {
   if (!form.kpiTypeHint && !form.indicatorTypeHint && !form.functionalAreaHint && !form.standardClassificationHint && !form.unitOfMeasureHint) return form;
   const match = (items: StrategicCatalogueItemDto[] | undefined, hint: string | undefined) => {
     const normalized = hint?.trim().toLowerCase();
@@ -1076,7 +1111,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const [relatedIpmsPage, setRelatedIpmsPage] = useState(1);
   const [relatedIpmsTotalPages, setRelatedIpmsTotalPages] = useState(0);
   const [relatedIpmsTotalCount, setRelatedIpmsTotalCount] = useState(0);
-  const { catalogue, catalogueError } = useStrategicCatalogue('opms', form.municipalityFinancialYearPublicId);
+  const { catalogue, catalogueError } = useStrategicTemplateLookup('opms', form.municipalityFinancialYearPublicId, form);
   const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
   const performanceUnitOptions = configuredUnitOptions(configuration);
   useEffect(() => {
@@ -1196,7 +1231,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = referenceLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = referenceLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
-  const selectedUom = catalogue?.kpiUnitsOfMeasure?.find(item => item.publicId === form.kpiUnitOfMeasurePublicId);
+  const selectedUomName = referenceLabels[`uom:${form.kpiUnitOfMeasurePublicId}`] ?? existingTarget?.unitOfMeasure.name;
+  const budgetSourceLabels = Object.fromEntries((existingTarget?.budgetSources ?? []).map(item => [item.budgetSourcePublicId, `${item.code} · ${item.name}`]));
   const selectedWardIds = parseCsvIds(form.wardIds);
   const selectedAssigneeIds = parseCsvIds(form.additionalAssigneeIds);
   const selectedVoteIds = parseCsvIds(form.voteNumberIds);
@@ -1378,17 +1414,17 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             {catalogueError && <p className="text-sm text-error-600">{catalogueError}</p>}
             <FormRow cols={3}>
-              <Select label="National KPA" required error={fieldError('National KPA')} value={form.nationalKpaPublicId} options={strategicOptions(catalogue?.nationalKpas, form.nationalKpaPublicId, form.nationalKPA)} onChange={event => { const item = catalogue?.nationalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, nationalKpaPublicId: event.target.value, nationalKPA: item?.name ?? prev.nationalKPA })); }} />
-              <Select label="Municipal KPA" required error={fieldError('Municipal KPA')} value={form.municipalKpaPublicId} options={strategicOptions(catalogue?.municipalKpas, form.municipalKpaPublicId, form.municipalKPA)} onChange={event => { const item = catalogue?.municipalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, municipalKpaPublicId: event.target.value, municipalKPA: item?.name ?? prev.municipalKPA, strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' })); }} />
-              <Select label="Back-to-Basics Pillar" value={form.backToBasicsPillarPublicId} options={strategicOptions(catalogue?.backToBasicsPillars, form.backToBasicsPillarPublicId, existingTarget?.backToBasicsPillar)} onChange={event => setForm(prev => ({ ...prev, backToBasicsPillarPublicId: event.target.value }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="national-kpas" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="National KPA" required error={fieldError('National KPA')} value={form.nationalKpaPublicId} selectedLabel={form.nationalKPA} onChange={(value, item) => setForm(prev => ({ ...prev, nationalKpaPublicId: value, nationalKPA: item?.name ?? prev.nationalKPA }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="municipal-kpas" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Municipal KPA" required error={fieldError('Municipal KPA')} value={form.municipalKpaPublicId} selectedLabel={form.municipalKPA} onChange={(value, item) => setForm(prev => ({ ...prev, municipalKpaPublicId: value, municipalKPA: item?.name ?? prev.municipalKPA, strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="back-to-basics-pillars" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Back-to-Basics Pillar" value={form.backToBasicsPillarPublicId} selectedLabel={existingTarget?.backToBasicsPillar} onChange={value => setForm(prev => ({ ...prev, backToBasicsPillarPublicId: value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalPublicId} options={strategicOptions(childrenFor(catalogue, 'municipal-kpa-strategic-goal', form.municipalKpaPublicId, catalogue?.strategicGoals ?? []), form.strategicGoalPublicId, existingTarget?.strategicGoal.name)} onChange={event => setForm(prev => ({ ...prev, strategicGoalPublicId: event.target.value, strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
-              <Select label="Strategic Intervention" value={form.strategicInterventionPublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-goal-intervention', form.strategicGoalPublicId, catalogue?.strategicInterventions ?? []), form.strategicInterventionPublicId, existingTarget?.strategicIntervention)} onChange={event => setForm(prev => ({ ...prev, strategicInterventionPublicId: event.target.value, strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="strategic-goals" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Strategic Goal" value={form.strategicGoalPublicId} selectedLabel={existingTarget?.strategicGoal.name} parentPublicId={form.municipalKpaPublicId} relationshipType="municipal-kpa-strategic-goal" onChange={value => setForm(prev => ({ ...prev, strategicGoalPublicId: value, strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="strategic-interventions" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Strategic Intervention" value={form.strategicInterventionPublicId} selectedLabel={existingTarget?.strategicIntervention} parentPublicId={form.strategicGoalPublicId} relationshipType="strategic-goal-intervention" onChange={value => setForm(prev => ({ ...prev, strategicInterventionPublicId: value, strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Objective" value={form.strategicObjectivePublicId} options={strategicOptions(childrenFor(catalogue, form.strategicInterventionPublicId ? 'strategic-intervention-objective' : 'strategic-goal-objective', form.strategicInterventionPublicId || form.strategicGoalPublicId, catalogue?.strategicObjectives ?? []), form.strategicObjectivePublicId, existingTarget?.strategicObjective.name)} onChange={event => setForm(prev => ({ ...prev, strategicObjectivePublicId: event.target.value, performanceObjectivePublicId: '' }))} />
-              <Select label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjectivePublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-objective-performance-objective', form.strategicObjectivePublicId, catalogue?.performanceObjectives ?? []), form.performanceObjectivePublicId, form.performanceObjective)} onChange={event => { const item = catalogue?.performanceObjectives.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, performanceObjectivePublicId: event.target.value, performanceObjective: item?.name ?? prev.performanceObjective })); }} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="strategic-objectives" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Strategic Objective" value={form.strategicObjectivePublicId} selectedLabel={existingTarget?.strategicObjective.name} parentPublicId={form.strategicInterventionPublicId || form.strategicGoalPublicId} relationshipType={form.strategicInterventionPublicId ? 'strategic-intervention-objective' : 'strategic-goal-objective'} onChange={value => setForm(prev => ({ ...prev, strategicObjectivePublicId: value, performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="performance-objectives" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjectivePublicId} selectedLabel={form.performanceObjective} parentPublicId={form.strategicObjectivePublicId} relationshipType="strategic-objective-performance-objective" onChange={(value, item) => setForm(prev => ({ ...prev, performanceObjectivePublicId: value, performanceObjective: item?.name ?? prev.performanceObjective }))} />
             </FormRow>
             <Textarea label="KPI Description" required error={fieldError('KPI Description')} rows={4} value={form.kpiDescription} onChange={(event) => setForm(prev => ({ ...prev, kpiDescription: event.target.value }))} />
           </FormPanel>
@@ -1400,7 +1436,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Baseline" required type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
               <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
-              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} onChange={(event) => setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: event.target.value }))} options={strategicOptions(catalogue?.kpiUnitsOfMeasure, form.kpiUnitOfMeasurePublicId, existingTarget?.unitOfMeasure.name)} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="kpi-units-of-measure" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} selectedLabel={selectedUomName} onChange={(value, item) => { if (item) setReferenceLabels(current => ({ ...current, [`uom:${value}`]: item.name })); setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: value })); }} />
             </FormRow>
             <Textarea label="Baseline Description" rows={3} value={form.baselineDescription} onChange={(event) => setForm(prev => ({ ...prev, baselineDescription: event.target.value }))} />
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
@@ -1424,16 +1460,16 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 }}
                 options={performanceUnitOptions}
               />
-              <Select label="KPI Type" required value={form.kpiTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.kpiTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.kpiTypes, form.kpiTypePublicId, form.kpiType)} />
-              <Select label="Indicator Type" required value={form.indicatorTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.indicatorTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.indicatorTypes, form.indicatorTypePublicId, form.indicatorType)} />
-              <Select label="Functional Area" value={form.functionalAreaPublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.functionalAreas?.find(option => option.publicId === value); setForm(prev => ({ ...prev, functionalAreaPublicId: value, functionalArea: item?.name ?? '' })); }} options={strategicOptions(catalogue?.functionalAreas, form.functionalAreaPublicId, form.functionalArea)} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="kpi-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="KPI Type" required value={form.kpiTypePublicId} selectedLabel={form.kpiType} onChange={(value, item) => setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="indicator-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Indicator Type" required value={form.indicatorTypePublicId} selectedLabel={form.indicatorType} onChange={(value, item) => setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' }))} />
+              <StrategicClassificationPicker targetKind="opms" classificationKind="functional-areas" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Functional Area" value={form.functionalAreaPublicId} selectedLabel={form.functionalArea} onChange={(value, item) => setForm(prev => ({ ...prev, functionalAreaPublicId: value, functionalArea: item?.name ?? '' }))} />
             </FormRow>
-            <Select label="Standard Classification" value={form.standardClassificationPublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.standardClassifications?.find(option => option.publicId === value); setForm(prev => ({ ...prev, standardClassificationPublicId: value, standardClassification: item?.name ?? '' })); }} options={strategicOptions(catalogue?.standardClassifications, form.standardClassificationPublicId, form.standardClassification)} />
+            <StrategicClassificationPicker targetKind="opms" classificationKind="standard-classifications" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Standard Classification" value={form.standardClassificationPublicId} selectedLabel={form.standardClassification} onChange={(value, item) => setForm(prev => ({ ...prev, standardClassificationPublicId: value, standardClassification: item?.name ?? '' }))} />
           </FormPanel>
 
           <FormPanel title="Budget And References" description="Capture budget linkage, identifiers, and external references." icon={<Building2 className="h-5 w-5" />}>
-            <Select label="Budget Type" value={form.budgetTypePublicId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypePublicId: event.target.value }))} options={strategicOptions(catalogue?.budgetTypes, form.budgetTypePublicId, existingTarget?.budgetTypeName)} />
-            <BudgetSourceEditor value={form.budgetSources} options={catalogue?.budgetSources ?? []} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
+            <StrategicClassificationPicker targetKind="opms" classificationKind="budget-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Budget Type" value={form.budgetTypePublicId} selectedLabel={existingTarget?.budgetTypeName} onChange={value => setForm(prev => ({ ...prev, budgetTypePublicId: value }))} />
+            <BudgetSourceEditor targetKind="opms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
               <Input label="Internal Reference" value={form.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />
@@ -1454,7 +1490,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Measure</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedUom?.name ?? '-'}</p>
+                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedUomName ?? '-'}</p>
               </div>
             </div>
           </FormPanel>
@@ -1672,7 +1708,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
-  const { catalogue, catalogueError } = useStrategicCatalogue('ipms', form.municipalityFinancialYearPublicId);
+  const { catalogue, catalogueError } = useStrategicTemplateLookup('ipms', form.municipalityFinancialYearPublicId, form);
   const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
   const performanceUnitOptions = configuredUnitOptions(configuration);
   useEffect(() => {
@@ -1772,6 +1808,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = organizationLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = organizationLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
+  const selectedUomName = organizationLabels[`uom:${form.kpiUnitOfMeasurePublicId}`] ?? existingTarget?.unitOfMeasure.name;
+  const budgetSourceLabels = Object.fromEntries((existingTarget?.budgetSources ?? []).map(item => [item.budgetSourcePublicId, `${item.code} · ${item.name}`]));
   const fieldError = (label: string) => getFieldValidationError(validationErrors, label);
 
   return (
@@ -1841,17 +1879,17 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             {catalogueError && <p className="text-sm text-error-600">{catalogueError}</p>}
             <FormRow cols={3}>
-              <Select label="National KPA" required error={fieldError('National KPA')} value={form.nationalKpaPublicId} options={strategicOptions(catalogue?.nationalKpas, form.nationalKpaPublicId, form.nationalKPA)} onChange={event => { const item = catalogue?.nationalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, nationalKpaPublicId: event.target.value, nationalKPA: item?.name ?? prev.nationalKPA })); }} />
-              <Select label="Municipal KPA" required error={fieldError('Municipal KPA')} value={form.municipalKpaPublicId} options={strategicOptions(catalogue?.municipalKpas, form.municipalKpaPublicId, form.municipalKPA)} onChange={event => { const item = catalogue?.municipalKpas.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, municipalKpaPublicId: event.target.value, municipalKPA: item?.name ?? prev.municipalKPA, strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' })); }} />
-              <Select label="Back-to-Basics Pillar" value={form.backToBasicsPillarPublicId} options={strategicOptions(catalogue?.backToBasicsPillars, form.backToBasicsPillarPublicId, existingTarget?.backToBasicsPillar)} onChange={event => setForm(prev => ({ ...prev, backToBasicsPillarPublicId: event.target.value }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="national-kpas" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="National KPA" required error={fieldError('National KPA')} value={form.nationalKpaPublicId} selectedLabel={form.nationalKPA} onChange={(value, item) => setForm(prev => ({ ...prev, nationalKpaPublicId: value, nationalKPA: item?.name ?? prev.nationalKPA }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="municipal-kpas" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Municipal KPA" required error={fieldError('Municipal KPA')} value={form.municipalKpaPublicId} selectedLabel={form.municipalKPA} onChange={(value, item) => setForm(prev => ({ ...prev, municipalKpaPublicId: value, municipalKPA: item?.name ?? prev.municipalKPA, strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="back-to-basics-pillars" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Back-to-Basics Pillar" value={form.backToBasicsPillarPublicId} selectedLabel={existingTarget?.backToBasicsPillar} onChange={value => setForm(prev => ({ ...prev, backToBasicsPillarPublicId: value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalPublicId} options={strategicOptions(childrenFor(catalogue, 'municipal-kpa-strategic-goal', form.municipalKpaPublicId, catalogue?.strategicGoals ?? []), form.strategicGoalPublicId, existingTarget?.strategicGoal.name)} onChange={event => setForm(prev => ({ ...prev, strategicGoalPublicId: event.target.value, strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
-              <Select label="Strategic Intervention" value={form.strategicInterventionPublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-goal-intervention', form.strategicGoalPublicId, catalogue?.strategicInterventions ?? []), form.strategicInterventionPublicId, existingTarget?.strategicIntervention)} onChange={event => setForm(prev => ({ ...prev, strategicInterventionPublicId: event.target.value, strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="strategic-goals" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Strategic Goal" value={form.strategicGoalPublicId} selectedLabel={existingTarget?.strategicGoal.name} parentPublicId={form.municipalKpaPublicId} relationshipType="municipal-kpa-strategic-goal" onChange={value => setForm(prev => ({ ...prev, strategicGoalPublicId: value, strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="strategic-interventions" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Strategic Intervention" value={form.strategicInterventionPublicId} selectedLabel={existingTarget?.strategicIntervention} parentPublicId={form.strategicGoalPublicId} relationshipType="strategic-goal-intervention" onChange={value => setForm(prev => ({ ...prev, strategicInterventionPublicId: value, strategicObjectivePublicId: '', performanceObjectivePublicId: '' }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Objective" value={form.strategicObjectivePublicId} options={strategicOptions(childrenFor(catalogue, form.strategicInterventionPublicId ? 'strategic-intervention-objective' : 'strategic-goal-objective', form.strategicInterventionPublicId || form.strategicGoalPublicId, catalogue?.strategicObjectives ?? []), form.strategicObjectivePublicId, existingTarget?.strategicObjective.name)} onChange={event => setForm(prev => ({ ...prev, strategicObjectivePublicId: event.target.value, performanceObjectivePublicId: '' }))} />
-              <Select label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjectivePublicId} options={strategicOptions(childrenFor(catalogue, 'strategic-objective-performance-objective', form.strategicObjectivePublicId, catalogue?.performanceObjectives ?? []), form.performanceObjectivePublicId, form.performanceObjective)} onChange={event => { const item = catalogue?.performanceObjectives.find(value => value.publicId === event.target.value); setForm(prev => ({ ...prev, performanceObjectivePublicId: event.target.value, performanceObjective: item?.name ?? prev.performanceObjective })); }} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="strategic-objectives" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Strategic Objective" value={form.strategicObjectivePublicId} selectedLabel={existingTarget?.strategicObjective.name} parentPublicId={form.strategicInterventionPublicId || form.strategicGoalPublicId} relationshipType={form.strategicInterventionPublicId ? 'strategic-intervention-objective' : 'strategic-goal-objective'} onChange={value => setForm(prev => ({ ...prev, strategicObjectivePublicId: value, performanceObjectivePublicId: '' }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="performance-objectives" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Performance Objective" required error={fieldError('Performance Objective')} value={form.performanceObjectivePublicId} selectedLabel={form.performanceObjective} parentPublicId={form.strategicObjectivePublicId} relationshipType="strategic-objective-performance-objective" onChange={(value, item) => setForm(prev => ({ ...prev, performanceObjectivePublicId: value, performanceObjective: item?.name ?? prev.performanceObjective }))} />
             </FormRow>
             <Textarea label="KPI Description" required error={fieldError('KPI Description')} rows={4} value={form.kpiDescription} onChange={(event) => setForm(prev => ({ ...prev, kpiDescription: event.target.value }))} />
           </FormPanel>
@@ -1863,7 +1901,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Baseline" type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
               <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
-              <Select label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} onChange={(event) => setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: event.target.value }))} options={strategicOptions(catalogue?.kpiUnitsOfMeasure, form.kpiUnitOfMeasurePublicId, existingTarget?.unitOfMeasure.name)} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="kpi-units-of-measure" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} selectedLabel={selectedUomName} onChange={(value, item) => { if (item) setOrganizationLabels(current => ({ ...current, [`uom:${value}`]: item.name })); setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: value })); }} />
             </FormRow>
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
             <FormRow cols={4}>
@@ -1886,14 +1924,14 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 }}
                 options={performanceUnitOptions}
               />
-              <Select label="KPI Type" required value={form.kpiTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.kpiTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.kpiTypes, form.kpiTypePublicId, form.kpiType)} />
-              <Select label="Indicator Type" required value={form.indicatorTypePublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.indicatorTypes?.find(option => option.publicId === value); setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' })); }} options={strategicOptions(catalogue?.indicatorTypes, form.indicatorTypePublicId, form.indicatorType)} />
-              <Select label="Functional Area" value={form.functionalAreaPublicId} onChange={(event) => { const value = event.target.value; const item = catalogue?.functionalAreas?.find(option => option.publicId === value); setForm(prev => ({ ...prev, functionalAreaPublicId: value, functionalArea: item?.name ?? '' })); }} options={strategicOptions(catalogue?.functionalAreas, form.functionalAreaPublicId, form.functionalArea)} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="kpi-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="KPI Type" required value={form.kpiTypePublicId} selectedLabel={form.kpiType} onChange={(value, item) => setForm(prev => ({ ...prev, kpiTypePublicId: value, kpiType: item?.name ?? '' }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="indicator-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Indicator Type" required value={form.indicatorTypePublicId} selectedLabel={form.indicatorType} onChange={(value, item) => setForm(prev => ({ ...prev, indicatorTypePublicId: value, indicatorType: item?.name ?? '' }))} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="functional-areas" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Functional Area" value={form.functionalAreaPublicId} selectedLabel={form.functionalArea} onChange={(value, item) => setForm(prev => ({ ...prev, functionalAreaPublicId: value, functionalArea: item?.name ?? '' }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Budget Type" value={form.budgetTypePublicId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypePublicId: event.target.value }))} options={strategicOptions(catalogue?.budgetTypes, form.budgetTypePublicId, existingTarget?.budgetTypeName)} />
+              <StrategicClassificationPicker targetKind="ipms" classificationKind="budget-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Budget Type" value={form.budgetTypePublicId} selectedLabel={existingTarget?.budgetTypeName} onChange={value => setForm(prev => ({ ...prev, budgetTypePublicId: value }))} />
             </FormRow>
-            <BudgetSourceEditor value={form.budgetSources} options={catalogue?.budgetSources ?? []} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
+            <BudgetSourceEditor targetKind="ipms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
           </FormPanel>
 
           <FormPanel title="References And Review" description="Maintain linkage and quick review context on the same page." icon={<Building2 className="h-5 w-5" />}>

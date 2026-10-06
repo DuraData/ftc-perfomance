@@ -1,4 +1,4 @@
-import { buildOpmsPayload, childrenFor, getTargetUnitLabel, resolvePerformanceTemplateHints, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
+import { buildOpmsPayload, getTargetUnitLabel, resolvePerformanceTemplateHints, toApiUnitType, toXafUnitType, validateRequiredFields } from './TargetFormPages';
 import type { PerformanceConfigurationCatalogueDto } from '../../types';
 
 describe('TargetFormPages helpers', () => {
@@ -30,13 +30,6 @@ describe('TargetFormPages helpers', () => {
       opmsUnitPublicId: 'unit-percent',
       performanceDirectionPublicId: 'direction-higher',
     })]);
-  });
-
-  it('filters children only when the selected parent has configured mappings', () => {
-    const items = [{ publicId: 'goal-1', name: 'Goal 1', displayOrder: 1 }, { publicId: 'goal-2', name: 'Goal 2', displayOrder: 2 }];
-    const catalogue = { nationalKpas: [], municipalKpas: [], backToBasicsPillars: [], strategicGoals: items, strategicInterventions: [], strategicObjectives: [], performanceObjectives: [], relationships: [{ relationshipType: 'municipal-kpa-strategic-goal', parentPublicId: 'kpa-1', childPublicId: 'goal-2' }] };
-    expect(childrenFor(catalogue, 'municipal-kpa-strategic-goal', 'kpa-1', items)).toEqual([items[1]]);
-    expect(childrenFor(catalogue, 'municipal-kpa-strategic-goal', 'kpa-without-mappings', items)).toEqual(items);
   });
 
   it('resolves reusable template classification hints to governed catalogue ids', () => {
