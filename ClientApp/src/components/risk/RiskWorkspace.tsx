@@ -83,7 +83,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
   const editRisk = (risk: StrategicRiskDto) => {
     setSelected(risk);
     setRiskForm({
-      reference: risk.riskReference ?? '', title: risk.riskTitle, description: risk.riskDescription ?? '',
+      reference: risk.riskReference ?? '', title: risk.riskTitle, description: canReadDescription ? risk.riskDescription ?? '' : '',
       fromYear: risk.effectiveFromMunicipalityFinancialYearPublicId ?? '',
       toYear: risk.effectiveToMunicipalityFinancialYearPublicId ?? '', active: String(risk.isActive), reason: '',
     });
@@ -93,7 +93,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
     setBusy(true); setError(null);
     const result = await saveStrategicRisk(selected?.publicId ?? null, {
       riskReference: riskForm.reference.trim() || null,
-      riskTitle: riskForm.title.trim(), riskDescription: riskForm.description.trim() || null,
+      riskTitle: riskForm.title.trim(), riskDescription: canEditDescription ? riskForm.description.trim() || null : undefined,
       effectiveFromMunicipalityFinancialYearPublicId: riskForm.fromYear || null,
       effectiveToMunicipalityFinancialYearPublicId: riskForm.toYear || null,
       isActive: riskForm.active === 'true', reason: riskForm.reason.trim(), rowVersion: selected?.rowVersion ?? null,
@@ -124,6 +124,10 @@ function RiskWorkspace({ view }: { view: RiskView }) {
   };
 
   const copy = viewCopy[view];
+  const canReadDescription = security.canReadField('STRATEGIC_RISK', 'RiskDescription');
+  const canEditDescription = security.canEditField('STRATEGIC_RISK', 'RiskDescription');
+  const canReadLinkReason = security.canReadField('STRATEGIC_RISK', 'LinkReason');
+  const canReadUnlinkReason = security.canReadField('STRATEGIC_RISK', 'UnlinkReason');
   const yearOptions = [{ value: '', label: 'Open-ended' }, ...years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · current' : ''}` }))];
   const canEditRegister = view === 'register';
   if (!security.canRead('STRATEGIC_RISK')) return <AppShell title={copy.title} subtitle={copy.subtitle}><Card><EmptyState title="Access unavailable" description="Your current role does not grant strategic-risk read access." /></Card></AppShell>;
@@ -146,7 +150,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
         {canEditRegister && (selected ? security.canUpdate('STRATEGIC_RISK') : security.canCreate('STRATEGIC_RISK')) && <FormPanel title={selected ? 'Edit strategic risk' : 'Create strategic risk'} description="Changes require a reason, retain history and use optimistic concurrency." icon={<ShieldCheck className="h-5 w-5" />}>
           <Input label="Risk reference" value={riskForm.reference} maxLength={100} onChange={event => setRiskForm(current => ({ ...current, reference: event.target.value }))} />
           <Input label="Risk title" value={riskForm.title} maxLength={500} required onChange={event => setRiskForm(current => ({ ...current, title: event.target.value }))} />
-          <Textarea label="Description" value={riskForm.description} maxLength={2000} rows={4} onChange={event => setRiskForm(current => ({ ...current, description: event.target.value }))} />
+          {canEditDescription && <Textarea label="Description" value={riskForm.description} maxLength={2000} rows={4} onChange={event => setRiskForm(current => ({ ...current, description: event.target.value }))} />}
           <div className="grid grid-cols-2 gap-2"><Select label="Effective from" value={riskForm.fromYear} options={yearOptions} onChange={event => setRiskForm(current => ({ ...current, fromYear: event.target.value }))} /><Select label="Effective to" value={riskForm.toYear} options={yearOptions} onChange={event => setRiskForm(current => ({ ...current, toYear: event.target.value }))} /></div>
           <Select label="Status" value={riskForm.active} options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} onChange={event => setRiskForm(current => ({ ...current, active: event.target.value }))} />
           <Textarea label="Governance reason" value={riskForm.reason} rows={3} required onChange={event => setRiskForm(current => ({ ...current, reason: event.target.value }))} />
@@ -156,7 +160,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
           <div className="flex items-center justify-between"><h2 className="font-semibold">Strategic risks</h2><Badge variant="primary">{totalCount}</Badge></div>
           <div className="mt-3 space-y-2">
             {risks.map(risk => <button type="button" key={risk.publicId} disabled={!canEditRegister} onClick={() => editRisk(risk)} className="flex w-full items-start justify-between gap-3 rounded-lg border border-secondary-200 p-3 text-left disabled:cursor-default dark:border-secondary-700">
-              <div><p className="font-medium">{risk.riskReference ? `${risk.riskReference} · ` : ''}{risk.riskTitle}</p><p className="mt-1 text-xs text-secondary-500">{risk.effectiveFromFinancialYear ?? 'Open'} — {risk.effectiveToFinancialYear ?? 'open-ended'} · {risk.activeKpiLinks} active KPI link{risk.activeKpiLinks === 1 ? '' : 's'}</p>{risk.riskDescription && <p className="mt-1 text-sm text-secondary-600 dark:text-secondary-300">{risk.riskDescription}</p>}</div>
+              <div><p className="font-medium">{risk.riskReference ? `${risk.riskReference} · ` : ''}{risk.riskTitle}</p><p className="mt-1 text-xs text-secondary-500">{risk.effectiveFromFinancialYear ?? 'Open'} — {risk.effectiveToFinancialYear ?? 'open-ended'} · {risk.activeKpiLinks} active KPI link{risk.activeKpiLinks === 1 ? '' : 's'}</p>{canReadDescription && risk.riskDescription && <p className="mt-1 text-sm text-secondary-600 dark:text-secondary-300">{risk.riskDescription}</p>}</div>
               <Badge variant={risk.isActive ? 'success' : 'default'}>{risk.isActive ? 'Active' : 'Inactive'}</Badge>
             </button>)}
             {!risks.length && <EmptyState title="No strategic risks" description="No risk is visible in the selected municipality and filter." />}
@@ -178,7 +182,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
       <Card>
         <div className="flex items-center justify-between"><h2 className="font-semibold">KPI relationship {view === 'reviews' ? 'history' : 'register'}</h2><Badge variant="info">{links.length} shown</Badge></div>
         <div className="mt-3 space-y-2">
-          {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p></div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => void unlink(link)}>Unlink</Button>}</div></div>)}
+          {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p>{canReadLinkReason && link.linkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Link reason: {link.linkReason}</p>}{canReadUnlinkReason && link.unlinkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Unlink reason: {link.unlinkReason}</p>}</div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => void unlink(link)}>Unlink</Button>}</div></div>)}
           {!links.length && <EmptyState title="No authorised KPI relationships" description="No strategic-risk link falls within your current KPI read scope." />}
         </div>
       </Card>

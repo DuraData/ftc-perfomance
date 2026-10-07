@@ -3661,7 +3661,7 @@ export interface StrategicRiskKpiLinkDto {
   isPrimary: boolean;
   isActive: boolean;
   linkedAt: string;
-  linkReason: string;
+  linkReason?: string | null;
   unlinkedAt?: string | null;
   unlinkReason?: string | null;
   rowVersion: string;

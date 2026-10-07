@@ -22,9 +22,13 @@ public sealed class StrategicRiskTests
         await SecurityRegistrySeeder.SeedAsync(context);
 
         var codes = await context.Permissions.Where(item => item.Code.StartsWith("STRATEGIC_RISK"))
-            .Select(item => item.Code).OrderBy(item => item).ToArrayAsync();
-        codes.Should().Equal("STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.EXPORT", "STRATEGIC_RISK.IMPORT", "STRATEGIC_RISK.LINK_KPI",
-            "STRATEGIC_RISK.READ", "STRATEGIC_RISK.UNLINK_KPI", "STRATEGIC_RISK.UPDATE");
+            .Select(item => item.Code).ToArrayAsync();
+        codes.Should().HaveCount(11).And.Contain([
+            "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.EXPORT", "STRATEGIC_RISK.IMPORT", "STRATEGIC_RISK.LINK_KPI",
+            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.RiskDescription.READ",
+            "STRATEGIC_RISK.RiskDescription.UPDATE", "STRATEGIC_RISK.UNLINK_KPI", "STRATEGIC_RISK.UnlinkReason.READ",
+            "STRATEGIC_RISK.UPDATE"]);
+        (await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_RISK")).SupportsFieldSecurity.Should().BeTrue();
     }
 
     [Fact]
@@ -132,6 +136,75 @@ public sealed class StrategicRiskTests
         directCall.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
+    [Fact]
+    public async Task Sensitive_risk_members_are_write_protected_masked_non_inferable_and_dynamic()
+    {
+        const long municipalityId = 9105;
+        var user = IdpTestFixture.CreateUser("risk-member-user");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "STRATEGIC_RISK.RiskDescription.READ", "STRATEGIC_RISK.RiskDescription.UPDATE",
+            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.UnlinkReason.READ"
+        };
+        var controller = Controller(context, user, municipalityId, deniedPermissions: denied);
+
+        var deniedCreate = await controller.Create(new SaveStrategicRiskRequest(
+            "SEC-1", "Confidential infrastructure risk", "Protected assessment detail", seed.Year.PublicId,
+            seed.Year.PublicId, true, "Approved by risk committee", null));
+        deniedCreate.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.StrategicRisks.CountAsync()).Should().Be(0);
+
+        var created = Data(await controller.Create(Request("SEC-1", "Confidential infrastructure risk", seed.Year.PublicId)));
+        denied.Remove("STRATEGIC_RISK.RiskDescription.UPDATE");
+        var updated = Data(await controller.Update(created.PublicId, new SaveStrategicRiskRequest(
+            "SEC-1", "Confidential infrastructure risk", "Protected assessment detail", seed.Year.PublicId,
+            seed.Year.PublicId, true, "Approved protected assessment", created.RowVersion)));
+        updated.RiskDescription.Should().BeNull();
+        (await context.StrategicRisks.SingleAsync()).RiskDescription.Should().Be("Protected assessment detail");
+
+        denied.Add("STRATEGIC_RISK.RiskDescription.UPDATE");
+        var unrelatedUpdate = Data(await controller.Update(created.PublicId, new SaveStrategicRiskRequest(
+            "SEC-1", "Confidential infrastructure risk updated", null, seed.Year.PublicId,
+            seed.Year.PublicId, true, "Approved title update", updated.RowVersion)));
+        unrelatedUpdate.RiskDescription.Should().BeNull();
+        (await context.StrategicRisks.SingleAsync()).RiskDescription.Should().Be("Protected assessment detail");
+
+        var hiddenSearch = Data(await controller.GetPage(new PagedQueryRequest
+        {
+            Page = 1, PageSize = 20, Search = "Protected assessment detail", SortBy = "reference"
+        }));
+        hiddenSearch.TotalCount.Should().Be(0);
+        var visibleByTitle = Data(await controller.GetPage(new PagedQueryRequest
+        {
+            Page = 1, PageSize = 20, Search = "Confidential infrastructure", SortBy = "reference"
+        }));
+        visibleByTitle.Items.Should().ContainSingle().Which.RiskDescription.Should().BeNull();
+
+        var linked = Data(await controller.LinkKpi(new LinkStrategicRiskRequest(
+            created.PublicId, seed.Target.PublicId, true, "Restricted link rationale")));
+        linked.LinkReason.Should().BeNull();
+        var unlinked = Data(await controller.UnlinkKpi(linked.PublicId,
+            new UnlinkStrategicRiskRequest("Restricted mitigation outcome", linked.RowVersion)));
+        unlinked.LinkReason.Should().BeNull();
+        unlinked.UnlinkReason.Should().BeNull();
+
+        denied.Clear();
+        var revealedSearch = Data(await controller.GetPage(new PagedQueryRequest
+        {
+            Page = 1, PageSize = 20, Search = "Protected assessment detail", SortBy = "reference"
+        }));
+        revealedSearch.Items.Should().ContainSingle().Which.RiskDescription.Should().Be("Protected assessment detail");
+        var revealedLinks = Data(await controller.GetLinksPage(new PagedQueryRequest
+        {
+            Page = 1, PageSize = 20, SortBy = "linkedAt"
+        }, includeInactive: true));
+        revealedLinks.Items.Should().ContainSingle();
+        revealedLinks.Items[0].LinkReason.Should().Be("Restricted link rationale");
+        revealedLinks.Items[0].UnlinkReason.Should().Be("Restricted mitigation outcome");
+    }
+
     private static SaveStrategicRiskRequest Request(string reference, string title, Guid yearPublicId) =>
         new(reference, title, null, yearPublicId, yearPublicId, true, "Approved risk administration", null);
 
@@ -140,12 +213,16 @@ public sealed class StrategicRiskTests
         ApplicationUser user,
         long municipalityId,
         Mock<IWorkflowGovernanceService>? audit = null,
-        bool allow = true)
+        bool allow = true,
+        ISet<string>? deniedPermissions = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
-                new AccessDecisionResult(allow, allow ? "Allowed" : "Denied", allow ? [code] : [], [], []));
+            {
+                var granted = allow && !(deniedPermissions?.Contains(code) ?? false);
+                return new AccessDecisionResult(granted, granted ? "Allowed" : "Denied", granted ? [code] : [], [], []);
+            });
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(allow, allow, [], [], [], [], [], []));
         return new StrategicRisksController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,

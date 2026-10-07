@@ -35,6 +35,7 @@ public sealed class StrategicRisksController(
         if (!RiskSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<StrategicRiskDto>>("SortBy must be createdAt, reference, title, status, or effectiveFrom."));
 
+        var memberAccess = await GetMemberAccessAsync(session.User!);
         var query = RiskQuery();
         if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
         if (municipalityFinancialYearPublicId.HasValue)
@@ -50,13 +51,13 @@ public sealed class StrategicRisksController(
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.RiskTitle.Contains(request.NormalizedSearch)
                 || (item.RiskReference != null && item.RiskReference.Contains(request.NormalizedSearch))
-                || (item.RiskDescription != null && item.RiskDescription.Contains(request.NormalizedSearch)));
+                || (memberAccess.RiskDescription && item.RiskDescription != null && item.RiskDescription.Contains(request.NormalizedSearch)));
 
         var totalCount = await query.CountAsync();
         var rows = await OrderRisks(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<StrategicRiskDto>>(true,
-            PagedResponse<StrategicRiskDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<StrategicRiskDto>.Create(rows.Select(item => ToDto(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("summary")]
@@ -81,6 +82,8 @@ public sealed class StrategicRisksController(
         var session = await SessionAsync<StrategicRiskDto>("STRATEGIC_RISK.CREATE");
         if (session.Error != null) return session.Error;
         if (!TryNormalize(request, out var normalized, out var error)) return BadRequest(Fail<StrategicRiskDto>(error!));
+        if (normalized.Description != null && !await CanUpdateMemberAsync(session.User!, "RiskDescription"))
+            return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk description update permission is required."));
         var years = await ResolveYears(request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId);
         if (years.Error != null) return BadRequest(Fail<StrategicRiskDto>(years.Error));
         if (await DuplicateReference(normalized.Reference, null)) return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists."));
@@ -103,7 +106,7 @@ public sealed class StrategicRisksController(
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists.")); }
         entity = await RiskQuery().SingleAsync(item => item.Id == entity.Id);
-        return Ok(new ApiResponse<StrategicRiskDto>(true, ToDto(entity)));
+        return Ok(new ApiResponse<StrategicRiskDto>(true, ToDto(entity, await GetMemberAccessAsync(session.User!))));
     }
 
     [HttpPut("{publicId:guid}")]
@@ -117,6 +120,13 @@ public sealed class StrategicRisksController(
         if (years.Error != null) return BadRequest(Fail<StrategicRiskDto>(years.Error));
         var entity = await context.StrategicRisks.SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (entity == null) return NotFound(Fail<StrategicRiskDto>("Strategic risk not found."));
+        if (!string.Equals(entity.RiskDescription, normalized.Description, StringComparison.Ordinal)
+            && !await CanUpdateMemberAsync(session.User!, "RiskDescription"))
+        {
+            if (normalized.Description != null)
+                return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk description update permission is required."));
+            normalized.Description = entity.RiskDescription;
+        }
         if (await DuplicateReference(normalized.Reference, entity.Id)) return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists."));
         var before = new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, entity.EffectiveFromMunicipalityFinancialYearId, entity.EffectiveToMunicipalityFinancialYearId, entity.IsActive };
         context.Entry(entity).Property(item => item.RowVersion).OriginalValue = expected;
@@ -135,7 +145,7 @@ public sealed class StrategicRisksController(
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskDto>("The strategic risk changed before this update. Reload and retry.")); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists.")); }
         entity = await RiskQuery().SingleAsync(item => item.Id == entity.Id);
-        return Ok(new ApiResponse<StrategicRiskDto>(true, ToDto(entity)));
+        return Ok(new ApiResponse<StrategicRiskDto>(true, ToDto(entity, await GetMemberAccessAsync(session.User!))));
     }
 
     [HttpGet("links/page")]
@@ -149,6 +159,7 @@ public sealed class StrategicRisksController(
         if (session.Error != null) return session.Error;
         if (!LinkSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<StrategicRiskKpiLinkDto>>("SortBy must be linkedAt, indicatorNumber, riskTitle, primary, or status."));
+        var memberAccess = await GetMemberAccessAsync(session.User!);
         var targetScope = await accessControl.GetQueryScopeAsync(session.User!, "OPMS_KPI.READ");
         if (!targetScope.PermissionGranted)
             return Ok(new ApiResponse<PagedResponse<StrategicRiskKpiLinkDto>>(true, PagedResponse<StrategicRiskKpiLinkDto>.Empty(request.Page, request.PageSize)));
@@ -167,7 +178,7 @@ public sealed class StrategicRisksController(
         var rows = await OrderLinks(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<StrategicRiskKpiLinkDto>>(true,
-            PagedResponse<StrategicRiskKpiLinkDto>.Create(rows.Select(ToLinkDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<StrategicRiskKpiLinkDto>.Create(rows.Select(item => ToLinkDto(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("links")]
@@ -215,7 +226,7 @@ public sealed class StrategicRisksController(
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("This strategic risk is already linked to the KPI.")); }
         entity = await LinkQuery().SingleAsync(item => item.Id == entity.Id);
-        return Ok(new ApiResponse<StrategicRiskKpiLinkDto>(true, ToLinkDto(entity)));
+        return Ok(new ApiResponse<StrategicRiskKpiLinkDto>(true, ToLinkDto(entity, await GetMemberAccessAsync(session.User!))));
     }
 
     [HttpPost("links/{publicId:guid}/unlink")]
@@ -241,7 +252,7 @@ public sealed class StrategicRisksController(
             new { IsActive = true, WasPrimary = wasPrimary }, new { IsActive = false, entity.UnlinkedAt }, session.User.Id, IpAddress(), entity.UnlinkReason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("The strategic-risk KPI link changed before this update. Reload and retry.")); }
-        return Ok(new ApiResponse<StrategicRiskKpiLinkDto>(true, ToLinkDto(entity)));
+        return Ok(new ApiResponse<StrategicRiskKpiLinkDto>(true, ToLinkDto(entity, await GetMemberAccessAsync(session.User!))));
     }
 
     private IQueryable<StrategicRisk> RiskQuery() => context.StrategicRisks.AsNoTracking()
@@ -278,6 +289,22 @@ public sealed class StrategicRisksController(
     private Task<bool> DuplicateReference(string? reference, long? excludedId) => reference == null
         ? Task.FromResult(false)
         : context.StrategicRisks.AnyAsync(item => item.RiskReference == reference && (!excludedId.HasValue || item.Id != excludedId.Value));
+
+    private async Task<StrategicRiskMemberAccess> GetMemberAccessAsync(ApplicationUser user)
+    {
+        async Task<bool> CanReadAsync(string memberCode) =>
+            (await accessControl.CheckPermissionAsync(user, $"STRATEGIC_RISK.{memberCode}.READ", MunicipalityScope())).Allowed;
+
+        return new StrategicRiskMemberAccess(
+            await CanReadAsync("RiskDescription"),
+            await CanReadAsync("LinkReason"),
+            await CanReadAsync("UnlinkReason"));
+    }
+
+    private async Task<bool> CanUpdateMemberAsync(ApplicationUser user, string memberCode) =>
+        (await accessControl.CheckPermissionAsync(user, $"STRATEGIC_RISK.{memberCode}.UPDATE", MunicipalityScope())).Allowed;
+
+    private AccessScopeContext MunicipalityScope() => new(MunicipalityId: tenantContext.MunicipalityId);
 
     private static bool TryNormalize(SaveStrategicRiskRequest request, out (string? Reference, string Title, string? Description, string Reason) value, out string? error)
     {
@@ -345,17 +372,20 @@ public sealed class StrategicRisksController(
         _ => query.OrderByDescending(item => item.LinkedAt).ThenBy(item => item.PublicId)
     };
 
-    private static StrategicRiskDto ToDto(StrategicRisk item) => new(
-        item.PublicId, item.RiskReference, item.RiskTitle, item.RiskDescription,
+    private static StrategicRiskDto ToDto(StrategicRisk item, StrategicRiskMemberAccess access) => new(
+        item.PublicId, item.RiskReference, item.RiskTitle, access.RiskDescription ? item.RiskDescription : null,
         item.EffectiveFromMunicipalityFinancialYear?.PublicId, item.EffectiveFromMunicipalityFinancialYear?.FinancialYear.Code,
         item.EffectiveToMunicipalityFinancialYear?.PublicId, item.EffectiveToMunicipalityFinancialYear?.FinancialYear.Code,
         item.IsActive, item.KpiLinks.Count(link => link.IsActive), item.CreatedAt, item.UpdatedAt, Convert.ToBase64String(item.RowVersion));
 
-    private static StrategicRiskKpiLinkDto ToLinkDto(OpmsKpiStrategicRisk item) => new(
+    private static StrategicRiskKpiLinkDto ToLinkDto(OpmsKpiStrategicRisk item, StrategicRiskMemberAccess access) => new(
         item.PublicId, item.StrategicRisk.PublicId, item.StrategicRisk.RiskReference, item.StrategicRisk.RiskTitle,
         item.OpmsTarget.PublicId, item.OpmsTarget.IndicatorNumber, item.OpmsTarget.TargetName,
         item.OpmsTarget.Department?.Name, item.OpmsTarget.Unit?.Name, item.IsPrimary, item.IsActive,
-        item.LinkedAt, item.LinkReason, item.UnlinkedAt, item.UnlinkReason, Convert.ToBase64String(item.RowVersion));
+        item.LinkedAt, access.LinkReason ? item.LinkReason : null, item.UnlinkedAt,
+        access.UnlinkReason ? item.UnlinkReason : null, Convert.ToBase64String(item.RowVersion));
+
+    private sealed record StrategicRiskMemberAccess(bool RiskDescription, bool LinkReason, bool UnlinkReason);
 
     private string? IpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString();
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
@@ -368,7 +398,7 @@ public sealed record StrategicRiskDto(Guid PublicId, string? RiskReference, stri
 
 public sealed record StrategicRiskKpiLinkDto(Guid PublicId, Guid StrategicRiskPublicId, string? RiskReference, string RiskTitle,
     Guid TargetPublicId, string IndicatorNumber, string TargetName, string? DepartmentName, string? UnitName,
-    bool IsPrimary, bool IsActive, DateTime LinkedAt, string LinkReason, DateTime? UnlinkedAt, string? UnlinkReason, string RowVersion);
+    bool IsPrimary, bool IsActive, DateTime LinkedAt, string? LinkReason, DateTime? UnlinkedAt, string? UnlinkReason, string RowVersion);
 
 public sealed record StrategicRiskSummaryDto(int TotalRisks, int ActiveRisks, int LinkedRisks, int UnlinkedActiveRisks, int LinkedKpis);
 public sealed record SaveStrategicRiskRequest(string? RiskReference, string RiskTitle, string? RiskDescription,

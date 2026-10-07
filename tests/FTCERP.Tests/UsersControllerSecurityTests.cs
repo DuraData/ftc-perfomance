@@ -315,6 +315,18 @@ public sealed class UsersControllerSecurityTests
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_DOCUMENT")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "STRATEGIC_DOCUMENT.RESCAN").ToArrayAsync());
 
+        var strategicRiskMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "STRATEGIC_RISK")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        strategicRiskMembers.Select(item => item.MemberCode).Should().Equal("LinkReason", "RiskDescription", "UnlinkReason");
+        strategicRiskMembers.Should().OnlyContain(item => item.IsSensitive);
+        strategicRiskMembers.Where(item => item.MemberCode is "LinkReason" or "UnlinkReason")
+            .Should().OnlyContain(item => item.IsSystemManaged);
+        strategicRiskMembers.Single(item => item.MemberCode == "RiskDescription").IsSystemManaged.Should().BeFalse();
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_RISK" && item.MemberCode != null)).Should().Be(4);
+        (await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_RISK")).SupportsFieldSecurity.Should().BeTrue();
+
         var c88IndicatorMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "C88_INDICATOR").OrderBy(item => item.MemberCode).ToArrayAsync();
         c88IndicatorMembers.Select(item => item.MemberCode).Should().Equal("MappingReason", "PlanMissingDataExplanation");
