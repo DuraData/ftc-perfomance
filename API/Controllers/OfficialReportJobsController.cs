@@ -49,14 +49,28 @@ public sealed class OfficialReportJobsController(
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch;
+            var resource = ReportResource(kind);
+            var requesterScope = await accessControl.GetQueryScopeAsync(user, $"{resource}.JobRequestedBy.READ");
+            var errorScope = await accessControl.GetQueryScopeAsync(user, $"{resource}.JobLastError.READ");
             query = query.Where(item =>
                 item.ReportTemplate.Code.Contains(search) ||
                 item.ReportTemplate.Name.Contains(search) ||
                 item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
                 item.ReportingPeriod.Code.Contains(search) ||
-                item.RequestedByUser.FirstName.Contains(search) ||
-                item.RequestedByUser.LastName.Contains(search) ||
-                (item.LastError != null && item.LastError.Contains(search)));
+                (requesterScope.PermissionGranted
+                    && (requesterScope.Unrestricted
+                        || requesterScope.MunicipalityIds.Contains(item.MunicipalityId)
+                        || requesterScope.DepartmentIds.Contains(item.DepartmentId ?? -1)
+                        || requesterScope.UnitIds.Contains(item.UnitId ?? -1)
+                        || requesterScope.OwnerUserIds.Contains(item.RequestedByUserId))
+                    && (item.RequestedByUser.FirstName.Contains(search) || item.RequestedByUser.LastName.Contains(search))) ||
+                (errorScope.PermissionGranted
+                    && (errorScope.Unrestricted
+                        || errorScope.MunicipalityIds.Contains(item.MunicipalityId)
+                        || errorScope.DepartmentIds.Contains(item.DepartmentId ?? -1)
+                        || errorScope.UnitIds.Contains(item.UnitId ?? -1)
+                        || errorScope.OwnerUserIds.Contains(item.RequestedByUserId))
+                    && item.LastError != null && item.LastError.Contains(search)));
         }
 
         var totalCount = await query.CountAsync();
@@ -79,8 +93,20 @@ public sealed class OfficialReportJobsController(
             .Include(item => item.ReportingPeriod).Include(item => item.Department).Include(item => item.Unit)
             .Include(item => item.RequestedByUser).Include(item => item.OfficialReportGeneration).Include(item => item.DistributionOutbox)
             .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        var responses = new List<OfficialReportJobResponse>(rows.Length);
+        var memberAccessCache = new Dictionary<(int?, int?, string, long), OfficialReportJobMemberAccess>();
+        foreach (var row in rows)
+        {
+            var key = (row.DepartmentId, row.UnitId, row.RequestedByUserId, row.MunicipalityId);
+            if (!memberAccessCache.TryGetValue(key, out var memberAccess))
+            {
+                memberAccess = await GetMemberAccessAsync(user, kind, row.DepartmentId, row.UnitId, row.RequestedByUserId, row.MunicipalityId);
+                memberAccessCache[key] = memberAccess;
+            }
+            responses.Add(Map(row, memberAccess));
+        }
         return Ok(new ApiResponse<PagedResponse<OfficialReportJobResponse>>(true,
-            PagedResponse<OfficialReportJobResponse>.Create(rows.Select(Map), request.Page, request.PageSize, totalCount)));
+            PagedResponse<OfficialReportJobResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("jobs")]
@@ -111,7 +137,8 @@ public sealed class OfficialReportJobsController(
         governance.QueueAuditTrail(nameof(OfficialReportJob), job.PublicId.ToString(), "Queue", null, new { TemplatePublicId = template.PublicId, FinancialYearPublicId = selection.Year!.PublicId, ReportingPeriodPublicId = selection.Period!.PublicId, PreviousGenerationPublicId = previous?.PublicId }, user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Requested durable asynchronous official report generation.");
         await context.SaveChangesAsync();
         await LoadJob(job);
-        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job), "Official report generation was queued."));
+        var memberAccess = await GetMemberAccessAsync(user, template.SubmissionKind, job.DepartmentId, job.UnitId, job.RequestedByUserId, job.MunicipalityId);
+        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess), "Official report generation was queued."));
     }
 
     [HttpGet("schedules")]
@@ -170,8 +197,20 @@ public sealed class OfficialReportJobsController(
             _ => query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id)
         };
         var rows = await query.IncludeAll().Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        var responses = new List<OfficialReportScheduleResponse>(rows.Length);
+        var memberAccessCache = new Dictionary<(int?, int?, string, long), OfficialReportJobMemberAccess>();
+        foreach (var row in rows)
+        {
+            var key = (row.DepartmentId, row.UnitId, row.CreatedByUserId, row.MunicipalityId);
+            if (!memberAccessCache.TryGetValue(key, out var memberAccess))
+            {
+                memberAccess = await GetMemberAccessAsync(user, kind, row.DepartmentId, row.UnitId, row.CreatedByUserId, row.MunicipalityId);
+                memberAccessCache[key] = memberAccess;
+            }
+            responses.Add(Map(row, memberAccess));
+        }
         return Ok(new ApiResponse<PagedResponse<OfficialReportScheduleResponse>>(true,
-            PagedResponse<OfficialReportScheduleResponse>.Create(rows.Select(Map), request.Page, request.PageSize, totalCount)));
+            PagedResponse<OfficialReportScheduleResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("schedules")]
@@ -228,7 +267,8 @@ public sealed class OfficialReportJobsController(
         await context.Entry(entity).Reference(item => item.Department).LoadAsync();
         await context.Entry(entity).Reference(item => item.Unit).LoadAsync();
         await context.Entry(entity).Reference(item => item.CreatedByUser).LoadAsync();
-        return Ok(new ApiResponse<OfficialReportScheduleResponse>(true, Map(entity)));
+        var memberAccess = await GetMemberAccessAsync(user, template.SubmissionKind, entity.DepartmentId, entity.UnitId, entity.CreatedByUserId, entity.MunicipalityId);
+        return Ok(new ApiResponse<OfficialReportScheduleResponse>(true, Map(entity, memberAccess)));
     }
 
     [HttpPost("schedules/{publicId:guid}/run")]
@@ -250,7 +290,8 @@ public sealed class OfficialReportJobsController(
         governance.QueueAuditTrail(nameof(OfficialReportSchedule), schedule.PublicId.ToString(), "RunNow", null, new { job.PublicId, Recipients = recipients.Length }, user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Administrator requested immediate scheduled report execution.");
         await context.SaveChangesAsync();
         await LoadJob(job);
-        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job), "Scheduled report generation was queued."));
+        var memberAccess = await GetMemberAccessAsync(user, schedule.ReportTemplate.SubmissionKind, job.DepartmentId, job.UnitId, job.RequestedByUserId, job.MunicipalityId);
+        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess), "Scheduled report generation was queued."));
     }
 
     [HttpPost("jobs/{publicId:guid}/retry")]
@@ -268,7 +309,8 @@ public sealed class OfficialReportJobsController(
         governance.QueueAuditTrail(nameof(OfficialReportJob), job.PublicId.ToString(), "Retry", null, new { job.AttemptCount, job.AvailableAt }, user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), job.RetryReason);
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<OfficialReportJobResponse>("The job changed; refresh before retrying.")); }
         await LoadJob(job);
-        return Ok(new ApiResponse<OfficialReportJobResponse>(true, Map(job), "Official report job queued for retry."));
+        var memberAccess = await GetMemberAccessAsync(user, job.ReportTemplate.SubmissionKind, job.DepartmentId, job.UnitId, job.RequestedByUserId, job.MunicipalityId);
+        return Ok(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess), "Official report job queued for retry."));
     }
 
     private async Task<(OfficialReportTemplate? Template, MunicipalityFinancialYear? Year, ReportingPeriod? Period, Department? Department, Unit? Unit, string? Error)> ResolveSelection(Guid templateId, Guid yearId, Guid periodId, Guid? departmentId, Guid? unitId, bool allowHistoricTemplate = false)
@@ -347,7 +389,24 @@ public sealed class OfficialReportJobsController(
         await Granted(user, $"{(kind == SubmissionKind.Opms ? "OPMS" : "IPMS")}_REPORT.{reportAction}")
         && await Granted(user, kind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")
         && await Granted(user, kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ");
+    private static string ReportResource(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT" : "IPMS_REPORT";
     private static string ConfigurePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.CONFIGURE" : "IPMS_REPORT.CONFIGURE";
+    private async Task<OfficialReportJobMemberAccess> GetMemberAccessAsync(ApplicationUser user, SubmissionKind kind, int? departmentId, int? unitId, string ownerUserId, long municipalityId)
+    {
+        var resource = ReportResource(kind);
+        var scope = new AccessScopeContext(departmentId, unitId, ownerUserId, MunicipalityId: municipalityId);
+        async Task<bool> CanReadAsync(string memberCode) =>
+            (await accessControl.CheckPermissionAsync(user, $"{resource}.{memberCode}.READ", scope))?.Allowed == true;
+
+        return new OfficialReportJobMemberAccess(
+            await CanReadAsync("ScheduleRecipientValues"),
+            await CanReadAsync("ScheduleCreatedBy"),
+            await CanReadAsync("JobRequestedBy"),
+            await CanReadAsync("JobLastError"),
+            await CanReadAsync("JobDistributionOutboxPublicId"),
+            await CanReadAsync("JobRecipientUserIds"),
+            await CanReadAsync("JobRetryReason"));
+    }
     private static string? ValidatePeriod(OfficialReportType type, ReportingPeriodType periodType) => type switch
     {
         OfficialReportType.QuarterlyPerformance when periodType is not (ReportingPeriodType.Quarter1 or ReportingPeriodType.Quarter2 or ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4) => "A quarterly report requires Q1, Q2, Q3 or Q4.",
@@ -357,18 +416,18 @@ public sealed class OfficialReportJobsController(
     };
     private static string[] Split(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     private static bool TryRowVersion(string? value, out byte[] bytes) { try { bytes = Convert.FromBase64String(value ?? ""); return bytes.Length > 0; } catch (FormatException) { bytes = []; return false; } }
-    private static OfficialReportScheduleResponse Map(OfficialReportSchedule item) => new(item.PublicId, item.ScheduleFamilyPublicId, item.VersionNumber, item.PreviousVersion?.PublicId,
+    private static OfficialReportScheduleResponse Map(OfficialReportSchedule item, OfficialReportJobMemberAccess access) => new(item.PublicId, item.ScheduleFamilyPublicId, item.VersionNumber, item.PreviousVersion?.PublicId,
         item.ReportTemplate.PublicId, item.ReportTemplate.Name, item.ReportTemplate.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
         item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.Department?.PublicId, item.Department?.Name, item.Unit?.PublicId, item.Unit?.Name,
-        item.Code, item.Name, item.Cadence, item.Interval, item.NextRunAt, item.EffectiveTo, item.RecipientKind, Split(item.RecipientValuesCsv), Split(item.ChannelsCsv), item.IsMandatory,
-        item.IsCurrent, item.IsActive, item.ApprovalReference, item.Reason, item.CreatedByUser.UserName ?? item.CreatedByUser.Email ?? item.CreatedByUser.Id, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
-    private static OfficialReportJobResponse Map(OfficialReportJob item) => new(item.PublicId, item.OfficialReportSchedule?.PublicId, item.OfficialReportSchedule?.Name, item.State,
+        item.Code, item.Name, item.Cadence, item.Interval, item.NextRunAt, item.EffectiveTo, item.RecipientKind, access.ScheduleRecipientValues ? Split(item.RecipientValuesCsv) : [], Split(item.ChannelsCsv), item.IsMandatory,
+        item.IsCurrent, item.IsActive, item.ApprovalReference, item.Reason, access.ScheduleCreatedBy ? item.CreatedByUser.UserName ?? item.CreatedByUser.Email ?? item.CreatedByUser.Id : null, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
+    private static OfficialReportJobResponse Map(OfficialReportJob item, OfficialReportJobMemberAccess access) => new(item.PublicId, item.OfficialReportSchedule?.PublicId, item.OfficialReportSchedule?.Name, item.State,
         item.ReportTemplate.PublicId, item.ReportTemplate.Name, item.ReportTemplate.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
         item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.Department?.PublicId, item.Department?.Name, item.Unit?.PublicId, item.Unit?.Name,
-        item.ScheduledFor, item.AvailableAt, item.AttemptCount, item.StartedAt, item.CompletedAt, item.LastError,
-        item.RequestedByUser.UserName ?? item.RequestedByUser.Email ?? item.RequestedByUser.Id, item.RequestedAt,
-        item.OfficialReportGeneration?.PublicId, item.OfficialReportGeneration?.FileName, item.DistributionOutbox?.PublicId,
-        Split(item.RecipientUserIdsCsv), Split(item.ChannelsCsv), item.IsMandatoryDistribution, item.RetryReason, Convert.ToBase64String(item.RowVersion));
+        item.ScheduledFor, item.AvailableAt, item.AttemptCount, item.StartedAt, item.CompletedAt, access.JobLastError ? item.LastError : null,
+        access.JobRequestedBy ? item.RequestedByUser.UserName ?? item.RequestedByUser.Email ?? item.RequestedByUser.Id : null, item.RequestedAt,
+        item.OfficialReportGeneration?.PublicId, item.OfficialReportGeneration?.FileName, access.JobDistributionOutboxPublicId ? item.DistributionOutbox?.PublicId : null,
+        access.JobRecipientUserIds ? Split(item.RecipientUserIdsCsv) : [], Split(item.ChannelsCsv), item.IsMandatoryDistribution, access.JobRetryReason ? item.RetryReason : null, Convert.ToBase64String(item.RowVersion));
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ObjectResult ForbidResponse<T>(string message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message));
 }

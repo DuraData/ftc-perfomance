@@ -127,6 +127,64 @@ describe('Reports', () => {
     })));
   });
 
+  it('fails closed against hostile report job and schedule metadata until member permissions are present', async () => {
+    app.permissions = [...app.permissions, 'OPMS_REPORT.CONFIGURE'];
+    api.getOfficialReportJobsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          publicId: 'job-sensitive', state: 5, templatePublicId: 'template-1', templateName: 'Quarterly report', reportType: 1,
+          municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1',
+          scheduledFor: '2026-10-01T09:00:00Z', availableAt: '2026-10-01T09:00:00Z', attemptCount: 2,
+          lastError: 'SENSITIVE-JOB-ERROR', requestedBy: 'requester-secret', requestedAt: '2026-10-01T09:00:00Z',
+          fileName: 'quarterly.pdf', distributionOutboxPublicId: 'distribution-secret', recipientUserIds: ['recipient-secret'],
+          channels: ['EMAIL'], isMandatoryDistribution: true, retryReason: 'retry-secret', rowVersion: 'AQ=='
+        }],
+        page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+      },
+    });
+    api.getOfficialReportSchedulesPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          publicId: 'schedule-sensitive', scheduleFamilyPublicId: 'schedule-family', versionNumber: 1,
+          templatePublicId: 'template-1', templateName: 'Quarterly report', reportType: 1,
+          municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1',
+          code: 'SENSITIVE-SCHEDULE', name: 'Governed delivery', cadence: 1, interval: 1, nextRunAt: '2026-10-02T09:00:00Z',
+          recipientKind: 1, recipientValues: ['schedule-recipient-secret'], channels: ['EMAIL'], isMandatory: true,
+          isCurrent: true, isActive: true, approvalReference: 'Council-1', reason: 'Approved', createdBy: 'schedule-creator-secret',
+          createdAt: '2026-10-01T09:00:00Z', rowVersion: 'AQ=='
+        }],
+        page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    const rendered = render(<Reports />);
+    expect(await screen.findByText('Governed delivery')).toBeInTheDocument();
+    expect(screen.queryByText(/requester-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText('SENSITIVE-JOB-ERROR')).not.toBeInTheDocument();
+    expect(screen.queryByText(/distribution queued/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recipient-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/retry-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/schedule-recipient-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/schedule-creator-secret/)).not.toBeInTheDocument();
+
+    app.permissions = [...app.permissions,
+      'OPMS_REPORT.JobRequestedBy.READ', 'OPMS_REPORT.JobLastError.READ',
+      'OPMS_REPORT.JobDistributionOutboxPublicId.READ', 'OPMS_REPORT.JobRecipientUserIds.READ',
+      'OPMS_REPORT.JobRetryReason.READ', 'OPMS_REPORT.ScheduleRecipientValues.READ',
+      'OPMS_REPORT.ScheduleCreatedBy.READ'];
+    rendered.rerender(<Reports />);
+
+    expect(await screen.findByText(/requester-secret/)).toBeInTheDocument();
+    expect(screen.getByText('SENSITIVE-JOB-ERROR')).toBeInTheDocument();
+    expect(screen.getByText(/distribution queued/)).toBeInTheDocument();
+    expect(screen.getByText('Recipients: recipient-secret')).toBeInTheDocument();
+    expect(screen.getByText(/retry-secret/)).toBeInTheDocument();
+    expect(screen.getByText(/schedule-recipient-secret/)).toBeInTheDocument();
+    expect(screen.getByText(/schedule-creator-secret/)).toBeInTheDocument();
+  });
+
   it('keeps generation template choices independent from the bounded administration register', async () => {
     app.permissions = [...app.permissions, 'OPMS_REPORT.CONFIGURE'];
     api.getOfficialReportTemplatesPage.mockImplementation(async (_kind: number, _history: boolean, financialYearPublicId: string | undefined, page: { pageSize?: number }) => ({

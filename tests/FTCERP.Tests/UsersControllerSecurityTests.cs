@@ -147,6 +147,23 @@ public sealed class UsersControllerSecurityTests
             Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
         }
 
+        foreach (var resourceCode in new[] { "OPMS_REPORT", "IPMS_REPORT" })
+        {
+            var reportMembers = await context.SecurityMemberDefinitions
+                .Where(item => item.ResourceCode == resourceCode)
+                .OrderBy(item => item.MemberCode)
+                .ToArrayAsync();
+            Assert.Equal(new[]
+                {
+                    "JobDistributionOutboxPublicId", "JobLastError", "JobRecipientUserIds", "JobRequestedBy",
+                    "JobRetryReason", "ScheduleCreatedBy", "ScheduleRecipientValues"
+                },
+                reportMembers.Select(item => item.MemberCode));
+            Assert.All(reportMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
+            Assert.Equal(7, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
+            Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
+        }
+
         var idpDocumentMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_DOCUMENT")
             .OrderBy(item => item.MemberCode)

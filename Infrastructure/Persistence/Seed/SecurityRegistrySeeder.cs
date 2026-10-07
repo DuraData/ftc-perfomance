@@ -189,6 +189,20 @@ public static class SecurityRegistrySeeder
             Member("IPMS_POE", "DisposalRequestedByUserId", "Evidence Disposal Requester Identity", sensitive: true, systemManaged: true),
             Member("IPMS_POE", "DisposalRequestedByName", "Evidence Disposal Requester Name", sensitive: true, systemManaged: true),
             Member("IPMS_POE", "DisposalDetail", "Evidence Disposal Processing Detail", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "ScheduleRecipientValues", "Report Schedule Recipient Identities", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "ScheduleCreatedBy", "Report Schedule Creator Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "JobRequestedBy", "Report Job Requester Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "JobLastError", "Report Job Failure Detail", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "JobDistributionOutboxPublicId", "Report Distribution Receipt Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "JobRecipientUserIds", "Report Job Recipient Identities", sensitive: true, systemManaged: true),
+            Member("OPMS_REPORT", "JobRetryReason", "Report Job Retry Reason", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "ScheduleRecipientValues", "Report Schedule Recipient Identities", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "ScheduleCreatedBy", "Report Schedule Creator Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "JobRequestedBy", "Report Job Requester Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "JobLastError", "Report Job Failure Detail", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "JobDistributionOutboxPublicId", "Report Distribution Receipt Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "JobRecipientUserIds", "Report Job Recipient Identities", sensitive: true, systemManaged: true),
+            Member("IPMS_REPORT", "JobRetryReason", "Report Job Retry Reason", sensitive: true, systemManaged: true),
             Member("IDP_DOCUMENT", "UploadedByUserId", "Document Uploader Identity", sensitive: true, systemManaged: true),
             Member("IDP_DOCUMENT", "UploadedByName", "Document Uploader Name", sensitive: true, systemManaged: true),
             Member("IDP_DOCUMENT", "ScannerProvider", "Document Scanner Provider", sensitive: true, systemManaged: true),
@@ -251,9 +265,11 @@ public static class SecurityRegistrySeeder
                      || string.Equals(item.ResourceCode, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "OPMS_POE", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "IPMS_POE", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "IDP_DOCUMENT", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "OPMS_POE", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "IPMS_POE", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "OPMS_REPORT", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "IPMS_REPORT", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "IDP_DOCUMENT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "STRATEGIC_DOCUMENT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "TID", StringComparison.OrdinalIgnoreCase)
                         && (item.MemberCode.StartsWith("Source", StringComparison.OrdinalIgnoreCase)
@@ -435,6 +451,12 @@ public static class SecurityRegistrySeeder
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT"]
         };
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "OPMS_REPORT.ScheduleRecipientValues.READ", "OPMS_REPORT.ScheduleCreatedBy.READ",
+            "OPMS_REPORT.JobRequestedBy.READ", "OPMS_REPORT.JobLastError.READ",
+            "OPMS_REPORT.JobDistributionOutboxPublicId.READ", "OPMS_REPORT.JobRecipientUserIds.READ", "OPMS_REPORT.JobRetryReason.READ",
+            "IPMS_REPORT.ScheduleRecipientValues.READ", "IPMS_REPORT.ScheduleCreatedBy.READ",
+            "IPMS_REPORT.JobRequestedBy.READ", "IPMS_REPORT.JobLastError.READ",
+            "IPMS_REPORT.JobDistributionOutboxPublicId.READ", "IPMS_REPORT.JobRecipientUserIds.READ", "IPMS_REPORT.JobRetryReason.READ",
             "NOTIFICATION_DELIVERY.READ", "NOTIFICATION_DELIVERY.RETRY",
             "NOTIFICATION_DELIVERY.AggregateId.READ", "NOTIFICATION_DELIVERY.LastError.READ",
             "NOTIFICATION_DELIVERY.RecipientUserId.READ", "NOTIFICATION_DELIVERY.ProviderReference.READ",

@@ -76,6 +76,110 @@ public sealed class OfficialReportJobTests
     }
 
     [Fact]
+    public async Task JobAndScheduleSensitiveMetadata_IsMaskedAndCannotDriveSearchUntilScopedMembersAreGranted()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var seeded = await SeedDueSchedule(options);
+        var tenant = new FixedTenantContext(seeded.Schedule.MunicipalityId, seeded.User.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var schedule = await context.OfficialReportSchedules.SingleAsync();
+        var template = await context.OfficialReportTemplates.SingleAsync();
+        var year = await context.MunicipalityFinancialYears.SingleAsync();
+        var period = await context.ReportingPeriods.SingleAsync();
+        var outbox = new BusinessEventOutbox
+        {
+            MunicipalityId = tenant.MunicipalityId,
+            EventType = "OfficialReport.Distribution",
+            AggregateType = nameof(OfficialReportJob),
+            AggregateId = "sensitive-job",
+            Payload = "{}"
+        };
+        context.BusinessEventOutbox.Add(outbox);
+        await context.SaveChangesAsync();
+        context.OfficialReportJobs.Add(new OfficialReportJob
+        {
+            MunicipalityId = tenant.MunicipalityId!.Value,
+            OfficialReportScheduleId = schedule.Id,
+            ReportTemplateId = template.Id,
+            MunicipalityFinancialYearId = year.Id,
+            ReportingPeriodId = period.Id,
+            DistributionOutboxId = outbox.Id,
+            State = OfficialReportJobState.Failed,
+            ScheduledFor = DateTime.UtcNow,
+            AvailableAt = DateTime.UtcNow,
+            AttemptCount = 2,
+            LastError = "SENSITIVE-PROVIDER-ERROR",
+            RequestedByUserId = seeded.User.Id,
+            RequestedAt = DateTime.UtcNow,
+            RecipientUserIdsCsv = "recipient-alpha,recipient-beta",
+            ChannelsCsv = "IN_APP,EMAIL",
+            IsMandatoryDistribution = true,
+            RetryReason = "SENSITIVE-RETRY-REASON"
+        });
+        await context.SaveChangesAsync();
+
+        var allowedMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var basePermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_REPORT.READ", "OPMS_REPORT.CONFIGURE", "OPMS_KPI.READ", "OPMS_SUBMISSION.READ"
+        };
+        var memberCodes = new[]
+        {
+            "OPMS_REPORT.ScheduleRecipientValues.READ", "OPMS_REPORT.ScheduleCreatedBy.READ",
+            "OPMS_REPORT.JobRequestedBy.READ", "OPMS_REPORT.JobLastError.READ",
+            "OPMS_REPORT.JobDistributionOutboxPublicId.READ", "OPMS_REPORT.JobRecipientUserIds.READ",
+            "OPMS_REPORT.JobRetryReason.READ"
+        };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string permission) => basePermissions.Contains(permission)
+                ? new AccessQueryScopeResult(true, true, [], [], [], [], [], [])
+                : allowedMembers.Contains(permission)
+                    ? new AccessQueryScopeResult(true, false, [], [], [], [], [], [tenant.MunicipalityId!.Value])
+                    : new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedMembers.Contains(permission) && scope?.MunicipalityId == tenant.MunicipalityId,
+                    "test decision", [], [], []));
+        var controller = new OfficialReportJobsController(context, IdpTestFixture.CreateUserManagerMock(seeded.User).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seeded.User.Id) } }
+        };
+
+        var deniedJobs = ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "requestedAt" }));
+        deniedJobs.Items.Should().ContainSingle();
+        deniedJobs.Items[0].RequestedBy.Should().BeNull();
+        deniedJobs.Items[0].LastError.Should().BeNull();
+        deniedJobs.Items[0].DistributionOutboxPublicId.Should().BeNull();
+        deniedJobs.Items[0].RecipientUserIds.Should().BeEmpty();
+        deniedJobs.Items[0].RetryReason.Should().BeNull();
+        ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "Scheduler", SortBy = "requestedAt" })).TotalCount.Should().Be(0);
+        ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "SENSITIVE-PROVIDER-ERROR", SortBy = "requestedAt" })).TotalCount.Should().Be(0);
+
+        var deniedSchedules = ExtractSchedulePage(await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "code" }));
+        deniedSchedules.Items.Should().ContainSingle();
+        deniedSchedules.Items[0].RecipientValues.Should().BeEmpty();
+        deniedSchedules.Items[0].CreatedBy.Should().BeNull();
+
+        foreach (var code in memberCodes) allowedMembers.Add(code);
+
+        var grantedJobs = ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "requestedAt" }));
+        grantedJobs.Items[0].RequestedBy.Should().Be("report-scheduler");
+        grantedJobs.Items[0].LastError.Should().Be("SENSITIVE-PROVIDER-ERROR");
+        grantedJobs.Items[0].DistributionOutboxPublicId.Should().Be(outbox.PublicId);
+        grantedJobs.Items[0].RecipientUserIds.Should().Equal("recipient-alpha", "recipient-beta");
+        grantedJobs.Items[0].RetryReason.Should().Be("SENSITIVE-RETRY-REASON");
+        ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "Scheduler", SortBy = "requestedAt" })).TotalCount.Should().Be(1);
+        ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "SENSITIVE-PROVIDER-ERROR", SortBy = "requestedAt" })).TotalCount.Should().Be(1);
+
+        var grantedSchedules = ExtractSchedulePage(await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "code" }));
+        grantedSchedules.Items[0].RecipientValues.Should().Equal(seeded.User.Id);
+        grantedSchedules.Items[0].CreatedBy.Should().Be("report-scheduler");
+    }
+
+    [Fact]
     public async Task JobsPage_RejectsUnknownSort()
     {
         await using var context = IdpTestFixture.CreateContext();
@@ -222,7 +326,10 @@ public sealed class OfficialReportJobTests
 
         var result = await controller.SaveSchedule(request);
 
-        result.Result.Should().BeOfType<OkObjectResult>();
+        var response = Assert.IsType<ApiResponse<OfficialReportScheduleResponse>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        response.RecipientValues.Should().BeEmpty();
+        response.CreatedBy.Should().BeNull();
         var versions = await context.OfficialReportSchedules.OrderBy(item => item.VersionNumber).ToArrayAsync();
         versions.Should().HaveCount(2);
         versions[0].IsCurrent.Should().BeFalse();
@@ -346,6 +453,12 @@ public sealed class OfficialReportJobTests
             MunicipalityId = municipality.Id, IsActive = true
         }, schedule);
     }
+
+    private static PagedResponse<OfficialReportJobResponse> ExtractPage(ActionResult<ApiResponse<PagedResponse<OfficialReportJobResponse>>> result) =>
+        Assert.IsType<ApiResponse<PagedResponse<OfficialReportJobResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+
+    private static PagedResponse<OfficialReportScheduleResponse> ExtractSchedulePage(ActionResult<ApiResponse<PagedResponse<OfficialReportScheduleResponse>>> result) =>
+        Assert.IsType<ApiResponse<PagedResponse<OfficialReportScheduleResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
 
     private static async Task SeedForeignSchedule(DbContextOptions<ApplicationDbContext> options)
     {
