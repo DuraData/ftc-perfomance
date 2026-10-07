@@ -202,4 +202,31 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be hard deleted*");
     }
+
+    [Fact]
+    public async Task Official_report_schedule_configuration_requires_a_successor_version()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var schedule = new OfficialReportSchedule { Id = 93, IsCurrent = true, IsActive = true };
+        context.Attach(schedule);
+        schedule.Code = "RETROSPECTIVE-REWRITE";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*successor version*");
+    }
+
+    [Fact]
+    public async Task Official_report_schedule_recurrence_cannot_move_backwards()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var originalNext = DateTime.UtcNow.AddDays(10);
+        var schedule = new OfficialReportSchedule { Id = 94, IsCurrent = true, IsActive = true, NextRunAt = originalNext };
+        context.Attach(schedule);
+        schedule.NextRunAt = originalNext.AddDays(-1);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be reversed or moved backwards*");
+    }
 }

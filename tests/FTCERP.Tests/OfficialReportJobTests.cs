@@ -392,13 +392,7 @@ public sealed class OfficialReportJobTests
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
-        var seeded = await SeedDueSchedule(options);
-        await using (var update = new ApplicationDbContext(options, new SystemTenantContext()))
-        {
-            var schedule = await update.OfficialReportSchedules.SingleAsync();
-            schedule.RecipientValuesCsv = "missing-user";
-            await update.SaveChangesAsync();
-        }
+        var seeded = await SeedDueSchedule(options, "missing-user");
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddHttpContextAccessor();
@@ -417,7 +411,7 @@ public sealed class OfficialReportJobTests
         (await verification.OfficialReportGenerations.IgnoreQueryFilters().CountAsync()).Should().Be(0);
     }
 
-    private static async Task<(ApplicationUser User, OfficialReportSchedule Schedule)> SeedDueSchedule(DbContextOptions<ApplicationDbContext> options)
+    private static async Task<(ApplicationUser User, OfficialReportSchedule Schedule)> SeedDueSchedule(DbContextOptions<ApplicationDbContext> options, string? recipientUserId = null)
     {
         await using var context = new ApplicationDbContext(options, new SystemTenantContext());
         await context.Database.EnsureCreatedAsync();
@@ -442,7 +436,7 @@ public sealed class OfficialReportJobTests
         {
             MunicipalityId = municipality.Id, ReportTemplateId = template.Id, MunicipalityFinancialYearId = municipalYear.Id, ReportingPeriodId = period.Id,
             Code = "Q1-DISTRIBUTION", Name = "Q1 governed distribution", Cadence = OfficialReportScheduleCadence.Once, Interval = 1,
-            NextRunAt = DateTime.UtcNow.AddMinutes(-1), RecipientKind = OfficialReportRecipientKind.User, RecipientValuesCsv = user.Id,
+            NextRunAt = DateTime.UtcNow.AddMinutes(-1), RecipientKind = OfficialReportRecipientKind.User, RecipientValuesCsv = recipientUserId ?? user.Id,
             ChannelsCsv = "IN_APP", IsMandatory = true, IsCurrent = true, IsActive = true, ApprovalReference = "Council-2026", Reason = "Approved distribution", CreatedByUserId = user.Id
         };
         context.Add(schedule); await context.SaveChangesAsync();

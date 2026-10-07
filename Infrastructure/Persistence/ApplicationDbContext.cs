@@ -2183,8 +2183,24 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGenerationScopeGrant>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Official report templates and generated report history are append-only.");
-        if (ChangeTracker.Entries<OfficialReportSchedule>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Official report schedule versions cannot be deleted.");
+        foreach (var entry in ChangeTracker.Entries<OfficialReportSchedule>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Official report schedule versions cannot be deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(OfficialReportSchedule.IsCurrent), nameof(OfficialReportSchedule.IsActive), nameof(OfficialReportSchedule.EffectiveTo),
+                    nameof(OfficialReportSchedule.NextRunAt), nameof(OfficialReportSchedule.RowVersion)],
+                "Official report schedule versions are append-preserved; configuration changes require a successor version.");
+            var originalNext = entry.OriginalValues.GetValue<DateTime?>(nameof(OfficialReportSchedule.NextRunAt));
+            var currentNext = entry.CurrentValues.GetValue<DateTime?>(nameof(OfficialReportSchedule.NextRunAt));
+            var originalEnd = entry.OriginalValues.GetValue<DateTime?>(nameof(OfficialReportSchedule.EffectiveTo));
+            var currentEnd = entry.CurrentValues.GetValue<DateTime?>(nameof(OfficialReportSchedule.EffectiveTo));
+            if (!entry.OriginalValues.GetValue<bool>(nameof(OfficialReportSchedule.IsCurrent)) && entry.CurrentValues.GetValue<bool>(nameof(OfficialReportSchedule.IsCurrent))
+                || !entry.OriginalValues.GetValue<bool>(nameof(OfficialReportSchedule.IsActive)) && entry.CurrentValues.GetValue<bool>(nameof(OfficialReportSchedule.IsActive))
+                || originalNext.HasValue && currentNext.HasValue && currentNext < originalNext
+                || originalEnd.HasValue && currentEnd != originalEnd)
+                throw new InvalidOperationException("Official report schedule lifecycle cannot be reversed or moved backwards.");
+        }
         foreach (var entry in ChangeTracker.Entries<OfficialReportJob>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)
