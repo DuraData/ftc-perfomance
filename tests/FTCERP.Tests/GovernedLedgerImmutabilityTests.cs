@@ -281,4 +281,60 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*only advance once*");
     }
+
+    [Fact]
+    public async Task Internal_audit_configuration_definition_requires_a_successor_version()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var configuration = new InternalAuditAssessmentConfiguration
+        {
+            Id = 111,
+            IsCurrent = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-10),
+            Model = InternalAuditAssessmentModel.Detailed
+        };
+        context.Attach(configuration);
+        configuration.Model = InternalAuditAssessmentModel.SatisfactoryNotSatisfactory;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-preserved*");
+    }
+
+    [Fact]
+    public async Task Workflow_definition_content_requires_a_successor_version()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var definition = new WorkflowDefinition { Id = 112, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-10), Code = "ORIGINAL" };
+        context.Attach(definition);
+        definition.Code = "REWRITTEN";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*successor version*");
+    }
+
+    [Fact]
+    public async Task Workflow_stage_definition_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var stage = new WorkflowStageDefinition { Id = 113, Code = "REVIEW", Sequence = 1 };
+        context.Attach(stage);
+        stage.RequiredPermissionCode = "BYPASS.PERMISSION";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*stage-definition versions are append-only*");
+    }
+
+    [Fact]
+    public async Task Workflow_definition_history_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new WorkflowDefinition { Id = 114 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
 }

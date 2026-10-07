@@ -2176,9 +2176,36 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Submission workflow action history is append-only.");
         if (ChangeTracker.Entries<SubmissionStageRating>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Submission stage rating history is append-only.");
-        if (ChangeTracker.Entries<InternalAuditAssessmentConfiguration>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
-            throw new InvalidOperationException("Internal Audit configuration and assessment history is append-only.");
+        if (ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Internal Audit assessment history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<InternalAuditAssessmentConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Internal Audit configuration history cannot be hard deleted.");
+            EnsureMonotonicClosure(entry, nameof(InternalAuditAssessmentConfiguration.IsCurrent), nameof(InternalAuditAssessmentConfiguration.EffectiveTo),
+                nameof(InternalAuditAssessmentConfiguration.EffectiveFrom),
+                [nameof(InternalAuditAssessmentConfiguration.IsCurrent), nameof(InternalAuditAssessmentConfiguration.EffectiveTo), nameof(InternalAuditAssessmentConfiguration.RowVersion)],
+                "Internal Audit configuration versions are append-preserved; only the current predecessor may be closed by a successor.");
+        }
+        if (ChangeTracker.Entries<WorkflowStageDefinition>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Workflow stage-definition versions are append-only; create a successor workflow version.");
+        foreach (var entry in ChangeTracker.Entries<WorkflowDefinition>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Workflow definition history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(WorkflowDefinition.IsActive), nameof(WorkflowDefinition.EffectiveTo), nameof(WorkflowDefinition.RowVersion)],
+                "Workflow definitions are append-preserved; definition changes require a successor version.");
+            var originalActive = entry.OriginalValues.GetValue<bool>(nameof(WorkflowDefinition.IsActive));
+            var currentActive = entry.CurrentValues.GetValue<bool>(nameof(WorkflowDefinition.IsActive));
+            var originalEnd = entry.OriginalValues.GetValue<DateTime?>(nameof(WorkflowDefinition.EffectiveTo));
+            var currentEnd = entry.CurrentValues.GetValue<DateTime?>(nameof(WorkflowDefinition.EffectiveTo));
+            var effectiveFrom = entry.OriginalValues.GetValue<DateTime>(nameof(WorkflowDefinition.EffectiveFrom));
+            if (!originalActive || !currentEnd.HasValue || currentEnd < effectiveFrom
+                || originalEnd.HasValue && currentEnd > originalEnd
+                || !currentActive && !entry.Property(nameof(WorkflowDefinition.IsActive)).IsModified)
+                throw new InvalidOperationException("Workflow lifecycle may only close or retire an active version without extending its effective period.");
+        }
         if (ChangeTracker.Entries<OfficialReportTemplate>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGenerationScopeGrant>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
