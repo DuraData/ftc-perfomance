@@ -287,6 +287,21 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal(7, await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_DOCUMENT" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_DOCUMENT")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "STRATEGIC_DOCUMENT.RESCAN").ToArrayAsync());
+
+        var c88IndicatorMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "C88_INDICATOR").OrderBy(item => item.MemberCode).ToArrayAsync();
+        c88IndicatorMembers.Select(item => item.MemberCode).Should().Equal("MappingReason", "PlanMissingDataExplanation");
+        c88IndicatorMembers.Should().OnlyContain(item => item.IsSensitive && !item.IsSystemManaged);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "C88_INDICATOR" && item.MemberCode != null)).Should().Be(4);
+
+        var c88ReportMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "C88_REPORT").OrderBy(item => item.MemberCode).ToArrayAsync();
+        c88ReportMembers.Select(item => item.MemberCode).Should().Equal("CalculatedValue", "ComplianceComment", "ComplianceResponse",
+            "DataElementMissingDataExplanation", "DataElementValue", "MissingDataExplanation", "WorkflowActor", "WorkflowReason");
+        c88ReportMembers.Should().OnlyContain(item => item.IsSensitive);
+        c88ReportMembers.Where(item => item.MemberCode is "CalculatedValue" or "WorkflowActor").Should().OnlyContain(item => item.IsSystemManaged);
+        c88ReportMembers.Where(item => item.MemberCode is not ("CalculatedValue" or "WorkflowActor")).Should().OnlyContain(item => !item.IsSystemManaged);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "C88_REPORT" && item.MemberCode != null)).Should().Be(14);
     }
 
     [Fact]

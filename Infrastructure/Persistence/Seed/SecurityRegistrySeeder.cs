@@ -344,7 +344,17 @@ public static class SecurityRegistrySeeder
             Member("NOTIFICATION_DELIVERY", "RecipientUserId", "Notification Recipient Identity", sensitive: true, systemManaged: true),
             Member("NOTIFICATION_DELIVERY", "ProviderReference", "Provider Receipt Reference", sensitive: true, systemManaged: true),
             Member("NOTIFICATION_DELIVERY", "Error", "Delivery Failure Detail", sensitive: true, systemManaged: true),
-            Member("NOTIFICATION_DELIVERY", "ResponseDetail", "Provider Response Detail", sensitive: true, systemManaged: true)
+            Member("NOTIFICATION_DELIVERY", "ResponseDetail", "Provider Response Detail", sensitive: true, systemManaged: true),
+            Member("C88_INDICATOR", "PlanMissingDataExplanation", "Circular 88 Plan Missing-Data Explanation", sensitive: true),
+            Member("C88_INDICATOR", "MappingReason", "Circular 88 OPMS Mapping Reason", sensitive: true),
+            Member("C88_REPORT", "CalculatedValue", "Circular 88 Calculated Value", sensitive: true, systemManaged: true),
+            Member("C88_REPORT", "MissingDataExplanation", "Circular 88 Report Missing-Data Explanation", sensitive: true),
+            Member("C88_REPORT", "DataElementValue", "Circular 88 Data-Element Value", sensitive: true),
+            Member("C88_REPORT", "DataElementMissingDataExplanation", "Circular 88 Data-Element Missing-Data Explanation", sensitive: true),
+            Member("C88_REPORT", "ComplianceResponse", "Circular 88 Compliance Response", sensitive: true),
+            Member("C88_REPORT", "ComplianceComment", "Circular 88 Compliance Comment", sensitive: true),
+            Member("C88_REPORT", "WorkflowReason", "Circular 88 Workflow Reason", sensitive: true),
+            Member("C88_REPORT", "WorkflowActor", "Circular 88 Workflow Actor Identity", sensitive: true, systemManaged: true)
         };
         var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
         var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -549,7 +559,27 @@ public static class SecurityRegistrySeeder
         mappings["IPMS_RFI.RAISE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.Question.UPDATE", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
         mappings["IPMS_RFI.RESPOND"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.Response.UPDATE", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
         mappings["IPMS_RFI.CLOSE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.ClosedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["C88_INDICATOR.READ"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.MappingReason.READ"];
+        mappings["C88_INDICATOR.UPDATE"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.PlanMissingDataExplanation.UPDATE"];
+        mappings["C88_INDICATOR.MANAGE_MAPPING"] = ["C88_INDICATOR.MappingReason.READ", "C88_INDICATOR.MappingReason.UPDATE"];
+        mappings["C88_REPORT.READ"] = ["C88_REPORT.CalculatedValue.READ", "C88_REPORT.MissingDataExplanation.READ",
+            "C88_REPORT.DataElementValue.READ", "C88_REPORT.DataElementMissingDataExplanation.READ",
+            "C88_REPORT.ComplianceResponse.READ", "C88_REPORT.ComplianceComment.READ",
+            "C88_REPORT.WorkflowReason.READ", "C88_REPORT.WorkflowActor.READ"];
+        mappings["C88_REPORT.CREATE"] = [.. mappings["C88_REPORT.READ"], "C88_REPORT.MissingDataExplanation.UPDATE",
+            "C88_REPORT.DataElementValue.UPDATE", "C88_REPORT.DataElementMissingDataExplanation.UPDATE",
+            "C88_REPORT.ComplianceResponse.UPDATE", "C88_REPORT.ComplianceComment.UPDATE", "C88_REPORT.WorkflowReason.UPDATE"];
+        foreach (var action in new[] { "C88_REPORT.SUBMIT", "C88_REPORT.VERIFY", "C88_REPORT.RETURN", "C88_REPORT.FINAL_SUBMIT" })
+            mappings[action] = ["C88_REPORT.WorkflowReason.READ", "C88_REPORT.WorkflowReason.UPDATE", "C88_REPORT.WorkflowActor.READ"];
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.PlanMissingDataExplanation.UPDATE",
+            "C88_INDICATOR.MappingReason.READ", "C88_INDICATOR.MappingReason.UPDATE",
+            "C88_REPORT.CalculatedValue.READ", "C88_REPORT.MissingDataExplanation.READ", "C88_REPORT.MissingDataExplanation.UPDATE",
+            "C88_REPORT.DataElementValue.READ", "C88_REPORT.DataElementValue.UPDATE",
+            "C88_REPORT.DataElementMissingDataExplanation.READ", "C88_REPORT.DataElementMissingDataExplanation.UPDATE",
+            "C88_REPORT.ComplianceResponse.READ", "C88_REPORT.ComplianceResponse.UPDATE",
+            "C88_REPORT.ComplianceComment.READ", "C88_REPORT.ComplianceComment.UPDATE",
+            "C88_REPORT.WorkflowReason.READ", "C88_REPORT.WorkflowReason.UPDATE", "C88_REPORT.WorkflowActor.READ",
             "OPMS_WORKFLOW.WindowExceptionScope.READ", "OPMS_WORKFLOW.WindowExceptionScope.UPDATE",
             "OPMS_WORKFLOW.WindowExceptionReason.READ", "OPMS_WORKFLOW.WindowExceptionReason.UPDATE", "OPMS_WORKFLOW.WindowExceptionApprovedBy.READ",
             "IPMS_WORKFLOW.WindowExceptionScope.READ", "IPMS_WORKFLOW.WindowExceptionScope.UPDATE",

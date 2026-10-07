@@ -34,6 +34,7 @@ describe('Circular 88 workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capabilities.canRead.mockReturnValue(true); capabilities.canCreate.mockReturnValue(true); capabilities.canUpdate.mockReturnValue(true); capabilities.canExecute.mockReturnValue(true);
+    capabilities.canReadField.mockReturnValue(true); capabilities.canEditField.mockReturnValue(true);
     api.getC88CatalogueItemsPage.mockResolvedValue({ success: true, data: { items: workspace.catalogueItems, page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.getC88ConfigurationsPage.mockResolvedValue({ success: true, data: { items: [configuration], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getC88CatalogueVersionsPage.mockResolvedValue({ success: true, data: { items: [catalogueVersion], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -75,5 +76,24 @@ describe('Circular 88 workspace', () => {
     fireEvent.change(screen.getByPlaceholderText('Workflow reason'), { target: { value: 'Ready for C88 verification' } });
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
     await waitFor(() => expect(api.submitC88Report).toHaveBeenCalledWith('report-1', 'Ag==', 'Ready for C88 verification'));
+  });
+
+  it('does not render or edit protected C88 members when field permissions are denied', async () => {
+    capabilities.canReadField.mockReturnValue(false);
+    capabilities.canEditField.mockReturnValue(false);
+    api.getC88PlansPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'plan-1', configurationPublicId: 'config-1', indicatorPublicId: 'indicator-1', indicatorCode: 'C88-1', baselineValue: '10', annualTarget: '30', missingDataExplanation: 'plan-secret', rowVersion: 'AQ==' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
+    api.getC88MappingsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'mapping-1', configurationPublicId: 'config-1', indicatorPublicId: 'indicator-1', opmsTargetPublicId: 'target-1', opmsIndicatorNumber: 'OPMS-1', mappingType: 'Direct', reason: 'mapping-secret', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
+    api.getC88ReportsPage.mockResolvedValue({ success: true, data: { items: [{ ...workspace.reports[0], calculatedValue: 'calculated-secret', missingDataExplanation: 'report-secret', dataElementValues: [{ publicId: 'value-1', dataElementPublicId: 'element-1', value: 'element-secret', missingDataExplanation: 'element-missing-secret' }], complianceResponses: [{ publicId: 'response-1', questionPublicId: 'question-1', response: 'response-secret', comment: 'comment-secret' }], workflowActions: [{ publicId: 'action-1', fromStageSequence: 1, toStageSequence: 1, action: 'Created', reason: 'workflow-secret', actorUserPublicId: 'actor-1', actorName: 'Actor Secret', occurredAt: '2026-08-01' }] }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<C88Workspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /C88-1 · v1/ }));
+
+    for (const secret of ['plan-secret', 'mapping-secret', 'calculated-secret', 'report-secret', 'element-secret', 'element-missing-secret', 'response-secret', 'comment-secret', 'workflow-secret', 'Actor Secret'])
+      expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Missing-data explanation')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Workflow reason')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save report version' })).not.toBeInTheDocument();
+    expect(capabilities.canReadField).toHaveBeenCalledWith('C88_REPORT', 'WorkflowActor');
+    expect(capabilities.canEditField).toHaveBeenCalledWith('C88_INDICATOR', 'MappingReason');
   });
 });

@@ -156,6 +156,7 @@ public sealed class C88Controller : ControllerBase
             return BadRequest(Fail<PagedResponse<C88IndicatorReportResponse>>("SortBy must be createdAt, indicatorCode, state, or versionNumber."));
         var reportRead = await accessControl.CheckPermissionAsync(user, "C88_REPORT.READ", Scope());
         if (!reportRead.Allowed) return Forbidden<PagedResponse<C88IndicatorReportResponse>>(reportRead.Reason);
+        var memberAccess = await GetReportMemberAccessAsync(user);
         var manager = (await accessControl.CheckPermissionAsync(user, "C88_INDICATOR.UPDATE", Scope())).Allowed;
         long[] scopedIndicatorIds = [];
         if (!manager)
@@ -179,7 +180,7 @@ public sealed class C88Controller : ControllerBase
         var rows = await ApplyC88ReportOrdering(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<C88IndicatorReportResponse>>(true,
-            PagedResponse<C88IndicatorReportResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+            PagedResponse<C88IndicatorReportResponse>.Create(rows.Select(item => ToResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> C88ReportSortFields = ["createdat", "indicatorcode", "state", "versionnumber"];
@@ -262,6 +263,7 @@ public sealed class C88Controller : ControllerBase
     {
         var visibility = await IndicatorVisibility<C88IndicatorPlanResponse>();
         if (visibility.Error != null) return visibility.Error;
+        var memberAccess = await GetIndicatorMemberAccessAsync((await CurrentUserAsync())!);
         if (request.NormalizedSortBy is not ("createdat" or "indicatorcode" or "baseline" or "annualtarget"))
             return BadRequest(Fail<PagedResponse<C88IndicatorPlanResponse>>("SortBy must be createdAt, indicatorCode, baseline, or annualTarget."));
         var query = context.C88IndicatorPlans.AsNoTracking().AsQueryable();
@@ -288,7 +290,7 @@ public sealed class C88Controller : ControllerBase
         var rows = await ordered.Include(item => item.Configuration).Include(item => item.Indicator)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<C88IndicatorPlanResponse>>(true,
-            PagedResponse<C88IndicatorPlanResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+            PagedResponse<C88IndicatorPlanResponse>.Create(rows.Select(item => ToResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("compliance-questions/page")]
@@ -429,6 +431,7 @@ public sealed class C88Controller : ControllerBase
     {
         var visibility = await IndicatorVisibility<C88MappingResponse>();
         if (visibility.Error != null) return visibility.Error;
+        var memberAccess = await GetIndicatorMemberAccessAsync((await CurrentUserAsync())!);
         if (request.NormalizedSortBy is not ("createdat" or "indicatorcode" or "opmsindicator" or "mappingtype"))
             return BadRequest(Fail<PagedResponse<C88MappingResponse>>("SortBy must be createdAt, indicatorCode, opmsIndicator, or mappingType."));
         var query = context.C88OpmsMappings.AsNoTracking().AsQueryable();
@@ -437,7 +440,8 @@ public sealed class C88Controller : ControllerBase
         if (indicatorPublicId.HasValue) query = query.Where(item => item.Indicator.PublicId == indicatorPublicId.Value);
         if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
         if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Indicator.Code.Contains(request.NormalizedSearch)
-            || item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch) || item.Reason.Contains(request.NormalizedSearch));
+            || item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
+            || memberAccess.MappingReason && item.Reason.Contains(request.NormalizedSearch));
         var totalCount = await query.CountAsync();
         var ordered = (request.NormalizedSortBy, request.Descending) switch
         {
@@ -452,7 +456,7 @@ public sealed class C88Controller : ControllerBase
         };
         var rows = await ordered.Include(item => item.Configuration).Include(item => item.Indicator).Include(item => item.OpmsTarget)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
-        return Ok(new ApiResponse<PagedResponse<C88MappingResponse>>(true, PagedResponse<C88MappingResponse>.Create(rows.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+        return Ok(new ApiResponse<PagedResponse<C88MappingResponse>>(true, PagedResponse<C88MappingResponse>.Create(rows.Select(item => ToResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("catalogue-versions")]
@@ -635,6 +639,12 @@ public sealed class C88Controller : ControllerBase
         var validation = ValidatePlan(pair.Indicator!, request);
         if (validation != null) return BadRequest(Fail<Guid>(validation));
         var entity = await context.C88IndicatorPlans.SingleOrDefaultAsync(item => item.C88MunicipalityConfigurationId == pair.Configuration!.Id && item.C88IndicatorId == pair.Indicator!.Id);
+        var requestedMissingExplanation = Clean(request.MissingDataExplanation, 4000);
+        if (!string.Equals(entity?.MissingDataExplanation, requestedMissingExplanation, StringComparison.Ordinal))
+        {
+            var denial = await MemberUpdateDenialAsync(session.User!, "C88_INDICATOR", "PlanMissingDataExplanation");
+            if (denial != null) return Forbidden<Guid>(denial);
+        }
         object? before = null;
         if (entity == null)
         {
@@ -649,7 +659,7 @@ public sealed class C88Controller : ControllerBase
             before = new { entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability };
         }
         entity.BaselineValue = Clean(request.BaselineValue, 1024); entity.MediumTermTarget = Clean(request.MediumTermTarget, 1024);
-        entity.AnnualTarget = Clean(request.AnnualTarget, 1024); entity.MissingDataExplanation = Clean(request.MissingDataExplanation, 4000); entity.EstimatedAvailability = NullableUtc(request.EstimatedAvailability);
+        entity.AnnualTarget = Clean(request.AnnualTarget, 1024); entity.MissingDataExplanation = requestedMissingExplanation; entity.EstimatedAvailability = NullableUtc(request.EstimatedAvailability);
         Audit(entity.PublicId, "SavePlan", before, new { pair.Indicator!.PublicId, entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability, Reason = reason }, session.User!.Id);
         return await SaveId(entity.PublicId, "The plan changed before this update. Reload and retry.");
     }
@@ -739,6 +749,8 @@ public sealed class C88Controller : ControllerBase
         var session = await SessionAsync<Guid>("C88_INDICATOR.MANAGE_MAPPING");
         if (session.Error != null) return session.Error;
         if (!TryReason(request.Reason, out var reason) || !Enum.IsDefined(request.MappingType)) return BadRequest(Fail<Guid>("Mapping type and reason are required."));
+        var memberDenial = await MemberUpdateDenialAsync(session.User!, "C88_INDICATOR", "MappingReason");
+        if (memberDenial != null) return Forbidden<Guid>(memberDenial);
         var pair = await ConfigurationIndicator(request.ConfigurationPublicId, request.IndicatorPublicId, requireEnabled: false);
         if (pair.Error != null) return BadRequest(Fail<Guid>(pair.Error));
         var target = await context.OpmsTargets.SingleOrDefaultAsync(item => item.PublicId == request.OpmsTargetPublicId && !item.IsWithdrawn);
@@ -755,6 +767,14 @@ public sealed class C88Controller : ControllerBase
         var session = await SessionAsync<Guid>("C88_REPORT.CREATE");
         if (session.Error != null) return session.Error;
         if (!TryReason(request.Reason, out var reason)) return BadRequest(Fail<Guid>("Reason is required."));
+        var protectedWrites = new List<string> { "WorkflowReason" };
+        if (!string.IsNullOrWhiteSpace(request.MissingDataExplanation)) protectedWrites.Add("MissingDataExplanation");
+        if (request.DataElementValues?.Any(item => !string.IsNullOrWhiteSpace(item.Value)) == true) protectedWrites.Add("DataElementValue");
+        if (request.DataElementValues?.Any(item => !string.IsNullOrWhiteSpace(item.MissingDataExplanation)) == true) protectedWrites.Add("DataElementMissingDataExplanation");
+        if (request.ComplianceResponses?.Any(item => !string.IsNullOrWhiteSpace(item.Response)) == true) protectedWrites.Add("ComplianceResponse");
+        if (request.ComplianceResponses?.Any(item => !string.IsNullOrWhiteSpace(item.Comment)) == true) protectedWrites.Add("ComplianceComment");
+        var memberDenial = await MemberUpdateDenialAsync(session.User!, "C88_REPORT", protectedWrites.ToArray());
+        if (memberDenial != null) return Forbidden<Guid>(memberDenial);
         var pair = await ConfigurationIndicator(request.ConfigurationPublicId, request.IndicatorPublicId, requireEnabled: true);
         if (pair.Error != null) return BadRequest(Fail<Guid>(pair.Error));
         if (!await HasAssignment(session.User!, pair.Configuration!.Id, pair.Indicator!.Id, C88AssignmentRole.PrimaryCapturer, C88AssignmentRole.Contributor))
@@ -900,7 +920,7 @@ public sealed class C88Controller : ControllerBase
         .Include(item => item.Configuration).Include(item => item.Calendar).Include(item => item.Indicator)
         .Include(item => item.DataElementValues).ThenInclude(item => item.DataElement)
         .Include(item => item.ComplianceResponses).ThenInclude(item => item.ComplianceQuestion)
-        .Include(item => item.WorkflowActions);
+        .Include(item => item.WorkflowActions).ThenInclude(item => item.ActorUser);
 
     private async Task<(ApplicationUser? User, C88IndicatorReport? Report, C88ReportState OriginalState, string? Reason, ActionResult<ApiResponse<Guid>>? Error)> LoadReportCommand(Guid publicId, C88WorkflowCommandRequest request, string permission)
     {
@@ -908,6 +928,8 @@ public sealed class C88Controller : ControllerBase
         if (session.Error != null) return (session.User, null, default, null, session.Error);
         if (!TryVersion(request.RowVersion, out var rowVersion) || !TryReason(request.Reason, out var reason))
             return (session.User, null, default, null, BadRequest(Fail<Guid>("A valid RowVersion and reason are required.")));
+        var memberDenial = await MemberUpdateDenialAsync(session.User!, "C88_REPORT", "WorkflowReason");
+        if (memberDenial != null) return (session.User, null, default, null, Forbidden<Guid>(memberDenial));
         var report = await ReportQuery().SingleOrDefaultAsync(item => item.PublicId == publicId && item.IsCurrent);
         if (report == null) return (session.User, null, default, null, NotFound(Fail<Guid>("Current Circular 88 report not found.")));
         if (!report.Configuration.IsEnabled) return (session.User, null, default, null, Conflict(Fail<Guid>("Circular 88 is disabled for this municipality financial year.")));
@@ -1031,6 +1053,27 @@ public sealed class C88Controller : ControllerBase
     }
 
     private AccessScopeContext Scope() => new(MunicipalityId: tenantContext.MunicipalityId);
+    private async Task<string?> MemberUpdateDenialAsync(ApplicationUser user, string resource, params string[] members)
+    {
+        foreach (var member in members.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var decision = await accessControl.CheckPermissionAsync(user, $"{resource}.{member}.UPDATE", Scope());
+            if (!decision.Allowed) return decision.Reason ?? $"{member} update permission is required.";
+        }
+        return null;
+    }
+    private async Task<C88IndicatorMemberAccess> GetIndicatorMemberAccessAsync(ApplicationUser user)
+    {
+        async Task<bool> Read(string member) => (await accessControl.CheckPermissionAsync(user, $"C88_INDICATOR.{member}.READ", Scope())).Allowed;
+        return new(await Read("PlanMissingDataExplanation"), await Read("MappingReason"));
+    }
+    private async Task<C88ReportMemberAccess> GetReportMemberAccessAsync(ApplicationUser user)
+    {
+        async Task<bool> Read(string member) => (await accessControl.CheckPermissionAsync(user, $"C88_REPORT.{member}.READ", Scope())).Allowed;
+        return new(await Read("CalculatedValue"), await Read("MissingDataExplanation"), await Read("DataElementValue"),
+            await Read("DataElementMissingDataExplanation"), await Read("ComplianceResponse"), await Read("ComplianceComment"),
+            await Read("WorkflowReason"), await Read("WorkflowActor"));
+    }
     private void Audit(Guid publicId, string action, object? before, object after, string userId) => workflow.QueueAuditTrail("C88", publicId.ToString(), action, before, after, userId, PerformanceApiSupport.GetIpAddress(HttpContext));
     private ActionResult<ApiResponse<Guid>> OkId(Guid id) => Ok(new ApiResponse<Guid>(true, id));
 
@@ -1095,10 +1138,13 @@ public sealed class C88Controller : ControllerBase
     private static C88CatalogueItemResponse ToResponse(C88CatalogueItem item) => new(item.PublicId, item.CatalogueVersion.PublicId, item.Kind, item.Code, item.Name, item.Description, item.ParentItem?.PublicId, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion));
     private static C88IndicatorResponse ToResponse(C88Indicator item) => new(item.PublicId, item.CatalogueVersion.PublicId, item.Code, item.Name, item.Definition, item.OfficialTechnicalIndicatorDescription, item.SectorItem?.PublicId, item.OutcomeItem?.PublicId, item.IndicatorTypeItem?.PublicId, item.ValueType, item.CalculationOperator, item.OfficialFormulaText, item.RequiresBaseline, item.RequiresMediumTermTarget, item.RequiresAnnualTarget, item.IsActive, Convert.ToBase64String(item.RowVersion), item.DataElements.OrderBy(value => value.Sequence).Select(value => new C88DataElementResponse(value.PublicId, value.Code, value.Name, value.Description, value.ValueType, value.IsRequired, value.Sequence, Convert.ToBase64String(value.RowVersion))).ToArray(), item.Applicability.Select(value => new C88ApplicabilityResponse(value.PublicId, value.MunicipalCategoryItem.PublicId, value.ReadinessTierItem?.PublicId, value.IsApplicable, value.Notes)).ToArray());
     private static C88ComplianceQuestionResponse ToResponse(C88ComplianceQuestion item) => new(item.PublicId, item.CatalogueVersion.PublicId, item.ReportTypeItem.PublicId, item.ResponseTypeItem.PublicId, item.Code, item.Prompt, item.IsRequired, item.Sequence, item.IsActive, Convert.ToBase64String(item.RowVersion));
-    private static C88IndicatorPlanResponse ToResponse(C88IndicatorPlan item) => new(item.PublicId, item.Configuration.PublicId, item.Indicator.PublicId, item.Indicator.Code, item.BaselineValue, item.MediumTermTarget, item.AnnualTarget, item.MissingDataExplanation, item.EstimatedAvailability, Convert.ToBase64String(item.RowVersion));
+    private static C88IndicatorPlanResponse ToResponse(C88IndicatorPlan item, C88IndicatorMemberAccess access) => new(item.PublicId, item.Configuration.PublicId, item.Indicator.PublicId, item.Indicator.Code, item.BaselineValue, item.MediumTermTarget, item.AnnualTarget, access.PlanMissingDataExplanation ? item.MissingDataExplanation : null, item.EstimatedAvailability, Convert.ToBase64String(item.RowVersion));
     private static C88ReportingCalendarResponse ToResponse(C88ReportingCalendar item) => new(item.PublicId, item.Configuration.PublicId, item.ReportTypeItem.PublicId, item.ReportingPeriod?.PublicId, item.Code, item.Name, item.OpensAt, item.ClosesAt, item.DueAt, item.IsActive, Convert.ToBase64String(item.RowVersion));
-    private static C88IndicatorReportResponse ToResponse(C88IndicatorReport item) => new(item.PublicId, item.ReportFamilyId, item.VersionNumber, item.IsCurrent, item.Configuration.PublicId, item.Calendar.PublicId, item.Indicator.PublicId, item.Indicator.Code, item.State, item.CurrentStageSequence, item.CalculatedValue, item.MissingDataExplanation, item.EstimatedAvailability, item.CreatedAt, item.FinalSubmittedAt, Convert.ToBase64String(item.RowVersion), item.DataElementValues.Select(value => new C88DataElementValueResponse(value.PublicId, value.DataElement.PublicId, value.Value, value.MissingDataExplanation, value.EstimatedAvailability)).ToArray(), item.ComplianceResponses.Select(value => new C88ComplianceResponseResponse(value.PublicId, value.ComplianceQuestion.PublicId, value.Response, value.Comment)).ToArray(), item.WorkflowActions.OrderBy(value => value.OccurredAt).Select(value => new C88WorkflowActionResponse(value.PublicId, value.FromStageSequence, value.ToStageSequence, value.Action, value.Reason, value.OccurredAt)).ToArray());
+    private static C88IndicatorReportResponse ToResponse(C88IndicatorReport item, C88ReportMemberAccess access) => new(item.PublicId, item.ReportFamilyId, item.VersionNumber, item.IsCurrent, item.Configuration.PublicId, item.Calendar.PublicId, item.Indicator.PublicId, item.Indicator.Code, item.State, item.CurrentStageSequence, access.CalculatedValue ? item.CalculatedValue : null, access.MissingDataExplanation ? item.MissingDataExplanation : null, item.EstimatedAvailability, item.CreatedAt, item.FinalSubmittedAt, Convert.ToBase64String(item.RowVersion), item.DataElementValues.Select(value => new C88DataElementValueResponse(value.PublicId, value.DataElement.PublicId, access.DataElementValue ? value.Value : null, access.DataElementMissingDataExplanation ? value.MissingDataExplanation : null, value.EstimatedAvailability)).ToArray(), item.ComplianceResponses.Select(value => new C88ComplianceResponseResponse(value.PublicId, value.ComplianceQuestion.PublicId, access.ComplianceResponse ? value.Response : null, access.ComplianceComment ? value.Comment : null)).ToArray(), item.WorkflowActions.OrderBy(value => value.OccurredAt).Select(value => new C88WorkflowActionResponse(value.PublicId, value.FromStageSequence, value.ToStageSequence, value.Action, access.WorkflowReason ? value.Reason : null, access.WorkflowActor ? value.ActorUser.PublicId : null, access.WorkflowActor ? value.ActorUser.FullName : null, value.OccurredAt)).ToArray());
     private static C88AssignmentResponse ToResponse(C88Assignment item) => new(item.PublicId, item.Configuration.PublicId, item.Indicator.PublicId, item.MunicipalEmployee.PublicId, $"{item.MunicipalEmployee.FirstName} {item.MunicipalEmployee.LastName}".Trim(), item.Role, item.EffectiveFrom, item.EffectiveTo, item.IsActive, Convert.ToBase64String(item.RowVersion));
     private static C88WorkflowResponse ToResponse(C88WorkflowDefinition item) => new(item.PublicId, item.Configuration.PublicId, item.VersionNumber, item.IsCurrent, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), item.Stages.OrderBy(value => value.Sequence).Select(value => new C88WorkflowStageResponse(value.PublicId, value.Sequence, value.Kind, value.Name, value.RequiredRole, value.IsActive)).ToArray());
-    private static C88MappingResponse ToResponse(C88OpmsMapping item) => new(item.PublicId, item.Configuration.PublicId, item.Indicator.PublicId, item.OpmsTarget.PublicId, item.OpmsTarget.IndicatorNumber, item.MappingType, item.Reason, item.IsActive, Convert.ToBase64String(item.RowVersion));
+    private static C88MappingResponse ToResponse(C88OpmsMapping item, C88IndicatorMemberAccess access) => new(item.PublicId, item.Configuration.PublicId, item.Indicator.PublicId, item.OpmsTarget.PublicId, item.OpmsTarget.IndicatorNumber, item.MappingType, access.MappingReason ? item.Reason : null, item.IsActive, Convert.ToBase64String(item.RowVersion));
+    private sealed record C88IndicatorMemberAccess(bool PlanMissingDataExplanation, bool MappingReason);
+    private sealed record C88ReportMemberAccess(bool CalculatedValue, bool MissingDataExplanation, bool DataElementValue,
+        bool DataElementMissingDataExplanation, bool ComplianceResponse, bool ComplianceComment, bool WorkflowReason, bool WorkflowActor);
 }

@@ -175,6 +175,74 @@ public class C88ControllerTests
     }
 
     [Fact]
+    public async Task Sensitive_members_are_masked_from_reads_query_inference_and_direct_writes()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var manager = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, manager, seed);
+        Payload(await manager.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            "10", "20", "30", "plan-secret", DateTime.UtcNow.AddDays(7), "Create protected plan", null))).Should().NotBeEmpty();
+        Payload(await manager.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Target.PublicId, C88MappingType.Direct, "mapping-secret", true, null))).Should().NotBeEmpty();
+        Payload(await manager.CreateWorkflow(new SaveC88WorkflowRequest(module.Configuration.PublicId, DateTime.UtcNow.AddDays(-1), null,
+            [new(1, C88WorkflowStageKind.Capturer, "Capture", C88AssignmentRole.PrimaryCapturer, true),
+             new(2, C88WorkflowStageKind.ReviewerVerifier, "Verify", C88AssignmentRole.ReviewerVerifier, true),
+             new(3, C88WorkflowStageKind.FinalSubmission, "Final", C88AssignmentRole.FinalSubmitter, true)],
+            "Create protected workflow", null, null))).Should().NotBeEmpty();
+        Payload(await manager.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Employee.PublicId, C88AssignmentRole.PrimaryCapturer, DateTime.UtcNow.AddDays(-2), null, true, "Assign capturer", null))).Should().NotBeEmpty();
+        var calendarId = Payload(await manager.CreateCalendar(new SaveC88ReportingCalendarRequest(module.Configuration.PublicId,
+            module.ReportType.PublicId, null, "SEC", "Protected report", DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1),
+            DateTime.UtcNow.AddDays(2), true, "Open protected calendar", null)));
+        var reportId = Payload(await manager.CreateReportVersion(new CreateC88ReportVersionRequest(module.Configuration.PublicId,
+            calendarId, module.Indicator.PublicId, null, null, "report-missing-secret", DateTime.UtcNow.AddDays(5),
+            [new(module.Numerator.PublicId, "45", "element-missing-secret", DateTime.UtcNow.AddDays(4)),
+             new(module.Denominator.PublicId, "60", null, null)],
+            [new(module.Question.PublicId, "true", "compliance-comment-secret")], "workflow-reason-secret")));
+
+        var denied = Controller(context, seed.User, seed.Municipality.Id,
+            permissionRule: permission => permission is "C88_INDICATOR.READ" or "C88_REPORT.READ");
+        var deniedPlan = Payload(await denied.GetPlansPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Single();
+        deniedPlan.MissingDataExplanation.Should().BeNull();
+        var deniedMapping = Payload(await denied.GetMappingsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Single();
+        deniedMapping.Reason.Should().BeNull();
+        Payload(await denied.GetMappingsPage(new PagedQueryRequest { Search = "mapping-secret" }, seed.Year.PublicId)).TotalCount.Should().Be(0);
+        var deniedReport = Payload(await denied.GetReportsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Single();
+        deniedReport.PublicId.Should().Be(reportId);
+        deniedReport.CalculatedValue.Should().BeNull();
+        deniedReport.MissingDataExplanation.Should().BeNull();
+        deniedReport.DataElementValues.Should().OnlyContain(item => item.Value == null && item.MissingDataExplanation == null);
+        deniedReport.ComplianceResponses.Should().OnlyContain(item => item.Response == null && item.Comment == null);
+        deniedReport.WorkflowActions.Should().OnlyContain(item => item.Reason == null && item.ActorUserPublicId == null && item.ActorName == null);
+
+        var allowed = Controller(context, seed.User, seed.Municipality.Id,
+            permissionRule: permission => permission.EndsWith(".READ", StringComparison.OrdinalIgnoreCase));
+        Payload(await allowed.GetPlansPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Single().MissingDataExplanation.Should().Be("plan-secret");
+        Payload(await allowed.GetMappingsPage(new PagedQueryRequest { Search = "mapping-secret" }, seed.Year.PublicId)).Items.Single().Reason.Should().Be("mapping-secret");
+        var allowedReport = Payload(await allowed.GetReportsPage(new PagedQueryRequest(), seed.Year.PublicId)).Items.Single();
+        allowedReport.CalculatedValue.Should().Be("75");
+        allowedReport.MissingDataExplanation.Should().Be("report-missing-secret");
+        allowedReport.DataElementValues.Should().Contain(item => item.Value == "45" && item.MissingDataExplanation == "element-missing-secret");
+        allowedReport.ComplianceResponses.Should().ContainSingle(item => item.Response == "true" && item.Comment == "compliance-comment-secret");
+        allowedReport.WorkflowActions.Should().ContainSingle(item => item.Reason == "workflow-reason-secret"
+            && item.ActorUserPublicId == seed.User.PublicId && item.ActorName == seed.User.FullName);
+
+        var writeDenied = Controller(context, seed.User, seed.Municipality.Id, permissionRule: permission =>
+            permission is not "C88_INDICATOR.PlanMissingDataExplanation.UPDATE"
+                and not "C88_INDICATOR.MappingReason.UPDATE"
+                and not "C88_REPORT.WorkflowReason.UPDATE");
+        (await writeDenied.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            "11", "21", "31", "changed-secret", DateTime.UtcNow.AddDays(8), "Attempt protected plan edit", deniedPlan.RowVersion))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await writeDenied.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId, module.Indicator.PublicId,
+            seed.Target.PublicId, C88MappingType.Contributing, "denied-mapping-secret", true, null))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await writeDenied.Submit(reportId, new(allowedReport.RowVersion, "denied-workflow-secret"))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
     public async Task Report_page_rejects_unknown_sort_fields()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
