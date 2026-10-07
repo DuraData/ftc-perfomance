@@ -132,7 +132,9 @@ public sealed class RegisterPaginationTests
             {
                 Id = $"blob-{index}", StorageKey = $"test/blob-{index}", ContentType = "application/pdf",
                 SizeInBytes = 100 + index, Sha256 = new string((char)('a' + index), 64), SignatureVerified = true,
-                ScanStatus = index == 1 ? "Pending" : "Clean", IsQuarantined = index == 1
+                ScanStatus = index == 1 ? "Pending" : "Clean", IsQuarantined = index == 1,
+                ScannerProvider = "ProtectedScanner", ScannerReference = $"protected-reference-{index}",
+                ScanDetail = $"protected-detail-{index}"
             };
             context.Add(blob);
             context.PoeFiles.Add(new PoeFile
@@ -147,9 +149,11 @@ public sealed class RegisterPaginationTests
         context.PoeFiles.Add(new PoeFile { Id = "outside-evidence", SubmissionKind = SubmissionKind.Opms, SubmissionId = outsideSubmission.Id, FileName = "water-outside.pdf", EvidenceBlobId = outsideBlob.Id, Blob = outsideBlob, UploadedByUserId = user.Id, UploadedByUser = user });
         await context.SaveChangesAsync();
 
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_POE.READ" };
         var access = new Mock<IAccessControlService>();
-        access.Setup(service => service.CheckPermissionAsync(user, "OPMS_SUBMISSION.READ", It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "Allowed" : "Denied", [], [], []));
         var controller = new OpmsSubmissionsController(
             context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
             Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>(), Mock.Of<ISubmissionValueService>(),
@@ -167,7 +171,28 @@ public sealed class RegisterPaginationTests
         var envelope = Assert.IsType<ApiResponse<PagedResponse<PoeFileResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal(2, envelope.Data!.TotalCount);
         Assert.Equal(2, envelope.Data.TotalPages);
-        Assert.Equal("evidence-2", Assert.Single(envelope.Data.Items).Id);
+        var deniedMetadata = Assert.Single(envelope.Data.Items);
+        Assert.Equal("evidence-2", deniedMetadata.Id);
+        Assert.Null(deniedMetadata.UploadedByUserId);
+        Assert.Null(deniedMetadata.UploadedByName);
+        Assert.Null(deniedMetadata.ScannerProvider);
+        Assert.Null(deniedMetadata.ScannerReference);
+        Assert.Null(deniedMetadata.ScanDetail);
+
+        foreach (var member in new[] { "UploadedByUserId", "UploadedByName", "ScannerProvider", "ScannerReference", "ScanDetail" })
+            allowedCodes.Add($"OPMS_POE.{member}.READ");
+        var refreshedResult = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 1, Search = "water", SortBy = "uploadedAt", SortDirection = "desc"
+        }, scanStatus: "Clean", quarantined: false, active: true);
+        var refreshed = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<PoeFileResponse>>>(
+            Assert.IsType<OkObjectResult>(refreshedResult.Result).Value).Data!.Items);
+        Assert.Equal(user.Id, refreshed.UploadedByUserId);
+        Assert.Equal(user.FullName, refreshed.UploadedByName);
+        Assert.Equal("ProtectedScanner", refreshed.ScannerProvider);
+        Assert.Equal("protected-reference-2", refreshed.ScannerReference);
+        Assert.Equal("protected-detail-2", refreshed.ScanDetail);
+        access.Verify(service => service.CheckPermissionAsync(user, "OPMS_POE.READ", It.IsAny<AccessScopeContext?>()), Times.AtLeastOnce);
         var retired = Assert.IsType<ObjectResult>(controller.GetAttachments(submission.Id).Result);
         Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
 

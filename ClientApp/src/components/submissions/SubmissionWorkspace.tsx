@@ -531,6 +531,7 @@ export function SubmissionWorkspace({
   const targetUnit = currentSubmission.target.unitOfMeasure.symbol || currentSubmission.target.unitOfMeasure.name;
   const isConsolidationPeriod = currentSubmission.quarter === 'Mid-Year' || currentSubmission.quarter === 'Annual';
   const resourceCode = `${submissionType}_SUBMISSION`;
+  const poeResourceCode = `${submissionType}_POE`;
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
@@ -540,6 +541,8 @@ export function SubmissionWorkspace({
   const canEditCorrectiveMeasure = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'CorrectiveMeasure');
   const canEditSubmissionMembers = canEditActual || canEditVarianceReason || canEditCorrectiveMeasure;
   const canManageConsolidation = canEditActual;
+  const canReadPoeUploader = security.canReadField(poeResourceCode, 'UploadedByUserId') || security.canReadField(poeResourceCode, 'UploadedByName');
+  const canReadPoeScanDetail = security.canReadField(poeResourceCode, 'ScanDetail');
 
   const smallTitle = `${titlePrefix}`;
   const pageTitle = `Submission: ${submissionType}-${currentSubmission.quarter}-${currentSubmission.id.padStart(4, '0')}`;
@@ -562,12 +565,12 @@ export function SubmissionWorkspace({
     size: attachment.fileSize,
     type: attachment.fileType,
     uploadedAt: attachment.uploadedAt,
-    uploadedBy: attachment.uploadedBy.displayName,
+    uploadedBy: canReadPoeUploader ? attachment.uploadedBy?.displayName : undefined,
     documentType: attachment.documentType,
     url: attachment.url,
     scanStatus: attachment.scanStatus,
     isQuarantined: attachment.isQuarantined,
-    scanDetail: attachment.scanDetail,
+    scanDetail: canReadPoeScanDetail ? attachment.scanDetail : undefined,
     assessments: attachment.assessments,
     rowVersion: attachment.rowVersion,
     replacementOf: attachment.replacementOf,

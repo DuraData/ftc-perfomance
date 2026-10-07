@@ -529,16 +529,18 @@ public static class PerformanceApiSupport
             audit.UserAgent,
             audit.SessionId);
 
-    public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context) =>
-        new(
+    public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context, PoeResponseMemberAccess? memberAccess = null)
+    {
+        memberAccess ??= PoeResponseMemberAccess.Full;
+        return new(
             file.Id,
             file.SubmissionKind.ToString(),
             file.SubmissionId,
             file.FileName,
             file.Blob.ContentType,
             file.Blob.SizeInBytes,
-            file.UploadedByUserId,
-            file.UploadedByUser?.FullName,
+            memberAccess.UploadedByUserId ? file.UploadedByUserId : null,
+            memberAccess.UploadedByName ? file.UploadedByUser?.FullName : null,
             file.UploadedAt,
             file.IsActive && !file.Blob.IsContentDeleted && file.Blob.ScanStatus == "Clean" && !file.Blob.IsQuarantined ? BuildProtectedFileUrl(context, file) : string.Empty)
         {
@@ -548,9 +550,9 @@ public static class PerformanceApiSupport
             SignatureVerified = file.Blob.SignatureVerified,
             ScanStatus = file.Blob.ScanStatus,
             IsQuarantined = file.Blob.IsQuarantined,
-            ScannerProvider = file.Blob.ScannerProvider,
-            ScannerReference = file.Blob.ScannerReference,
-            ScanDetail = file.Blob.ScanDetail,
+            ScannerProvider = memberAccess.ScannerProvider ? file.Blob.ScannerProvider : null,
+            ScannerReference = memberAccess.ScannerReference ? file.Blob.ScannerReference : null,
+            ScanDetail = memberAccess.ScanDetail ? file.Blob.ScanDetail : null,
             ScannedAt = file.Blob.ScannedAt,
             RetainUntil = file.RetainUntil,
             Assessments = file.Assessments.OrderBy(item => item.AssessedAt).Select(item => new PoeEvidenceAssessmentResponse(item.PublicId, item.Outcome.ToString(), item.Comment, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.CorrelationId)).ToArray(),
@@ -562,6 +564,7 @@ public static class PerformanceApiSupport
             Disposals = file.DisposalEvents.GroupBy(item => item.DisposalId).Select(group => ToDisposalResponse(group.OrderBy(item => item.OccurredAt).ToArray())).OrderByDescending(item => item.RequestedAt).ToArray()
             , IsContentDeleted = file.Blob.IsContentDeleted
         };
+    }
 
     private static PoeEvidenceReplacementResponse ToReplacementResponse(PoeEvidenceReplacement item) => new(item.PublicId, item.SupersededPoeFile.PublicId, item.SupersededPoeFile.FileName, item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName, item.Reason, item.ReplacedByUserId, item.ReplacedByUser?.FullName, item.ReplacedAt, item.CorrelationId);
     private static PoeLegalHoldResponse ToLegalHoldResponse(PoeLegalHoldEvent[] events)

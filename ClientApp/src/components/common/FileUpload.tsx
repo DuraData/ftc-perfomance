@@ -269,6 +269,7 @@ export function FileUpload({
                 <p className="text-xs text-secondary-500 dark:text-secondary-400">
                   {formatFileSize(file.size)}
                   {file.uploadedAt && ` • Uploaded ${new Date(file.uploadedAt).toLocaleString()}`}
+                  {file.uploadedBy && ` • by ${file.uploadedBy}`}
                 </p>
                 {file.scanStatus && <p className={`mt-1 text-xs font-medium ${file.isQuarantined ? 'text-warning-700 dark:text-warning-300' : 'text-success-700 dark:text-success-300'}`}>Malware scan: {file.scanStatus}{file.scanDetail ? ` · ${file.scanDetail}` : ''}</p>}
                 {file.isActive === false && <p className="mt-1 text-xs font-medium text-secondary-600 dark:text-secondary-300">Retired evidence · retained until {file.retainUntil ? new Date(file.retainUntil).toLocaleDateString() : 'policy date unavailable'}</p>}

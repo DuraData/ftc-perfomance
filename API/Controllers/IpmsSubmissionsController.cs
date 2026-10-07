@@ -437,7 +437,8 @@ public class IpmsSubmissionsController : ControllerBase
             .FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "IPMS submission not found"));
 
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.READ", BuildScope(submission));
+        var scope = BuildScope(submission);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.READ", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, decision.Reason));
 
         var query = _context.PoeFiles
@@ -467,9 +468,10 @@ public class IpmsSubmissionsController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "SortBy must be uploadedAt, fileName, fileSize, scanStatus, or retainUntil."));
 
         var files = await ordered.IncludePoeGovernance().Skip(request.Offset).Take(request.PageSize).ToListAsync();
+        var memberAccess = await GetPoeMemberAccessAsync(user, scope);
 
         return Ok(new ApiResponse<PagedResponse<PoeFileResponse>>(true,
-            PagedResponse<PoeFileResponse>.Create(files.Select(item => item.ToResponse(HttpContext)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<PoeFileResponse>.Create(files.Select(item => item.ToResponse(HttpContext, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("{id}/attachments")]
@@ -532,7 +534,7 @@ public class IpmsSubmissionsController : ControllerBase
         var created = await _context.PoeFiles.IncludePoeGovernance().FirstAsync(item => item.Id == entity.Id);
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", entity.Id, "Upload", null, created.ToResponse(HttpContext), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await _workflowGovernanceService.CreateWorkflowNotificationsAsync(GetRelevantUserIds(submission), NotificationType.Submission, "IPMS evidence uploaded", $"A POE file was uploaded for IPMS submission '{id}'.", "IpmsSubmission", id);
-        return Ok(new ApiResponse<PoeFileResponse>(true, created.ToResponse(HttpContext)));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(created, user, BuildScope(submission))));
     }
 
     [HttpGet("{id}/attachments/{attachmentId}/content")]
@@ -573,7 +575,7 @@ public class IpmsSubmissionsController : ControllerBase
         evidence.Blob.ScanStatus = scan.Status; evidence.Blob.IsQuarantined = !scan.IsClean; evidence.Blob.ScannerProvider = scan.Provider; evidence.Blob.ScannerReference = scan.ProviderReference; evidence.Blob.ScanDetail = scan.Detail; evidence.Blob.ScannedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "MalwareRescan", before, new { evidence.Blob.ScanStatus, evidence.Blob.IsQuarantined, evidence.Blob.ScannerReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, evidence.ToResponse(HttpContext), scan.IsClean ? "Evidence released after a clean scan." : "Evidence remains quarantined."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), scan.IsClean ? "Evidence released after a clean scan." : "Evidence remains quarantined."));
     }
 
     [HttpPost("{id}/attachments/{attachmentId}/assessments")]
@@ -595,7 +597,7 @@ public class IpmsSubmissionsController : ControllerBase
         evidence.Assessments.Add(assessment);
         await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "Assess:" + request.Outcome, null, new { assessment.PublicId, assessment.Outcome, assessment.Comment, assessment.AssessedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, evidence.ToResponse(HttpContext), "Evidence assessment recorded."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Evidence assessment recorded."));
     }
 
     [HttpPost("{id}/attachments/{attachmentId}/replace")]
@@ -623,7 +625,7 @@ public class IpmsSubmissionsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before replacement could be recorded")); }
         catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "One of these evidence records already participates in a replacement")); }
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", superseded.Id, "Replace", new { superseded.PublicId, superseded.FileName }, new { ledger.PublicId, ReplacementPublicId = replacement.PublicId, ledger.Reason, ledger.ReplacedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, superseded.ToResponse(HttpContext), "Evidence replacement recorded; the prior record remains retained in immutable history."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(superseded, user, BuildScope(submission)), "Evidence replacement recorded; the prior record remains retained in immutable history."));
     }
 
     [HttpPost("{id}/attachments/{attachmentId}/legal-holds")]
@@ -645,7 +647,7 @@ public class IpmsSubmissionsController : ControllerBase
         var hold = new PoeLegalHoldEvent { HoldId = Guid.NewGuid(), MunicipalityId = submission.MunicipalityId!.Value, PoeFileId = evidence.Id, PoeFile = evidence, Action = PoeLegalHoldAction.Placed, HoldReference = request.HoldReference.Trim(), Reason = request.Reason.Trim(), ActorUserId = user.Id, ActorUser = user, OccurredAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
         evidence.LegalHoldEvents.Add(hold); _context.PoeLegalHoldEvents.Add(hold); await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "LegalHoldPlaced", null, new { hold.HoldId, hold.HoldReference, hold.Reason, hold.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, evidence.ToResponse(HttpContext), "Legal hold placed."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Legal hold placed."));
     }
 
     [HttpPost("{id}/attachments/{attachmentId}/legal-holds/{holdId:guid}/release")]
@@ -668,7 +670,7 @@ public class IpmsSubmissionsController : ControllerBase
         evidence.LegalHoldEvents.Add(release); _context.PoeLegalHoldEvents.Add(release);
         try { await _context.SaveChangesAsync(); } catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Legal hold was released concurrently")); }
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "LegalHoldReleased", new { holdId, placed.HoldReference }, new { release.Reason, release.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, evidence.ToResponse(HttpContext), "Legal hold released."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Legal hold released."));
     }
 
     [HttpPost("{id}/attachments/{attachmentId}/disposals")]
@@ -691,7 +693,7 @@ public class IpmsSubmissionsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before disposal could be requested")); }
         catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "A disposal request was recorded concurrently")); }
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "DisposalRequested", null, new { disposal.DisposalId, disposal.ApprovalReference, disposal.Reason, disposal.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Accepted(new ApiResponse<PoeFileResponse>(true, evidence.ToResponse(HttpContext), "Evidence disposal was queued for controlled storage processing."));
+        return Accepted(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Evidence disposal was queued for controlled storage processing."));
     }
 
     private bool TrySetPoeRowVersion(PoeFile file, string value)
@@ -1034,6 +1036,22 @@ public class IpmsSubmissionsController : ControllerBase
 
     private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user) =>
         ToAuthorizedResponse(submission, (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase));
+
+    private async Task<PoeFileResponse> ToAuthorizedPoeResponseAsync(PoeFile file, ApplicationUser user, AccessScopeContext scope)
+        => file.ToResponse(HttpContext, await GetPoeMemberAccessAsync(user, scope));
+
+    private async Task<PoeResponseMemberAccess> GetPoeMemberAccessAsync(ApplicationUser user, AccessScopeContext scope)
+    {
+        async Task<bool> CanReadAsync(string memberCode)
+            => (await _accessControlService.CheckPermissionAsync(user, $"IPMS_POE.{memberCode}.READ", scope))?.Allowed == true;
+
+        return new PoeResponseMemberAccess(
+            await CanReadAsync("UploadedByUserId"),
+            await CanReadAsync("UploadedByName"),
+            await CanReadAsync("ScannerProvider"),
+            await CanReadAsync("ScannerReference"),
+            await CanReadAsync("ScanDetail"));
+    }
 
     private async Task<string?> ConsolidationPermissionDenialAsync(ApplicationUser user, IpmsSubmission submission, bool update)
     {

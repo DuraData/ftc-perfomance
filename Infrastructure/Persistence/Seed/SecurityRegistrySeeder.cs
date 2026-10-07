@@ -150,6 +150,16 @@ public static class SecurityRegistrySeeder
             Member("IPMS_SUBMISSION", "CorrectiveMeasure", "Corrective Measure"),
             Member("IPMS_SUBMISSION", "SubmittedDate", "Submitted Date", systemManaged: true),
             Member("IPMS_SUBMISSION", "InternalAuditObservation", "Internal Audit Observation", sensitive: true),
+            Member("OPMS_POE", "UploadedByUserId", "Evidence Uploader Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_POE", "UploadedByName", "Evidence Uploader Name", sensitive: true, systemManaged: true),
+            Member("OPMS_POE", "ScannerProvider", "Evidence Scanner Provider", sensitive: true, systemManaged: true),
+            Member("OPMS_POE", "ScannerReference", "Evidence Scanner Reference", sensitive: true, systemManaged: true),
+            Member("OPMS_POE", "ScanDetail", "Evidence Scanner Detail", sensitive: true, systemManaged: true),
+            Member("IPMS_POE", "UploadedByUserId", "Evidence Uploader Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_POE", "UploadedByName", "Evidence Uploader Name", sensitive: true, systemManaged: true),
+            Member("IPMS_POE", "ScannerProvider", "Evidence Scanner Provider", sensitive: true, systemManaged: true),
+            Member("IPMS_POE", "ScannerReference", "Evidence Scanner Reference", sensitive: true, systemManaged: true),
+            Member("IPMS_POE", "ScanDetail", "Evidence Scanner Detail", sensitive: true, systemManaged: true),
             Member("EMPLOYEE", "EmployeeNumber", "Employee Number", sensitive: true),
             Member("EMPLOYEE", "SalaryReference", "Salary Reference", sensitive: true),
             Member("EMPLOYEE", "EmailAddress", "Email Address", sensitive: true),
@@ -194,6 +204,8 @@ public static class SecurityRegistrySeeder
                      || string.Equals(item.ResourceCode, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "OPMS_POE", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "IPMS_POE", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "IDP_STAKEHOLDER", StringComparison.OrdinalIgnoreCase)
                         && new[] { "ContactPerson", "ContactEmail" }.Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)

@@ -803,7 +803,7 @@ export interface Attachment {
   fileName: string;
   fileSize: number;
   fileType: string;
-  uploadedBy: Employee;
+  uploadedBy?: Employee;
   uploadedAt: string;
   documentType: string;
   url: string;
@@ -3327,7 +3327,7 @@ export interface IdpDocument {
   versionNumber: number;
   isApproved: boolean;
   uploadedAt: string;
-  uploadedByUserId: string;
+  uploadedByUserId?: string | null;
   uploadedByName?: string | null;
   sha256: string;
   signatureVerified: boolean;

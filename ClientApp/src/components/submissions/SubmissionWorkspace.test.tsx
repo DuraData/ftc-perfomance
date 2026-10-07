@@ -110,6 +110,33 @@ describe('SubmissionWorkspace member security', () => {
     expect(api.getOpmsSubmissionAttachmentsPage).toHaveBeenLastCalledWith('7', expect.objectContaining({ page: 2, pageSize: 25, sortBy: 'uploadedAt' }));
   });
 
+  it('does not render scanner detail supplied by the API without the POE member grant', async () => {
+    api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ id: 'evidence-1', publicId: 'public-1', fileName: 'protected.pdf', fileSize: 10, fileType: 'application/pdf', uploadedBy: { id: 'private-user', displayName: 'Private Uploader' }, uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence', url: '/content/1', scanStatus: 'ScanFailed', scanDetail: 'Private scanner diagnostic' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    await waitFor(() => expect(screen.getByText('protected.pdf')).toBeInTheDocument());
+    expect(screen.queryByText(/Private scanner diagnostic/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Private Uploader/)).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'ScanDetail');
+  });
+
+  it('renders scanner detail after the corresponding POE member grant is effective', async () => {
+    security.canReadField.mockImplementation((resource: string, member: string) => resource === 'OPMS_POE' && (member === 'ScanDetail' || member === 'UploadedByName'));
+    api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ id: 'evidence-1', publicId: 'public-1', fileName: 'visible.pdf', fileSize: 10, fileType: 'application/pdf', uploadedBy: { id: 'authorized-user', displayName: 'Authorized Uploader' }, uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence', url: '/content/1', scanStatus: 'ScanFailed', scanDetail: 'Authorized scanner diagnostic' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    await waitFor(() => expect(screen.getByText(/Authorized scanner diagnostic/)).toBeInTheDocument());
+    expect(screen.getByText(/Authorized Uploader/)).toBeInTheDocument();
+  });
+
   it('loads and navigates the bounded consolidation history register', async () => {
     security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
     const midyear = { ...submission, quarter: 'Mid-Year', systemSuggestedActualPerformance: '50' } as OPMSSubmission;

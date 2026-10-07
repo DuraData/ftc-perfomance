@@ -466,7 +466,7 @@ function AttachmentsTab({ target }: { target: OPMSTarget }) {
     type: file.fileType,
     progress: 100,
     uploadedAt: file.uploadedAt,
-    uploadedBy: file.uploadedBy.displayName,
+    uploadedBy: file.uploadedBy?.displayName,
     documentType: file.documentType,
     url: file.url,
   }));

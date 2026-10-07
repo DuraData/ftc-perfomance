@@ -7,7 +7,7 @@ public record PoeFileResponse(
     string FileName,
     string? ContentType,
     long SizeInBytes,
-    string UploadedByUserId,
+    string? UploadedByUserId,
     string? UploadedByName,
     DateTime UploadedAt,
     string Url)
@@ -37,3 +37,13 @@ public record PoeEvidenceAssessmentResponse(Guid PublicId, string Outcome, strin
 public record PoeEvidenceReplacementResponse(Guid PublicId, Guid SupersededEvidencePublicId, string SupersededFileName, Guid ReplacementEvidencePublicId, string ReplacementFileName, string Reason, string ReplacedByUserId, string? ReplacedByName, DateTime ReplacedAt, string CorrelationId);
 public record PoeLegalHoldResponse(Guid HoldId, string HoldReference, bool IsActive, string PlacedReason, string PlacedByUserId, string? PlacedByName, DateTime PlacedAt, string? ReleasedReason, string? ReleasedByUserId, string? ReleasedByName, DateTime? ReleasedAt);
 public record PoeDisposalResponse(Guid DisposalId, string Status, string ApprovalReference, string Reason, string RequestedByUserId, string? RequestedByName, DateTime RequestedAt, DateTime? CompletedAt, DateTime? FailedAt, string? Detail);
+
+public sealed record PoeResponseMemberAccess(
+    bool UploadedByUserId,
+    bool UploadedByName,
+    bool ScannerProvider,
+    bool ScannerReference,
+    bool ScanDetail)
+{
+    public static PoeResponseMemberAccess Full { get; } = new(true, true, true, true, true);
+}
