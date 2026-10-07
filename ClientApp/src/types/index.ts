@@ -3101,11 +3101,11 @@ export interface IdpStrategicObjective {
   targetValue: number;
   responsibleDepartmentId?: number | null;
   responsibleDepartmentName?: string | null;
-  strategicOwnerUserId?: string | null;
+  strategicOwnerUserPublicId?: string | null;
   strategicOwnerName?: string | null;
   startDate: string;
   endDate: string;
-  budgetAllocation: number;
+  budgetAllocation?: number | null;
   sortOrder: number;
 }
 
@@ -3130,9 +3130,9 @@ export interface IdpProgramme {
   description: string;
   responsibleDepartmentId?: number | null;
   responsibleDepartmentName?: string | null;
-  plannedBudget: number;
-  approvedBudget: number;
-  actualExpenditure: number;
+  plannedBudget?: number | null;
+  approvedBudget?: number | null;
+  actualExpenditure?: number | null;
 }
 
 export interface IdpProject {
@@ -3146,8 +3146,8 @@ export interface IdpProject {
   category: string;
   departmentId?: number | null;
   departmentName?: string | null;
-  budget: number;
-  fundingSource: string;
+  budget?: number | null;
+  fundingSource?: string | null;
   startDate: string;
   endDate: string;
   status: string;
@@ -3390,15 +3390,23 @@ export interface IdpHierarchyPath {
   objectivePublicId: string;
   objectiveCode: string;
   objectiveName: string;
+  objectiveStrategicOwnerPublicId?: string | null;
+  objectiveStrategicOwnerName?: string | null;
+  objectiveBudgetAllocation?: number | null;
   priorityPublicId: string;
   priorityCode: string;
   priorityName: string;
   programmePublicId: string;
   programmeCode: string;
   programmeName: string;
+  programmePlannedBudget?: number | null;
+  programmeApprovedBudget?: number | null;
+  programmeActualExpenditure?: number | null;
   projectPublicId: string;
   projectCode: string;
   projectName: string;
+  projectBudget?: number | null;
+  projectFundingSource?: string | null;
   kpiPublicId: string;
   kpiCode: string;
   kpiName: string;

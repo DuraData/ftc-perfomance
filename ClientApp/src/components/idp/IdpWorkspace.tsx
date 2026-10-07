@@ -646,7 +646,17 @@ export function IdpPlanManagementPage() {
 
 export function IdpHierarchyPage() {
   const { pushToast } = useApp();
+  const { canReadField } = useSecurity();
   const canManageHierarchy = useHasAnyPermission(['IDP.Hierarchy.Manage', 'IDP.Collaboration.Manage']);
+  const canReadObjectiveOwner = canReadField('IDP_PLAN', 'ObjectiveStrategicOwner');
+  const canReadObjectiveBudget = canReadField('IDP_PLAN', 'ObjectiveBudgetAllocation');
+  const canReadProgrammePlanned = canReadField('IDP_PROJECT', 'ProgrammePlannedBudget');
+  const canReadProgrammeApproved = canReadField('IDP_PROJECT', 'ProgrammeApprovedBudget');
+  const canReadProgrammeActual = canReadField('IDP_PROJECT', 'ProgrammeActualExpenditure');
+  const canReadProjectBudget = canReadField('IDP_PROJECT', 'ProjectBudget');
+  const canReadProjectFunding = canReadField('IDP_PROJECT', 'ProjectFundingSource');
+  const canReadGovernedDetails = canReadObjectiveOwner || canReadObjectiveBudget || canReadProgrammePlanned
+    || canReadProgrammeApproved || canReadProgrammeActual || canReadProjectBudget || canReadProjectFunding;
   const [selectedPlan, setSelectedPlan] = useState<IdpPlanSummary | null>(null);
   const [pathRows, setPathRows] = useState<IdpHierarchyPath[]>([]);
   const [activeVersionId, setActiveVersionId] = useState<number | null>(null);
@@ -736,6 +746,7 @@ export function IdpHierarchyPage() {
                   <th className="px-2 py-2">Programme</th>
                   <th className="px-2 py-2">Project</th>
                   <th className="px-2 py-2">KPI</th>
+                  {canReadGovernedDetails ? <th className="px-2 py-2">Governed Details</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -747,6 +758,15 @@ export function IdpHierarchyPage() {
                     <td className="px-2 py-2">{row.programmeCode} - {row.programmeName}</td>
                     <td className="px-2 py-2">{row.projectCode} - {row.projectName}</td>
                     <td className="px-2 py-2">{row.kpiCode} - {row.kpiName}</td>
+                    {canReadGovernedDetails ? <td className="px-2 py-2 text-xs text-secondary-600 dark:text-secondary-300">
+                      {canReadObjectiveOwner && row.objectiveStrategicOwnerName ? <p>Objective owner: {row.objectiveStrategicOwnerName}</p> : null}
+                      {canReadObjectiveBudget && row.objectiveBudgetAllocation != null ? <p>Objective budget: R {row.objectiveBudgetAllocation.toLocaleString()}</p> : null}
+                      {canReadProgrammePlanned && row.programmePlannedBudget != null ? <p>Programme planned: R {row.programmePlannedBudget.toLocaleString()}</p> : null}
+                      {canReadProgrammeApproved && row.programmeApprovedBudget != null ? <p>Programme approved: R {row.programmeApprovedBudget.toLocaleString()}</p> : null}
+                      {canReadProgrammeActual && row.programmeActualExpenditure != null ? <p>Programme actual: R {row.programmeActualExpenditure.toLocaleString()}</p> : null}
+                      {canReadProjectBudget && row.projectBudget != null ? <p>Project budget: R {row.projectBudget.toLocaleString()}</p> : null}
+                      {canReadProjectFunding && row.projectFundingSource ? <p>Project funding: {row.projectFundingSource}</p> : null}
+                    </td> : null}
                   </tr>
                 ))}
               </tbody>

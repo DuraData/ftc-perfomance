@@ -302,6 +302,8 @@ public static class SecurityRegistrySeeder
             Member("IDP_PLAN", "TaskAssigner", "Task Assigner Identity", sensitive: true, systemManaged: true),
             Member("IDP_PLAN", "VersionSummary", "Plan Version Summary of Changes", sensitive: true),
             Member("IDP_PLAN", "VersionCreator", "Plan Version Creator Identity", sensitive: true, systemManaged: true),
+            Member("IDP_PLAN", "ObjectiveStrategicOwner", "Strategic Objective Owner Identity", sensitive: true),
+            Member("IDP_PLAN", "ObjectiveBudgetAllocation", "Strategic Objective Budget Allocation", sensitive: true),
             Member("IDP_INDICATOR", "AnnualTargetValue", "Annual Target Value", sensitive: true),
             Member("IDP_INDICATOR", "AnnualActualValue", "Annual Actual Value", sensitive: true),
             Member("IDP_INDICATOR", "AnnualProgressComment", "Annual Progress Comment", sensitive: true),
@@ -309,6 +311,11 @@ public static class SecurityRegistrySeeder
             Member("IDP_PROJECT", "BudgetSnapshotApproved", "Budget Snapshot Approved Amount", sensitive: true),
             Member("IDP_PROJECT", "BudgetSnapshotActual", "Budget Snapshot Actual Expenditure", sensitive: true),
             Member("IDP_PROJECT", "BudgetSnapshotSource", "Budget Snapshot Source System", sensitive: true),
+            Member("IDP_PROJECT", "ProgrammePlannedBudget", "Programme Planned Budget", sensitive: true),
+            Member("IDP_PROJECT", "ProgrammeApprovedBudget", "Programme Approved Budget", sensitive: true),
+            Member("IDP_PROJECT", "ProgrammeActualExpenditure", "Programme Actual Expenditure", sensitive: true),
+            Member("IDP_PROJECT", "ProjectBudget", "Project Budget", sensitive: true),
+            Member("IDP_PROJECT", "ProjectFundingSource", "Project Funding Source", sensitive: true),
             Member("TID", "SourceUploadedByUserId", "Source Document Uploader Identity", sensitive: true, systemManaged: true),
             Member("TID", "SourceUploadedByName", "Source Document Uploader Name", sensitive: true, systemManaged: true),
             Member("TID", "SourceScannerProvider", "Source Document Scanner Provider", sensitive: true, systemManaged: true),
@@ -579,6 +586,15 @@ public static class SecurityRegistrySeeder
         mappings["IDP.Collaboration.Manage"] = ["IDP_PLAN.CollaborationComment.READ", "IDP_PLAN.CollaborationComment.UPDATE", "IDP_PLAN.CollaborationActor.READ", "IDP_PLAN.TaskContent.READ", "IDP_PLAN.TaskContent.UPDATE", "IDP_PLAN.TaskAssignee.READ", "IDP_PLAN.TaskAssignee.UPDATE", "IDP_PLAN.TaskAssigner.READ"];
         mappings["IDP.Plan.View"] = ["NAV.IDP.PLANS", "IDP_PLAN.VersionSummary.READ", "IDP_PLAN.VersionCreator.READ"];
         mappings["IDP.Version.Manage"] = ["IDP_PLAN.VersionSummary.READ", "IDP_PLAN.VersionSummary.UPDATE", "IDP_PLAN.VersionCreator.READ"];
+        mappings["IDP.Hierarchy.Manage"] = [.. mappings["IDP.Hierarchy.Manage"],
+            "IDP_PLAN.ObjectiveStrategicOwner.READ", "IDP_PLAN.ObjectiveStrategicOwner.UPDATE",
+            "IDP_PLAN.ObjectiveBudgetAllocation.READ", "IDP_PLAN.ObjectiveBudgetAllocation.UPDATE",
+            "IDP_PROJECT.ProgrammePlannedBudget.READ", "IDP_PROJECT.ProgrammePlannedBudget.UPDATE",
+            "IDP_PROJECT.ProgrammeApprovedBudget.READ", "IDP_PROJECT.ProgrammeApprovedBudget.UPDATE",
+            "IDP_PROJECT.ProgrammeActualExpenditure.READ", "IDP_PROJECT.ProgrammeActualExpenditure.UPDATE"];
+        mappings["IDP.Project.Manage"] = ["IDP_PROJECT.CREATE", "IDP_PROJECT.READ", "IDP_PROJECT.UPDATE",
+            "IDP_PROJECT.ProjectBudget.READ", "IDP_PROJECT.ProjectBudget.UPDATE",
+            "IDP_PROJECT.ProjectFundingSource.READ", "IDP_PROJECT.ProjectFundingSource.UPDATE"];
         mappings["C88_INDICATOR.READ"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.MappingReason.READ"];
         mappings["C88_INDICATOR.UPDATE"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.PlanMissingDataExplanation.UPDATE"];
         mappings["C88_INDICATOR.MANAGE_MAPPING"] = ["C88_INDICATOR.MappingReason.READ", "C88_INDICATOR.MappingReason.UPDATE"];

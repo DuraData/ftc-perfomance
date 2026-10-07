@@ -163,6 +163,154 @@ public class IdpSecondaryMemberSecurityTests
         fullyVisible.Items[0].CreatedByUserPublicId.ToString().Should().NotBe(actor.Id);
     }
 
+    [Fact]
+    public async Task Objective_programme_and_project_governance_members_require_dynamic_updates_and_mask_mutation_responses()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("idp-hierarchy-governor", "Hierarchy", "Governor");
+        var graph = await SeedGraphAsync(context, actor);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var controller = Controller(context, actor, allowed);
+        var start = DateTime.UtcNow.Date;
+
+        var deniedPaths = Extract<PagedResponse<IdpHierarchyPathResponse>>((await controller.GetHierarchyPathsPage(
+            graph.Plan.PublicId, new PagedQueryRequest())).Result!);
+        deniedPaths.Items.Should().ContainSingle();
+        deniedPaths.Items[0].ObjectiveStrategicOwnerPublicId.Should().BeNull();
+        deniedPaths.Items[0].ObjectiveStrategicOwnerName.Should().BeNull();
+        deniedPaths.Items[0].ObjectiveBudgetAllocation.Should().BeNull();
+        deniedPaths.Items[0].ProgrammePlannedBudget.Should().BeNull();
+        deniedPaths.Items[0].ProgrammeApprovedBudget.Should().BeNull();
+        deniedPaths.Items[0].ProgrammeActualExpenditure.Should().BeNull();
+        deniedPaths.Items[0].ProjectBudget.Should().BeNull();
+        deniedPaths.Items[0].ProjectFundingSource.Should().BeNull();
+        var deniedFundingSearch = Extract<PagedResponse<IdpHierarchyPathResponse>>((await controller.GetHierarchyPathsPage(
+            graph.Plan.PublicId, new PagedQueryRequest { Search = "PROTECTED-SEED-GRANT" })).Result!);
+        deniedFundingSearch.TotalCount.Should().Be(0);
+
+        var objectiveRequest = new CreateIdpStrategicObjectiveRequest(
+            graph.Outcome.Id, "OBJ-PROTECTED-1", "Protected objective", "Protected objective detail",
+            10, 20, null, actor.Id, start, start.AddYears(1), 123456, 2);
+        (await controller.CreateObjective(objectiveRequest)).Result.Should().BeOfType<ForbidResult>();
+        context.IdpStrategicObjectives.Should().ContainSingle();
+
+        allowed.UnionWith([
+            "IDP_PLAN.ObjectiveStrategicOwner.UPDATE",
+            "IDP_PLAN.ObjectiveBudgetAllocation.UPDATE"
+        ]);
+        var maskedObjective = Extract<IdpStrategicObjectiveResponse>((await controller.CreateObjective(objectiveRequest)).Result!);
+        maskedObjective.StrategicOwnerUserPublicId.Should().BeNull();
+        maskedObjective.StrategicOwnerName.Should().BeNull();
+        maskedObjective.BudgetAllocation.Should().BeNull();
+
+        allowed.UnionWith([
+            "IDP_PLAN.ObjectiveStrategicOwner.READ",
+            "IDP_PLAN.ObjectiveBudgetAllocation.READ"
+        ]);
+        var visibleObjective = Extract<IdpStrategicObjectiveResponse>((await controller.CreateObjective(objectiveRequest with { Code = "OBJ-PROTECTED-2" })).Result!);
+        visibleObjective.StrategicOwnerUserPublicId.Should().Be(actor.PublicId);
+        visibleObjective.StrategicOwnerName.Should().Be(actor.FullName);
+        visibleObjective.StrategicOwnerUserPublicId.ToString().Should().NotBe(actor.Id);
+        visibleObjective.BudgetAllocation.Should().Be(123456);
+
+        var programmeRequest = new CreateIdpProgrammeRequest(
+            graph.Priority.Id, "PRG-PROTECTED-1", "Protected programme", "Protected programme detail",
+            null, 900000, 800000, 700000);
+        (await controller.CreateProgramme(programmeRequest)).Result.Should().BeOfType<ForbidResult>();
+        context.IdpProgrammes.Should().ContainSingle();
+
+        allowed.UnionWith([
+            "IDP_PROJECT.ProgrammePlannedBudget.UPDATE",
+            "IDP_PROJECT.ProgrammeApprovedBudget.UPDATE",
+            "IDP_PROJECT.ProgrammeActualExpenditure.UPDATE"
+        ]);
+        var maskedProgramme = Extract<IdpProgrammeResponse>((await controller.CreateProgramme(programmeRequest)).Result!);
+        maskedProgramme.PlannedBudget.Should().BeNull();
+        maskedProgramme.ApprovedBudget.Should().BeNull();
+        maskedProgramme.ActualExpenditure.Should().BeNull();
+
+        allowed.UnionWith([
+            "IDP_PROJECT.ProgrammePlannedBudget.READ",
+            "IDP_PROJECT.ProgrammeApprovedBudget.READ",
+            "IDP_PROJECT.ProgrammeActualExpenditure.READ"
+        ]);
+        var visibleProgramme = Extract<IdpProgrammeResponse>((await controller.CreateProgramme(programmeRequest with { ProgrammeCode = "PRG-PROTECTED-2" })).Result!);
+        visibleProgramme.PlannedBudget.Should().Be(900000);
+        visibleProgramme.ApprovedBudget.Should().Be(800000);
+        visibleProgramme.ActualExpenditure.Should().Be(700000);
+
+        var projectRequest = new CreateIdpProjectRequest(
+            graph.Programme.Id, "PRJ-PROTECTED-1", "Protected project", "Protected project detail",
+            "Capital", null, 654321, "PROTECTED-GRANT", start, start.AddMonths(6), "Planned", null);
+        (await controller.CreateProject(projectRequest)).Result.Should().BeOfType<ForbidResult>();
+        context.IdpProjects.Should().ContainSingle();
+
+        allowed.UnionWith([
+            "IDP_PROJECT.ProjectBudget.UPDATE",
+            "IDP_PROJECT.ProjectFundingSource.UPDATE"
+        ]);
+        var maskedProject = Extract<IdpProjectResponse>((await controller.CreateProject(projectRequest)).Result!);
+        maskedProject.Budget.Should().BeNull();
+        maskedProject.FundingSource.Should().BeNull();
+
+        allowed.UnionWith([
+            "IDP_PROJECT.ProjectBudget.READ",
+            "IDP_PROJECT.ProjectFundingSource.READ"
+        ]);
+        var visibleProject = Extract<IdpProjectResponse>((await controller.CreateProject(projectRequest with { ProjectCode = "PRJ-PROTECTED-2" })).Result!);
+        visibleProject.Budget.Should().Be(654321);
+        visibleProject.FundingSource.Should().Be("PROTECTED-GRANT");
+
+        var visiblePaths = Extract<PagedResponse<IdpHierarchyPathResponse>>((await controller.GetHierarchyPathsPage(
+            graph.Plan.PublicId, new PagedQueryRequest())).Result!);
+        visiblePaths.Items.Should().ContainSingle();
+        visiblePaths.Items[0].ObjectiveStrategicOwnerPublicId.Should().Be(actor.PublicId);
+        visiblePaths.Items[0].ObjectiveStrategicOwnerName.Should().Be(actor.FullName);
+        visiblePaths.Items[0].ObjectiveBudgetAllocation.Should().Be(111111);
+        visiblePaths.Items[0].ProgrammePlannedBudget.Should().Be(222222);
+        visiblePaths.Items[0].ProgrammeApprovedBudget.Should().Be(200000);
+        visiblePaths.Items[0].ProgrammeActualExpenditure.Should().Be(150000);
+        visiblePaths.Items[0].ProjectBudget.Should().Be(333333);
+        visiblePaths.Items[0].ProjectFundingSource.Should().Be("PROTECTED-SEED-GRANT");
+    }
+
+    [Fact]
+    public async Task Strategic_objective_owner_cannot_cross_the_selected_municipality()
+    {
+        const long tenantId = 8101;
+        const long foreignTenantId = 8102;
+        var actor = IdpTestFixture.CreateUser("idp-tenant-owner", "Tenant", "Owner");
+        actor.MunicipalityId = tenantId;
+        var foreignOwner = IdpTestFixture.CreateUser("idp-foreign-owner", "Foreign", "Owner");
+        foreignOwner.MunicipalityId = foreignTenantId;
+        var tenantContext = IdpTestFixture.Tenant(tenantId, actor.Id);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenantContext);
+        context.Municipalities.AddRange(
+            new Municipality { Id = tenantId, Code = "IDP-A", Name = "IDP Municipality A" },
+            new Municipality { Id = foreignTenantId, Code = "IDP-B", Name = "IDP Municipality B" });
+        var graph = await SeedGraphAsync(context, actor, foreignOwner, tenantId);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IDP_PLAN.ObjectiveStrategicOwner.UPDATE",
+            "IDP_PLAN.ObjectiveBudgetAllocation.UPDATE"
+        };
+        var controller = Controller(context, actor, allowed, foreignOwner, tenantContext);
+        var start = DateTime.UtcNow.Date;
+        var request = new CreateIdpStrategicObjectiveRequest(
+            graph.Outcome.Id, "OBJ-FOREIGN", "Foreign-owned objective", "Must be rejected",
+            1, 2, null, foreignOwner.Id, start, start.AddYears(1), 100, 2);
+
+        var rejected = (await controller.CreateObjective(request)).Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        rejected.Value.Should().BeOfType<ApiResponse<IdpStrategicObjectiveResponse>>()
+            .Which.Message.Should().Contain("selected municipality");
+        context.IdpStrategicObjectives.Should().ContainSingle();
+
+        var accepted = Extract<IdpStrategicObjectiveResponse>((await controller.CreateObjective(
+            request with { Code = "OBJ-LOCAL", StrategicOwnerUserId = actor.Id })).Result!);
+        accepted.PublicId.Should().NotBeEmpty();
+        context.IdpStrategicObjectives.Should().HaveCount(2);
+    }
+
     private static T Extract<T>(ActionResult result) where T : class
     {
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -173,7 +321,8 @@ public class IdpSecondaryMemberSecurityTests
         ApplicationDbContext context,
         ApplicationUser actor,
         HashSet<string> allowed,
-        ApplicationUser? assignee = null)
+        ApplicationUser? assignee = null,
+        ITenantContext? tenantContext = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
@@ -182,13 +331,15 @@ public class IdpSecondaryMemberSecurityTests
         var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor };
         if (assignee != null) users[assignee.Id] = assignee;
         return IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(actor, users).Object,
-            Mock.Of<IWorkflowGovernanceService>(), actor.Id, accessControl: access.Object);
+            Mock.Of<IWorkflowGovernanceService>(), actor.Id, tenantContext, accessControl: access.Object);
     }
 
-    private static async Task<(IdpPlan Plan, IdpProject Project, IdpKpi Kpi)> SeedGraphAsync(
+    private static async Task<(IdpPlan Plan, IdpStrategicOutcome Outcome, IdpStrategicObjective Objective,
+        IdpDevelopmentPriority Priority, IdpProgramme Programme, IdpProject Project, IdpKpi Kpi)> SeedGraphAsync(
         ApplicationDbContext context,
         ApplicationUser actor,
-        ApplicationUser? secondUser = null)
+        ApplicationUser? secondUser = null,
+        long? municipalityId = null)
     {
         context.Users.Add(actor);
         if (secondUser != null) context.Users.Add(secondUser);
@@ -199,16 +350,17 @@ public class IdpSecondaryMemberSecurityTests
             PlanCode = "IDP-GOV",
             StartFinancialYear = 2026,
             EndFinancialYear = 2031,
+            MunicipalityId = municipalityId,
             CreatedByUserId = actor.Id
         };
         var outcome = new IdpStrategicOutcome { IdpPlan = plan, Code = "SO1", Name = "Outcome", Description = "Outcome" };
-        var objective = new IdpStrategicObjective { IdpStrategicOutcome = outcome, Code = "OBJ1", Name = "Objective", Description = "Objective", StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(1) };
+        var objective = new IdpStrategicObjective { IdpStrategicOutcome = outcome, Code = "OBJ1", Name = "Objective", Description = "Objective", StrategicOwnerUserId = actor.Id, BudgetAllocation = 111111, StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(1) };
         var priority = new IdpDevelopmentPriority { IdpStrategicObjective = objective, PriorityCode = "PRI1", Name = "Priority", Description = "Priority" };
-        var programme = new IdpProgramme { IdpDevelopmentPriority = priority, ProgrammeCode = "PRG1", Name = "Programme", Description = "Programme" };
-        var project = new IdpProject { IdpProgramme = programme, ProjectCode = "PRJ1", ProjectName = "Project", Description = "Project", Category = "Capital", FundingSource = "Grant", StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(1) };
+        var programme = new IdpProgramme { IdpDevelopmentPriority = priority, ProgrammeCode = "PRG1", Name = "Programme", Description = "Programme", PlannedBudget = 222222, ApprovedBudget = 200000, ActualExpenditure = 150000 };
+        var project = new IdpProject { IdpProgramme = programme, ProjectCode = "PRJ1", ProjectName = "Project", Description = "Project", Category = "Capital", Budget = 333333, FundingSource = "PROTECTED-SEED-GRANT", StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(1) };
         var kpi = new IdpKpi { IdpProject = project, KpiCode = "KPI1", KpiName = "KPI", Description = "KPI", Formula = "Count", DataSource = "System", ReportingFrequency = "Annual", IndicatorType = IdpKpiIndicatorType.Output };
         context.Add(kpi);
         await context.SaveChangesAsync();
-        return (plan, project, kpi);
+        return (plan, outcome, objective, priority, programme, project, kpi);
     }
 }

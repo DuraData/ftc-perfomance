@@ -647,15 +647,23 @@ public record IdpHierarchyPathResponse(
     Guid ObjectivePublicId,
     string ObjectiveCode,
     string ObjectiveName,
+    Guid? ObjectiveStrategicOwnerPublicId,
+    string? ObjectiveStrategicOwnerName,
+    decimal? ObjectiveBudgetAllocation,
     Guid PriorityPublicId,
     string PriorityCode,
     string PriorityName,
     Guid ProgrammePublicId,
     string ProgrammeCode,
     string ProgrammeName,
+    decimal? ProgrammePlannedBudget,
+    decimal? ProgrammeApprovedBudget,
+    decimal? ProgrammeActualExpenditure,
     Guid ProjectPublicId,
     string ProjectCode,
     string ProjectName,
+    decimal? ProjectBudget,
+    string? ProjectFundingSource,
     Guid KpiPublicId,
     string KpiCode,
     string KpiName);
@@ -676,11 +684,11 @@ public record IdpStrategicObjectiveResponse(
     decimal TargetValue,
     int? ResponsibleDepartmentId,
     string? ResponsibleDepartmentName,
-    string? StrategicOwnerUserId,
+    Guid? StrategicOwnerUserPublicId,
     string? StrategicOwnerName,
     DateTime StartDate,
     DateTime EndDate,
-    decimal BudgetAllocation,
+    decimal? BudgetAllocation,
     int SortOrder)
 {
     public Guid PublicId { get; init; }
@@ -702,9 +710,9 @@ public record IdpProgrammeResponse(
     string Description,
     int? ResponsibleDepartmentId,
     string? ResponsibleDepartmentName,
-    decimal PlannedBudget,
-    decimal ApprovedBudget,
-    decimal ActualExpenditure)
+    decimal? PlannedBudget,
+    decimal? ApprovedBudget,
+    decimal? ActualExpenditure)
 {
     public Guid PublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
@@ -719,8 +727,8 @@ public record IdpProjectResponse(
     string Category,
     int? DepartmentId,
     string? DepartmentName,
-    decimal Budget,
-    string FundingSource,
+    decimal? Budget,
+    string? FundingSource,
     DateTime StartDate,
     DateTime EndDate,
     string Status,

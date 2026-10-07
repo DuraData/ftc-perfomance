@@ -394,6 +394,10 @@ public class IdpController : ControllerBase
         Guid planPublicId,
         [FromQuery] PagedQueryRequest request)
     {
+        var user = await GetCurrentUserAsync();
+        if (user == null)
+            return Unauthorized(new ApiResponse<PagedResponse<IdpHierarchyPathResponse>>(false, null, "User not found"));
+
         if (request.NormalizedSortBy is not ("createdat" or "outcome" or "objective" or "priority" or "programme" or "project" or "kpi"))
             return BadRequest(new ApiResponse<PagedResponse<IdpHierarchyPathResponse>>(false, null,
                 "SortBy must be outcome, objective, priority, programme, project, or kpi."));
@@ -453,22 +457,48 @@ public class IdpController : ControllerBase
                 ObjectivePublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.PublicId,
                 ObjectiveCode = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Code,
                 ObjectiveName = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Name,
+                ObjectiveStrategicOwnerPublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.StrategicOwnerUser == null
+                    ? null : kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.StrategicOwnerUser!.PublicId,
+                ObjectiveStrategicOwnerName = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.StrategicOwnerUser == null
+                    ? null : kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.StrategicOwnerUser!.FirstName + " " + kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.StrategicOwnerUser!.LastName,
+                ObjectiveBudgetAllocation = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.BudgetAllocation,
                 PriorityPublicId = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PublicId,
                 PriorityCode = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.PriorityCode,
                 PriorityName = kpi.IdpProject.IdpProgramme.IdpDevelopmentPriority.Name,
                 ProgrammePublicId = kpi.IdpProject.IdpProgramme.PublicId,
                 ProgrammeCode = kpi.IdpProject.IdpProgramme.ProgrammeCode,
                 ProgrammeName = kpi.IdpProject.IdpProgramme.Name,
+                ProgrammePlannedBudget = kpi.IdpProject.IdpProgramme.PlannedBudget,
+                ProgrammeApprovedBudget = kpi.IdpProject.IdpProgramme.ApprovedBudget,
+                ProgrammeActualExpenditure = kpi.IdpProject.IdpProgramme.ActualExpenditure,
                 ProjectPublicId = kpi.IdpProject.PublicId,
                 ProjectCode = kpi.IdpProject.ProjectCode,
                 ProjectName = kpi.IdpProject.ProjectName,
+                ProjectBudget = kpi.IdpProject.Budget,
+                ProjectFundingSource = kpi.IdpProject.FundingSource,
                 KpiPublicId = kpi.PublicId,
                 KpiCode = kpi.KpiCode,
                 KpiName = kpi.KpiName
             }).ToArrayAsync();
 
+        var planScope = Scope(targetId: planPublicId);
+        var objectiveAccess = await GetObjectiveMemberAccessAsync(user, planScope);
+        var programmeAccess = await GetProgrammeMemberAccessAsync(user, planScope);
+        var projectAccessById = new Dictionary<Guid, IdpProjectMemberAccess>();
+        var responses = new List<IdpHierarchyPathResponse>(rows.Length);
+        foreach (var row in rows)
+        {
+            if (!projectAccessById.TryGetValue(row.ProjectPublicId, out var projectAccess))
+            {
+                projectAccess = await GetProjectMemberAccessAsync(user,
+                    Scope(targetId: row.IdpPlanPublicId, projectId: row.ProjectPublicId));
+                projectAccessById[row.ProjectPublicId] = projectAccess;
+            }
+            responses.Add(row.ToResponse(objectiveAccess, programmeAccess, projectAccess));
+        }
+
         return Ok(new ApiResponse<PagedResponse<IdpHierarchyPathResponse>>(true,
-            PagedResponse<IdpHierarchyPathResponse>.Create(rows.Select(row => row.ToResponse()), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IdpHierarchyPathResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("plans/{id:int}/dashboard")]
@@ -714,8 +744,28 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpStrategicObjectiveResponse>(false, null, "User not found"));
 
-        var outcomeExists = await _context.IdpStrategicOutcomes.AnyAsync(item => item.Id == request.IdpStrategicOutcomeId);
-        if (!outcomeExists) return NotFound(new ApiResponse<IdpStrategicObjectiveResponse>(false, null, "Strategic outcome not found"));
+        var outcome = await _context.IdpStrategicOutcomes
+            .Include(item => item.IdpPlan)
+            .FirstOrDefaultAsync(item => item.Id == request.IdpStrategicOutcomeId);
+        if (outcome == null) return NotFound(new ApiResponse<IdpStrategicObjectiveResponse>(false, null, "Strategic outcome not found"));
+
+        var objectiveScope = Scope(targetId: outcome.IdpPlan.PublicId);
+        var protectedMembers = string.IsNullOrWhiteSpace(request.StrategicOwnerUserId)
+            ? new[] { "ObjectiveBudgetAllocation" }
+            : new[] { "ObjectiveStrategicOwner", "ObjectiveBudgetAllocation" };
+        if (await MemberUpdateDenialAsync(user, "IDP_PLAN", objectiveScope, protectedMembers) is not null)
+            return Forbid();
+
+        if (!string.IsNullOrWhiteSpace(request.StrategicOwnerUserId))
+        {
+            var strategicOwner = await _context.Users.AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Id == request.StrategicOwnerUserId && item.IsActive);
+            if (strategicOwner == null)
+                return BadRequest(new ApiResponse<IdpStrategicObjectiveResponse>(false, null, "Strategic owner was not found or is inactive."));
+            if (_tenantContext is { IsSystem: false, MunicipalityId: > 0 }
+                && strategicOwner.MunicipalityId != _tenantContext.MunicipalityId)
+                return BadRequest(new ApiResponse<IdpStrategicObjectiveResponse>(false, null, "Strategic owner must belong to the selected municipality."));
+        }
 
         var entity = new IdpStrategicObjective
         {
@@ -741,8 +791,10 @@ public class IdpController : ControllerBase
             .Include(item => item.StrategicOwnerUser)
             .FirstAsync(item => item.Id == entity.Id);
 
-        await WriteIdpAudit(user.Id, "IdpStrategicObjective", entity.PublicId.ToString(), "Create", null, ToObjectiveResponse(entity));
-        return Ok(new ApiResponse<IdpStrategicObjectiveResponse>(true, ToObjectiveResponse(entity)));
+        await WriteIdpAudit(user.Id, "IdpStrategicObjective", entity.PublicId.ToString(), "Create", null,
+            ToObjectiveResponse(entity, IdpObjectiveMemberAccess.Full));
+        return Ok(new ApiResponse<IdpStrategicObjectiveResponse>(true,
+            ToObjectiveResponse(entity, await GetObjectiveMemberAccessAsync(user, objectiveScope))));
     }
 
     [HttpPost("priorities")]
@@ -778,8 +830,15 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpProgrammeResponse>(false, null, "User not found"));
 
-        var priorityExists = await _context.IdpDevelopmentPriorities.AnyAsync(item => item.Id == request.IdpDevelopmentPriorityId);
-        if (!priorityExists) return NotFound(new ApiResponse<IdpProgrammeResponse>(false, null, "Development priority not found"));
+        var priority = await _context.IdpDevelopmentPriorities.AsNoTracking()
+            .Include(item => item.IdpStrategicObjective).ThenInclude(item => item.IdpStrategicOutcome).ThenInclude(item => item.IdpPlan)
+            .FirstOrDefaultAsync(item => item.Id == request.IdpDevelopmentPriorityId);
+        if (priority == null) return NotFound(new ApiResponse<IdpProgrammeResponse>(false, null, "Development priority not found"));
+
+        var programmeScope = Scope(targetId: priority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.PublicId);
+        if (await MemberUpdateDenialAsync(user, "IDP_PROJECT", programmeScope,
+            ["ProgrammePlannedBudget", "ProgrammeApprovedBudget", "ProgrammeActualExpenditure"]) is not null)
+            return Forbid();
 
         var entity = new IdpProgramme
         {
@@ -797,8 +856,10 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpProgrammes.Include(item => item.ResponsibleDepartment).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpProgramme", entity.PublicId.ToString(), "Create", null, ToProgrammeResponse(entity));
-        return Ok(new ApiResponse<IdpProgrammeResponse>(true, ToProgrammeResponse(entity)));
+        await WriteIdpAudit(user.Id, "IdpProgramme", entity.PublicId.ToString(), "Create", null,
+            ToProgrammeResponse(entity, IdpProgrammeMemberAccess.Full));
+        return Ok(new ApiResponse<IdpProgrammeResponse>(true,
+            ToProgrammeResponse(entity, await GetProgrammeMemberAccessAsync(user, programmeScope))));
     }
 
     [HttpPost("projects")]
@@ -813,8 +874,16 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpProjectResponse>(false, null, "Invalid project status"));
         }
 
-        var programmeExists = await _context.IdpProgrammes.AnyAsync(item => item.Id == request.IdpProgrammeId);
-        if (!programmeExists) return NotFound(new ApiResponse<IdpProjectResponse>(false, null, "Programme not found"));
+        var programme = await _context.IdpProgrammes.AsNoTracking()
+            .Include(item => item.IdpDevelopmentPriority).ThenInclude(item => item.IdpStrategicObjective)
+            .ThenInclude(item => item.IdpStrategicOutcome).ThenInclude(item => item.IdpPlan)
+            .FirstOrDefaultAsync(item => item.Id == request.IdpProgrammeId);
+        if (programme == null) return NotFound(new ApiResponse<IdpProjectResponse>(false, null, "Programme not found"));
+
+        var projectScope = Scope(targetId: programme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.PublicId);
+        if (await MemberUpdateDenialAsync(user, "IDP_PROJECT", projectScope,
+            ["ProjectBudget", "ProjectFundingSource"]) is not null)
+            return Forbid();
 
         var entity = new IdpProject
         {
@@ -836,8 +905,11 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpProjects.Include(item => item.Department).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpProject", entity.PublicId.ToString(), "Create", null, ToProjectResponse(entity));
-        return Ok(new ApiResponse<IdpProjectResponse>(true, ToProjectResponse(entity)));
+        await WriteIdpAudit(user.Id, "IdpProject", entity.PublicId.ToString(), "Create", null,
+            ToProjectResponse(entity, IdpProjectMemberAccess.Full));
+        projectScope = projectScope with { ProjectId = entity.PublicId.ToString() };
+        return Ok(new ApiResponse<IdpProjectResponse>(true,
+            ToProjectResponse(entity, await GetProjectMemberAccessAsync(user, projectScope))));
     }
 
     [HttpPost("kpis")]
@@ -1629,6 +1701,22 @@ public class IdpController : ControllerBase
             await CanAccessMemberAsync(user, "IDP_PLAN", "VersionSummary", SecurityOperation.Read, scope ?? Scope()),
             await CanAccessMemberAsync(user, "IDP_PLAN", "VersionCreator", SecurityOperation.Read, scope ?? Scope()));
 
+    private async Task<IdpObjectiveMemberAccess> GetObjectiveMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PLAN", "ObjectiveStrategicOwner", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PLAN", "ObjectiveBudgetAllocation", SecurityOperation.Read, scope ?? Scope()));
+
+    private async Task<IdpProgrammeMemberAccess> GetProgrammeMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "ProgrammePlannedBudget", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "ProgrammeApprovedBudget", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "ProgrammeActualExpenditure", SecurityOperation.Read, scope ?? Scope()));
+
+    private async Task<IdpProjectMemberAccess> GetProjectMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectBudget", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectFundingSource", SecurityOperation.Read, scope ?? Scope()));
+
     private async Task<AccessScopeContext?> ResolveBudgetScopeAsync(int? objectiveId, int? projectId)
     {
         if (objectiveId.HasValue == projectId.HasValue) return null;
@@ -1707,7 +1795,7 @@ public class IdpController : ControllerBase
             RowVersion = Convert.ToBase64String(outcome.RowVersion)
         };
 
-    private static IdpStrategicObjectiveResponse ToObjectiveResponse(IdpStrategicObjective objective) =>
+    private static IdpStrategicObjectiveResponse ToObjectiveResponse(IdpStrategicObjective objective, IdpObjectiveMemberAccess access) =>
         new(
             objective.Id,
             objective.IdpStrategicOutcomeId,
@@ -1718,11 +1806,11 @@ public class IdpController : ControllerBase
             objective.TargetValue,
             objective.ResponsibleDepartmentId,
             objective.ResponsibleDepartment?.Name,
-            objective.StrategicOwnerUserId,
-            objective.StrategicOwnerUser?.FullName,
+            access.StrategicOwner ? objective.StrategicOwnerUser?.PublicId : null,
+            access.StrategicOwner ? objective.StrategicOwnerUser?.FullName : null,
             objective.StartDate,
             objective.EndDate,
-            objective.BudgetAllocation,
+            access.BudgetAllocation ? objective.BudgetAllocation : null,
             objective.SortOrder)
         {
             PublicId = objective.PublicId,
@@ -1737,7 +1825,7 @@ public class IdpController : ControllerBase
             RowVersion = Convert.ToBase64String(priority.RowVersion)
         };
 
-    private static IdpProgrammeResponse ToProgrammeResponse(IdpProgramme programme) =>
+    private static IdpProgrammeResponse ToProgrammeResponse(IdpProgramme programme, IdpProgrammeMemberAccess access) =>
         new(
             programme.Id,
             programme.IdpDevelopmentPriorityId,
@@ -1746,15 +1834,15 @@ public class IdpController : ControllerBase
             programme.Description,
             programme.ResponsibleDepartmentId,
             programme.ResponsibleDepartment?.Name,
-            programme.PlannedBudget,
-            programme.ApprovedBudget,
-            programme.ActualExpenditure)
+            access.PlannedBudget ? programme.PlannedBudget : null,
+            access.ApprovedBudget ? programme.ApprovedBudget : null,
+            access.ActualExpenditure ? programme.ActualExpenditure : null)
         {
             PublicId = programme.PublicId,
             RowVersion = Convert.ToBase64String(programme.RowVersion)
         };
 
-    private static IdpProjectResponse ToProjectResponse(IdpProject project) =>
+    private static IdpProjectResponse ToProjectResponse(IdpProject project, IdpProjectMemberAccess access) =>
         new(
             project.Id,
             project.IdpProgrammeId,
@@ -1764,8 +1852,8 @@ public class IdpController : ControllerBase
             project.Category,
             project.DepartmentId,
             project.Department?.Name,
-            project.Budget,
-            project.FundingSource,
+            access.Budget ? project.Budget : null,
+            access.FundingSource ? project.FundingSource : null,
             project.StartDate,
             project.EndDate,
             project.Status.ToString(),
@@ -1913,6 +2001,21 @@ public class IdpController : ControllerBase
         public static IdpPlanVersionMemberAccess Full { get; } = new(true, true);
     }
 
+    private sealed record IdpObjectiveMemberAccess(bool StrategicOwner, bool BudgetAllocation)
+    {
+        public static IdpObjectiveMemberAccess Full { get; } = new(true, true);
+    }
+
+    private sealed record IdpProgrammeMemberAccess(bool PlannedBudget, bool ApprovedBudget, bool ActualExpenditure)
+    {
+        public static IdpProgrammeMemberAccess Full { get; } = new(true, true, true);
+    }
+
+    private sealed record IdpProjectMemberAccess(bool Budget, bool FundingSource)
+    {
+        public static IdpProjectMemberAccess Full { get; } = new(true, true);
+    }
+
     private sealed class IdpHierarchyPathRow
     {
         public Guid IdpPlanPublicId { get; init; }
@@ -1922,20 +2025,31 @@ public class IdpController : ControllerBase
         public Guid ObjectivePublicId { get; init; }
         public string ObjectiveCode { get; init; } = string.Empty;
         public string ObjectiveName { get; init; } = string.Empty;
+        public Guid? ObjectiveStrategicOwnerPublicId { get; init; }
+        public string? ObjectiveStrategicOwnerName { get; init; }
+        public decimal ObjectiveBudgetAllocation { get; init; }
         public Guid PriorityPublicId { get; init; }
         public string PriorityCode { get; init; } = string.Empty;
         public string PriorityName { get; init; } = string.Empty;
         public Guid ProgrammePublicId { get; init; }
         public string ProgrammeCode { get; init; } = string.Empty;
         public string ProgrammeName { get; init; } = string.Empty;
+        public decimal ProgrammePlannedBudget { get; init; }
+        public decimal ProgrammeApprovedBudget { get; init; }
+        public decimal ProgrammeActualExpenditure { get; init; }
         public Guid ProjectPublicId { get; init; }
         public string ProjectCode { get; init; } = string.Empty;
         public string ProjectName { get; init; } = string.Empty;
+        public decimal ProjectBudget { get; init; }
+        public string ProjectFundingSource { get; init; } = string.Empty;
         public Guid KpiPublicId { get; init; }
         public string KpiCode { get; init; } = string.Empty;
         public string KpiName { get; init; } = string.Empty;
 
-        public IdpHierarchyPathResponse ToResponse() => new(
+        public IdpHierarchyPathResponse ToResponse(
+            IdpObjectiveMemberAccess objectiveAccess,
+            IdpProgrammeMemberAccess programmeAccess,
+            IdpProjectMemberAccess projectAccess) => new(
             IdpPlanPublicId,
             OutcomePublicId,
             OutcomeCode,
@@ -1943,15 +2057,23 @@ public class IdpController : ControllerBase
             ObjectivePublicId,
             ObjectiveCode,
             ObjectiveName,
+            objectiveAccess.StrategicOwner ? ObjectiveStrategicOwnerPublicId : null,
+            objectiveAccess.StrategicOwner ? ObjectiveStrategicOwnerName : null,
+            objectiveAccess.BudgetAllocation ? ObjectiveBudgetAllocation : null,
             PriorityPublicId,
             PriorityCode,
             PriorityName,
             ProgrammePublicId,
             ProgrammeCode,
             ProgrammeName,
+            programmeAccess.PlannedBudget ? ProgrammePlannedBudget : null,
+            programmeAccess.ApprovedBudget ? ProgrammeApprovedBudget : null,
+            programmeAccess.ActualExpenditure ? ProgrammeActualExpenditure : null,
             ProjectPublicId,
             ProjectCode,
             ProjectName,
+            projectAccess.Budget ? ProjectBudget : null,
+            projectAccess.FundingSource ? ProjectFundingSource : null,
             KpiPublicId,
             KpiCode,
             KpiName);

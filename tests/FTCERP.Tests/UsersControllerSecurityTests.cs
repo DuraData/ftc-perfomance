@@ -266,13 +266,14 @@ public sealed class UsersControllerSecurityTests
             .Where(item => item.ResourceCode == "IDP_PLAN" && !item.MemberCode.StartsWith("Import"))
             .OrderBy(item => item.MemberCode).ToArrayAsync();
         idpCollaborationMembers.Select(item => item.MemberCode).Should().Equal(
-            "CollaborationActor", "CollaborationComment", "TaskAssignee", "TaskAssigner", "TaskContent", "VersionCreator", "VersionSummary");
+            "CollaborationActor", "CollaborationComment", "ObjectiveBudgetAllocation", "ObjectiveStrategicOwner",
+            "TaskAssignee", "TaskAssigner", "TaskContent", "VersionCreator", "VersionSummary");
         idpCollaborationMembers.Should().OnlyContain(item => item.IsSensitive);
         idpCollaborationMembers.Where(item => item.MemberCode is "CollaborationActor" or "TaskAssigner" or "VersionCreator")
             .Should().OnlyContain(item => item.IsSystemManaged);
         idpCollaborationMembers.Where(item => item.MemberCode is not ("CollaborationActor" or "TaskAssigner" or "VersionCreator"))
             .Should().OnlyContain(item => !item.IsSystemManaged);
-        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PLAN" && item.MemberCode != null && !item.MemberCode.StartsWith("Import"))).Should().Be(11);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PLAN" && item.MemberCode != null && !item.MemberCode.StartsWith("Import"))).Should().Be(15);
 
         var idpIndicatorMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_INDICATOR").OrderBy(item => item.MemberCode).ToArrayAsync();
@@ -283,9 +284,10 @@ public sealed class UsersControllerSecurityTests
         var idpProjectMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_PROJECT").OrderBy(item => item.MemberCode).ToArrayAsync();
         idpProjectMembers.Select(item => item.MemberCode).Should().Equal(
-            "BudgetSnapshotActual", "BudgetSnapshotApproved", "BudgetSnapshotPlanned", "BudgetSnapshotSource");
+            "BudgetSnapshotActual", "BudgetSnapshotApproved", "BudgetSnapshotPlanned", "BudgetSnapshotSource",
+            "ProgrammeActualExpenditure", "ProgrammeApprovedBudget", "ProgrammePlannedBudget", "ProjectBudget", "ProjectFundingSource");
         idpProjectMembers.Should().OnlyContain(item => item.IsSensitive && !item.IsSystemManaged);
-        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PROJECT" && item.MemberCode != null)).Should().Be(8);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PROJECT" && item.MemberCode != null)).Should().Be(18);
 
         var tidSourceMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "TID" && item.MemberCode.StartsWith("Source"))

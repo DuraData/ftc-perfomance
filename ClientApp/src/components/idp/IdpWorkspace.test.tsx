@@ -253,6 +253,34 @@ describe('IDP plan lineage workspace', () => {
     expect(api.getIdpPlanVersionsPage).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({ pageSize: 1 }), true);
   });
 
+  it('does not render denied hierarchy governance fields from a hostile payload', async () => {
+    api.getIdpHierarchyPathsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          idpPlanPublicId: predecessor.publicId,
+          outcomePublicId: 'outcome-id', outcomeCode: 'SO1', outcomeName: 'Growth',
+          objectivePublicId: 'objective-id', objectiveCode: 'OBJ1', objectiveName: 'Reliable services',
+          objectiveStrategicOwnerPublicId: 'PROTECTED-OWNER-ID', objectiveStrategicOwnerName: 'PROTECTED OWNER', objectiveBudgetAllocation: 987654321,
+          priorityPublicId: 'priority-id', priorityCode: 'PRI1', priorityName: 'Water',
+          programmePublicId: 'programme-id', programmeCode: 'PRG1', programmeName: 'Water programme',
+          programmePlannedBudget: 876543210, programmeApprovedBudget: 765432109, programmeActualExpenditure: 654321098,
+          projectPublicId: 'project-id', projectCode: 'PROJ1', projectName: 'Pipeline', projectBudget: 543210987, projectFundingSource: 'PROTECTED FUNDING SOURCE',
+          kpiPublicId: 'kpi-id', kpiCode: 'KPI1', kpiName: 'Households served',
+        }],
+        page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    render(<IdpHierarchyPage />);
+    expect(await screen.findByText('KPI1 - Households served')).toBeInTheDocument();
+    expect(screen.queryByText('Governed Details')).not.toBeInTheDocument();
+    expect(screen.queryByText(/PROTECTED OWNER|PROTECTED FUNDING SOURCE/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/987,654,321|876,543,210|765,432,109|654,321,098|543,210,987/)).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('IDP_PLAN', 'ObjectiveStrategicOwner');
+    expect(security.canReadField).toHaveBeenCalledWith('IDP_PROJECT', 'ProjectFundingSource');
+  });
+
   it('pages and filters IDP import summaries without loading reconciliation rows', async () => {
     security.canReadField.mockReturnValue(true);
     api.getIdpImportBatchesPage.mockResolvedValue({
