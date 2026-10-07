@@ -141,4 +141,41 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*catalogue editions are immutable*");
     }
+
+    public static TheoryData<object, string> NotificationBusinessFieldRewrites => new()
+    {
+        { new BusinessEventOutbox { Id = 81 }, nameof(BusinessEventOutbox.Payload) },
+        { new NotificationDeliveryAttempt { Id = 82 }, nameof(NotificationDeliveryAttempt.RecipientUserId) }
+    };
+
+    [Theory]
+    [MemberData(nameof(NotificationBusinessFieldRewrites))]
+    public async Task Notification_ledger_identity_and_payload_cannot_be_rewritten(object row, string propertyName)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Attach(row);
+        context.Entry(row).Property(propertyName).IsModified = true;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*immutable*");
+    }
+
+    public static TheoryData<object> NotificationDeletionCases => new()
+    {
+        new BusinessEventOutbox { Id = 83 },
+        new NotificationDeliveryAttempt { Id = 84 }
+    };
+
+    [Theory]
+    [MemberData(nameof(NotificationDeletionCases))]
+    public async Task Notification_delivery_history_cannot_be_deleted(object row)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(row).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
 }

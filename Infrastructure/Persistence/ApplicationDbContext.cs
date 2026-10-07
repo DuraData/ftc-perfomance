@@ -2205,6 +2205,26 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Authentication event history is append-only.");
         if (ChangeTracker.Entries<LoginAuditLog>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Login audit history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<BusinessEventOutbox>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Business-event outbox history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AvailableAt), nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.ProcessedAt),
+                    nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AttemptCount), nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.LastError),
+                    nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.RowVersion)],
+                "Business-event identity and payload are immutable; only delivery lifecycle state may change.");
+        }
+        foreach (var entry in ChangeTracker.Entries<NotificationDeliveryAttempt>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Notification delivery history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(NotificationDeliveryAttempt.Status), nameof(NotificationDeliveryAttempt.AttemptCount), nameof(NotificationDeliveryAttempt.AttemptedAt),
+                    nameof(NotificationDeliveryAttempt.DeliveredAt), nameof(NotificationDeliveryAttempt.Error), nameof(NotificationDeliveryAttempt.Provider),
+                    nameof(NotificationDeliveryAttempt.ProviderReference), nameof(NotificationDeliveryAttempt.ResponseDetail)],
+                "Notification delivery identity is immutable; only delivery-result state may change.");
+        }
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<IdpChangeLog>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
@@ -2338,6 +2358,12 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             || (requireEndDate && !currentEnd.HasValue)
             || (start.HasValue && currentEnd.HasValue && currentEnd < start)
             || (originalEnd.HasValue && currentEnd.HasValue && currentEnd > originalEnd))
+            throw new InvalidOperationException(message);
+    }
+
+    private static void EnsureOnlyProperties<TEntity>(EntityEntry<TEntity> entry, string[] allowedProperties, string message) where TEntity : class
+    {
+        if (entry.Properties.Where(property => property.IsModified).Any(property => !allowedProperties.Contains(property.Metadata.Name)))
             throw new InvalidOperationException(message);
     }
 }
