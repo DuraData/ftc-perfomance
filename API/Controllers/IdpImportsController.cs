@@ -35,9 +35,12 @@ public class IdpImportsController(
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(false, null, "User not found."));
-        var access = await CanReadImportsAsync(user);
+        var plan = await context.IdpPlans.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == planPublicId);
+        if (plan == null) return NotFound(new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(false, null, "IDP plan not found."));
+        var access = await CanReadImportsAsync(user, plan);
         if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
             new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(false, null, access.Reason));
+        var memberAccess = await GetImportMemberAccessAsync(user, plan);
 
         var normalizedStatus = status?.Trim();
         IdpImportBatchStatus? parsedStatus = null;
@@ -53,24 +56,30 @@ public class IdpImportsController(
             return BadRequest(new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(false, null, "ImportType must be KPI or HIERARCHY."));
         if (!ImportBatchSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(false, null, "SortBy must be createdAt, fileName, status, importType, totalRows, or committedAt."));
+        if (request.NormalizedSortBy == "filename" && !memberAccess.SourceFileName)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(false, null, "File-name sorting requires ImportSourceFileName READ permission."));
 
         var query = context.IdpImportBatches
             .AsNoTracking()
             .Include(batch => batch.IdpPlan)
-            .Where(batch => batch.IdpPlan.PublicId == planPublicId)
+            .Include(batch => batch.CreatedByUser)
+            .Include(batch => batch.CommittedByUser)
+            .Where(batch => batch.IdpPlanId == plan.Id)
             .AsQueryable();
         if (parsedStatus.HasValue) query = query.Where(batch => batch.Status == parsedStatus.Value);
         if (!string.IsNullOrEmpty(normalizedImportType)) query = query.Where(batch => batch.ImportType == normalizedImportType);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(batch => batch.SourceFileName.Contains(request.NormalizedSearch)
-                || batch.SourceSha256.Contains(request.NormalizedSearch)
-                || batch.CreatedByUserId.Contains(request.NormalizedSearch));
+            query = query.Where(batch => memberAccess.SourceFileName && batch.SourceFileName.Contains(request.NormalizedSearch)
+                || memberAccess.SourceHash && batch.SourceSha256.Contains(request.NormalizedSearch)
+                || memberAccess.Actor && batch.CreatedByUser != null && (batch.CreatedByUser.FirstName.Contains(request.NormalizedSearch) || batch.CreatedByUser.LastName.Contains(request.NormalizedSearch))
+                || memberAccess.Actor && batch.CommittedByUser != null && (batch.CommittedByUser.FirstName.Contains(request.NormalizedSearch) || batch.CommittedByUser.LastName.Contains(request.NormalizedSearch)));
 
         var totalCount = await query.CountAsync();
         var batches = await ApplyImportBatchOrdering(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>(true,
-            PagedResponse<IdpImportBatchSummaryResponse>.Create(batches.Select(ToSummaryResponse), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IdpImportBatchSummaryResponse>.Create(batches.Select(item => ToSummaryResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("plans/{planPublicId:guid}/imports")]
@@ -78,7 +87,9 @@ public class IdpImportsController(
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpImportBatchResponse[]>(false, null, "User not found."));
-        var access = await CanReadImportsAsync(user);
+        var plan = await context.IdpPlans.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == planPublicId);
+        if (plan == null) return NotFound(new ApiResponse<IdpImportBatchResponse[]>(false, null, "IDP plan not found."));
+        var access = await CanReadImportsAsync(user, plan);
         if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
             new ApiResponse<IdpImportBatchResponse[]>(false, null, access.Reason));
         return StatusCode(StatusCodes.Status410Gone,
@@ -112,17 +123,19 @@ public class IdpImportsController(
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpImportBatchResponse>(false, null, "User not found."));
-        var access = await CanReadImportsAsync(user);
-        if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
-            new ApiResponse<IdpImportBatchResponse>(false, null, access.Reason));
         var batch = await context.IdpImportBatches
             .AsNoTracking()
             .Include(item => item.IdpPlan)
+            .Include(item => item.CreatedByUser)
+            .Include(item => item.CommittedByUser)
             .Include(item => item.Rows)
             .SingleOrDefaultAsync(item => item.PublicId == batchPublicId);
-        return batch == null
-            ? NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP import batch not found."))
-            : Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+        if (batch == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP import batch not found."));
+        var access = await CanReadImportsAsync(user, batch.IdpPlan);
+        if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
+            new ApiResponse<IdpImportBatchResponse>(false, null, access.Reason));
+        var memberAccess = await GetImportMemberAccessAsync(user, batch.IdpPlan);
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
 
     [HttpPost("plans/{planPublicId:guid}/imports/kpis/stage")]
@@ -142,6 +155,9 @@ public class IdpImportsController(
         if (plan == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP plan not found."));
         if (!plan.MunicipalityId.HasValue)
             return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The IDP plan must be reconciled to a municipality before importing."));
+        var access = await CheckPlanPermissionAsync(user, "IDP_INDICATOR.IMPORT", plan);
+        if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IdpImportBatchResponse>(false, null, access.Reason));
+        var memberAccess = await GetImportMemberAccessAsync(user, plan);
 
         var sourceFileName = Path.GetFileName(request.SourceFileName ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(sourceFileName) || sourceFileName.Length > 260)
@@ -150,13 +166,15 @@ public class IdpImportsController(
 
         var existingBatch = await context.IdpImportBatches
             .Include(item => item.IdpPlan)
+            .Include(item => item.CreatedByUser)
+            .Include(item => item.CommittedByUser)
             .Include(item => item.Rows)
             .SingleOrDefaultAsync(item => item.MunicipalityId == plan.MunicipalityId.Value && item.ClientRequestId == request.ClientRequestId);
         if (existingBatch != null)
         {
             if (!string.Equals(existingBatch.SourceSha256, sourceHash, StringComparison.OrdinalIgnoreCase))
                 return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "ClientRequestId was already used for different import content."));
-            return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(existingBatch), "Existing staged result returned."));
+            return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(existingBatch, memberAccess), "Existing staged result returned."));
         }
 
         var candidates = await BuildCandidatesAsync(plan.Id, request.Rows, trackExisting: false);
@@ -175,6 +193,7 @@ public class IdpImportsController(
             ChangedRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Changed),
             InvalidRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Invalid),
             CreatedByUserId = user.Id,
+            CreatedByUser = user,
             Rows = candidates.Select(item => item.Row).ToList()
         };
         context.IdpImportBatches.Add(batch);
@@ -186,7 +205,7 @@ public class IdpImportsController(
             new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
 
     [HttpPost("plans/{planPublicId:guid}/imports/hierarchy/stage")]
@@ -206,6 +225,9 @@ public class IdpImportsController(
         if (plan == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP plan not found."));
         if (!plan.MunicipalityId.HasValue)
             return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The IDP plan must be reconciled to a municipality before importing."));
+        var access = await CheckPlanPermissionAsync(user, "IDP_PLAN.IMPORT", plan);
+        if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IdpImportBatchResponse>(false, null, access.Reason));
+        var memberAccess = await GetImportMemberAccessAsync(user, plan);
 
         var sourceFileName = Path.GetFileName(request.SourceFileName ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(sourceFileName) || sourceFileName.Length > 260)
@@ -214,13 +236,15 @@ public class IdpImportsController(
 
         var existingBatch = await context.IdpImportBatches
             .Include(item => item.IdpPlan)
+            .Include(item => item.CreatedByUser)
+            .Include(item => item.CommittedByUser)
             .Include(item => item.Rows)
             .SingleOrDefaultAsync(item => item.MunicipalityId == plan.MunicipalityId.Value && item.ClientRequestId == request.ClientRequestId);
         if (existingBatch != null)
         {
             if (!string.Equals(existingBatch.SourceSha256, sourceHash, StringComparison.OrdinalIgnoreCase))
                 return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "ClientRequestId was already used for different import content."));
-            return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(existingBatch), "Existing staged result returned."));
+            return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(existingBatch, memberAccess), "Existing staged result returned."));
         }
 
         var candidates = await BuildHierarchyCandidatesAsync(plan, request.Rows, trackExisting: false);
@@ -239,6 +263,7 @@ public class IdpImportsController(
             ChangedRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Changed),
             InvalidRows = candidates.Count(item => item.Row.Status == IdpImportRowStatus.Invalid),
             CreatedByUserId = user.Id,
+            CreatedByUser = user,
             Rows = candidates.Select(item => item.Row).ToList()
         };
         context.IdpImportBatches.Add(batch);
@@ -250,7 +275,7 @@ public class IdpImportsController(
             new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
 
     [HttpPost("imports/{batchPublicId:guid}/commit")]
@@ -268,9 +293,14 @@ public class IdpImportsController(
 
         var batch = await context.IdpImportBatches
             .Include(item => item.IdpPlan)
+            .Include(item => item.CreatedByUser)
+            .Include(item => item.CommittedByUser)
             .Include(item => item.Rows)
             .SingleOrDefaultAsync(item => item.PublicId == batchPublicId);
         if (batch == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP import batch not found."));
+        var access = await CheckPlanPermissionAsync(user, "IDP_INDICATOR.IMPORT", batch.IdpPlan);
+        if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IdpImportBatchResponse>(false, null, access.Reason));
+        var memberAccess = await GetImportMemberAccessAsync(user, batch.IdpPlan);
         if (string.Equals(batch.ImportType, "HIERARCHY", StringComparison.OrdinalIgnoreCase))
             return Forbid();
         if (batch.Status != IdpImportBatchStatus.Staged)
@@ -318,6 +348,7 @@ public class IdpImportsController(
             batch.Status = IdpImportBatchStatus.Committed;
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
+            batch.CommittedByUser = user;
             await context.SaveChangesAsync();
             await workflowGovernanceService.WriteAuditTrailAsync(
                 "IdpImportBatch", batch.PublicId.ToString(), "Commit",
@@ -332,7 +363,7 @@ public class IdpImportsController(
             return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The import preview or a target KPI changed before commit. Stage a new preview."));
         }
 
-        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
 
     [HttpPost("imports/{batchPublicId:guid}/commit-hierarchy")]
@@ -350,9 +381,14 @@ public class IdpImportsController(
 
         var batch = await context.IdpImportBatches
             .Include(item => item.IdpPlan)
+            .Include(item => item.CreatedByUser)
+            .Include(item => item.CommittedByUser)
             .Include(item => item.Rows)
             .SingleOrDefaultAsync(item => item.PublicId == batchPublicId);
         if (batch == null) return NotFound(new ApiResponse<IdpImportBatchResponse>(false, null, "IDP import batch not found."));
+        var access = await CheckPlanPermissionAsync(user, "IDP_PLAN.IMPORT", batch.IdpPlan);
+        if (!access.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IdpImportBatchResponse>(false, null, access.Reason));
+        var memberAccess = await GetImportMemberAccessAsync(user, batch.IdpPlan);
         if (!string.Equals(batch.ImportType, "HIERARCHY", StringComparison.OrdinalIgnoreCase))
             return Forbid();
         if (batch.Status != IdpImportBatchStatus.Staged)
@@ -366,13 +402,14 @@ public class IdpImportsController(
             return BadRequest(new ApiResponse<IdpImportBatchResponse>(false, null, "RowVersion is required."));
         context.Entry(batch).Property(item => item.RowVersion).OriginalValue = expectedBatchVersion;
 
-        return await CommitHierarchyAsync(batch, request, user);
+        return await CommitHierarchyAsync(batch, request, user, memberAccess);
     }
 
     private async Task<ActionResult<ApiResponse<IdpImportBatchResponse>>> CommitHierarchyAsync(
         IdpImportBatch batch,
         CommitIdpImportRequest request,
-        ApplicationUser user)
+        ApplicationUser user,
+        IdpImportMemberAccess memberAccess)
     {
         var requests = batch.Rows.OrderBy(item => item.SourceRowNumber)
             .Select(item => JsonSerializer.Deserialize<IdpHierarchyImportRowRequest>(item.PayloadJson, JsonOptions)!)
@@ -400,6 +437,7 @@ public class IdpImportsController(
             batch.Status = IdpImportBatchStatus.Committed;
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
+            batch.CommittedByUser = user;
             await context.SaveChangesAsync();
             await workflowGovernanceService.WriteAuditTrailAsync(
                 "IdpImportBatch", batch.PublicId.ToString(), "CommitHierarchy",
@@ -419,7 +457,7 @@ public class IdpImportsController(
             return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, "The hierarchy changed or now conflicts with an existing business key. Stage a new preview."));
         }
 
-        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch)));
+        return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
 
     private async Task<List<HierarchyImportCandidate>> BuildHierarchyCandidatesAsync(
@@ -724,44 +762,50 @@ public class IdpImportsController(
         item.TreasuryTidLinked
     };
 
-    private static IdpImportBatchResponse ToResponse(IdpImportBatch batch) => new(
+    private static IdpImportBatchResponse ToResponse(IdpImportBatch batch, IdpImportMemberAccess access) => new(
         batch.PublicId,
-        batch.ClientRequestId,
+        access.ClientRequestId ? batch.ClientRequestId : null,
         batch.IdpPlan.PublicId,
         batch.ImportType,
-        batch.SourceFileName,
-        batch.SourceSha256,
+        access.SourceFileName ? batch.SourceFileName : null,
+        access.SourceHash ? batch.SourceSha256 : null,
         batch.Status.ToString(),
         batch.TotalRows,
         batch.NewRows,
         batch.UnchangedRows,
         batch.ChangedRows,
         batch.InvalidRows,
-        batch.CreatedByUserId,
+        access.Actor ? batch.CreatedByUser?.PublicId : null,
+        access.Actor ? batch.CreatedByUser?.FullName : null,
         batch.CreatedAt,
-        batch.CommittedByUserId,
+        access.Actor ? batch.CommittedByUser?.PublicId : null,
+        access.Actor ? batch.CommittedByUser?.FullName : null,
         batch.CommittedAt,
         Convert.ToBase64String(batch.RowVersion),
         batch.Rows.OrderBy(item => item.SourceRowNumber).Select(item => new IdpImportRowResponse(
-             item.PublicId, item.SourceRowNumber, item.Reference, item.Status.ToString(), item.ExistingValueJson,
-             item.NormalizedJson, item.ErrorCode, item.ErrorField, item.SuppliedValue, item.ErrorMessage)).ToArray());
+             item.PublicId, item.SourceRowNumber, item.Reference, item.Status.ToString(),
+             access.RowPayload ? item.ExistingValueJson : null, access.RowPayload ? item.NormalizedJson : null,
+             access.ErrorDetail ? item.ErrorCode : null, access.ErrorDetail ? item.ErrorField : null,
+             access.RowPayload ? item.SuppliedValue : null, access.ErrorDetail ? item.ErrorMessage : null)).ToArray());
 
-    private static IdpImportBatchSummaryResponse ToSummaryResponse(IdpImportBatch batch) => new(
+    private static IdpImportBatchSummaryResponse ToSummaryResponse(IdpImportBatch batch, IdpImportMemberAccess access) => new(
         batch.PublicId,
-        batch.ClientRequestId,
+        access.ClientRequestId ? batch.ClientRequestId : null,
         batch.IdpPlan.PublicId,
         batch.ImportType,
-        batch.SourceFileName,
-        batch.SourceSha256,
+        access.SourceFileName ? batch.SourceFileName : null,
+        access.SourceHash ? batch.SourceSha256 : null,
         batch.Status.ToString(),
         batch.TotalRows,
         batch.NewRows,
         batch.UnchangedRows,
         batch.ChangedRows,
         batch.InvalidRows,
-        batch.CreatedByUserId,
+        access.Actor ? batch.CreatedByUser?.PublicId : null,
+        access.Actor ? batch.CreatedByUser?.FullName : null,
         batch.CreatedAt,
-        batch.CommittedByUserId,
+        access.Actor ? batch.CommittedByUser?.PublicId : null,
+        access.Actor ? batch.CommittedByUser?.FullName : null,
         batch.CommittedAt,
         Convert.ToBase64String(batch.RowVersion));
 
@@ -771,13 +815,35 @@ public class IdpImportsController(
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : userManager.FindByIdAsync(userId);
     }
 
-    private async Task<AccessDecisionResult> CanReadImportsAsync(ApplicationUser user)
+    private Task<AccessDecisionResult> CheckPlanPermissionAsync(ApplicationUser user, string permission, IdpPlan plan) =>
+        accessControlService.CheckPermissionAsync(user, permission,
+            new AccessScopeContext(MunicipalityId: plan.MunicipalityId));
+
+    private async Task<AccessDecisionResult> CanReadImportsAsync(ApplicationUser user, IdpPlan plan)
     {
-        var indicatorAccess = await accessControlService.CheckPermissionAsync(user, "IDP_INDICATOR.IMPORT");
+        var indicatorAccess = await CheckPlanPermissionAsync(user, "IDP_INDICATOR.IMPORT", plan);
         return indicatorAccess.Allowed
             ? indicatorAccess
-            : await accessControlService.CheckPermissionAsync(user, "IDP_PLAN.IMPORT");
+            : await CheckPlanPermissionAsync(user, "IDP_PLAN.IMPORT", plan);
     }
+
+    private async Task<IdpImportMemberAccess> GetImportMemberAccessAsync(ApplicationUser user, IdpPlan plan)
+    {
+        async Task<bool> Read(string member) =>
+            (await CheckPlanPermissionAsync(user, $"IDP_PLAN.{member}.READ", plan)).Allowed;
+        return new IdpImportMemberAccess(
+            await Read("ImportClientRequestId"), await Read("ImportSourceFileName"),
+            await Read("ImportSourceHash"), await Read("ImportActor"),
+            await Read("ImportRowPayload"), await Read("ImportErrorDetail"));
+    }
+
+    private sealed record IdpImportMemberAccess(
+        bool ClientRequestId,
+        bool SourceFileName,
+        bool SourceHash,
+        bool Actor,
+        bool RowPayload,
+        bool ErrorDetail);
 
     private static string ComputeHash(IdpKpiImportRowRequest[] rows) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(rows, JsonOptions)))).ToLowerInvariant();

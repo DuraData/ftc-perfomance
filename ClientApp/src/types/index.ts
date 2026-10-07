@@ -3190,20 +3190,22 @@ export interface IdpImportRow {
 
 export interface IdpImportBatch {
   publicId: string;
-  clientRequestId: string;
+  clientRequestId?: string | null;
   idpPlanPublicId: string;
   importType: string;
-  sourceFileName: string;
-  sourceSha256: string;
+  sourceFileName?: string | null;
+  sourceSha256?: string | null;
   status: 'Staged' | 'Committed' | 'Cancelled';
   totalRows: number;
   newRows: number;
   unchangedRows: number;
   changedRows: number;
   invalidRows: number;
-  createdByUserId: string;
+  createdByUserPublicId?: string | null;
+  createdByName?: string | null;
   createdAt: string;
-  committedByUserId?: string | null;
+  committedByUserPublicId?: string | null;
+  committedByName?: string | null;
   committedAt?: string | null;
   rowVersion: string;
   rows: IdpImportRow[];

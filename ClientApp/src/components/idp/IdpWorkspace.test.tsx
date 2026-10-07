@@ -204,6 +204,7 @@ describe('IDP plan lineage workspace', () => {
   });
 
   it('pages and filters IDP import summaries without loading reconciliation rows', async () => {
+    security.canReadField.mockReturnValue(true);
     api.getIdpImportBatchesPage.mockResolvedValue({
       success: true,
       data: { items: [], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 },
@@ -228,6 +229,39 @@ describe('IDP plan lineage workspace', () => {
       status: 'Committed',
       importType: 'KPI',
     })));
+  });
+
+  it('fails closed against hostile IDP import metadata and diagnostic payloads', async () => {
+    const summary = {
+      publicId: 'batch-public-id', clientRequestId: 'SECRET-REQUEST', idpPlanPublicId: predecessor.publicId,
+      importType: 'KPI', sourceFileName: 'SECRET-IMPORT.csv', sourceSha256: 'SECRET-HASH', status: 'Staged',
+      totalRows: 1, newRows: 0, unchangedRows: 0, changedRows: 0, invalidRows: 1,
+      createdByUserPublicId: 'SECRET-ACTOR-ID', createdByName: 'Secret Actor', createdAt: '2026-10-01T00:00:00Z',
+      committedByUserPublicId: null, committedByName: null, committedAt: null, rowVersion: 'AQ==',
+    };
+    api.getIdpImportBatchesPage.mockResolvedValue({
+      success: true, data: { items: [summary], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    api.getIdpImportBatch.mockResolvedValue({
+      success: true,
+      data: {
+        ...summary,
+        rows: [{ publicId: 'row-id', sourceRowNumber: 2, reference: 'ROW-1', status: 'Invalid', existingValueJson: 'SECRET-BEFORE', normalizedJson: 'SECRET-AFTER', suppliedValue: 'SECRET-SUPPLIED', errorCode: 'SECRET-CODE', errorField: 'SECRET-FIELD', errorMessage: 'SECRET-ERROR' }],
+      },
+    });
+
+    render(<IdpPlanManagementPage />);
+    const batchButton = await screen.findByRole('button', { name: /KPI · Staged · 1 rows/ });
+    expect(screen.queryByText(/SECRET-IMPORT/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Search IDP import history')).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'File name' })).not.toBeInTheDocument();
+    fireEvent.click(batchButton);
+
+    await waitFor(() => expect(api.getIdpImportBatch).toHaveBeenCalledWith('batch-public-id'));
+    expect(await screen.findByText('ROW-1')).toBeInTheDocument();
+    for (const secret of ['SECRET-REQUEST', 'SECRET-IMPORT', 'SECRET-HASH', 'Secret Actor', 'SECRET-ACTOR-ID', 'SECRET-BEFORE', 'SECRET-AFTER', 'SECRET-SUPPLIED', 'SECRET-CODE', 'SECRET-FIELD', 'SECRET-ERROR'])
+      expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Error' })).not.toBeInTheDocument();
   });
 
   it('pages, searches and filters the alignment matrix by plan public ID', async () => {

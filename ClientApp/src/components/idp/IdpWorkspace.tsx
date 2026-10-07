@@ -161,10 +161,17 @@ export function IdpPlanningDashboardPage() {
 
 export function IdpPlanManagementPage() {
   const { pushToast } = useApp();
-  const { canImport } = useSecurity();
+  const { canImport, canReadField } = useSecurity();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
   const canImportKpis = canImport('IDP_INDICATOR');
   const canImportHierarchy = canImport('IDP_PLAN');
+  const canReadImportRequestId = canReadField('IDP_PLAN', 'ImportClientRequestId');
+  const canReadImportFileName = canReadField('IDP_PLAN', 'ImportSourceFileName');
+  const canReadImportHash = canReadField('IDP_PLAN', 'ImportSourceHash');
+  const canReadImportActor = canReadField('IDP_PLAN', 'ImportActor');
+  const canReadImportPayload = canReadField('IDP_PLAN', 'ImportRowPayload');
+  const canReadImportError = canReadField('IDP_PLAN', 'ImportErrorDetail');
+  const canSearchImportHistory = canReadImportFileName || canReadImportHash || canReadImportActor;
   const currentYear = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
   const [plans, setPlans] = useState<IdpPlanSummary[]>([]);
@@ -578,12 +585,20 @@ export function IdpPlanManagementPage() {
                   <Badge variant={importBatch.invalidRows ? 'error' : 'success'}>Invalid {importBatch.invalidRows}</Badge>
                   <Badge variant={importBatch.status === 'Committed' ? 'success' : 'default'}>{importBatch.status}</Badge>
                 </div>
+                {(canReadImportRequestId || canReadImportFileName || canReadImportHash || canReadImportActor) ? <div className="text-xs text-secondary-500">
+                  {canReadImportFileName && importBatch.sourceFileName ? <span>Source: {importBatch.sourceFileName}</span> : null}
+                  {canReadImportHash && importBatch.sourceSha256 ? <span> · SHA-256: {importBatch.sourceSha256}</span> : null}
+                  {canReadImportRequestId && importBatch.clientRequestId ? <span> · Request: {importBatch.clientRequestId}</span> : null}
+                  {canReadImportActor && importBatch.createdByName ? <span> · Created by {importBatch.createdByName}{importBatch.createdByUserPublicId ? ` (${importBatch.createdByUserPublicId})` : ''}</span> : null}
+                  {canReadImportActor && importBatch.committedByName ? <span> · Committed by {importBatch.committedByName}{importBatch.committedByUserPublicId ? ` (${importBatch.committedByUserPublicId})` : ''}</span> : null}
+                </div> : null}
                 <div className="max-h-80 overflow-auto rounded border border-secondary-200 dark:border-secondary-700">
                   <table className="min-w-full text-left text-xs">
-                    <thead className="bg-secondary-50 dark:bg-secondary-800"><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Error</th></tr></thead>
-                    <tbody>{importBatch.rows.map(row => <tr key={row.publicId} className="border-t border-secondary-200 dark:border-secondary-700"><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="px-3 py-2">{row.reference}</td><td className="px-3 py-2"><Badge variant={row.status === 'Invalid' ? 'error' : row.status === 'Changed' ? 'warning' : row.status === 'New' ? 'success' : 'info'}>{row.status}</Badge></td><td className="px-3 py-2 text-error-700">{row.errorCode ? `${row.errorCode}: ${row.errorMessage}` : '—'}</td></tr>)}</tbody>
+                    <thead className="bg-secondary-50 dark:bg-secondary-800"><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Result</th>{canReadImportError ? <th className="px-3 py-2">Error</th> : null}</tr></thead>
+                    <tbody>{importBatch.rows.map(row => <tr key={row.publicId} className="border-t border-secondary-200 dark:border-secondary-700"><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="px-3 py-2">{row.reference}</td><td className="px-3 py-2"><Badge variant={row.status === 'Invalid' ? 'error' : row.status === 'Changed' ? 'warning' : row.status === 'New' ? 'success' : 'info'}>{row.status}</Badge></td>{canReadImportError ? <td className="px-3 py-2 text-error-700">{row.errorCode ? `${row.errorCode}: ${row.errorMessage}` : '—'}</td> : null}</tr>)}</tbody>
                   </table>
                 </div>
+                {canReadImportPayload && importBatch.rows.some(row => row.existingValueJson || row.normalizedJson || row.suppliedValue) ? <p className="text-xs text-secondary-500">Authorized reconciliation payload details are retained by the API for governed inspection.</p> : null}
                 {importBatch.status === 'Staged' ? (
                   <div className="flex flex-wrap items-end gap-2">
                     <label className="min-w-72 flex-1 text-xs text-secondary-600">Commit reason<input aria-label="Import commit reason" className={fieldClass} value={importReason} onChange={event => setImportReason(event.target.value)} /></label>
@@ -596,14 +611,14 @@ export function IdpPlanManagementPage() {
             <div className="mt-5 space-y-3">
               <div className="flex flex-wrap items-end gap-2">
                 <h4 className="mr-auto text-sm font-semibold text-secondary-800 dark:text-secondary-200">Import history · {importHistoryTotalCount}</h4>
-                <label className="text-xs text-secondary-600">Search<input aria-label="Search IDP import history" className={fieldClass} value={importHistorySearchInput} onChange={event => setImportHistorySearchInput(event.target.value)} /></label>
+                {canSearchImportHistory ? <label className="text-xs text-secondary-600">Search<input aria-label="Search IDP import history" className={fieldClass} value={importHistorySearchInput} onChange={event => setImportHistorySearchInput(event.target.value)} /></label> : null}
                 <label className="text-xs text-secondary-600">Status<select aria-label="Filter IDP import status" className={fieldClass} value={importHistoryStatus} onChange={event => { setImportHistoryStatus(event.target.value as typeof importHistoryStatus); setImportHistoryPage(1); }}><option value="">All</option><option value="Staged">Staged</option><option value="Committed">Committed</option><option value="Cancelled">Cancelled</option></select></label>
                 <label className="text-xs text-secondary-600">Type<select aria-label="Filter IDP import type" className={fieldClass} value={importHistoryType} onChange={event => { setImportHistoryType(event.target.value as typeof importHistoryType); setImportHistoryPage(1); }}><option value="">All</option><option value="KPI">KPI</option><option value="HIERARCHY">Hierarchy</option></select></label>
-                <label className="text-xs text-secondary-600">Sort<select aria-label="Sort IDP import history" className={fieldClass} value={importHistorySortBy} onChange={event => { setImportHistorySortBy(event.target.value); setImportHistoryPage(1); }}><option value="createdAt">Created</option><option value="fileName">File name</option><option value="status">Status</option><option value="importType">Type</option><option value="totalRows">Row count</option><option value="committedAt">Committed</option></select></label>
+                <label className="text-xs text-secondary-600">Sort<select aria-label="Sort IDP import history" className={fieldClass} value={importHistorySortBy} onChange={event => { setImportHistorySortBy(event.target.value); setImportHistoryPage(1); }}><option value="createdAt">Created</option>{canReadImportFileName ? <option value="fileName">File name</option> : null}<option value="status">Status</option><option value="importType">Type</option><option value="totalRows">Row count</option><option value="committedAt">Committed</option></select></label>
                 <select aria-label="IDP import sort direction" className={fieldClass} value={importHistorySortDirection} onChange={event => { setImportHistorySortDirection(event.target.value as 'asc' | 'desc'); setImportHistoryPage(1); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select>
               </div>
               {importHistory.length ? (
-                <div className="flex flex-wrap gap-2">{importHistory.map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => void openImportBatch(batch.publicId)}>{batch.importType} · {batch.sourceFileName} · {batch.status} · {batch.totalRows} rows · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
+                <div className="flex flex-wrap gap-2">{importHistory.map(batch => <button key={batch.publicId} type="button" className="rounded border border-secondary-300 px-2 py-1 text-xs dark:border-secondary-700" onClick={() => void openImportBatch(batch.publicId)}>{batch.importType}{canReadImportFileName && batch.sourceFileName ? ` · ${batch.sourceFileName}` : ''} · {batch.status} · {batch.totalRows} rows · {new Date(batch.createdAt).toLocaleString()}</button>)}</div>
               ) : <p className="text-sm text-secondary-500">No import batches match the current filters.</p>}
               <div className="flex items-center justify-between text-xs text-secondary-500">
                 <span>Page {importHistoryPage} of {Math.max(1, importHistoryTotalPages)}</span>

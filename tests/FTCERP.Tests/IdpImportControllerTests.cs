@@ -198,7 +198,7 @@ public class IdpImportControllerTests
 
         page.TotalCount.Should().Be(16);
         page.Items.Should().HaveCount(6);
-        page.Items.Should().OnlyContain(item => item.ImportType == "KPI" && item.SourceFileName.StartsWith("match-"));
+        page.Items.Should().OnlyContain(item => item.ImportType == "KPI" && item.SourceFileName != null && item.SourceFileName.StartsWith("match-"));
         page.Items.Should().NotContain(item => item.SourceFileName == "match-outside.csv");
         page.Items.First().SourceFileName.Should().Be("match-20.csv");
 
@@ -225,6 +225,61 @@ public class IdpImportControllerTests
             .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
         (await controller.GetBatchesPage(setup.Plan.PublicId, new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task ImportHistory_MasksSensitiveMembers_PreventsQueryInference_AndUsesPublicActorIdentity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IDP_INDICATOR.IMPORT", "IDP_PLAN.IMPORT" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowed.Contains(code) && scope?.MunicipalityId == setup.Plan.MunicipalityId,
+                    allowed.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        var controller = CreateController(context, setup.User, new Mock<IWorkflowGovernanceService>().Object, access.Object);
+
+        var staged = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
+            Guid.NewGuid(), "SECRET-IDP-IMPORT.csv", [Row(2, "MISSING-PROJECT", "SECRET-KPI", "Protected import row")])));
+
+        staged.ClientRequestId.Should().BeNull();
+        staged.SourceFileName.Should().BeNull();
+        staged.SourceSha256.Should().BeNull();
+        staged.CreatedByUserPublicId.Should().BeNull();
+        staged.CreatedByName.Should().BeNull();
+        staged.Rows.Should().ContainSingle();
+        staged.Rows[0].ExistingValueJson.Should().BeNull();
+        staged.Rows[0].NormalizedJson.Should().BeNull();
+        staged.Rows[0].SuppliedValue.Should().BeNull();
+        staged.Rows[0].ErrorCode.Should().BeNull();
+        staged.Rows[0].ErrorField.Should().BeNull();
+        staged.Rows[0].ErrorMessage.Should().BeNull();
+
+        var hiddenSearchAction = await controller.GetBatchesPage(setup.Plan.PublicId,
+            new PagedQueryRequest { Search = "SECRET-IDP-IMPORT" });
+        var hiddenSearch = ((hiddenSearchAction.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>)!.Data!;
+        hiddenSearch.TotalCount.Should().Be(0);
+        (await controller.GetBatchesPage(setup.Plan.PublicId, new PagedQueryRequest { SortBy = "fileName" })).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        foreach (var member in new[] { "ImportClientRequestId", "ImportSourceFileName", "ImportSourceHash", "ImportActor", "ImportRowPayload", "ImportErrorDetail" })
+            allowed.Add($"IDP_PLAN.{member}.READ");
+
+        var visibleAction = await controller.GetBatch(staged.PublicId);
+        var visible = Payload(visibleAction);
+        visible.ClientRequestId.Should().NotBeNull();
+        visible.SourceFileName.Should().Be("SECRET-IDP-IMPORT.csv");
+        visible.SourceSha256.Should().HaveLength(64);
+        visible.CreatedByUserPublicId.Should().Be(setup.User.PublicId);
+        visible.CreatedByName.Should().Be(setup.User.FullName);
+        visible.Rows[0].ErrorCode.Should().Be("PROJECT_NOT_FOUND");
+        visible.Rows[0].ErrorMessage.Should().NotBeNullOrWhiteSpace();
+
+        var visibleSearchAction = await controller.GetBatchesPage(setup.Plan.PublicId,
+            new PagedQueryRequest { Search = "SECRET-IDP-IMPORT", SortBy = "fileName" });
+        var visibleSearch = ((visibleSearchAction.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<IdpImportBatchSummaryResponse>>)!.Data!;
+        visibleSearch.Items.Should().ContainSingle().Which.CreatedByUserPublicId.Should().Be(setup.User.PublicId);
     }
 
     [Fact]
