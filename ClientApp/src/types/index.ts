@@ -1903,14 +1903,17 @@ export interface ReportingWindowExceptionDto {
 
 export interface PerformanceRfiDto {
   publicId: string;
-  question: string;
-  raisedByUserId: string;
+  question?: string | null;
+  raisedByUserPublicId?: string | null;
+  raisedByName?: string | null;
   raisedAt: string;
   responseDueAt: string;
   response?: string | null;
-  respondedByUserId?: string | null;
+  respondedByUserPublicId?: string | null;
+  respondedByName?: string | null;
   respondedAt?: string | null;
-  closedByUserId?: string | null;
+  closedByUserPublicId?: string | null;
+  closedByName?: string | null;
   closedAt?: string | null;
   rowVersion: string;
   evidence: RfiEvidenceDto[];
@@ -1958,13 +1961,14 @@ export interface RfiEvidenceDto {
   publicId: string;
   evidencePublicId: string;
   purpose: 1 | 2 | 3;
-  fileName: string;
+  fileName?: string | null;
   contentType?: string | null;
-  sizeInBytes: number;
-  sha256: string;
-  linkedByUserId: string;
+  sizeInBytes?: number | null;
+  sha256?: string | null;
+  linkedByUserPublicId?: string | null;
+  linkedByName?: string | null;
   linkedAt: string;
-  url: string;
+  url?: string | null;
 }
 
 export interface PerformanceLookupItemDto {

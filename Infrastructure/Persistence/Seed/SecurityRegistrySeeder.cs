@@ -198,6 +198,20 @@ public static class SecurityRegistrySeeder
             Member("IPMS_WORKFLOW", "WindowExceptionScope", "Reporting Window Exception Scope", sensitive: true),
             Member("IPMS_WORKFLOW", "WindowExceptionReason", "Reporting Window Exception Reason", sensitive: true),
             Member("IPMS_WORKFLOW", "WindowExceptionApprovedBy", "Reporting Window Exception Approver", sensitive: true, systemManaged: true),
+            Member("OPMS_RFI", "Question", "RFI Question", sensitive: true),
+            Member("OPMS_RFI", "RaisedBy", "RFI Raising User", sensitive: true, systemManaged: true),
+            Member("OPMS_RFI", "Response", "RFI Response", sensitive: true),
+            Member("OPMS_RFI", "RespondedBy", "RFI Responding User", sensitive: true, systemManaged: true),
+            Member("OPMS_RFI", "ClosedBy", "RFI Closing User", sensitive: true, systemManaged: true),
+            Member("OPMS_RFI", "EvidenceMetadata", "RFI Evidence File Metadata", sensitive: true, systemManaged: true),
+            Member("OPMS_RFI", "EvidenceLinkedBy", "RFI Evidence Linking User", sensitive: true, systemManaged: true),
+            Member("IPMS_RFI", "Question", "RFI Question", sensitive: true),
+            Member("IPMS_RFI", "RaisedBy", "RFI Raising User", sensitive: true, systemManaged: true),
+            Member("IPMS_RFI", "Response", "RFI Response", sensitive: true),
+            Member("IPMS_RFI", "RespondedBy", "RFI Responding User", sensitive: true, systemManaged: true),
+            Member("IPMS_RFI", "ClosedBy", "RFI Closing User", sensitive: true, systemManaged: true),
+            Member("IPMS_RFI", "EvidenceMetadata", "RFI Evidence File Metadata", sensitive: true, systemManaged: true),
+            Member("IPMS_RFI", "EvidenceLinkedBy", "RFI Evidence Linking User", sensitive: true, systemManaged: true),
             Member("OPMS_POE", "UploadedByUserId", "Evidence Uploader Identity", sensitive: true, systemManaged: true),
             Member("OPMS_POE", "UploadedByName", "Evidence Uploader Name", sensitive: true, systemManaged: true),
             Member("OPMS_POE", "ScannerProvider", "Evidence Scanner Provider", sensitive: true, systemManaged: true),
@@ -324,6 +338,8 @@ public static class SecurityRegistrySeeder
                       || string.Equals(item.ResourceCode, "IPMS_POE", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(item.ResourceCode, "OPMS_REPORT", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(item.ResourceCode, "IPMS_REPORT", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "OPMS_RFI", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(item.ResourceCode, "IPMS_RFI", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(item.ResourceCode, "IDP_DOCUMENT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "STRATEGIC_DOCUMENT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "TID", StringComparison.OrdinalIgnoreCase)
@@ -472,7 +488,7 @@ public static class SecurityRegistrySeeder
             ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE", "NAV.SETTINGS"],
             ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "SDBIP_LAYER.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE", "OPMS_KPI.IMPORT"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
             ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.IMPORT", "NAV.SDBIP.VOTE_NUMBERS", "SDBIP_LAYER.READ", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "NAV.STRATEGIC_DOCUMENTS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
-            ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.VarianceReason.READ", "OPMS_SUBMISSION.CorrectiveMeasure.READ", "OPMS_WORKFLOW.ActionActorUserId.READ", "OPMS_WORKFLOW.ActionComment.READ", "OPMS_WORKFLOW.ActionRatingValue.READ", "OPMS_WORKFLOW.StageRatingValue.READ", "OPMS_WORKFLOW.StageRatingAchievementPercent.READ", "OPMS_WORKFLOW.StageRatingComment.READ", "OPMS_WORKFLOW.StageRatingRatedByUserId.READ", "OPMS_WORKFLOW.StageRatingRatedByName.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE", "OPMS_SUBMISSION.VarianceReason.UPDATE", "OPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
+            ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.VarianceReason.READ", "OPMS_SUBMISSION.CorrectiveMeasure.READ", "OPMS_RFI.READ", "OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.ClosedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionActorUserId.READ", "OPMS_WORKFLOW.ActionComment.READ", "OPMS_WORKFLOW.ActionRatingValue.READ", "OPMS_WORKFLOW.StageRatingValue.READ", "OPMS_WORKFLOW.StageRatingAchievementPercent.READ", "OPMS_WORKFLOW.StageRatingComment.READ", "OPMS_WORKFLOW.StageRatingRatedByUserId.READ", "OPMS_WORKFLOW.StageRatingRatedByName.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE", "OPMS_SUBMISSION.VarianceReason.UPDATE", "OPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
             ["Workflow.Submit.View"] = ["NAV.SDBIP.CAPTURE", "NAV.WORKFLOW.MY_QUEUE"], ["Workflow.Verify.View"] = ["NAV.WORKFLOW.VERIFY"], ["Workflow.Review.View"] = ["NAV.WORKFLOW.REVIEW"], ["Workflow.Approve.View"] = ["NAV.WORKFLOW.APPROVE"], ["Workflow.Audit.View"] = ["NAV.WORKFLOW.AUDIT"],
             ["OPMS.Submissions.Submit"] = ["OPMS_SUBMISSION.SUBMIT"], ["OPMS.Submissions.Verify"] = ["OPMS_SUBMISSION.VERIFY"], ["OPMS.Submissions.VerifyReject"] = ["OPMS_SUBMISSION.VERIFY_REJECT"],
             ["OPMS.Submissions.Approve"] = ["OPMS_SUBMISSION.APPROVE"], ["OPMS.Submissions.Reject"] = ["OPMS_SUBMISSION.REJECT"], ["OPMS.Submissions.Review"] = ["OPMS_WORKFLOW.PMS_REVIEW"],
@@ -484,7 +500,7 @@ public static class SecurityRegistrySeeder
             ["Units.View"] = ["UNIT.READ", "NAV.ORGANISATION.UNITS", "POSITION.READ", "NAV.ORGANISATION.POSITIONS"], ["Units.Manage"] = ["UNIT.CREATE", "UNIT.UPDATE", "POSITION.CREATE", "POSITION.UPDATE"],
             ["IPMS.Targets.View"] = ["IPMS_KPI.READ"], ["IPMS.Targets.Create"] = ["IPMS_KPI.CREATE"], ["IPMS.Targets.Edit"] = ["IPMS_KPI.UPDATE"], ["IPMS.Targets.Delete"] = ["IPMS_KPI.WITHDRAW"],
             ["IPMS.View"] = ["NAV.IPMS.DASHBOARD", "NAV.IPMS.REGISTER"], ["IPMS.Library.View"] = ["NAV.IPMS.LIBRARY"],
-            ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.VarianceReason.READ", "IPMS_SUBMISSION.CorrectiveMeasure.READ", "IPMS_WORKFLOW.ActionActorUserId.READ", "IPMS_WORKFLOW.ActionComment.READ", "IPMS_WORKFLOW.ActionRatingValue.READ", "IPMS_WORKFLOW.StageRatingValue.READ", "IPMS_WORKFLOW.StageRatingAchievementPercent.READ", "IPMS_WORKFLOW.StageRatingComment.READ", "IPMS_WORKFLOW.StageRatingRatedByUserId.READ", "IPMS_WORKFLOW.StageRatingRatedByName.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE", "IPMS_SUBMISSION.VarianceReason.UPDATE", "IPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["IPMS.Submissions.Delete"] = ["IPMS_SUBMISSION.WITHDRAW"],
+            ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.VarianceReason.READ", "IPMS_SUBMISSION.CorrectiveMeasure.READ", "IPMS_RFI.READ", "IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.ClosedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ", "IPMS_WORKFLOW.ActionActorUserId.READ", "IPMS_WORKFLOW.ActionComment.READ", "IPMS_WORKFLOW.ActionRatingValue.READ", "IPMS_WORKFLOW.StageRatingValue.READ", "IPMS_WORKFLOW.StageRatingAchievementPercent.READ", "IPMS_WORKFLOW.StageRatingComment.READ", "IPMS_WORKFLOW.StageRatingRatedByUserId.READ", "IPMS_WORKFLOW.StageRatingRatedByName.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE", "IPMS_SUBMISSION.VarianceReason.UPDATE", "IPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["IPMS.Submissions.Delete"] = ["IPMS_SUBMISSION.WITHDRAW"],
             ["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW"], ["IDP.Plan.View"] = ["NAV.IDP.PLANS"], ["IDP.Hierarchy.Manage"] = ["NAV.IDP.HIERARCHY", "IDP_PLAN.IMPORT"], ["IDP.Participation.View"] = ["NAV.IDP.PARTICIPATION", "IDP_STAKEHOLDER.READ", "IDP_STAKEHOLDER.ContactPerson.READ", "IDP_STAKEHOLDER.ContactEmail.READ"], ["IDP.Participation.Manage"] = ["IDP_STAKEHOLDER.CREATE", "IDP_STAKEHOLDER.READ", "IDP_STAKEHOLDER.UPDATE", "IDP_STAKEHOLDER.ContactPerson.READ", "IDP_STAKEHOLDER.ContactPerson.UPDATE", "IDP_STAKEHOLDER.ContactEmail.READ", "IDP_STAKEHOLDER.ContactEmail.UPDATE"], ["IDP.Alignment.View"] = ["NAV.IDP.ALIGNMENT"], ["IDP.Documents.Manage"] = ["NAV.IDP.DOCUMENTS", "IDP_DOCUMENT.READ", "IDP_DOCUMENT.CREATE", "IDP_DOCUMENT.UPDATE", "IDP_DOCUMENT.RESCAN", "IDP_DOCUMENT.UploadedByUserId.READ", "IDP_DOCUMENT.UploadedByName.READ", "IDP_DOCUMENT.ScannerProvider.READ", "IDP_DOCUMENT.ScannerReference.READ", "IDP_DOCUMENT.ScanDetail.READ"], ["IDP.Reports.Generate"] = ["NAV.IDP.REPORTS"], ["IDP.Risk.Manage"] = ["NAV.RISK.DASHBOARD", "NAV.RISK.REGISTER", "NAV.RISK.ASSESSMENTS", "NAV.RISK.TREATMENTS", "NAV.RISK.REPORTS", "FINANCIAL_YEAR.READ", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.UPDATE", "STRATEGIC_RISK.LINK_KPI", "STRATEGIC_RISK.UNLINK_KPI"],
             ["IPMS.Submissions.Submit"] = ["IPMS_SUBMISSION.SUBMIT"], ["IPMS.Submissions.Verify"] = ["IPMS_SUBMISSION.VERIFY"], ["IPMS.Submissions.VerifyReject"] = ["IPMS_SUBMISSION.VERIFY_REJECT"],
             ["IPMS.Submissions.Approve"] = ["IPMS_SUBMISSION.APPROVE"], ["IPMS.Submissions.Reject"] = ["IPMS_SUBMISSION.REJECT"], ["IPMS.Submissions.Review"] = ["IPMS_WORKFLOW.PMS_REVIEW"],
@@ -505,6 +521,12 @@ public static class SecurityRegistrySeeder
             ["Reports.Export"] = ["OPMS_REPORT.EXPORT", "IPMS_REPORT.EXPORT"],
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT"]
         };
+        mappings["OPMS_RFI.RAISE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.Question.UPDATE", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["OPMS_RFI.RESPOND"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.Response.UPDATE", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["OPMS_RFI.CLOSE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.ClosedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["IPMS_RFI.RAISE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.Question.UPDATE", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["IPMS_RFI.RESPOND"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.Response.UPDATE", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["IPMS_RFI.CLOSE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.ClosedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
             "OPMS_WORKFLOW.WindowExceptionScope.READ", "OPMS_WORKFLOW.WindowExceptionScope.UPDATE",
             "OPMS_WORKFLOW.WindowExceptionReason.READ", "OPMS_WORKFLOW.WindowExceptionReason.UPDATE", "OPMS_WORKFLOW.WindowExceptionApprovedBy.READ",

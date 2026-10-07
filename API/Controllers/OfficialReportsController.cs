@@ -277,6 +277,12 @@ public sealed class OfficialReportsController(
         if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse>("The report requires both KPI and submission READ permission in addition to report generation permission.");
         if (template.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View"))
             return ForbidResponse<OfficialReportGenerationResponse>("The audit-trail report also requires audit-trail read permission.");
+        if (template.ReportType == OfficialReportType.OutstandingRfi)
+        {
+            scope = await IntersectRfiReportScopeAsync(user, template.SubmissionKind, scope);
+            if (!scope.PermissionGranted)
+                return ForbidResponse<OfficialReportGenerationResponse>("The outstanding-RFI report requires RFI read plus question, actor and response member permissions.");
+        }
         var year = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId && item.IsActive);
         if (year == null) return BadRequest(Fail<OfficialReportGenerationResponse>("Municipality financial year was not found in this tenant."));
         if (template.MunicipalityFinancialYearId.HasValue && template.MunicipalityFinancialYearId != year.Id) return BadRequest(Fail<OfficialReportGenerationResponse>("This template is not approved for the selected financial year."));
@@ -364,6 +370,8 @@ public sealed class OfficialReportsController(
             IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(generation.SubmissionKind)),
                 await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
             await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
+        if (generation.ReportType == OfficialReportType.OutstandingRfi)
+            scope = await IntersectRfiReportScopeAsync(user, generation.SubmissionKind, scope);
         if (!scope.PermissionGranted || generation.ScopeSchemaVersion != 1 || !CanReadStoredScope(generation.ScopeJson, scope)) return ForbidResponse<object>("Official report download is denied for the stored generation scope.");
         if (generation.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View")) return ForbidResponse<object>("Audit-trail read permission has been revoked.");
         if (generation.Blob.IsContentDeleted || generation.Blob.IsQuarantined) return Conflict(Fail<object>("The official report content is unavailable."));
@@ -452,13 +460,22 @@ public sealed class OfficialReportsController(
             var rfis = await context.PerformanceRfis.AsNoTracking().Include(item => item.SubmissionWorkflowInstance)
                 .Where(item => item.SubmissionWorkflowInstance.SubmissionKind == kind && subjectIds.Contains(item.SubmissionWorkflowInstance.SubmissionId) && !item.ClosedAt.HasValue)
                 .OrderBy(item => item.ResponseDueAt).ToArrayAsync();
+            var userIds = rfis.SelectMany(item => new[] { item.RaisedByUserId, item.RespondedByUserId })
+                .Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var identities = await context.Users.AsNoTracking().Where(item => userIds.Contains(item.Id))
+                .Select(item => new { item.Id, item.PublicId, item.FirstName, item.LastName }).ToArrayAsync();
+            string Identity(string? id)
+            {
+                var identity = identities.SingleOrDefault(item => item.Id == id);
+                return identity == null ? string.Empty : $"{identity.FirstName} {identity.LastName}".Trim() + $" ({identity.PublicId})";
+            }
             return rfis.Select(item =>
             {
                 var subject = bySubmission[item.SubmissionWorkflowInstance.SubmissionId];
                 var status = item.ClosedAt.HasValue ? "Closed" : item.RespondedAt.HasValue ? "Responded" : item.ResponseDueAt < DateTime.UtcNow ? "Overdue" : "Outstanding";
-                return SubjectRow(subject, ("rfiId", item.PublicId.ToString()), ("question", item.Question), ("status", status), ("raisedBy", item.RaisedByUserId),
+                return SubjectRow(subject, ("rfiId", item.PublicId.ToString()), ("question", item.Question), ("status", status), ("raisedBy", Identity(item.RaisedByUserId)),
                     ("raisedAt", Date(item.RaisedAt)), ("responseDueAt", Date(item.ResponseDueAt)), ("response", item.Response ?? string.Empty),
-                    ("respondedBy", item.RespondedByUserId ?? string.Empty), ("respondedAt", Date(item.RespondedAt)));
+                    ("respondedBy", Identity(item.RespondedByUserId)), ("respondedAt", Date(item.RespondedAt)));
             }).ToList();
         }
 
@@ -640,6 +657,13 @@ public sealed class OfficialReportsController(
     private static IQueryable<IpmsSubmission> ApplyScope(IQueryable<IpmsSubmission> query, AccessQueryScopeResult scope) => scope.Unrestricted ? query : query.Where(item => scope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId ?? -1) || scope.UnitIds.Contains(item.IpmsTarget.UnitId ?? -1) || scope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId!) || scope.TargetIds.Contains(item.IpmsTargetId));
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
     private async Task<bool> Granted(ApplicationUser user, string permission) => (await accessControl.GetQueryScopeAsync(user, permission)).PermissionGranted;
+    private async Task<AccessQueryScopeResult> IntersectRfiReportScopeAsync(ApplicationUser user, SubmissionKind kind, AccessQueryScopeResult scope)
+    {
+        var resource = kind == SubmissionKind.Opms ? "OPMS_RFI" : "IPMS_RFI";
+        foreach (var permission in new[] { $"{resource}.READ", $"{resource}.Question.READ", $"{resource}.RaisedBy.READ", $"{resource}.Response.READ", $"{resource}.RespondedBy.READ" })
+            scope = IntersectScopes(scope, await accessControl.GetQueryScopeAsync(user, permission));
+        return scope;
+    }
     private static string ReadPermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.READ" : "IPMS_REPORT.READ";
     private static string GeneratePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.GENERATE" : "IPMS_REPORT.GENERATE";
     private static string ConfigurePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.CONFIGURE" : "IPMS_REPORT.CONFIGURE";

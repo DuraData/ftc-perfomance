@@ -275,6 +275,35 @@ public sealed class OfficialReportGenerationTests
     }
 
     [Fact]
+    public async Task OutstandingRfiGeneration_IsDeniedWhenRfiMemberPermissionIsMissing()
+    {
+        var municipalityId = 703L;
+        var tenant = new FixedTenantContext(municipalityId);
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        var municipality = new Municipality { Id = municipalityId, Code = "RFI-RPT", Name = "RFI Report Municipality" };
+        var user = new ApplicationUser { Id = "rfi-reporter", UserName = "rfi-reporter", FirstName = "RFI", LastName = "Reporter", MunicipalityId = municipalityId };
+        var template = new OfficialReportTemplate { MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Opms, ReportType = OfficialReportType.OutstandingRfi, Code = "RFI", Name = "Outstanding RFI", Format = OfficialReportFormat.Csv, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ApprovalReference = "Council", Reason = "Approved", CreatedByUserId = user.Id, ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.OutstandingRfi) };
+        context.AddRange(municipality, user, template);
+        await context.SaveChangesAsync();
+        var granted = new AccessQueryScopeResult(true, true, [], [], [], [], [], []);
+        var denied = new AccessQueryScopeResult(false, false, [], [], [], [], [], []);
+        var basePermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_REPORT.GENERATE", "OPMS_KPI.READ", "OPMS_SUBMISSION.READ" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string permission) => basePermissions.Contains(permission) ? granted : denied);
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }
+        };
+
+        var response = await controller.Generate(new GenerateOfficialReportRequest(template.PublicId, Guid.NewGuid(), Guid.NewGuid(), null));
+
+        response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        access.Verify(service => service.GetQueryScopeAsync(user, "OPMS_RFI.READ"), Times.Once);
+    }
+
+    [Fact]
     public async Task GenerationsPage_AppliesNormalizedStoredScopeBeforeCountAndPaging()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

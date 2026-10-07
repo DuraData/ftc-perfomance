@@ -88,6 +88,11 @@ public sealed class WorkflowConfigurationControllerTests
         }
         context.PerformanceRfis.Add(new PerformanceRfi { MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = otherInstance.Id, SubmissionWorkflowInstance = otherInstance, Question = "match-outside", RaisedByUserId = user.Id, RaisedAt = raisedAt, ResponseDueAt = raisedAt.AddDays(5) });
         await context.SaveChangesAsync();
+        var evidenceRfi = await context.PerformanceRfis.SingleAsync(item => item.Question == "match-30");
+        var evidenceBlob = new EvidenceBlob { MunicipalityId = municipality.Id, StorageKey = "rfi/secret-evidence", ContentType = "application/pdf", SizeInBytes = 321, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean" };
+        var evidence = new PoeFile { Id = "rfi-evidence", MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id, FileName = "secret-evidence.pdf", Blob = evidenceBlob, UploadedByUserId = user.Id, UploadedByUser = user, IsActive = true };
+        context.PerformanceRfiEvidenceLinks.Add(new PerformanceRfiEvidence { MunicipalityId = municipality.Id, PerformanceRfi = evidenceRfi, PoeFile = evidence, Purpose = RfiEvidencePurpose.Question, LinkedByUserId = user.Id, LinkedByUser = user, CorrelationId = "rfi-link" });
+        await context.SaveChangesAsync();
 
         var controller = Controller(context, municipality.Id, user);
         var action = await controller.GetRfisPage(SubmissionKind.Opms, submission.Id,
@@ -102,6 +107,57 @@ public sealed class WorkflowConfigurationControllerTests
         (await controller.GetRfisPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetRfis(SubmissionKind.Opms, submission.Id)).Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_RFI.READ", "OPMS_RFI.RAISE", "OPMS_RFI.RESPOND" };
+        var restricted = Controller(context, municipality.Id, user, grants.Contains);
+        var masked = (await restricted.GetRfisPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { PageSize = 5, SortBy = "raisedAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<PerformanceRfiDto>>>().Subject.Data!;
+        masked.Items.Should().OnlyContain(item => item.Question == null && item.Response == null
+            && item.RaisedByUserPublicId == null && item.RaisedByName == null
+            && item.RespondedByUserPublicId == null && item.RespondedByName == null
+            && item.ClosedByUserPublicId == null && item.ClosedByName == null);
+        masked.Items.SelectMany(item => item.Evidence).Should().OnlyContain(item => item.FileName == null
+            && item.ContentType == null && item.SizeInBytes == null && item.Sha256 == null && item.Url == null
+            && item.LinkedByUserPublicId == null && item.LinkedByName == null);
+        var deniedSearch = (await restricted.GetRfisPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = "match-30", SortBy = "raisedAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<PerformanceRfiDto>>>().Subject.Data!;
+        deniedSearch.TotalCount.Should().Be(0);
+        (await restricted.RaiseRfi(SubmissionKind.Opms, submission.Id,
+            new RaisePerformanceRfiRequest("Protected question", DateTime.UtcNow.AddDays(2)))).Result.Should().BeOfType<ForbidResult>();
+        var openRfi = await context.PerformanceRfis.SingleAsync(item => item.Question == "match-00");
+        (await restricted.RespondRfi(openRfi.PublicId,
+            new RespondPerformanceRfiRequest("Protected response", Convert.ToBase64String(openRfi.RowVersion)))).Result.Should().BeOfType<ForbidResult>();
+
+        foreach (var member in new[] { "Question", "RaisedBy", "Response", "RespondedBy", "ClosedBy", "EvidenceMetadata", "EvidenceLinkedBy" })
+            grants.Add($"OPMS_RFI.{member}.READ");
+        grants.Add("OPMS_RFI.Question.UPDATE");
+        grants.Add("OPMS_RFI.Response.UPDATE");
+        var visible = (await restricted.GetRfisPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = "match-30", SortBy = "raisedAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<PerformanceRfiDto>>>().Subject.Data!;
+        visible.Items.Should().ContainSingle(item => item.Question == "match-30"
+            && item.RaisedByUserPublicId == user.PublicId && item.RaisedByName != null);
+        var visibleEvidence = visible.Items.Single().Evidence.Should().ContainSingle().Subject;
+        visibleEvidence.FileName.Should().Be("secret-evidence.pdf");
+        visibleEvidence.Sha256.Should().Be(new string('a', 64));
+        visibleEvidence.LinkedByUserPublicId.Should().Be(user.PublicId);
+        var raisedResult = await restricted.RaiseRfi(SubmissionKind.Opms, submission.Id,
+            new RaisePerformanceRfiRequest("Protected question", DateTime.UtcNow.AddDays(2)));
+        var raised = raisedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PerformanceRfiDto>>().Subject.Data!;
+        raised.Question.Should().Be("Protected question");
+        raised.RaisedByUserPublicId.Should().Be(user.PublicId);
+        var responseResult = await restricted.RespondRfi(openRfi.PublicId,
+            new RespondPerformanceRfiRequest("Protected response", Convert.ToBase64String(openRfi.RowVersion)));
+        var responded = responseResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PerformanceRfiDto>>().Subject.Data!;
+        responded.Response.Should().Be("Protected response");
+        responded.RespondedByUserPublicId.Should().Be(user.PublicId);
     }
 
     [Fact]

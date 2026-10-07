@@ -9,14 +9,24 @@ const api = vi.hoisted(() => ({
   getOpmsSubmissionAttachmentsPage: vi.fn(),
   getIpmsSubmissionAttachmentsPage: vi.fn(),
 }));
+const security = vi.hoisted(() => ({
+  canRead: vi.fn(),
+  canReadField: vi.fn(),
+  canEditField: vi.fn(),
+  canExecute: vi.fn(),
+}));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
-vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canExecute: () => true }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 
 describe('PerformanceRfiWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.canRead.mockReturnValue(true);
+    security.canReadField.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
+    security.canExecute.mockReturnValue(true);
     api.getPerformanceRfisPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'rfi-1', question: 'Clarify the variance', raisedByUserId: 'reviewer', raisedAt: '2026-10-01T00:00:00Z', responseDueAt: '2026-10-03T00:00:00Z', rowVersion: 'AQ==', evidence: [] }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({ success: true, data: { items: [{ id: 'file-1', publicId: 'evidence-1', fileName: 'calculation.pdf', fileSize: 100, fileType: 'application/pdf', uploadedBy: {}, uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence', url: '/content', scanStatus: 'Clean', isQuarantined: false }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getIpmsSubmissionAttachmentsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
@@ -67,5 +77,26 @@ describe('PerformanceRfiWorkspace', () => {
     })));
     fireEvent.click(screen.getByRole('button', { name: 'Next RFIs' }));
     await waitFor(() => expect(api.getPerformanceRfisPage).toHaveBeenLastCalledWith(1, 'submission-7', expect.objectContaining({ page: 2 })));
+  });
+
+  it('fails closed against protected RFI fields in a hostile payload', async () => {
+    security.canReadField.mockReturnValue(false);
+    security.canEditField.mockReturnValue(false);
+    api.getPerformanceRfisPage.mockResolvedValue({ success: true, data: { items: [{
+      publicId: 'rfi-secret', question: 'Secret audit question', raisedByName: 'Secret Reviewer', raisedAt: '2026-10-01T00:00:00Z', responseDueAt: '2026-10-03T00:00:00Z',
+      response: 'Secret management response', respondedByName: 'Secret Responder', respondedAt: '2026-10-02T00:00:00Z', closedByName: 'Secret Closer', closedAt: '2026-10-03T00:00:00Z', rowVersion: 'AQ==',
+      evidence: [{ publicId: 'link-secret', evidencePublicId: 'evidence-secret', purpose: 2, fileName: 'secret-payroll.pdf', sha256: 'secret-hash', linkedByName: 'Secret Linker', linkedAt: '2026-10-02T00:00:00Z', url: '/secret-download' }],
+    }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<PerformanceRfiWorkspace kind={1} submissionId="submission-7" />);
+
+    expect(await screen.findByText('Protected RFI question')).toBeInTheDocument();
+    expect(screen.queryByText('Secret audit question')).not.toBeInTheDocument();
+    expect(screen.queryByText('Secret management response')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Secret Reviewer|Secret Responder|Secret Closer|Secret Linker/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/secret-payroll\.pdf/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Search RFIs')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Respond' })).not.toBeInTheDocument();
+    expect(api.getOpmsSubmissionAttachmentsPage).not.toHaveBeenCalled();
   });
 });

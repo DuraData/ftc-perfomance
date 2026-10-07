@@ -607,8 +607,10 @@ public sealed class WorkflowConfigurationController(
         if (access == null) return NotFound(Fail<PagedResponse<PerformanceRfiDto>>("Submission not found."));
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<PagedResponse<PerformanceRfiDto>>("User not found."));
-        var readCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
+        var resource = kind == SubmissionKind.Opms ? "OPMS_RFI" : "IPMS_RFI";
+        var readCode = $"{resource}.READ";
         if (!(await accessControl.CheckPermissionAsync(user, readCode, access.Scope)).Allowed) return Forbid();
+        var members = await ReadRfiMembersAsync(user, kind, access.Scope);
         if (!RfiSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<PerformanceRfiDto>>("SortBy must be raisedAt, dueAt, or status."));
         var normalizedStatus = status?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -620,9 +622,22 @@ public sealed class WorkflowConfigurationController(
         var query = context.PerformanceRfis.AsNoTracking()
             .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(x => x.Question.Contains(request.NormalizedSearch)
-                || (x.Response != null && x.Response.Contains(request.NormalizedSearch))
-                || x.RaisedByUserId.Contains(request.NormalizedSearch));
+        {
+            var search = request.NormalizedSearch;
+            query = query.Where(x =>
+                (members.QuestionRead && x.Question.Contains(search))
+                || (members.ResponseRead && x.Response != null && x.Response.Contains(search))
+                || (members.RaisedByRead && context.Users.Any(userRow => userRow.Id == x.RaisedByUserId
+                    && (userRow.FirstName.Contains(search) || userRow.LastName.Contains(search))))
+                || (members.RespondedByRead && x.RespondedByUserId != null && context.Users.Any(userRow => userRow.Id == x.RespondedByUserId
+                    && (userRow.FirstName.Contains(search) || userRow.LastName.Contains(search))))
+                || (members.ClosedByRead && x.ClosedByUserId != null && context.Users.Any(userRow => userRow.Id == x.ClosedByUserId
+                    && (userRow.FirstName.Contains(search) || userRow.LastName.Contains(search))))
+                || (members.EvidenceMetadataRead && x.EvidenceLinks.Any(link => link.PoeFile.FileName.Contains(search)
+                    || link.PoeFile.Blob.Sha256.Contains(search)))
+                || (members.EvidenceLinkedByRead && x.EvidenceLinks.Any(link => context.Users.Any(userRow => userRow.Id == link.LinkedByUserId
+                    && (userRow.FirstName.Contains(search) || userRow.LastName.Contains(search))))));
+        }
         query = normalizedStatus switch
         {
             "open" => query.Where(x => !x.RespondedAt.HasValue && !x.ClosedAt.HasValue),
@@ -636,8 +651,9 @@ public sealed class WorkflowConfigurationController(
         var rows = await ApplyRfiOrdering(query, request.NormalizedSortBy, request.Descending)
             .Include(x => x.EvidenceLinks).ThenInclude(x => x.PoeFile).ThenInclude(x => x.Blob)
             .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        var dtos = await ToRfiDtosAsync(rows, members);
         return Ok(new ApiResponse<PagedResponse<PerformanceRfiDto>>(true,
-            PagedResponse<PerformanceRfiDto>.Create(rows.Select(ToRfiDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<PerformanceRfiDto>.Create(dtos, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("submissions/{kind}/{submissionId}/rfis")]
@@ -648,7 +664,7 @@ public sealed class WorkflowConfigurationController(
         if (access == null) return NotFound(Fail<PerformanceRfiDto[]>("Submission not found."));
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<PerformanceRfiDto[]>("User not found."));
-        var readCode = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ";
+        var readCode = kind == SubmissionKind.Opms ? "OPMS_RFI.READ" : "IPMS_RFI.READ";
         if (!(await accessControl.CheckPermissionAsync(user, readCode, access.Scope)).Allowed) return Forbid();
         return StatusCode(StatusCodes.Status410Gone,
             Fail<PerformanceRfiDto[]>("This unbounded route is retired. Use the /rfis/page endpoint."));
@@ -681,6 +697,8 @@ public sealed class WorkflowConfigurationController(
         if (user == null) return Unauthorized(Fail<PerformanceRfiDto>("User not found."));
         var permissionCode = kind == SubmissionKind.Opms ? "OPMS_RFI.RAISE" : "IPMS_RFI.RAISE";
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
+        var members = await ReadRfiMembersAsync(user, kind, access.Scope);
+        if (!members.QuestionUpdate) return Forbid();
         var entity = new PerformanceRfi { MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = access.Instance.Id, SubmissionWorkflowInstance = access.Instance, Question = request.Question.Trim(), RaisedByUserId = user.Id, ResponseDueAt = request.ResponseDueAt };
         var evidenceError = await LinkEvidenceAsync(entity, kind, submissionId, RfiEvidencePurpose.Question, request.EvidencePublicIds, user.Id);
         if (evidenceError != null) return BadRequest(Fail<PerformanceRfiDto>(evidenceError));
@@ -689,7 +707,7 @@ public sealed class WorkflowConfigurationController(
         context.AuditTrails.Add(NewRfiAudit(entity, permissionCode, user, new { entity.Question, entity.ResponseDueAt }));
         governance.QueueWorkflowNotifications(access.Recipients, NotificationType.Rfi, "Performance RFI raised", $"An RFI was raised for {kind} submission '{submissionId}'.", kind + "Submission", submissionId);
         await context.SaveChangesAsync();
-        return Ok(new ApiResponse<PerformanceRfiDto>(true, ToRfiDto(entity)));
+        return Ok(new ApiResponse<PerformanceRfiDto>(true, (await ToRfiDtosAsync([entity], members)).Single()));
     }
 
     [HttpPost("rfis/{publicId:guid}/respond")]
@@ -706,6 +724,8 @@ public sealed class WorkflowConfigurationController(
         if (user == null) return Unauthorized(Fail<PerformanceRfiDto>("User not found."));
         var permissionCode = rfi.SubmissionWorkflowInstance.SubmissionKind == SubmissionKind.Opms ? "OPMS_RFI.RESPOND" : "IPMS_RFI.RESPOND";
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
+        var members = await ReadRfiMembersAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope);
+        if (!members.ResponseUpdate) return Forbid();
         if (!TrySetRowVersion(rfi, request.RowVersion)) return BadRequest(Fail<PerformanceRfiDto>("A valid RowVersion is required."));
         var evidenceError = await LinkEvidenceAsync(rfi, rfi.SubmissionWorkflowInstance.SubmissionKind, rfi.SubmissionWorkflowInstance.SubmissionId, RfiEvidencePurpose.Response, request.EvidencePublicIds, user.Id);
         if (evidenceError != null) return BadRequest(Fail<PerformanceRfiDto>(evidenceError));
@@ -713,7 +733,7 @@ public sealed class WorkflowConfigurationController(
         AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.RespondRfi, user.Id, rfi.Response);
         context.AuditTrails.Add(NewRfiAudit(rfi, permissionCode, user, new { rfi.Response }));
         governance.QueueWorkflowNotifications(access.Recipients, NotificationType.Rfi, "Performance RFI response", $"An RFI response was submitted for '{rfi.SubmissionWorkflowInstance.SubmissionId}'.", rfi.SubmissionWorkflowInstance.SubmissionKind + "Submission", rfi.SubmissionWorkflowInstance.SubmissionId);
-        return await SaveRfi(rfi);
+        return await SaveRfi(rfi, members);
     }
 
     [HttpPost("rfis/{publicId:guid}/close")]
@@ -730,12 +750,13 @@ public sealed class WorkflowConfigurationController(
         if (user == null) return Unauthorized(Fail<PerformanceRfiDto>("User not found."));
         var permissionCode = rfi.SubmissionWorkflowInstance.SubmissionKind == SubmissionKind.Opms ? "OPMS_RFI.CLOSE" : "IPMS_RFI.CLOSE";
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
+        var members = await ReadRfiMembersAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope);
         if (!TrySetRowVersion(rfi, request.RowVersion)) return BadRequest(Fail<PerformanceRfiDto>("A valid RowVersion is required."));
         rfi.ClosedByUserId = user.Id; rfi.ClosedAt = DateTime.UtcNow;
         AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.Complete, user.Id, request.Comment?.Trim());
         context.AuditTrails.Add(NewRfiAudit(rfi, permissionCode, user, new { request.Comment }));
         governance.QueueWorkflowNotifications(access.Recipients, NotificationType.Rfi, "Performance RFI closed", $"An RFI was closed for '{rfi.SubmissionWorkflowInstance.SubmissionId}'.", rfi.SubmissionWorkflowInstance.SubmissionKind + "Submission", rfi.SubmissionWorkflowInstance.SubmissionId);
-        return await SaveRfi(rfi);
+        return await SaveRfi(rfi, members);
     }
 
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
@@ -764,7 +785,7 @@ public sealed class WorkflowConfigurationController(
     }
     private AuditTrail NewRfiAudit(PerformanceRfi rfi, string action, ApplicationUser user, object value) => new() { EntityName = nameof(PerformanceRfi), EntityId = rfi.PublicId.ToString(), Action = action, NewValue = JsonSerializer.Serialize(value), ChangedBy = user.Id, CorrelationId = HttpContext.TraceIdentifier, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString() };
     private bool TrySetRowVersion(PerformanceRfi rfi, string rowVersion) { try { context.Entry(rfi).Property(x => x.RowVersion).OriginalValue = Convert.FromBase64String(rowVersion); return true; } catch (FormatException) { return false; } }
-    private async Task<ActionResult<ApiResponse<PerformanceRfiDto>>> SaveRfi(PerformanceRfi rfi) { try { await context.SaveChangesAsync(); return Ok(new ApiResponse<PerformanceRfiDto>(true, ToRfiDto(rfi))); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<PerformanceRfiDto>("RFI was changed by another user.")); } }
+    private async Task<ActionResult<ApiResponse<PerformanceRfiDto>>> SaveRfi(PerformanceRfi rfi, RfiMemberAccess members) { try { await context.SaveChangesAsync(); return Ok(new ApiResponse<PerformanceRfiDto>(true, (await ToRfiDtosAsync([rfi], members)).Single())); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<PerformanceRfiDto>("RFI was changed by another user.")); } }
     private async Task<string?> LinkEvidenceAsync(PerformanceRfi rfi, SubmissionKind kind, string submissionId, RfiEvidencePurpose purpose, IReadOnlyCollection<Guid>? publicIds, string userId)
     {
         var ids = (publicIds ?? Array.Empty<Guid>()).Where(x => x != Guid.Empty).Distinct().ToArray();
@@ -858,7 +879,55 @@ public sealed class WorkflowConfigurationController(
         members.StageRatingRatedByUserId ? x.RatedByUserId : null,
         members.StageRatingRatedByName ? x.RatedByUser.FullName : null,
         x.RatedAt);
-    private PerformanceRfiDto ToRfiDto(PerformanceRfi x) => new(x.PublicId, x.Question, x.RaisedByUserId, x.RaisedAt, x.ResponseDueAt, x.Response, x.RespondedByUserId, x.RespondedAt, x.ClosedByUserId, x.ClosedAt, Convert.ToBase64String(x.RowVersion), x.EvidenceLinks.OrderBy(link => link.LinkedAt).Select(link => new RfiEvidenceDto(link.PublicId, link.PoeFile.PublicId, link.Purpose, link.PoeFile.FileName, link.PoeFile.Blob.ContentType, link.PoeFile.Blob.SizeInBytes, link.PoeFile.Blob.Sha256, link.LinkedByUserId, link.LinkedAt, link.PoeFile.ToResponse(HttpContext).Url)).ToArray());
+    private async Task<RfiMemberAccess> ReadRfiMembersAsync(ApplicationUser user, SubmissionKind kind, AccessScopeContext scope)
+    {
+        var resource = kind == SubmissionKind.Opms ? "OPMS_RFI" : "IPMS_RFI";
+        async Task<bool> Allowed(string member, string operation) =>
+            (await accessControl.CheckPermissionAsync(user, $"{resource}.{member}.{operation}", scope)).Allowed;
+        return new RfiMemberAccess(
+            await Allowed("Question", "READ"), await Allowed("Question", "UPDATE"), await Allowed("RaisedBy", "READ"),
+            await Allowed("Response", "READ"), await Allowed("Response", "UPDATE"), await Allowed("RespondedBy", "READ"),
+            await Allowed("ClosedBy", "READ"), await Allowed("EvidenceMetadata", "READ"), await Allowed("EvidenceLinkedBy", "READ"));
+    }
+    private async Task<PerformanceRfiDto[]> ToRfiDtosAsync(IReadOnlyCollection<PerformanceRfi> rows, RfiMemberAccess members)
+    {
+        var userIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (members.RaisedByRead) foreach (var id in rows.Select(x => x.RaisedByUserId)) userIds.Add(id);
+        if (members.RespondedByRead) foreach (var id in rows.Select(x => x.RespondedByUserId).Where(x => x != null)) userIds.Add(id!);
+        if (members.ClosedByRead) foreach (var id in rows.Select(x => x.ClosedByUserId).Where(x => x != null)) userIds.Add(id!);
+        if (members.EvidenceLinkedByRead) foreach (var id in rows.SelectMany(x => x.EvidenceLinks).Select(x => x.LinkedByUserId)) userIds.Add(id);
+        var users = userIds.Count == 0 ? [] : await context.Users.AsNoTracking().Where(x => userIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.PublicId, x.FirstName, x.LastName }).ToArrayAsync();
+        (Guid? PublicId, string? Name) Identity(string? id, bool readable)
+        {
+            if (!readable || string.IsNullOrWhiteSpace(id)) return (null, null);
+            var identity = users.SingleOrDefault(x => x.Id == id);
+            return identity == null ? (null, null) : (identity.PublicId, $"{identity.FirstName} {identity.LastName}".Trim());
+        }
+        return rows.Select(x =>
+        {
+            var raisedBy = Identity(x.RaisedByUserId, members.RaisedByRead);
+            var respondedBy = Identity(x.RespondedByUserId, members.RespondedByRead);
+            var closedBy = Identity(x.ClosedByUserId, members.ClosedByRead);
+            return new PerformanceRfiDto(
+                x.PublicId, members.QuestionRead ? x.Question : null, raisedBy.PublicId, raisedBy.Name,
+                x.RaisedAt, x.ResponseDueAt, members.ResponseRead ? x.Response : null,
+                respondedBy.PublicId, respondedBy.Name, x.RespondedAt, closedBy.PublicId, closedBy.Name, x.ClosedAt,
+                Convert.ToBase64String(x.RowVersion),
+                x.EvidenceLinks.OrderBy(link => link.LinkedAt).Select(link =>
+                {
+                    var linkedBy = Identity(link.LinkedByUserId, members.EvidenceLinkedByRead);
+                    return new RfiEvidenceDto(
+                        link.PublicId, link.PoeFile.PublicId, link.Purpose,
+                        members.EvidenceMetadataRead ? link.PoeFile.FileName : null,
+                        members.EvidenceMetadataRead ? link.PoeFile.Blob.ContentType : null,
+                        members.EvidenceMetadataRead ? link.PoeFile.Blob.SizeInBytes : null,
+                        members.EvidenceMetadataRead ? link.PoeFile.Blob.Sha256 : null,
+                        linkedBy.PublicId, linkedBy.Name, link.LinkedAt,
+                        members.EvidenceMetadataRead ? link.PoeFile.ToResponse(HttpContext).Url : null);
+                }).ToArray());
+        }).ToArray();
+    }
     private sealed record SubmissionAccess(AccessScopeContext Scope, SubmissionWorkflowInstance? Instance, string[] Recipients);
     private sealed record WorkflowMemberAccess(
         bool ActionActorUserId, bool ActionComment, bool ActionRatingValue,
@@ -866,6 +935,10 @@ public sealed class WorkflowConfigurationController(
         bool StageRatingRatedByUserId, bool StageRatingRatedByName);
     private sealed record WindowExceptionMemberAccess(
         bool ScopeRead, bool ReasonRead, bool ApprovedByRead, bool ScopeUpdate, bool ReasonUpdate);
+    private sealed record RfiMemberAccess(
+        bool QuestionRead, bool QuestionUpdate, bool RaisedByRead,
+        bool ResponseRead, bool ResponseUpdate, bool RespondedByRead, bool ClosedByRead,
+        bool EvidenceMetadataRead, bool EvidenceLinkedByRead);
 }
 
 public sealed record SaveWorkflowStageRequest(string Code, string Name, int Sequence, string RequiredActionCode, string RequiredPermissionCode, bool IsOptional, bool AllowBypass, bool RequireDifferentActorFromSubmitter, bool RequireDifferentActorFromPreviousStage, bool IsTerminal, string? RejectionStageCode, bool RequiresRating, Guid? RatingSchemePublicId);
@@ -889,5 +962,5 @@ public sealed record StageRatingDto(Guid PublicId, Guid WorkflowActionPublicId, 
 public sealed record RaisePerformanceRfiRequest(string Question, DateTime ResponseDueAt, IReadOnlyCollection<Guid>? EvidencePublicIds = null);
 public sealed record RespondPerformanceRfiRequest(string Response, string RowVersion, IReadOnlyCollection<Guid>? EvidencePublicIds = null);
 public sealed record ClosePerformanceRfiRequest(string? Comment, string RowVersion);
-public sealed record RfiEvidenceDto(Guid PublicId, Guid EvidencePublicId, RfiEvidencePurpose Purpose, string FileName, string? ContentType, long SizeInBytes, string Sha256, string LinkedByUserId, DateTime LinkedAt, string Url);
-public sealed record PerformanceRfiDto(Guid PublicId, string Question, string RaisedByUserId, DateTime RaisedAt, DateTime ResponseDueAt, string? Response, string? RespondedByUserId, DateTime? RespondedAt, string? ClosedByUserId, DateTime? ClosedAt, string RowVersion, RfiEvidenceDto[] Evidence);
+public sealed record RfiEvidenceDto(Guid PublicId, Guid EvidencePublicId, RfiEvidencePurpose Purpose, string? FileName, string? ContentType, long? SizeInBytes, string? Sha256, Guid? LinkedByUserPublicId, string? LinkedByName, DateTime LinkedAt, string? Url);
+public sealed record PerformanceRfiDto(Guid PublicId, string? Question, Guid? RaisedByUserPublicId, string? RaisedByName, DateTime RaisedAt, DateTime ResponseDueAt, string? Response, Guid? RespondedByUserPublicId, string? RespondedByName, DateTime? RespondedAt, Guid? ClosedByUserPublicId, string? ClosedByName, DateTime? ClosedAt, string RowVersion, RfiEvidenceDto[] Evidence);

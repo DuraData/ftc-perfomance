@@ -105,6 +105,23 @@ public sealed class UsersControllerSecurityTests
             (await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity.Should().BeTrue();
         }
 
+        foreach (var resourceCode in new[] { "OPMS_RFI", "IPMS_RFI" })
+        {
+            var rfiMembers = await context.SecurityMemberDefinitions
+                .Where(item => item.ResourceCode == resourceCode)
+                .OrderBy(item => item.MemberCode)
+                .ToArrayAsync();
+            rfiMembers.Select(item => item.MemberCode).Should().Equal(
+                "ClosedBy", "EvidenceLinkedBy", "EvidenceMetadata", "Question", "RaisedBy", "RespondedBy", "Response");
+            rfiMembers.Should().OnlyContain(item => item.IsSensitive);
+            rfiMembers.Where(item => item.MemberCode is not ("Question" or "Response"))
+                .Should().OnlyContain(item => item.IsSystemManaged);
+            rfiMembers.Where(item => item.MemberCode is "Question" or "Response")
+                .Should().OnlyContain(item => !item.IsSystemManaged);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(9);
+            (await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity.Should().BeTrue();
+        }
+
         var authenticationMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "AUTHENTICATION")
             .OrderBy(item => item.MemberCode)
