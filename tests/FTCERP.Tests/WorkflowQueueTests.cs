@@ -31,6 +31,10 @@ public sealed class WorkflowQueueTests
             .ReturnsAsync(Scope(["opms-draft", "opms-verify"]));
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ"))
             .ReturnsAsync(Scope(["ipms-approved"]));
+        var memberPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
+                new AccessDecisionResult(memberPermissions.Contains(permission), memberPermissions.Contains(permission) ? "Allowed" : "Denied", [], [], []));
         var controller = new WorkflowQueuesController(context, access.Object)
         {
             ControllerContext = new ControllerContext
@@ -48,18 +52,29 @@ public sealed class WorkflowQueueTests
         var verificationItem = Assert.Single(verification.Page.Items);
         Assert.Equal("verify", verificationItem.Id);
         Assert.Equal("opms", verificationItem.Kind);
+        Assert.Null(verificationItem.SubmittedByUserPublicId);
+        Assert.Null(verificationItem.SubmittedByName);
         Assert.Equal(2, verification.Counts.MySubmissions);
         Assert.Equal(1, verification.Counts.Verification);
         Assert.Equal(1, verification.Counts.Pms);
         Assert.Equal(1, verification.Counts.MyDrafts);
         Assert.Equal(1, verification.Counts.ApprovedClosed);
 
+        memberPermissions.Add("OPMS_SUBMISSION.SubmitterIdentity.READ");
+        var visibleVerificationResult = await controller.Get(new WorkflowQueueQueryRequest { Queue = "verification", Page = 1, PageSize = 1 });
+        var visibleVerification = Assert.IsType<ApiResponse<WorkflowQueueResponse>>(
+            Assert.IsType<OkObjectResult>(visibleVerificationResult.Result).Value).Data!;
+        Assert.Equal(other.PublicId, Assert.Single(visibleVerification.Page.Items).SubmittedByUserPublicId);
+        Assert.Equal(other.FullName, Assert.Single(visibleVerification.Page.Items).SubmittedByName);
+
+        memberPermissions.Add("IPMS_SUBMISSION.SubmitterIdentity.READ");
         var approvedResult = await controller.Get(new WorkflowQueueQueryRequest { Queue = "approved-closed" });
         var approved = Assert.IsType<ApiResponse<WorkflowQueueResponse>>(
             Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
         var approvedItem = Assert.Single(approved.Page.Items);
         Assert.Equal("own-approved", approvedItem.Id);
         Assert.Equal("ipms", approvedItem.Kind);
+        Assert.Equal(user.PublicId, approvedItem.SubmittedByUserPublicId);
         Assert.DoesNotContain(approved.Page.Items, item => item.Id.StartsWith("outside", StringComparison.Ordinal));
     }
 

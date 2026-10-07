@@ -71,7 +71,7 @@ describe('SubmissionWorkspace member security', () => {
   it('does not render protected values or editing controls when member access is denied', () => {
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    expect(screen.getByText('Restricted')).toBeInTheDocument();
+    expect(screen.getAllByText('Restricted').length).toBeGreaterThan(0);
     expect(screen.queryByText('Private reason')).not.toBeInTheDocument();
     expect(screen.queryByText('Private corrective action')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
@@ -199,5 +199,39 @@ describe('SubmissionWorkspace member security', () => {
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionActor');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionReason');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionCorrelationId');
+  });
+
+  it('does not render hostile current workflow identities or comments without their independent member grants', () => {
+    const hostile = {
+      ...submission,
+      submitter: { id: 'submitter-public', displayName: 'Secret Submitter' },
+      submitterScore: 99,
+      verifier: { id: 'verifier-public', displayName: 'Secret Verifier' },
+      verifierComments: 'Secret verification comment',
+      approver: { id: 'approver-public', displayName: 'Secret Approver' },
+      approverComments: 'Secret approval comment',
+      pmsOfficer: { id: 'pms-public', displayName: 'Secret PMS Officer' },
+      pmsComments: 'Secret PMS comment',
+      auditor: { id: 'auditor-public', displayName: 'Secret Auditor' },
+      auditorComments: 'Secret audit comment',
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={hostile} submissionType="OPMS" />);
+    expect(screen.queryByText('Secret Submitter')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verification' }));
+    expect(screen.queryByText('Secret Verifier')).not.toBeInTheDocument();
+    expect(screen.queryByText('Secret verification comment')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    expect(screen.queryByText('Secret Approver')).not.toBeInTheDocument();
+    expect(screen.queryByText('Secret approval comment')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'PMS Section' }));
+    expect(screen.queryByText('Secret PMS Officer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Secret PMS comment')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Auditor Information' }));
+    expect(screen.queryByText('Secret Auditor')).not.toBeInTheDocument();
+    expect(screen.queryByText('Secret audit comment')).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'VerifierComment');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'InternalAuditComment');
   });
 });

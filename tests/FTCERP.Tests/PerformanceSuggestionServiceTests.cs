@@ -235,6 +235,77 @@ public sealed class PerformanceSuggestionServiceTests
         edited.CorrelationId.Should().Be("ipms-edited-secret");
     }
 
+    [Fact]
+    public async Task Current_opms_workflow_and_withdrawal_projection_is_record_scoped_masked_and_uses_public_actor_identity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: false);
+        PopulateProjection(seed.OpmsDestination, seed.User.Id);
+        await context.SaveChangesAsync();
+
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
+        var access = ProjectionAccess(seed.User, permissions);
+        var controller = CreateController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>());
+
+        var hidden = Payload(await controller.GetSubmission(seed.OpmsDestination.Id));
+        hidden.SubmittedByUserPublicId.Should().BeNull();
+        hidden.VerifierComments.Should().BeNull();
+        hidden.ApproverComments.Should().BeNull();
+        hidden.PmsComments.Should().BeNull();
+        hidden.AuditorComments.Should().BeNull();
+        hidden.WithdrawalReason.Should().BeNull();
+        hidden.WithdrawnByUserPublicId.Should().BeNull();
+        hidden.CreatedBy.Should().BeNull();
+        hidden.UpdatedBy.Should().BeNull();
+        System.Text.Json.JsonSerializer.Serialize(hidden).Should().NotContain(seed.User.Id);
+
+        foreach (var member in ProjectionMembers)
+            permissions.Add($"OPMS_SUBMISSION.{member}.READ");
+
+        var visible = Payload(await controller.GetSubmission(seed.OpmsDestination.Id));
+        visible.SubmittedByUserPublicId.Should().Be(seed.User.PublicId);
+        visible.VerifierUserPublicId.Should().Be(seed.User.PublicId);
+        visible.ApproverUserPublicId.Should().Be(seed.User.PublicId);
+        visible.PmsOfficerUserPublicId.Should().Be(seed.User.PublicId);
+        visible.AuditorUserPublicId.Should().Be(seed.User.PublicId);
+        visible.WithdrawnByUserPublicId.Should().Be(seed.User.PublicId);
+        visible.WithdrawnByName.Should().Be(seed.User.FullName);
+        visible.VerifierComments.Should().Be("Verification secret");
+        visible.ApproverComments.Should().Be("Approval secret");
+        visible.PmsComments.Should().Be("PMS secret");
+        visible.AuditorComments.Should().Be("Audit secret");
+        visible.WithdrawalReason.Should().Be("Withdrawal secret");
+        System.Text.Json.JsonSerializer.Serialize(visible).Should().NotContain(seed.User.Id);
+    }
+
+    [Fact]
+    public async Task Current_ipms_workflow_projection_applies_the_same_dynamic_member_boundaries()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: true);
+        PopulateProjection(seed.IpmsDestination!, seed.User.Id);
+        await context.SaveChangesAsync();
+
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IPMS_SUBMISSION.READ" };
+        var access = ProjectionAccess(seed.User, permissions);
+        var controller = CreateIpmsController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>());
+
+        var hidden = Payload(await controller.GetSubmission(seed.IpmsDestination!.Id));
+        hidden.VerifierUserPublicId.Should().BeNull();
+        hidden.VerifierComments.Should().BeNull();
+        hidden.WithdrawalReason.Should().BeNull();
+
+        foreach (var member in ProjectionMembers)
+            permissions.Add($"IPMS_SUBMISSION.{member}.READ");
+
+        var visible = Payload(await controller.GetSubmission(seed.IpmsDestination.Id));
+        visible.VerifierUserPublicId.Should().Be(seed.User.PublicId);
+        visible.VerifierComments.Should().Be("Verification secret");
+        visible.PmsRecommendation.Should().Be("PMS recommendation secret");
+        visible.WithdrawnByUserPublicId.Should().Be(seed.User.PublicId);
+        System.Text.Json.JsonSerializer.Serialize(visible).Should().NotContain(seed.User.Id);
+    }
+
     private static T Payload<T>(ActionResult<ApiResponse<T>> result) =>
         Assert.IsType<ApiResponse<T>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
 
@@ -298,6 +369,46 @@ public sealed class PerformanceSuggestionServiceTests
     }
 
     private static AccessDecisionResult Decision(bool allowed, string reason) => new(allowed, reason, [], [], []);
+
+    private static readonly string[] ProjectionMembers =
+    [
+        "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
+        "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment",
+        "PmsRecommendation", "PmsScore", "PmsRfi", "WithdrawalReason", "WithdrawalActor",
+        "InternalAuditObservation", "InternalAuditComment", "InternalAuditRecommendation", "InternalAuditScore",
+        "InternalAuditAssessedBy", "InternalAuditRfi"
+    ];
+
+    private static Mock<IAccessControlService> ProjectionAccess(ApplicationUser user, HashSet<string> permissions)
+    {
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
+                Decision(permissions.Contains(permission), permissions.Contains(permission) ? "Allowed" : "Denied"));
+        access.Setup(item => item.GetEffectiveAccessAsync(user))
+            .ReturnsAsync(() => new EffectiveAccessResult([], permissions.ToArray(), [], [], [], []));
+        return access;
+    }
+
+    private static void PopulateProjection(OpmsSubmission submission, string userId)
+    {
+        submission.SubmittedByUserId = userId; submission.SubmitterScore = 1;
+        submission.VerifierUserId = userId; submission.VerifierComments = "Verification secret"; submission.VerifierComment = "Verification secret"; submission.VerifierScore = 2;
+        submission.ApproverUserId = userId; submission.ApproverComments = "Approval secret"; submission.ApproverComment = "Approval secret"; submission.ApproverScore = 3;
+        submission.PmsOfficerUserId = userId; submission.PmsComments = "PMS secret"; submission.PmsComment = "PMS secret"; submission.PmsRecommendation = "PMS recommendation secret"; submission.PmsScore = 4; submission.PmsRfiComment = "PMS RFI secret";
+        submission.AuditorUserId = userId; submission.AuditorComments = "Audit secret"; submission.AuditorComment = "Audit secret"; submission.AuditorRecommendation = "Audit recommendation secret"; submission.AuditorScore = 5;
+        submission.IsDisabled = true; submission.WithdrawalReason = "Withdrawal secret"; submission.WithdrawnAt = DateTime.UtcNow; submission.WithdrawnByUserId = userId; submission.CreatedBy = userId; submission.UpdatedBy = userId;
+    }
+
+    private static void PopulateProjection(IpmsSubmission submission, string userId)
+    {
+        submission.SubmittedByUserId = userId; submission.SubmitterScore = 1;
+        submission.VerifierUserId = userId; submission.VerifierComments = "Verification secret"; submission.VerifierComment = "Verification secret"; submission.VerifierScore = 2;
+        submission.ApproverUserId = userId; submission.ApproverComments = "Approval secret"; submission.ApproverComment = "Approval secret"; submission.ApproverScore = 3;
+        submission.PmsOfficerUserId = userId; submission.PmsComments = "PMS secret"; submission.PmsComment = "PMS secret"; submission.PmsRecommendation = "PMS recommendation secret"; submission.PmsScore = 4; submission.PmsRfiComment = "PMS RFI secret";
+        submission.AuditorUserId = userId; submission.AuditorComments = "Audit secret"; submission.AuditorComment = "Audit secret"; submission.AuditorRecommendation = "Audit recommendation secret"; submission.AuditorScore = 5;
+        submission.IsDisabled = true; submission.WithdrawalReason = "Withdrawal secret"; submission.WithdrawnAt = DateTime.UtcNow; submission.WithdrawnByUserId = userId; submission.CreatedBy = userId; submission.UpdatedBy = userId;
+    }
 
     private static async Task<SeedResult> SeedAsync(
         ApplicationDbContext context,

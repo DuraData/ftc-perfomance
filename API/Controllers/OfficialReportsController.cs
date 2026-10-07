@@ -582,7 +582,7 @@ public sealed class OfficialReportsController(
                 item.OpmsTarget.DepartmentId, item.OpmsTarget.Department != null ? item.OpmsTarget.Department.Name : string.Empty,
                 item.OpmsTarget.UnitId, item.OpmsTarget.Unit != null ? item.OpmsTarget.Unit.Name : string.Empty, period.Code,
                 item.ActualPerformance, item.AchievementPercent, item.TargetAchieved, item.Status,
-                item.SubmittedByUser != null ? item.SubmittedByUser.UserName ?? item.SubmittedByUser.Email ?? item.SubmittedByUser.Id : item.SubmittedByUserId ?? string.Empty,
+                item.SubmittedByUser != null ? (item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName).Trim() : string.Empty,
                 item.SubmittedAt)).ToArrayAsync();
         }
         var ipms = ApplyScope(context.IpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
@@ -595,7 +595,7 @@ public sealed class OfficialReportsController(
             item.IpmsTarget.DepartmentId, item.IpmsTarget.Department != null ? item.IpmsTarget.Department.Name : string.Empty,
             item.IpmsTarget.UnitId, item.IpmsTarget.Unit != null ? item.IpmsTarget.Unit.Name : string.Empty, period.Code,
             item.ActualPerformance, item.AchievementPercent, item.TargetAchieved, item.Status,
-            item.SubmittedByUser != null ? item.SubmittedByUser.UserName ?? item.SubmittedByUser.Email ?? item.SubmittedByUser.Id : item.SubmittedByUserId ?? string.Empty,
+            item.SubmittedByUser != null ? (item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName).Trim() : string.Empty,
             item.SubmittedAt)).ToArrayAsync();
     }
 
@@ -694,6 +694,7 @@ public sealed class OfficialReportsController(
             "averageAchievementPercent", "achieved", "atRisk", "pending");
         RequireAny($"{submission}.Variance.READ", "variance");
         RequireAny($"{submission}.SubmittedDate.READ", "submittedAt");
+        RequireAny($"{submission}.SubmitterIdentity.READ", "submittedBy");
 
         if (reportType is OfficialReportType.VerificationRegister or OfficialReportType.ApprovalRegister or OfficialReportType.PmsReview)
         {

@@ -631,8 +631,8 @@ describe('versioned API routes', () => {
       items: [{
         id: 'submission-live', rowVersion: 'Ag==', baseState: 'SUBMITTED', opmsTargetId: 'target-live',
         targetName: 'Live KPI', quarter: 'Q1', status: 'submitted', actual: 4,
-        submittedByUserId: 'submitter-live', submittedByName: 'Live Submitter',
-        verifierUserId: 'verifier-live', verifierName: 'Live Verifier', createdAt: '2026-08-01T00:00:00Z',
+        submittedByUserPublicId: 'submitter-live', submittedByName: 'Live Submitter',
+        verifierUserPublicId: 'verifier-live', verifierName: 'Live Verifier', createdAt: '2026-08-01T00:00:00Z',
       }],
       page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
     };

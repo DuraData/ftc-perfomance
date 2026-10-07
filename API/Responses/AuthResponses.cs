@@ -409,21 +409,21 @@ public record OpmsSubmissionResponse(
     string? CorrectiveMeasure,
     decimal? SubmitterScore,
     DateTime? SubmittedAt,
-    string? SubmittedByUserId,
+    Guid? SubmittedByUserPublicId,
     string? SubmittedByName,
-    string? VerifierUserId,
+    Guid? VerifierUserPublicId,
     string? VerifierName,
     DateTime? VerifiedAt,
     string? VerifierComments,
     string? VerifierComment,
     decimal? VerifierScore,
-    string? ApproverUserId,
+    Guid? ApproverUserPublicId,
     string? ApproverName,
     DateTime? ApprovedAt,
     string? ApproverComments,
     string? ApproverComment,
     decimal? ApproverScore,
-    string? PmsOfficerUserId,
+    Guid? PmsOfficerUserPublicId,
     string? PmsOfficerName,
     DateTime? PmsReviewedAt,
     string? PmsComments,
@@ -432,7 +432,7 @@ public record OpmsSubmissionResponse(
     decimal? PmsScore,
     DateTime? PmsResponseDueDate,
     string? PmsRfiComment,
-    string? AuditorUserId,
+    Guid? AuditorUserPublicId,
     string? AuditorName,
     DateTime? AuditedAt,
     string? AuditorComments,
@@ -466,7 +466,8 @@ public record OpmsSubmissionResponse(
     public string RowVersion { get; init; } = string.Empty;
     public string? WithdrawalReason { get; init; }
     public DateTime? WithdrawnAt { get; init; }
-    public string? WithdrawnByUserId { get; init; }
+    public Guid? WithdrawnByUserPublicId { get; init; }
+    public string? WithdrawnByName { get; init; }
 }
 
 public record IpmsSubmissionResponse(
@@ -488,21 +489,21 @@ public record IpmsSubmissionResponse(
     string? CorrectiveMeasure,
     decimal? SubmitterScore,
     DateTime? SubmittedAt,
-    string? SubmittedByUserId,
+    Guid? SubmittedByUserPublicId,
     string? SubmittedByName,
-    string? VerifierUserId,
+    Guid? VerifierUserPublicId,
     string? VerifierName,
     DateTime? VerifiedAt,
     string? VerifierComments,
     string? VerifierComment,
     decimal? VerifierScore,
-    string? ApproverUserId,
+    Guid? ApproverUserPublicId,
     string? ApproverName,
     DateTime? ApprovedAt,
     string? ApproverComments,
     string? ApproverComment,
     decimal? ApproverScore,
-    string? PmsOfficerUserId,
+    Guid? PmsOfficerUserPublicId,
     string? PmsOfficerName,
     DateTime? PmsReviewedAt,
     string? PmsComments,
@@ -511,7 +512,7 @@ public record IpmsSubmissionResponse(
     decimal? PmsScore,
     DateTime? PmsResponseDueDate,
     string? PmsRfiComment,
-    string? AuditorUserId,
+    Guid? AuditorUserPublicId,
     string? AuditorName,
     DateTime? AuditedAt,
     string? AuditorComments,
@@ -545,7 +546,8 @@ public record IpmsSubmissionResponse(
     public string RowVersion { get; init; } = string.Empty;
     public string? WithdrawalReason { get; init; }
     public DateTime? WithdrawnAt { get; init; }
-    public string? WithdrawnByUserId { get; init; }
+    public Guid? WithdrawnByUserPublicId { get; init; }
+    public string? WithdrawnByName { get; init; }
 }
 
 public sealed record PerformanceSuggestionEventResponse(

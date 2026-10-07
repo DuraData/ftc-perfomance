@@ -37,8 +37,17 @@ public sealed class WorkflowQueuesController(
             .Take(request.PageSize)
             .ToListAsync();
 
-        var page = PagedResponse<WorkflowQueueItemResponse>.Create(
-            rows.Select(item => new WorkflowQueueItemResponse(
+        var responseRows = new List<WorkflowQueueItemResponse>(rows.Count);
+        foreach (var item in rows)
+        {
+            var resource = item.Kind == "opms" ? "OPMS_SUBMISSION" : "IPMS_SUBMISSION";
+            var recordScope = new AccessScopeContext(item.DepartmentId, item.UnitId, item.AssignedUserId, null, item.TargetId, null);
+            var memberCodes = new[] { $"{resource}.SubmitterIdentity.READ", $"{resource}.VerifierIdentity.READ", $"{resource}.ApproverIdentity.READ" };
+            var memberAccess = await accessControl.CheckPermissionsAsync(user, memberCodes, recordScope);
+            var submitterAllowed = memberAccess[memberCodes[0]].Allowed;
+            var verifierAllowed = memberAccess[memberCodes[1]].Allowed;
+            var approverAllowed = memberAccess[memberCodes[2]].Allowed;
+            responseRows.Add(new WorkflowQueueItemResponse(
                 item.Id,
                 item.PublicId,
                 item.Kind,
@@ -49,11 +58,14 @@ public sealed class WorkflowQueuesController(
                 item.Quarter,
                 item.DueDate,
                 item.Status,
-                item.SubmittedByUserId,
-                item.SubmittedByName,
-                item.VerifierName,
-                item.ApproverName,
-                item.CreatedAt)),
+                submitterAllowed ? item.SubmittedByUserPublicId : null,
+                submitterAllowed ? item.SubmittedByName : null,
+                verifierAllowed ? item.VerifierName : null,
+                approverAllowed ? item.ApproverName : null,
+                item.CreatedAt));
+        }
+        var page = PagedResponse<WorkflowQueueItemResponse>.Create(
+            responseRows,
             request.Page,
             request.PageSize,
             totalCount);
@@ -90,8 +102,11 @@ public sealed class WorkflowQueuesController(
             DueDate = item.DueDate,
             Status = item.Status,
             SubmittedByUserId = item.SubmittedByUserId,
+            SubmittedByUserPublicId = item.SubmittedByUser == null ? null : item.SubmittedByUser.PublicId,
             SubmittedByName = item.SubmittedByUser == null ? null : item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName,
             AssignedUserId = item.OpmsTarget.AssignedUserId,
+            DepartmentId = item.OpmsTarget.DepartmentId,
+            UnitId = item.OpmsTarget.UnitId,
             VerifierName = item.VerifierUser == null ? null : item.VerifierUser.FirstName + " " + item.VerifierUser.LastName,
             ApproverName = item.ApproverUser == null ? null : item.ApproverUser.FirstName + " " + item.ApproverUser.LastName,
             CreatedAt = item.CreatedAt
@@ -127,8 +142,11 @@ public sealed class WorkflowQueuesController(
             DueDate = item.DueDate,
             Status = item.Status,
             SubmittedByUserId = item.SubmittedByUserId,
+            SubmittedByUserPublicId = item.SubmittedByUser == null ? null : item.SubmittedByUser.PublicId,
             SubmittedByName = item.SubmittedByUser == null ? null : item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName,
             AssignedUserId = item.IpmsTarget.AssignedUserId,
+            DepartmentId = item.IpmsTarget.DepartmentId,
+            UnitId = item.IpmsTarget.UnitId,
             VerifierName = item.VerifierUser == null ? null : item.VerifierUser.FirstName + " " + item.VerifierUser.LastName,
             ApproverName = item.ApproverUser == null ? null : item.ApproverUser.FirstName + " " + item.ApproverUser.LastName,
             CreatedAt = item.CreatedAt
@@ -195,8 +213,11 @@ public sealed class WorkflowQueuesController(
         public DateTime? DueDate { get; init; }
         public string Status { get; init; } = string.Empty;
         public string? SubmittedByUserId { get; init; }
+        public Guid? SubmittedByUserPublicId { get; init; }
         public string? SubmittedByName { get; init; }
         public string? AssignedUserId { get; init; }
+        public int? DepartmentId { get; init; }
+        public int? UnitId { get; init; }
         public string? VerifierName { get; init; }
         public string? ApproverName { get; init; }
         public DateTime CreatedAt { get; init; }

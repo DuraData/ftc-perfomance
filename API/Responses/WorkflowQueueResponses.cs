@@ -30,7 +30,7 @@ public sealed record WorkflowQueueItemResponse(
     string Quarter,
     DateTime? DueDate,
     string Status,
-    string? SubmittedByUserId,
+    Guid? SubmittedByUserPublicId,
     string? SubmittedByName,
     string? VerifierName,
     string? ApproverName,

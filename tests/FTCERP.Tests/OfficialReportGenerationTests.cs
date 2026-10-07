@@ -79,6 +79,7 @@ public sealed class OfficialReportGenerationTests
 
     [Theory]
     [InlineData(OfficialReportType.QuarterlyPerformance, "OPMS_SUBMISSION.ActualPerformance.READ")]
+    [InlineData(OfficialReportType.SubmissionRegister, "OPMS_SUBMISSION.SubmitterIdentity.READ")]
     [InlineData(OfficialReportType.VerificationRegister, "OPMS_WORKFLOW.ActionComment.READ")]
     [InlineData(OfficialReportType.InternalAudit, "OPMS_SUBMISSION.InternalAuditObservation.READ")]
     [InlineData(OfficialReportType.OutstandingRfi, "OPMS_RFI.Response.READ")]

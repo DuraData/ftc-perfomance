@@ -357,6 +357,36 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task Batched_member_decisions_preserve_single_permission_scope_and_default_deny_semantics()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser();
+        var role = Role("batch-reader", "BATCH_READER");
+        var department = new Department { Id = 10, Code = "BATCH", Name = "Batch Department", IsActive = true };
+        var identity = new Permission { Code = "OPMS_SUBMISSION.SubmitterIdentity.READ", Module = "Member", Feature = "OPMS_SUBMISSION", Action = "Read", Kind = SecurityPermissionKind.Member, ResourceCode = "OPMS_SUBMISSION", MemberCode = "SubmitterIdentity", Operation = SecurityOperation.Read };
+        var comment = new Permission { Code = "OPMS_SUBMISSION.VerifierComment.READ", Module = "Member", Feature = "OPMS_SUBMISSION", Action = "Read", Kind = SecurityPermissionKind.Member, ResourceCode = "OPMS_SUBMISSION", MemberCode = "VerifierComment", Operation = SecurityOperation.Read };
+        context.AddRange(user, role, department, identity, comment);
+        await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(user, role));
+        context.RolePermissions.AddRange(
+            new RolePermission { RoleId = role.Id, PermissionId = identity.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ScopeType = ScopeType.DepartmentScope },
+            new RolePermission { RoleId = role.Id, PermissionId = comment.Id, IsAllowed = false, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        context.UserScopes.Add(new UserScope { UserId = user.Id, ScopeType = ScopeType.DepartmentScope, DepartmentId = 10, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        await context.SaveChangesAsync();
+        var service = CreateService(context, user);
+        var scope = new AccessScopeContext(DepartmentId: 10);
+
+        var batch = await service.CheckPermissionsBatchAsync(user,
+            [identity.Code, comment.Code, "OPMS_SUBMISSION.WithdrawalReason.READ"], scope);
+
+        batch[identity.Code].Allowed.Should().BeTrue();
+        (await service.CheckPermissionAsync(user, identity.Code, scope)).Allowed.Should().BeTrue();
+        batch[comment.Code].Allowed.Should().BeFalse();
+        (await service.CheckPermissionAsync(user, comment.Code, scope)).Allowed.Should().BeFalse();
+        batch["OPMS_SUBMISSION.WithdrawalReason.READ"].Allowed.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task PermissionScope_CannotBeSatisfiedByDifferentUserScopeType()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

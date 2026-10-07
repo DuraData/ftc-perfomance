@@ -536,6 +536,17 @@ export function SubmissionWorkspace({
   const canReadSuggestionActor = security.canReadField(resourceCode, 'SuggestionActor');
   const canReadSuggestionReason = security.canReadField(resourceCode, 'SuggestionReason');
   const canReadSuggestionCorrelation = security.canReadField(resourceCode, 'SuggestionCorrelationId');
+  const canReadSubmitterIdentity = security.canReadField(resourceCode, 'SubmitterIdentity');
+  const canReadSubmitterScore = security.canReadField(resourceCode, 'SubmitterScore');
+  const canReadVerifierIdentity = security.canReadField(resourceCode, 'VerifierIdentity');
+  const canReadVerifierComment = security.canReadField(resourceCode, 'VerifierComment');
+  const canReadApproverIdentity = security.canReadField(resourceCode, 'ApproverIdentity');
+  const canReadApproverComment = security.canReadField(resourceCode, 'ApproverComment');
+  const canReadPmsIdentity = security.canReadField(resourceCode, 'PmsIdentity');
+  const canReadPmsComment = security.canReadField(resourceCode, 'PmsComment');
+  const canReadAuditorIdentity = security.canReadField(resourceCode, 'InternalAuditAssessedBy');
+  const canReadAuditorObservation = security.canReadField(resourceCode, 'InternalAuditObservation');
+  const canReadAuditorComment = security.canReadField(resourceCode, 'InternalAuditComment');
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
   const canReadVarianceReason = security.canReadField(resourceCode, 'VarianceReason');
@@ -767,7 +778,7 @@ export function SubmissionWorkspace({
                 <Badge variant="info" size="md">{`${submissionType}-${currentSubmission.id.padStart(4, '0')}`}</Badge>
               </div>
               <p className="text-sm text-secondary-500">
-                {currentSubmission.quarter} {currentSubmission.target.period.fiscalYear} · {currentSubmission.submitter?.displayName ?? 'Unassigned'} · {currentSubmission.target.department.name}
+                {currentSubmission.quarter} {currentSubmission.target.period.fiscalYear} · {canReadSubmitterIdentity ? (currentSubmission.submitter?.displayName ?? 'Unassigned') : 'Restricted'} · {currentSubmission.target.department.name}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Badge variant={getStatusBadgeVariant(currentSubmission.status)}>{statusLabels[currentSubmission.status]}</Badge>
@@ -797,7 +808,7 @@ export function SubmissionWorkspace({
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Score</p>
-              <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">{scoreDisplay}</p>
+              <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">{canReadSubmitterScore ? scoreDisplay : 'Restricted'}</p>
             </div>
           </div>
         </div>
@@ -956,7 +967,7 @@ export function SubmissionWorkspace({
                 editable={isEditing && canEditCorrectiveMeasure}
                 onChange={(value) => updateDraftSubmission(current => 'correctiveMeasure' in current ? { ...current, correctiveMeasure: value } : current)}
               />}
-              <Field label="Submitter Score" value={scoreDisplay} />
+              {canReadSubmitterScore && <Field label="Submitter Score" value={scoreDisplay} />}
               <Field label="Submitter Status" value={<Badge variant={getStatusBadgeVariant(currentSubmission.status)}>{statusLabels[currentSubmission.status]}</Badge>} />
             </div>
           </Section>
@@ -1002,9 +1013,9 @@ export function SubmissionWorkspace({
       {activeTab === 'verification' && (
         <Section title="Verification" icon={<ClipboardCheck className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Verified By" value={getVerifier(currentSubmission)?.displayName || 'Pending'} />
+            {canReadVerifierIdentity && <Field label="Verified By" value={getVerifier(currentSubmission)?.displayName || 'Pending'} />}
             <Field label="Verified At" value={formatDateTime(getVerifiedAt(currentSubmission))} />
-            <Field label="Verification Notes" value={getVerifierComments(currentSubmission) || 'Moderate scores and clear the item for audit.'} wide />
+            {canReadVerifierComment && <Field label="Verification Notes" value={getVerifierComments(currentSubmission) || '-'} wide />}
           </div>
         </Section>
       )}
@@ -1012,9 +1023,9 @@ export function SubmissionWorkspace({
       {activeTab === 'approval' && (
         <Section title="Approval" icon={<CheckCircle2 className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Approver" value={getApprover(currentSubmission)?.displayName || 'Pending'} />
+            {canReadApproverIdentity && <Field label="Approver" value={getApprover(currentSubmission)?.displayName || 'Pending'} />}
             <Field label="Approved At" value={formatDateTime(getApprovedAt(currentSubmission))} />
-            <Field label="Approval Comment" value={getApproverComments(currentSubmission) || '-'} wide />
+            {canReadApproverComment && <Field label="Approval Comment" value={getApproverComments(currentSubmission) || '-'} wide />}
           </div>
         </Section>
       )}
@@ -1022,9 +1033,9 @@ export function SubmissionWorkspace({
       {activeTab === 'pms' && (
         <Section title="PMS Section" icon={<Sparkles className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="PMS Officer" value={getPmsOfficer(currentSubmission)?.displayName || 'Pending'} />
+            {canReadPmsIdentity && <Field label="PMS Officer" value={getPmsOfficer(currentSubmission)?.displayName || 'Pending'} />}
             <Field label="Reviewed At" value={formatDateTime(getPmsReviewedAt(currentSubmission))} />
-            <Field label="PMS Notes" value={getPmsComments(currentSubmission) || 'Ready for moderation and workflow closure.'} wide />
+            {canReadPmsComment && <Field label="PMS Notes" value={getPmsComments(currentSubmission) || '-'} wide />}
           </div>
         </Section>
       )}
@@ -1032,9 +1043,9 @@ export function SubmissionWorkspace({
       {activeTab === 'auditor' && (
         <Section title="Auditor Information" icon={<ShieldCheck className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Auditor" value={getAuditor(currentSubmission)?.displayName || 'Pending'} />
-            <Field label="Audited At" value={formatDateTime(getAuditedAt(currentSubmission))} />
-            <Field label="Findings" value={getAuditorComments(currentSubmission) || '-'} wide />
+            {canReadAuditorIdentity && <Field label="Auditor" value={getAuditor(currentSubmission)?.displayName || 'Pending'} />}
+            {canReadAuditorObservation && <Field label="Audited At" value={formatDateTime(getAuditedAt(currentSubmission))} />}
+            {canReadAuditorComment && <Field label="Findings" value={getAuditorComments(currentSubmission) || '-'} wide />}
           </div>
         </Section>
       )}

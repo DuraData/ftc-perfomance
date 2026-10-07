@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckSquare, Clock, Eye, FileText, RotateCcw, Users } from 'lucide-react';
 import { getIpmsSubmission, getOpmsSubmission, getWorkflowQueue } from '../../api/api';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import type { IPMSSubmission, OPMSSubmission, WorkflowQueueCountsDto, WorkflowQueueItemDto, WorkflowQueueName } from '../../types';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
@@ -28,9 +29,19 @@ function QueueCard({ title, count, icon, color, onClick }: { title: string; coun
   );
 }
 
-function SubmissionDetailModal({ submission, isOpen, onClose, showAudit = false }: { submission: SubmissionDetail | null; isOpen: boolean; onClose: () => void; showAudit?: boolean }) {
+function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = false }: { submission: SubmissionDetail | null; kind: 'opms' | 'ipms' | null; isOpen: boolean; onClose: () => void; showAudit?: boolean }) {
   const [activeTab, setActiveTab] = useState('details');
-  if (!submission) return null;
+  const security = useSecurity();
+  if (!submission || !kind) return null;
+  const resource = kind === 'opms' ? 'OPMS_SUBMISSION' : 'IPMS_SUBMISSION';
+  const canReadActual = security.canReadField(resource, 'ActualPerformance');
+  const canReadVariance = security.canReadField(resource, 'Variance');
+  const canReadVarianceReason = security.canReadField(resource, 'VarianceReason');
+  const canReadSubmitter = security.canReadField(resource, 'SubmitterIdentity');
+  const canReadSubmittedDate = security.canReadField(resource, 'SubmittedDate');
+  const canReadVerifier = security.canReadField(resource, 'VerifierIdentity');
+  const canReadVerifierComment = security.canReadField(resource, 'VerifierComment');
+  const canReadApprover = security.canReadField(resource, 'ApproverIdentity');
   const tabs = [
     { id: 'details', label: 'Details' },
     { id: 'verification', label: 'Verification' },
@@ -50,20 +61,20 @@ function SubmissionDetailModal({ submission, isOpen, onClose, showAudit = false 
         <div className="py-3">
           {activeTab === 'details' && <div className="grid grid-cols-2 gap-3">
             <div><p className="text-[10px] text-secondary-500">Due Date</p><p className="text-sm font-medium">{submission.dueDate ? new Date(submission.dueDate).toLocaleDateString() : '-'}</p></div>
-            <div><p className="text-[10px] text-secondary-500">Actual</p><p className="text-sm font-medium">{submission.actualPerformance ?? '-'}</p></div>
-            <div><p className="text-[10px] text-secondary-500">Variance</p><p className={`text-sm font-medium ${submission.variance && submission.variance < 0 ? 'text-error-600' : 'text-success-600'}`}>{submission.variance ? `${submission.variance > 0 ? '+' : ''}${submission.variance}%` : '-'}</p></div>
-            <div><p className="text-[10px] text-secondary-500">Expenditure</p><p className="text-sm font-medium">R {submission.actualExpenditure?.toLocaleString() ?? '-'}</p></div>
-            <div><p className="text-[10px] text-secondary-500">Submitter</p><p className="text-sm font-medium">{submission.submitter?.displayName ?? '-'}</p></div>
-            <div><p className="text-[10px] text-secondary-500">Submitted</p><p className="text-sm font-medium">{submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : '-'}</p></div>
-            {submission.varianceReason && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Variance Reason</p><p className="text-xs">{submission.varianceReason}</p></div>}
+            {canReadActual && <div><p className="text-[10px] text-secondary-500">Actual</p><p className="text-sm font-medium">{submission.actualPerformance ?? '-'}</p></div>}
+            {canReadVariance && <div><p className="text-[10px] text-secondary-500">Variance</p><p className={`text-sm font-medium ${submission.variance && submission.variance < 0 ? 'text-error-600' : 'text-success-600'}`}>{submission.variance ? `${submission.variance > 0 ? '+' : ''}${submission.variance}%` : '-'}</p></div>}
+            {canReadActual && <div><p className="text-[10px] text-secondary-500">Expenditure</p><p className="text-sm font-medium">R {submission.actualExpenditure?.toLocaleString() ?? '-'}</p></div>}
+            {canReadSubmitter && <div><p className="text-[10px] text-secondary-500">Submitter</p><p className="text-sm font-medium">{submission.submitter?.displayName ?? '-'}</p></div>}
+            {canReadSubmittedDate && <div><p className="text-[10px] text-secondary-500">Submitted</p><p className="text-sm font-medium">{submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : '-'}</p></div>}
+            {canReadVarianceReason && submission.varianceReason && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Variance Reason</p><p className="text-xs">{submission.varianceReason}</p></div>}
           </div>}
           {activeTab === 'verification' && <div className="grid grid-cols-2 gap-3">
-            <div><p className="text-[10px] text-secondary-500">Verified By</p><p className="text-sm font-medium">{submission.verifier?.displayName ?? 'Pending'}</p></div>
+            {canReadVerifier && <div><p className="text-[10px] text-secondary-500">Verified By</p><p className="text-sm font-medium">{submission.verifier?.displayName ?? 'Pending'}</p></div>}
             <div><p className="text-[10px] text-secondary-500">Verified At</p><p className="text-sm font-medium">{submission.verifiedAt ? new Date(submission.verifiedAt).toLocaleDateString() : '-'}</p></div>
-            {submission.verifierComments && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Comments</p><p className="text-xs">{submission.verifierComments}</p></div>}
+            {canReadVerifierComment && submission.verifierComments && <div className="col-span-2"><p className="text-[10px] text-secondary-500">Comments</p><p className="text-xs">{submission.verifierComments}</p></div>}
           </div>}
           {activeTab === 'approval' && <div className="grid grid-cols-2 gap-3">
-            <div><p className="text-[10px] text-secondary-500">Approved By</p><p className="text-sm font-medium">{submission.approver?.displayName ?? 'Pending'}</p></div>
+            {canReadApprover && <div><p className="text-[10px] text-secondary-500">Approved By</p><p className="text-sm font-medium">{submission.approver?.displayName ?? 'Pending'}</p></div>}
             <div><p className="text-[10px] text-secondary-500">Approved At</p><p className="text-sm font-medium">{submission.approvedAt ? new Date(submission.approvedAt).toLocaleDateString() : '-'}</p></div>
           </div>}
           {activeTab === 'audit' && <InternalAuditAssessmentPanel submissionId={submission.id} canAssess={showAudit} />}
@@ -89,6 +100,7 @@ async function loadSubmissionDetail(item: WorkflowQueueItemDto): Promise<Submiss
 
 export function WorkflowQueues() {
   const { currentPath, pushToast } = useApp();
+  const security = useSecurity();
   const routeQueue: Record<string, WorkflowQueueName> = {
     '/workflow/verification': 'verification', '/workflow/approval': 'approval',
     '/workflow/pms-review': 'pms', '/workflow/auditor-review': 'auditor',
@@ -140,7 +152,7 @@ export function WorkflowQueues() {
     { id: 'target', header: 'Target', accessor: (row: WorkflowQueueItemDto) => <div><p className="font-medium text-secondary-900 dark:text-white">{row.kind === 'ipms' ? '[IPMS] ' : ''}{row.targetName}</p><p className="text-[10px] text-secondary-500">{row.indicatorNumber}</p></div> },
     { id: 'quarter', header: 'Qtr', accessor: (row: WorkflowQueueItemDto) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: WorkflowQueueItemDto) => row.dueDate ? new Date(row.dueDate).toLocaleDateString() : '-' },
-    { id: 'submitter', header: 'Submitter', accessor: (row: WorkflowQueueItemDto) => row.submittedByName ?? '-' },
+    { id: 'submitter', header: 'Submitter', accessor: (row: WorkflowQueueItemDto) => security.canReadField(row.kind === 'opms' ? 'OPMS_SUBMISSION' : 'IPMS_SUBMISSION', 'SubmitterIdentity') ? row.submittedByName ?? '-' : 'Restricted' },
     { id: 'status', header: 'Status', accessor: (row: WorkflowQueueItemDto) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : 'warning'}>{statusLabels[row.status]}</Badge> },
   ];
   return <AppShell title="Workflow Queues" subtitle="Manage authorised OPMS and IPMS work items"><div className="space-y-4">
@@ -152,12 +164,13 @@ export function WorkflowQueues() {
       <DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.id}`} />
       <QueuePagination page={page} totalPages={totalPages} onChange={setPage} />
     </Card>}
-    <SubmissionDetailModal submission={selectedSubmission} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={selectedQueue === 'auditor' && selectedItem?.kind === 'opms'} />
+    <SubmissionDetailModal submission={selectedSubmission} kind={selectedItem?.kind ?? null} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={selectedQueue === 'auditor' && selectedItem?.kind === 'opms'} />
   </div></AppShell>;
 }
 
 export function MyWorkQueue() {
   const { currentPath, pushToast } = useApp();
+  const security = useSecurity();
   const routeQueue: Record<string, WorkflowQueueName> = {
     '/workflow/my-drafts': 'my-drafts', '/workflow/pending-submission': 'pending-submission',
     '/workflow/returned-submissions': 'my-returned', '/workflow/under-verification': 'under-verification',
@@ -166,6 +179,7 @@ export function MyWorkQueue() {
   };
   const queue = routeQueue[currentPath] ?? 'my-submissions';
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
+  const [selectedKind, setSelectedKind] = useState<'opms' | 'ipms' | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);
   const [counts, setCounts] = useState(emptyCounts);
   const [page, setPage] = useState(1);
@@ -190,7 +204,7 @@ export function MyWorkQueue() {
   }, [page, pushToast, queue]);
   const openSubmission = async (item: WorkflowQueueItemDto) => {
     const detail = await loadSubmissionDetail(item);
-    if (!detail) pushToast('error', 'The selected submission is no longer available.'); else setSelectedSubmission(detail);
+    if (!detail) pushToast('error', 'The selected submission is no longer available.'); else { setSelectedSubmission(detail); setSelectedKind(item.kind); }
   };
   const summary = [
     { label: 'My Drafts', value: counts.myDrafts }, { label: 'Pending Submission', value: counts.pendingSubmission },
@@ -203,12 +217,17 @@ export function MyWorkQueue() {
     { id: 'quarter', header: 'Qtr', accessor: (row: WorkflowQueueItemDto) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: WorkflowQueueItemDto) => row.dueDate ? new Date(row.dueDate).toLocaleDateString() : '-' },
     { id: 'days', header: 'Days Outstanding', accessor: (row: WorkflowQueueItemDto) => { if (!row.dueDate) return '-'; const days = Math.floor((Date.now() - new Date(row.dueDate).getTime()) / 86_400_000); return days > 0 ? `${days} overdue` : `${Math.abs(days)} remaining`; } },
-    { id: 'reviewer', header: 'Current Reviewer', accessor: (row: WorkflowQueueItemDto) => row.verifierName ?? row.approverName ?? 'Pending' },
+    { id: 'reviewer', header: 'Current Reviewer', accessor: (row: WorkflowQueueItemDto) => {
+      const resource = row.kind === 'opms' ? 'OPMS_SUBMISSION' : 'IPMS_SUBMISSION';
+      const verifier = security.canReadField(resource, 'VerifierIdentity') ? row.verifierName : undefined;
+      const approver = security.canReadField(resource, 'ApproverIdentity') ? row.approverName : undefined;
+      return verifier ?? approver ?? 'Restricted';
+    } },
     { id: 'status', header: 'Status', accessor: (row: WorkflowQueueItemDto) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'draft' ? 'default' : 'warning'}>{statusLabels[row.status]}</Badge> },
   ];
   return <AppShell title="My Work Queue" subtitle="Your submissions and workflow statuses"><div className="space-y-4">
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{summary.map(item => <Card key={item.label} className="p-3"><p className="text-lg font-bold text-secondary-900 dark:text-white">{item.value}</p><p className="text-xs text-secondary-500">{item.label}</p></Card>)}</div>
     {loadError ? <EmptyState icon={<FileText className="h-6 w-6" />} title="Work queue unavailable" description={loadError} /> : <Card><DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.id}`} /><QueuePagination page={page} totalPages={totalPages} onChange={setPage} /></Card>}
-    <SubmissionDetailModal submission={selectedSubmission} isOpen={!!selectedSubmission} onClose={() => setSelectedSubmission(null)} />
+    <SubmissionDetailModal submission={selectedSubmission} kind={selectedKind} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedKind(null); }} />
   </div></AppShell>;
 }

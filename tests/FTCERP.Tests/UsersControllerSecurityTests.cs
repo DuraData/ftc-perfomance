@@ -77,13 +77,16 @@ public sealed class UsersControllerSecurityTests
                 .ToArrayAsync();
             submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "SubmittedDate",
                 "InternalAuditObservation", "InternalAuditComment", "InternalAuditFindings", "InternalAuditRecommendation",
-                "InternalAuditScore", "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason", "SuggestionCorrelationId"]);
+                "InternalAuditScore", "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason", "SuggestionCorrelationId",
+                "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
+                "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment", "PmsRecommendation", "PmsScore", "PmsRfi",
+                "WithdrawalReason", "WithdrawalActor"]);
             var internalAuditMembers = await context.SecurityMemberDefinitions
                 .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("InternalAudit"))
                 .ToArrayAsync();
             internalAuditMembers.Should().HaveCount(7);
             internalAuditMembers.Should().OnlyContain(item => item.IsSensitive);
-            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(23);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(38);
         }
 
         foreach (var resourceCode in new[] { "OPMS_KPI", "IPMS_KPI" })

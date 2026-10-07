@@ -102,10 +102,16 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Unit)
             .Include(item => item.ReportingPeriod)
             .Include(item => item.SubmittedByUser)
+            .Include(item => item.VerifierUser)
+            .Include(item => item.ApproverUser)
+            .Include(item => item.PmsOfficerUser)
+            .Include(item => item.AuditorUser)
             .AsSplitQuery().ToListAsync();
-        var memberPermissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var responses = new List<OpmsSubmissionResponse>(items.Count);
+        foreach (var item in items)
+            responses.Add(await ToAuthorizedResponseAsync(item, user));
         return Ok(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(true,
-            PagedResponse<OpmsSubmissionResponse>.Create(items.Select(item => ToAuthorizedResponse(item, memberPermissions)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<OpmsSubmissionResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
@@ -1054,15 +1060,76 @@ public class OpmsSubmissionsController : ControllerBase
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var response = ToAuthorizedResponse(submission, permissions);
         var scope = BuildScope(submission);
-        var actorAllowed = (await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.SuggestionActor.READ", scope)).Allowed;
-        var reasonAllowed = (await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.SuggestionReason.READ", scope)).Allowed;
+        var projectionAccess = await GetProjectionMemberAccessAsync(user, scope);
+        var withdrawnActor = projectionAccess.Contains("WithdrawalActor") && !string.IsNullOrWhiteSpace(submission.WithdrawnByUserId)
+            ? await _context.Users.AsNoTracking()
+                .Where(item => item.Id == submission.WithdrawnByUserId)
+                .Select(item => new { item.PublicId, item.FirstName, item.LastName })
+                .SingleOrDefaultAsync()
+            : null;
         return response with
         {
-            SuggestionEditedByUserPublicId = actorAllowed ? submission.SuggestionEditedByUser?.PublicId : null,
-            SuggestionEditedByName = actorAllowed ? submission.SuggestionEditedByUser?.FullName : null,
-            SuggestionEditReason = reasonAllowed ? submission.SuggestionEditReason : null
+            SuggestionEditedByUserPublicId = projectionAccess.Contains("SuggestionActor") ? submission.SuggestionEditedByUser?.PublicId : null,
+            SuggestionEditedByName = projectionAccess.Contains("SuggestionActor") ? submission.SuggestionEditedByUser?.FullName : null,
+            SuggestionEditReason = projectionAccess.Contains("SuggestionReason") ? submission.SuggestionEditReason : null,
+            SubmittedByUserPublicId = projectionAccess.Contains("SubmitterIdentity") ? submission.SubmittedByUser?.PublicId : null,
+            SubmittedByName = projectionAccess.Contains("SubmitterIdentity") ? submission.SubmittedByUser?.FullName : null,
+            SubmitterScore = projectionAccess.Contains("SubmitterScore") ? response.SubmitterScore : null,
+            VerifierUserPublicId = projectionAccess.Contains("VerifierIdentity") ? submission.VerifierUser?.PublicId : null,
+            VerifierName = projectionAccess.Contains("VerifierIdentity") ? submission.VerifierUser?.FullName : null,
+            VerifierComments = projectionAccess.Contains("VerifierComment") ? response.VerifierComments : null,
+            VerifierComment = projectionAccess.Contains("VerifierComment") ? response.VerifierComment : null,
+            VerifierScore = projectionAccess.Contains("VerifierScore") ? response.VerifierScore : null,
+            ApproverUserPublicId = projectionAccess.Contains("ApproverIdentity") ? submission.ApproverUser?.PublicId : null,
+            ApproverName = projectionAccess.Contains("ApproverIdentity") ? submission.ApproverUser?.FullName : null,
+            ApproverComments = projectionAccess.Contains("ApproverComment") ? response.ApproverComments : null,
+            ApproverComment = projectionAccess.Contains("ApproverComment") ? response.ApproverComment : null,
+            ApproverScore = projectionAccess.Contains("ApproverScore") ? response.ApproverScore : null,
+            PmsOfficerUserPublicId = projectionAccess.Contains("PmsIdentity") ? submission.PmsOfficerUser?.PublicId : null,
+            PmsOfficerName = projectionAccess.Contains("PmsIdentity") ? submission.PmsOfficerUser?.FullName : null,
+            PmsComments = projectionAccess.Contains("PmsComment") ? response.PmsComments : null,
+            PmsComment = projectionAccess.Contains("PmsComment") ? response.PmsComment : null,
+            PmsRecommendation = projectionAccess.Contains("PmsRecommendation") ? response.PmsRecommendation : null,
+            PmsScore = projectionAccess.Contains("PmsScore") ? response.PmsScore : null,
+            PmsRfiComment = projectionAccess.Contains("PmsRfi") ? response.PmsRfiComment : null,
+            PmsResponseDueDate = projectionAccess.Contains("PmsRfi") ? response.PmsResponseDueDate : null,
+            AuditorUserPublicId = projectionAccess.Contains("InternalAuditAssessedBy") ? submission.AuditorUser?.PublicId : null,
+            AuditorName = projectionAccess.Contains("InternalAuditAssessedBy") ? submission.AuditorUser?.FullName : null,
+            AuditedAt = projectionAccess.Contains("InternalAuditObservation") ? response.AuditedAt : null,
+            AuditorComments = projectionAccess.Contains("InternalAuditComment") ? response.AuditorComments : null,
+            AuditorComment = projectionAccess.Contains("InternalAuditComment") ? response.AuditorComment : null,
+            AuditorRecommendation = projectionAccess.Contains("InternalAuditRecommendation") ? response.AuditorRecommendation : null,
+            AuditorScore = projectionAccess.Contains("InternalAuditScore") ? response.AuditorScore : null,
+            AuditorResponseDueDate = projectionAccess.Contains("InternalAuditRfi") ? response.AuditorResponseDueDate : null,
+            WithdrawalReason = projectionAccess.Contains("WithdrawalReason") ? response.WithdrawalReason : null,
+            WithdrawnByUserPublicId = withdrawnActor?.PublicId,
+            WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim(),
+            CreatedBy = null,
+            UpdatedBy = null
         };
     }
+
+    private async Task<HashSet<string>> GetProjectionMemberAccessAsync(ApplicationUser user, AccessScopeContext scope)
+    {
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var permissions = SubmissionProjectionMemberCodes.Select(memberCode => $"OPMS_SUBMISSION.{memberCode}.READ").ToArray();
+        var decisions = await _accessControlService.CheckPermissionsAsync(user, permissions, scope);
+        foreach (var memberCode in SubmissionProjectionMemberCodes)
+        {
+            if (decisions[$"OPMS_SUBMISSION.{memberCode}.READ"].Allowed)
+                allowed.Add(memberCode);
+        }
+        return allowed;
+    }
+
+    private static readonly string[] SubmissionProjectionMemberCodes =
+    [
+        "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
+        "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment",
+        "PmsRecommendation", "PmsScore", "PmsRfi", "WithdrawalReason", "WithdrawalActor",
+        "InternalAuditObservation", "InternalAuditComment", "InternalAuditRecommendation", "InternalAuditScore",
+        "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason"
+    ];
 
     private async Task<PoeFileResponse> ToAuthorizedPoeResponseAsync(PoeFile file, ApplicationUser user, AccessScopeContext scope)
         => file.ToResponse(HttpContext, await GetPoeMemberAccessAsync(user, scope));
@@ -1126,8 +1193,6 @@ public class OpmsSubmissionsController : ControllerBase
             response = response with { CorrectiveMeasure = null };
         if (!permissions.Contains("OPMS_SUBMISSION.SubmittedDate.READ"))
             response = response with { SubmittedAt = null };
-        if (!permissions.Contains("OPMS_SUBMISSION.InternalAuditObservation.READ"))
-            response = response with { AuditedAt = null, AuditorComments = null, AuditorComment = null, AuditorRecommendation = null, AuditorScore = null, AuditorResponseDueDate = null };
         return response;
     }
 

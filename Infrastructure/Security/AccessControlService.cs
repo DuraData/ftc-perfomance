@@ -49,6 +49,26 @@ public sealed record AccessDecisionResult(
 
 public sealed record AccessQueryScopeResult(bool PermissionGranted, bool Unrestricted, int[] DepartmentIds, int[] UnitIds, string[] OwnerUserIds, string[] TargetIds, string[] KpiIds, long[] MunicipalityIds);
 
+public static class AccessControlBatchExtensions
+{
+    public static async Task<IReadOnlyDictionary<string, AccessDecisionResult>> CheckPermissionsAsync(
+        this IAccessControlService service,
+        ApplicationUser user,
+        IEnumerable<string> permissionCodes,
+        AccessScopeContext? scope = null)
+    {
+        var codes = permissionCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (service is AccessControlService concrete)
+            return await concrete.CheckPermissionsBatchAsync(user, codes, scope);
+
+        var decisions = new Dictionary<string, AccessDecisionResult>(StringComparer.OrdinalIgnoreCase);
+        foreach (var code in codes)
+            decisions[code] = await service.CheckPermissionAsync(user, code, scope)
+                ?? new AccessDecisionResult(false, $"Missing decision for permission '{code}'.", [], [], []);
+        return decisions;
+    }
+}
+
 public class AccessControlService : IAccessControlService
 {
     private readonly ApplicationDbContext _context;
@@ -132,6 +152,30 @@ public class AccessControlService : IAccessControlService
     public async Task<AccessDecisionResult> CheckPermissionAsync(ApplicationUser user, string permissionCode, AccessScopeContext? scope = null)
     {
         var access = await GetEffectiveAccessAsync(user);
+        var managerHierarchyMatch = scope != null && await ManagerHierarchyMatchesAsync(user.Id, scope.OwnerUserId);
+        return EvaluatePermission(user, permissionCode, scope, access, managerHierarchyMatch);
+    }
+
+    public async Task<IReadOnlyDictionary<string, AccessDecisionResult>> CheckPermissionsBatchAsync(
+        ApplicationUser user,
+        IEnumerable<string> permissionCodes,
+        AccessScopeContext? scope = null)
+    {
+        var access = await GetEffectiveAccessAsync(user);
+        var managerHierarchyMatch = scope != null && await ManagerHierarchyMatchesAsync(user.Id, scope.OwnerUserId);
+        return permissionCodes.Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(
+            code => code,
+            code => EvaluatePermission(user, code, scope, access, managerHierarchyMatch),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static AccessDecisionResult EvaluatePermission(
+        ApplicationUser user,
+        string permissionCode,
+        AccessScopeContext? scope,
+        EffectiveAccessResult access,
+        bool managerHierarchyMatch)
+    {
         if (!access.EffectivePermissions.Contains(permissionCode, StringComparer.OrdinalIgnoreCase))
         {
             return new AccessDecisionResult(false, $"Missing permission '{permissionCode}'.", access.EffectivePermissions, Array.Empty<string>(), Array.Empty<string>());
@@ -172,7 +216,6 @@ public class AccessControlService : IAccessControlService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var managerHierarchyMatch = await ManagerHierarchyMatchesAsync(user.Id, scope.OwnerUserId);
         if (managerHierarchyMatch)
         {
             matchedAssignments = matchedAssignments
