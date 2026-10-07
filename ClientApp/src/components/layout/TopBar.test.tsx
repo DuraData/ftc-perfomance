@@ -37,8 +37,8 @@ describe('TopBar notification feed', () => {
       success: true,
       data: {
         items: [
-          { id: 'n-1', userId: 'user-1', type: 'Submission', title: 'First', message: 'First message', isRead: false, createdAt: '2026-10-02T10:00:00Z' },
-          { id: 'n-2', userId: 'user-1', type: 'Approval', title: 'Second', message: 'Second message', isRead: true, createdAt: '2026-10-02T09:00:00Z' },
+          { publicId: '11111111-1111-1111-1111-111111111111', recipientUserPublicId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', recipientName: 'Test User', type: 'Submission', title: 'First', message: 'First message', isRead: false, createdAt: '2026-10-02T10:00:00Z' },
+          { publicId: '22222222-2222-2222-2222-222222222222', recipientUserPublicId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', recipientName: 'Test User', type: 'Approval', title: 'Second', message: 'Second message', isRead: true, createdAt: '2026-10-02T09:00:00Z' },
         ],
         page: 1,
         pageSize: 8,
@@ -59,7 +59,7 @@ describe('TopBar notification feed', () => {
     expect(screen.getByText('Second')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('First'));
-    await waitFor(() => expect(api.markNotificationRead).toHaveBeenCalledWith('n-1'));
+    await waitFor(() => expect(api.markNotificationRead).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111'));
     expect(await screen.findByRole('button', { name: 'Notifications, 11 unread' })).toBeInTheDocument();
   });
 

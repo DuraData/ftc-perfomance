@@ -2752,13 +2752,13 @@ export interface IpmsSubmissionDto {
 }
 
 export interface NotificationDto {
-  id: string;
-  userId: string;
+  publicId: string;
+  recipientUserPublicId: string;
+  recipientName: string;
   type: string;
   title: string;
   message: string;
   entityName?: string | null;
-  entityId?: string | null;
   isRead: boolean;
   createdAt: string;
 }

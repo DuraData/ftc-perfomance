@@ -210,14 +210,14 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                     <div className="px-4 py-6 text-sm text-secondary-500 dark:text-secondary-400">No notifications yet.</div>
                   ) : recentNotifications.map(notification => (
                     <button
-                      key={notification.id}
+                      key={notification.publicId}
                       className="w-full border-b border-secondary-100 px-4 py-3 text-left hover:bg-secondary-50 dark:border-secondary-700 dark:hover:bg-secondary-700/50"
                       onClick={() => {
                         void (async () => {
                           if (!notification.isRead) {
-                            const result = await markNotificationRead(notification.id);
+                            const result = await markNotificationRead(notification.publicId);
                              if (result.success) {
-                               setNotifications(prev => prev.map(item => item.id === notification.id ? { ...item, isRead: true } : item));
+                               setNotifications(prev => prev.map(item => item.publicId === notification.publicId ? { ...item, isRead: true } : item));
                                setUnreadCount(current => Math.max(0, current - 1));
                              }
                           }

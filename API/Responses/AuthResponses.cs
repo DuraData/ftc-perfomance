@@ -565,13 +565,13 @@ public sealed record PerformanceSuggestionEventResponse(
     string? CorrelationId);
 
 public record NotificationResponse(
-    string Id,
-    string UserId,
+    Guid PublicId,
+    Guid RecipientUserPublicId,
+    string RecipientName,
     string Type,
     string Title,
     string Message,
     string? EntityName,
-    string? EntityId,
     bool IsRead,
     DateTime CreatedAt);
 

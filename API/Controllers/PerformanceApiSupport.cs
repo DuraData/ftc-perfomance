@@ -506,13 +506,13 @@ public static class PerformanceApiSupport
 
     public static NotificationResponse ToResponse(this Notification notification) =>
         new(
-            notification.Id,
-            notification.UserId,
+            notification.PublicId,
+            notification.User.PublicId,
+            notification.User.FullName,
             notification.Type.ToString(),
             notification.Title,
             notification.Message,
             notification.EntityName,
-            notification.EntityId,
             notification.IsRead,
             notification.CreatedAt);
 

@@ -44,7 +44,7 @@ public class NotificationsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<NotificationPageResponse>(false, null, decision.Reason));
 
-        var permittedQuery = _context.Notifications.AsNoTracking().AsQueryable();
+        var permittedQuery = _context.Notifications.AsNoTracking().Include(item => item.User).AsQueryable();
         if (!includeAll) permittedQuery = permittedQuery.Where(item => item.UserId == user.Id);
         var unreadCount = await permittedQuery.CountAsync(item => !item.IsRead);
         var query = permittedQuery;
@@ -71,13 +71,13 @@ public class NotificationsController : ControllerBase
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
         };
 
-    [HttpPatch("{id}/read")]
-    public async Task<ActionResult<ApiResponse<bool>>> MarkRead(string id)
+    [HttpPatch("{publicId:guid}/read")]
+    public async Task<ActionResult<ApiResponse<bool>>> MarkRead(Guid publicId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
 
-        var notification = await _context.Notifications.FirstOrDefaultAsync(item => item.Id == id);
+        var notification = await _context.Notifications.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (notification == null) return NotFound(new ApiResponse<bool>(false, false, "Notification not found"));
 
         if (!string.Equals(notification.UserId, user.Id, StringComparison.OrdinalIgnoreCase))

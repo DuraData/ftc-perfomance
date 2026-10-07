@@ -2513,8 +2513,8 @@ export async function getNotifications(query: RegisterPageQuery = {}, includeAll
   return get<NotificationPageResult>(`/v1/notifications/page${suffix}`);
 }
 
-export async function markNotificationRead(id: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/notifications/${id}/read`);
+export async function markNotificationRead(publicId: string): Promise<ApiResponse<boolean>> {
+  return patch<boolean>(`/v1/notifications/${publicId}/read`);
 }
 
 export async function getAuditTrailsPage(query: RegisterPageQuery = {}, filter: { entityName?: string; entityId?: string } = {}): Promise<ApiResponse<PagedResult<AuditTrailEntryDto>>> {

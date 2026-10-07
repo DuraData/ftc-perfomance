@@ -558,15 +558,18 @@ public sealed class RegisterPaginationTests
         var user = IdpTestFixture.CreateUser("notification-user");
         var other = IdpTestFixture.CreateUser("other-notification-user");
         context.Users.AddRange(user, other);
-        context.Notifications.AddRange(
-            UserNotification("n-1", user.Id, "Zulu", false, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
-            UserNotification("n-2", user.Id, "Alpha", true, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
-            UserNotification("n-3", user.Id, "Beta", false, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
-            UserNotification("outside", other.Id, "Outside", false, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc)));
+        var first = UserNotification("n-1", user.Id, "Zulu", false, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc));
+        var alpha = UserNotification("n-2", user.Id, "Alpha", true, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc));
+        var beta = UserNotification("n-3", user.Id, "Beta", false, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var outside = UserNotification("outside", other.Id, "Outside", false, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc));
+        beta.EntityId = "internal-aggregate-key";
+        context.Notifications.AddRange(first, alpha, beta, outside);
         await context.SaveChangesAsync();
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, "Notifications.View", null))
             .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(user, "Notifications.Manage", null))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
         var controller = new NotificationsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object)
         {
             ControllerContext = ControllerContext(user.Id)
@@ -588,7 +591,18 @@ public sealed class RegisterPaginationTests
         Assert.Equal(3, envelope.Data!.TotalCount);
         Assert.Equal(2, envelope.Data.UnreadCount);
         Assert.Equal(["Alpha", "Beta"], envelope.Data.Items.Select(item => item.Title));
-        Assert.DoesNotContain(envelope.Data.Items, item => item.Id == "outside");
+        Assert.DoesNotContain(envelope.Data.Items, item => item.PublicId == outside.PublicId);
+        envelope.Data.Items.Should().OnlyContain(item => item.RecipientUserPublicId == user.PublicId && item.RecipientName == user.FullName);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(envelope.Data.Items);
+        serialized.Should().NotContain(user.Id).And.NotContain(alpha.Id).And.NotContain(beta.Id).And.NotContain("internal-aggregate-key");
+
+        var marked = await controller.MarkRead(beta.PublicId);
+        Assert.True(Assert.IsType<ApiResponse<bool>>(Assert.IsType<OkObjectResult>(marked.Result).Value).Data);
+        (await context.Notifications.SingleAsync(item => item.PublicId == beta.PublicId)).IsRead.Should().BeTrue();
+
+        var denied = Assert.IsType<ObjectResult>((await controller.MarkRead(outside.PublicId)).Result);
+        denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.Notifications.SingleAsync(item => item.PublicId == outside.PublicId)).IsRead.Should().BeFalse();
     }
 
     [Theory]
