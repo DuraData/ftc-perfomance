@@ -3069,7 +3069,8 @@ export interface IdpPlanVersion {
   summaryOfChanges?: string | null;
   isActive: boolean;
   createdAt: string;
-  createdByUserId: string;
+  createdByUserPublicId?: string | null;
+  createdByName?: string | null;
   effectiveFrom: string;
   effectiveTo?: string | null;
   publishedAt?: string | null;

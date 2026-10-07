@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IdpAlignmentMatrixPage, IdpCommunityParticipationPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
-const security = vi.hoisted(() => ({ canImport: vi.fn(() => true), canReadField: vi.fn(() => false) }));
+const security = vi.hoisted(() => ({ canImport: vi.fn(() => true), canReadField: vi.fn(() => false), canEditField: vi.fn(() => false) }));
 const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
@@ -57,6 +57,7 @@ describe('IDP plan lineage workspace', () => {
     vi.clearAllMocks();
     security.canImport.mockReturnValue(true);
     security.canReadField.mockReturnValue(false);
+    security.canEditField.mockReturnValue(false);
     api.getIdpPlansPage.mockResolvedValue({
       success: true,
       data: { items: [predecessor], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
@@ -207,6 +208,34 @@ describe('IDP plan lineage workspace', () => {
     }));
     fireEvent.change(screen.getByLabelText('Search IDP versions'), { target: { value: 'annual review' } });
     await waitFor(() => expect(api.getIdpPlanVersionsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ search: 'annual review' })), { timeout: 1500 });
+  });
+
+  it('does not render denied plan-version summary or creator data from a hostile payload', async () => {
+    api.getIdpPlanVersionsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          id: 91, publicId: 'version-public-id', idpPlanId: predecessor.id, predecessorVersionPublicId: null,
+          versionNumber: 2, versionType: 'AnnualReview', versionLabel: 'Annual review', reviewYear: '2026/2027',
+          summaryOfChanges: 'PROTECTED-VERSION-SUMMARY', isActive: true, createdAt: '2026-10-01T00:00:00Z',
+          createdByUserPublicId: 'PROTECTED-VERSION-ACTOR-ID', createdByName: 'Protected Version Actor',
+          effectiveFrom: '2026-10-01T00:00:00Z', effectiveTo: null, publishedAt: null,
+          publicationReference: 'Council resolution 42', rowVersion: 'AQID',
+        }],
+        page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    render(<IdpPlanManagementPage />);
+
+    expect(await screen.findByText('1 versions')).toBeInTheDocument();
+    expect(screen.queryByText('PROTECTED-VERSION-SUMMARY')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Protected Version Actor|PROTECTED-VERSION-ACTOR-ID/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Summary of changes')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Label, review year, or publication')).toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('IDP_PLAN', 'VersionSummary');
+    expect(security.canReadField).toHaveBeenCalledWith('IDP_PLAN', 'VersionCreator');
+    expect(security.canEditField).toHaveBeenCalledWith('IDP_PLAN', 'VersionSummary');
   });
 
   it('pages and searches flattened hierarchy paths without loading a full graph', async () => {

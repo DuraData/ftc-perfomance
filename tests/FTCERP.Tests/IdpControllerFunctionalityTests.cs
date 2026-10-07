@@ -238,7 +238,11 @@ public class IdpControllerFunctionalityTests
 
         var workflow = new Mock<IWorkflowGovernanceService>();
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+                new AccessDecisionResult(code == "IDP_PLAN.VersionSummary.UPDATE", code == "IDP_PLAN.VersionSummary.UPDATE" ? "allowed" : "denied", [], [], []));
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: access.Object);
 
         var action = await controller.CreatePlanVersion(plan.Id, new CreateIdpPlanVersionRequest("AnnualReview", "Annual Review", "2026/2027", "Changes"));
 

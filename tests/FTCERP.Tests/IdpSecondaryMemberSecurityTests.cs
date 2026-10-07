@@ -123,6 +123,46 @@ public class IdpSecondaryMemberSecurityTests
         completed.AssignedByUserPublicId.ToString().Should().NotBe(actor.Id);
     }
 
+    [Fact]
+    public async Task Plan_version_summary_and_creator_require_dynamic_members_without_search_or_internal_identity_leakage()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("idp-version-actor", "Version", "Governor");
+        var graph = await SeedGraphAsync(context, actor);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var controller = Controller(context, actor, allowed);
+        var request = new CreateIdpPlanVersionRequest(
+            "AnnualReview", "Governed annual review", "2026/2027", "PROTECTED-VERSION-SUMMARY");
+
+        (await controller.CreatePlanVersion(graph.Plan.Id, request)).Result.Should().BeOfType<ForbidResult>();
+        context.IdpPlanVersions.Should().BeEmpty();
+
+        allowed.Add("IDP_PLAN.VersionSummary.UPDATE");
+        var maskedMutation = Extract<IdpPlanVersionResponse>((await controller.CreatePlanVersion(graph.Plan.Id, request)).Result!);
+        maskedMutation.SummaryOfChanges.Should().BeNull();
+        maskedMutation.CreatedByUserPublicId.Should().BeNull();
+        maskedMutation.CreatedByName.Should().BeNull();
+
+        var deniedSearch = Extract<PagedResponse<IdpPlanVersionResponse>>((await controller.GetPlanVersionsPage(
+            graph.Plan.PublicId, new PagedQueryRequest { Search = "PROTECTED-VERSION-SUMMARY" })).Result!);
+        deniedSearch.TotalCount.Should().Be(0);
+
+        allowed.Add("IDP_PLAN.VersionSummary.READ");
+        var summaryVisible = Extract<PagedResponse<IdpPlanVersionResponse>>((await controller.GetPlanVersionsPage(
+            graph.Plan.PublicId, new PagedQueryRequest { Search = "PROTECTED-VERSION-SUMMARY" })).Result!);
+        summaryVisible.Items.Should().ContainSingle();
+        summaryVisible.Items[0].SummaryOfChanges.Should().Be("PROTECTED-VERSION-SUMMARY");
+        summaryVisible.Items[0].CreatedByUserPublicId.Should().BeNull();
+
+        allowed.Add("IDP_PLAN.VersionCreator.READ");
+        var fullyVisible = Extract<PagedResponse<IdpPlanVersionResponse>>((await controller.GetPlanVersionsPage(
+            graph.Plan.PublicId, new PagedQueryRequest())).Result!);
+        fullyVisible.Items.Should().ContainSingle();
+        fullyVisible.Items[0].CreatedByUserPublicId.Should().Be(actor.PublicId);
+        fullyVisible.Items[0].CreatedByName.Should().Be(actor.FullName);
+        fullyVisible.Items[0].CreatedByUserPublicId.ToString().Should().NotBe(actor.Id);
+    }
+
     private static T Extract<T>(ActionResult result) where T : class
     {
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;

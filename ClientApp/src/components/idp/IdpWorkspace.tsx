@@ -168,7 +168,7 @@ export function IdpPlanningDashboardPage() {
 
 export function IdpPlanManagementPage() {
   const { pushToast } = useApp();
-  const { canImport, canReadField } = useSecurity();
+  const { canImport, canReadField, canEditField } = useSecurity();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
   const canImportKpis = canImport('IDP_INDICATOR');
   const canImportHierarchy = canImport('IDP_PLAN');
@@ -178,6 +178,9 @@ export function IdpPlanManagementPage() {
   const canReadImportActor = canReadField('IDP_PLAN', 'ImportActor');
   const canReadImportPayload = canReadField('IDP_PLAN', 'ImportRowPayload');
   const canReadImportError = canReadField('IDP_PLAN', 'ImportErrorDetail');
+  const canReadVersionSummary = canReadField('IDP_PLAN', 'VersionSummary');
+  const canEditVersionSummary = canEditField('IDP_PLAN', 'VersionSummary');
+  const canReadVersionCreator = canReadField('IDP_PLAN', 'VersionCreator');
   const canSearchImportHistory = canReadImportFileName || canReadImportHash || canReadImportActor;
   const currentYear = new Date().getFullYear();
   const today = new Date().toISOString().slice(0, 10);
@@ -510,12 +513,12 @@ export function IdpPlanManagementPage() {
                 <label className="text-xs text-secondary-600">Review year<input aria-label="Review year" className={fieldClass} value={versionDraft.reviewYear} onChange={event => setVersionDraft({ ...versionDraft, reviewYear: event.target.value })} /></label>
                 <label className="text-xs text-secondary-600">Effective from<input aria-label="Version effective from" type="date" className={fieldClass} value={versionDraft.effectiveFrom} onChange={event => setVersionDraft({ ...versionDraft, effectiveFrom: event.target.value })} /></label>
                 <label className="text-xs text-secondary-600">Publication reference<input aria-label="Version publication reference" className={fieldClass} value={versionDraft.publicationReference} onChange={event => setVersionDraft({ ...versionDraft, publicationReference: event.target.value })} /></label>
-                <label className="text-xs text-secondary-600 md:col-span-2">Summary of changes<textarea aria-label="Summary of changes" className={fieldClass} rows={3} value={versionDraft.summaryOfChanges} onChange={event => setVersionDraft({ ...versionDraft, summaryOfChanges: event.target.value })} /></label>
+                {canEditVersionSummary ? <label className="text-xs text-secondary-600 md:col-span-2">Summary of changes<textarea aria-label="Summary of changes" className={fieldClass} rows={3} value={versionDraft.summaryOfChanges} onChange={event => setVersionDraft({ ...versionDraft, summaryOfChanges: event.target.value })} /></label> : null}
                 <div className="md:col-span-2"><Button variant="outline" disabled={!selectedPlanId} onClick={() => void submitVersion()}>Create Version</Button></div>
               </div>
             ) : null}
             <div className="mt-3">
-              <input aria-label="Search IDP versions" placeholder="Label, review year, changes, or publication" className={fieldClass} value={versionSearchInput} onChange={event => setVersionSearchInput(event.target.value)} />
+              <input aria-label="Search IDP versions" placeholder={canReadVersionSummary ? 'Label, review year, changes, or publication' : 'Label, review year, or publication'} className={fieldClass} value={versionSearchInput} onChange={event => setVersionSearchInput(event.target.value)} />
             </div>
             <div className="mt-3 space-y-2">
               {versions.map(version => (
@@ -523,6 +526,8 @@ export function IdpPlanManagementPage() {
                   <p className="font-medium text-secondary-900 dark:text-secondary-100">v{version.versionNumber} - {version.versionLabel}</p>
                   <p className="text-xs text-secondary-500">Type: {version.versionType} | Review Year: {version.reviewYear ?? 'N/A'} | Active: {version.isActive ? 'Yes' : 'No'}</p>
                   <p className="text-xs text-secondary-500">Effective: {new Date(version.effectiveFrom).toLocaleDateString()} | Predecessor: {version.predecessorVersionPublicId ?? 'Original'} | Publication: {version.publicationReference ?? 'Not published'}</p>
+                  {canReadVersionSummary && version.summaryOfChanges ? <p className="text-xs text-secondary-500">Changes: {version.summaryOfChanges}</p> : null}
+                  {canReadVersionCreator && (version.createdByName || version.createdByUserPublicId) ? <p className="text-xs text-secondary-500">Created by: {version.createdByName ?? version.createdByUserPublicId}{version.createdByName && version.createdByUserPublicId ? ` (${version.createdByUserPublicId})` : ''}</p> : null}
                 </div>
               ))}
               {!versions.length ? <p className="text-sm text-secondary-500">No versions available.</p> : null}

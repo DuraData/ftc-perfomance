@@ -261,6 +261,11 @@ public class IdpController : ControllerBase
             return NotFound(new ApiResponse<IdpPlanVersionResponse>(false, null, "IDP plan not found"));
         }
 
+        var versionScope = Scope(targetId: plan.PublicId);
+        if (!string.IsNullOrWhiteSpace(request.SummaryOfChanges)
+            && await MemberUpdateDenialAsync(user, "IDP_PLAN", versionScope, ["VersionSummary"]) is not null)
+            return Forbid();
+
         if (!TryParseEnum(request.VersionType, out IdpVersionType versionType))
         {
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "Invalid version type"));
@@ -289,7 +294,8 @@ public class IdpController : ControllerBase
             PublishedAt = string.IsNullOrWhiteSpace(request.PublicationReference) ? null : DateTime.UtcNow,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
-            CreatedByUserId = user.Id
+            CreatedByUserId = user.Id,
+            CreatedByUser = user
         };
 
         foreach (var existing in previousActive)
@@ -307,11 +313,12 @@ public class IdpController : ControllerBase
             entity.Id.ToString(),
             "Create",
             null,
-            ToVersionResponse(entity),
+            ToVersionResponse(entity, IdpPlanVersionMemberAccess.Full),
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<IdpPlanVersionResponse>(true, ToVersionResponse(entity)));
+        return Ok(new ApiResponse<IdpPlanVersionResponse>(true,
+            ToVersionResponse(entity, await GetPlanVersionMemberAccessAsync(user, versionScope))));
     }
 
     [HttpGet("plans/{id:int}/hierarchy")]
@@ -327,6 +334,10 @@ public class IdpController : ControllerBase
         [FromQuery] PagedQueryRequest request,
         [FromQuery] bool? active = null)
     {
+        var user = await GetCurrentUserAsync();
+        if (user == null)
+            return Unauthorized(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(false, null, "User not found"));
+
         if (request.NormalizedSortBy is not ("createdat" or "versionnumber" or "versionlabel" or "versiontype" or "effectivefrom"))
             return BadRequest(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(false, null,
                 "SortBy must be createdAt, versionNumber, versionLabel, versionType, or effectiveFrom."));
@@ -338,6 +349,8 @@ public class IdpController : ControllerBase
         if (!planId.HasValue)
             return NotFound(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(false, null, "IDP plan not found."));
 
+        var memberAccess = await GetPlanVersionMemberAccessAsync(user, Scope(targetId: planPublicId));
+
         IQueryable<IdpPlanVersion> query = _context.IdpPlanVersions.AsNoTracking()
             .Where(version => version.IdpPlanId == planId.Value);
         if (active.HasValue) query = query.Where(version => version.IsActive == active.Value);
@@ -347,7 +360,7 @@ public class IdpController : ControllerBase
             query = query.Where(version =>
                 version.VersionLabel.Contains(search) ||
                 (version.ReviewYear != null && version.ReviewYear.Contains(search)) ||
-                (version.SummaryOfChanges != null && version.SummaryOfChanges.Contains(search)) ||
+                (memberAccess.Summary && version.SummaryOfChanges != null && version.SummaryOfChanges.Contains(search)) ||
                 (version.PublicationReference != null && version.PublicationReference.Contains(search)));
         }
 
@@ -367,11 +380,12 @@ public class IdpController : ControllerBase
         };
 
         var rows = await query.Include(version => version.PredecessorVersion)
+            .Include(version => version.CreatedByUser)
             .Skip(request.Offset)
             .Take(request.PageSize)
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(true,
-            PagedResponse<IdpPlanVersionResponse>.Create(rows.Select(ToVersionResponse), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IdpPlanVersionResponse>.Create(rows.Select(version => ToVersionResponse(version, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/hierarchy-paths/page")]
@@ -1610,6 +1624,11 @@ public class IdpController : ControllerBase
             await CanAccessMemberAsync(user, "IDP_PLAN", "TaskAssignee", SecurityOperation.Read, scope ?? Scope()),
             await CanAccessMemberAsync(user, "IDP_PLAN", "TaskAssigner", SecurityOperation.Read, scope ?? Scope()));
 
+    private async Task<IdpPlanVersionMemberAccess> GetPlanVersionMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PLAN", "VersionSummary", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PLAN", "VersionCreator", SecurityOperation.Read, scope ?? Scope()));
+
     private async Task<AccessScopeContext?> ResolveBudgetScopeAsync(int? objectiveId, int? projectId)
     {
         if (objectiveId.HasValue == projectId.HasValue) return null;
@@ -1673,8 +1692,11 @@ public class IdpController : ControllerBase
     private static IdpPlanSummaryResponse ToSummaryResponse(IdpPlan plan) =>
         new(plan.Id, plan.PublicId, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt, Convert.ToBase64String(plan.RowVersion), plan.PlanFamilyId, plan.PredecessorPlan?.PublicId, plan.EffectiveFrom, plan.EffectiveTo, plan.PublishedAt, plan.PublicationReference);
 
-    private static IdpPlanVersionResponse ToVersionResponse(IdpPlanVersion version) =>
-        new(version.Id, version.PublicId, version.IdpPlanId, version.PredecessorVersion?.PublicId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear, version.SummaryOfChanges, version.IsActive, version.CreatedAt, version.CreatedByUserId, version.EffectiveFrom, version.EffectiveTo, version.PublishedAt, version.PublicationReference, Convert.ToBase64String(version.RowVersion));
+    private static IdpPlanVersionResponse ToVersionResponse(IdpPlanVersion version, IdpPlanVersionMemberAccess access) =>
+        new(version.Id, version.PublicId, version.IdpPlanId, version.PredecessorVersion?.PublicId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear,
+            access.Summary ? version.SummaryOfChanges : null, version.IsActive, version.CreatedAt,
+            access.Creator ? version.CreatedByUser?.PublicId : null, access.Creator ? version.CreatedByUser?.FullName : null,
+            version.EffectiveFrom, version.EffectiveTo, version.PublishedAt, version.PublicationReference, Convert.ToBase64String(version.RowVersion));
 
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -1884,6 +1906,11 @@ public class IdpController : ControllerBase
     private sealed record IdpCollaborationMemberAccess(bool Comment, bool CommentActor, bool TaskContent, bool TaskAssignee, bool TaskAssigner)
     {
         public static IdpCollaborationMemberAccess Full { get; } = new(true, true, true, true, true);
+    }
+
+    private sealed record IdpPlanVersionMemberAccess(bool Summary, bool Creator)
+    {
+        public static IdpPlanVersionMemberAccess Full { get; } = new(true, true);
     }
 
     private sealed class IdpHierarchyPathRow

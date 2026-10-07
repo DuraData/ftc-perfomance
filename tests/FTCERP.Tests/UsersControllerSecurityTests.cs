@@ -266,13 +266,13 @@ public sealed class UsersControllerSecurityTests
             .Where(item => item.ResourceCode == "IDP_PLAN" && !item.MemberCode.StartsWith("Import"))
             .OrderBy(item => item.MemberCode).ToArrayAsync();
         idpCollaborationMembers.Select(item => item.MemberCode).Should().Equal(
-            "CollaborationActor", "CollaborationComment", "TaskAssignee", "TaskAssigner", "TaskContent");
+            "CollaborationActor", "CollaborationComment", "TaskAssignee", "TaskAssigner", "TaskContent", "VersionCreator", "VersionSummary");
         idpCollaborationMembers.Should().OnlyContain(item => item.IsSensitive);
-        idpCollaborationMembers.Where(item => item.MemberCode is "CollaborationActor" or "TaskAssigner")
+        idpCollaborationMembers.Where(item => item.MemberCode is "CollaborationActor" or "TaskAssigner" or "VersionCreator")
             .Should().OnlyContain(item => item.IsSystemManaged);
-        idpCollaborationMembers.Where(item => item.MemberCode is not ("CollaborationActor" or "TaskAssigner"))
+        idpCollaborationMembers.Where(item => item.MemberCode is not ("CollaborationActor" or "TaskAssigner" or "VersionCreator"))
             .Should().OnlyContain(item => !item.IsSystemManaged);
-        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PLAN" && item.MemberCode != null && !item.MemberCode.StartsWith("Import"))).Should().Be(8);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PLAN" && item.MemberCode != null && !item.MemberCode.StartsWith("Import"))).Should().Be(11);
 
         var idpIndicatorMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_INDICATOR").OrderBy(item => item.MemberCode).ToArrayAsync();
