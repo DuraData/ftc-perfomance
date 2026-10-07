@@ -2230,6 +2230,17 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Circular 88 report evidence is append-only; create a successor report version.");
         if (ChangeTracker.Entries<C88WorkflowStage>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Circular 88 workflow-stage versions are append-only.");
+        if (ChangeTracker.Entries<C88CatalogueItem>().Any(entry => entry.State == EntityState.Modified)
+            || ChangeTracker.Entries<C88Indicator>().Any(entry => entry.State == EntityState.Modified)
+            || ChangeTracker.Entries<C88DataElement>().Any(entry => entry.State == EntityState.Modified)
+            || ChangeTracker.Entries<C88IndicatorApplicability>().Any(entry => entry.State == EntityState.Modified)
+            || ChangeTracker.Entries<C88ComplianceQuestion>().Any(entry => entry.State == EntityState.Modified))
+            throw new InvalidOperationException("Circular 88 catalogue definitions are append-only; create a new catalogue edition.");
+        foreach (var entry in ChangeTracker.Entries<C88CatalogueVersion>().Where(entry => entry.State == EntityState.Modified))
+        {
+            if (entry.OriginalValues.GetValue<bool>(nameof(C88CatalogueVersion.IsPublished)))
+                throw new InvalidOperationException("Published Circular 88 catalogue editions are immutable; create a new edition.");
+        }
         foreach (var entry in ChangeTracker.Entries<IdpPlanVersion>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)

@@ -107,4 +107,38 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be hard deleted*");
     }
+
+    public static TheoryData<object> Circular88CatalogueDefinitions => new()
+    {
+        new C88CatalogueItem { Id = 71 },
+        new C88Indicator { Id = 72 },
+        new C88DataElement { Id = 73 },
+        new C88IndicatorApplicability { Id = 74 },
+        new C88ComplianceQuestion { Id = 75 }
+    };
+
+    [Theory]
+    [MemberData(nameof(Circular88CatalogueDefinitions))]
+    public async Task Circular88_catalogue_definitions_cannot_be_rewritten(object row)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(row).State = EntityState.Modified;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*catalogue definitions are append-only*");
+    }
+
+    [Fact]
+    public async Task Published_Circular88_catalogue_edition_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var edition = new C88CatalogueVersion { Id = 76, IsPublished = true };
+        context.Attach(edition);
+        edition.Name = "Retrospectively rewritten edition";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*catalogue editions are immutable*");
+    }
 }
