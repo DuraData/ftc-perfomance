@@ -119,6 +119,27 @@ describe('IDP plan lineage workspace', () => {
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'future plan', sortBy: 'createdAt', sortDirection: 'desc' }), { timeout: 1500 });
   });
 
+  it('fails closed against hostile annual-performance and budget dashboard payloads', async () => {
+    api.getIdpDashboard.mockResolvedValue({
+      success: true,
+      data: {
+        planId: predecessor.id, planTitle: predecessor.planTitle, outcomes: 1, objectives: 1, projects: 1, kpis: 1,
+        communitySessions: 0, risks: 0, plannedBudget: 9876543, approvedBudget: 8765432,
+        actualExpenditure: 7654321, kpiAchievementRate: 91.23, topRiskTitles: [], wardParticipation: [], alignmentCount: 0,
+      },
+    });
+
+    render(<IdpPlanningDashboardPage />);
+    expect(await screen.findByText('No risks linked.')).toBeInTheDocument();
+    expect(screen.queryByText('KPI Achievement')).not.toBeInTheDocument();
+    expect(screen.queryByText('Budget Utilization')).not.toBeInTheDocument();
+    expect(screen.queryByText('Budget Integration')).not.toBeInTheDocument();
+    expect(screen.queryByText(/91\.23%/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/9,876,543|8,765,432|7,654,321/)).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('IDP_INDICATOR', 'AnnualTargetValue');
+    expect(security.canReadField).toHaveBeenCalledWith('IDP_PROJECT', 'BudgetSnapshotActual');
+  });
+
   it('submits user-entered predecessor and publication metadata', async () => {
     render(<IdpPlanManagementPage />);
     await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });

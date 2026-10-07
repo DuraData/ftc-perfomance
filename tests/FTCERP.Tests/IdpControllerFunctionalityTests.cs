@@ -571,7 +571,13 @@ public class IdpControllerFunctionalityTests
 
         var workflow = new Mock<IWorkflowGovernanceService>();
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
+        var dashboardAccess = new Mock<IAccessControlService>();
+        dashboardAccess.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+                new AccessDecisionResult(code is "IDP_INDICATOR.AnnualTargetValue.READ" or "IDP_INDICATOR.AnnualActualValue.READ"
+                    or "IDP_PROJECT.BudgetSnapshotPlanned.READ" or "IDP_PROJECT.BudgetSnapshotApproved.READ"
+                    or "IDP_PROJECT.BudgetSnapshotActual.READ", "test", [], [], []));
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: dashboardAccess.Object);
 
         var action = await controller.GetDashboard(plan.Id);
         var ok = action.Result.Should().BeOfType<OkObjectResult>().Subject;
@@ -710,7 +716,10 @@ public class IdpControllerFunctionalityTests
         };
 
         var userManager = IdpTestFixture.CreateUserManagerMock(creator, usersById);
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, creator.Id);
+        var taskAccess = new Mock<IAccessControlService>();
+        taskAccess.Setup(item => item.CheckPermissionAsync(creator, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "test", [], [], []));
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, creator.Id, accessControl: taskAccess.Object);
 
         var createResult = await controller.CreateTask(new CreateIdpTaskRequest(
             plan.Id,

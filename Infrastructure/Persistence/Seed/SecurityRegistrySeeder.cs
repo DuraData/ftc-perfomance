@@ -295,6 +295,18 @@ public static class SecurityRegistrySeeder
             Member("IDP_PLAN", "ImportActor", "Import Creator and Committer Identity", sensitive: true, systemManaged: true),
             Member("IDP_PLAN", "ImportRowPayload", "Import Row Before, After and Supplied Values", sensitive: true, systemManaged: true),
             Member("IDP_PLAN", "ImportErrorDetail", "Import Validation Diagnostics", sensitive: true, systemManaged: true),
+            Member("IDP_PLAN", "CollaborationComment", "Collaboration Comment and Context", sensitive: true),
+            Member("IDP_PLAN", "CollaborationActor", "Collaboration Comment Actor", sensitive: true, systemManaged: true),
+            Member("IDP_PLAN", "TaskContent", "Task Title and Description", sensitive: true),
+            Member("IDP_PLAN", "TaskAssignee", "Task Assignee Identity", sensitive: true),
+            Member("IDP_PLAN", "TaskAssigner", "Task Assigner Identity", sensitive: true, systemManaged: true),
+            Member("IDP_INDICATOR", "AnnualTargetValue", "Annual Target Value", sensitive: true),
+            Member("IDP_INDICATOR", "AnnualActualValue", "Annual Actual Value", sensitive: true),
+            Member("IDP_INDICATOR", "AnnualProgressComment", "Annual Progress Comment", sensitive: true),
+            Member("IDP_PROJECT", "BudgetSnapshotPlanned", "Budget Snapshot Planned Amount", sensitive: true),
+            Member("IDP_PROJECT", "BudgetSnapshotApproved", "Budget Snapshot Approved Amount", sensitive: true),
+            Member("IDP_PROJECT", "BudgetSnapshotActual", "Budget Snapshot Actual Expenditure", sensitive: true),
+            Member("IDP_PROJECT", "BudgetSnapshotSource", "Budget Snapshot Source System", sensitive: true),
             Member("TID", "SourceUploadedByUserId", "Source Document Uploader Identity", sensitive: true, systemManaged: true),
             Member("TID", "SourceUploadedByName", "Source Document Uploader Name", sensitive: true, systemManaged: true),
             Member("TID", "SourceScannerProvider", "Source Document Scanner Provider", sensitive: true, systemManaged: true),
@@ -559,6 +571,10 @@ public static class SecurityRegistrySeeder
         mappings["IPMS_RFI.RAISE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.Question.UPDATE", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
         mappings["IPMS_RFI.RESPOND"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.Response.UPDATE", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
         mappings["IPMS_RFI.CLOSE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.ClosedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW", "IDP_INDICATOR.AnnualTargetValue.READ", "IDP_INDICATOR.AnnualActualValue.READ", "IDP_PROJECT.BudgetSnapshotPlanned.READ", "IDP_PROJECT.BudgetSnapshotApproved.READ", "IDP_PROJECT.BudgetSnapshotActual.READ"];
+        mappings["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT", "IDP_INDICATOR.AnnualTargetValue.READ", "IDP_INDICATOR.AnnualTargetValue.UPDATE", "IDP_INDICATOR.AnnualActualValue.READ", "IDP_INDICATOR.AnnualActualValue.UPDATE", "IDP_INDICATOR.AnnualProgressComment.READ", "IDP_INDICATOR.AnnualProgressComment.UPDATE", "IDP_PLAN.ImportClientRequestId.READ", "IDP_PLAN.ImportSourceFileName.READ", "IDP_PLAN.ImportSourceHash.READ", "IDP_PLAN.ImportActor.READ", "IDP_PLAN.ImportRowPayload.READ", "IDP_PLAN.ImportErrorDetail.READ"];
+        mappings["IDP.Budget.View"] = ["IDP_PROJECT.READ", "IDP_PROJECT.BudgetSnapshotPlanned.READ", "IDP_PROJECT.BudgetSnapshotPlanned.UPDATE", "IDP_PROJECT.BudgetSnapshotApproved.READ", "IDP_PROJECT.BudgetSnapshotApproved.UPDATE", "IDP_PROJECT.BudgetSnapshotActual.READ", "IDP_PROJECT.BudgetSnapshotActual.UPDATE", "IDP_PROJECT.BudgetSnapshotSource.READ", "IDP_PROJECT.BudgetSnapshotSource.UPDATE"];
+        mappings["IDP.Collaboration.Manage"] = ["IDP_PLAN.CollaborationComment.READ", "IDP_PLAN.CollaborationComment.UPDATE", "IDP_PLAN.CollaborationActor.READ", "IDP_PLAN.TaskContent.READ", "IDP_PLAN.TaskContent.UPDATE", "IDP_PLAN.TaskAssignee.READ", "IDP_PLAN.TaskAssignee.UPDATE", "IDP_PLAN.TaskAssigner.READ"];
         mappings["C88_INDICATOR.READ"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.MappingReason.READ"];
         mappings["C88_INDICATOR.UPDATE"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.PlanMissingDataExplanation.UPDATE"];
         mappings["C88_INDICATOR.MANAGE_MAPPING"] = ["C88_INDICATOR.MappingReason.READ", "C88_INDICATOR.MappingReason.UPDATE"];

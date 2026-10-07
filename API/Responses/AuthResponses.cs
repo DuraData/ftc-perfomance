@@ -804,7 +804,7 @@ public record IdpImportRowResponse(
     string? SuppliedValue,
     string? ErrorMessage);
 
-public record IdpAnnualTargetResponse(Guid PublicId, int IdpKpiId, int FinancialYear, decimal TargetValue, decimal? ActualValue, string? ProgressComment, string RowVersion);
+public record IdpAnnualTargetResponse(Guid PublicId, int IdpKpiId, int FinancialYear, decimal? TargetValue, decimal? ActualValue, string? ProgressComment, string RowVersion);
 
 public record IdpAlignmentLinkResponse(
     Guid PublicId,
@@ -870,10 +870,10 @@ public record IdpBudgetSnapshotResponse(
     int? IdpStrategicObjectiveId,
     int? IdpProjectId,
     int FinancialYear,
-    decimal PlannedBudget,
-    decimal ApprovedBudget,
-    decimal ActualExpenditure,
-    string SourceSystem,
+    decimal? PlannedBudget,
+    decimal? ApprovedBudget,
+    decimal? ActualExpenditure,
+    string? SourceSystem,
     DateTime CapturedAt);
 
 public record IdpDocumentResponse(
@@ -908,10 +908,10 @@ public record IdpCommentResponse(
     Guid PublicId,
     int IdpPlanId,
     int? IdpPlanVersionId,
-    string EntityName,
-    string EntityId,
-    string Comment,
-    string CommentedByUserId,
+    string? EntityName,
+    string? EntityId,
+    string? Comment,
+    Guid? CommentedByUserPublicId,
     string? CommentedByName,
     DateTime CommentedAt);
 
@@ -919,11 +919,11 @@ public record IdpTaskResponse(
     Guid PublicId,
     int IdpPlanId,
     int? IdpPlanVersionId,
-    string Title,
-    string Description,
-    string AssignedToUserId,
+    string? Title,
+    string? Description,
+    Guid? AssignedToUserPublicId,
     string? AssignedToName,
-    string AssignedByUserId,
+    Guid? AssignedByUserPublicId,
     string? AssignedByName,
     DateTime DueDate,
     bool IsCompleted,
@@ -939,10 +939,10 @@ public record IdpDashboardResponse(
     int Kpis,
     int CommunitySessions,
     int Risks,
-    decimal PlannedBudget,
-    decimal ApprovedBudget,
-    decimal ActualExpenditure,
-    decimal KpiAchievementRate,
+    decimal? PlannedBudget,
+    decimal? ApprovedBudget,
+    decimal? ActualExpenditure,
+    decimal? KpiAchievementRate,
     string[] TopRiskTitles,
     IdpWardParticipationResponse[] WardParticipation,
     int AlignmentCount);

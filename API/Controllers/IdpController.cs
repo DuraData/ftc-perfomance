@@ -461,6 +461,8 @@ public class IdpController : ControllerBase
     [Authorize(Policy = "Permission:IDP.Dashboard.View")]
     public async Task<ActionResult<ApiResponse<IdpDashboardResponse>>> GetDashboard(int id)
     {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpDashboardResponse>(false, null, "User not found"));
         var plan = await _context.IdpPlans.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
         if (plan == null)
         {
@@ -484,17 +486,25 @@ public class IdpController : ControllerBase
             .Select(item => item.Id)
             .ToArrayAsync();
 
-        var annualTargets = await _context.IdpAnnualTargets
-            .Where(item => kpiIds.Contains(item.IdpKpiId))
-            .ToArrayAsync();
+        var annualAccess = await GetAnnualTargetMemberAccessAsync(user);
+        decimal? kpiAchievementRate = null;
+        if (annualAccess.TargetValue && annualAccess.ActualValue)
+        {
+            var annualTargets = await _context.IdpAnnualTargets
+                .Where(item => kpiIds.Contains(item.IdpKpiId))
+                .Select(item => new { item.TargetValue, item.ActualValue })
+                .ToArrayAsync();
+            var achievedCount = annualTargets.Count(item => item.ActualValue.HasValue && item.ActualValue.Value >= item.TargetValue);
+            kpiAchievementRate = annualTargets.Length == 0 ? 0m : decimal.Round((decimal)achievedCount / annualTargets.Length * 100m, 2);
+        }
 
-        var achievedCount = annualTargets.Count(item => item.ActualValue.HasValue && item.ActualValue.Value >= item.TargetValue);
-        var kpiAchievementRate = annualTargets.Length == 0 ? 0m : (decimal)achievedCount / annualTargets.Length * 100m;
-
-        var budgetSnapshots = await _context.IdpBudgetSnapshots
+        var budgetAccess = await GetBudgetMemberAccessAsync(user);
+        var budgetQuery = _context.IdpBudgetSnapshots
             .Where(item => (item.IdpStrategicObjectiveId.HasValue && objectiveIds.Contains(item.IdpStrategicObjectiveId.Value))
-                || (item.IdpProjectId.HasValue && projectIds.Contains(item.IdpProjectId.Value)))
-            .ToArrayAsync();
+                || (item.IdpProjectId.HasValue && projectIds.Contains(item.IdpProjectId.Value)));
+        decimal? plannedBudget = budgetAccess.PlannedBudget ? await budgetQuery.SumAsync(item => item.PlannedBudget) : null;
+        decimal? approvedBudget = budgetAccess.ApprovedBudget ? await budgetQuery.SumAsync(item => item.ApprovedBudget) : null;
+        decimal? actualExpenditure = budgetAccess.ActualExpenditure ? await budgetQuery.SumAsync(item => item.ActualExpenditure) : null;
 
         var topRiskTitles = await _context.IdpRiskLinks
             .Where(item => (item.IdpStrategicObjectiveId.HasValue && objectiveIds.Contains(item.IdpStrategicObjectiveId.Value))
@@ -549,10 +559,10 @@ public class IdpController : ControllerBase
             kpiIds.Length,
             await _context.IdpCommunitySessions.CountAsync(item => item.IdpPlanId == id),
             topRiskTitles.Length,
-            budgetSnapshots.Sum(item => item.PlannedBudget),
-            budgetSnapshots.Sum(item => item.ApprovedBudget),
-            budgetSnapshots.Sum(item => item.ActualExpenditure),
-            decimal.Round(kpiAchievementRate, 2),
+            plannedBudget,
+            approvedBudget,
+            actualExpenditure,
+            kpiAchievementRate,
             topRiskTitles,
             wardParticipation,
             alignmentCount);
@@ -855,8 +865,17 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpAnnualTargetResponse>(false, null, "User not found"));
 
-        var kpiExists = await _context.IdpKpis.AnyAsync(item => item.Id == request.IdpKpiId);
-        if (!kpiExists) return NotFound(new ApiResponse<IdpAnnualTargetResponse>(false, null, "KPI not found"));
+        var kpi = await _context.IdpKpis.AsNoTracking()
+            .Where(item => item.Id == request.IdpKpiId)
+            .Select(item => new { item.PublicId, ProjectPublicId = item.IdpProject.PublicId })
+            .SingleOrDefaultAsync();
+        if (kpi == null) return NotFound(new ApiResponse<IdpAnnualTargetResponse>(false, null, "KPI not found"));
+
+        var requiredMembers = new List<string> { "AnnualTargetValue" };
+        if (request.ActualValue.HasValue) requiredMembers.Add("AnnualActualValue");
+        if (!string.IsNullOrWhiteSpace(request.ProgressComment)) requiredMembers.Add("AnnualProgressComment");
+        if (await MemberUpdateDenialAsync(user, "IDP_INDICATOR", Scope(kpiId: kpi.PublicId, projectId: kpi.ProjectPublicId), requiredMembers) is not null)
+            return Forbid();
 
         var entity = new IdpAnnualTarget
         {
@@ -869,9 +888,9 @@ public class IdpController : ControllerBase
 
         _context.IdpAnnualTargets.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.PublicId.ToString(), "Create", null, ToAnnualTargetResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.PublicId.ToString(), "Create", null, ToAnnualTargetResponse(entity, IdpAnnualTargetMemberAccess.Full));
 
-        return Ok(new ApiResponse<IdpAnnualTargetResponse>(true, ToAnnualTargetResponse(entity)));
+        return Ok(new ApiResponse<IdpAnnualTargetResponse>(true, ToAnnualTargetResponse(entity, await GetAnnualTargetMemberAccessAsync(user, Scope(kpiId: kpi.PublicId, projectId: kpi.ProjectPublicId)))));
     }
 
     [HttpPost("alignment-links")]
@@ -1135,6 +1154,12 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "User not found"));
 
+        var scope = await ResolveBudgetScopeAsync(request.IdpStrategicObjectiveId, request.IdpProjectId);
+        if (scope == null) return NotFound(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "The IDP objective or project was not found."));
+        if (await MemberUpdateDenialAsync(user, "IDP_PROJECT", scope,
+                ["BudgetSnapshotPlanned", "BudgetSnapshotApproved", "BudgetSnapshotActual", "BudgetSnapshotSource"]) is not null)
+            return Forbid();
+
         var entity = new IdpBudgetSnapshot
         {
             IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
@@ -1149,9 +1174,9 @@ public class IdpController : ControllerBase
 
         _context.IdpBudgetSnapshots.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpBudgetSnapshot", entity.PublicId.ToString(), "Create", null, ToBudgetSnapshotResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpBudgetSnapshot", entity.PublicId.ToString(), "Create", null, ToBudgetSnapshotResponse(entity, IdpBudgetMemberAccess.Full));
 
-        return Ok(new ApiResponse<IdpBudgetSnapshotResponse>(true, ToBudgetSnapshotResponse(entity)));
+        return Ok(new ApiResponse<IdpBudgetSnapshotResponse>(true, ToBudgetSnapshotResponse(entity, await GetBudgetMemberAccessAsync(user, scope))));
     }
 
     [HttpPost("documents")]
@@ -1386,8 +1411,12 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpCommentResponse>(false, null, "User not found"));
 
-        var planExists = await _context.IdpPlans.AnyAsync(item => item.Id == request.IdpPlanId);
-        if (!planExists) return NotFound(new ApiResponse<IdpCommentResponse>(false, null, "IDP plan not found"));
+        var plan = await _context.IdpPlans.AsNoTracking().Where(item => item.Id == request.IdpPlanId)
+            .Select(item => new { item.PublicId, item.MunicipalityId }).SingleOrDefaultAsync();
+        if (plan == null) return NotFound(new ApiResponse<IdpCommentResponse>(false, null, "IDP plan not found"));
+        var scope = Scope(targetId: plan.PublicId);
+        if (await MemberUpdateDenialAsync(user, "IDP_PLAN", scope, ["CollaborationComment"]) is not null)
+            return Forbid();
 
         var entity = new IdpCollaborationComment
         {
@@ -1402,9 +1431,11 @@ public class IdpController : ControllerBase
 
         _context.IdpCollaborationComments.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpComment", entity.PublicId.ToString(), "Create", null, ToCommentResponse(entity, user.FullName));
+        await WriteIdpAudit(user.Id, "IdpComment", entity.PublicId.ToString(), "Create", null,
+            ToCommentResponse(entity, user, IdpCollaborationMemberAccess.Full));
 
-        return Ok(new ApiResponse<IdpCommentResponse>(true, ToCommentResponse(entity, user.FullName)));
+        return Ok(new ApiResponse<IdpCommentResponse>(true,
+            ToCommentResponse(entity, user, await GetCollaborationMemberAccessAsync(user, scope))));
     }
 
     [HttpPost("tasks")]
@@ -1414,11 +1445,23 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpTaskResponse>(false, null, "User not found"));
 
-        var planExists = await _context.IdpPlans.AnyAsync(item => item.Id == request.IdpPlanId);
-        if (!planExists) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "IDP plan not found"));
+        var plan = await _context.IdpPlans.AsNoTracking().Where(item => item.Id == request.IdpPlanId)
+            .Select(item => new { item.PublicId, item.MunicipalityId }).SingleOrDefaultAsync();
+        if (plan == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "IDP plan not found"));
+        var scope = Scope(targetId: plan.PublicId);
+        if (await MemberUpdateDenialAsync(user, "IDP_PLAN", scope, ["TaskContent", "TaskAssignee"]) is not null)
+            return Forbid();
 
         var assignee = await _userManager.FindByIdAsync(request.AssignedToUserId);
         if (assignee == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "Assignee not found"));
+        if (plan.MunicipalityId.HasValue && assignee.MunicipalityId != plan.MunicipalityId.Value)
+        {
+            var now = DateTime.UtcNow;
+            var hasTenantAssignment = await _context.SecurityUserRoleAssignments.AsNoTracking().AnyAsync(item =>
+                item.UserId == assignee.Id && item.MunicipalityId == plan.MunicipalityId.Value && item.IsActive
+                && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now));
+            if (!hasTenantAssignment) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "Assignee not found"));
+        }
 
         var entity = new IdpTaskAssignment
         {
@@ -1439,12 +1482,14 @@ public class IdpController : ControllerBase
             assignee.Id,
             NotificationType.Submission,
             "IDP task assigned",
-            $"You were assigned IDP task '{entity.Title}'.",
+            "You were assigned an IDP collaboration task.",
             "IdpTask",
             entity.PublicId.ToString());
 
-        await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), "Create", null, ToTaskResponse(entity, assignee.FullName, user.FullName));
-        return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, assignee.FullName, user.FullName)));
+        await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), "Create", null,
+            ToTaskResponse(entity, assignee, user, IdpCollaborationMemberAccess.Full));
+        return Ok(new ApiResponse<IdpTaskResponse>(true,
+            ToTaskResponse(entity, assignee, user, await GetCollaborationMemberAccessAsync(user, scope))));
     }
 
     [HttpPatch("tasks/{id:long}/complete")]
@@ -1466,7 +1511,7 @@ public class IdpController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length is < 5 or > 500)
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A completion reason between 5 and 500 characters is required."));
 
-        var entity = await _context.IdpTaskAssignments.FirstOrDefaultAsync(item => item.PublicId == taskPublicId);
+        var entity = await _context.IdpTaskAssignments.Include(item => item.IdpPlan).FirstOrDefaultAsync(item => item.PublicId == taskPublicId);
         if (entity == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "Task not found"));
         if (string.IsNullOrWhiteSpace(request.RowVersion))
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
@@ -1479,7 +1524,7 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
         }
 
-        var before = ToTaskResponse(entity, null, null);
+        var before = ToTaskResponse(entity, null, null, IdpCollaborationMemberAccess.Full);
         entity.IsCompleted = request.IsCompleted;
         entity.CompletedAt = request.IsCompleted ? DateTime.UtcNow : null;
         try
@@ -1494,9 +1539,11 @@ public class IdpController : ControllerBase
         var assignee = await _userManager.FindByIdAsync(entity.AssignedToUserId);
         var assigner = await _userManager.FindByIdAsync(entity.AssignedByUserId);
 
+        var fullResponse = ToTaskResponse(entity, assignee, assigner, IdpCollaborationMemberAccess.Full);
         await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
-            new { Task = before, Reason = request.Reason.Trim() }, ToTaskResponse(entity, assignee?.FullName, assigner?.FullName));
-        return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, assignee?.FullName, assigner?.FullName)));
+            new { Task = before, Reason = request.Reason.Trim() }, fullResponse);
+        var memberAccess = await GetCollaborationMemberAccessAsync(user, Scope(targetId: entity.IdpPlan.PublicId, taskId: entity.PublicId));
+        return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, assignee, assigner, memberAccess)));
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()
@@ -1507,11 +1554,75 @@ public class IdpController : ControllerBase
 
     private async Task<bool> CanAccessStakeholderMemberAsync(ApplicationUser user, string memberCode, SecurityOperation operation)
     {
+        return await CanAccessMemberAsync(user, "IDP_STAKEHOLDER", memberCode, operation, Scope());
+    }
+
+    private AccessScopeContext Scope(Guid? targetId = null, Guid? kpiId = null, Guid? projectId = null, Guid? taskId = null) =>
+        new(TargetId: targetId?.ToString(), KpiId: kpiId?.ToString(), ProjectId: projectId?.ToString(),
+            TaskId: taskId?.ToString(), MunicipalityId: _tenantContext?.MunicipalityId);
+
+    private async Task<bool> CanAccessMemberAsync(
+        ApplicationUser user,
+        string resourceCode,
+        string memberCode,
+        SecurityOperation operation,
+        AccessScopeContext scope)
+    {
         if (_accessControl == null) return false;
         var decision = await _accessControl.CheckPermissionAsync(user,
-            $"IDP_STAKEHOLDER.{memberCode}.{operation.ToString().ToUpperInvariant()}",
-            new AccessScopeContext(MunicipalityId: _tenantContext?.MunicipalityId));
+            $"{resourceCode}.{memberCode}.{operation.ToString().ToUpperInvariant()}", scope);
         return decision.Allowed;
+    }
+
+    private async Task<string?> MemberUpdateDenialAsync(
+        ApplicationUser user,
+        string resourceCode,
+        AccessScopeContext scope,
+        IReadOnlyCollection<string> memberCodes)
+    {
+        foreach (var memberCode in memberCodes.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (_accessControl == null) return $"{memberCode} update permission is required.";
+            var decision = await _accessControl.CheckPermissionAsync(user, $"{resourceCode}.{memberCode}.UPDATE", scope);
+            if (!decision.Allowed) return decision.Reason ?? $"{memberCode} update permission is required.";
+        }
+        return null;
+    }
+
+    private async Task<IdpAnnualTargetMemberAccess> GetAnnualTargetMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualTargetValue", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualActualValue", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualProgressComment", SecurityOperation.Read, scope ?? Scope()));
+
+    private async Task<IdpBudgetMemberAccess> GetBudgetMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "BudgetSnapshotPlanned", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "BudgetSnapshotApproved", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "BudgetSnapshotActual", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PROJECT", "BudgetSnapshotSource", SecurityOperation.Read, scope ?? Scope()));
+
+    private async Task<IdpCollaborationMemberAccess> GetCollaborationMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PLAN", "CollaborationComment", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PLAN", "CollaborationActor", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PLAN", "TaskContent", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PLAN", "TaskAssignee", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PLAN", "TaskAssigner", SecurityOperation.Read, scope ?? Scope()));
+
+    private async Task<AccessScopeContext?> ResolveBudgetScopeAsync(int? objectiveId, int? projectId)
+    {
+        if (objectiveId.HasValue == projectId.HasValue) return null;
+        if (projectId.HasValue)
+        {
+            var publicId = await _context.IdpProjects.AsNoTracking().Where(item => item.Id == projectId.Value)
+                .Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync();
+            return publicId.HasValue ? Scope(projectId: publicId.Value) : null;
+        }
+
+        var objectivePublicId = await _context.IdpStrategicObjectives.AsNoTracking().Where(item => item.Id == objectiveId!.Value)
+            .Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync();
+        return objectivePublicId.HasValue ? Scope(targetId: objectivePublicId.Value) : null;
     }
 
     private async Task<DocumentMetadataMemberAccess> GetDocumentMemberAccessAsync(ApplicationUser user, long municipalityId)
@@ -1663,8 +1774,12 @@ public class IdpController : ControllerBase
             kpi.PublicId,
             Convert.ToBase64String(kpi.RowVersion));
 
-    private static IdpAnnualTargetResponse ToAnnualTargetResponse(IdpAnnualTarget annualTarget) =>
-        new(annualTarget.PublicId, annualTarget.IdpKpiId, annualTarget.FinancialYear, annualTarget.TargetValue, annualTarget.ActualValue, annualTarget.ProgressComment, Convert.ToBase64String(annualTarget.RowVersion));
+    private static IdpAnnualTargetResponse ToAnnualTargetResponse(IdpAnnualTarget annualTarget, IdpAnnualTargetMemberAccess access) =>
+        new(annualTarget.PublicId, annualTarget.IdpKpiId, annualTarget.FinancialYear,
+            access.TargetValue ? annualTarget.TargetValue : null,
+            access.ActualValue ? annualTarget.ActualValue : null,
+            access.ProgressComment ? annualTarget.ProgressComment : null,
+            Convert.ToBase64String(annualTarget.RowVersion));
 
     private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link) =>
         new(link.PublicId, link.IdpStrategicObjectiveId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
@@ -1694,8 +1809,13 @@ public class IdpController : ControllerBase
     private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk) =>
         new(risk.PublicId, risk.IdpStrategicObjectiveId, risk.IdpProjectId, risk.IdpKpiId, risk.RiskReference, risk.RiskTitle, risk.MitigationPlan, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));
 
-    private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot) =>
-        new(snapshot.PublicId, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear, snapshot.PlannedBudget, snapshot.ApprovedBudget, snapshot.ActualExpenditure, snapshot.SourceSystem, snapshot.CapturedAt);
+    private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot, IdpBudgetMemberAccess access) =>
+        new(snapshot.PublicId, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear,
+            access.PlannedBudget ? snapshot.PlannedBudget : null,
+            access.ApprovedBudget ? snapshot.ApprovedBudget : null,
+            access.ActualExpenditure ? snapshot.ActualExpenditure : null,
+            access.SourceSystem ? snapshot.SourceSystem : null,
+            snapshot.CapturedAt);
 
     private IdpDocumentResponse ToDocumentResponse(IdpDocument document, DocumentMetadataMemberAccess? memberAccess = null)
     {
@@ -1732,11 +1852,39 @@ public class IdpController : ControllerBase
             Convert.ToBase64String(document.RowVersion ?? []));
     }
 
-    private static IdpCommentResponse ToCommentResponse(IdpCollaborationComment comment, string? commentedByName) =>
-        new(comment.PublicId, comment.IdpPlanId, comment.IdpPlanVersionId, comment.EntityName, comment.EntityId, comment.Comment, comment.CommentedByUserId, commentedByName, comment.CommentedAt);
+    private static IdpCommentResponse ToCommentResponse(IdpCollaborationComment comment, ApplicationUser? commentedBy, IdpCollaborationMemberAccess access) =>
+        new(comment.PublicId, comment.IdpPlanId, comment.IdpPlanVersionId,
+            access.Comment ? comment.EntityName : null,
+            access.Comment ? comment.EntityId : null,
+            access.Comment ? comment.Comment : null,
+            access.CommentActor ? commentedBy?.PublicId : null,
+            access.CommentActor ? commentedBy?.FullName : null,
+            comment.CommentedAt);
 
-    private static IdpTaskResponse ToTaskResponse(IdpTaskAssignment task, string? assignedToName, string? assignedByName) =>
-        new(task.PublicId, task.IdpPlanId, task.IdpPlanVersionId, task.Title, task.Description, task.AssignedToUserId, assignedToName, task.AssignedByUserId, assignedByName, task.DueDate, task.IsCompleted, task.CompletedAt, Convert.ToBase64String(task.RowVersion));
+    private static IdpTaskResponse ToTaskResponse(IdpTaskAssignment task, ApplicationUser? assignedTo, ApplicationUser? assignedBy, IdpCollaborationMemberAccess access) =>
+        new(task.PublicId, task.IdpPlanId, task.IdpPlanVersionId,
+            access.TaskContent ? task.Title : null,
+            access.TaskContent ? task.Description : null,
+            access.TaskAssignee ? assignedTo?.PublicId : null,
+            access.TaskAssignee ? assignedTo?.FullName : null,
+            access.TaskAssigner ? assignedBy?.PublicId : null,
+            access.TaskAssigner ? assignedBy?.FullName : null,
+            task.DueDate, task.IsCompleted, task.CompletedAt, Convert.ToBase64String(task.RowVersion));
+
+    private sealed record IdpAnnualTargetMemberAccess(bool TargetValue, bool ActualValue, bool ProgressComment)
+    {
+        public static IdpAnnualTargetMemberAccess Full { get; } = new(true, true, true);
+    }
+
+    private sealed record IdpBudgetMemberAccess(bool PlannedBudget, bool ApprovedBudget, bool ActualExpenditure, bool SourceSystem)
+    {
+        public static IdpBudgetMemberAccess Full { get; } = new(true, true, true, true);
+    }
+
+    private sealed record IdpCollaborationMemberAccess(bool Comment, bool CommentActor, bool TaskContent, bool TaskAssignee, bool TaskAssigner)
+    {
+        public static IdpCollaborationMemberAccess Full { get; } = new(true, true, true, true, true);
+    }
 
     private sealed class IdpHierarchyPathRow
     {

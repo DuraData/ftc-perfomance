@@ -53,7 +53,12 @@ function metricCard(title: string, value: string | number, caption?: string) {
 
 export function IdpPlanningDashboardPage() {
   const { setCurrentPath } = useApp();
+  const { canReadField } = useSecurity();
   const canManagePlan = useHasAnyPermission(['IDP.Plan.Manage', 'IDP.Version.Manage']);
+  const canReadAnnualPerformance = canReadField('IDP_INDICATOR', 'AnnualTargetValue') && canReadField('IDP_INDICATOR', 'AnnualActualValue');
+  const canReadPlannedBudget = canReadField('IDP_PROJECT', 'BudgetSnapshotPlanned');
+  const canReadApprovedBudget = canReadField('IDP_PROJECT', 'BudgetSnapshotApproved');
+  const canReadActualExpenditure = canReadField('IDP_PROJECT', 'BudgetSnapshotActual');
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
   const [busy, setBusy] = useState(false);
@@ -110,22 +115,24 @@ export function IdpPlanningDashboardPage() {
               {metricCard('KPIs', dashboard.kpis)}
               {metricCard('Community Sessions', dashboard.communitySessions)}
               {metricCard('Risk Items', dashboard.risks)}
-              {metricCard('KPI Achievement', `${dashboard.kpiAchievementRate.toFixed(2)}%`)}
-              {metricCard('Budget Utilization', `${dashboard.approvedBudget > 0 ? ((dashboard.actualExpenditure / dashboard.approvedBudget) * 100).toFixed(2) : '0.00'}%`)}
+              {canReadAnnualPerformance && dashboard.kpiAchievementRate != null ? metricCard('KPI Achievement', `${dashboard.kpiAchievementRate.toFixed(2)}%`) : null}
+              {canReadApprovedBudget && canReadActualExpenditure && dashboard.approvedBudget != null && dashboard.actualExpenditure != null
+                ? metricCard('Budget Utilization', `${dashboard.approvedBudget > 0 ? ((dashboard.actualExpenditure / dashboard.approvedBudget) * 100).toFixed(2) : '0.00'}%`)
+                : null}
             </div>
 
             <div className="grid gap-4 lg:grid-cols-3">
-              <Card>
+              {canReadPlannedBudget || canReadApprovedBudget || canReadActualExpenditure ? <Card>
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-primary-600" />
                   <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Budget Integration</h3>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-secondary-700 dark:text-secondary-300">
-                  <p>Planned Budget: <span className="font-semibold">R {dashboard.plannedBudget.toLocaleString()}</span></p>
-                  <p>Approved Budget: <span className="font-semibold">R {dashboard.approvedBudget.toLocaleString()}</span></p>
-                  <p>Actual Expenditure: <span className="font-semibold">R {dashboard.actualExpenditure.toLocaleString()}</span></p>
+                  {canReadPlannedBudget && dashboard.plannedBudget != null ? <p>Planned Budget: <span className="font-semibold">R {dashboard.plannedBudget.toLocaleString()}</span></p> : null}
+                  {canReadApprovedBudget && dashboard.approvedBudget != null ? <p>Approved Budget: <span className="font-semibold">R {dashboard.approvedBudget.toLocaleString()}</span></p> : null}
+                  {canReadActualExpenditure && dashboard.actualExpenditure != null ? <p>Actual Expenditure: <span className="font-semibold">R {dashboard.actualExpenditure.toLocaleString()}</span></p> : null}
                 </div>
-              </Card>
+              </Card> : null}
 
               <Card>
                 <div className="flex items-center gap-2">

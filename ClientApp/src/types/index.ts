@@ -3276,7 +3276,7 @@ export interface IdpAnnualTarget {
   publicId: string;
   idpKpiId: number;
   financialYear: number;
-  targetValue: number;
+  targetValue?: number | null;
   actualValue?: number | null;
   progressComment?: string | null;
   rowVersion: string;
@@ -3319,10 +3319,10 @@ export interface IdpBudgetSnapshot {
   idpStrategicObjectiveId?: number | null;
   idpProjectId?: number | null;
   financialYear: number;
-  plannedBudget: number;
-  approvedBudget: number;
-  actualExpenditure: number;
-  sourceSystem: string;
+  plannedBudget?: number | null;
+  approvedBudget?: number | null;
+  actualExpenditure?: number | null;
+  sourceSystem?: string | null;
   capturedAt: string;
 }
 
@@ -3372,10 +3372,10 @@ export interface IdpDashboard {
   kpis: number;
   communitySessions: number;
   risks: number;
-  plannedBudget: number;
-  approvedBudget: number;
-  actualExpenditure: number;
-  kpiAchievementRate: number;
+  plannedBudget?: number | null;
+  approvedBudget?: number | null;
+  actualExpenditure?: number | null;
+  kpiAchievementRate?: number | null;
   topRiskTitles: string[];
   wardParticipation: IdpWardParticipation[];
   alignmentCount: number;
