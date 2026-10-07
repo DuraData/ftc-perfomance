@@ -2074,15 +2074,17 @@ export interface OfficialReportGenerationDto {
   financialYearCode: string;
   reportingPeriodPublicId: string;
   reportingPeriodCode: string;
-  scopeJson: string;
-  filterJson: string;
-  dataVersionReference: string;
+  departmentPublicId?: string | null;
+  unitPublicId?: string | null;
+  scopeJson?: string | null;
+  filterJson?: string | null;
+  dataVersionReference?: string | null;
   fileName: string;
   contentType: string;
   sizeInBytes: number;
   sha256: string;
   rowCount: number;
-  generatedBy: string;
+  generatedBy?: string | null;
   generatedAt: string;
   downloadUrl: string;
 }

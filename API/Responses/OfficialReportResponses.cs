@@ -12,6 +12,7 @@ public sealed record OfficialReportGenerationResponse(
     Guid PublicId, Guid GenerationFamilyPublicId, int VersionNumber, Guid TemplatePublicId, string TemplateCode,
     string TemplateName, int TemplateVersion, OfficialReportFormat Format, SubmissionKind SubmissionKind, OfficialReportType ReportType,
     Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, Guid ReportingPeriodPublicId,
-    string ReportingPeriodCode, string ScopeJson, string FilterJson, string DataVersionReference, string FileName,
-    string ContentType, long SizeInBytes, string Sha256, int RowCount, string GeneratedBy, DateTime GeneratedAt,
+    string ReportingPeriodCode, Guid? DepartmentPublicId, Guid? UnitPublicId,
+    string? ScopeJson, string? FilterJson, string? DataVersionReference, string FileName,
+    string ContentType, long SizeInBytes, string Sha256, int RowCount, string? GeneratedBy, DateTime GeneratedAt,
     string DownloadUrl);

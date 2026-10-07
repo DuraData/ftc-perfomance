@@ -28,6 +28,11 @@ public sealed class OfficialReportsController(
     IEvidenceBlobStorage storage) : ControllerBase
 {
     private sealed record StoredScope(bool Unrestricted, int[] DepartmentIds, int[] UnitIds, string[] OwnerUserIds, string[] TargetIds);
+    private sealed record GenerationMemberScopes(
+        AccessQueryScopeResult ScopeJson,
+        AccessQueryScopeResult FilterJson,
+        AccessQueryScopeResult DataVersionReference,
+        AccessQueryScopeResult GeneratedBy);
     private sealed record TargetProjection(string TargetId, string Indicator, string TargetName, string Department, string Unit, string TargetValue, bool IsWithdrawn);
     private sealed record SubmissionProjection(string TargetId, string? ActualPerformance, decimal? Variance, decimal? AchievementPercent, bool? TargetAchieved, string Status);
     private sealed record SubmissionSubject(string SubmissionId, string TargetId, string Indicator, string TargetName, int? DepartmentId, string Department, int? UnitId, string Unit, string Period, string? ActualPerformance, decimal? AchievementPercent, bool? TargetAchieved, string Status, string SubmittedBy, DateTime? SubmittedAt);
@@ -193,6 +198,7 @@ public sealed class OfficialReportsController(
             await accessControl.GetQueryScopeAsync(user, kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
         if (!scope.PermissionGranted)
             return ForbidResponse<PagedResponse<OfficialReportGenerationResponse>>("Official report history requires report, KPI and submission READ permission.");
+        var memberScopes = await GetGenerationMemberScopesAsync(user, kind);
 
         var canReadAuditTrail = await Granted(user, "Audit.Trails.View");
         var query = ApplyStoredScope(context.OfficialReportGenerations.AsNoTracking()
@@ -201,14 +207,30 @@ public sealed class OfficialReportsController(
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch;
-            query = query.Where(item =>
-                item.ReportTemplate.Code.Contains(search) ||
-                item.ReportTemplate.Name.Contains(search) ||
-                item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
-                item.ReportingPeriod.Code.Contains(search) ||
-                item.FileName.Contains(search) ||
-                (item.GeneratedByUser.UserName != null && item.GeneratedByUser.UserName.Contains(search)) ||
-                (item.GeneratedByUser.Email != null && item.GeneratedByUser.Email.Contains(search)));
+            if (memberScopes.GeneratedBy.PermissionGranted)
+            {
+                var generatedByVisibleIds = ApplyStoredScope(
+                    context.OfficialReportGenerations.AsNoTracking().Where(item => item.SubmissionKind == kind),
+                    memberScopes.GeneratedBy).Select(item => item.Id);
+                query = query.Where(item =>
+                    item.ReportTemplate.Code.Contains(search) ||
+                    item.ReportTemplate.Name.Contains(search) ||
+                    item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
+                    item.ReportingPeriod.Code.Contains(search) ||
+                    item.FileName.Contains(search) ||
+                    (generatedByVisibleIds.Contains(item.Id) &&
+                        ((item.GeneratedByUser.UserName != null && item.GeneratedByUser.UserName.Contains(search)) ||
+                         (item.GeneratedByUser.Email != null && item.GeneratedByUser.Email.Contains(search)))));
+            }
+            else
+            {
+                query = query.Where(item =>
+                    item.ReportTemplate.Code.Contains(search) ||
+                    item.ReportTemplate.Name.Contains(search) ||
+                    item.MunicipalityFinancialYear.FinancialYear.Code.Contains(search) ||
+                    item.ReportingPeriod.Code.Contains(search) ||
+                    item.FileName.Contains(search));
+            }
         }
 
         var totalCount = await query.CountAsync();
@@ -229,9 +251,11 @@ public sealed class OfficialReportsController(
         };
         var items = await query.Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
-            .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).AsSplitQuery().ToArrayAsync();
+            .Include(item => item.ReportingPeriod).Include(item => item.GeneratedByUser).Include(item => item.ScopeGrants).AsSplitQuery().ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<OfficialReportGenerationResponse>>(true,
-            PagedResponse<OfficialReportGenerationResponse>.Create(items.Select(Map), request.Page, request.PageSize, totalCount)));
+            PagedResponse<OfficialReportGenerationResponse>.Create(
+                items.Select(item => Map(item, BuildGenerationMemberAccess(item, memberScopes))),
+                request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("generations")]
@@ -325,7 +349,8 @@ public sealed class OfficialReportsController(
             return Conflict(Fail<OfficialReportGenerationResponse>("A competing generation created this version. Refresh the history before regenerating."));
         }
         generation.ReportTemplate = template; generation.MunicipalityFinancialYear = year; generation.ReportingPeriod = period; generation.GeneratedByUser = user;
-        return Ok(new ApiResponse<OfficialReportGenerationResponse>(true, Map(generation)));
+        var memberScopes = await GetGenerationMemberScopesAsync(user, template.SubmissionKind);
+        return Ok(new ApiResponse<OfficialReportGenerationResponse>(true, Map(generation, BuildGenerationMemberAccess(generation, memberScopes))));
     }
 
     [HttpGet("generations/{publicId:guid}/content")]
@@ -618,6 +643,18 @@ public sealed class OfficialReportsController(
     private static string ReadPermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.READ" : "IPMS_REPORT.READ";
     private static string GeneratePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.GENERATE" : "IPMS_REPORT.GENERATE";
     private static string ConfigurePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.CONFIGURE" : "IPMS_REPORT.CONFIGURE";
+    private async Task<GenerationMemberScopes> GetGenerationMemberScopesAsync(ApplicationUser user, SubmissionKind kind)
+    {
+        var resource = kind == SubmissionKind.Opms ? "OPMS_REPORT" : "IPMS_REPORT";
+        async Task<AccessQueryScopeResult> MemberScopeAsync(string memberCode) =>
+            await accessControl.GetQueryScopeAsync(user, $"{resource}.{memberCode}.READ")
+            ?? new AccessQueryScopeResult(false, false, [], [], [], [], [], []);
+        return new GenerationMemberScopes(
+            await MemberScopeAsync("GenerationScopeJson"),
+            await MemberScopeAsync("GenerationFilterJson"),
+            await MemberScopeAsync("GenerationDataVersionReference"),
+            await MemberScopeAsync("GenerationGeneratedBy"));
+    }
     private static string SerializeScope(AccessQueryScopeResult scope) => JsonSerializer.Serialize(new StoredScope(scope.Unrestricted, scope.DepartmentIds.Order().ToArray(), scope.UnitIds.Order().ToArray(), scope.OwnerUserIds.Order(StringComparer.Ordinal).ToArray(), scope.TargetIds.Order(StringComparer.Ordinal).ToArray()));
     private static List<OfficialReportGenerationScopeGrant> CreateScopeGrants(long municipalityId, AccessQueryScopeResult scope)
     {
@@ -653,9 +690,52 @@ public sealed class OfficialReportsController(
         if (stored.Unrestricted) return false;
         return stored.DepartmentIds.All(current.DepartmentIds.Contains) && stored.UnitIds.All(current.UnitIds.Contains) && stored.OwnerUserIds.All(current.OwnerUserIds.Contains) && stored.TargetIds.All(current.TargetIds.Contains);
     }
+    private static bool CanReadGenerationMember(OfficialReportGeneration generation, AccessQueryScopeResult scope)
+    {
+        if (!scope.PermissionGranted || generation.ScopeSchemaVersion != 1) return false;
+        if (scope.Unrestricted) return true;
+        if (generation.ScopeIsUnrestricted) return false;
+        var departmentValues = scope.DepartmentIds.Select(value => value.ToString(CultureInfo.InvariantCulture)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unitValues = scope.UnitIds.Select(value => value.ToString(CultureInfo.InvariantCulture)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var ownerValues = scope.OwnerUserIds.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var targetValues = scope.TargetIds.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim().ToUpperInvariant()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return generation.ScopeGrants.All(grant => grant.Dimension switch
+        {
+            OfficialReportScopeDimension.Department => departmentValues.Contains(grant.Value),
+            OfficialReportScopeDimension.Unit => unitValues.Contains(grant.Value),
+            OfficialReportScopeDimension.OwnerUser => ownerValues.Contains(grant.Value),
+            OfficialReportScopeDimension.Target => targetValues.Contains(grant.Value),
+            _ => false
+        });
+    }
+    private static OfficialReportGenerationMemberAccess BuildGenerationMemberAccess(OfficialReportGeneration generation, GenerationMemberScopes scopes) => new(
+        CanReadGenerationMember(generation, scopes.ScopeJson),
+        CanReadGenerationMember(generation, scopes.FilterJson),
+        CanReadGenerationMember(generation, scopes.DataVersionReference),
+        CanReadGenerationMember(generation, scopes.GeneratedBy));
+    private static (Guid? DepartmentPublicId, Guid? UnitPublicId) ReadGenerationFilters(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var department = root.TryGetProperty("departmentPublicId", out var departmentValue)
+                && departmentValue.ValueKind == JsonValueKind.String && Guid.TryParse(departmentValue.GetString(), out var departmentId)
+                    ? departmentId : (Guid?)null;
+            var unit = root.TryGetProperty("unitPublicId", out var unitValue)
+                && unitValue.ValueKind == JsonValueKind.String && Guid.TryParse(unitValue.GetString(), out var unitId)
+                    ? unitId : (Guid?)null;
+            return (department, unit);
+        }
+        catch (JsonException) { return (null, null); }
+    }
     private static bool TryRowVersion(string? value, out byte[] bytes) { try { bytes = Convert.FromBase64String(value ?? ""); return bytes.Length > 0; } catch (FormatException) { bytes = []; return false; } }
     private static OfficialReportTemplateResponse Map(OfficialReportTemplate item) => new(item.PublicId, item.TemplateFamilyPublicId, item.MunicipalityFinancialYear?.PublicId, item.MunicipalityFinancialYear?.FinancialYear.Code, item.SubmissionKind, item.ReportType, item.Code, item.Name, item.Format, item.VersionNumber, item.HeadingTemplate, OfficialReportCatalog.ValidateColumns(item.ReportType, item.ColumnConfigurationJson), item.IsCurrent, item.IsActive, item.EffectiveFrom, item.EffectiveTo, item.ApprovalReference, item.Reason, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
-    private static OfficialReportGenerationResponse Map(OfficialReportGeneration item) => new(item.PublicId, item.GenerationFamilyPublicId, item.VersionNumber, item.ReportTemplate.PublicId, item.ReportTemplate.Code, item.ReportTemplate.Name, item.ReportTemplate.VersionNumber, item.ReportTemplate.Format, item.SubmissionKind, item.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.ScopeJson, item.FilterJson, item.DataVersionReference, item.FileName, item.ContentType, item.SizeInBytes, item.Sha256, item.RowCount, item.GeneratedByUser.UserName ?? item.GeneratedByUser.Email ?? item.GeneratedByUser.Id, item.GeneratedAt, $"/api/v1/reports/official/generations/{item.PublicId}/content");
+    private static OfficialReportGenerationResponse Map(OfficialReportGeneration item, OfficialReportGenerationMemberAccess access)
+    {
+        var filters = ReadGenerationFilters(item.FilterJson);
+        return new(item.PublicId, item.GenerationFamilyPublicId, item.VersionNumber, item.ReportTemplate.PublicId, item.ReportTemplate.Code, item.ReportTemplate.Name, item.ReportTemplate.VersionNumber, item.ReportTemplate.Format, item.SubmissionKind, item.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, filters.DepartmentPublicId, filters.UnitPublicId, access.ScopeJson ? item.ScopeJson : null, access.FilterJson ? item.FilterJson : null, access.DataVersionReference ? item.DataVersionReference : null, item.FileName, item.ContentType, item.SizeInBytes, item.Sha256, item.RowCount, access.GeneratedBy ? item.GeneratedByUser.UserName ?? item.GeneratedByUser.Email ?? item.GeneratedByUser.Id : null, item.GeneratedAt, $"/api/v1/reports/official/generations/{item.PublicId}/content");
+    }
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ObjectResult ForbidResponse<T>(string message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message));
 }

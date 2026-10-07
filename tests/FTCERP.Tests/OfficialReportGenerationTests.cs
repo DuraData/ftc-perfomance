@@ -297,6 +297,7 @@ public sealed class OfficialReportGenerationTests
         var blob = await context.EvidenceBlobs.SingleAsync();
         var user = await context.Users.SingleAsync();
         var start = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        var departmentPublicId = Guid.NewGuid();
         var accessible = Enumerable.Range(1, 31).Select(index => NewScopedGeneration(index, "10", 1, start.AddMinutes(index))).ToArray();
         var denied = Enumerable.Range(32, 2).Select(index => NewScopedGeneration(index, "20", 1, start.AddMinutes(index))).ToArray();
         var unnormalized = NewScopedGeneration(34, "10", 0, start.AddMinutes(34));
@@ -304,11 +305,16 @@ public sealed class OfficialReportGenerationTests
         await context.SaveChangesAsync();
 
         var permittedScope = new AccessQueryScopeResult(true, false, [10], [], [], [], [], []);
+        var deniedScope = new AccessQueryScopeResult(false, false, [], [], [], [], [], []);
+        var allowedMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var basePermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_REPORT.READ", "OPMS_KPI.READ", "OPMS_SUBMISSION.READ"
+        };
         var access = new Mock<IAccessControlService>();
-        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_REPORT.READ")).ReturnsAsync(permittedScope);
-        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_KPI.READ")).ReturnsAsync(permittedScope);
-        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "OPMS_SUBMISSION.READ")).ReturnsAsync(permittedScope);
-        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), "Audit.Trails.View")).ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string permission) =>
+                basePermissions.Contains(permission) || allowedMembers.Contains(permission) ? permittedScope : deniedScope);
         var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) } }
@@ -330,6 +336,28 @@ public sealed class OfficialReportGenerationTests
         page.Items.Should().HaveCount(10);
         page.Items[0].VersionNumber.Should().Be(11);
         page.Items.Should().OnlyContain(item => item.VersionNumber >= 11 && item.VersionNumber <= 20);
+        page.Items.Should().OnlyContain(item => item.ScopeJson == null && item.FilterJson == null
+            && item.DataVersionReference == null && item.GeneratedBy == null);
+        page.Items.Should().OnlyContain(item => item.DepartmentPublicId == departmentPublicId && item.UnitPublicId == null);
+        var deniedGeneratorSearch = await controller.GenerationsPage(SubmissionKind.Opms, null,
+            new PagedQueryRequest { Search = "paged-reporter", SortBy = "generatedAt" });
+        Assert.IsType<ApiResponse<PagedResponse<OfficialReportGenerationResponse>>>(
+            Assert.IsType<OkObjectResult>(deniedGeneratorSearch.Result).Value).Data!.TotalCount.Should().Be(0);
+
+        foreach (var member in new[]
+                 {
+                     "OPMS_REPORT.GenerationScopeJson.READ", "OPMS_REPORT.GenerationFilterJson.READ",
+                     "OPMS_REPORT.GenerationDataVersionReference.READ", "OPMS_REPORT.GenerationGeneratedBy.READ"
+                 })
+            allowedMembers.Add(member);
+
+        var grantedResult = await controller.GenerationsPage(SubmissionKind.Opms, null,
+            new PagedQueryRequest { Search = "paged-reporter", SortBy = "generatedAt" });
+        var grantedPage = Assert.IsType<ApiResponse<PagedResponse<OfficialReportGenerationResponse>>>(
+            Assert.IsType<OkObjectResult>(grantedResult.Result).Value).Data!;
+        grantedPage.TotalCount.Should().Be(31);
+        grantedPage.Items.Should().OnlyContain(item => item.ScopeJson != null && item.FilterJson != null
+            && item.DataVersionReference == new string('c', 64) && item.GeneratedBy == "paged-reporter");
 
         OfficialReportGeneration NewScopedGeneration(int index, string departmentId, int scopeSchemaVersion, DateTime generatedAt) => new()
         {
@@ -337,7 +365,7 @@ public sealed class OfficialReportGenerationTests
             ReportingPeriodId = period.Id, ReportTemplateId = template.Id, EvidenceBlobId = blob.Id, SubmissionKind = SubmissionKind.Opms,
             ReportType = OfficialReportType.QuarterlyPerformance, VersionNumber = index, ScopeSchemaVersion = scopeSchemaVersion,
             ScopeJson = $"{{\"Unrestricted\":false,\"DepartmentIds\":[{departmentId}],\"UnitIds\":[],\"OwnerUserIds\":[],\"TargetIds\":[]}}",
-            FilterJson = "{}", DataVersionReference = new string('c', 64), FileName = $"report-{index}.pdf", ContentType = "application/pdf",
+            FilterJson = $"{{\"departmentPublicId\":\"{departmentPublicId}\",\"internal\":\"FILTER-SECRET\"}}", DataVersionReference = new string('c', 64), FileName = $"report-{index}.pdf", ContentType = "application/pdf",
             SizeInBytes = 4, Sha256 = blob.Sha256, RowCount = index, GeneratedByUserId = user.Id, GeneratedAt = generatedAt,
             ScopeGrants = [new OfficialReportGenerationScopeGrant { MunicipalityId = municipality.Id, Dimension = OfficialReportScopeDimension.Department, Value = departmentId }]
         };

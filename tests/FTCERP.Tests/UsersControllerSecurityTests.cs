@@ -155,12 +155,13 @@ public sealed class UsersControllerSecurityTests
                 .ToArrayAsync();
             Assert.Equal(new[]
                 {
-                    "JobDistributionOutboxPublicId", "JobLastError", "JobRecipientUserIds", "JobRequestedBy",
-                    "JobRetryReason", "ScheduleCreatedBy", "ScheduleRecipientValues"
+                    "GenerationDataVersionReference", "GenerationFilterJson", "GenerationGeneratedBy", "GenerationScopeJson",
+                    "JobDistributionOutboxPublicId", "JobLastError", "JobRecipientUserIds", "JobRequestedBy", "JobRetryReason",
+                    "ScheduleCreatedBy", "ScheduleRecipientValues"
                 },
                 reportMembers.Select(item => item.MemberCode));
             Assert.All(reportMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
-            Assert.Equal(7, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
+            Assert.Equal(11, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
             Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
         }
 

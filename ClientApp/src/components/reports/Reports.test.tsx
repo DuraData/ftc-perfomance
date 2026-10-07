@@ -112,6 +112,41 @@ describe('Reports', () => {
     })));
   });
 
+  it('masks hostile generation metadata and regenerates from typed selections instead of raw filter JSON', async () => {
+    const generation = {
+      publicId: 'generation-sensitive', generationFamilyPublicId: 'generation-family', versionNumber: 2,
+      templatePublicId: 'template-1', templateCode: 'QUARTERLY', templateName: 'Quarterly report', templateVersion: 2,
+      format: 4, submissionKind: 1, reportType: 1, municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27',
+      reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1', departmentPublicId: 'typed-department', unitPublicId: 'typed-unit',
+      scopeJson: '{"secret":"scope-secret"}', filterJson: '{"departmentPublicId":"hostile-department","secret":"filter-secret"}',
+      dataVersionReference: 'DATA-VERSION-SECRET-0123456789', fileName: 'quarterly.pdf', contentType: 'application/pdf',
+      sizeInBytes: 100, sha256: 'b'.repeat(64), rowCount: 4, generatedBy: 'generation-actor-secret',
+      generatedAt: '2026-10-01T10:00:00Z', downloadUrl: '/content'
+    };
+    api.getOfficialReportGenerationsPage.mockResolvedValue({ success: true, data: { items: [generation], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.generateOfficialReport.mockResolvedValue({ success: true, data: generation });
+
+    const rendered = render(<Reports />);
+    expect(await screen.findByText('Official generation history')).toBeInTheDocument();
+    expect(screen.queryByText('generation-actor-secret')).not.toBeInTheDocument();
+    expect(screen.queryByText(/DATA-VERSION/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/scope-secret|filter-secret|hostile-department/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate now' }));
+    await waitFor(() => expect(api.generateOfficialReport).toHaveBeenCalledWith(expect.objectContaining({
+      previousGenerationPublicId: 'generation-sensitive',
+      departmentPublicId: 'typed-department',
+      unitPublicId: 'typed-unit',
+    })));
+    expect(api.generateOfficialReport).not.toHaveBeenCalledWith(expect.objectContaining({ departmentPublicId: 'hostile-department' }));
+
+    app.permissions = [...app.permissions,
+      'OPMS_REPORT.GenerationGeneratedBy.READ', 'OPMS_REPORT.GenerationDataVersionReference.READ'];
+    rendered.rerender(<Reports />);
+    expect(await screen.findByText('generation-actor-secret')).toBeInTheDocument();
+    expect(screen.getByText(/DATA-VERSION/)).toBeInTheDocument();
+  });
+
   it('loads the governed schedule register through authoritative server paging and search', async () => {
     app.permissions = [...app.permissions, 'OPMS_REPORT.CONFIGURE'];
     api.getOfficialReportSchedulesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 28, totalPages: 2 } });
