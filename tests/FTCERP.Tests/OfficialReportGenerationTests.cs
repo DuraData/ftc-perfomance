@@ -77,6 +77,30 @@ public sealed class OfficialReportGenerationTests
         invalid.Should().Throw<ArgumentException>().WithMessage("*unsupported by the selected report class*");
     }
 
+    [Theory]
+    [InlineData(OfficialReportType.QuarterlyPerformance, "OPMS_SUBMISSION.ActualPerformance.READ")]
+    [InlineData(OfficialReportType.VerificationRegister, "OPMS_WORKFLOW.ActionComment.READ")]
+    [InlineData(OfficialReportType.InternalAudit, "OPMS_SUBMISSION.InternalAuditObservation.READ")]
+    [InlineData(OfficialReportType.OutstandingRfi, "OPMS_RFI.Response.READ")]
+    [InlineData(OfficialReportType.EvidenceRegister, "OPMS_POE.UploadedByName.READ")]
+    [InlineData(OfficialReportType.AuditTrail, "AUDIT_TRAIL.CorrelationId.READ")]
+    public void ReportContentPermissions_CoverProtectedConfiguredColumns(OfficialReportType reportType, string expectedPermission)
+    {
+        var permissions = OfficialReportsController.ReportContentReadPermissions(
+            SubmissionKind.Opms, reportType, OfficialReportCatalog.DefaultColumnsJson(reportType));
+
+        permissions.Should().Contain(expectedPermission);
+    }
+
+    [Fact]
+    public void ReportContentPermissions_DoNotRequireOmittedSensitiveAuditMembers()
+    {
+        var permissions = OfficialReportsController.ReportContentReadPermissions(
+            SubmissionKind.Opms, OfficialReportType.AuditTrail, "[\"entityName\",\"action\",\"changedAt\"]");
+
+        permissions.Should().Equal("AUDIT_TRAIL.READ");
+    }
+
     [Fact]
     public void TabularRenderer_UsesTheSelectedReportClassHeadingsAndStableSnapshot()
     {
@@ -301,6 +325,119 @@ public sealed class OfficialReportGenerationTests
 
         response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         access.Verify(service => service.GetQueryScopeAsync(user, "OPMS_RFI.READ"), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(OfficialReportType.QuarterlyPerformance, "OPMS_SUBMISSION.ActualPerformance.READ")]
+    [InlineData(OfficialReportType.VerificationRegister, "OPMS_WORKFLOW.ActionActorUserId.READ")]
+    [InlineData(OfficialReportType.InternalAudit, "OPMS_SUBMISSION.InternalAuditFindings.READ")]
+    [InlineData(OfficialReportType.EvidenceRegister, "OPMS_POE.READ")]
+    [InlineData(OfficialReportType.AuditTrail, "AUDIT_TRAIL.Reason.READ")]
+    public async Task DirectGenerationCall_IsDeniedWhenAConfiguredSourcePermissionIsMissing(
+        OfficialReportType reportType, string deniedPermission)
+    {
+        var municipalityId = 704L + (long)reportType;
+        var tenant = new FixedTenantContext(municipalityId);
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        var municipality = new Municipality { Id = municipalityId, Code = $"SRC-{(int)reportType}", Name = "Source Permission Municipality" };
+        var user = new ApplicationUser { Id = $"source-reporter-{(int)reportType}", UserName = "source-reporter", FirstName = "Source", LastName = "Reporter", MunicipalityId = municipalityId };
+        var template = new OfficialReportTemplate
+        {
+            MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Opms, ReportType = reportType,
+            Code = $"SOURCE-{(int)reportType}", Name = "Protected source report", Format = OfficialReportFormat.Csv,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1), ApprovalReference = "Council", Reason = "Approved",
+            CreatedByUserId = user.Id, ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(reportType)
+        };
+        context.AddRange(municipality, user, template);
+        await context.SaveChangesAsync();
+        var granted = new AccessQueryScopeResult(true, true, [], [], [], [], [], []);
+        var denied = new AccessQueryScopeResult(false, false, [], [], [], [], [], []);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string permission) =>
+                permission.Equals(deniedPermission, StringComparison.OrdinalIgnoreCase) ? denied : granted);
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object,
+            access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), Mock.Of<IEvidenceBlobStorage>())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test"))
+                }
+            }
+        };
+
+        var response = await controller.Generate(new GenerateOfficialReportRequest(template.PublicId, Guid.NewGuid(), Guid.NewGuid(), null));
+
+        response.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        access.Verify(service => service.GetQueryScopeAsync(user, deniedPermission), Times.Once);
+    }
+
+    [Fact]
+    public async Task Download_ReevaluatesConfiguredSourceMemberPermissionsAndRevokesStoredContent()
+    {
+        var municipalityId = 799L;
+        var tenant = new FixedTenantContext(municipalityId);
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        var municipality = new Municipality { Id = municipalityId, Code = "REV", Name = "Revocation Municipality" };
+        var user = new ApplicationUser { Id = "revoked-reporter", UserName = "revoked-reporter", MunicipalityId = municipalityId };
+        var financialYear = new FinancialYear { Code = "REV-2026", Name = "2026/27", StartDate = new(2026, 7, 1), EndDate = new(2027, 6, 30) };
+        context.AddRange(municipality, user, financialYear);
+        await context.SaveChangesAsync();
+        var municipalYear = new MunicipalityFinancialYear { MunicipalityId = municipalityId, FinancialYearId = financialYear.Id, IsActive = true, IsCurrent = true, EffectiveFrom = financialYear.StartDate };
+        context.Add(municipalYear);
+        await context.SaveChangesAsync();
+        var period = new ReportingPeriod { MunicipalityFinancialYearId = municipalYear.Id, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = new(2026, 7, 1), EndDate = new(2026, 9, 30) };
+        var template = new OfficialReportTemplate
+        {
+            MunicipalityId = municipalityId, MunicipalityFinancialYearId = municipalYear.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.InternalAudit, Code = "IA", Name = "Internal Audit", Format = OfficialReportFormat.Csv,
+            EffectiveFrom = financialYear.StartDate, ApprovalReference = "Council", Reason = "Approved", CreatedByUserId = user.Id,
+            ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.InternalAudit)
+        };
+        var blob = new EvidenceBlob { MunicipalityId = municipalityId, StorageKey = "official-reports/revoked.csv", ContentType = "text/csv", SizeInBytes = 4, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "SystemGenerated" };
+        context.AddRange(period, template, blob);
+        await context.SaveChangesAsync();
+        var generation = new OfficialReportGeneration
+        {
+            MunicipalityId = municipalityId, MunicipalityFinancialYearId = municipalYear.Id, ReportingPeriodId = period.Id,
+            ReportTemplateId = template.Id, EvidenceBlobId = blob.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.InternalAudit, VersionNumber = 1, ScopeSchemaVersion = 1, ScopeIsUnrestricted = true,
+            ScopeJson = "{\"Unrestricted\":true,\"DepartmentIds\":[],\"UnitIds\":[],\"OwnerUserIds\":[],\"TargetIds\":[]}",
+            FilterJson = "{}", DataVersionReference = new string('b', 64), FileName = "internal-audit.csv", ContentType = "text/csv",
+            SizeInBytes = 4, Sha256 = blob.Sha256, GeneratedByUserId = user.Id
+        };
+        context.Add(generation);
+        await context.SaveChangesAsync();
+
+        var granted = new AccessQueryScopeResult(true, true, [], [], [], [], [], []);
+        var denied = new AccessQueryScopeResult(false, false, [], [], [], [], [], []);
+        var revokedPermission = "OPMS_SUBMISSION.InternalAuditScore.READ";
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string permission) =>
+                permission.Equals(revokedPermission, StringComparison.OrdinalIgnoreCase) ? denied : granted);
+        var storage = new Mock<IEvidenceBlobStorage>();
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object,
+            access.Object, tenant, Mock.Of<IWorkflowGovernanceService>(), storage.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test"))
+                }
+            }
+        };
+
+        var response = await controller.Download(generation.PublicId);
+
+        response.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        access.Verify(service => service.GetQueryScopeAsync(user, revokedPermission), Times.Once);
+        storage.Verify(service => service.ReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

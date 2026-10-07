@@ -200,7 +200,7 @@ public sealed class OfficialReportsController(
             return ForbidResponse<PagedResponse<OfficialReportGenerationResponse>>("Official report history requires report, KPI and submission READ permission.");
         var memberScopes = await GetGenerationMemberScopesAsync(user, kind);
 
-        var canReadAuditTrail = await Granted(user, "Audit.Trails.View");
+        var canReadAuditTrail = await Granted(user, "AUDIT_TRAIL.READ");
         var query = ApplyStoredScope(context.OfficialReportGenerations.AsNoTracking()
             .Where(item => item.SubmissionKind == kind && (item.ReportType != OfficialReportType.AuditTrail || canReadAuditTrail)), scope);
         if (reportingPeriodPublicId.HasValue) query = query.Where(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId);
@@ -275,14 +275,10 @@ public sealed class OfficialReportsController(
         var submissionScope = await accessControl.GetQueryScopeAsync(user, template.SubmissionKind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ");
         var scope = IntersectScopes(IntersectScopes(reportScope, kpiScope), submissionScope);
         if (!scope.PermissionGranted) return ForbidResponse<OfficialReportGenerationResponse>("The report requires both KPI and submission READ permission in addition to report generation permission.");
-        if (template.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View"))
-            return ForbidResponse<OfficialReportGenerationResponse>("The audit-trail report also requires audit-trail read permission.");
-        if (template.ReportType == OfficialReportType.OutstandingRfi)
-        {
-            scope = await IntersectRfiReportScopeAsync(user, template.SubmissionKind, scope);
-            if (!scope.PermissionGranted)
-                return ForbidResponse<OfficialReportGenerationResponse>("The outstanding-RFI report requires RFI read plus question, actor and response member permissions.");
-        }
+        scope = await IntersectReportContentScopeAsync(user, template.SubmissionKind, template.ReportType,
+            template.ColumnConfigurationJson, scope);
+        if (!scope.PermissionGranted)
+            return ForbidResponse<OfficialReportGenerationResponse>("Official report generation is denied because a configured source field or source resource is not readable in the requested scope.");
         var year = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear).SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId && item.IsActive);
         if (year == null) return BadRequest(Fail<OfficialReportGenerationResponse>("Municipality financial year was not found in this tenant."));
         if (template.MunicipalityFinancialYearId.HasValue && template.MunicipalityFinancialYearId != year.Id) return BadRequest(Fail<OfficialReportGenerationResponse>("This template is not approved for the selected financial year."));
@@ -364,16 +360,16 @@ public sealed class OfficialReportsController(
     {
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<object>("User not found."));
-        var generation = await context.OfficialReportGenerations.AsNoTracking().Include(item => item.Blob).SingleOrDefaultAsync(item => item.PublicId == publicId);
+        var generation = await context.OfficialReportGenerations.AsNoTracking().Include(item => item.Blob).Include(item => item.ReportTemplate)
+            .SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (generation == null) return NotFound(Fail<object>("Official report generation was not found."));
         var scope = IntersectScopes(
             IntersectScopes(await accessControl.GetQueryScopeAsync(user, ReadPermission(generation.SubmissionKind)),
                 await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ")),
             await accessControl.GetQueryScopeAsync(user, generation.SubmissionKind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"));
-        if (generation.ReportType == OfficialReportType.OutstandingRfi)
-            scope = await IntersectRfiReportScopeAsync(user, generation.SubmissionKind, scope);
+        scope = await IntersectReportContentScopeAsync(user, generation.SubmissionKind, generation.ReportType,
+            generation.ReportTemplate.ColumnConfigurationJson, scope);
         if (!scope.PermissionGranted || generation.ScopeSchemaVersion != 1 || !CanReadStoredScope(generation.ScopeJson, scope)) return ForbidResponse<object>("Official report download is denied for the stored generation scope.");
-        if (generation.ReportType == OfficialReportType.AuditTrail && !await Granted(user, "Audit.Trails.View")) return ForbidResponse<object>("Audit-trail read permission has been revoked.");
         if (generation.Blob.IsContentDeleted || generation.Blob.IsQuarantined) return Conflict(Fail<object>("The official report content is unavailable."));
         var content = await storage.ReadAsync(generation.Blob.StorageKey, HttpContext.RequestAborted);
         if (!content.Found) return StatusCode(content.Available ? StatusCodes.Status404NotFound : StatusCodes.Status503ServiceUnavailable, Fail<object>(content.Detail));
@@ -492,8 +488,14 @@ public sealed class OfficialReportsController(
         if (reportType == OfficialReportType.AuditTrail)
         {
             var entityIds = subjectIds.Concat(subjects.Select(item => item.TargetId)).Distinct(StringComparer.Ordinal).ToArray();
-            return (await context.AuditTrails.AsNoTracking().Where(item => entityIds.Contains(item.EntityId)).OrderBy(item => item.ChangedAt).ToArrayAsync())
-                .Select(item => Row(("entityName", item.EntityName), ("entityId", item.EntityId), ("action", item.Action), ("changedBy", item.ChangedBy),
+            var auditRows = await context.AuditTrails.AsNoTracking().Where(item => entityIds.Contains(item.EntityId)).OrderBy(item => item.ChangedAt).ToArrayAsync();
+            var actorIds = auditRows.Select(item => item.ChangedBy).Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var actorIdentities = await context.Users.AsNoTracking().Where(item => actorIds.Contains(item.Id))
+                .Select(item => new { item.Id, item.PublicId, item.FirstName, item.LastName }).ToDictionaryAsync(item => item.Id, StringComparer.OrdinalIgnoreCase);
+            string AuditActor(string actor) => actorIdentities.TryGetValue(actor, out var identity)
+                ? PublicIdentity(identity.FirstName, identity.LastName, identity.PublicId)
+                : actor;
+            return auditRows.Select(item => Row(("entityName", item.EntityName), ("entityId", item.EntityId), ("action", item.Action), ("changedBy", AuditActor(item.ChangedBy)),
                     ("changedAt", Date(item.ChangedAt)), ("reason", item.Reason ?? string.Empty), ("correlationId", item.CorrelationId ?? string.Empty))).ToList();
         }
 
@@ -647,7 +649,12 @@ public sealed class OfficialReportsController(
 
     private static string Date(DateTime value) => value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
     private static string Date(DateTime? value) => value.HasValue ? Date(value.Value) : string.Empty;
-    private static string UserName(ApplicationUser user) => user.UserName ?? user.Email ?? user.Id;
+    private static string UserName(ApplicationUser user) => PublicIdentity(user.FirstName, user.LastName, user.PublicId);
+    private static string PublicIdentity(string? firstName, string? lastName, Guid publicId)
+    {
+        var name = $"{firstName} {lastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? publicId.ToString() : $"{name} ({publicId})";
+    }
 
     private static string Format(decimal? value) => value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     private static IQueryable<PerformancePeriodTarget> ApplyScope(IQueryable<PerformancePeriodTarget> query, AccessQueryScopeResult scope, bool opms) => scope.Unrestricted ? query : opms
@@ -657,12 +664,77 @@ public sealed class OfficialReportsController(
     private static IQueryable<IpmsSubmission> ApplyScope(IQueryable<IpmsSubmission> query, AccessQueryScopeResult scope) => scope.Unrestricted ? query : query.Where(item => scope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId ?? -1) || scope.UnitIds.Contains(item.IpmsTarget.UnitId ?? -1) || scope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId!) || scope.TargetIds.Contains(item.IpmsTargetId));
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
     private async Task<bool> Granted(ApplicationUser user, string permission) => (await accessControl.GetQueryScopeAsync(user, permission)).PermissionGranted;
-    private async Task<AccessQueryScopeResult> IntersectRfiReportScopeAsync(ApplicationUser user, SubmissionKind kind, AccessQueryScopeResult scope)
+    private async Task<AccessQueryScopeResult> IntersectReportContentScopeAsync(
+        ApplicationUser user,
+        SubmissionKind kind,
+        OfficialReportType reportType,
+        string columnConfigurationJson,
+        AccessQueryScopeResult scope)
     {
-        var resource = kind == SubmissionKind.Opms ? "OPMS_RFI" : "IPMS_RFI";
-        foreach (var permission in new[] { $"{resource}.READ", $"{resource}.Question.READ", $"{resource}.RaisedBy.READ", $"{resource}.Response.READ", $"{resource}.RespondedBy.READ" })
+        foreach (var permission in ReportContentReadPermissions(kind, reportType, columnConfigurationJson))
             scope = IntersectScopes(scope, await accessControl.GetQueryScopeAsync(user, permission));
         return scope;
+    }
+    internal static string[] ReportContentReadPermissions(SubmissionKind kind, OfficialReportType reportType, string columnConfigurationJson)
+    {
+        var columns = OfficialReportCatalog.ValidateColumns(reportType, columnConfigurationJson)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var submission = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION" : "IPMS_SUBMISSION";
+        var workflow = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW" : "IPMS_WORKFLOW";
+        var rfi = kind == SubmissionKind.Opms ? "OPMS_RFI" : "IPMS_RFI";
+        var poe = kind == SubmissionKind.Opms ? "OPMS_POE" : "IPMS_POE";
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void RequireAny(string permission, params string[] protectedColumns)
+        {
+            if (protectedColumns.Any(columns.Contains)) permissions.Add(permission);
+        }
+
+        RequireAny($"{submission}.ActualPerformance.READ", "actualPerformance", "achievementPercent", "targetAchieved",
+            "averageAchievementPercent", "achieved", "atRisk", "pending");
+        RequireAny($"{submission}.Variance.READ", "variance");
+        RequireAny($"{submission}.SubmittedDate.READ", "submittedAt");
+
+        if (reportType is OfficialReportType.VerificationRegister or OfficialReportType.ApprovalRegister or OfficialReportType.PmsReview)
+        {
+            RequireAny($"{workflow}.ActionActorUserId.READ", "actor");
+            RequireAny($"{workflow}.ActionComment.READ", "comment");
+            RequireAny($"{workflow}.ActionRatingValue.READ", "rating");
+        }
+
+        if (reportType == OfficialReportType.InternalAudit)
+        {
+            RequireAny($"{submission}.InternalAuditObservation.READ", "observation");
+            RequireAny($"{submission}.InternalAuditFindings.READ", "findings");
+            RequireAny($"{submission}.InternalAuditRecommendation.READ", "recommendation");
+            RequireAny($"{submission}.InternalAuditScore.READ", "score");
+            RequireAny($"{submission}.InternalAuditAssessedBy.READ", "actor");
+        }
+
+        if (reportType == OfficialReportType.OutstandingRfi)
+        {
+            permissions.Add($"{rfi}.READ");
+            RequireAny($"{rfi}.Question.READ", "question");
+            RequireAny($"{rfi}.RaisedBy.READ", "raisedBy");
+            RequireAny($"{rfi}.Response.READ", "response");
+            RequireAny($"{rfi}.RespondedBy.READ", "respondedBy");
+        }
+
+        if (reportType == OfficialReportType.EvidenceRegister)
+        {
+            permissions.Add($"{poe}.READ");
+            RequireAny($"{poe}.UploadedByName.READ", "uploadedBy");
+        }
+
+        if (reportType == OfficialReportType.AuditTrail)
+        {
+            permissions.Add("AUDIT_TRAIL.READ");
+            RequireAny("AUDIT_TRAIL.EntityId.READ", "entityId");
+            RequireAny("AUDIT_TRAIL.ChangedBy.READ", "changedBy");
+            RequireAny("AUDIT_TRAIL.Reason.READ", "reason");
+            RequireAny("AUDIT_TRAIL.CorrelationId.READ", "correlationId");
+        }
+
+        return permissions.Order(StringComparer.OrdinalIgnoreCase).ToArray();
     }
     private static string ReadPermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.READ" : "IPMS_REPORT.READ";
     private static string GeneratePermission(SubmissionKind kind) => kind == SubmissionKind.Opms ? "OPMS_REPORT.GENERATE" : "IPMS_REPORT.GENERATE";
