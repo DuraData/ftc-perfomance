@@ -3491,7 +3491,7 @@ export interface TidVersion {
   effectiveTo?: string | null;
   isCurrent: boolean;
   createdAt: string;
-  createdByUserId: string;
+  createdByUserId?: string | null;
   rowVersion: string;
   sourceDocuments: TidSourceDocument[];
 }

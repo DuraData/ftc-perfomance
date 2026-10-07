@@ -161,6 +161,10 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == "TID" && item.MemberCode != null && item.MemberCode.StartsWith("Source")));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "TID")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "TID.RESCAN_SOURCE").ToArrayAsync());
+        var tidCreator = await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "TID" && item.MemberCode == "CreatedByUserId");
+        Assert.True(tidCreator.IsSensitive);
+        Assert.True(tidCreator.IsSystemManaged);
+        Assert.Single(await context.Permissions.Where(item => item.Code == "TID.CreatedByUserId.READ").ToArrayAsync());
 
         var strategicDocumentMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "STRATEGIC_DOCUMENT")

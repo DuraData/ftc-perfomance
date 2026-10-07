@@ -104,7 +104,9 @@ describe('TID workspace', () => {
     expect(screen.queryByText(/ProtectedScanner/)).not.toBeInTheDocument();
     expect(screen.queryByText(/protected-reference/)).not.toBeInTheDocument();
     expect(screen.queryByText(/protected-detail/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/owner/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rescan' })).not.toBeInTheDocument();
+    expect(capabilities.canReadField).toHaveBeenCalledWith('TID', 'CreatedByUserId');
   });
 
   it('loads the authorised KPI register in bounded server pages', async () => {

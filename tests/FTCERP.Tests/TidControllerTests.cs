@@ -124,6 +124,14 @@ public class TidControllerTests
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [setup.Municipality.Id]));
         var controller = Controller(context, setup.User, setup.Municipality.Id, storage: storage, inspection: inspection, scanner: scanner, access: access);
         var tid = Payload(await controller.CreateVersion(setup.Target.PublicId, Request("Definition", new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc))));
+        tid.CreatedByUserId.Should().BeNull();
+        var hiddenCreatorSearch = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
+            new PagedQueryRequest { Search = setup.User.Id, PageSize = 10 }));
+        hiddenCreatorSearch.TotalCount.Should().Be(0);
+        allowedCodes.Add("TID.CreatedByUserId.READ");
+        var visibleCreatorSearch = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
+            new PagedQueryRequest { Search = setup.User.Id, PageSize = 10 }));
+        visibleCreatorSearch.Items.Should().ContainSingle().Which.CreatedByUserId.Should().Be(setup.User.Id);
         var bytes = "%PDF-source"u8.ToArray();
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "source.pdf") { Headers = new HeaderDictionary(), ContentType = "application/pdf" };
 

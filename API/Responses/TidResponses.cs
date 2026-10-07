@@ -40,7 +40,7 @@ public record TidVersionResponse(
     DateTime? EffectiveTo,
     bool IsCurrent,
     DateTime CreatedAt,
-    string CreatedByUserId,
+    string? CreatedByUserId,
     string RowVersion,
     TidSourceDocumentResponse[] SourceDocuments);
 

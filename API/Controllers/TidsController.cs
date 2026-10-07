@@ -138,7 +138,7 @@ public class TidsController : ControllerBase
         {
             TidVersionResponse? current = null;
             if (tids.TryGetValue(target.Id, out var tid))
-                current = ToResponse(tid, await GetSourceDocumentMemberAccessAsync(user, target));
+                current = ToResponse(tid, await GetMemberAccessAsync(user, target));
             items.Add(new TidRegisterItemResponse(target.PublicId, target.IndicatorNumber, target.TargetName,
                 target.Department?.Name, target.Unit?.Name, municipality.TidAllKpisRequired, current));
         }
@@ -191,6 +191,7 @@ public class TidsController : ControllerBase
             .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.UploadedByUser)
             .Where(item => item.OpmsTargetId == target.Id);
+        var memberAccess = await GetMemberAccessAsync(user, target);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorDefinition.Contains(request.NormalizedSearch)
                 || item.Purpose.Contains(request.NormalizedSearch)
@@ -199,7 +200,7 @@ public class TidsController : ControllerBase
                 || item.CalculationMethod.Contains(request.NormalizedSearch)
                 || item.VerificationMethod.Contains(request.NormalizedSearch)
                 || (item.Notes != null && item.Notes.Contains(request.NormalizedSearch))
-                || item.CreatedByUserId.Contains(request.NormalizedSearch)
+                || (memberAccess.CreatedByUserId && item.CreatedByUserId.Contains(request.NormalizedSearch))
                 || (item.ResponsibleEmployee != null && (item.ResponsibleEmployee.FirstName.Contains(request.NormalizedSearch)
                     || item.ResponsibleEmployee.LastName.Contains(request.NormalizedSearch))));
         var totalCount = await query.CountAsync();
@@ -218,7 +219,6 @@ public class TidsController : ControllerBase
         };
         var versions = await ordered.Skip(request.Offset).Take(request.PageSize)
             .ToArrayAsync();
-        var memberAccess = await GetSourceDocumentMemberAccessAsync(user, target);
         return Ok(new ApiResponse<PagedResponse<TidVersionResponse>>(true,
             PagedResponse<TidVersionResponse>.Create(versions.Select(item => ToResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
@@ -293,7 +293,7 @@ public class TidsController : ControllerBase
             entity.OpmsTarget = target;
             entity.PreviousVersion = current;
             entity.ResponsibleEmployee = employee;
-            return Ok(new ApiResponse<TidVersionResponse>(true, ToResponse(entity, DocumentMetadataMemberAccess.Full)));
+            return Ok(new ApiResponse<TidVersionResponse>(true, ToResponse(entity, await GetMemberAccessAsync(user, target))));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -453,6 +453,12 @@ public class TidsController : ControllerBase
             await CanReadAsync("ScanDetail"));
     }
 
+    private async Task<TidMemberAccess> GetMemberAccessAsync(ApplicationUser user, OpmsTarget target)
+    {
+        var creator = await accessControl.CheckPermissionAsync(user, "TID.CreatedByUserId.READ", Scope(target));
+        return new TidMemberAccess(creator.Allowed, await GetSourceDocumentMemberAccessAsync(user, target));
+    }
+
     private async Task<ApplicationUser?> GetCurrentUserAsync()
     {
         var userId = PerformanceApiSupport.GetCurrentUserId(User);
@@ -525,13 +531,15 @@ public class TidsController : ControllerBase
         return true;
     }
 
-    private static TidVersionResponse ToResponse(TechnicalIndicatorDescription item, DocumentMetadataMemberAccess memberAccess) => new(
+    private static TidVersionResponse ToResponse(TechnicalIndicatorDescription item, TidMemberAccess memberAccess) => new(
         item.PublicId, item.OpmsTarget.PublicId, item.VersionNumber, item.PreviousVersion?.PublicId,
         item.IndicatorDefinition, item.Purpose, item.DataSource, item.CollectionMethod, item.CalculationMethod,
         item.NumeratorDescription, item.DenominatorDescription, item.Limitations, item.Assumptions, item.VerificationMethod,
         item.ResponsibleEmployee?.PublicId, item.ResponsibleEmployee == null ? null : $"{item.ResponsibleEmployee.FirstName} {item.ResponsibleEmployee.LastName}".Trim(),
-        item.Notes, item.EffectiveFrom, item.EffectiveTo, item.IsCurrent, item.CreatedAt, item.CreatedByUserId,
-        Convert.ToBase64String(item.RowVersion), item.SourceDocuments.OrderByDescending(document => document.UploadedAt).Select(document => ToResponse(document, memberAccess)).ToArray());
+        item.Notes, item.EffectiveFrom, item.EffectiveTo, item.IsCurrent, item.CreatedAt,
+        memberAccess.CreatedByUserId ? item.CreatedByUserId : null,
+        Convert.ToBase64String(item.RowVersion), item.SourceDocuments.OrderByDescending(document => document.UploadedAt)
+            .Select(document => ToResponse(document, memberAccess.SourceDocument)).ToArray());
 
     private static TidSourceDocumentResponse ToResponse(TidSourceDocument item, DocumentMetadataMemberAccess memberAccess) => new(
         item.PublicId, item.Title, item.FileName, item.Blob.ContentType, item.Blob.SizeInBytes, item.Blob.Sha256,
