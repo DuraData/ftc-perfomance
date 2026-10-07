@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Infrastructure.Auth;
+using FTCERP.Host.Domain.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -24,6 +25,44 @@ public sealed class AuthCookiePolicyTests
         Assert.Equal("/api", access.Path);
         Assert.Equal(TimeSpan.FromMinutes(15), access.MaxAge);
         Assert.Equal("/api/auth", refresh.Path);
+    }
+
+    [Fact]
+    public void Development_cookie_names_are_isolated_from_https_production_sessions()
+    {
+        var development = new TestEnvironment { EnvironmentName = Environments.Development };
+        var production = new TestEnvironment { EnvironmentName = Environments.Production };
+
+        Assert.Equal(AuthCookiePolicy.DevelopmentAccessCookieName, AuthCookiePolicy.GetAccessCookieName(development));
+        Assert.Equal(AuthCookiePolicy.DevelopmentRefreshCookieName, AuthCookiePolicy.GetRefreshCookieName(development));
+        Assert.Equal(AuthCookiePolicy.AccessCookieName, AuthCookiePolicy.GetAccessCookieName(production));
+        Assert.Equal(AuthCookiePolicy.RefreshCookieName, AuthCookiePolicy.GetRefreshCookieName(production));
+        Assert.NotEqual(AuthCookiePolicy.GetAccessCookieName(development), AuthCookiePolicy.GetAccessCookieName(production));
+        Assert.False(AuthCookiePolicy.Create(development, AuthCookiePolicy.AccessPath).Secure);
+        Assert.True(AuthCookiePolicy.Create(production, AuthCookiePolicy.AccessPath).Secure);
+    }
+
+    [Fact]
+    public void Access_token_claims_are_bounded_and_exclude_stale_roles_and_permissions()
+    {
+        var user = new ApplicationUser
+        {
+            Id = "internal-user-key",
+            Email = "admin@opms.local",
+            FirstName = "System",
+            LastName = "Administrator",
+            SecurityStamp = "security-stamp",
+            MustChangePassword = true
+        };
+
+        var claims = JwtService.BuildAccessClaims(user, Guid.NewGuid(), "LOCAL", enrollmentRequired: true);
+
+        Assert.DoesNotContain(claims, claim => claim.Type == "Permission");
+        Assert.DoesNotContain(claims, claim => claim.Type == System.Security.Claims.ClaimTypes.Role);
+        Assert.Contains(claims, claim => claim.Type == System.Security.Claims.ClaimTypes.NameIdentifier && claim.Value == user.Id);
+        Assert.Contains(claims, claim => claim.Type == PasswordChangePolicy.ChangeRequiredClaim);
+        Assert.Contains(claims, claim => claim.Type == MfaRequirementPolicy.EnrollmentRequiredClaim);
+        Assert.InRange(claims.Count, 6, 8);
     }
 
     [Fact]

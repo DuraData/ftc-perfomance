@@ -14,7 +14,7 @@ describe('Security session settings', () => {
     api.getAuthSessionsPage.mockResolvedValue({ success: true, data: { items: [{ sessionId: 'session-1', createdAt: '2026-10-02T08:00:00Z', lastUsedAt: '2026-10-02T09:00:00Z', absoluteExpiresAt: '2026-10-03T08:00:00Z', userAgent: 'Test Browser', authenticationMethod: 'LOCAL', isCurrent: false }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.revokeAuthSession.mockResolvedValue({ success: true, data: true });
     api.revokeAllAuthSessions.mockResolvedValue({ success: true, data: 1 });
-    api.getMfaStatus.mockResolvedValue({ success: true, data: { isEnabled: false, enrollmentRequired: true, recoveryCodesLeft: 0 } });
+    api.getMfaStatus.mockResolvedValue({ success: true, data: { isEnabled: true, enrollmentRequired: false, recoveryCodesLeft: 8 } });
     api.setupMfa.mockResolvedValue({ success: true, data: { sharedKey: 'abcd efgh', authenticatorUri: 'otpauth://totp/test' } });
     api.enableMfa.mockResolvedValue({ success: true, data: { recoveryCodes: ['recovery-one', 'recovery-two'] } });
     api.changePassword.mockResolvedValue({ success: true, data: true });
@@ -61,6 +61,7 @@ describe('Security session settings', () => {
   });
 
   it('enrolls an authenticator and shows one-time recovery codes', async () => {
+    api.getMfaStatus.mockResolvedValue({ success: true, data: { isEnabled: false, enrollmentRequired: true, recoveryCodesLeft: 0 } });
     render(<Settings />);
     expect(await screen.findByText(/privileged permissions require MFA/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Set up authenticator' }));
@@ -75,7 +76,9 @@ describe('Security session settings', () => {
     app.userProfile = { mustChangePassword: true };
     render(<Settings />);
     expect(screen.getByText(/must change your password/i)).toBeInTheDocument();
-    await screen.findByText(/Test Browser/);
+    expect(screen.getByText(/You will then be guided through required multi-factor authentication/i)).toBeInTheDocument();
+    expect(api.getMfaStatus).not.toHaveBeenCalled();
+    expect(api.getAuthSessionsPage).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'OldPassword1!' } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword2@' } });
     fireEvent.change(screen.getByLabelText('Confirm'), { target: { value: 'NewPassword2@' } });

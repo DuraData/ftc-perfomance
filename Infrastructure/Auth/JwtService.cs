@@ -51,26 +51,10 @@ public class JwtService : IJwtService
         var currentSessionId = sessionId ?? Guid.NewGuid();
         var absoluteExpiry = absoluteExpiresAt ?? now.AddHours(policy.SessionAbsoluteTimeoutHours);
         if (!sessionId.HasValue) await EnforceConcurrentSessionLimitAsync(user.Id, now, policy.MaximumConcurrentSessions);
-        var roles = await _userManager.GetRolesAsync(user);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions;
-
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id),
-            new(ClaimTypes.Email, user.Email!),
-            new(ClaimTypes.Name, user.FullName),
-            new("sid", currentSessionId.ToString()),
-            new("security_stamp", user.SecurityStamp ?? string.Empty),
-            new("amr", authenticationMethod)
-        };
-
-        if (user.MustChangePassword)
-            claims.Add(new Claim(PasswordChangePolicy.ChangeRequiredClaim, bool.TrueString.ToLowerInvariant()));
-
-        claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
-        claims.AddRange(permissions.Select(perm => new Claim("Permission", perm)));
-        if (AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, policy, _jwtSettings.MfaRequiredPermissionCodes, authenticationMethod))
-            claims.Add(new Claim(MfaRequirementPolicy.EnrollmentRequiredClaim, bool.TrueString.ToLowerInvariant()));
+        var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(
+            user, permissions, policy, _jwtSettings.MfaRequiredPermissionCodes, authenticationMethod);
+        var claims = BuildAccessClaims(user, currentSessionId, authenticationMethod, enrollmentRequired);
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -105,6 +89,29 @@ public class JwtService : IJwtService
         await _context.SaveChangesAsync();
 
         return (accessToken, refreshToken, expiresAt);
+    }
+
+    internal static List<Claim> BuildAccessClaims(ApplicationUser user, Guid sessionId, string authenticationMethod, bool enrollmentRequired)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id),
+            new(ClaimTypes.Email, user.Email!),
+            new(ClaimTypes.Name, user.FullName),
+            new("sid", sessionId.ToString()),
+            new("security_stamp", user.SecurityStamp ?? string.Empty),
+            new("amr", authenticationMethod)
+        };
+
+        if (user.MustChangePassword)
+            claims.Add(new Claim(PasswordChangePolicy.ChangeRequiredClaim, bool.TrueString.ToLowerInvariant()));
+        if (enrollmentRequired)
+            claims.Add(new Claim(MfaRequirementPolicy.EnrollmentRequiredClaim, bool.TrueString.ToLowerInvariant()));
+
+        // Roles and permissions are deliberately excluded. The authorization handler resolves
+        // the current database state for every protected request, avoiding stale grants and
+        // keeping the HttpOnly access cookie safely below browser size limits.
+        return claims;
     }
 
     private string GenerateRefreshToken()

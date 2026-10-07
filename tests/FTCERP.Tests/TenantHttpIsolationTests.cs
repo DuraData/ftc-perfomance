@@ -108,6 +108,58 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         (await response.Content.ReadAsStringAsync()).Should().Contain("TENANT_CONTEXT_DENIED");
     }
 
+    [Fact]
+    public async Task DynamicRoleChange_HidesNavigationAndRevokesDirectHttpReadWithoutRestart()
+    {
+        var initialMenu = await _client.GetAsync("/api/navigation/my-menu");
+        initialMenu.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await initialMenu.Content.ReadAsStringAsync()).Should().Contain("NAV.HTTP.OPMS");
+
+        var initialPage = await _client.GetAsync("/api/v1/opms-targets/page?page=1&pageSize=10&sortBy=createdAt");
+        initialPage.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await initialPage.Content.ReadAsStringAsync()).Should().Contain(_ids.TenantATargetPublicId.ToString());
+
+        await SetRolePermissionAsync(isAllowed: false);
+
+        var deniedMenu = await _client.GetAsync("/api/navigation/my-menu");
+        deniedMenu.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await deniedMenu.Content.ReadAsStringAsync()).Should().NotContain("NAV.HTTP.OPMS");
+
+        using (var checkRequest = JsonContent(new { permissionCode = "OPMS_KPI.READ" }))
+        {
+            var check = await _client.PostAsync("/api/access/check", checkRequest);
+            check.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var checkJson = JsonDocument.Parse(await check.Content.ReadAsStringAsync());
+            checkJson.RootElement.GetProperty("data").GetBoolean().Should().BeFalse();
+        }
+
+        var deniedPage = await _client.GetAsync("/api/v1/opms-targets/page?page=1&pageSize=10&sortBy=createdAt");
+        deniedPage.StatusCode.Should().Be(HttpStatusCode.OK);
+        var deniedJson = await deniedPage.Content.ReadAsStringAsync();
+        deniedJson.Should().NotContain(_ids.TenantATargetPublicId.ToString());
+        deniedJson.Should().NotContain("Tenant A KPI");
+
+        await SetRolePermissionAsync(isAllowed: true);
+
+        var restoredMenu = await _client.GetAsync("/api/navigation/my-menu");
+        restoredMenu.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await restoredMenu.Content.ReadAsStringAsync()).Should().Contain("NAV.HTTP.OPMS");
+
+        var restoredPage = await _client.GetAsync("/api/v1/opms-targets/page?page=1&pageSize=10&sortBy=createdAt");
+        restoredPage.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await restoredPage.Content.ReadAsStringAsync()).Should().Contain(_ids.TenantATargetPublicId.ToString());
+    }
+
+    private async Task SetRolePermissionAsync(bool isAllowed)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var rolePermission = await context.RolePermissions.SingleAsync(item =>
+            item.RoleId == _ids.TenantARoleId && item.PermissionId == _ids.OpmsReadPermissionId);
+        rolePermission.IsAllowed = isAllowed;
+        await context.SaveChangesAsync();
+    }
+
     private async Task<SeededIds> SeedAsync()
     {
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -171,6 +223,15 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
             IsActive = true,
             EffectiveFrom = now.AddDays(-1)
         }));
+        context.SecurityNavigationItems.Add(new SecurityNavigationItem
+        {
+            Code = "NAV.HTTP.OPMS",
+            Name = "HTTP OPMS register",
+            Route = "/opms/targets",
+            DisplayOrder = 1,
+            RequiredPermissionCode = "OPMS_KPI.READ",
+            IsActive = true
+        });
 
         var departmentA = new Department { MunicipalityId = tenantA.Id, Code = "A-DEP", Name = "Tenant A Department" };
         var departmentB = new Department { MunicipalityId = tenantB.Id, Code = "B-DEP", Name = "Tenant B Department" };
@@ -223,7 +284,8 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
             new AuditTrail { MunicipalityId = tenantB.Id, EntityName = "Test", EntityId = "tenant-b-audit", Action = "Seed", ChangedBy = userB.Id });
         await context.SaveChangesAsync();
 
-        return new SeededIds(tenantB.Id, targetA.PublicId, targetB.PublicId, targetB.Id, submissionB.Id, evidenceB.Id);
+        var opmsReadPermissionId = permissions.Single(item => item.Code == "OPMS_KPI.READ").Id;
+        return new SeededIds(tenantB.Id, role.Id, opmsReadPermissionId, targetA.PublicId, targetB.PublicId, targetB.Id, submissionB.Id, evidenceB.Id);
     }
 
     private static OpmsTarget Target(long municipalityId, int departmentId, string id, string name, string ownerId) => new()
@@ -261,7 +323,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     private static StringContent JsonContent(object value) =>
         new(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json");
 
-    private sealed record SeededIds(long TenantBId, Guid TenantATargetPublicId, Guid TenantBTargetPublicId, string TenantBTargetId, string TenantBSubmissionId, string TenantBEvidenceId);
+    private sealed record SeededIds(long TenantBId, string TenantARoleId, int OpmsReadPermissionId, Guid TenantATargetPublicId, Guid TenantBTargetPublicId, string TenantBTargetId, string TenantBSubmissionId, string TenantBEvidenceId);
 }
 
 internal sealed class TenantApplicationFactory(string userId) : WebApplicationFactory<Program>

@@ -218,7 +218,7 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> RefreshToken()
     {
-        var rawRefreshToken = Request.Cookies[AuthCookiePolicy.RefreshCookieName];
+        var rawRefreshToken = Request.Cookies[AuthCookiePolicy.GetRefreshCookieName(GetHostEnvironment())];
         if (string.IsNullOrWhiteSpace(rawRefreshToken))
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid refresh token"));
 
@@ -264,7 +264,7 @@ public class AuthController : ControllerBase
         {
             await _jwtService.RevokeSessionAsync(userId, sessionId, HttpContext.Connection.RemoteIpAddress?.ToString(), "User logout");
         }
-        var rawRefreshToken = Request.Cookies[AuthCookiePolicy.RefreshCookieName];
+        var rawRefreshToken = Request.Cookies[AuthCookiePolicy.GetRefreshCookieName(GetHostEnvironment())];
         if (!string.IsNullOrWhiteSpace(rawRefreshToken) && !Guid.TryParse(sessionValue, out _))
         {
             await _jwtService.RevokeRefreshTokenAsync(rawRefreshToken, HttpContext.Connection.RemoteIpAddress?.ToString(), "User logout");
@@ -454,9 +454,9 @@ public class AuthController : ControllerBase
 
     private void SetSessionCookies(string accessToken, string refreshToken, DateTime accessExpiresAt)
     {
-        var environment = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
-        Response.Cookies.Append(AuthCookiePolicy.AccessCookieName, accessToken, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath, accessExpiresAt - DateTime.UtcNow));
-        Response.Cookies.Append(AuthCookiePolicy.RefreshCookieName, refreshToken, AuthCookiePolicy.Create(
+        var environment = GetHostEnvironment();
+        Response.Cookies.Append(AuthCookiePolicy.GetAccessCookieName(environment), accessToken, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath, accessExpiresAt - DateTime.UtcNow));
+        Response.Cookies.Append(AuthCookiePolicy.GetRefreshCookieName(environment), refreshToken, AuthCookiePolicy.Create(
             environment,
             AuthCookiePolicy.RefreshPath,
             TimeSpan.FromDays(Math.Clamp(_jwtSettings.RefreshTokenExpiryDays, 1, 90))));
@@ -464,10 +464,13 @@ public class AuthController : ControllerBase
 
     private void ClearSessionCookies()
     {
-        var environment = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
-        Response.Cookies.Delete(AuthCookiePolicy.AccessCookieName, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath));
-        Response.Cookies.Delete(AuthCookiePolicy.RefreshCookieName, AuthCookiePolicy.Create(environment, AuthCookiePolicy.RefreshPath));
+        var environment = GetHostEnvironment();
+        Response.Cookies.Delete(AuthCookiePolicy.GetAccessCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath));
+        Response.Cookies.Delete(AuthCookiePolicy.GetRefreshCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.RefreshPath));
     }
+
+    private IWebHostEnvironment GetHostEnvironment() =>
+        HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
 
     private async Task<ApplicationUser?> GetCurrentUserAsync()
     {

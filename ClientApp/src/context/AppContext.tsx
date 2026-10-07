@@ -60,6 +60,27 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+type AuthenticationGate = 'password_change' | 'mfa_enrollment';
+const AUTHENTICATION_GATE_STORAGE_KEY = 'authentication_gate';
+export const RESTRICTED_ACCOUNT_MENU: MenuItem[] = [{
+  label: 'Account Security',
+  path: '/settings',
+  icon: 'settings',
+  isDivider: false,
+  code: 'NAV.ACCOUNT.SECURITY',
+}];
+
+function readAuthenticationGate(): AuthenticationGate | null {
+  try {
+    const storedGate = localStorage.getItem(AUTHENTICATION_GATE_STORAGE_KEY);
+    if (storedGate === 'password_change' || storedGate === 'mfa_enrollment') return storedGate;
+    const storedUser = localStorage.getItem('user_profile');
+    if (storedUser && (JSON.parse(storedUser) as UserProfile).mustChangePassword) return 'password_change';
+  } catch {
+    // A denied storage read must not grant normal application access.
+  }
+  return null;
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const safeSetItem = (key: string, value: string) => {
@@ -79,6 +100,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tenantContextTotalCount, setTenantContextTotalCount] = useState(0);
   const [tenantContextSearch, setTenantContextSearchState] = useState('');
   const [currentMunicipalityIdState, setCurrentMunicipalityIdState] = useState<number | null>(getCurrentMunicipalityId());
+  const [authenticationGate, setAuthenticationGate] = useState<AuthenticationGate | null>(() => readAuthenticationGate());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedSidebarGroups, setExpandedSidebarGroups] = useState<string[]>([]);
   const [darkMode, setDarkMode] = useState(false);
@@ -153,8 +175,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (userProfile) void loadTenantContexts(tenantContextPage, tenantContextSearch);
-  }, [loadTenantContexts, tenantContextPage, tenantContextSearch, userProfile]);
+    if (userProfile && authenticationGate === null) void loadTenantContexts(tenantContextPage, tenantContextSearch);
+  }, [authenticationGate, loadTenantContexts, tenantContextPage, tenantContextSearch, userProfile]);
 
   const switchMunicipality = useCallback(async (municipalityId: number) => {
     if (!tenantContexts.some(item => item.id === municipalityId)) return false;
@@ -187,15 +209,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     if (storedUser) {
-      setUserProfile(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser) as UserProfile;
+      const gate = readAuthenticationGate();
+      setUserProfile(parsedUser);
       const parsedRoles = storedRoles ? JSON.parse(storedRoles) : [];
       setRoles(parsedRoles);
-      setPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
-      setMenuItems(storedMenu ? JSON.parse(storedMenu) as MenuItem[] : []);
-      setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
-      void loadTenantContexts();
+      setAuthenticationGate(gate);
+      if (gate) {
+        setPermissions([]);
+        setMenuItems(RESTRICTED_ACCOUNT_MENU);
+        safeSetItem(AUTHENTICATION_GATE_STORAGE_KEY, gate);
+        safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
+        window.history.replaceState({}, '', '/settings');
+        setCurrentPathState('/settings');
+      } else {
+        setPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
+        setMenuItems(storedMenu ? JSON.parse(storedMenu) as MenuItem[] : []);
+        setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
+      }
     }
-  }, [loadTenantContexts]);
+  }, []);
 
   useEffect(() => {
     safeSetItem('sidebar_collapsed', String(sidebarCollapsed));
@@ -233,15 +266,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
       safeRemoveItem('permissions');
       safeRemoveItem('menu_items');
       if (data.user.mustChangePassword) {
+        setAuthenticationGate('password_change');
+        setMenuItems(RESTRICTED_ACCOUNT_MENU);
+        safeSetItem(AUTHENTICATION_GATE_STORAGE_KEY, 'password_change');
+        safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
         safeSetItem('settings_active_tab', 'security');
         setCurrentPath('/settings');
         return 'password_change_required';
       }
       if (data.mfaEnrollmentRequired) {
+        setAuthenticationGate('mfa_enrollment');
+        setMenuItems(RESTRICTED_ACCOUNT_MENU);
+        safeSetItem(AUTHENTICATION_GATE_STORAGE_KEY, 'mfa_enrollment');
+        safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
         safeSetItem('settings_active_tab', 'security');
         setCurrentPath('/settings');
         return 'mfa_enrollment_required';
       }
+      setAuthenticationGate(null);
+      safeRemoveItem(AUTHENTICATION_GATE_STORAGE_KEY);
       await loadTenantContexts();
       setCurrentPath('/dashboard');
       return 'success';
@@ -263,6 +306,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     safeSetItem('roles', JSON.stringify(data.roles ?? []));
     safeRemoveItem('permissions');
     safeRemoveItem('menu_items');
+    if (data.user.mustChangePassword || data.mfaEnrollmentRequired) {
+      const gate: AuthenticationGate = data.user.mustChangePassword ? 'password_change' : 'mfa_enrollment';
+      setAuthenticationGate(gate);
+      setMenuItems(RESTRICTED_ACCOUNT_MENU);
+      safeSetItem(AUTHENTICATION_GATE_STORAGE_KEY, gate);
+      safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
+      safeSetItem('settings_active_tab', 'security');
+      window.history.replaceState({}, '', '/settings');
+      setCurrentPathState('/settings');
+      return 'success';
+    }
+    setAuthenticationGate(null);
+    safeRemoveItem(AUTHENTICATION_GATE_STORAGE_KEY);
     await loadTenantContexts();
     window.history.replaceState({}, '', '/dashboard');
     setCurrentPathState('/dashboard');
@@ -280,12 +336,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTenantContextTotalPages(0);
     setTenantContextTotalCount(0);
     setTenantContextSearchState('');
+    setAuthenticationGate(null);
     setCurrentMunicipalityIdState(null);
     setCurrentMunicipalityId(null);
     safeRemoveItem('user_profile');
     safeRemoveItem('roles');
     safeRemoveItem('permissions');
     safeRemoveItem('menu_items');
+    safeRemoveItem(AUTHENTICATION_GATE_STORAGE_KEY);
     window.history.pushState({}, '', '/login');
     setCurrentPathState('/login');
   };

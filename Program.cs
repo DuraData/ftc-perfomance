@@ -123,7 +123,7 @@ authentication.AddJwtBearer(options =>
         {
             var authorization = messageContext.Request.Headers.Authorization.ToString();
             if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-                && messageContext.Request.Cookies.TryGetValue(AuthCookiePolicy.AccessCookieName, out var cookieToken))
+                && messageContext.Request.Cookies.TryGetValue(AuthCookiePolicy.GetAccessCookieName(builder.Environment), out var cookieToken))
                 messageContext.Token = cookieToken;
             return Task.CompletedTask;
         },

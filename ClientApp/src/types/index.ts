@@ -1304,6 +1304,7 @@ export interface MenuItem {
   icon?: string;
   children?: MenuItem[];
   isDivider: boolean;
+  code?: string;
 }
 
 export interface LoginResponse {

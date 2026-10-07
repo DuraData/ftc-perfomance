@@ -170,10 +170,21 @@ function SecuritySettings() {
   }, []);
   const loadMfaStatus = useCallback(async () => {
     const result = await getMfaStatus();
-    if (!result.success) setSessionError(result.message ?? 'MFA status could not be loaded.');
-    else setMfaStatus(result.data ?? null);
+    if (!result.success) {
+      setSessionError(result.message ?? 'MFA status could not be loaded.');
+      return null;
+    }
+    const status = result.data ?? null;
+    setMfaStatus(status);
+    return status;
   }, []);
-  useEffect(() => { void loadSessions(1, ''); void loadMfaStatus(); }, [loadMfaStatus, loadSessions]);
+  useEffect(() => {
+    if (userProfile?.mustChangePassword) return;
+    void (async () => {
+      const status = await loadMfaStatus();
+      if (status && !status.enrollmentRequired) await loadSessions(1, '');
+    })();
+  }, [loadMfaStatus, loadSessions, userProfile?.mustChangePassword]);
   const beginMfaSetup = async () => {
     setBusy(true); setSessionError(null);
     const result = await setupMfa();
@@ -230,6 +241,8 @@ function SecuritySettings() {
           <Button variant="outline" size="sm" onClick={() => void savePassword()} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>Change password</Button>
         </div>
       </FormSection>
+      {sessionError && <p role="alert" className="rounded border border-error-200 bg-error-50 p-3 text-xs text-error-700">{sessionError}</p>}
+      {userProfile?.mustChangePassword ? <p role="status" className="rounded border border-warning-200 bg-warning-50 p-3 text-xs text-warning-800">Change your temporary password and sign in again. You will then be guided through required multi-factor authentication before the Super Admin workspace is unlocked.</p> : <>
       <FormSection title="Two-Factor">
         <div className="flex items-center justify-between p-3 bg-secondary-50 dark:bg-secondary-800 rounded">
           <div className="flex items-center gap-2">
@@ -262,12 +275,12 @@ function SecuritySettings() {
           <Button variant="outline" size="sm" onClick={() => void turnOffMfa()} disabled={busy || !mfaPassword || !mfaCode}>Disable MFA</Button>
         </div>}
       </FormSection>
-      <FormSection title="Sessions">
+      {mfaStatus && !mfaStatus.enrollmentRequired && <FormSection title="Sessions">
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div className="flex items-end gap-2"><Input aria-label="Search sessions" placeholder="Device, method, or IP" value={sessionSearchInput} onChange={event => setSessionSearchInput(event.target.value)} /><Button variant="outline" size="sm" onClick={() => { const value = sessionSearchInput.trim(); setSessionSearch(value); setSessionPage(1); void loadSessions(1, value); }} disabled={busy}>Search</Button></div><div className="flex gap-2"><Button variant="ghost" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => void loadSessions(sessionPage, sessionSearch)} disabled={busy}>Refresh</Button><Button variant="outline" size="sm" onClick={() => void revokeAll()} disabled={busy || sessionTotalCount === 0}>Sign out all</Button></div></div>
-        {sessionError && <p role="alert" className="mb-2 text-xs text-error-600">{sessionError}</p>}
         <div className="space-y-2">{sessions.map(session => <div key={session.sessionId} className="flex items-center justify-between gap-3 rounded border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex min-w-0 items-center gap-2"><Globe className="h-4 w-4 shrink-0 text-secondary-400" /><div className="min-w-0"><p className="text-xs font-medium">{session.isCurrent ? 'Current session' : 'Signed-in session'} · {session.authenticationMethod.replace(/_/g, ' ')}</p><p className="truncate text-[10px] text-secondary-500">{session.userAgent || 'Unknown device'} · last active {new Date(session.lastUsedAt).toLocaleString()} · expires {new Date(session.absoluteExpiresAt).toLocaleString()}</p></div></div><div className="flex items-center gap-2"><Badge variant={session.isCurrent ? 'success' : 'default'} size="sm">{session.isCurrent ? 'Current' : 'Active'}</Badge><Button variant="outline" size="sm" onClick={() => void revoke(session)} disabled={busy}>Revoke</Button></div></div>)}{!sessions.length && !busy && <p className="text-xs text-secondary-500">No active sessions.</p>}</div>
         <div className="mt-2 flex items-center justify-between text-xs text-secondary-500"><span>{sessionTotalCount} active session{sessionTotalCount === 1 ? '' : 's'}{sessionTotalPages > 0 ? ` · page ${sessionPage} of ${sessionTotalPages}` : ''}</span>{sessionTotalPages > 1 && <div className="flex gap-2"><Button variant="outline" size="sm" disabled={busy || sessionPage <= 1} onClick={() => { const page = sessionPage - 1; setSessionPage(page); void loadSessions(page, sessionSearch); }}>Previous</Button><Button variant="outline" size="sm" disabled={busy || sessionPage >= sessionTotalPages} onClick={() => { const page = sessionPage + 1; setSessionPage(page); void loadSessions(page, sessionSearch); }}>Next</Button></div>}</div>
-      </FormSection>
+      </FormSection>}
+      </>}
     </div>
   );
 }

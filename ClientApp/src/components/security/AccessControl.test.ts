@@ -1,4 +1,5 @@
 import type { MenuItem } from '../../types';
+import { RESTRICTED_ACCOUNT_MENU } from '../../context/AppContext';
 import { canAccessPath, hasPermissionCode } from './AccessControl';
 
 const menu: MenuItem[] = [
@@ -28,6 +29,12 @@ describe('AccessControl helpers', () => {
     expect(canAccessPath('/system-administration/users', menu)).toBe(false);
     expect(canAccessPath('/unregistered-feature', menu)).toBe(false);
     expect(canAccessPath('/dashboard', [])).toBe(false);
+  });
+
+  it('limits mandatory account setup to the security settings route', () => {
+    expect(canAccessPath('/settings', RESTRICTED_ACCOUNT_MENU)).toBe(true);
+    expect(canAccessPath('/dashboard', RESTRICTED_ACCOUNT_MENU)).toBe(false);
+    expect(canAccessPath('/system-administration/security', RESTRICTED_ACCOUNT_MENU)).toBe(false);
   });
 
   it('matches operation permission codes case-insensitively', () => {
