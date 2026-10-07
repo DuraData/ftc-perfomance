@@ -66,4 +66,45 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*IDP plan-version history is append-only*");
     }
+
+    public static TheoryData<object, string> AssignmentBusinessFieldRewrites => new()
+    {
+        { new UserScope { Id = 51, IsActive = true }, nameof(UserScope.ScopeType) },
+        { new UserAssignment { Id = 52, IsActive = true }, nameof(UserAssignment.AssignmentType) },
+        { new SecurityUserRoleAssignment { Id = 53, IsActive = true }, nameof(SecurityUserRoleAssignment.RoleId) },
+        { new EmployeeAssignment { Id = 54, IsActive = true }, nameof(EmployeeAssignment.PositionName) }
+    };
+
+    [Theory]
+    [MemberData(nameof(AssignmentBusinessFieldRewrites))]
+    public async Task Effective_dated_assignment_business_fields_cannot_be_rewritten(object row, string propertyName)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Attach(row);
+        context.Entry(row).Property(propertyName).IsModified = true;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-preserved*");
+    }
+
+    public static TheoryData<object> AssignmentDeletionCases => new()
+    {
+        new UserScope { Id = 61 },
+        new UserAssignment { Id = 62 },
+        new SecurityUserRoleAssignment { Id = 63 },
+        new EmployeeAssignment { Id = 64 }
+    };
+
+    [Theory]
+    [MemberData(nameof(AssignmentDeletionCases))]
+    public async Task Effective_dated_assignment_history_cannot_be_deleted(object row)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(row).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
 }

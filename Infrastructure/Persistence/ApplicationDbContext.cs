@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
@@ -2133,6 +2134,38 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         if (ChangeTracker.Entries<UserScope>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<UserAssignment>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("User scope and operational-assignment history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<UserScope>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureMonotonicClosure(entry, nameof(UserScope.IsActive), nameof(UserScope.EffectiveTo), nameof(UserScope.EffectiveFrom),
+                [nameof(UserScope.IsActive), nameof(UserScope.EffectiveTo), nameof(UserScope.RowVersion)],
+                "User scope history is append-preserved; only an active scope may be closed.");
+        }
+        foreach (var entry in ChangeTracker.Entries<UserAssignment>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureMonotonicClosure(entry, nameof(UserAssignment.IsActive), nameof(UserAssignment.ValidToUtc), nameof(UserAssignment.ValidFromUtc),
+                [nameof(UserAssignment.IsActive), nameof(UserAssignment.ValidToUtc), nameof(UserAssignment.RowVersion)],
+                "Operational-assignment history is append-preserved; only an active assignment may be closed.", requireEndDate: false);
+        }
+        foreach (var entry in ChangeTracker.Entries<SecurityUserRoleAssignment>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Role-assignment history cannot be hard deleted.");
+            EnsureMonotonicClosure(entry, nameof(SecurityUserRoleAssignment.IsActive), nameof(SecurityUserRoleAssignment.EffectiveTo), nameof(SecurityUserRoleAssignment.EffectiveFrom),
+                [nameof(SecurityUserRoleAssignment.IsActive), nameof(SecurityUserRoleAssignment.EffectiveTo), nameof(SecurityUserRoleAssignment.RevokedAt), nameof(SecurityUserRoleAssignment.RevokedBy), nameof(SecurityUserRoleAssignment.RowVersion)],
+                "Role-assignment history is append-preserved; only an active assignment may be revoked.");
+            if (entry.OriginalValues.GetValue<DateTime?>(nameof(SecurityUserRoleAssignment.RevokedAt)).HasValue
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(SecurityUserRoleAssignment.RevokedAt)).HasValue
+                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(SecurityUserRoleAssignment.RevokedBy))))
+                throw new InvalidOperationException("Role-assignment revocation requires an immutable actor and timestamp.");
+        }
+        foreach (var entry in ChangeTracker.Entries<EmployeeAssignment>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Employee-assignment history cannot be hard deleted.");
+            EnsureMonotonicClosure(entry, nameof(EmployeeAssignment.IsActive), nameof(EmployeeAssignment.EffectiveTo), nameof(EmployeeAssignment.EffectiveFrom),
+                [nameof(EmployeeAssignment.IsActive), nameof(EmployeeAssignment.EffectiveTo), nameof(EmployeeAssignment.RowVersion)],
+                "Employee-assignment history is append-preserved; only an active assignment may be closed.");
+        }
         if (ChangeTracker.Entries<PerformanceTargetRevision>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Performance target revision history is append-only.");
         if (ChangeTracker.Entries<KpiFieldRevision>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
@@ -2272,6 +2305,28 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     private void RejectRewrites<TEntity>(string message) where TEntity : class
     {
         if (ChangeTracker.Entries<TEntity>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException(message);
+    }
+
+    private static void EnsureMonotonicClosure<TEntity>(EntityEntry<TEntity> entry, string activeProperty, string endProperty,
+        string startProperty, string[] allowedProperties, string message, bool requireEndDate = true) where TEntity : class
+    {
+        var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToArray();
+        var originalEnd = entry.OriginalValues.GetValue<DateTime?>(endProperty);
+        var currentEnd = entry.CurrentValues.GetValue<DateTime?>(endProperty);
+        var startValue = entry.OriginalValues[startProperty];
+        var start = startValue switch
+        {
+            DateTime value => value,
+            null => (DateTime?)null,
+            _ => Convert.ToDateTime(startValue)
+        };
+        if (changed.Any(property => !allowedProperties.Contains(property))
+            || !entry.OriginalValues.GetValue<bool>(activeProperty)
+            || entry.CurrentValues.GetValue<bool>(activeProperty)
+            || (requireEndDate && !currentEnd.HasValue)
+            || (start.HasValue && currentEnd.HasValue && currentEnd < start)
+            || (originalEnd.HasValue && currentEnd.HasValue && currentEnd > originalEnd))
             throw new InvalidOperationException(message);
     }
 }
