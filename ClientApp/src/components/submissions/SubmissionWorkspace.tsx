@@ -533,6 +533,9 @@ export function SubmissionWorkspace({
   const resourceCode = `${submissionType}_SUBMISSION`;
   const poeResourceCode = `${submissionType}_POE`;
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
+  const canReadSuggestionActor = security.canReadField(resourceCode, 'SuggestionActor');
+  const canReadSuggestionReason = security.canReadField(resourceCode, 'SuggestionReason');
+  const canReadSuggestionCorrelation = security.canReadField(resourceCode, 'SuggestionCorrelationId');
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
   const canReadVarianceReason = security.canReadField(resourceCode, 'VarianceReason');
@@ -861,7 +864,8 @@ export function SubmissionWorkspace({
                 <Field label="Final Actual" value={currentSubmission.actualPerformance || '-'} />
                 <Field label="Suggestion Generated" value={formatDateTime(currentSubmission.suggestionGeneratedDate)} />
                 <Field label="Edited" value={currentSubmission.wasSystemSuggestionEdited ? 'Yes' : 'No'} />
-                <Field label="Edit Reason" value={currentSubmission.suggestionEditReason || '-'} wide />
+                {canReadSuggestionActor && <Field label="Suggestion Edited By" value={currentSubmission.suggestionEditedByName || currentSubmission.suggestionEditedByUserPublicId || '-'} />}
+                {canReadSuggestionReason && <Field label="Edit Reason" value={currentSubmission.suggestionEditReason || '-'} wide />}
               </div>
               {canManageConsolidation && currentSubmission.baseState === 'IN_PROGRESS' && !currentSubmission.isDisabled && (
                 <div className="space-y-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700">
@@ -918,7 +922,9 @@ export function SubmissionWorkspace({
                     <div key={event.publicId} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
                       <div className="flex flex-wrap justify-between gap-2"><span className="font-medium">{event.eventType}</span><span className="text-secondary-500">{formatDateTime(event.occurredAt)}</span></div>
                       <p className="mt-1 text-secondary-600 dark:text-secondary-300">Suggestion {event.systemSuggestedActualPerformance ?? '-'} · Final {event.actualPerformance ?? '-'} · Sources {event.sourcePeriods.join(', ') || '-'}</p>
-                      {event.reason && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Reason: {event.reason}</p>}
+                      {canReadSuggestionActor && (event.actorName || event.actorUserPublicId) && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Actor: {event.actorName || event.actorUserPublicId}</p>}
+                      {canReadSuggestionReason && event.reason && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Reason: {event.reason}</p>}
+                      {canReadSuggestionCorrelation && event.correlationId && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Correlation: {event.correlationId}</p>}
                     </div>
                   ))}
                   {!consolidationHistoryBusy && !consolidationHistoryError && consolidationHistory.length === 0 && (

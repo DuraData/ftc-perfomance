@@ -457,7 +457,8 @@ public record OpmsSubmissionResponse(
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }
-    public string? SuggestionEditedByUserId { get; init; }
+    public Guid? SuggestionEditedByUserPublicId { get; init; }
+    public string? SuggestionEditedByName { get; init; }
     public DateTime? SuggestionEditedAt { get; init; }
     public string? SuggestionEditReason { get; init; }
     public decimal? AchievementPercent { get; init; }
@@ -535,7 +536,8 @@ public record IpmsSubmissionResponse(
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }
-    public string? SuggestionEditedByUserId { get; init; }
+    public Guid? SuggestionEditedByUserPublicId { get; init; }
+    public string? SuggestionEditedByName { get; init; }
     public DateTime? SuggestionEditedAt { get; init; }
     public string? SuggestionEditReason { get; init; }
     public decimal? AchievementPercent { get; init; }
@@ -554,10 +556,11 @@ public sealed record PerformanceSuggestionEventResponse(
     bool WasSystemSuggestionEdited,
     string? EffectiveCalculationType,
     string[] SourcePeriods,
-    string ActorUserId,
+    Guid? ActorUserPublicId,
+    string? ActorName,
     string? Reason,
     DateTime OccurredAt,
-    string CorrelationId);
+    string? CorrelationId);
 
 public record NotificationResponse(
     string Id,

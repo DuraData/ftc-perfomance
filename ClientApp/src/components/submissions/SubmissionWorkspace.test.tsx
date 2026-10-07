@@ -160,24 +160,44 @@ describe('SubmissionWorkspace member security', () => {
   });
 
   it('loads and navigates the bounded consolidation history register', async () => {
-    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    security.canReadField.mockImplementation((_resource: string, member: string) => ['ActualPerformance', 'SuggestionActor', 'SuggestionReason', 'SuggestionCorrelationId'].includes(member));
     const midyear = { ...submission, quarter: 'Mid-Year', systemSuggestedActualPerformance: '50' } as OPMSSubmission;
     api.getOpmsConsolidationHistoryPage
       .mockResolvedValueOnce({
         success: true,
-        data: { items: [{ publicId: 'event-1', eventType: 'Edited', systemSuggestedActualPerformance: '50', actualPerformance: '45', wasSystemSuggestionEdited: true, sourcePeriods: ['Q1', 'Q2'], actorUserId: 'user-1', reason: 'Reviewed evidence', occurredAt: '2026-10-02T00:00:00Z', correlationId: 'correlation-1' }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 },
+        data: { items: [{ publicId: 'event-1', eventType: 'Edited', systemSuggestedActualPerformance: '50', actualPerformance: '45', wasSystemSuggestionEdited: true, sourcePeriods: ['Q1', 'Q2'], actorUserPublicId: 'public-user-1', actorName: 'Visible Reviewer', reason: 'Reviewed evidence', occurredAt: '2026-10-02T00:00:00Z', correlationId: 'correlation-1' }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 },
       })
       .mockResolvedValueOnce({
         success: true,
-        data: { items: [{ publicId: 'event-11', eventType: 'Generated', systemSuggestedActualPerformance: '50', actualPerformance: '50', wasSystemSuggestionEdited: false, sourcePeriods: ['Q1', 'Q2'], actorUserId: 'user-1', occurredAt: '2026-10-01T00:00:00Z', correlationId: 'correlation-11' }], page: 2, pageSize: 10, totalCount: 11, totalPages: 2 },
+        data: { items: [{ publicId: 'event-11', eventType: 'Generated', systemSuggestedActualPerformance: '50', actualPerformance: '50', wasSystemSuggestionEdited: false, sourcePeriods: ['Q1', 'Q2'], actorUserPublicId: 'public-user-1', actorName: 'Visible Reviewer', occurredAt: '2026-10-01T00:00:00Z', correlationId: 'correlation-11' }], page: 2, pageSize: 10, totalCount: 11, totalPages: 2 },
       });
 
     render(<SubmissionWorkspace submission={midyear} submissionType="OPMS" />);
 
     await waitFor(() => expect(screen.getByText(/Reason: Reviewed evidence/)).toBeInTheDocument());
+    expect(screen.getByText(/Actor: Visible Reviewer/)).toBeInTheDocument();
+    expect(screen.getByText(/Correlation: correlation-1/)).toBeInTheDocument();
     expect(screen.getByText('11 immutable events')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next suggestion history' }));
     await waitFor(() => expect(screen.getByText('Generated')).toBeInTheDocument());
     expect(api.getOpmsConsolidationHistoryPage).toHaveBeenLastCalledWith('7', expect.objectContaining({ page: 2, pageSize: 10, sortBy: 'occurredAt' }));
+  });
+
+  it('does not render hostile suggestion governance metadata without independent member grants', async () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    const midyear = { ...submission, quarter: 'Mid-Year', systemSuggestedActualPerformance: '50', suggestionEditedByName: 'Secret Editor', suggestionEditReason: 'Secret current reason' } as OPMSSubmission;
+    api.getOpmsConsolidationHistoryPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ publicId: 'event-secret', eventType: 'Edited', systemSuggestedActualPerformance: '50', actualPerformance: '45', wasSystemSuggestionEdited: true, sourcePeriods: ['Q1', 'Q2'], actorUserPublicId: 'secret-public-id', actorName: 'Secret Actor', reason: 'Secret history reason', occurredAt: '2026-10-02T00:00:00Z', correlationId: 'secret-correlation' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 },
+    });
+
+    render(<SubmissionWorkspace submission={midyear} submissionType="OPMS" />);
+    await waitFor(() => expect(screen.getByText('1 immutable event')).toBeInTheDocument());
+
+    for (const secret of ['Secret Editor', 'Secret current reason', 'Secret Actor', 'Secret history reason', 'secret-correlation'])
+      expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionActor');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionReason');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionCorrelationId');
   });
 });

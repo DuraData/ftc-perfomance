@@ -115,7 +115,7 @@ public sealed class PerformanceSuggestionServiceTests
     }
 
     [Fact]
-    public async Task Consolidation_history_page_filters_before_count_uses_stable_paging_and_retires_array_route()
+    public async Task Consolidation_governance_members_are_masked_non_inferable_public_and_dynamically_granted()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: false);
@@ -124,12 +124,43 @@ public sealed class PerformanceSuggestionServiceTests
         var destination = await context.OpmsSubmissions.SingleAsync(item => item.Id == seed.OpmsDestination.Id);
         await service.RecordFinalOpmsActualAsync(destination.Id, "45", "Reviewed source evidence", Convert.ToBase64String(destination.RowVersion), seed.User.Id, "edited-correlation");
 
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.ActualPerformance.READ"
+        };
         var access = new Mock<IAccessControlService>();
-        access.Setup(item => item.CheckPermissionAsync(seed.User, "OPMS_SUBMISSION.READ", It.IsAny<AccessScopeContext>()))
-            .ReturnsAsync(Decision(true, "Allowed"));
-        access.Setup(item => item.CheckPermissionAsync(seed.User, "OPMS_SUBMISSION.ActualPerformance.READ", It.IsAny<AccessScopeContext>()))
-            .ReturnsAsync(Decision(true, "Allowed"));
+        access.Setup(item => item.CheckPermissionAsync(seed.User, It.IsAny<string>(), It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
+                Decision(permissions.Contains(permission), permissions.Contains(permission) ? "Allowed" : "Denied"));
+        access.Setup(item => item.GetEffectiveAccessAsync(seed.User))
+            .ReturnsAsync(() => new EffectiveAccessResult([], permissions.ToArray(), [], [], [], []));
         var controller = CreateController(context, seed.User, access.Object, service);
+
+        var hidden = Payload(await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest
+        {
+            Page = 1, PageSize = 10, SortBy = "occurredAt", SortDirection = "desc"
+        }));
+        hidden.TotalCount.Should().Be(2);
+        hidden.Items.Should().OnlyContain(item => item.ActorUserPublicId == null && item.ActorName == null
+            && item.Reason == null && item.CorrelationId == null);
+
+        foreach (var search in new[] { "Reviewed source evidence", "edited-correlation", seed.User.PublicId.ToString(), seed.User.FirstName })
+        {
+            var hiddenSearch = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+                new PagedQueryRequest { Search = search, PageSize = 10 }));
+            hiddenSearch.TotalCount.Should().Be(0);
+        }
+        (await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest { SortBy = "actor" })).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        var hiddenSubmission = Payload(await controller.GetSubmission(destination.Id));
+        hiddenSubmission.SuggestionEditReason.Should().BeNull();
+        hiddenSubmission.SuggestionEditedByUserPublicId.Should().BeNull();
+        hiddenSubmission.SuggestionEditedByName.Should().BeNull();
+
+        permissions.Add("OPMS_SUBMISSION.SuggestionActor.READ");
+        permissions.Add("OPMS_SUBMISSION.SuggestionReason.READ");
+        permissions.Add("OPMS_SUBMISSION.SuggestionCorrelationId.READ");
 
         var result = await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest
         {
@@ -140,12 +171,72 @@ public sealed class PerformanceSuggestionServiceTests
             Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal(1, envelope.Data!.TotalCount);
         Assert.Equal(1, envelope.Data.TotalPages);
-        Assert.Equal("Edited", Assert.Single(envelope.Data.Items).EventType);
-        Assert.Equal("Reviewed source evidence", envelope.Data.Items[0].Reason);
+        var visible = Assert.Single(envelope.Data.Items);
+        Assert.Equal("Edited", visible.EventType);
+        Assert.Equal("Reviewed source evidence", visible.Reason);
+        Assert.Equal(seed.User.PublicId, visible.ActorUserPublicId);
+        Assert.Equal(seed.User.FullName, visible.ActorName);
+        Assert.Equal("edited-correlation", visible.CorrelationId);
+        visible.ActorName.Should().NotContain(seed.User.Id);
+
+        foreach (var search in new[] { "edited-correlation", seed.User.PublicId.ToString(), seed.User.FirstName })
+        {
+            var visibleSearch = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+                new PagedQueryRequest { Search = search, PageSize = 10 }));
+            visibleSearch.TotalCount.Should().BeGreaterThan(0);
+        }
+        var visibleSubmission = Payload(await controller.GetSubmission(destination.Id));
+        visibleSubmission.SuggestionEditReason.Should().Be("Reviewed source evidence");
+        visibleSubmission.SuggestionEditedByUserPublicId.Should().Be(seed.User.PublicId);
+        visibleSubmission.SuggestionEditedByName.Should().Be(seed.User.FullName);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetConsolidationHistory(destination.Id).Result).StatusCode);
         Assert.IsType<BadRequestObjectResult>((await controller.GetConsolidationHistoryPage(destination.Id,
             new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
+
+    [Fact]
+    public async Task Ipms_consolidation_history_applies_the_same_member_boundaries()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: true, calculationCode: "AVERAGE");
+        var service = CreateService(context);
+        await service.GenerateIpmsAsync(seed.IpmsDestination!.Id, seed.User.Id, "ipms-generated-secret");
+        var destination = await context.IpmsSubmissions.SingleAsync(item => item.Id == seed.IpmsDestination.Id);
+        await service.RecordFinalIpmsActualAsync(destination.Id, "26", "IPMS governance reason",
+            Convert.ToBase64String(destination.RowVersion), seed.User.Id, "ipms-edited-secret");
+
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.ActualPerformance.READ"
+        };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(seed.User, It.IsAny<string>(), It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
+                Decision(permissions.Contains(permission), permissions.Contains(permission) ? "Allowed" : "Denied"));
+        var controller = CreateIpmsController(context, seed.User, access.Object, service);
+
+        var hidden = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+            new PagedQueryRequest { PageSize = 10 }));
+        hidden.Items.Should().OnlyContain(item => item.ActorUserPublicId == null && item.ActorName == null
+            && item.Reason == null && item.CorrelationId == null);
+        Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+            new PagedQueryRequest { Search = "IPMS governance reason", PageSize = 10 })).TotalCount.Should().Be(0);
+
+        permissions.Add("IPMS_SUBMISSION.SuggestionActor.READ");
+        permissions.Add("IPMS_SUBMISSION.SuggestionReason.READ");
+        permissions.Add("IPMS_SUBMISSION.SuggestionCorrelationId.READ");
+
+        var visible = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+            new PagedQueryRequest { Search = "IPMS governance reason", PageSize = 10 }));
+        var edited = visible.Items.Should().ContainSingle().Subject;
+        edited.ActorUserPublicId.Should().Be(seed.User.PublicId);
+        edited.ActorName.Should().Be(seed.User.FullName);
+        edited.Reason.Should().Be("IPMS governance reason");
+        edited.CorrelationId.Should().Be("ipms-edited-secret");
+    }
+
+    private static T Payload<T>(ActionResult<ApiResponse<T>> result) =>
+        Assert.IsType<ApiResponse<T>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
 
     private static PerformanceSuggestionService CreateService(ApplicationDbContext context)
     {
@@ -178,6 +269,32 @@ public sealed class PerformanceSuggestionServiceTests
             }
         };
         return controller;
+    }
+
+    private static IpmsSubmissionsController CreateIpmsController(
+        ApplicationDbContext context,
+        ApplicationUser user,
+        IAccessControlService access,
+        IPerformanceSuggestionService suggestions)
+    {
+        return new IpmsSubmissionsController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(user).Object,
+            access,
+            Mock.Of<IWorkflowGovernanceService>(),
+            Mock.Of<IEvidenceBlobStorage>(),
+            Mock.Of<ISubmissionValueService>(),
+            Mock.Of<IConfigurableWorkflowService>(),
+            Mock.Of<IReportingWindowService>(),
+            Mock.Of<IEvidenceInspectionService>(),
+            Mock.Of<IEvidenceMalwareScanner>(),
+            suggestions)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id), TraceIdentifier = "ipms-api-denial" }
+            }
+        };
     }
 
     private static AccessDecisionResult Decision(bool allowed, string reason) => new(allowed, reason, [], [], []);

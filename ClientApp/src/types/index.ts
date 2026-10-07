@@ -579,7 +579,8 @@ export interface OPMSSubmission {
   systemSuggestedActualPerformance?: string;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string;
-  suggestionEditedByUserId?: string;
+  suggestionEditedByUserPublicId?: string;
+  suggestionEditedByName?: string;
   suggestionEditedAt?: string;
   suggestionEditReason?: string;
   achievementPercent?: number;
@@ -655,7 +656,8 @@ export interface IPMSSubmission {
   systemSuggestedActualPerformance?: string;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string;
-  suggestionEditedByUserId?: string;
+  suggestionEditedByUserPublicId?: string;
+  suggestionEditedByName?: string;
   suggestionEditedAt?: string;
   suggestionEditReason?: string;
   achievementPercent?: number;
@@ -2607,7 +2609,8 @@ export interface OpmsSubmissionDto {
   systemSuggestedActualPerformance?: string | null;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string | null;
-  suggestionEditedByUserId?: string | null;
+  suggestionEditedByUserPublicId?: string | null;
+  suggestionEditedByName?: string | null;
   suggestionEditedAt?: string | null;
   suggestionEditReason?: string | null;
   achievementPercent?: number | null;
@@ -2684,7 +2687,8 @@ export interface IpmsSubmissionDto {
   systemSuggestedActualPerformance?: string | null;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string | null;
-  suggestionEditedByUserId?: string | null;
+  suggestionEditedByUserPublicId?: string | null;
+  suggestionEditedByName?: string | null;
   suggestionEditedAt?: string | null;
   suggestionEditReason?: string | null;
   achievementPercent?: number | null;
@@ -2774,10 +2778,11 @@ export interface PerformanceSuggestionEvent {
   wasSystemSuggestionEdited: boolean;
   effectiveCalculationType?: string | null;
   sourcePeriods: string[];
-  actorUserId: string;
+  actorUserPublicId?: string | null;
+  actorName?: string | null;
   reason?: string | null;
   occurredAt: string;
-  correlationId: string;
+  correlationId?: string | null;
 }
 
 export interface NotificationPageResult extends PagedResult<NotificationDto> {

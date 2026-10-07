@@ -304,16 +304,23 @@ public class IpmsSubmissionsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "IPMS submission not found"));
         var denial = await ConsolidationPermissionDenialAsync(user, entity, update: false);
         if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, denial));
-        if (request.NormalizedSortBy is not ("createdat" or "occurredat" or "eventtype" or "actoruserid"))
-            return BadRequest(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "SortBy must be occurredAt, eventType, or actorUserId."));
+        var memberAccess = await GetConsolidationHistoryMemberAccessAsync(user, BuildScope(entity));
+        if (request.NormalizedSortBy is not ("createdat" or "occurredat" or "eventtype" or "actor" or "actoruserid"))
+            return BadRequest(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "SortBy must be occurredAt, eventType, or actor."));
+        if (request.NormalizedSortBy is "actor" or "actoruserid" && !memberAccess.Actor)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "Suggestion actor sorting requires member read permission."));
 
-        var query = _context.PerformanceSuggestionEvents.AsNoTracking().Where(item => item.IpmsSubmissionId == id);
+        var query = _context.PerformanceSuggestionEvents.AsNoTracking().Include(item => item.ActorUser).Where(item => item.IpmsSubmissionId == id);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => (item.Reason != null && item.Reason.Contains(request.NormalizedSearch))
-                || item.ActorUserId.Contains(request.NormalizedSearch)
-                || item.CorrelationId.Contains(request.NormalizedSearch)
+        {
+            var actorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedActorPublicId) ? parsedActorPublicId : (Guid?)null;
+            query = query.Where(item => (memberAccess.Reason && item.Reason != null && item.Reason.Contains(request.NormalizedSearch))
+                || (memberAccess.Actor && ((actorPublicId.HasValue && item.ActorUser.PublicId == actorPublicId.Value)
+                    || item.ActorUser.FirstName.Contains(request.NormalizedSearch) || item.ActorUser.LastName.Contains(request.NormalizedSearch)))
+                || (memberAccess.CorrelationId && item.CorrelationId.Contains(request.NormalizedSearch))
                 || (item.SystemSuggestedActualPerformance != null && item.SystemSuggestedActualPerformance.Contains(request.NormalizedSearch))
                 || (item.ActualPerformance != null && item.ActualPerformance.Contains(request.NormalizedSearch)));
+        }
         if (!string.IsNullOrWhiteSpace(eventType))
         {
             if (!Enum.TryParse<PerformanceSuggestionEventType>(eventType.Trim(), true, out var parsedEventType))
@@ -326,8 +333,8 @@ public class IpmsSubmissionsController : ControllerBase
         {
             ("eventtype", false) => query.OrderBy(item => item.EventType).ThenBy(item => item.PublicId),
             ("eventtype", true) => query.OrderByDescending(item => item.EventType).ThenByDescending(item => item.PublicId),
-            ("actoruserid", false) => query.OrderBy(item => item.ActorUserId).ThenBy(item => item.PublicId),
-            ("actoruserid", true) => query.OrderByDescending(item => item.ActorUserId).ThenByDescending(item => item.PublicId),
+            ("actor" or "actoruserid", false) => query.OrderBy(item => item.ActorUser.FirstName).ThenBy(item => item.ActorUser.LastName).ThenBy(item => item.PublicId),
+            ("actor" or "actoruserid", true) => query.OrderByDescending(item => item.ActorUser.FirstName).ThenByDescending(item => item.ActorUser.LastName).ThenByDescending(item => item.PublicId),
             (_, false) => query.OrderBy(item => item.OccurredAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.OccurredAt).ThenByDescending(item => item.PublicId)
         };
@@ -335,7 +342,10 @@ public class IpmsSubmissionsController : ControllerBase
         var events = persistedEvents.Select(item => new PerformanceSuggestionEventResponse(item.PublicId, item.EventType.ToString(), item.SystemSuggestedActualPerformance,
             item.ActualPerformance, item.WasSystemSuggestionEdited, item.EffectiveCalculationType?.ToString(),
             item.SourcePeriods.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            item.ActorUserId, item.Reason, item.OccurredAt, item.CorrelationId)).ToArray();
+            memberAccess.Actor ? item.ActorUser.PublicId : null,
+            memberAccess.Actor ? item.ActorUser.FullName : null,
+            memberAccess.Reason ? item.Reason : null, item.OccurredAt,
+            memberAccess.CorrelationId ? item.CorrelationId : null)).ToArray();
         return Ok(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(true,
             PagedResponse<PerformanceSuggestionEventResponse>.Create(events, request.Page, request.PageSize, totalCount)));
     }
@@ -1011,6 +1021,7 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.ApproverUser)
             .Include(item => item.PmsOfficerUser)
             .Include(item => item.AuditorUser)
+            .Include(item => item.SuggestionEditedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
     }
 
@@ -1034,8 +1045,20 @@ public class IpmsSubmissionsController : ControllerBase
         return null;
     }
 
-    private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user) =>
-        ToAuthorizedResponse(submission, (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase));
+    private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user)
+    {
+        var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var response = ToAuthorizedResponse(submission, permissions);
+        var scope = BuildScope(submission);
+        var actorAllowed = (await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.SuggestionActor.READ", scope)).Allowed;
+        var reasonAllowed = (await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.SuggestionReason.READ", scope)).Allowed;
+        return response with
+        {
+            SuggestionEditedByUserPublicId = actorAllowed ? submission.SuggestionEditedByUser?.PublicId : null,
+            SuggestionEditedByName = actorAllowed ? submission.SuggestionEditedByUser?.FullName : null,
+            SuggestionEditReason = reasonAllowed ? submission.SuggestionEditReason : null
+        };
+    }
 
     private async Task<PoeFileResponse> ToAuthorizedPoeResponseAsync(PoeFile file, ApplicationUser user, AccessScopeContext scope)
         => file.ToResponse(HttpContext, await GetPoeMemberAccessAsync(user, scope));
@@ -1075,11 +1098,22 @@ public class IpmsSubmissionsController : ControllerBase
         return memberDecision.Allowed ? null : memberDecision.Reason;
     }
 
+    private async Task<(bool Actor, bool Reason, bool CorrelationId)> GetConsolidationHistoryMemberAccessAsync(
+        ApplicationUser user,
+        AccessScopeContext scope)
+    {
+        async Task<bool> CanReadAsync(string memberCode) =>
+            (await _accessControlService.CheckPermissionAsync(user, $"IPMS_SUBMISSION.{memberCode}.READ", scope)).Allowed;
+
+        return (await CanReadAsync("SuggestionActor"), await CanReadAsync("SuggestionReason"),
+            await CanReadAsync("SuggestionCorrelationId"));
+    }
+
     private static IpmsSubmissionResponse ToAuthorizedResponse(IpmsSubmission submission, HashSet<string> permissions)
     {
         var response = submission.ToResponse();
         if (!permissions.Contains("IPMS_SUBMISSION.ActualPerformance.READ"))
-            response = response with { ActualPerformance = null, ActualExpenditure = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserId = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
+            response = response with { ActualPerformance = null, ActualExpenditure = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserPublicId = null, SuggestionEditedByName = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
         if (!permissions.Contains("IPMS_SUBMISSION.Variance.READ")) response = response with { Variance = null };
         if (!permissions.Contains("IPMS_SUBMISSION.VarianceReason.READ")) response = response with { VarianceReason = null };
         if (!permissions.Contains("IPMS_SUBMISSION.CorrectiveMeasure.READ")) response = response with { CorrectiveMeasure = null };
