@@ -253,7 +253,7 @@ public sealed class StrategicDocumentsController : ControllerBase
                 || (item.Description != null && item.Description.Contains(request.NormalizedSearch))
                 || (item.ApprovalReference != null && item.ApprovalReference.Contains(request.NormalizedSearch))
                 || (memberAccess.CreatedByUserId && item.CreatedByUserId.Contains(request.NormalizedSearch))
-                || item.Events.Any(eventItem => eventItem.Reason.Contains(request.NormalizedSearch)));
+                || (memberAccess.EventReason && item.Events.Any(eventItem => eventItem.Reason.Contains(request.NormalizedSearch))));
         var totalCount = await query.CountAsync();
         var ordered = (sortBy, request.Descending) switch
         {
@@ -562,6 +562,7 @@ public sealed class StrategicDocumentsController : ControllerBase
             await CanReadAsync("ApprovedByUserId"),
             await CanReadAsync("PublishedByUserId"),
             await CanReadAsync("EventActorUserId"),
+            await CanReadAsync("EventReason"),
             await CanReadAsync("ScannerProvider"),
             await CanReadAsync("ScannerReference"),
             await CanReadAsync("ScanDetail"));
@@ -619,7 +620,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         memberAccess.ScanDetail ? item.Blob?.ScanDetail : null,
         item.Blob?.IsQuarantined ?? false, item.ExternalUrl, item.Blob == null ? null : $"/api/v1/strategic-documents/{item.PublicId}/content",
         Convert.ToBase64String(item.RowVersion), includeAdministration ? item.Events.OrderBy(eventItem => eventItem.OccurredAt)
-            .Select(eventItem => new StrategicDocumentEventResponse(eventItem.PublicId, eventItem.Action.ToString(), eventItem.Reason,
+            .Select(eventItem => new StrategicDocumentEventResponse(eventItem.PublicId, eventItem.Action.ToString(),
+                memberAccess.EventReason ? eventItem.Reason : null,
                 memberAccess.EventActorUserId ? eventItem.ActorUserId : null, eventItem.OccurredAt)).ToArray() : []);
 
     private static bool TryNormalizeType(SaveStrategicDocumentTypeRequest request, out NormalizedType value, out string? error)

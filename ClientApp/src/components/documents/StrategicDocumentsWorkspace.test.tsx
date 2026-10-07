@@ -30,7 +30,7 @@ const document = {
   approvalReference: null, isPublished: false, publicationDate: null, publishedAt: null, publishedByUserId: 'publisher-secret',
   createdAt: '2026-07-01T00:00:00Z', createdByUserId: 'owner', fileName: null, contentType: null, sizeInBytes: null,
   sha256: null, scanStatus: 'Clean', scannerProvider: 'scanner-secret', scannerReference: 'reference-secret', scanDetail: 'detail-secret', isQuarantined: false, externalUrl: 'https://example.gov.za/idp.pdf', contentUrl: null,
-  rowVersion: 'Ag==', events: [{ publicId: 'event-1', action: 'VersionCreated', reason: 'Initial version', actorUserId: 'owner', occurredAt: '2026-07-01T00:00:00Z' }],
+  rowVersion: 'Ag==', events: [{ publicId: 'event-1', action: 'VersionCreated', reason: 'governance-reason-secret', actorUserId: 'owner', occurredAt: '2026-07-01T00:00:00Z' }],
 };
 
 describe('Strategic documents workspace', () => {
@@ -142,9 +142,10 @@ describe('Strategic documents workspace', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
     await screen.findByText('Version and action history');
 
-    for (const secret of ['owner', 'approver-secret', 'publisher-secret', 'scanner-secret', 'reference-secret', 'detail-secret'])
+    for (const secret of ['owner', 'approver-secret', 'publisher-secret', 'scanner-secret', 'reference-secret', 'detail-secret', 'governance-reason-secret'])
       expect(screen.queryByText(secret, { exact: false })).not.toBeInTheDocument();
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'CreatedByUserId');
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'EventActorUserId');
+    expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'EventReason');
   });
 });

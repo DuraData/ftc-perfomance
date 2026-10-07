@@ -13,7 +13,7 @@ public sealed record StrategicDocumentTypeResponse(
 public sealed record StrategicDocumentEventResponse(
     Guid PublicId,
     string Action,
-    string Reason,
+    string? Reason,
     string? ActorUserId,
     DateTime OccurredAt);
 

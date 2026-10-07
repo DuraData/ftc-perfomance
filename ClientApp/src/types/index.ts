@@ -3569,7 +3569,7 @@ export interface StrategicDocumentType {
 export interface StrategicDocumentEvent {
   publicId: string;
   action: string;
-  reason: string;
+  reason?: string | null;
   actorUserId?: string | null;
   occurredAt: string;
 }

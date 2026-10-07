@@ -308,10 +308,10 @@ public sealed class UsersControllerSecurityTests
             .Where(item => item.ResourceCode == "STRATEGIC_DOCUMENT")
             .OrderBy(item => item.MemberCode)
             .ToArrayAsync();
-        Assert.Equal(new[] { "ApprovedByUserId", "CreatedByUserId", "EventActorUserId", "PublishedByUserId", "ScanDetail", "ScannerProvider", "ScannerReference" },
+        Assert.Equal(new[] { "ApprovedByUserId", "CreatedByUserId", "EventActorUserId", "EventReason", "PublishedByUserId", "ScanDetail", "ScannerProvider", "ScannerReference" },
             strategicDocumentMembers.Select(item => item.MemberCode));
         Assert.All(strategicDocumentMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
-        Assert.Equal(7, await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_DOCUMENT" && item.MemberCode != null));
+        Assert.Equal(8, await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_DOCUMENT" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_DOCUMENT")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "STRATEGIC_DOCUMENT.RESCAN").ToArrayAsync());
 

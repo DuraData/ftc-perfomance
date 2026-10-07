@@ -204,6 +204,7 @@ public class StrategicDocumentsControllerTests
             ExternalRequest(setup, "Governed identity metadata", "https://example.gov.za/identity.pdf")));
         created.CreatedByUserId.Should().BeNull();
         created.Events.Should().ContainSingle().Which.ActorUserId.Should().BeNull();
+        created.Events.Single().Reason.Should().BeNull();
 
         var hiddenSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
         {
@@ -211,8 +212,14 @@ public class StrategicDocumentsControllerTests
             PageSize = 10
         }));
         hiddenSearch.TotalCount.Should().Be(0);
+        var hiddenReasonSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
+        {
+            Search = "Council-governed version",
+            PageSize = 10
+        }));
+        hiddenReasonSearch.TotalCount.Should().Be(0);
 
-        foreach (var member in new[] { "CreatedByUserId", "ApprovedByUserId", "PublishedByUserId", "EventActorUserId", "ScannerProvider", "ScannerReference", "ScanDetail" })
+        foreach (var member in new[] { "CreatedByUserId", "ApprovedByUserId", "PublishedByUserId", "EventActorUserId", "EventReason", "ScannerProvider", "ScannerReference", "ScanDetail" })
             permissions.Add($"STRATEGIC_DOCUMENT.{member}.READ");
 
         var visibleSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
@@ -223,6 +230,13 @@ public class StrategicDocumentsControllerTests
         visibleSearch.TotalCount.Should().Be(1);
         visibleSearch.Items.Should().ContainSingle().Which.CreatedByUserId.Should().Be(setup.User.Id);
         visibleSearch.Items.Single().Events.Should().ContainSingle().Which.ActorUserId.Should().Be(setup.User.Id);
+        visibleSearch.Items.Single().Events.Single().Reason.Should().Be("Council-governed version");
+        var visibleReasonSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
+        {
+            Search = "Council-governed version",
+            PageSize = 10
+        }));
+        visibleReasonSearch.TotalCount.Should().Be(1);
     }
 
     [Fact]
