@@ -2123,6 +2123,13 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
+        RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
+        if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<SubmissionScore>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Submission extension, review, finding, and score ledgers are append-only.");
         if (ChangeTracker.Entries<UserScope>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<UserAssignment>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("User scope and operational-assignment history cannot be hard deleted.");
@@ -2190,6 +2197,24 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Circular 88 report evidence is append-only; create a successor report version.");
         if (ChangeTracker.Entries<C88WorkflowStage>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Circular 88 workflow-stage versions are append-only.");
+        foreach (var entry in ChangeTracker.Entries<IdpPlanVersion>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("IDP plan-version history is append-only.");
+            var allowed = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(IdpPlanVersion.IsActive), nameof(IdpPlanVersion.EffectiveTo), nameof(IdpPlanVersion.RowVersion)
+            };
+            var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToArray();
+            if (changed.Any(property => !allowed.Contains(property))
+                || !entry.OriginalValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive))
+                || entry.CurrentValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive))
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo)).HasValue
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo)).HasValue
+                || entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo))
+                    <= entry.OriginalValues.GetValue<DateTime>(nameof(IdpPlanVersion.EffectiveFrom)))
+                throw new InvalidOperationException("IDP plan versions are append-preserved; only the active predecessor may be closed by a successor.");
+        }
         var c88GovernedTypes = new HashSet<Type>
         {
             typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator),
@@ -2242,5 +2267,11 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue)
                 throw new InvalidOperationException("Published TID versions are append-only; only the current version may be closed by a successor.");
         }
+    }
+
+    private void RejectRewrites<TEntity>(string message) where TEntity : class
+    {
+        if (ChangeTracker.Entries<TEntity>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException(message);
     }
 }
