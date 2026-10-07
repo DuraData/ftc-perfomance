@@ -2211,10 +2211,68 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(OfficialReportJob.CompletedAt), nameof(OfficialReportJob.LastError), nameof(OfficialReportJob.RetryReason), nameof(OfficialReportJob.RowVersion)],
                 "Official report job request identity is immutable; only execution and delivery lifecycle state may change.");
         }
-        if (ChangeTracker.Entries<NotificationConfiguration>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<NotificationScheduleRule>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
-            || ChangeTracker.Entries<WorkingCalendarHoliday>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Notification policy versions, rules, and working-calendar history cannot be deleted or rewritten.");
+        if (ChangeTracker.Entries<NotificationScheduleRule>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<WorkingCalendarHoliday>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Notification policy rules and working-calendar history cannot be deleted or rewritten.");
+        foreach (var entry in ChangeTracker.Entries<NotificationConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Notification policy version history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(NotificationConfiguration.Lifecycle), nameof(NotificationConfiguration.DeliveryPaused), nameof(NotificationConfiguration.EffectiveTo),
+                    nameof(NotificationConfiguration.ActivatedByUserId), nameof(NotificationConfiguration.ActivatedAt), nameof(NotificationConfiguration.RowVersion)],
+                "Notification policy versions are append-preserved; definition changes require a successor version.");
+
+            var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+            var originalLifecycle = entry.OriginalValues.GetValue<NotificationPolicyLifecycle>(nameof(NotificationConfiguration.Lifecycle));
+            var currentLifecycle = entry.CurrentValues.GetValue<NotificationPolicyLifecycle>(nameof(NotificationConfiguration.Lifecycle));
+            if (originalLifecycle != currentLifecycle)
+            {
+                var activating = originalLifecycle == NotificationPolicyLifecycle.Draft && currentLifecycle == NotificationPolicyLifecycle.Active;
+                var superseding = originalLifecycle == NotificationPolicyLifecycle.Active && currentLifecycle == NotificationPolicyLifecycle.Superseded;
+                if (!activating && !superseding)
+                    throw new InvalidOperationException("Notification policy lifecycle transitions cannot be reversed or bypassed.");
+
+                if (activating && (entry.OriginalValues.GetValue<DateTime?>(nameof(NotificationConfiguration.ActivatedAt)).HasValue
+                    || !entry.CurrentValues.GetValue<DateTime?>(nameof(NotificationConfiguration.ActivatedAt)).HasValue
+                    || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(NotificationConfiguration.ActivatedByUserId)))))
+                    throw new InvalidOperationException("Notification policy activation requires an immutable actor and timestamp.");
+
+                if (superseding)
+                {
+                    var originalEnd = entry.OriginalValues.GetValue<DateTime?>(nameof(NotificationConfiguration.EffectiveTo));
+                    var currentEnd = entry.CurrentValues.GetValue<DateTime?>(nameof(NotificationConfiguration.EffectiveTo));
+                    var effectiveFrom = entry.OriginalValues.GetValue<DateTime>(nameof(NotificationConfiguration.EffectiveFrom));
+                    if (!currentEnd.HasValue || currentEnd < effectiveFrom || originalEnd.HasValue && currentEnd > originalEnd)
+                        throw new InvalidOperationException("Notification policy supersession may only close the active version without extending its effective period.");
+                }
+            }
+            else if (changed.Contains(nameof(NotificationConfiguration.EffectiveTo))
+                || changed.Contains(nameof(NotificationConfiguration.ActivatedAt))
+                || changed.Contains(nameof(NotificationConfiguration.ActivatedByUserId)))
+                throw new InvalidOperationException("Notification policy lifecycle evidence may only be written during activation or supersession.");
+
+            if (changed.Contains(nameof(NotificationConfiguration.DeliveryPaused))
+                && (originalLifecycle != NotificationPolicyLifecycle.Active || currentLifecycle != NotificationPolicyLifecycle.Active))
+                throw new InvalidOperationException("Only an active notification policy may change operational delivery state.");
+        }
+        foreach (var entry in ChangeTracker.Entries<ScheduledNotification>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Scheduled notification history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(ScheduledNotification.State), nameof(ScheduledNotification.QueuedAt), nameof(ScheduledNotification.NotificationId),
+                    nameof(ScheduledNotification.BusinessEventOutboxId), nameof(ScheduledNotification.StateReason), nameof(ScheduledNotification.RowVersion)],
+                "Scheduled notification source, recipient, deadline, policy, rule and idempotency identity are immutable.");
+            var originalState = entry.OriginalValues.GetValue<ScheduledNotificationState>(nameof(ScheduledNotification.State));
+            var currentState = entry.CurrentValues.GetValue<ScheduledNotificationState>(nameof(ScheduledNotification.State));
+            if (originalState != ScheduledNotificationState.Pending
+                || currentState is not (ScheduledNotificationState.Queued or ScheduledNotificationState.Superseded or ScheduledNotificationState.Skipped)
+                || currentState == ScheduledNotificationState.Queued && !entry.CurrentValues.GetValue<DateTime?>(nameof(ScheduledNotification.QueuedAt)).HasValue
+                || currentState is ScheduledNotificationState.Superseded or ScheduledNotificationState.Skipped
+                    && string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(ScheduledNotification.StateReason))))
+                throw new InvalidOperationException("Scheduled notification lifecycle can only advance once from pending to queued, superseded, or skipped.");
+        }
         if (ChangeTracker.Entries<PerformanceRfiEvidence>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("RFI evidence provenance is append-only.");
         if (ChangeTracker.Entries<PoeEvidenceAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

@@ -229,4 +229,56 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be reversed or moved backwards*");
     }
+
+    [Fact]
+    public async Task Notification_policy_definition_requires_a_successor_version()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var policy = new NotificationConfiguration { Id = 101, Lifecycle = NotificationPolicyLifecycle.Active };
+        context.Attach(policy);
+        policy.TitleTemplate = "Retrospectively rewritten template";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*successor version*");
+    }
+
+    [Fact]
+    public async Task Working_calendar_history_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var holiday = new WorkingCalendarHoliday { Id = 102, Name = "Original holiday" };
+        context.Attach(holiday);
+        holiday.Name = "Rewritten holiday";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*working-calendar history*");
+    }
+
+    [Fact]
+    public async Task Scheduled_notification_identity_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var scheduled = new ScheduledNotification { Id = 103, State = ScheduledNotificationState.Pending };
+        context.Attach(scheduled);
+        scheduled.RecipientUserId = "different-recipient";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*identity are immutable*");
+    }
+
+    [Fact]
+    public async Task Scheduled_notification_lifecycle_cannot_be_reversed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var scheduled = new ScheduledNotification { Id = 104, State = ScheduledNotificationState.Queued, QueuedAt = DateTime.UtcNow };
+        context.Attach(scheduled);
+        scheduled.State = ScheduledNotificationState.Pending;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*only advance once*");
+    }
 }
