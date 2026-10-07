@@ -78,19 +78,19 @@ public class UsersController : ControllerBase
             PagedResponse<UserDetailResponse>.Create(details, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<ApiResponse<UserDetailResponse>>> GetUser(string id)
+    [HttpGet("{publicId:guid}")]
+    public async Task<ActionResult<ApiResponse<UserDetailResponse>>> GetUser(Guid publicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<UserDetailResponse>("User not found"));
         if (!await IsAllowedAsync(actor, "USER.READ")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<UserDetailResponse>(false, null, "User not found"));
 
         var roles = await _userManager.GetRolesAsync(user);
         var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
 
-        var roleResponses = roleEntities.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
+        var roleResponses = roleEntities.Select(r => new RoleResponse(r.PublicId, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
         var userResponse = ToResponse(user, await IsAllowedAsync(actor, "USER.Email.READ"), await IsAllowedAsync(actor, "USER.PhoneNumber.READ"));
 
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
@@ -133,14 +133,14 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, Array.Empty<RoleResponse>())));
     }
 
-    [HttpPut("{id}")]
-    public async Task<ActionResult<ApiResponse<UserDetailResponse>>> UpdateUser(string id, [FromBody] UpdateUserRequest request)
+    [HttpPut("{publicId:guid}")]
+    public async Task<ActionResult<ApiResponse<UserDetailResponse>>> UpdateUser(Guid publicId, [FromBody] UpdateUserRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<UserDetailResponse>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<UserDetailResponse>("Select a municipality context before updating a user"));
         if (!await IsAllowedAsync(actor, "USER.UPDATE")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<UserDetailResponse>(false, null, "User not found"));
         if (!string.Equals(user.PhoneNumber?.Trim(), request.PhoneNumber?.Trim(), StringComparison.Ordinal)
             && !await IsAllowedAsync(actor, "USER.PhoneNumber.UPDATE")) return Forbid();
@@ -160,7 +160,7 @@ public class UsersController : ControllerBase
 
         var roles = await _userManager.GetRolesAsync(user);
         var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
-        var roleResponses = roleEntities.Select(r => new RoleResponse(r.Id, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
+        var roleResponses = roleEntities.Select(r => new RoleResponse(r.PublicId, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
 
         QueueAudit(user, "Update", before, new { user.FirstName, user.LastName, user.PhoneNumber, user.IsActive }, actor.Id);
         await _context.SaveChangesAsync();
@@ -168,14 +168,14 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
     }
 
-    [HttpPatch("{id}/activate")]
-    public async Task<ActionResult<ApiResponse<bool>>> Activate(string id)
+    [HttpPatch("{publicId:guid}/activate")]
+    public async Task<ActionResult<ApiResponse<bool>>> Activate(Guid publicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before enabling a user"));
         if (!await IsAllowedAsync(actor, "USER.ENABLE")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
 
         var before = new { user.IsActive };
@@ -187,14 +187,14 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpPatch("{id}/deactivate")]
-    public async Task<ActionResult<ApiResponse<bool>>> Deactivate(string id)
+    [HttpPatch("{publicId:guid}/deactivate")]
+    public async Task<ActionResult<ApiResponse<bool>>> Deactivate(Guid publicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before disabling a user"));
         if (!await IsAllowedAsync(actor, "USER.DISABLE")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
 
         var before = new { user.IsActive };
@@ -206,14 +206,14 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpDelete("{id}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteUser(string id)
+    [HttpDelete("{publicId:guid}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteUser(Guid publicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before deleting a user"));
         if (!await IsAllowedAsync(actor, "USER.DELETE")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
 
         var before = new { user.IsActive };
@@ -230,18 +230,20 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpPost("{id}/roles")]
-    public async Task<ActionResult<ApiResponse<bool>>> SetUserRoles(string id, [FromBody] AssignUserRolesRequest request)
+    [HttpPost("{publicId:guid}/roles")]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserRoles(Guid publicId, [FromBody] AssignUserRolesRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before assigning roles"));
         if (!await IsAllowedAsync(actor, "ROLE.ASSIGN")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
 
-        var roles = await _context.Roles.Where(r => request.RoleIds.Contains(r.Id) && r.MunicipalityId == _tenantContext.MunicipalityId).ToListAsync();
-        if (roles.Count != request.RoleIds.Distinct(StringComparer.OrdinalIgnoreCase).Count()) return Forbid();
+        var requestedRolePublicIds = request.RolePublicIds.Distinct().ToArray();
+        var roles = await _context.Roles.Where(r => requestedRolePublicIds.Contains(r.PublicId) && r.MunicipalityId == _tenantContext.MunicipalityId).ToListAsync();
+        if (roles.Count != requestedRolePublicIds.Length) return Forbid();
+        var requestedRoleIds = roles.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var roleNames = roles.Select(r => r.Name!).ToArray();
 
         var existingRoleNames = await _userManager.GetRolesAsync(user);
@@ -258,9 +260,14 @@ public class UsersController : ControllerBase
         var now = DateTime.UtcNow;
         var actorId = actor.Id;
         var currentAssignments = await _context.SecurityUserRoleAssignments
-            .Where(item => item.UserId == id && item.MunicipalityId == _tenantContext.MunicipalityId && item.IsActive && !item.RevokedAt.HasValue)
+            .Where(item => item.UserId == user.Id && item.MunicipalityId == _tenantContext.MunicipalityId && item.IsActive && !item.RevokedAt.HasValue)
             .ToListAsync();
-        foreach (var assignment in currentAssignments.Where(item => !request.RoleIds.Contains(item.RoleId)))
+        var currentRoleIds = currentAssignments.Select(item => item.RoleId).Distinct().ToArray();
+        var currentRolePublicIds = await _context.Roles.AsNoTracking()
+            .Where(item => currentRoleIds.Contains(item.Id))
+            .Select(item => item.PublicId)
+            .ToArrayAsync();
+        foreach (var assignment in currentAssignments.Where(item => !requestedRoleIds.Contains(item.RoleId)))
         {
             assignment.IsActive = false;
             assignment.EffectiveTo = now;
@@ -272,7 +279,7 @@ public class UsersController : ControllerBase
         {
             _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment
             {
-                UserId = id,
+                UserId = user.Id,
                 RoleId = role.Id,
                 MunicipalityId = role.MunicipalityId,
                 EffectiveFrom = now,
@@ -281,30 +288,32 @@ public class UsersController : ControllerBase
                 IsActive = true
             });
         }
-        QueueAudit(user, "AssignRoles", new { RoleIds = currentAssignments.Where(item => item.IsActive).Select(item => item.RoleId).ToArray() }, new { RoleIds = request.RoleIds }, actorId);
+        QueueAudit(user, "AssignRoles",
+            new { RolePublicIds = currentRolePublicIds },
+            new { RolePublicIds = requestedRolePublicIds }, actorId);
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpDelete("{id}/roles/{roleId}")]
-    public async Task<ActionResult<ApiResponse<bool>>> RemoveUserRole(string id, string roleId)
+    [HttpDelete("{publicId:guid}/roles/{rolePublicId:guid}")]
+    public async Task<ActionResult<ApiResponse<bool>>> RemoveUserRole(Guid publicId, Guid rolePublicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before removing roles"));
         if (!await IsAllowedAsync(actor, "ROLE.ASSIGN")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
 
-        var role = await _roleManager.FindByIdAsync(roleId);
+        var role = await _context.Roles.SingleOrDefaultAsync(item => item.PublicId == rolePublicId);
         if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
         if (!(_tenantContext.IsSystem && !_tenantContext.MunicipalityId.HasValue) && role.MunicipalityId != _tenantContext.MunicipalityId) return Forbid();
 
         await _userManager.RemoveFromRoleAsync(user, role.Name!);
         var now = DateTime.UtcNow;
         var actorId = actor.Id;
-        var assignments = await _context.SecurityUserRoleAssignments.Where(item => item.UserId == id && item.RoleId == roleId
+        var assignments = await _context.SecurityUserRoleAssignments.Where(item => item.UserId == user.Id && item.RoleId == role.Id
             && item.MunicipalityId == _tenantContext.MunicipalityId && item.IsActive).ToListAsync();
         foreach (var assignment in assignments)
         {
@@ -313,30 +322,30 @@ public class UsersController : ControllerBase
             assignment.RevokedAt = now;
             assignment.RevokedBy = actorId;
         }
-        QueueAudit(user, "RemoveRole", new { RoleId = roleId }, new { Removed = true }, actorId);
+        QueueAudit(user, "RemoveRole", new { RolePublicId = role.PublicId }, new { Removed = true }, actorId);
         await _context.SaveChangesAsync();
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpGet("{id}/scopes")]
-    public ActionResult<ApiResponse<UserScopeResponse[]>> GetUserScopes(string id) =>
+    [HttpGet("{publicId:guid}/scopes")]
+    public ActionResult<ApiResponse<UserScopeResponse[]>> GetUserScopes(Guid publicId) =>
         StatusCode(StatusCodes.Status410Gone, Fail<UserScopeResponse[]>(
-            $"This unbounded route is retired. Use /api/users/{id}/scopes/page."));
+            $"This unbounded route is retired. Use /api/users/{publicId}/scopes/page."));
 
-    [HttpGet("{id}/scopes/page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<UserScopeResponse>>>> GetUserScopesPage(string id, [FromQuery] PagedQueryRequest request)
+    [HttpGet("{publicId:guid}/scopes/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UserScopeResponse>>>> GetUserScopesPage(Guid publicId, [FromQuery] PagedQueryRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<PagedResponse<UserScopeResponse>>("User not found"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(Fail<PagedResponse<UserScopeResponse>>("User not found"));
         if (!UserScopeSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<UserScopeResponse>>("SortBy must be createdAt, effectiveFrom, type, department, or unit."));
 
         var query = _context.UserScopes
             .AsNoTracking()
-            .Where(scope => scope.UserId == id)
+            .Where(scope => scope.UserId == user.Id)
             .Include(scope => scope.Department)
             .Include(scope => scope.Unit)
             .AsQueryable();
@@ -388,14 +397,14 @@ public class UsersController : ControllerBase
             PagedResponse<UserScopeResponse>.Create(scopes, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpPut("{id}/scopes")]
-    public async Task<ActionResult<ApiResponse<bool>>> SetUserScopes(string id, [FromBody] UpdateUserScopesRequest request)
+    [HttpPut("{publicId:guid}/scopes")]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserScopes(Guid publicId, [FromBody] UpdateUserScopesRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before assigning scopes"));
         if (!await IsAllowedAsync(actor, "SECURITY.ASSIGN_ROLES")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
         if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion))
             return BadRequest(Fail<bool>("RowVersion must be a valid non-empty base64 concurrency token."));
@@ -416,7 +425,7 @@ public class UsersController : ControllerBase
             return Forbid();
 
         var now = DateTime.UtcNow;
-        var existing = await _context.UserScopes.Where(scope => scope.UserId == id && scope.IsActive).ToListAsync();
+        var existing = await _context.UserScopes.Where(scope => scope.UserId == user.Id && scope.IsActive).ToListAsync();
         foreach (var item in existing)
         {
             item.IsActive = false;
@@ -427,7 +436,7 @@ public class UsersController : ControllerBase
         {
             _context.UserScopes.Add(new UserScope
             {
-                UserId = id,
+                UserId = user.Id,
                 MunicipalityId = _tenantContext.MunicipalityId,
                 ScopeType = Enum.Parse<ScopeType>(scope.ScopeType, true),
                 DepartmentId = scope.DepartmentId,
@@ -453,31 +462,33 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpGet("{id}/assignments")]
-    public ActionResult<ApiResponse<UserAssignmentResponse[]>> GetUserAssignments(string id) =>
+    [HttpGet("{publicId:guid}/assignments")]
+    public ActionResult<ApiResponse<UserAssignmentResponse[]>> GetUserAssignments(Guid publicId) =>
         StatusCode(StatusCodes.Status410Gone, Fail<UserAssignmentResponse[]>(
-            $"This unbounded route is retired. Use /api/users/{id}/assignments/page."));
+            $"This unbounded route is retired. Use /api/users/{publicId}/assignments/page."));
 
-    [HttpGet("{id}/assignments/page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<UserAssignmentResponse>>>> GetUserAssignmentsPage(string id, [FromQuery] PagedQueryRequest request)
+    [HttpGet("{publicId:guid}/assignments/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<UserAssignmentResponse>>>> GetUserAssignmentsPage(Guid publicId, [FromQuery] PagedQueryRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<PagedResponse<UserAssignmentResponse>>("User not found"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(Fail<PagedResponse<UserAssignmentResponse>>("User not found"));
         if (!UserAssignmentSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<UserAssignmentResponse>>("SortBy must be createdAt, validFrom, validTo, type, or status."));
 
         var query = _context.UserAssignments
             .AsNoTracking()
-            .Where(assignment => assignment.UserId == id);
+            .Where(assignment => assignment.UserId == user.Id);
         if (request.NormalizedSearch.Length > 0)
         {
             var term = request.NormalizedSearch;
             var hasType = Enum.TryParse<AssignmentType>(term, true, out var assignmentType);
+            var hasDelegator = Guid.TryParse(term, out var delegatorPublicId);
             query = query.Where(assignment => (hasType && assignment.AssignmentType == assignmentType)
-                || (assignment.DelegatorUserId != null && assignment.DelegatorUserId.Contains(term))
+                || (hasDelegator && assignment.DelegatorUserId != null
+                    && _context.Users.Any(delegator => delegator.Id == assignment.DelegatorUserId && delegator.PublicId == delegatorPublicId))
                 || (assignment.TargetId != null && assignment.TargetId.Contains(term))
                 || (assignment.KpiId != null && assignment.KpiId.Contains(term))
                 || (assignment.ProjectId != null && assignment.ProjectId.Contains(term))
@@ -501,7 +512,10 @@ public class UsersController : ControllerBase
             .Select(assignment => new UserAssignmentResponse(
                 assignment.PublicId,
                 assignment.AssignmentType.ToString(),
-                assignment.DelegatorUserId,
+                assignment.DelegatorUserId == null ? null : _context.Users
+                    .Where(delegator => delegator.Id == assignment.DelegatorUserId)
+                    .Select(delegator => (Guid?)delegator.PublicId)
+                    .SingleOrDefault(),
                 assignment.IsActive,
                 assignment.ValidFromUtc,
                 assignment.ValidToUtc,
@@ -516,14 +530,14 @@ public class UsersController : ControllerBase
             PagedResponse<UserAssignmentResponse>.Create(assignments, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpPut("{id}/assignments")]
-    public async Task<ActionResult<ApiResponse<bool>>> SetUserAssignments(string id, [FromBody] UpdateUserAssignmentsRequest request)
+    [HttpPut("{publicId:guid}/assignments")]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserAssignments(Guid publicId, [FromBody] UpdateUserAssignmentsRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<bool>("Select a municipality context before assigning responsibilities"));
         if (!await IsAllowedAsync(actor, "SECURITY.ASSIGN_ROLES")) return Forbid();
-        var user = await TenantUsers().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
         if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion))
             return BadRequest(Fail<bool>("RowVersion must be a valid non-empty base64 concurrency token."));
@@ -550,28 +564,28 @@ public class UsersController : ControllerBase
                 AssignmentType.AdditionalApproverAssignment or AssignmentType.AdditionalVerifierAssignment or AssignmentType.AdditionalSubmitterAssignment => hasTarget,
                 AssignmentType.ProjectAssignee => !string.IsNullOrWhiteSpace(assignment.ProjectId),
                 AssignmentType.TaskAssignee => !string.IsNullOrWhiteSpace(assignment.TaskId),
-                AssignmentType.DelegatedAssignment => !string.IsNullOrWhiteSpace(assignment.DelegatorUserId)
+                AssignmentType.DelegatedAssignment => assignment.DelegatorUserPublicId.HasValue
                     && (hasTarget || !string.IsNullOrWhiteSpace(assignment.ProjectId) || !string.IsNullOrWhiteSpace(assignment.TaskId)),
                 _ => false
             };
             if (!validSelector)
                 return BadRequest(Fail<bool>($"Assignment type '{type}' requires its corresponding record selector."));
-            if (type == AssignmentType.DelegatedAssignment && string.Equals(assignment.DelegatorUserId, id, StringComparison.OrdinalIgnoreCase))
+            if (type == AssignmentType.DelegatedAssignment && assignment.DelegatorUserPublicId == user.PublicId)
                 return BadRequest(Fail<bool>("A user cannot delegate an assignment to themselves."));
         }
 
-        var delegatorIds = request.Assignments
-            .Where(item => !string.IsNullOrWhiteSpace(item.DelegatorUserId))
-            .Select(item => item.DelegatorUserId!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var delegatorPublicIds = request.Assignments
+            .Where(item => item.DelegatorUserPublicId.HasValue)
+            .Select(item => item.DelegatorUserPublicId!.Value)
+            .Distinct()
             .ToArray();
-        if (delegatorIds.Length > 0)
+        var delegatorIds = new Dictionary<Guid, string>();
+        if (delegatorPublicIds.Length > 0)
         {
-            var validDelegatorIds = await TenantUsers().AsNoTracking()
-                .Where(item => delegatorIds.Contains(item.Id) && item.IsActive)
-                .Select(item => item.Id)
-                .ToArrayAsync();
-            if (validDelegatorIds.Length != delegatorIds.Length)
+            delegatorIds = await TenantUsers().AsNoTracking()
+                .Where(item => delegatorPublicIds.Contains(item.PublicId) && item.IsActive)
+                .ToDictionaryAsync(item => item.PublicId, item => item.Id);
+            if (delegatorIds.Count != delegatorPublicIds.Length)
                 return BadRequest(Fail<bool>("Every delegator must be an active user in the selected municipality."));
         }
 
@@ -580,7 +594,7 @@ public class UsersController : ControllerBase
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate != null) return BadRequest(Fail<bool>("Duplicate operational assignments are not permitted."));
 
-        var existing = await _context.UserAssignments.Where(assignment => assignment.UserId == id).ToListAsync();
+        var existing = await _context.UserAssignments.Where(assignment => assignment.UserId == user.Id).ToListAsync();
         var previouslyActiveCount = existing.Count(item => item.IsActive);
         var now = DateTime.UtcNow;
         foreach (var assignment in existing.Where(item => item.IsActive))
@@ -595,9 +609,11 @@ public class UsersController : ControllerBase
         {
             _context.UserAssignments.Add(new UserAssignment
             {
-                UserId = id,
+                UserId = user.Id,
                 AssignmentType = Enum.Parse<AssignmentType>(assignment.AssignmentType, true),
-                DelegatorUserId = NullIfWhiteSpace(assignment.DelegatorUserId),
+                DelegatorUserId = assignment.DelegatorUserPublicId.HasValue
+                    ? delegatorIds[assignment.DelegatorUserPublicId.Value]
+                    : null,
                 IsActive = assignment.IsActive,
                 ValidFromUtc = assignment.ValidFromUtc,
                 ValidToUtc = assignment.ValidToUtc,
@@ -620,13 +636,13 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpGet("{id}/permissions")]
-    public async Task<ActionResult<ApiResponse<UserPermissionsResponse>>> GetUserPermissions(string id)
+    [HttpGet("{publicId:guid}/permissions")]
+    public async Task<ActionResult<ApiResponse<UserPermissionsResponse>>> GetUserPermissions(Guid publicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<UserPermissionsResponse>("User not found"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<UserPermissionsResponse>(false, null, "User not found"));
 
         var roleNames = await _userManager.GetRolesAsync(user);
@@ -656,13 +672,13 @@ public class UsersController : ControllerBase
         return Ok(new ApiResponse<UserPermissionsResponse>(true, new UserPermissionsResponse(fromRoles.ToArray(), overrideResponses, effective.OrderBy(x => x).ToArray())));
     }
 
-    [HttpPut("{id}/permission-overrides")]
-    public async Task<ActionResult<ApiResponse<bool>>> SetUserPermissionOverrides(string id, [FromBody] UpdateUserPermissionOverridesRequest request)
+    [HttpPut("{publicId:guid}/permission-overrides")]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserPermissionOverrides(Guid publicId, [FromBody] UpdateUserPermissionOverridesRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
         if (!await IsAllowedAsync(actor, "SECURITY.MANAGE_PERMISSIONS")) return Forbid();
-        if (!await TenantUsers().AsNoTracking().AnyAsync(item => item.Id == id)) return NotFound(Fail<bool>("User not found"));
+        if (!await TenantUsers().AsNoTracking().AnyAsync(item => item.PublicId == publicId)) return NotFound(Fail<bool>("User not found"));
         await Task.CompletedTask;
         return StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Direct user permission grants are disabled. Use tenant-scoped role assignments in /api/v1/security."));
     }
@@ -692,7 +708,7 @@ public class UsersController : ControllerBase
                 .Select(roleId => rolesById.GetValueOrDefault(roleId))
                 .Where(role => role != null)
                 .OrderBy(role => role!.Name)
-                .Select(role => new RoleResponse(role!.Id, role.Name!, role.Description, role.IsSystemRole, role.IsActive))
+                .Select(role => new RoleResponse(role!.PublicId, role.Name!, role.Description, role.IsSystemRole, role.IsActive))
                 .ToArray();
             return new UserDetailResponse(ToResponse(user, canReadEmail, canReadPhone), roles);
         }).ToArray();
@@ -712,13 +728,10 @@ public class UsersController : ControllerBase
     }
 
     private static UserResponse ToResponse(ApplicationUser user, bool includeEmail, bool includePhone) =>
-        new(user.Id, includeEmail ? user.UserName ?? user.Email ?? user.Id : user.Id, user.FirstName, user.LastName,
+        new(user.PublicId, includeEmail ? user.UserName ?? user.Email ?? user.PublicId.ToString() : user.PublicId.ToString(), user.FirstName, user.LastName,
             user.FullName, includeEmail ? user.Email : null, includePhone ? user.PhoneNumber : null, user.Department,
             user.Position, user.IsActive, user.MustChangePassword, user.LastLoginAt)
-        {
-            PublicId = user.PublicId,
-            RowVersion = Convert.ToBase64String(user.RowVersion)
-        };
+        { RowVersion = Convert.ToBase64String(user.RowVersion) };
 
     private void QueueAudit(ApplicationUser user, string action, object? oldValue, object? newValue, string actorId, string reason = "User administration change") =>
         _context.AuditTrails.Add(new AuditTrail
@@ -738,7 +751,7 @@ public class UsersController : ControllerBase
         });
 
     private static string AssignmentKey(UserAssignmentItemRequest assignment) => string.Join('|',
-        assignment.AssignmentType.Trim(), assignment.DelegatorUserId?.Trim(), assignment.TargetId?.Trim(), assignment.KpiId?.Trim(),
+        assignment.AssignmentType.Trim(), assignment.DelegatorUserPublicId, assignment.TargetId?.Trim(), assignment.KpiId?.Trim(),
         assignment.ProjectId?.Trim(), assignment.TaskId?.Trim(), assignment.ValidFromUtc?.ToUniversalTime().Ticks,
         assignment.ValidToUtc?.ToUniversalTime().Ticks, assignment.IsActive);
 

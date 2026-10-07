@@ -80,7 +80,7 @@ public class OpmsTargetsController : ControllerBase
         var items = await query
             .Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.SdbipLayer).Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
-            .Include(item => item.Wards).Include(item => item.AdditionalAssignees).Include(item => item.VoteNumbers)
+            .Include(item => item.Wards).Include(item => item.AdditionalAssignees).ThenInclude(item => item.User).Include(item => item.VoteNumbers)
             .Include(item => item.NationalKpaReference).Include(item => item.MunicipalKpaReference).Include(item => item.BackToBasicsPillarReference)
             .Include(item => item.StrategicGoalMaster).Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
@@ -183,6 +183,8 @@ public class OpmsTargetsController : ControllerBase
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
         var mappingError = await ValidateMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, new HashSet<int>());
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
+        var userReferences = await ResolveUserReferencesAsync(request);
+        if (userReferences.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, userReferences.Error));
         var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, null);
         if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
@@ -207,7 +209,7 @@ public class OpmsTargetsController : ControllerBase
             PeriodId = request.PeriodId,
             DepartmentId = organization.DepartmentId,
             UnitId = organization.UnitId,
-            AssignedUserId = request.AssignedUserId,
+            AssignedUserId = userReferences.AssignedUserId,
             MunicipalityId = _tenantContext.MunicipalityId,
             IndicatorNumber = request.IndicatorNumber.Trim(),
             OriginalOrderNumber = request.OriginalOrderNumber,
@@ -238,7 +240,7 @@ public class OpmsTargetsController : ControllerBase
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
-        ApplyMappings(entity, request);
+        ApplyMappings(entity, request, userReferences.AdditionalAssigneeIds);
 
         _context.OpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, entity.Id, null);
@@ -264,7 +266,7 @@ public class OpmsTargetsController : ControllerBase
 
         var entity = await _context.OpmsTargets
             .Include(item => item.Wards)
-            .Include(item => item.AdditionalAssignees)
+            .Include(item => item.AdditionalAssignees).ThenInclude(item => item.User)
             .Include(item => item.VoteNumbers)
             .Include(item => item.GovernedBudgetSources)
             .Include(item => item.SdbipLayer)
@@ -281,6 +283,8 @@ public class OpmsTargetsController : ControllerBase
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
         var mappingError = await ValidateMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, entity.VoteNumbers.Select(item => item.VoteNumberId).ToHashSet());
         if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
+        var userReferences = await ResolveUserReferencesAsync(request);
+        if (userReferences.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, userReferences.Error));
         var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, entity.SdbipLayerId);
         if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
@@ -313,7 +317,7 @@ public class OpmsTargetsController : ControllerBase
         entity.PeriodId = request.PeriodId;
         entity.DepartmentId = organization.DepartmentId;
         entity.UnitId = organization.UnitId;
-        entity.AssignedUserId = request.AssignedUserId;
+        entity.AssignedUserId = userReferences.AssignedUserId;
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
         entity.StrategicGoalId = request.StrategicGoalId;
@@ -338,7 +342,7 @@ public class OpmsTargetsController : ControllerBase
         _context.OpmsTargetWards.RemoveRange(entity.Wards);
         _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
         _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
-        ApplyMappings(entity, request);
+        ApplyMappings(entity, request, userReferences.AdditionalAssigneeIds);
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
@@ -625,7 +629,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
             .Include(item => item.Wards)
-            .Include(item => item.AdditionalAssignees)
+            .Include(item => item.AdditionalAssignees).ThenInclude(item => item.User)
             .Include(item => item.VoteNumbers)
             .Include(item => item.NationalKpaReference)
             .Include(item => item.MunicipalKpaReference)
@@ -659,7 +663,7 @@ public class OpmsTargetsController : ControllerBase
         var tenantId = _tenantContext.MunicipalityId;
         if (!tenantId.HasValue || tenantId == long.MinValue) return "A municipality context is required.";
         var wardIds = (request.WardIds ?? []).Distinct().ToArray();
-        var assigneeIds = (request.AdditionalAssigneeIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var assigneeIds = (request.AdditionalAssigneePublicIds ?? []).Distinct().ToArray();
         var voteIds = (request.VoteNumberIds ?? []).Distinct().ToArray();
         if (wardIds.Length > 100 || assigneeIds.Length > 100 || voteIds.Length > 100) return "At most 100 wards, additional assignees, and vote numbers may be linked.";
         var wards = await _context.Wards.AsNoTracking().Where(item => wardIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
@@ -671,19 +675,38 @@ public class OpmsTargetsController : ControllerBase
             || item.MunicipalityFinancialYearId != municipalityFinancialYearId && !(item.MunicipalityFinancialYearId == null && existingVoteIds.Contains(item.Id))))
             return "Every vote number must be active and belong to the selected municipality financial year; unreconciled historical votes may only be retained on their existing KPI.";
 
-        var users = await _context.Users.AsNoTracking().Where(item => assigneeIds.Contains(item.Id) && item.IsActive).Select(item => new { item.Id, item.MunicipalityId }).ToArrayAsync();
-        var now = DateTime.UtcNow;
-        var assignedIds = await _context.SecurityUserRoleAssignments.AsNoTracking().Where(item => assigneeIds.Contains(item.UserId) && item.MunicipalityId == tenantId.Value && item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now)).Select(item => item.UserId).Distinct().ToArrayAsync();
-        if (users.Length != assigneeIds.Length || users.Any(item => item.MunicipalityId != tenantId.Value && !assignedIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase)))
-            return "Every additional assignee must be active and assigned within the selected municipality.";
         return null;
     }
 
-    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request)
+    private async Task<(string? AssignedUserId, IReadOnlyDictionary<Guid, string> AdditionalAssigneeIds, string? Error)> ResolveUserReferencesAsync(SaveOpmsTargetRequest request)
+    {
+        if (_tenantContext.MunicipalityId is not > 0)
+            return (null, new Dictionary<Guid, string>(), "A municipality context is required.");
+        var additionalPublicIds = (request.AdditionalAssigneePublicIds ?? []).Distinct().ToArray();
+        var allPublicIds = additionalPublicIds
+            .Concat(request.AssignedUserPublicId.HasValue ? [request.AssignedUserPublicId.Value] : [])
+            .Distinct()
+            .ToArray();
+        if (allPublicIds.Length == 0) return (null, new Dictionary<Guid, string>(), null);
+        var now = DateTime.UtcNow;
+        var users = await _context.Users.AsNoTracking()
+            .Where(item => allPublicIds.Contains(item.PublicId) && item.IsActive)
+            .Where(item => item.MunicipalityId == _tenantContext.MunicipalityId
+                || _context.SecurityUserRoleAssignments.Any(link => link.UserId == item.Id
+                    && link.MunicipalityId == _tenantContext.MunicipalityId && link.IsActive && !link.RevokedAt.HasValue
+                    && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now)))
+            .Select(item => new { item.PublicId, item.Id })
+            .ToDictionaryAsync(item => item.PublicId, item => item.Id);
+        if (users.Count != allPublicIds.Length)
+            return (null, users, "Every assigned user must be active and assigned within the selected municipality.");
+        return (request.AssignedUserPublicId.HasValue ? users[request.AssignedUserPublicId.Value] : null, users, null);
+    }
+
+    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request, IReadOnlyDictionary<Guid, string> userIdsByPublicId)
     {
         var tenantId = _tenantContext.MunicipalityId;
         target.Wards = (request.WardIds ?? []).Distinct().Select(id => new OpmsTargetWard { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = id }).ToList();
-        target.AdditionalAssignees = (request.AdditionalAssigneeIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).Select(id => new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = id }).ToList();
+        target.AdditionalAssignees = (request.AdditionalAssigneePublicIds ?? []).Distinct().Select(publicId => new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = userIdsByPublicId[publicId] }).ToList();
         target.VoteNumbers = (request.VoteNumberIds ?? []).Distinct().Select(id => new OpmsTargetVoteNumber { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = id }).ToList();
     }
 

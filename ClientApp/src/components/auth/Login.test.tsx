@@ -11,16 +11,19 @@ describe('MFA login challenge', () => {
     vi.clearAllMocks();
     window.history.replaceState({}, '', '/login');
     app.resumeEnterpriseLogin.mockResolvedValue('success');
+    authApi.getEnterpriseSignInOptions.mockResolvedValue({ success: true, data: { municipalityCode: '', municipalityName: '', localEnabled: true, providers: [] } });
   });
 
-  it('discovers municipality authentication modes without exposing provider secrets', async () => {
+  it('resolves municipality authentication modes from the email without asking for a code', async () => {
     authApi.getEnterpriseSignInOptions.mockResolvedValue({ success: true, data: { municipalityCode: 'M1', municipalityName: 'Metro One', localEnabled: false, providers: [{ code: 'ENTRA', displayName: 'Work account', kind: 'MICROSOFT_ENTRA_ID' }] } });
     render(<Login />);
-    fireEvent.change(screen.getByLabelText(/Municipality code/), { target: { value: 'M1' } });
-    fireEvent.click(screen.getByRole('button', { name: /Find sign-in options/i }));
+    expect(screen.queryByLabelText(/Municipality code/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Username or Email/), { target: { value: 'admin@metro.example' } });
     expect(await screen.findByRole('button', { name: /Sign in with Work account/i })).toBeInTheDocument();
-    expect(screen.getByText(/Local password sign-in is disabled/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Username or Email/)).not.toBeInTheDocument();
+    expect(authApi.getEnterpriseSignInOptions).toHaveBeenCalledWith('admin@metro.example');
+    expect(screen.getByText(/Use your configured work account/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Username or Email/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Password/)).not.toBeInTheDocument();
   });
 
   it('requests and submits an authenticator code after password validation', async () => {

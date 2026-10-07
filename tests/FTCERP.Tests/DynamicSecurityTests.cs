@@ -153,7 +153,7 @@ public class DynamicSecurityTests
         payload.TotalCount.Should().Be(2);
         payload.Items.Should().ContainSingle();
         payload.TotalPages.Should().Be(2);
-        payload.Items.Should().NotContain(item => item.Id == foreign.Id || item.Id == expired.Id);
+        payload.Items.Should().NotContain(item => item.PublicId == foreign.PublicId || item.PublicId == expired.PublicId);
         controller.GetUsers().Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
@@ -192,8 +192,8 @@ public class DynamicSecurityTests
 
         var inactiveResult = await controller.GetRolesPage(new PagedQueryRequest { Search = "FORMER", SortBy = "code", SortDirection = "asc" }, includeInactive: true);
         var inactive = inactiveResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityRoleDto>>>().Subject.Data!;
-        inactive.Items.Should().ContainSingle(item => item.Id == inactiveRole.Id);
-        inactive.Items.Should().NotContain(item => item.Id == foreignRole.Id);
+        inactive.Items.Should().ContainSingle(item => item.PublicId == inactiveRole.PublicId);
+        inactive.Items.Should().NotContain(item => item.PublicId == foreignRole.PublicId);
         controller.GetRoles().Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
@@ -660,7 +660,7 @@ public class DynamicSecurityTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
         };
 
-        var result = await controller.PutUserRoles(target.Id, new UpdateUserRoleSecurityRequest([], [new UpdateUserRoleAssignment(tenantRole.Id, 7, department.Id, unit.Id, DateTime.UtcNow, null)]));
+        var result = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [new UpdateUserRoleAssignment(tenantRole.PublicId, 7, department.Id, unit.Id, DateTime.UtcNow, null)]));
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         context.SecurityUserRoleAssignments.Should().ContainSingle(item => item.UserId == actor.Id);
@@ -690,8 +690,8 @@ public class DynamicSecurityTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
         };
 
-        var savedResult = await controller.PutUserRoles(target.Id, new UpdateUserRoleSecurityRequest([], [
-            new UpdateUserRoleAssignment(tenantRole.Id, 7, null, null, DateTime.UtcNow.AddMinutes(-1), null, department.PublicId, unit.PublicId)
+        var savedResult = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [
+            new UpdateUserRoleAssignment(tenantRole.PublicId, 7, null, null, DateTime.UtcNow.AddMinutes(-1), null, department.PublicId, unit.PublicId)
         ]));
 
         savedResult.Result.Should().BeOfType<OkObjectResult>();
@@ -699,7 +699,7 @@ public class DynamicSecurityTests
         stored.DepartmentId.Should().Be(department.Id);
         stored.UnitId.Should().Be(unit.Id);
 
-        var loadedResult = await controller.GetUserRoles(target.Id);
+        var loadedResult = await controller.GetUserRoles(target.PublicId);
         var loaded = loadedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!;
         var assignment = loaded.Assignments.Should().ContainSingle().Subject;
         assignment.PublicId.Should().Be(stored.PublicId);

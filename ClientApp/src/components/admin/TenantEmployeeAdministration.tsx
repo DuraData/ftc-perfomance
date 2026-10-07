@@ -49,7 +49,7 @@ export function TenantEmployeeAdministration() {
   const [assignmentSearch, setAssignmentSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [employee, setEmployee] = useState({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() });
+  const [employee, setEmployee] = useState({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserPublicId: '', effectiveFrom: today() });
   const [assignment, setAssignment] = useState({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true });
   const [closure, setClosure] = useState({ effectiveTo: today(), reason: '' });
   const selected = employees.find(item => item.publicId === selectedId) ?? null;
@@ -108,16 +108,16 @@ export function TenantEmployeeAdministration() {
   const saveEmployee = async () => {
     if (!employee.employeeNumber.trim() || !employee.firstName.trim() || !employee.lastName.trim()) { setError('Employee number, first name, and last name are required.'); return; }
     setBusy(true); setError(null);
-    const result = await createMunicipalEmployee({ ...employee, salaryReference: canEditSalaryReference ? employee.salaryReference || null : null, emailAddress: security.canEditField('EMPLOYEE', 'EmailAddress') ? employee.emailAddress || null : null, identityUserId: canEditIdentityLink ? employee.identityUserId || null : null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
+    const result = await createMunicipalEmployee({ ...employee, salaryReference: canEditSalaryReference ? employee.salaryReference || null : null, emailAddress: security.canEditField('EMPLOYEE', 'EmailAddress') ? employee.emailAddress || null : null, identityUserPublicId: canEditIdentityLink ? employee.identityUserPublicId || null : null, effectiveFrom: atUtc(employee.effectiveFrom), effectiveTo: null });
     if (!result.success) setError(result.message ?? 'Employee could not be created.');
-    else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserId: '', effectiveFrom: today() }); if (page === 1) await loadEmployees(); else setPage(1); }
+    else { pushToast('success', 'Employee created'); setEmployee({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserPublicId: '', effectiveFrom: today() }); if (page === 1) await loadEmployees(); else setPage(1); }
     setBusy(false);
   };
 
   const deactivateEmployee = async () => {
     if (!selected) return;
     setBusy(true); setError(null);
-    const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, salaryReference: null, salaryReferenceSpecified: false, emailAddress: null, emailAddressSpecified: false, identityUserId: null, identityUserIdSpecified: false, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
+    const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, salaryReference: null, salaryReferenceSpecified: false, emailAddress: null, emailAddressSpecified: false, identityUserPublicId: null, identityUserPublicIdSpecified: false, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), rowVersion: selected.rowVersion });
     if (!result.success) setError(result.message ?? 'Employee could not be deactivated.');
     else { pushToast('success', 'Employee deactivated without deleting placement history'); setSelectedId(''); setAssignments([]); await loadEmployees(); }
     setBusy(false);
@@ -152,7 +152,7 @@ export function TenantEmployeeAdministration() {
           <div className="grid grid-cols-2 gap-2"><Input label="First name" value={employee.firstName} onChange={event => setEmployee(current => ({ ...current, firstName: event.target.value }))} required /><Input label="Last name" value={employee.lastName} onChange={event => setEmployee(current => ({ ...current, lastName: event.target.value }))} required /></div>
           {security.canReadField('EMPLOYEE', 'EmailAddress') && <Input label="Email" type="email" value={employee.emailAddress} disabled={!security.canEditField('EMPLOYEE', 'EmailAddress')} onChange={event => setEmployee(current => ({ ...current, emailAddress: event.target.value }))} />}
           {canReadIdentityLink && <Input label="Search linked logins" value={userSearch} disabled={!canEditIdentityLink} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />}
-          {canReadIdentityLink && <Select label="Linked login" value={employee.identityUserId} disabled={!canEditIdentityLink} placeholder="No linked login" options={users.filter(item => item.user.isActive).map(item => ({ value: item.user.id, label: `${item.user.fullName} · ${item.user.email ?? 'protected email'}` }))} onChange={event => setEmployee(current => ({ ...current, identityUserId: event.target.value }))} />}
+          {canReadIdentityLink && <Select label="Linked login" value={employee.identityUserPublicId} disabled={!canEditIdentityLink} placeholder="No linked login" options={users.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: `${item.user.fullName} · ${item.user.email ?? 'protected email'}` }))} onChange={event => setEmployee(current => ({ ...current, identityUserPublicId: event.target.value }))} />}
           {canReadIdentityLink && userTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous logins</Button><span>Page {userPage} of {userTotalPages}</span><Button size="sm" variant="outline" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next logins</Button></div>}
           <Input label="Effective from" type="date" value={employee.effectiveFrom} onChange={event => setEmployee(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => void saveEmployee()} disabled={busy}>Create employee</Button>

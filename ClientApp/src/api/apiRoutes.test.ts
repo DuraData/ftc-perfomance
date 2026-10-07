@@ -56,11 +56,11 @@ describe('versioned API routes', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { allowed: true, reason: 'Allowed', effectivePermissions: [], matchedScopes: [], matchedAssignments: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await simulateAccess({ userId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' });
+    await simulateAccess({ userPublicId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' });
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/access/simulate'), expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ userId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' }),
+      body: JSON.stringify({ userPublicId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' }),
     }));
   });
 
@@ -69,17 +69,17 @@ describe('versioned API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await saveSecurityUserRoles('user-1', {
-      userId: 'user-1', userName: 'Review User', assignments: [{
-        publicId: 'assignment-public-id', roleId: 'role-1', roleName: 'Reviewer', municipalityId: 7,
+      userPublicId: 'user-1', userName: 'Review User', assignments: [{
+        publicId: 'assignment-public-id', rolePublicId: 'role-1', roleName: 'Reviewer', municipalityId: 7,
         effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==',
       }],
-    }, [{ roleId: 'role-1', municipalityId: 7 }]);
+    }, [{ rolePublicId: 'role-1', municipalityId: 7 }]);
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/security/users/user-1/roles'), expect.objectContaining({
       method: 'PUT',
       body: JSON.stringify({
         expectedAssignments: [{ assignmentPublicId: 'assignment-public-id', rowVersion: 'AQ==' }],
-        assignments: [{ roleId: 'role-1', municipalityId: 7 }],
+        assignments: [{ rolePublicId: 'role-1', municipalityId: 7 }],
       }),
     }));
   });
@@ -605,8 +605,8 @@ describe('versioned API routes', () => {
     const dto = {
       id: 'target-live', publicId: 'target-live-public', rowVersion: 'AQ==', periodId: 42,
       departmentId: 7, departmentName: 'Live Water Services', unitId: null, unitName: null,
-      assignedUserId: 'employee-live', assignedUserName: 'Live Owner', wardIds: [9],
-      additionalAssigneeIds: ['employee-two'], voteNumberIds: [12], indicatorNumber: 'LIVE-001',
+      assignedUserPublicId: 'employee-live', assignedUserName: 'Live Owner', wardIds: [9],
+      additionalAssigneePublicIds: ['employee-two'], voteNumberIds: [12], indicatorNumber: 'LIVE-001',
       nationalKpa: 'Infrastructure', municipalKpa: 'Water', strategicGoalId: 3,
       strategicObjectiveId: 4, performanceObjective: 'Deliver water', targetName: 'Live KPI',
       kpiDescription: 'Server supplied description', baseline: 10, annualTarget: 20,

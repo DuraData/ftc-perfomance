@@ -110,13 +110,13 @@ public sealed class SecurityAdministrationController : ControllerBase
         return Ok(new ApiResponse<SecurityRoleDto>(true, ToRoleDto(role)));
     }
 
-    [HttpPut("roles/{roleId}")]
+    [HttpPut("roles/{rolePublicId:guid}")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_ROLES")]
-    public async Task<ActionResult<ApiResponse<SecurityRoleDto>>> UpdateRole(string roleId, [FromBody] UpdateSecurityRoleRequest request)
+    public async Task<ActionResult<ApiResponse<SecurityRoleDto>>> UpdateRole(Guid rolePublicId, [FromBody] UpdateSecurityRoleRequest request)
     {
         var actor = await GetCurrentUserAsync();
         if (actor == null) return Unauthorized(new ApiResponse<SecurityRoleDto>(false, null, "User not found"));
-        var role = await _context.Roles.FirstOrDefaultAsync(item => item.Id == roleId);
+        var role = await _context.Roles.FirstOrDefaultAsync(item => item.PublicId == rolePublicId);
         if (role == null) return NotFound(new ApiResponse<SecurityRoleDto>(false, null, "Role not found"));
         if (!await CanAdministerRoleAsync(actor, role)) return Forbid();
         if (role.IsSystemRole) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "System roles cannot be changed through tenant administration"));
@@ -183,25 +183,25 @@ public sealed class SecurityAdministrationController : ControllerBase
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
         };
         var users = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
-        var rows = users.Select(item => new SecurityUserDto(item.Id, item.FullName, item.Email ?? item.UserName ?? item.Id));
+        var rows = users.Select(item => new SecurityUserDto(item.PublicId, item.FullName, item.Email ?? item.UserName ?? item.PublicId.ToString()));
         return Ok(new ApiResponse<PagedResponse<SecurityUserDto>>(true,
             PagedResponse<SecurityUserDto>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> SecurityUserSortFields = ["createdat", "name", "email", "status"];
 
-    [HttpGet("users/{userId}/roles")]
+    [HttpGet("users/{userPublicId:guid}/roles")]
     [Authorize(Policy = "Permission:SECURITY.ASSIGN_ROLES")]
-    public async Task<ActionResult<ApiResponse<UserRoleSecurityConfigurationDto>>> GetUserRoles(string userId)
+    public async Task<ActionResult<ApiResponse<UserRoleSecurityConfigurationDto>>> GetUserRoles(Guid userPublicId)
     {
         var actor = await GetCurrentUserAsync();
-        var user = await _userManager.FindByIdAsync(userId);
+        var user = await _context.Users.SingleOrDefaultAsync(item => item.PublicId == userPublicId);
         if (actor == null) return Unauthorized(new ApiResponse<UserRoleSecurityConfigurationDto>(false, null, "User not found"));
         if (user == null) return NotFound(new ApiResponse<UserRoleSecurityConfigurationDto>(false, null, "User not found"));
-        if (!await CanAdministerUserAsync(actor, userId)) return Forbid();
+        if (!await CanAdministerUserAsync(actor, user.Id)) return Forbid();
         var now = DateTime.UtcNow;
         var assignmentEntities = await _context.SecurityUserRoleAssignments.AsNoTracking()
-            .Where(item => item.UserId == userId && item.IsActive && !item.RevokedAt.HasValue && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
+            .Where(item => item.UserId == user.Id && item.IsActive && !item.RevokedAt.HasValue && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
             .OrderBy(item => item.Role.Name)
             .Include(item => item.Role)
             .ToArrayAsync();
@@ -215,37 +215,38 @@ public sealed class SecurityAdministrationController : ControllerBase
         {
             var department = item.DepartmentId.HasValue && departments.TryGetValue(item.DepartmentId.Value, out var foundDepartment) ? foundDepartment : null;
             var unit = item.UnitId.HasValue && units.TryGetValue(item.UnitId.Value, out var foundUnit) ? foundUnit : null;
-            return new UserRoleAssignmentDto(item.PublicId, item.RoleId, item.Role.Name ?? item.Role.RoleCode, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), department?.PublicId, department?.Name, unit?.PublicId, unit?.Name);
+            return new UserRoleAssignmentDto(item.PublicId, item.Role.PublicId, item.Role.Name ?? item.Role.RoleCode, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), department?.PublicId, department?.Name, unit?.PublicId, unit?.Name);
         }).ToArray();
-        return Ok(new ApiResponse<UserRoleSecurityConfigurationDto>(true, new UserRoleSecurityConfigurationDto(user.Id, user.FullName, assignments)));
+        return Ok(new ApiResponse<UserRoleSecurityConfigurationDto>(true, new UserRoleSecurityConfigurationDto(user.PublicId, user.FullName, assignments)));
     }
 
-    [HttpPut("users/{userId}/roles")]
+    [HttpPut("users/{userPublicId:guid}/roles")]
     [Authorize(Policy = "Permission:SECURITY.ASSIGN_ROLES")]
-    public async Task<ActionResult<ApiResponse<bool>>> PutUserRoles(string userId, [FromBody] UpdateUserRoleSecurityRequest request)
+    public async Task<ActionResult<ApiResponse<bool>>> PutUserRoles(Guid userPublicId, [FromBody] UpdateUserRoleSecurityRequest request)
     {
         var actor = await GetCurrentUserAsync();
-        var user = await _userManager.FindByIdAsync(userId);
+        var user = await _context.Users.SingleOrDefaultAsync(item => item.PublicId == userPublicId);
         if (actor == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
-        if (!await CanAdministerUserAsync(actor, userId)) return Forbid();
-        if (request.Assignments.Select(item => item.RoleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.Assignments.Length)
+        if (!await CanAdministerUserAsync(actor, user.Id)) return Forbid();
+        if (request.Assignments.Select(item => item.RolePublicId).Distinct().Count() != request.Assignments.Length)
             return BadRequest(new ApiResponse<bool>(false, false, "A role may be assigned only once in the active configuration"));
 
         var actorAccess = await _accessControl.GetEffectiveAccessAsync(actor);
         var actorPermissions = actorAccess.EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var isSystem = actorPermissions.Contains("SECURITY.SYSTEM_SCOPE");
         var actorMunicipalities = actorAccess.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).ToHashSet();
-        var requestedRoleIds = request.Assignments.Select(item => item.RoleId).ToArray();
-        var roles = await _context.Roles.Where(item => requestedRoleIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
-        if (roles.Length != requestedRoleIds.Length) return BadRequest(new ApiResponse<bool>(false, false, "One or more roles are invalid or inactive"));
+        var requestedRolePublicIds = request.Assignments.Select(item => item.RolePublicId).ToArray();
+        var roles = await _context.Roles.Where(item => requestedRolePublicIds.Contains(item.PublicId) && item.IsActive).ToArrayAsync();
+        if (roles.Length != requestedRolePublicIds.Length) return BadRequest(new ApiResponse<bool>(false, false, "One or more roles are invalid or inactive"));
+        var requestedRoleIds = roles.Select(item => item.Id).ToArray();
         if (!isSystem && roles.Any(role => !role.MunicipalityId.HasValue || !actorMunicipalities.Contains(role.MunicipalityId.Value))) return Forbid();
         if (request.Assignments.Any(item => item.EffectiveTo.HasValue && item.EffectiveTo <= (item.EffectiveFrom ?? DateTime.UtcNow)))
             return BadRequest(new ApiResponse<bool>(false, false, "Every assignment EffectiveTo must be later than EffectiveFrom"));
-        var resolvedScopes = new Dictionary<string, (int? DepartmentId, int? UnitId)>(StringComparer.OrdinalIgnoreCase);
+        var resolvedScopes = new Dictionary<Guid, (int? DepartmentId, int? UnitId)>();
         foreach (var item in request.Assignments)
         {
-            var role = roles.Single(value => value.Id == item.RoleId);
+            var role = roles.Single(value => value.PublicId == item.RolePublicId);
             var municipalityId = item.MunicipalityId ?? role.MunicipalityId;
             if (!municipalityId.HasValue) return BadRequest(new ApiResponse<bool>(false, false, "Every assignment requires a municipality"));
             if (_tenantContext.MunicipalityId is > 0 && municipalityId != _tenantContext.MunicipalityId)
@@ -278,13 +279,14 @@ public sealed class SecurityAdministrationController : ControllerBase
                 if (departmentId.HasValue && departmentId != unitDepartmentId)
                     return BadRequest(new ApiResponse<bool>(false, false, "Assignment unit must belong to its selected department"));
             }
-            resolvedScopes[item.RoleId] = (departmentId, unitId);
+            resolvedScopes[item.RolePublicId] = (departmentId, unitId);
         }
         var grantedCodes = await _context.RolePermissions.AsNoTracking().Where(item => requestedRoleIds.Contains(item.RoleId) && item.IsActive && item.IsAllowed).Select(item => item.Permission.Code).Distinct().ToArrayAsync();
         if (grantedCodes.Any(code => !actorPermissions.Contains(code))) return Forbid();
 
         var now = DateTime.UtcNow;
-        var current = await _context.SecurityUserRoleAssignments.Where(item => item.UserId == userId && item.IsActive && !item.RevokedAt.HasValue).ToArrayAsync();
+        var current = await _context.SecurityUserRoleAssignments.Include(item => item.Role)
+            .Where(item => item.UserId == user.Id && item.IsActive && !item.RevokedAt.HasValue).ToArrayAsync();
         if (request.ExpectedAssignments.Length != current.Length || request.ExpectedAssignments.Select(item => item.AssignmentPublicId).Order().SequenceEqual(current.Select(item => item.PublicId).Order()) == false)
             return Conflict(new ApiResponse<bool>(false, false, "Role assignments changed since they were loaded. Refresh and try again."));
         foreach (var expected in request.ExpectedAssignments)
@@ -294,7 +296,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             catch (FormatException) { return BadRequest(new ApiResponse<bool>(false, false, "An assignment RowVersion is invalid")); }
         }
 
-        var oldValue = current.Select(item => new { item.PublicId, item.RoleId, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo }).ToArray();
+        var oldValue = current.Select(item => new { item.PublicId, RolePublicId = item.Role.PublicId, item.MunicipalityId, item.DepartmentId, item.UnitId, item.EffectiveFrom, item.EffectiveTo }).ToArray();
         foreach (var assignment in current)
         {
             assignment.IsActive = false;
@@ -304,16 +306,16 @@ public sealed class SecurityAdministrationController : ControllerBase
         }
         foreach (var item in request.Assignments)
         {
-            var role = roles.Single(value => value.Id == item.RoleId);
+            var role = roles.Single(value => value.PublicId == item.RolePublicId);
             var municipalityId = item.MunicipalityId ?? role.MunicipalityId;
             if (!isSystem && (!municipalityId.HasValue || !actorMunicipalities.Contains(municipalityId.Value))) return Forbid();
-            var resolvedScope = resolvedScopes[item.RoleId];
-            _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment { UserId = userId, RoleId = role.Id, MunicipalityId = municipalityId, DepartmentId = resolvedScope.DepartmentId, UnitId = resolvedScope.UnitId, EffectiveFrom = item.EffectiveFrom ?? now, EffectiveTo = item.EffectiveTo, AssignedBy = actor.Id, AssignedAt = now, IsActive = true });
+            var resolvedScope = resolvedScopes[item.RolePublicId];
+            _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment { UserId = user.Id, RoleId = role.Id, MunicipalityId = municipalityId, DepartmentId = resolvedScope.DepartmentId, UnitId = resolvedScope.UnitId, EffectiveFrom = item.EffectiveFrom ?? now, EffectiveTo = item.EffectiveTo, AssignedBy = actor.Id, AssignedAt = now, IsActive = true });
         }
-        var identityLinks = await _context.UserRoles.Where(item => item.UserId == userId).ToArrayAsync();
+        var identityLinks = await _context.UserRoles.Where(item => item.UserId == user.Id).ToArrayAsync();
         _context.UserRoles.RemoveRange(identityLinks);
-        _context.UserRoles.AddRange(requestedRoleIds.Select(roleId => new IdentityUserRole<string> { UserId = userId, RoleId = roleId }));
-        _context.AuditTrails.Add(new AuditTrail { EntityName = "SecurityUserRoleAssignment", EntityId = userId, Action = "ReplaceRoleAssignments", OldValue = JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(request.Assignments), ChangedBy = actor.Id, ChangedAt = now, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
+        _context.UserRoles.AddRange(requestedRoleIds.Select(roleId => new IdentityUserRole<string> { UserId = user.Id, RoleId = roleId }));
+        _context.AuditTrails.Add(new AuditTrail { EntityName = "SecurityUserRoleAssignment", EntityId = user.PublicId.ToString(), Action = "ReplaceRoleAssignments", OldValue = JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(request.Assignments), ChangedBy = actor.Id, ChangedAt = now, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<bool>(false, false, "Role assignments changed since they were loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<bool>(true, true));
@@ -744,28 +746,28 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     private static readonly HashSet<string> SecurityPermissionDefinitionSortFields = ["code", "kind", "resource"];
 
-    [HttpGet("roles/{roleId}/permissions")]
+    [HttpGet("roles/{rolePublicId:guid}/permissions")]
     [Authorize(Policy = "Permission:SECURITY.VIEW")]
-    public async Task<ActionResult<ApiResponse<RoleSecurityConfigurationDto>>> GetRolePermissions(string roleId)
+    public async Task<ActionResult<ApiResponse<RoleSecurityConfigurationDto>>> GetRolePermissions(Guid rolePublicId)
     {
-        var role = await _context.Roles.AsNoTracking().FirstOrDefaultAsync(item => item.Id == roleId);
+        var role = await _context.Roles.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == rolePublicId);
         if (role == null) return NotFound(new ApiResponse<RoleSecurityConfigurationDto>(false, null, "Role not found"));
         var actor = await GetCurrentUserAsync();
         if (actor == null) return Unauthorized(new ApiResponse<RoleSecurityConfigurationDto>(false, null, "User not found"));
         if (!await CanAdministerRoleAsync(actor, role)) return Forbid();
-        var permissionRows = await _context.RolePermissions.AsNoTracking().Where(item => item.RoleId == roleId && item.IsActive)
+        var permissionRows = await _context.RolePermissions.AsNoTracking().Where(item => item.RoleId == role.Id && item.IsActive)
             .Include(item => item.Permission)
             .OrderBy(item => item.Permission.Code)
             .ToArrayAsync();
         var rows = permissionRows.Select(item => new RoleSecurityPermissionDto(item.Permission.Code, item.Permission.Kind.ToString(), item.Permission.ResourceCode, item.Permission.MemberCode, item.Permission.NavigationCode, item.Permission.ActionCode, item.IsAllowed ? "ALLOW" : "DENY", item.ScopeType.HasValue ? item.ScopeType.ToString() : null, Convert.ToBase64String(item.RowVersion))).ToArray();
-        return Ok(new ApiResponse<RoleSecurityConfigurationDto>(true, new RoleSecurityConfigurationDto(role.Id, role.PublicId, role.Name ?? role.RoleCode, Convert.ToBase64String(role.RowVersion), rows)));
+        return Ok(new ApiResponse<RoleSecurityConfigurationDto>(true, new RoleSecurityConfigurationDto(role.PublicId, role.Name ?? role.RoleCode, Convert.ToBase64String(role.RowVersion), rows)));
     }
 
-    [HttpPut("roles/{roleId}/permissions")]
+    [HttpPut("roles/{rolePublicId:guid}/permissions")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_PERMISSIONS")]
-    public async Task<ActionResult<ApiResponse<bool>>> PutRolePermissions(string roleId, [FromBody] UpdateRoleSecurityRequest request)
+    public async Task<ActionResult<ApiResponse<bool>>> PutRolePermissions(Guid rolePublicId, [FromBody] UpdateRoleSecurityRequest request)
     {
-        var role = await _context.Roles.FirstOrDefaultAsync(item => item.Id == roleId && item.IsActive);
+        var role = await _context.Roles.FirstOrDefaultAsync(item => item.PublicId == rolePublicId && item.IsActive);
         if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
         var actor = await GetCurrentUserAsync();
         if (actor == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
@@ -788,7 +790,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "One or more scope values are invalid"));
 
         var now = DateTime.UtcNow;
-        var current = await _context.RolePermissions.Where(item => item.RoleId == roleId).ToListAsync();
+        var current = await _context.RolePermissions.Where(item => item.RoleId == role.Id).ToListAsync();
         var oldValue = current.Where(item => item.IsActive).Select(item => new { item.PermissionId, item.IsAllowed, Scope = item.ScopeType == null ? null : item.ScopeType.ToString() }).ToArray();
         foreach (var row in current)
         {
@@ -802,7 +804,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             ScopeType? scope = string.IsNullOrWhiteSpace(item.ScopeType) ? null : Enum.Parse<ScopeType>(item.ScopeType, true);
             if (existing == null)
             {
-                _context.RolePermissions.Add(new RolePermission { RoleId = roleId, PermissionId = definition.Id, IsAllowed = item.State.Equals("ALLOW", StringComparison.OrdinalIgnoreCase), ScopeType = scope, IsActive = true, EffectiveFrom = now });
+                _context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = definition.Id, IsAllowed = item.State.Equals("ALLOW", StringComparison.OrdinalIgnoreCase), ScopeType = scope, IsActive = true, EffectiveFrom = now });
             }
             else
             {
@@ -836,11 +838,11 @@ public sealed class SecurityAdministrationController : ControllerBase
         return Ok(new ApiResponse<bool>(true, true));
     }
 
-    [HttpGet("effective-permissions/{userId}")]
+    [HttpGet("effective-permissions/{userPublicId:guid}")]
     [Authorize(Policy = "Permission:SECURITY.VIEW_EFFECTIVE")]
-    public async Task<ActionResult<ApiResponse<EffectiveSecurityDto>>> GetEffectivePermissions(string userId)
+    public async Task<ActionResult<ApiResponse<EffectiveSecurityDto>>> GetEffectivePermissions(Guid userPublicId)
     {
-        var user = await _userManager.FindByIdAsync(userId);
+        var user = await _context.Users.SingleOrDefaultAsync(item => item.PublicId == userPublicId);
         if (user == null) return NotFound(new ApiResponse<EffectiveSecurityDto>(false, null, "User not found"));
         var actor = await GetCurrentUserAsync();
         if (actor == null) return Unauthorized(new ApiResponse<EffectiveSecurityDto>(false, null, "User not found"));
@@ -851,7 +853,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         var isSystem = actorAccess.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
         if (!isSystem && (targetMunicipalities.Count == 0 || !targetMunicipalities.IsSubsetOf(actorMunicipalities))) return Forbid();
         var access = targetAccess;
-        return Ok(new ApiResponse<EffectiveSecurityDto>(true, new EffectiveSecurityDto(user.Id, access.Roles, access.EffectivePermissions, access.Scopes.Select(item => item.ScopeType.ToString()).ToArray(), access.Assignments.Select(item => item.AssignmentType.ToString()).ToArray())));
+        return Ok(new ApiResponse<EffectiveSecurityDto>(true, new EffectiveSecurityDto(user.PublicId, access.Roles, access.EffectivePermissions, access.Scopes.Select(item => item.ScopeType.ToString()).ToArray(), access.Assignments.Select(item => item.AssignmentType.ToString()).ToArray())));
     }
 
     private async Task<ApplicationUser?> GetCurrentUserAsync()
@@ -860,7 +862,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         return userId == null ? null : await _userManager.FindByIdAsync(userId);
     }
 
-    private static SecurityRoleDto ToRoleDto(ApplicationRole item) => new(item.Id, item.PublicId, item.RoleCode, item.Name ?? item.RoleCode, item.Description, item.MunicipalityId, item.IsSystemRole, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion));
+    private static SecurityRoleDto ToRoleDto(ApplicationRole item) => new(item.PublicId, item.RoleCode, item.Name ?? item.RoleCode, item.Description, item.MunicipalityId, item.IsSystemRole, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion));
     private static SecurityNavigationDto ToNavigationDto(SecurityNavigationItem item) => new(item.PublicId, item.Code, item.Parent?.PublicId, item.Name, item.Route, item.IconKey, item.DisplayOrder, item.RequiredPermissionCode, item.IsActive, Convert.ToBase64String(item.RowVersion), item.Parent?.Code, item.Parent?.Name);
 
     private async Task<bool> CanManageGlobalRegistryAsync(ApplicationUser actor)
@@ -1053,22 +1055,22 @@ public sealed class SecurityAdministrationController : ControllerBase
 }
 
 public sealed record SecurityResourceDto(Guid PublicId, string Code, string Name, string Type, string? Description, bool CanCreate, bool CanRead, bool CanUpdate, bool CanDelete, bool CanExport, bool CanImport, bool SupportsMembers, bool SupportsCriteria, bool IsActive, string RowVersion);
-public sealed record SecurityRoleDto(string Id, Guid PublicId, string RoleCode, string Name, string? Description, long? MunicipalityId, bool IsSystemRole, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record SecurityUserDto(string Id, string FullName, string Email);
-public sealed record UserRoleAssignmentDto(Guid PublicId, string RoleId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName);
-public sealed record UserRoleSecurityConfigurationDto(string UserId, string UserName, UserRoleAssignmentDto[] Assignments);
+public sealed record SecurityRoleDto(Guid PublicId, string RoleCode, string Name, string? Description, long? MunicipalityId, bool IsSystemRole, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record SecurityUserDto(Guid PublicId, string FullName, string Email);
+public sealed record UserRoleAssignmentDto(Guid PublicId, Guid RolePublicId, string RoleName, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName);
+public sealed record UserRoleSecurityConfigurationDto(Guid UserPublicId, string UserName, UserRoleAssignmentDto[] Assignments);
 public sealed record ExpectedUserRoleAssignment(Guid AssignmentPublicId, string RowVersion);
-public sealed record UpdateUserRoleAssignment(string RoleId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo, Guid? DepartmentPublicId = null, Guid? UnitPublicId = null);
+public sealed record UpdateUserRoleAssignment(Guid RolePublicId, long? MunicipalityId, int? DepartmentId, int? UnitId, DateTime? EffectiveFrom, DateTime? EffectiveTo, Guid? DepartmentPublicId = null, Guid? UnitPublicId = null);
 public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments);
 public sealed record SecurityActionDto(Guid PublicId, string Code, string Name, string ResourceCode, string? Description, bool IsActive, string RowVersion);
 public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string? ParentCode = null, string? ParentName = null);
 public sealed record SecurityMemberDto(Guid PublicId, string ResourceCode, string MemberCode, string DisplayName, bool IsSensitive, bool IsSystemManaged, bool IsActive, string RowVersion);
 public sealed record SecurityPermissionDefinitionDto(string Code, string? Description, string Kind, string? ResourceCode, string? Operation, string? MemberCode, string? NavigationCode, string? ActionCode);
 public sealed record RoleSecurityPermissionDto(string PermissionCode, string Kind, string? ResourceCode, string? MemberCode, string? NavigationCode, string? ActionCode, string State, string? ScopeType, string RowVersion);
-public sealed record RoleSecurityConfigurationDto(string RoleId, Guid PublicId, string Name, string RoleRowVersion, RoleSecurityPermissionDto[] Permissions);
+public sealed record RoleSecurityConfigurationDto(Guid RolePublicId, string Name, string RoleRowVersion, RoleSecurityPermissionDto[] Permissions);
 public sealed record UpdateRoleSecurityRequest(string RoleRowVersion, UpdateRoleSecurityItem[] Permissions);
 public sealed record UpdateRoleSecurityItem(string PermissionCode, string State, string? ScopeType);
-public sealed record EffectiveSecurityDto(string UserId, string[] Roles, string[] Permissions, string[] Scopes, string[] Assignments);
+public sealed record EffectiveSecurityDto(Guid UserPublicId, string[] Roles, string[] Permissions, string[] Scopes, string[] Assignments);
 public sealed record CreateSecurityRoleRequest(string RoleCode, string Name, string? Description, DateTime? EffectiveFrom, DateTime? EffectiveTo);
 public sealed record UpdateSecurityRoleRequest(string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record CreateSecurityNavigationRequest(string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, string Reason);

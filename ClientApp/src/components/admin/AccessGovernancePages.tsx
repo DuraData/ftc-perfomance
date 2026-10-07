@@ -99,7 +99,7 @@ export function PermissionSimulationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
-    userId: '',
+    userPublicId: '',
     permissionCode: '',
     departmentId: '',
     unitId: '',
@@ -139,8 +139,8 @@ export function PermissionSimulationPage() {
     return () => { active = false; };
   }, [permissionPage, permissionSearch]);
 
-  const selectedUser = users.find(item => item.user.id === form.userId) ?? selectedUserSnapshot;
-  const availableUsers = selectedUserSnapshot && !users.some(item => item.user.id === selectedUserSnapshot.user.id)
+  const selectedUser = users.find(item => item.user.publicId === form.userPublicId) ?? selectedUserSnapshot;
+  const availableUsers = selectedUserSnapshot && !users.some(item => item.user.publicId === selectedUserSnapshot.user.publicId)
     ? [...users, selectedUserSnapshot]
     : users;
   const availablePermissions = selectedPermissionSnapshot && !permissions.some(item => item.id === selectedPermissionSnapshot.id)
@@ -148,7 +148,7 @@ export function PermissionSimulationPage() {
     : permissions;
 
   const simulate = async () => {
-    if (!form.userId || !form.permissionCode) {
+    if (!form.userPublicId || !form.permissionCode) {
       setError('Select a user and permission to simulate.');
       return;
     }
@@ -156,7 +156,7 @@ export function PermissionSimulationPage() {
     setLoading(true);
     setError(null);
     const response = await simulateAccess({
-      userId: form.userId,
+      userPublicId: form.userPublicId,
       permissionCode: form.permissionCode,
       departmentId: null,
       departmentPublicId: form.departmentId || null,
@@ -185,9 +185,9 @@ export function PermissionSimulationPage() {
               <Input label="Search users" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
               <Select
                 label="User"
-                value={form.userId}
-                onChange={(event) => { const userId = event.target.value; setSelectedUserSnapshot(users.find(item => item.user.id === userId) ?? null); setForm(prev => ({ ...prev, userId })); }}
-                options={availableUsers.map(item => ({ value: item.user.id, label: `${item.user.fullName} (${item.roles.map(role => role.name).join(', ') || 'No Role'})` }))}
+                value={form.userPublicId}
+                onChange={(event) => { const userPublicId = event.target.value; setSelectedUserSnapshot(users.find(item => item.user.publicId === userPublicId) ?? null); setForm(prev => ({ ...prev, userPublicId })); }}
+                options={availableUsers.map(item => ({ value: item.user.publicId, label: `${item.user.fullName} (${item.roles.map(role => role.name).join(', ') || 'No Role'})` }))}
                 placeholder="Select user"
               />
               {userTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><Button size="sm" variant="outline" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</Button><span>Page {userPage} of {userTotalPages} · {userTotalCount} users</span><Button size="sm" variant="outline" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</Button></div>}

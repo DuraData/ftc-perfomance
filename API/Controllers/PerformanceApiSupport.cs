@@ -156,10 +156,10 @@ public static class PerformanceApiSupport
             target.Department?.Name,
             target.UnitId,
             target.Unit?.Name,
-            target.AssignedUserId,
+            target.AssignedUser?.PublicId,
             target.AssignedUser != null ? target.AssignedUser.FullName : null,
             target.Wards.Select(item => item.WardId).OrderBy(id => id).ToArray(),
-            target.AdditionalAssignees.Select(item => item.UserId).OrderBy(id => id).ToArray(),
+            target.AdditionalAssignees.Select(item => item.User.PublicId).OrderBy(id => id).ToArray(),
             target.VoteNumbers.Select(item => item.VoteNumberId).OrderBy(id => id).ToArray(),
             target.IndicatorNumber,
             target.NationalKpa,
@@ -236,7 +236,7 @@ public static class PerformanceApiSupport
             KpiDescription = PerformanceRevisionResolver.EffectiveKpiDescription(target, periodType.Value)
         };
 
-    public static IpmsTargetResponse ToResponse(this IpmsTarget target) =>
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId = null) =>
         new(
             target.Id,
             target.SourceTemplateId,
@@ -247,9 +247,9 @@ public static class PerformanceApiSupport
             target.Department?.Name,
             target.UnitId,
             target.Unit?.Name,
-            target.AssignedUserId,
+            target.AssignedUser?.PublicId,
             target.AssignedUser != null ? target.AssignedUser.FullName : null,
-            target.SupervisorId,
+            supervisorPublicId,
             target.IndicatorNumber,
             target.NationalKpa,
             target.MunicipalKpa,
@@ -310,8 +310,8 @@ public static class PerformanceApiSupport
             KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol
         };
 
-    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType) =>
-        !periodType.HasValue ? target.ToResponse() : target.ToResponse() with
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId = null) =>
+        !periodType.HasValue ? target.ToResponse(supervisorPublicId) : target.ToResponse(supervisorPublicId) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),

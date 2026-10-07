@@ -93,7 +93,7 @@ describe('TenantEmployeeAdministration', () => {
   it('does not expose protected employee identifiers or load linked logins without member permissions', async () => {
     security.canReadField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'SalaryReference' && member !== 'IdentityUserId');
     security.canEditField.mockImplementation((_resource, member) => member !== 'EmployeeNumber' && member !== 'SalaryReference' && member !== 'IdentityUserId');
-    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: null, salaryReference: null, firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', identityUserId: null, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'employee-1', employeeNumber: null, salaryReference: null, firstName: 'Ada', lastName: 'Mokoena', emailAddress: 'ada@example.test', identityUserPublicId: null, isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
 
     render(<TenantEmployeeAdministration />);
 

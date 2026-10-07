@@ -8,6 +8,7 @@ using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace FTCERP.Tests;
@@ -22,6 +23,51 @@ public sealed class EnterpriseAuthenticationTests
 
         insecure.Should().Throw<InvalidOperationException>().WithMessage("*HTTPS*");
         missingSecret.Should().Throw<InvalidOperationException>().WithMessage("*ClientSecret*");
+    }
+
+    [Fact]
+    public async Task Sign_in_options_resolve_account_then_unambiguous_email_domain_without_municipality_input()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "M1", Name = "Municipality One", AuthenticationMode = AuthenticationMode.Hybrid };
+        var account = User("known", municipality);
+        account.Email = "known@civic.example";
+        account.NormalizedEmail = "KNOWN@CIVIC.EXAMPLE";
+        account.UserName = account.Email;
+        account.NormalizedUserName = account.NormalizedEmail;
+        context.AddRange(municipality, account);
+        await context.SaveChangesAsync();
+        context.AuthenticationConfigurations.Add(new AuthenticationConfiguration
+        {
+            MunicipalityId = municipality.Id,
+            Mode = AuthenticationMode.Hybrid,
+            ProviderRegistrationCode = "ENTRA",
+            DisplayName = "Work account",
+            CreatedByUserId = account.Id,
+            EffectiveFrom = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await context.SaveChangesAsync();
+        var controller = DiscoveryController(context);
+
+        var known = Extract(await controller.DiscoverOptions(new EnterpriseSignInDiscoveryRequest(account.Email), default));
+        known.MunicipalityCode.Should().Be("M1");
+        known.LocalEnabled.Should().BeTrue();
+        known.Providers.Should().ContainSingle(item => item.Code == "ENTRA" && item.DisplayName == "Work account");
+
+        var domain = Extract(await controller.DiscoverOptions(new EnterpriseSignInDiscoveryRequest("new.person@civic.example"), default));
+        domain.MunicipalityCode.Should().Be("M1");
+
+        var secondMunicipality = new Municipality { Code = "M2", Name = "Municipality Two", AuthenticationMode = AuthenticationMode.Local };
+        var secondAccount = User("second", secondMunicipality);
+        secondAccount.Email = "second@civic.example";
+        secondAccount.NormalizedEmail = "SECOND@CIVIC.EXAMPLE";
+        context.AddRange(secondMunicipality, secondAccount);
+        await context.SaveChangesAsync();
+
+        var ambiguous = Extract(await controller.DiscoverOptions(new EnterpriseSignInDiscoveryRequest("unknown@civic.example"), default));
+        ambiguous.MunicipalityCode.Should().BeEmpty();
+        ambiguous.Providers.Should().BeEmpty();
+        ambiguous.LocalEnabled.Should().BeTrue();
     }
 
     [Fact]
@@ -213,11 +259,22 @@ public sealed class EnterpriseAuthenticationTests
         Assert.Null(protectedEvent.UserId);
         Assert.Null(protectedEvent.IpAddress);
 
-        var write = await controller.Provision(new ProvisionUserAuthenticatorRequest(linked.Id, "ENTRA", linked.Email!, null, null, "Governed link"), default);
+        var write = await controller.Provision(new ProvisionUserAuthenticatorRequest(linked.PublicId, "ENTRA", linked.Email!, null, null, "Governed link"), default);
         Assert.IsType<ForbidResult>(write.Result);
     }
 
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+    private static EnterpriseAuthController DiscoveryController(ApplicationDbContext context) => new(
+        context,
+        new EnterpriseProviderRegistry([Provider()]),
+        new Mock<IEnterpriseAuthenticationService>().Object,
+        new Mock<IJwtService>().Object,
+        Options.Create(new EnterpriseAuthenticationOptions()),
+        Options.Create(new JwtSettings()));
+
+    private static EnterpriseSignInOptionsResponse Extract(ActionResult<ApiResponse<EnterpriseSignInOptionsResponse>> result) =>
+        Assert.IsType<ApiResponse<EnterpriseSignInOptionsResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
 
     private static async Task<(Municipality Municipality, ApplicationUser User)> SeedConfigurationAsync(ApplicationDbContext context)
     {

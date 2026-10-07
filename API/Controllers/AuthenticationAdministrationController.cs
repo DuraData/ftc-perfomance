@@ -170,7 +170,7 @@ public sealed class AuthenticationAdministrationController(
             return Forbid();
         if (!ValidReason(request.Reason)) return BadRequest(Fail<UserAuthenticatorDto>("A governance reason between 5 and 500 characters is required."));
         if (!providers.TryGet(request.ProviderRegistrationCode.Trim(), out var provider)) return BadRequest(Fail<UserAuthenticatorDto>("The provider is not registered by deployment configuration."));
-        var user = await context.Users.SingleOrDefaultAsync(item => item.Id == request.UserId && item.MunicipalityId == municipalityId, cancellationToken);
+        var user = await context.Users.SingleOrDefaultAsync(item => item.PublicId == request.UserPublicId && item.MunicipalityId == municipalityId, cancellationToken);
         if (user == null) return NotFound(Fail<UserAuthenticatorDto>("User not found in the current municipality."));
         var email = request.ExpectedEmail.Trim();
         if (email.Length is < 3 or > 320 || !string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase))
@@ -367,5 +367,5 @@ public sealed record UserAuthenticatorDto(Guid PublicId, Guid UserPublicId, stri
 public sealed record AuthenticationEventDto(Guid PublicId, string? UserId, string ProviderCode, string EventType, bool Success, string? FailureCode, DateTime OccurredAt, string? IpAddress, string CorrelationId);
 public sealed record AuthenticationPolicyRequest(int MinimumPasswordLength, int MaximumFailedAttempts, int LockoutMinutes, bool RequireMfaForPrivilegedLocalUsers, bool RequireMfaForAllLocalUsers, bool RequireFirstLoginPasswordChange, int SessionIdleTimeoutMinutes, int SessionAbsoluteTimeoutHours, int MaximumConcurrentSessions, string? RowVersion);
 public sealed record SaveAuthenticationConfigurationRequest(AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, AuthenticationPolicyRequest Policy, string Reason, string? RowVersion);
-public sealed record ProvisionUserAuthenticatorRequest(string UserId, string ProviderRegistrationCode, string ExpectedEmail, string? Issuer, string? Subject, string Reason);
+public sealed record ProvisionUserAuthenticatorRequest(Guid UserPublicId, string ProviderRegistrationCode, string ExpectedEmail, string? Issuer, string? Subject, string Reason);
 public sealed record SetUserAuthenticatorStatusRequest(bool IsActive, string Reason, string RowVersion);

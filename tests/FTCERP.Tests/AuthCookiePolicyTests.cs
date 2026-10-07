@@ -29,13 +29,16 @@ public sealed class AuthCookiePolicyTests
     [Fact]
     public void Login_response_does_not_serialize_access_or_refresh_tokens()
     {
-        var profile = new UserProfileResponse("user-1", "user@example.test", "Test", "User", "Test User", "user@example.test", null, null, null, true, false);
+        var profile = new UserProfileResponse(Guid.Parse("00000000-0000-0000-0000-000000000001"), "user@example.test", "Test", "User", "Test User", "user@example.test", null, null, null, true, false);
         var response = new LoginResponse(DateTime.UtcNow.AddMinutes(15), profile, [], [], [], false);
 
         var json = JsonSerializer.Serialize(response);
 
         Assert.DoesNotContain("accessToken", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("refreshToken", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"Id\":", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"UserId\":", json, StringComparison.Ordinal);
+        Assert.Contains("\"PublicId\":\"00000000-0000-0000-0000-000000000001\"", json, StringComparison.Ordinal);
     }
 
     private sealed class TestEnvironment : IHostEnvironment

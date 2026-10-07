@@ -103,7 +103,7 @@ public class AuthController : ControllerBase
         var menu = await _accessControlService.GetAuthorizedNavigationAsync(user);
 
         var userProfile = new UserProfileResponse(
-            user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PublicId, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
             user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
         var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, authenticationPolicy, _jwtSettings.MfaRequiredPermissionCodes, "LOCAL");
@@ -246,7 +246,7 @@ public class AuthController : ControllerBase
         var menu = await _accessControlService.GetAuthorizedNavigationAsync(user);
 
         var userProfile = new UserProfileResponse(
-            user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PublicId, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
             user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
         var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, authenticationPolicy, _jwtSettings.MfaRequiredPermissionCodes, existingRefreshToken.AuthenticationMethod);
@@ -446,7 +446,7 @@ public class AuthController : ControllerBase
             return Unauthorized();
 
         var profile = new UserProfileResponse(
-            user.Id, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PublicId, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
             user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
         return Ok(new ApiResponse<UserProfileResponse>(true, profile));

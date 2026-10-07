@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace FTCERP.Host.API.Controllers;
@@ -68,11 +69,9 @@ public class AccessController : ControllerBase
         if (_tenantContext.MunicipalityId is not > 0)
             return Conflict(new ApiResponse<AccessSimulationResponse>(false, null, "Select a municipality context before simulating access"));
 
-        ApplicationUser? subject = null;
-        if (!string.IsNullOrWhiteSpace(request.UserId))
-        {
-            subject = await _userManager.FindByIdAsync(request.UserId);
-        }
+        var subject = request.UserPublicId.HasValue
+            ? await _context.Users.SingleOrDefaultAsync(item => item.PublicId == request.UserPublicId.Value)
+            : null;
 
         if (subject == null || subject.MunicipalityId != _tenantContext.MunicipalityId)
         {
@@ -89,14 +88,27 @@ public class AccessController : ControllerBase
         if (organization.Error != null)
             return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, organization.Error));
 
+        var referencedUsers = new[] { request.OwnerUserPublicId, request.DelegatorUserPublicId }
+            .Where(item => item.HasValue)
+            .Select(item => item!.Value)
+            .Distinct()
+            .ToArray();
+        var userIdsByPublicId = referencedUsers.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await _context.Users.AsNoTracking()
+                .Where(item => item.MunicipalityId == _tenantContext.MunicipalityId && referencedUsers.Contains(item.PublicId))
+                .ToDictionaryAsync(item => item.PublicId, item => item.Id);
+        if (userIdsByPublicId.Count != referencedUsers.Length)
+            return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, "Owner and delegator users must belong to the selected municipality."));
+
         var result = await _accessControlService.CheckPermissionAsync(
             subject,
             request.PermissionCode,
             new AccessScopeContext(
                 organization.DepartmentId,
                 organization.UnitId,
-                request.OwnerUserId,
-                request.DelegatorUserId,
+                request.OwnerUserPublicId.HasValue ? userIdsByPublicId[request.OwnerUserPublicId.Value] : null,
+                request.DelegatorUserPublicId.HasValue ? userIdsByPublicId[request.DelegatorUserPublicId.Value] : null,
                 request.TargetId,
                 request.KpiId,
                 request.ProjectId,

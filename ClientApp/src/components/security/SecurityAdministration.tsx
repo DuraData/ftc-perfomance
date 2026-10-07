@@ -25,7 +25,7 @@ import { SecurityRegistryEditor } from './SecurityRegistryEditor';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 
 type EditableRule = Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>;
-type AssignmentDraft = { roleId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; departmentName?: string; unitId?: number; unitPublicId?: string; unitName?: string; effectiveFrom: string; effectiveTo?: string };
+type AssignmentDraft = { rolePublicId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; departmentName?: string; unitId?: number; unitPublicId?: string; unitName?: string; effectiveFrom: string; effectiveTo?: string };
 const scopes = ['', 'Self', 'AssignedKpiScope', 'AssignedTargetScope', 'AssignedProjectScope', 'AssignedTaskScope', 'UnitScope', 'DepartmentScope', 'InstitutionScope', 'System'];
 const kinds = ['Resource', 'Navigation', 'Member', 'Action', 'Report'] as const;
 const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
@@ -67,7 +67,7 @@ export function SecurityAdministrationPage() {
       const loadedRoles = roleResult.data?.items ?? [];
       setRoles(loadedRoles);
       setRoleTotalPages(roleResult.data?.totalPages ?? 0);
-      setRoleId(current => loadedRoles.some(role => role.id === current) ? current : (loadedRoles[0]?.id ?? ''));
+      setRoleId(current => loadedRoles.some(role => role.publicId === current) ? current : (loadedRoles[0]?.publicId ?? ''));
     });
   }, [rolePage, roleSearch]);
 
@@ -78,7 +78,7 @@ export function SecurityAdministrationPage() {
     });
   }, [userPage, userSearch]);
 
-  const selectedRole = roles.find(role => role.id === roleId);
+  const selectedRole = roles.find(role => role.publicId === roleId);
 
   useEffect(() => {
     setRoleName(selectedRole?.name ?? '');
@@ -155,7 +155,7 @@ export function SecurityAdministrationPage() {
     }
     setRoleSearch(result.data.roleCode);
     setRolePage(1);
-    setRoleId(result.data.id);
+    setRoleId(result.data.publicId);
     setNewRoleCode(''); setNewRoleName(''); setNewRoleDescription('');
     setMessage('Tenant role created and audited. Configure its permissions below.');
     setBusy(false);
@@ -168,7 +168,7 @@ export function SecurityAdministrationPage() {
     if (!result.success || !result.data) {
       setMessage(result.message ?? 'Role details could not be saved.'); setBusy(false); return;
     }
-    setRoles(current => current.map(role => role.id === result.data!.id ? result.data! : role));
+    setRoles(current => current.map(role => role.publicId === result.data!.publicId ? result.data! : role));
     setMessage('Role details saved and audited.');
     setBusy(false);
   };
@@ -180,13 +180,13 @@ export function SecurityAdministrationPage() {
     if (!result.success) setMessage(result.message ?? 'Unable to calculate effective permissions.');
   };
 
-  const loadUserRoles = async (userId: string) => {
-    setPreviewUserId(userId);
+  const loadUserRoles = async (userPublicId: string) => {
+    setPreviewUserId(userPublicId);
     setPreview(null);
-    if (!userId) { setUserRoles(null); setAssignmentDrafts([]); return; }
-    const result = await getSecurityUserRoles(userId);
+    if (!userPublicId) { setUserRoles(null); setAssignmentDrafts([]); return; }
+    const result = await getSecurityUserRoles(userPublicId);
     setUserRoles(result.data ?? null);
-    setAssignmentDrafts(result.data?.assignments.map(item => ({ roleId: item.roleId, municipalityId: item.municipalityId, departmentId: item.departmentId, departmentPublicId: item.departmentPublicId, departmentName: item.departmentName, unitId: item.unitId, unitPublicId: item.unitPublicId, unitName: item.unitName, effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo })) ?? []);
+    setAssignmentDrafts(result.data?.assignments.map(item => ({ rolePublicId: item.rolePublicId, municipalityId: item.municipalityId, departmentId: item.departmentId, departmentPublicId: item.departmentPublicId, departmentName: item.departmentName, unitId: item.unitId, unitPublicId: item.unitPublicId, unitName: item.unitName, effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo })) ?? []);
   };
 
   const saveUserRoles = async () => {
@@ -194,9 +194,9 @@ export function SecurityAdministrationPage() {
     setBusy(true);
     const invalid = assignmentDrafts.find(item => item.effectiveTo && new Date(item.effectiveTo) <= new Date(item.effectiveFrom));
     if (invalid) { setMessage('Every assignment end must be later than its start.'); return; }
-    const result = await saveSecurityUserRoles(userRoles.userId, userRoles, assignmentDrafts.map(item => ({ ...item, effectiveFrom: new Date(item.effectiveFrom).toISOString(), effectiveTo: item.effectiveTo ? new Date(item.effectiveTo).toISOString() : undefined })));
+    const result = await saveSecurityUserRoles(userRoles.userPublicId, userRoles, assignmentDrafts.map(item => ({ ...item, effectiveFrom: new Date(item.effectiveFrom).toISOString(), effectiveTo: item.effectiveTo ? new Date(item.effectiveTo).toISOString() : undefined })));
     setMessage(result.success ? 'User role assignments saved, effective immediately, and audited.' : result.message ?? 'Role assignments could not be saved.');
-    if (result.success) await loadUserRoles(userRoles.userId);
+    if (result.success) await loadUserRoles(userRoles.userPublicId);
     setBusy(false);
   };
 
@@ -214,7 +214,7 @@ export function SecurityAdministrationPage() {
             <input aria-label="Search security roles" placeholder="Search role code, name or description" className="mt-3 w-full rounded border border-gray-300 p-2" value={roleSearch} onChange={event => { setRoleSearch(event.target.value); setRolePage(1); }} />
             <label className="mt-3 block text-sm font-medium text-gray-700" htmlFor="security-role">Role</label>
             <select id="security-role" className="mt-1 w-full rounded border border-gray-300 p-2" value={roleId} onChange={event => setRoleId(event.target.value)}>
-              {roles.map(role => <option key={role.id} value={role.id}>{role.name}{role.isSystemRole ? ' (system)' : ''}</option>)}
+              {roles.map(role => <option key={role.publicId} value={role.publicId}>{role.name}{role.isSystemRole ? ' (system)' : ''}</option>)}
             </select>
             {roleTotalPages > 1 && <div className="mt-2 flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={rolePage <= 1} onClick={() => setRolePage(value => Math.max(1, value - 1))}>Previous roles</button><span>Page {rolePage} of {roleTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={rolePage >= roleTotalPages} onClick={() => setRolePage(value => value + 1)}>Next roles</button></div>}
             {selectedRole && <div className="mt-3 grid gap-2">
@@ -281,7 +281,7 @@ export function SecurityAdministrationPage() {
         <h2 className="text-lg font-semibold">Effective permission preview</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           <input aria-label="Search security users" placeholder="Search users" className="min-w-64 rounded border border-gray-300 p-2" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
-          <select className="min-w-80 rounded border border-gray-300 p-2" value={previewUserId} onChange={event => void loadUserRoles(event.target.value)}><option value="">Select a user</option>{users.map(item => <option key={item.id} value={item.id}>{item.fullName} ({item.email})</option>)}</select>
+          <select className="min-w-80 rounded border border-gray-300 p-2" value={previewUserId} onChange={event => void loadUserRoles(event.target.value)}><option value="">Select a user</option>{users.map(item => <option key={item.publicId} value={item.publicId}>{item.fullName} ({item.email})</option>)}</select>
           <button type="button" onClick={() => void loadPreview()} disabled={!previewUserId} className="rounded border border-blue-700 px-4 py-2 text-blue-700 disabled:opacity-50">Calculate</button>
         </div>
         {userTotalPages > 1 && <div className="mt-2 flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</button><span>Page {userPage} of {userTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</button></div>}
@@ -289,13 +289,13 @@ export function SecurityAdministrationPage() {
           <h3 className="font-medium">Effective-dated roles for {userRoles.userName}</h3>
           <p className="mt-3 text-xs text-gray-500">Role choices follow the paged role search above; selections from other pages are preserved.</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-3">{roles.filter(role => role.isActive).map(role => {
-            const assigned = assignmentDrafts.some(item => item.roleId === role.id);
-            return <label key={role.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { roleId: role.id, municipalityId: role.municipalityId, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.roleId !== role.id))}/><span>{role.name}</span></label>;
+            const assigned = assignmentDrafts.some(item => item.rolePublicId === role.publicId);
+            return <label key={role.publicId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { rolePublicId: role.publicId, municipalityId: role.municipalityId, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.rolePublicId !== role.publicId))}/><span>{role.name}</span></label>;
           })}</div>
           <div className="mt-4 space-y-3">{assignmentDrafts.map((assignment, index) => {
-            const role = roles.find(item => item.id === assignment.roleId);
-            return <div key={assignment.roleId} className="grid gap-2 rounded bg-gray-50 p-3 md:grid-cols-2 lg:grid-cols-5">
-              <div className="text-sm font-medium text-gray-800">{role?.name ?? assignment.roleId}<div className="font-mono text-xs text-gray-500">{role?.roleCode}</div></div>
+            const role = roles.find(item => item.publicId === assignment.rolePublicId);
+            return <div key={assignment.rolePublicId} className="grid gap-2 rounded bg-gray-50 p-3 md:grid-cols-2 lg:grid-cols-5">
+              <div className="text-sm font-medium text-gray-800">{role?.name ?? assignment.rolePublicId}<div className="font-mono text-xs text-gray-500">{role?.roleCode}</div></div>
               <OrganizationMasterPicker kind="department" label={`${role?.name} department`} value={assignment.departmentPublicId ?? ''} selectedLabel={assignment.departmentName} emptyLabel="All permitted departments" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentId: undefined, departmentPublicId: value || undefined, departmentName: option?.name, unitId: undefined, unitPublicId: undefined, unitName: undefined } : item))} />
               <OrganizationMasterPicker kind="unit" label={`${role?.name} unit`} value={assignment.unitPublicId ?? ''} selectedLabel={assignment.unitName} departmentPublicId={assignment.departmentPublicId} emptyLabel="All permitted units" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitId: undefined, unitPublicId: value || undefined, unitName: option?.name } : item))} />
               <label className="text-xs text-gray-600">Effective from<input aria-label={`${role?.name} effective from`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveFrom)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveFrom: event.target.value } : item))} /></label>

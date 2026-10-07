@@ -20,9 +20,9 @@ public record MfaSetupResponse(string SharedKey, string AuthenticatorUri);
 
 public record MfaEnableResponse(string[] RecoveryCodes);
 
-public record UserProfileResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword);
+public record UserProfileResponse(Guid PublicId, string UserName, string FirstName, string LastName, string FullName, string Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword);
 
-public record RoleResponse(string Id, string Name, string? Description, bool IsSystemRole, bool IsActive);
+public record RoleResponse(Guid PublicId, string Name, string? Description, bool IsSystemRole, bool IsActive);
 
 public record PermissionResponse(int Id, string Module, string Feature, string Action, string Code, string? Description, bool IsActive);
 
@@ -30,9 +30,8 @@ public record MenuItemResponse(string Label, string? Path, string? Icon, MenuIte
 
 public record LoginAuditLogResponse(Guid PublicId, string? UserId, string? Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
 
-public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string? Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
+public record UserResponse(Guid PublicId, string UserName, string FirstName, string LastName, string FullName, string? Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
 {
-    public Guid PublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
 }
 
@@ -77,7 +76,7 @@ public record UserScopeResponse(
 public record UserAssignmentResponse(
     Guid PublicId,
     string AssignmentType,
-    string? DelegatorUserId,
+    Guid? DelegatorUserPublicId,
     bool IsActive,
     DateTime? ValidFromUtc,
     DateTime? ValidToUtc,
@@ -203,10 +202,10 @@ public record OpmsTargetResponse(
     string? DepartmentName,
     int? UnitId,
     string? UnitName,
-    string? AssignedUserId,
+    Guid? AssignedUserPublicId,
     string? AssignedUserName,
     int[] WardIds,
-    string[] AdditionalAssigneeIds,
+    Guid[] AdditionalAssigneePublicIds,
     int[] VoteNumberIds,
     string IndicatorNumber,
     string NationalKpa,
@@ -286,9 +285,9 @@ public record IpmsTargetResponse(
     string? DepartmentName,
     int? UnitId,
     string? UnitName,
-    string? AssignedUserId,
+    Guid? AssignedUserPublicId,
     string? AssignedUserName,
-    string? SupervisorId,
+    Guid? SupervisorPublicId,
     string IndicatorNumber,
     string NationalKpa,
     string MunicipalKpa,

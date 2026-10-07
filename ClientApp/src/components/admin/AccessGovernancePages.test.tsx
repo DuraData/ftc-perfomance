@@ -40,7 +40,7 @@ describe('PermissionSimulationPage', () => {
     api.getUsersPage.mockImplementation(async ({ page = 1, search = '' }) => ({
       success: true,
       data: {
-        items: [{ user: { id: `user-${page}`, publicId: `user-public-${page}`, userName: `user-${page}`, firstName: 'Governed', lastName: `User ${page}`, fullName: `Governed User ${page}`, email: `user${page}@example.test`, isActive: true, mustChangePassword: false }, roles: [{ id: 'role-1', name: 'Reviewer', isSystemRole: false, isActive: true }] }],
+        items: [{ user: { publicId: `user-public-${page}`, userName: `user-${page}`, firstName: 'Governed', lastName: `User ${page}`, fullName: `Governed User ${page}`, email: `user${page}@example.test`, isActive: true, mustChangePassword: false }, roles: [{ publicId: 'role-public', name: 'Reviewer', isSystemRole: false, isActive: true }] }],
         page,
         pageSize: 25,
         totalCount: search ? 1 : 26,
@@ -53,12 +53,12 @@ describe('PermissionSimulationPage', () => {
     render(<PermissionSimulationPage />);
 
     await waitFor(() => expect(api.getUsersPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
-    fireEvent.change(screen.getByLabelText('User'), { target: { value: 'user-1' } });
+    fireEvent.change(screen.getByLabelText('User'), { target: { value: 'user-public-1' } });
     expect(screen.getByText('Page 1 of 2 · 26 users')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Next users' }));
     await waitFor(() => expect(api.getUsersPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
-    expect(screen.getByLabelText('User')).toHaveValue('user-1');
+    expect(screen.getByLabelText('User')).toHaveValue('user-public-1');
     expect(screen.getByRole('option', { name: 'Governed User 1 (Reviewer)' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'specific user' } });

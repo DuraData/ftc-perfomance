@@ -381,7 +381,7 @@ public sealed class UsersControllerSecurityTests
         });
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUsers().Result).StatusCode);
 
-        var crossTenant = await controller.GetUser(otherTenant.Id);
+        var crossTenant = await controller.GetUser(otherTenant.PublicId);
         Assert.IsType<NotFoundObjectResult>(crossTenant.Result);
     }
 
@@ -407,7 +407,7 @@ public sealed class UsersControllerSecurityTests
             [target.Id] = target
         }, access.Object);
 
-        var response = await controller.UpdateUser(target.Id, new UpdateUserRequest("Changed", "Name", "0999999999", true));
+        var response = await controller.UpdateUser(target.PublicId, new UpdateUserRequest("Changed", "Name", "0999999999", true));
 
         Assert.IsType<ForbidResult>(response.Result);
         Assert.Equal("0222222222", (await context.Users.SingleAsync(item => item.Id == target.Id)).PhoneNumber);
@@ -444,7 +444,7 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal(10, envelope.Data.Items.Length);
         Assert.Equal(2, envelope.Data.Page);
         Assert.Equal(4, envelope.Data.TotalPages);
-        Assert.DoesNotContain(envelope.Data.Items, item => item.User.Id == other.Id);
+        Assert.DoesNotContain(envelope.Data.Items, item => item.User.PublicId == other.PublicId);
     }
 
     [Fact]
@@ -482,7 +482,7 @@ public sealed class UsersControllerSecurityTests
         var directory = new[] { actor, target, other }.ToDictionary(item => item.Id);
         var controller = Controller(context, tenant, actor, directory, Access(actor, "SECURITY.VIEW_EFFECTIVE").Object);
 
-        var scopesResult = await controller.GetUserScopesPage(target.Id, new PagedQueryRequest
+        var scopesResult = await controller.GetUserScopesPage(target.PublicId, new PagedQueryRequest
         {
             Page = 2, PageSize = 5, SortBy = "effectiveFrom", SortDirection = "desc"
         });
@@ -496,7 +496,7 @@ public sealed class UsersControllerSecurityTests
             Assert.False(string.IsNullOrWhiteSpace(item.RowVersion));
         });
 
-        var assignmentsResult = await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest
+        var assignmentsResult = await controller.GetUserAssignmentsPage(target.PublicId, new PagedQueryRequest
         {
             Page = 1, PageSize = 10, Search = "target-12", SortBy = "validFrom", SortDirection = "asc"
         });
@@ -507,10 +507,10 @@ public sealed class UsersControllerSecurityTests
         Assert.NotEqual(Guid.Empty, assignment.PublicId);
         Assert.False(string.IsNullOrWhiteSpace(assignment.RowVersion));
 
-        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserScopes(target.Id).Result).StatusCode);
-        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserAssignments(target.Id).Result).StatusCode);
-        Assert.IsType<NotFoundObjectResult>((await controller.GetUserScopesPage(other.Id, new PagedQueryRequest())).Result);
-        Assert.IsType<BadRequestObjectResult>((await controller.GetUserAssignmentsPage(target.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserScopes(target.PublicId).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetUserAssignments(target.PublicId).Result).StatusCode);
+        Assert.IsType<NotFoundObjectResult>((await controller.GetUserScopesPage(other.PublicId, new PagedQueryRequest())).Result);
+        Assert.IsType<BadRequestObjectResult>((await controller.GetUserAssignmentsPage(target.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
 
     [Fact]
@@ -534,7 +534,7 @@ public sealed class UsersControllerSecurityTests
 
         var controller = Controller(context, tenant, actor, new[] { actor, target }.ToDictionary(item => item.Id),
             Access(actor, "SECURITY.ASSIGN_ROLES").Object);
-        var response = await controller.SetUserScopes(target.Id, new UpdateUserScopesRequest(
+        var response = await controller.SetUserScopes(target.PublicId, new UpdateUserScopesRequest(
             [new UserScopeItemRequest(nameof(ScopeType.AssignedTargetScope), null, null, "target-451", null, null, null)],
             originalUserVersion, "Approved target responsibility scope"));
 
@@ -550,7 +550,7 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal("Approved target responsibility scope", (await context.AuditTrails.SingleAsync()).Reason);
 
         context.ChangeTracker.Clear();
-        var stale = await controller.SetUserScopes(target.Id, new UpdateUserScopesRequest(
+        var stale = await controller.SetUserScopes(target.PublicId, new UpdateUserScopesRequest(
             [new UserScopeItemRequest(nameof(ScopeType.System), null, null, null, null, null, null)],
             originalUserVersion, "Attempt stale scope replacement"));
         Assert.IsType<ConflictObjectResult>(stale.Result);
@@ -588,8 +588,8 @@ public sealed class UsersControllerSecurityTests
         var directory = new[] { actor, target, otherTenant }.ToDictionary(item => item.Id);
         var controller = Controller(context, tenant, actor, directory, Access(actor, "SECURITY.ASSIGN_ROLES").Object);
         var now = DateTime.UtcNow;
-        var response = await controller.SetUserAssignments(target.Id, new UpdateUserAssignmentsRequest(
-            [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), actor.Id, true,
+        var response = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
+            [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), actor.PublicId, true,
                 now.AddMinutes(-1), now.AddDays(1), "delegated-target", null, null, null)],
             originalVersion, "Approved temporary submission delegation"));
 
@@ -605,15 +605,15 @@ public sealed class UsersControllerSecurityTests
 
         context.ChangeTracker.Clear();
         var refreshedTarget = await context.Users.SingleAsync(item => item.Id == target.Id);
-        var invalid = await controller.SetUserAssignments(target.Id, new UpdateUserAssignmentsRequest(
-            [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), otherTenant.Id, true,
+        var invalid = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
+            [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), otherTenant.PublicId, true,
                 now, now.AddDays(1), "cross-tenant-target", null, null, null)],
             Convert.ToBase64String(refreshedTarget.RowVersion), "Attempt cross tenant delegation"));
         Assert.IsType<BadRequestObjectResult>(invalid.Result);
         Assert.Equal(2, await context.UserAssignments.CountAsync());
 
         context.ChangeTracker.Clear();
-        var stale = await controller.SetUserAssignments(target.Id, new UpdateUserAssignmentsRequest(
+        var stale = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
             [new UserAssignmentItemRequest(nameof(AssignmentType.TaskAssignee), null, true,
                 now, now.AddDays(2), null, null, null, "stale-task")],
             originalVersion, "Attempt stale assignment update"));

@@ -10,7 +10,10 @@ public static class DbInitializer
 {
     public static async Task Initialize(ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<ApplicationRole> roleManager, IConfiguration configuration)
     {
-        await context.Database.MigrateAsync();
+        // Disposable local SQLite databases are created from the current model by Program.
+        // Deployment databases remain migration-managed and never use EnsureCreated.
+        if (!context.Database.IsSqlite())
+            await context.Database.MigrateAsync();
 
         await SeedPermissionsAsync(context);
         await SecurityRegistrySeeder.SeedAsync(context);

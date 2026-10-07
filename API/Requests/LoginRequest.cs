@@ -31,7 +31,7 @@ public record UpdateUserPermissionOverridesRequest(UpdateUserPermissionOverrideI
 
 public record UpdateUserPermissionOverrideItem(int PermissionId, bool IsAllowed, string? Reason);
 
-public record AssignUserRolesRequest(string[] RoleIds);
+public record AssignUserRolesRequest(Guid[] RolePublicIds);
 
 public record UserScopeItemRequest(string ScopeType, int? DepartmentId, int? UnitId, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
 
@@ -39,7 +39,7 @@ public record UpdateUserScopesRequest(UserScopeItemRequest[] Scopes, string RowV
 
 public record UserAssignmentItemRequest(
     string AssignmentType,
-    string? DelegatorUserId,
+    Guid? DelegatorUserPublicId,
     bool IsActive,
     DateTime? ValidFromUtc,
     DateTime? ValidToUtc,
@@ -65,12 +65,12 @@ public record UpdatePermissionRequest(string Module, string Feature, string Acti
 public record CheckPermissionRequest(string PermissionCode);
 
 public record SimulateAccessRequest(
-    string? UserId,
+    Guid? UserPublicId,
     string? Role,
     int? DepartmentId,
     int? UnitId,
-    string? OwnerUserId,
-    string? DelegatorUserId,
+    Guid? OwnerUserPublicId,
+    Guid? DelegatorUserPublicId,
     string? TargetId,
     string? KpiId,
     string? ProjectId,
@@ -146,9 +146,9 @@ public record SaveOpmsTargetRequest(
     int? PeriodId,
     int? DepartmentId,
     int? UnitId,
-    string? AssignedUserId,
+    Guid? AssignedUserPublicId,
     int[]? WardIds,
-    string[]? AdditionalAssigneeIds,
+    Guid[]? AdditionalAssigneePublicIds,
     int[]? VoteNumberIds,
     string IndicatorNumber,
     string NationalKpa,
@@ -203,8 +203,8 @@ public record SaveIpmsTargetRequest(
     int? PeriodId,
     int? DepartmentId,
     int? UnitId,
-    string? AssignedUserId,
-    string? SupervisorId,
+    Guid? AssignedUserPublicId,
+    Guid? SupervisorPublicId,
     string IndicatorNumber,
     string NationalKpa,
     string MunicipalKpa,

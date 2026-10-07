@@ -28,12 +28,12 @@ public class RolesController : ControllerBase
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse[]>(false, null,
             "This unbounded legacy route is retired. Use /api/v1/security/roles/page."));
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<ApiResponse<RoleResponse>>> GetRole(string id)
+    [HttpGet("{publicId:guid}")]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> GetRole(Guid publicId)
     {
-        var role = await TenantRoles().AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var role = await TenantRoles().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (role == null) return NotFound(new ApiResponse<RoleResponse>(false, null, "Role not found"));
-        return Ok(new ApiResponse<RoleResponse>(true, new RoleResponse(role.Id, role.Name!, role.Description, role.IsSystemRole, role.IsActive)));
+        return Ok(new ApiResponse<RoleResponse>(true, new RoleResponse(role.PublicId, role.Name!, role.Description, role.IsSystemRole, role.IsActive)));
     }
 
     [HttpPost]

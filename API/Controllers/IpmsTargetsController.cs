@@ -76,8 +76,9 @@ public class IpmsTargetsController : ControllerBase
             .Include(item => item.KpiTypeMaster).Include(item => item.IndicatorTypeMaster).Include(item => item.FunctionalAreaMaster).Include(item => item.KpiUnitOfMeasureMaster)
             .AsSplitQuery().ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
+        var responses = await ToResponsesAsync(items, request.ReportingPeriodType);
         return Ok(new ApiResponse<PagedResponse<IpmsTargetResponse>>(true,
-            PagedResponse<IpmsTargetResponse>.Create(items.Select(item => item.ToResponse(request.ReportingPeriodType)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IpmsTargetResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname", "effectiveorder"];
@@ -148,7 +149,7 @@ public class IpmsTargetsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.READ", BuildScope(target));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
 
-        return Ok(new ApiResponse<IpmsTargetResponse>(true, target.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(target)));
     }
 
     [HttpPost]
@@ -178,6 +179,8 @@ public class IpmsTargetsController : ControllerBase
         var kpiUnit = await PerformanceClassificationResolver.ResolveUnitAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
             request.KpiUnitOfMeasurePublicId);
         if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, kpiUnit.Error));
+        var userReferences = await ResolveUserReferencesAsync(request);
+        if (userReferences.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, userReferences.Error));
 
         var entity = new IpmsTarget
         {
@@ -188,8 +191,8 @@ public class IpmsTargetsController : ControllerBase
             PeriodId = request.PeriodId,
             DepartmentId = organization.DepartmentId,
             UnitId = organization.UnitId,
-            AssignedUserId = request.AssignedUserId,
-            SupervisorId = request.SupervisorId,
+            AssignedUserId = userReferences.AssignedUserId,
+            SupervisorId = userReferences.SupervisorId,
             IndicatorNumber = request.IndicatorNumber.Trim(),
             OriginalOrderNumber = request.OriginalOrderNumber,
             RevisedOrderNumber = request.OriginalOrderNumber,
@@ -221,13 +224,14 @@ public class IpmsTargetsController : ControllerBase
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, null, entity.Id);
         await _context.SaveChangesAsync();
         entity = await FindTargetAsync(entity.Id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "Create", null, entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        var createdResponse = await ToResponseAsync(entity);
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "Create", null, createdResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         if (!string.IsNullOrWhiteSpace(entity.AssignedUserId))
         {
             await _workflowGovernanceService.CreateNotificationAsync(entity.AssignedUserId, NotificationType.Submission, "IPMS target assigned", $"You have been assigned IPMS target '{entity.TargetName}'.", "IpmsTarget", entity.Id);
         }
 
-        return Ok(new ApiResponse<IpmsTargetResponse>(true, entity.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, createdResponse));
     }
 
     [HttpPut("{id}")]
@@ -264,6 +268,8 @@ public class IpmsTargetsController : ControllerBase
         var kpiUnit = await PerformanceClassificationResolver.ResolveUnitAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
             request.KpiUnitOfMeasurePublicId, entity.KpiUnitOfMeasureMasterId);
         if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, kpiUnit.Error));
+        var userReferences = await ResolveUserReferencesAsync(request);
+        if (userReferences.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, userReferences.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
         if (periodChangeError != null) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -277,8 +283,8 @@ public class IpmsTargetsController : ControllerBase
         entity.PeriodId = request.PeriodId;
         entity.DepartmentId = organization.DepartmentId;
         entity.UnitId = organization.UnitId;
-        entity.AssignedUserId = request.AssignedUserId;
-        entity.SupervisorId = request.SupervisorId;
+        entity.AssignedUserId = userReferences.AssignedUserId;
+        entity.SupervisorId = userReferences.SupervisorId;
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
         entity.StrategicGoalId = request.StrategicGoalId;
@@ -300,8 +306,10 @@ public class IpmsTargetsController : ControllerBase
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Edit", before?.ToResponse(), after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<IpmsTargetResponse>(true, after.ToResponse()));
+        var beforeResponse = before == null ? null : await ToResponseAsync(before);
+        var afterResponse = await ToResponseAsync(after);
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Edit", beforeResponse, afterResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, afterResponse));
     }
 
     [HttpPut("{id}/ordering")]
@@ -334,7 +342,7 @@ public class IpmsTargetsController : ControllerBase
 
         var after = await FindTargetAsync(id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<IpmsTargetResponse>(true, after.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(after)));
     }
 
     [HttpPut("{id}/field-revisions")]
@@ -384,7 +392,7 @@ public class IpmsTargetsController : ControllerBase
 
         var after = await FindTargetAsync(id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<IpmsTargetResponse>(true, after.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(after)));
     }
 
     [HttpGet("{id}/ordering-revisions")]
@@ -497,7 +505,9 @@ public class IpmsTargetsController : ControllerBase
             CorrelationId = HttpContext.TraceIdentifier
         });
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Withdraw", before?.ToResponse(), entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        var beforeResponse = before == null ? null : await ToResponseAsync(before);
+        var withdrawnResponse = await ToResponseAsync(entity);
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Withdraw", beforeResponse, withdrawnResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await transaction.CommitAsync();
         }
         catch (DbUpdateConcurrencyException)
@@ -506,7 +516,7 @@ public class IpmsTargetsController : ControllerBase
             return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "The IPMS target changed before withdrawal. Refresh and try again."));
         }
         var response = await FindTargetAsync(id) ?? entity;
-        return Ok(new ApiResponse<IpmsTargetResponse>(true, response.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(response)));
     }
 
     private bool TrySetExpectedVersion(IpmsTarget entity, string value)
@@ -595,6 +605,47 @@ public class IpmsTargetsController : ControllerBase
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;
     }
+
+    private async Task<(string? AssignedUserId, string? SupervisorId, string? Error)> ResolveUserReferencesAsync(SaveIpmsTargetRequest request)
+    {
+        if (_tenantContext.MunicipalityId is not > 0)
+            return (null, null, "A municipality context is required.");
+        var publicIds = new[] { request.AssignedUserPublicId, request.SupervisorPublicId }
+            .Where(item => item.HasValue)
+            .Select(item => item!.Value)
+            .Distinct()
+            .ToArray();
+        if (publicIds.Length == 0) return (null, null, null);
+        var now = DateTime.UtcNow;
+        var users = await _context.Users.AsNoTracking()
+            .Where(item => publicIds.Contains(item.PublicId) && item.IsActive)
+            .Where(item => item.MunicipalityId == _tenantContext.MunicipalityId
+                || _context.SecurityUserRoleAssignments.Any(link => link.UserId == item.Id
+                    && link.MunicipalityId == _tenantContext.MunicipalityId && link.IsActive && !link.RevokedAt.HasValue
+                    && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now)))
+            .Select(item => new { item.PublicId, item.Id })
+            .ToDictionaryAsync(item => item.PublicId, item => item.Id);
+        if (users.Count != publicIds.Length)
+            return (null, null, "Assigned user and supervisor must be active and assigned within the selected municipality.");
+        return (
+            request.AssignedUserPublicId.HasValue ? users[request.AssignedUserPublicId.Value] : null,
+            request.SupervisorPublicId.HasValue ? users[request.SupervisorPublicId.Value] : null,
+            null);
+    }
+
+    private async Task<IpmsTargetResponse[]> ToResponsesAsync(IReadOnlyCollection<IpmsTarget> targets, ReportingPeriodType? periodType = null)
+    {
+        var supervisorIds = targets.Where(item => item.SupervisorId != null).Select(item => item.SupervisorId!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var publicIds = supervisorIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+            : await _context.Users.AsNoTracking().Where(item => supervisorIds.Contains(item.Id))
+                .ToDictionaryAsync(item => item.Id, item => item.PublicId, StringComparer.OrdinalIgnoreCase);
+        return targets.Select(item => item.ToResponse(periodType,
+            item.SupervisorId != null && publicIds.TryGetValue(item.SupervisorId, out var publicId) ? publicId : null)).ToArray();
+    }
+
+    private async Task<IpmsTargetResponse> ToResponseAsync(IpmsTarget target, ReportingPeriodType? periodType = null) =>
+        (await ToResponsesAsync([target], periodType))[0];
 
     private static AccessScopeContext BuildScope(IpmsTarget target) =>
         new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);

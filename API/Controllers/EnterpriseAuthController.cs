@@ -27,12 +27,32 @@ public sealed class EnterpriseAuthController(
 {
     public const string ExternalCookieScheme = "Enterprise.External";
 
+    [HttpPost("options")]
+    public async Task<ActionResult<ApiResponse<EnterpriseSignInOptionsResponse>>> DiscoverOptions(
+        EnterpriseSignInDiscoveryRequest request,
+        CancellationToken cancellationToken)
+    {
+        var municipality = await ResolveMunicipalityAsync(request.Identifier, cancellationToken);
+        if (municipality == null)
+            return Ok(new ApiResponse<EnterpriseSignInOptionsResponse>(true,
+                new EnterpriseSignInOptionsResponse(string.Empty, string.Empty, true, [])));
+
+        return Ok(new ApiResponse<EnterpriseSignInOptionsResponse>(true,
+            await BuildOptionsAsync(municipality, cancellationToken)));
+    }
+
     [HttpGet("options/{municipalityCode}")]
     public async Task<ActionResult<ApiResponse<EnterpriseSignInOptionsResponse>>> GetOptions(string municipalityCode, CancellationToken cancellationToken)
     {
         var municipality = await context.Municipalities.IgnoreQueryFilters().AsNoTracking()
             .SingleOrDefaultAsync(item => item.Code == municipalityCode && item.IsActive, cancellationToken);
         if (municipality == null) return NotFound(new ApiResponse<EnterpriseSignInOptionsResponse>(false, null, "Municipality not found."));
+        return Ok(new ApiResponse<EnterpriseSignInOptionsResponse>(true,
+            await BuildOptionsAsync(municipality, cancellationToken)));
+    }
+
+    private async Task<EnterpriseSignInOptionsResponse> BuildOptionsAsync(Municipality municipality, CancellationToken cancellationToken)
+    {
         var configuration = await ActiveConfiguration(municipality.Id, cancellationToken);
         var localEnabled = configuration == null
             ? municipality.AuthenticationMode is AuthenticationMode.Local or AuthenticationMode.Hybrid
@@ -45,8 +65,7 @@ public sealed class EnterpriseAuthController(
         var enterpriseProviders = provider == null
             ? []
             : new[] { new EnterpriseProviderResponse(provider.Code, provider.DisplayName, provider.Kind) };
-        return Ok(new ApiResponse<EnterpriseSignInOptionsResponse>(true,
-            new EnterpriseSignInOptionsResponse(municipality.Code, municipality.Name, localEnabled, enterpriseProviders)));
+        return new EnterpriseSignInOptionsResponse(municipality.Code, municipality.Name, localEnabled, enterpriseProviders);
     }
 
     [HttpGet("challenge/{municipalityCode}/{providerCode}")]
@@ -93,6 +112,61 @@ public sealed class EnterpriseAuthController(
                 && (!item.EffectiveTo.HasValue || item.EffectiveTo > now), cancellationToken);
     }
 
+    private async Task<Municipality?> ResolveMunicipalityAsync(string? identifier, CancellationToken cancellationToken)
+    {
+        var value = identifier?.Trim();
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var normalized = value.ToUpperInvariant();
+        var user = await context.Users.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(item => item.IsActive
+                && (item.NormalizedEmail == normalized || item.NormalizedUserName == normalized), cancellationToken);
+
+        var municipalityIds = new HashSet<long>();
+        if (user?.MunicipalityId is > 0) municipalityIds.Add(user.MunicipalityId.Value);
+        if (user != null)
+        {
+            var now = DateTime.UtcNow;
+            var assignments = await context.SecurityUserRoleAssignments.IgnoreQueryFilters().AsNoTracking()
+                .Where(item => item.UserId == user.Id && item.MunicipalityId.HasValue && item.IsActive
+                    && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
+                .Select(item => item.MunicipalityId!.Value)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+            municipalityIds.UnionWith(assignments);
+        }
+
+        if (municipalityIds.Count == 0 && value.Contains('@'))
+        {
+            var domain = normalized[(normalized.LastIndexOf('@') + 1)..];
+            var domainPattern = $"%@{domain}";
+            var domainUsers = await context.Users.IgnoreQueryFilters().AsNoTracking()
+                .Where(item => item.IsActive && item.NormalizedEmail != null
+                    && EF.Functions.Like(item.NormalizedEmail, domainPattern))
+                .Select(item => new { item.Id, item.MunicipalityId })
+                .ToArrayAsync(cancellationToken);
+            municipalityIds.UnionWith(domainUsers.Where(item => item.MunicipalityId.HasValue)
+                .Select(item => item.MunicipalityId!.Value));
+            var domainUserIds = domainUsers.Select(item => item.Id).ToArray();
+            if (domainUserIds.Length > 0)
+            {
+                var now = DateTime.UtcNow;
+                var assignmentMunicipalities = await context.SecurityUserRoleAssignments.IgnoreQueryFilters().AsNoTracking()
+                    .Where(item => domainUserIds.Contains(item.UserId) && item.MunicipalityId.HasValue && item.IsActive
+                        && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
+                    .Select(item => item.MunicipalityId!.Value)
+                    .Distinct()
+                    .ToArrayAsync(cancellationToken);
+                municipalityIds.UnionWith(assignmentMunicipalities);
+            }
+        }
+
+        if (municipalityIds.Count != 1) return null;
+        var municipalityId = municipalityIds.Single();
+        return await context.Municipalities.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == municipalityId && item.IsActive, cancellationToken);
+    }
+
     private IActionResult RedirectFailure() => LocalRedirect(options.Value.FailurePath);
 
     private void SetSessionCookies(string accessToken, string refreshToken, DateTime accessExpiresAt)
@@ -106,3 +180,4 @@ public sealed class EnterpriseAuthController(
 
 public sealed record EnterpriseProviderResponse(string Code, string DisplayName, string Kind);
 public sealed record EnterpriseSignInOptionsResponse(string MunicipalityCode, string MunicipalityName, bool LocalEnabled, EnterpriseProviderResponse[] Providers);
+public sealed record EnterpriseSignInDiscoveryRequest(string Identifier);

@@ -9,7 +9,7 @@ describe('TargetFormPages helpers', () => {
     expect(payload.unitId).toBeNull();
     expect(payload.unitPublicId).toBe('unit-public-id');
     expect(payload.wardIds).toEqual([1, 2]);
-    expect(payload.additionalAssigneeIds).toEqual(['user-a', 'user-b']);
+    expect(payload.additionalAssigneePublicIds).toEqual(['user-a', 'user-b']);
     expect(payload.voteNumberIds).toEqual([10, 11]);
     expect(payload.budgetTypePublicId).toBe('type-1');
     expect(payload.budgetSources).toEqual([{ budgetSourcePublicId: 'source-1', amount: 125.5 }, { budgetSourcePublicId: 'source-2', amount: null }]);

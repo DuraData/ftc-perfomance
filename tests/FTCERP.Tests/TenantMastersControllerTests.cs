@@ -140,7 +140,7 @@ public sealed class TenantMastersControllerTests
         Assert.Null(protectedEmployee.EmployeeNumber);
         Assert.Null(protectedEmployee.SalaryReference);
         Assert.Null(protectedEmployee.EmailAddress);
-        Assert.Null(protectedEmployee.IdentityUserId);
+        Assert.Null(protectedEmployee.IdentityUserPublicId);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetEmployees().Result).StatusCode);
         var hiddenEmailSearch = await controller.GetEmployeesPage(new PagedQueryRequest { Search = "private@example.test", SortBy = "name", SortDirection = "asc" });
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<EmployeeDto>>>(Assert.IsType<OkObjectResult>(hiddenEmailSearch.Result).Value).Data!.TotalCount);
@@ -166,7 +166,7 @@ public sealed class TenantMastersControllerTests
         Assert.Equal("private@example.test", (await context.MunicipalEmployees.SingleAsync()).EmailAddress);
 
         var identityUpdate = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
-            employee.FirstName, employee.LastName, null, "different-login", true,
+            employee.FirstName, employee.LastName, null, Guid.NewGuid(), true,
             employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion), false, true));
         Assert.IsType<ForbidResult>(identityUpdate.Result);
         Assert.Equal(user.Id, (await context.MunicipalEmployees.SingleAsync()).IdentityUserId);
@@ -174,7 +174,7 @@ public sealed class TenantMastersControllerTests
         access.Setup(item => item.CheckPermissionAsync(user, "EMPLOYEE.IdentityUserId.UPDATE", It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
         var crossTenantLink = await controller.UpdateEmployee(employee.PublicId, new UpdateEmployeeRequest(
-            employee.FirstName, employee.LastName, null, foreignUser.Id, true,
+            employee.FirstName, employee.LastName, null, foreignUser.PublicId, true,
             employee.EffectiveFrom, null, Convert.ToBase64String(employee.RowVersion), false, true));
         Assert.IsType<BadRequestObjectResult>(crossTenantLink.Result);
         Assert.Equal(user.Id, (await context.MunicipalEmployees.SingleAsync()).IdentityUserId);

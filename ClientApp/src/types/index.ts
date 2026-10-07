@@ -469,7 +469,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   relatedIPMSTargets: IPMSTarget[];
   RelatedIPMSTargets?: string[];
   additionalAssignees: Employee[];
-  additionalAssigneeIds?: string[];
+  additionalAssigneePublicIds?: string[];
   AdditionalAssignees?: AdditionalAssigneeChild[];
   attachments: Attachment[];
 }
@@ -496,6 +496,7 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   department: Department;
   unit?: DepartmentUnit;
   assignedTo?: Employee;
+  supervisorPublicId?: string;
   indicatorNumber: string;
   isIndicatorNumberRevised: boolean;
   revisedIndicatorNumber?: string;
@@ -1284,7 +1285,7 @@ export interface WorkflowQueueDto {
 }
 
 export interface UserProfile {
-  id: string;
+  publicId: string;
   userName: string;
   firstName: string;
   lastName: string;
@@ -1386,7 +1387,7 @@ export interface RegisterRequest {
 }
 
 export interface AdminRole {
-  id: string;
+  publicId: string;
   name: string;
   description?: string;
   isSystemRole: boolean;
@@ -1394,7 +1395,6 @@ export interface AdminRole {
 }
 
 export interface AdminUser {
-  id: string;
   publicId: string;
   userName: string;
   firstName: string;
@@ -1512,7 +1512,7 @@ export interface MunicipalEmployeeDto {
   firstName: string;
   lastName: string;
   emailAddress?: string | null;
-  identityUserId?: string | null;
+  identityUserPublicId?: string | null;
   isActive: boolean;
   effectiveFrom: string;
   effectiveTo?: string | null;
@@ -2254,15 +2254,14 @@ export interface RoleSecurityPermission {
 }
 
 export interface RoleSecurityConfiguration {
-  roleId: string;
-  publicId: string;
+  rolePublicId: string;
   name: string;
   roleRowVersion: string;
   permissions: RoleSecurityPermission[];
 }
 
 export interface EffectiveSecurityPreview {
-  userId: string;
+  userPublicId: string;
   roles: string[];
   permissions: string[];
   scopes: string[];
@@ -2270,7 +2269,6 @@ export interface EffectiveSecurityPreview {
 }
 
 export interface SecurityRoleSummary extends AdminRole {
-  publicId: string;
   roleCode: string;
   municipalityId?: number;
   effectiveFrom: string;
@@ -2279,14 +2277,14 @@ export interface SecurityRoleSummary extends AdminRole {
 }
 
 export interface SecurityUserSummary {
-  id: string;
+  publicId: string;
   fullName: string;
   email: string;
 }
 
 export interface SecurityUserRoleAssignment {
   publicId: string;
-  roleId: string;
+  rolePublicId: string;
   roleName: string;
   municipalityId?: number;
   departmentId?: number;
@@ -2301,7 +2299,7 @@ export interface SecurityUserRoleAssignment {
 }
 
 export interface SecurityUserRoleConfiguration {
-  userId: string;
+  userPublicId: string;
   userName: string;
   assignments: SecurityUserRoleAssignment[];
 }
@@ -2460,10 +2458,10 @@ export interface OpmsTargetDto {
   unitId?: number | null;
   unitPublicId?: string | null;
   unitName?: string | null;
-  assignedUserId?: string | null;
+  assignedUserPublicId?: string | null;
   assignedUserName?: string | null;
   wardIds: number[];
-  additionalAssigneeIds: string[];
+  additionalAssigneePublicIds: string[];
   voteNumberIds: number[];
   indicatorNumber: string;
   isIndicatorNumberRevised: boolean;
@@ -2537,9 +2535,9 @@ export interface IpmsTargetDto {
   unitId?: number | null;
   unitPublicId?: string | null;
   unitName?: string | null;
-  assignedUserId?: string | null;
+  assignedUserPublicId?: string | null;
   assignedUserName?: string | null;
-  supervisorId?: string | null;
+  supervisorPublicId?: string | null;
   indicatorNumber: string;
   isIndicatorNumberRevised: boolean;
   revisedIndicatorNumber?: string | null;
@@ -2910,9 +2908,9 @@ export interface SaveOpmsTargetPayload {
   departmentPublicId?: string | null;
   unitId?: number | null;
   unitPublicId?: string | null;
-  assignedUserId?: string | null;
+  assignedUserPublicId?: string | null;
   wardIds?: number[];
-  additionalAssigneeIds?: string[];
+  additionalAssigneePublicIds?: string[];
   voteNumberIds?: number[];
   indicatorNumber: string;
   originalOrderNumber?: number;
@@ -2960,8 +2958,8 @@ export interface SaveIpmsTargetPayload {
   departmentPublicId?: string | null;
   unitId?: number | null;
   unitPublicId?: string | null;
-  assignedUserId?: string | null;
-  supervisorId?: string | null;
+  assignedUserPublicId?: string | null;
+  supervisorPublicId?: string | null;
   indicatorNumber: string;
   originalOrderNumber?: number;
   nationalKpa: string;

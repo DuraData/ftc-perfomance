@@ -504,7 +504,7 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     unitId: target.unit?.publicId ?? '',
     assignedToId: target.assignedTo?.id ?? '',
     wardIds: (target.wardIds ?? target.wards?.map(item => Number(item.id)) ?? []).join(','),
-    additionalAssigneeIds: (target.additionalAssigneeIds ?? target.additionalAssignees.map(item => item.id)).join(','),
+    additionalAssigneeIds: (target.additionalAssigneePublicIds ?? target.additionalAssignees.map(item => item.id)).join(','),
     voteNumberIds: (target.voteNumberIds ?? target.voteNumbers.map(item => Number(item.id))).join(','),
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
@@ -596,7 +596,7 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     departmentId: target.department.publicId ?? '',
     unitId: target.unit?.publicId ?? '',
     assignedToId: target.assignedTo?.id ?? '',
-    supervisorId: target.assignedTo?.manager?.id ?? '',
+    supervisorId: target.supervisorPublicId ?? '',
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
     municipalKPA: target.municipalKPA,
@@ -788,9 +788,9 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
     departmentPublicId: form.departmentId || null,
     unitId: null,
     unitPublicId: form.unitId || null,
-    assignedUserId: form.assignedToId || null,
+    assignedUserPublicId: form.assignedToId || null,
     wardIds: [...new Set(parseCsvIds(form.wardIds).map(Number).filter(Number.isSafeInteger))],
-    additionalAssigneeIds: [...new Set(parseCsvIds(form.additionalAssigneeIds))],
+    additionalAssigneePublicIds: [...new Set(parseCsvIds(form.additionalAssigneeIds))],
     voteNumberIds: [...new Set(parseCsvIds(form.voteNumberIds).map(Number).filter(Number.isSafeInteger))],
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
@@ -839,8 +839,8 @@ function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfig
     departmentPublicId: form.departmentId || null,
     unitId: null,
     unitPublicId: form.unitId || null,
-    assignedUserId: form.assignedToId || null,
-    supervisorId: form.supervisorId || null,
+    assignedUserPublicId: form.assignedToId || null,
+    supervisorPublicId: form.supervisorId || null,
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
     municipalKpa: form.municipalKPA,
@@ -1227,7 +1227,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   }
 
   const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
-  const employeeIdentityOptions = employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }));
+  const employeeIdentityOptions = employees.filter(item => item.identityUserPublicId).map(item => ({ value: item.identityUserPublicId!, label: `${item.firstName} ${item.lastName}` }));
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = referenceLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = referenceLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
@@ -1352,7 +1352,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <div className="flex flex-wrap gap-2">
               {selectedAssigneeIds.length === 0 ? <p className="text-xs text-secondary-500">No additional assignees linked.</p> : null}
               {selectedAssigneeIds.map(assigneeId => {
-                const assignee = employees.find(item => item.identityUserId === assigneeId);
+                const assignee = employees.find(item => item.identityUserPublicId === assigneeId);
                 return (
                   <button
                     key={assigneeId}
@@ -1804,7 +1804,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   }
 
   const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
-  const employeeIdentityOptions = employees.filter(item => item.identityUserId).map(item => ({ value: item.identityUserId!, label: `${item.firstName} ${item.lastName}` }));
+  const employeeIdentityOptions = employees.filter(item => item.identityUserPublicId).map(item => ({ value: item.identityUserPublicId!, label: `${item.firstName} ${item.lastName}` }));
   const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = organizationLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = organizationLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);

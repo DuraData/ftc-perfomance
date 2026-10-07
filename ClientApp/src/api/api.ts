@@ -536,11 +536,11 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     period: toPeriodReference(dto.periodId),
     department,
     unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
-    assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
+    assignedTo: toEmployeeReference(dto.assignedUserPublicId, dto.assignedUserName),
     wards: dto.wardIds.map(id => ({ id: String(id), code: String(id), name: `Ward ${id}`, isActive: true })),
     wardIds: dto.wardIds,
-    additionalAssignees: dto.additionalAssigneeIds.map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
-    additionalAssigneeIds: dto.additionalAssigneeIds,
+    additionalAssignees: dto.additionalAssigneePublicIds.map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
+    additionalAssigneePublicIds: dto.additionalAssigneePublicIds,
     voteNumbers: dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
     voteNumberIds: dto.voteNumberIds,
     indicatorNumber: dto.indicatorNumber,
@@ -640,7 +640,8 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     period: toPeriodReference(dto.periodId),
     department,
     unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
-    assignedTo: toEmployeeReference(dto.assignedUserId, dto.assignedUserName),
+    assignedTo: toEmployeeReference(dto.assignedUserPublicId, dto.assignedUserName),
+    supervisorPublicId: dto.supervisorPublicId ?? undefined,
     indicatorNumber: dto.indicatorNumber,
     isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
     revisedIndicatorNumber: dto.revisedIndicatorNumber ?? undefined,
@@ -723,7 +724,7 @@ function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = 
     publicId: id,
     rowVersion: '',
     wardIds: [],
-    additionalAssigneeIds: [],
+    additionalAssigneePublicIds: [],
     voteNumberIds: [],
     indicatorNumber,
     isIndicatorNumberRevised: false,
@@ -1132,8 +1133,8 @@ export async function completeEnterpriseLogin(): Promise<ApiResponse<LoginRespon
   return refreshAccessToken();
 }
 
-export async function getEnterpriseSignInOptions(municipalityCode: string): Promise<ApiResponse<EnterpriseSignInOptions>> {
-  return get<EnterpriseSignInOptions>(`/v1/auth/enterprise/options/${encodeURIComponent(municipalityCode.trim())}`);
+export async function getEnterpriseSignInOptions(identifier: string): Promise<ApiResponse<EnterpriseSignInOptions>> {
+  return post<EnterpriseSignInOptions>('/v1/auth/enterprise/options', { identifier: identifier.trim() });
 }
 
 export function enterpriseSignInUrl(municipalityCode: string, providerCode: string): string {
@@ -1340,11 +1341,11 @@ export async function getMunicipalEmployeesPage(query: RegisterPageQuery = {}, a
   return get<PagedResult<MunicipalEmployeeDto>>(`/v1/masters/employees/page${suffix}`);
 }
 
-export async function createMunicipalEmployee(payload: { employeeNumber: string; salaryReference?: string | null; firstName: string; lastName: string; emailAddress?: string | null; identityUserId?: string | null; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+export async function createMunicipalEmployee(payload: { employeeNumber: string; salaryReference?: string | null; firstName: string; lastName: string; emailAddress?: string | null; identityUserPublicId?: string | null; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalEmployeeDto>> {
   return post<MunicipalEmployeeDto>('/v1/masters/employees', payload);
 }
 
-export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; salaryReference?: string | null; salaryReferenceSpecified?: boolean; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserId?: string | null; identityUserIdSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; salaryReference?: string | null; salaryReferenceSpecified?: boolean; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserPublicId?: string | null; identityUserPublicIdSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
   return put<MunicipalEmployeeDto>(`/v1/masters/employees/${publicId}`, payload);
 }
 
@@ -1832,16 +1833,16 @@ export async function getUsersPage(query: RegisterPageQuery = {}): Promise<ApiRe
   return get<PagedResult<AdminUserDetail>>(`/users/page${registerPageQuery(query)}`);
 }
 
-export async function getUser(id: string): Promise<ApiResponse<AdminUserDetail>> {
-  return get<AdminUserDetail>(`/users/${id}`);
+export async function getUser(publicId: string): Promise<ApiResponse<AdminUserDetail>> {
+  return get<AdminUserDetail>(`/users/${publicId}`);
 }
 
 export async function createUser(payload: { firstName: string; lastName: string; email: string; password: string; phoneNumber?: string }): Promise<ApiResponse<AdminUserDetail>> {
   return post<AdminUserDetail>('/users', payload);
 }
 
-export async function updateUser(payload: { id: string; firstName: string; lastName: string; phoneNumber?: string; isActive: boolean }): Promise<ApiResponse<AdminUserDetail>> {
-  return put<AdminUserDetail>(`/users/${payload.id}`, {
+export async function updateUser(payload: { publicId: string; firstName: string; lastName: string; phoneNumber?: string; isActive: boolean }): Promise<ApiResponse<AdminUserDetail>> {
+  return put<AdminUserDetail>(`/users/${payload.publicId}`, {
     firstName: payload.firstName,
     lastName: payload.lastName,
     phoneNumber: payload.phoneNumber ?? null,
@@ -1849,28 +1850,28 @@ export async function updateUser(payload: { id: string; firstName: string; lastN
   });
 }
 
-export async function activateUser(id: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/users/${id}/activate`);
+export async function activateUser(publicId: string): Promise<ApiResponse<boolean>> {
+  return patch<boolean>(`/users/${publicId}/activate`);
 }
 
-export async function deactivateUser(id: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/users/${id}/deactivate`);
+export async function deactivateUser(publicId: string): Promise<ApiResponse<boolean>> {
+  return patch<boolean>(`/users/${publicId}/deactivate`);
 }
 
-export async function deleteUser(id: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/users/${id}`);
+export async function deleteUser(publicId: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/users/${publicId}`);
 }
 
-export async function setUserRoles(userId: string, roleIds: string[]): Promise<ApiResponse<boolean>> {
-  return post<boolean>(`/users/${userId}/roles`, { roleIds });
+export async function setUserRoles(userPublicId: string, rolePublicIds: string[]): Promise<ApiResponse<boolean>> {
+  return post<boolean>(`/users/${userPublicId}/roles`, { rolePublicIds });
 }
 
-export async function getUserPermissions(userId: string): Promise<ApiResponse<UserPermissions>> {
-  return get<UserPermissions>(`/users/${userId}/permissions`);
+export async function getUserPermissions(userPublicId: string): Promise<ApiResponse<UserPermissions>> {
+  return get<UserPermissions>(`/users/${userPublicId}/permissions`);
 }
 
-export async function setUserPermissionOverrides(userId: string, overrides: UserPermissionOverride[]): Promise<ApiResponse<boolean>> {
-  return put<boolean>(`/users/${userId}/permission-overrides`, { overrides });
+export async function setUserPermissionOverrides(userPublicId: string, overrides: UserPermissionOverride[]): Promise<ApiResponse<boolean>> {
+  return put<boolean>(`/users/${userPublicId}/permission-overrides`, { overrides });
 }
 
 export async function getRoles(): Promise<ApiResponse<AdminRole[]>> {
@@ -1881,12 +1882,12 @@ export async function createRole(payload: { name: string; description?: string }
   return post<AdminRole>('/roles', payload);
 }
 
-export async function updateRole(payload: { id: string; name: string; description?: string }): Promise<ApiResponse<AdminRole>> {
-  return put<AdminRole>(`/roles/${payload.id}`, { name: payload.name, description: payload.description ?? null });
+export async function updateRole(payload: { publicId: string; name: string; description?: string }): Promise<ApiResponse<AdminRole>> {
+  return put<AdminRole>(`/roles/${payload.publicId}`, { name: payload.name, description: payload.description ?? null });
 }
 
-export async function deleteRole(id: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/roles/${id}`);
+export async function deleteRole(publicId: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/roles/${publicId}`);
 }
 
 export async function getRolePermissions(roleId: string): Promise<ApiResponse<RolePermission[]>> {
@@ -1971,34 +1972,34 @@ export async function createSecurityRole(payload: { roleCode: string; name: stri
 }
 
 export async function updateSecurityRole(role: SecurityRoleSummary, payload: { name: string; description?: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
-  return put<SecurityRoleSummary>(`/v1/security/roles/${role.id}`, { ...payload, rowVersion: role.rowVersion });
+  return put<SecurityRoleSummary>(`/v1/security/roles/${role.publicId}`, { ...payload, rowVersion: role.rowVersion });
 }
 
 export async function getSecurityUsersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SecurityUserSummary>>> {
   return get<PagedResult<SecurityUserSummary>>(`/v1/security/users/page${registerPageQuery(query)}`);
 }
 
-export async function getSecurityUserRoles(userId: string): Promise<ApiResponse<SecurityUserRoleConfiguration>> {
-  return get<SecurityUserRoleConfiguration>(`/v1/security/users/${userId}/roles`);
+export async function getSecurityUserRoles(userPublicId: string): Promise<ApiResponse<SecurityUserRoleConfiguration>> {
+  return get<SecurityUserRoleConfiguration>(`/v1/security/users/${userPublicId}/roles`);
 }
 
-export async function saveSecurityUserRoles(userId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ roleId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; unitId?: number; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
-  return put<boolean>(`/v1/security/users/${userId}/roles`, {
+export async function saveSecurityUserRoles(userPublicId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ rolePublicId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; unitId?: number; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
+  return put<boolean>(`/v1/security/users/${userPublicId}/roles`, {
     expectedAssignments: current.assignments.map(item => ({ assignmentPublicId: item.publicId, rowVersion: item.rowVersion })),
     assignments,
   });
 }
 
-export async function getRoleSecurityConfiguration(roleId: string): Promise<ApiResponse<RoleSecurityConfiguration>> {
-  return get<RoleSecurityConfiguration>(`/v1/security/roles/${roleId}/permissions`);
+export async function getRoleSecurityConfiguration(rolePublicId: string): Promise<ApiResponse<RoleSecurityConfiguration>> {
+  return get<RoleSecurityConfiguration>(`/v1/security/roles/${rolePublicId}/permissions`);
 }
 
-export async function saveRoleSecurityConfiguration(roleId: string, roleRowVersion: string, permissions: Array<Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>>): Promise<ApiResponse<boolean>> {
-  return put<boolean>(`/v1/security/roles/${roleId}/permissions`, { roleRowVersion, permissions });
+export async function saveRoleSecurityConfiguration(rolePublicId: string, roleRowVersion: string, permissions: Array<Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>>): Promise<ApiResponse<boolean>> {
+  return put<boolean>(`/v1/security/roles/${rolePublicId}/permissions`, { roleRowVersion, permissions });
 }
 
-export async function getEffectiveSecurityPreview(userId: string): Promise<ApiResponse<EffectiveSecurityPreview>> {
-  return get<EffectiveSecurityPreview>(`/v1/security/effective-permissions/${userId}`);
+export async function getEffectiveSecurityPreview(userPublicId: string): Promise<ApiResponse<EffectiveSecurityPreview>> {
+  return get<EffectiveSecurityPreview>(`/v1/security/effective-permissions/${userPublicId}`);
 }
 
 export async function getPermissions(): Promise<ApiResponse<AdminPermission[]>> {
@@ -2045,7 +2046,7 @@ export async function getSystemCoverageAudit(): Promise<ApiResponse<SystemCovera
 }
 
 export async function simulateAccess(payload: {
-  userId: string;
+  userPublicId: string;
   role?: string;
   departmentId?: number | null;
   departmentPublicId?: string | null;

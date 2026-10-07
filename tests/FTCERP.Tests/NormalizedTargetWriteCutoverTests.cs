@@ -274,7 +274,7 @@ public sealed class NormalizedTargetWriteCutoverTests
 
     private static SaveOpmsTargetRequest Request(int periodId, Guid? sdbipLayerPublicId = null, ClassificationIds? classifications = null) => new(
         SourceTemplateId: null, SourceTemplateVersion: null, PeriodId: periodId, DepartmentId: null, UnitId: null,
-        AssignedUserId: null, WardIds: [], AdditionalAssigneeIds: [], VoteNumberIds: [], IndicatorNumber: "OPMS-1",
+        AssignedUserPublicId: null, WardIds: [], AdditionalAssigneePublicIds: [], VoteNumberIds: [], IndicatorNumber: "OPMS-1",
         NationalKpa: "National KPA", MunicipalKpa: "Municipal KPA", StrategicGoalId: null, StrategicObjectiveId: null,
         PerformanceObjective: "Objective", TargetName: "Normalized target", KpiDescription: "Description", Baseline: 0m,
         BaselineDescription: null, BudgetSourceId: null, BudgetTypeId: null, UnitOfMeasureId: null, Weight: 10m,
@@ -301,8 +301,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         PeriodId: periodId,
         DepartmentId: null,
         UnitId: null,
-        AssignedUserId: null,
-        SupervisorId: null,
+        AssignedUserPublicId: null,
+        SupervisorPublicId: null,
         IndicatorNumber: "IPMS-1",
         NationalKpa: "National KPA",
         MunicipalKpa: "Municipal KPA",

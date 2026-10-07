@@ -21,16 +21,18 @@ public sealed class LegacySecurityEndpointRetirementTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
         await using var context = new ApplicationDbContext(options, tenant);
         await context.Database.EnsureCreatedAsync();
+        var roleA = Role("role-a", 301, "ROLE_A", "Tenant A Role");
+        var roleB = Role("role-b", 302, "ROLE_B", "Tenant B Role");
         context.AddRange(
             new Municipality { Id = 301, Code = "M301", Name = "Municipality 301" },
             new Municipality { Id = 302, Code = "M302", Name = "Municipality 302" },
-            Role("role-a", 301, "ROLE_A", "Tenant A Role"),
-            Role("role-b", 302, "ROLE_B", "Tenant B Role"));
+            roleA,
+            roleB);
         await context.SaveChangesAsync();
         var controller = new RolesController(context, tenant);
 
         AssertGone(controller.GetRoles().Result);
-        Assert.IsType<NotFoundObjectResult>((await controller.GetRole("role-b")).Result);
+        Assert.IsType<NotFoundObjectResult>((await controller.GetRole(roleB.PublicId)).Result);
         AssertGone(controller.GetRolePermissions("role-a").Result);
         AssertGone(controller.GetRolePermissions("role-b").Result);
 

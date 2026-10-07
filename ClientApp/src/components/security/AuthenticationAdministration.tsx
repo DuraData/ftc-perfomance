@@ -117,7 +117,7 @@ export function AuthenticationAdministrationPage() {
       setUserTotalPages(result.data?.totalPages ?? 0);
     });
   }, [userPage, userSearch]);
-  const selectedUserRecord = useMemo(() => users.find(item => item.id === selectedUser), [selectedUser, users]);
+  const selectedUserRecord = useMemo(() => users.find(item => item.publicId === selectedUser), [selectedUser, users]);
 
   const save = async () => {
     setBusy(true); setMessage('');
@@ -139,7 +139,7 @@ export function AuthenticationAdministrationPage() {
   const provision = async () => {
     if (!selectedUserRecord || !providerCode) return;
     setBusy(true); setMessage('');
-    const result = await provisionUserAuthenticator({ userId: selectedUserRecord.id, providerRegistrationCode: providerCode, expectedEmail: selectedUserRecord.email, reason: linkReason });
+    const result = await provisionUserAuthenticator({ userPublicId: selectedUserRecord.publicId, providerRegistrationCode: providerCode, expectedEmail: selectedUserRecord.email, reason: linkReason });
     setMessage(result.success ? 'Enterprise identity pre-provisioned.' : result.message ?? 'Unable to provision the identity.');
     if (result.success) { setLinkReason(''); setAuthenticatorPage(1); setAuthenticatorRevision(value => value + 1); }
     setBusy(false);
@@ -187,7 +187,7 @@ export function AuthenticationAdministrationPage() {
       <h2 className="font-semibold">Pre-provision enterprise identity</h2>
       <div className="grid md:grid-cols-2 gap-4">
         <Input label="Search users" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
-        <Select label="User" options={users.map(item => ({ value: item.id, label: item.email ? `${item.fullName} — ${item.email}` : item.fullName }))} placeholder="Select user" value={selectedUser} onChange={event => setSelectedUser(event.target.value)} />
+        <Select label="User" options={users.map(item => ({ value: item.publicId, label: item.email ? `${item.fullName} — ${item.email}` : item.fullName }))} placeholder="Select user" value={selectedUser} onChange={event => setSelectedUser(event.target.value)} />
         {canReadExpectedEmail ? <Input label="Verified email" value={selectedUserRecord?.email ?? ''} disabled /> : null}
       </div>
       {userTotalPages > 1 && <div className="flex items-center gap-2 text-xs text-secondary-500"><Button variant="outline" size="sm" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</Button><span>Page {userPage} of {userTotalPages}</span><Button variant="outline" size="sm" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</Button></div>}

@@ -161,7 +161,7 @@ export function AdminUsersPage() {
 
     if (editing) {
       const res = await updateUser({
-        id: editing.user.id,
+        publicId: editing.user.publicId,
         firstName: form.firstName,
         lastName: form.lastName,
         phoneNumber: canEditPhone ? form.phoneNumber || undefined : editing.user.phoneNumber,
@@ -193,7 +193,7 @@ export function AdminUsersPage() {
 
   const toggleActive = async (u: AdminUserDetail) => {
     if (!(u.user.isActive ? canExecute('USER.DISABLE') : canExecute('USER.ENABLE'))) return;
-    const res = u.user.isActive ? await deactivateUser(u.user.id) : await activateUser(u.user.id);
+    const res = u.user.isActive ? await deactivateUser(u.user.publicId) : await activateUser(u.user.publicId);
     if (!res.success) {
       setError(res.message ?? 'Failed to update status');
       return;
@@ -209,7 +209,7 @@ export function AdminUsersPage() {
 
   const confirmDelete = async () => {
     if (!canDeleteUser || !userToDelete) return;
-    const res = await deleteUser(userToDelete.user.id);
+    const res = await deleteUser(userToDelete.user.publicId);
     if (!res.success) {
       setError(res.message ?? 'Failed to delete user');
       return;
@@ -231,13 +231,13 @@ export function AdminUsersPage() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   useEffect(() => {
     if (selectedUserForRoles) {
-      setSelectedRoleIds(selectedUserForRoles.roles.map(r => r.id));
+      setSelectedRoleIds(selectedUserForRoles.roles.map(r => r.publicId));
     }
   }, [selectedUserForRoles]);
 
   const saveRoles = async () => {
     if (!selectedUserForRoles) return;
-    const res = await setUserRoles(selectedUserForRoles.user.id, selectedRoleIds);
+    const res = await setUserRoles(selectedUserForRoles.user.publicId, selectedRoleIds);
     if (!res.success) {
       setError(res.message ?? 'Failed to update roles');
       return;
@@ -253,7 +253,7 @@ export function AdminUsersPage() {
     setSelectedUserForPermissions(u);
     setPermissionPage(1);
     setPermissionSearch('');
-    const res = await getUserPermissions(u.user.id);
+    const res = await getUserPermissions(u.user.publicId);
     if (!res.success || !res.data) {
       setError(res.message ?? 'Failed to load user permissions');
       return;
@@ -275,7 +275,7 @@ export function AdminUsersPage() {
       isAllowed,
       reason: undefined,
     }));
-    const res = await setUserPermissionOverrides(selectedUserForPermissions.user.id, overrides);
+    const res = await setUserPermissionOverrides(selectedUserForPermissions.user.publicId, overrides);
     if (!res.success) {
       setError(res.message ?? 'Failed to save overrides');
       return;
@@ -295,7 +295,7 @@ export function AdminUsersPage() {
       accessor: (r: AdminUserDetail) => (
         <div className="flex flex-wrap gap-1">
           {r.roles.slice(0, 3).map(role => (
-            <Badge key={role.id} size="sm" variant="default">{role.name}</Badge>
+            <Badge key={role.publicId} size="sm" variant="default">{role.name}</Badge>
           ))}
           {r.roles.length > 3 && <Badge size="sm" variant="default">+{r.roles.length - 3}</Badge>}
         </div>
@@ -354,7 +354,7 @@ export function AdminUsersPage() {
             actions={actions}
             searchable
             searchPlaceholder="Search users"
-            getRowId={(r) => r.user.id}
+            getRowId={(r) => r.user.publicId}
             emptyMessage={loading ? 'Loading...' : 'No users'}
             serverState={{
               page, pageSize, totalCount, search, sortBy, sortDirection,
@@ -429,13 +429,13 @@ export function AdminUsersPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {roles.map(r => (
                 <Checkbox
-                  key={r.id}
+                  key={r.publicId}
                   label={r.name}
                   description={r.description ?? ''}
-                  checked={selectedRoleIds.includes(r.id)}
+                  checked={selectedRoleIds.includes(r.publicId)}
                   onChange={(e) => {
                     const checked = e.target.checked;
-                    setSelectedRoleIds(prev => checked ? [...new Set([...prev, r.id])] : prev.filter(x => x !== r.id));
+                    setSelectedRoleIds(prev => checked ? [...new Set([...prev, r.publicId])] : prev.filter(x => x !== r.publicId));
                   }}
                 />
               ))}
@@ -627,7 +627,7 @@ export function AdminRolesPage() {
     }
 
     if (editing) {
-      const res = await updateRole({ id: editing.id, name: roleForm.name, description: roleForm.description || undefined });
+      const res = await updateRole({ publicId: editing.publicId, name: roleForm.name, description: roleForm.description || undefined });
       if (!res.success) { setError(res.message ?? 'Failed to update role'); return; }
       pushToast('success', 'Role updated');
     } else {
@@ -648,9 +648,9 @@ export function AdminRolesPage() {
   const confirmDelete = async () => {
     if (!canManage || !roleToDelete) return;
     setError(null);
-    const res = await deleteRole(roleToDelete.id);
+    const res = await deleteRole(roleToDelete.publicId);
     if (!res.success) { setError(res.message ?? 'Failed to delete role'); return; }
-    setRoles(prev => prev.filter(x => x.id !== roleToDelete.id));
+    setRoles(prev => prev.filter(x => x.publicId !== roleToDelete.publicId));
     setDeleteConfirmOpen(false);
     setRoleToDelete(null);
     pushToast('success', 'Role deleted');
@@ -659,7 +659,7 @@ export function AdminRolesPage() {
   const openPermissions = async (r: AdminRole) => {
     setError(null);
     setSelectedRole(r);
-    const res = await getRolePermissions(r.id);
+    const res = await getRolePermissions(r.publicId);
     if (!res.success || !res.data) {
       setError(res.message ?? 'Failed to load role permissions');
       return;
@@ -670,7 +670,7 @@ export function AdminRolesPage() {
 
   const savePermissions = async () => {
     if (!selectedRole) return;
-    const res = await setRolePermissions(selectedRole.id, selectedPermissionIds);
+    const res = await setRolePermissions(selectedRole.publicId, selectedPermissionIds);
     if (!res.success) { setError(res.message ?? 'Failed to save permissions'); return; }
     setPermModalOpen(false);
     setSelectedRole(null);
@@ -717,7 +717,7 @@ export function AdminRolesPage() {
         )}
 
         <Card>
-          <DataTable data={roles} columns={columns} actions={actions} searchable getRowId={(r) => r.id} emptyMessage={loading ? 'Loading...' : 'No roles'} />
+          <DataTable data={roles} columns={columns} actions={actions} searchable getRowId={(r) => r.publicId} emptyMessage={loading ? 'Loading...' : 'No roles'} />
         </Card>
 
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Role' : 'New Role'} size="md">

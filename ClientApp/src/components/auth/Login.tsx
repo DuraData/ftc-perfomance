@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Target, Eye, EyeOff, Building2 } from 'lucide-react';
+import { Target, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../ui';
 import { Input } from '../common/Form';
 import { useApp } from '../../context/AppContext';
@@ -25,7 +25,6 @@ export function Login() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [notice, setNotice] = useState('');
-  const [municipalityCode, setMunicipalityCode] = useState('');
   const [enterpriseOptions, setEnterpriseOptions] = useState<EnterpriseSignInOptions | null>(null);
 
   useEffect(() => {
@@ -40,15 +39,18 @@ export function Login() {
     }).finally(() => setLoading(false));
   }, [resumeEnterpriseLogin]);
 
-  const discoverEnterpriseOptions = async () => {
-    setError(''); setEnterpriseOptions(null); setLoading(true);
-    try {
-      const result = await getEnterpriseSignInOptions(municipalityCode);
-      if (result.success && result.data) setEnterpriseOptions(result.data);
-      else setError(result.message ?? 'No sign-in configuration was found for that municipality.');
-    } catch { setError('Sign-in options could not be loaded.'); }
-    finally { setLoading(false); }
-  };
+  useEffect(() => {
+    if (mode !== 'login' || mfaRequired || !identifier.includes('@')) {
+      setEnterpriseOptions(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void getEnterpriseSignInOptions(identifier).then(result => {
+        if (result.success && result.data) setEnterpriseOptions(result.data);
+      }).catch(() => setEnterpriseOptions(null));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [identifier, mfaRequired, mode]);
 
   const returnToLogin = () => {
     window.history.replaceState({}, '', '/login');
@@ -156,21 +158,6 @@ export function Login() {
           )}
 
           {mode === 'login' && <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="rounded-lg border border-secondary-200 dark:border-secondary-700 p-3 space-y-3">
-              <Input label="Municipality code" type="text" value={municipalityCode} onChange={(event) => { setMunicipalityCode(event.target.value); setEnterpriseOptions(null); }} placeholder="For example: CPT" />
-              <Button type="button" variant="secondary" className="w-full" disabled={loading || municipalityCode.trim().length < 2} onClick={discoverEnterpriseOptions}>
-                <Building2 className="w-4 h-4 mr-2" /> Find sign-in options
-              </Button>
-              {enterpriseOptions?.providers.map(provider => (
-                <Button key={provider.code} type="button" variant="primary" className="w-full" onClick={() => window.location.assign(enterpriseSignInUrl(enterpriseOptions.municipalityCode, provider.code))}>
-                  Sign in with {provider.displayName}
-                </Button>
-              ))}
-              {enterpriseOptions && enterpriseOptions.providers.length === 0 ? <p className="text-sm text-secondary-500">No enterprise provider is enabled for this municipality.</p> : null}
-            </div>
-
-            {enterpriseOptions?.localEnabled === false ? <p className="text-sm text-secondary-600 dark:text-secondary-300">Local password sign-in is disabled for {enterpriseOptions.municipalityName}.</p> : null}
-            {enterpriseOptions?.localEnabled !== false ? <>
             <Input
               label="Username or Email"
               type="text"
@@ -180,6 +167,15 @@ export function Login() {
               required
               disabled={mfaRequired}
             />
+
+            {enterpriseOptions?.providers.map(provider => (
+              <Button key={provider.code} type="button" variant="secondary" className="w-full" onClick={() => window.location.assign(enterpriseSignInUrl(enterpriseOptions.municipalityCode, provider.code))}>
+                Sign in with {provider.displayName}
+              </Button>
+            ))}
+
+            {enterpriseOptions?.localEnabled === false ? <p className="text-sm text-secondary-600 dark:text-secondary-300">Use your configured work account to sign in to {enterpriseOptions.municipalityName}.</p> : null}
+            {enterpriseOptions?.localEnabled !== false ? <>
 
             <div className="relative">
               <Input
