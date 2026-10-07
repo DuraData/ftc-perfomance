@@ -191,6 +191,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (!StrategicDocumentSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<StrategicDocumentResponse>>("SortBy must be createdAt, title, documentDate, versionNumber, financialYear, or displayOrder."));
         var manager = (await accessControl.CheckPermissionAsync(session.User!, "STRATEGIC_DOCUMENT.UPDATE", MunicipalityScope())).Allowed;
+        var memberAccess = await GetMemberAccessAsync(session.User!, tenantContext.MunicipalityId!.Value);
         if (includeHistory && !manager)
             return Forbidden<PagedResponse<StrategicDocumentResponse>>("Document history requires strategic-document administration permission.");
 
@@ -205,7 +206,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         var rows = await ApplyDocumentOrdering(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<StrategicDocumentResponse>>(true,
-            PagedResponse<StrategicDocumentResponse>.Create(rows.Select(item => ToResponse(item, manager)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<StrategicDocumentResponse>.Create(rows.Select(item => ToResponse(item, manager, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> StrategicDocumentSortFields =
@@ -246,11 +247,12 @@ public sealed class StrategicDocumentsController : ControllerBase
                 "SortBy must be versionNumber, createdAt, documentDate, or title."));
         var query = DocumentQuery().Where(item => item.DocumentFamilyId == familyId);
         if (!await query.AnyAsync()) return NotFound(Fail<PagedResponse<StrategicDocumentResponse>>("Strategic-document family not found."));
+        var memberAccess = await GetMemberAccessAsync(session.User!, tenantContext.MunicipalityId!.Value);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.Title.Contains(request.NormalizedSearch)
                 || (item.Description != null && item.Description.Contains(request.NormalizedSearch))
                 || (item.ApprovalReference != null && item.ApprovalReference.Contains(request.NormalizedSearch))
-                || item.CreatedByUserId.Contains(request.NormalizedSearch)
+                || (memberAccess.CreatedByUserId && item.CreatedByUserId.Contains(request.NormalizedSearch))
                 || item.Events.Any(eventItem => eventItem.Reason.Contains(request.NormalizedSearch)));
         var totalCount = await query.CountAsync();
         var ordered = (sortBy, request.Descending) switch
@@ -266,7 +268,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         };
         var rows = await ordered.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<StrategicDocumentResponse>>(true,
-            PagedResponse<StrategicDocumentResponse>.Create(rows.Select(item => ToResponse(item, true)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<StrategicDocumentResponse>.Create(rows.Select(item => ToResponse(item, true, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("versions")]
@@ -386,7 +388,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.MunicipalityFinancialYear = year;
         entity.DocumentType = type;
         entity.PreviousVersion = previous;
-        return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true), blob?.IsQuarantined == true ? "Version created; its file is quarantined pending a clean scan." : "Strategic-document version created."));
+        var memberAccess = await GetMemberAccessAsync(user, entity.MunicipalityId);
+        return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true, memberAccess), blob?.IsQuarantined == true ? "Version created; its file is quarantined pending a clean scan." : "Strategic-document version created."));
     }
 
     [HttpPost("{publicId:guid}/approve")]
@@ -406,7 +409,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.ApprovalReference = reference;
         entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Approved, reason, loaded.User.Id));
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Approve", null, new { ApprovalReference = reference, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return await SaveCommand(entity, "The document changed before approval. Reload and retry.");
+        return await SaveCommand(entity, loaded.User!, "The document changed before approval. Reload and retry.");
     }
 
     [HttpPost("{publicId:guid}/publish")]
@@ -426,7 +429,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.PublishedByUserId = loaded.User!.Id;
         entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Published, reason, loaded.User.Id));
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Publish", null, new { entity.PublicationDate, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return await SaveCommand(entity, "The document changed before publication. Reload and retry.");
+        return await SaveCommand(entity, loaded.User!, "The document changed before publication. Reload and retry.");
     }
 
     [HttpPost("{publicId:guid}/retire")]
@@ -440,7 +443,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.IsActive = false;
         entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Retired, reason, loaded.User!.Id));
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Retire", null, new { Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return await SaveCommand(entity, "The document changed before retirement. Reload and retry.");
+        return await SaveCommand(entity, loaded.User!, "The document changed before retirement. Reload and retry.");
     }
 
     [HttpPost("{publicId:guid}/rescan")]
@@ -468,7 +471,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "MalwareRescan", before,
             new { scan.Status, entity.Blob.IsQuarantined, scan.ProviderReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await context.SaveChangesAsync();
-        return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true), scan.IsClean ? "Document released after a clean scan." : "Document remains quarantined."));
+        var memberAccess = await GetMemberAccessAsync(user, entity.MunicipalityId);
+        return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true, memberAccess), scan.IsClean ? "Document released after a clean scan." : "Document remains quarantined."));
     }
 
     [HttpGet("{publicId:guid}/content")]
@@ -532,7 +536,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         return (user, entity, null);
     }
 
-    private async Task<ActionResult<ApiResponse<StrategicDocumentResponse>>> SaveCommand(StrategicDocument entity, string concurrencyMessage)
+    private async Task<ActionResult<ApiResponse<StrategicDocumentResponse>>> SaveCommand(StrategicDocument entity, ApplicationUser user, string concurrencyMessage)
     {
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
@@ -540,7 +544,27 @@ public sealed class StrategicDocumentsController : ControllerBase
             context.ChangeTracker.Clear();
             return Conflict(Fail<StrategicDocumentResponse>(concurrencyMessage));
         }
-        return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true)));
+        var memberAccess = await GetMemberAccessAsync(user, entity.MunicipalityId);
+        return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true, memberAccess)));
+    }
+
+    private async Task<StrategicDocumentMemberAccess> GetMemberAccessAsync(ApplicationUser user, long municipalityId)
+    {
+        async Task<bool> CanReadAsync(string memberCode)
+        {
+            var decision = await accessControl.CheckPermissionAsync(user, $"STRATEGIC_DOCUMENT.{memberCode}.READ",
+                new AccessScopeContext(MunicipalityId: municipalityId));
+            return decision.Allowed;
+        }
+
+        return new StrategicDocumentMemberAccess(
+            await CanReadAsync("CreatedByUserId"),
+            await CanReadAsync("ApprovedByUserId"),
+            await CanReadAsync("PublishedByUserId"),
+            await CanReadAsync("EventActorUserId"),
+            await CanReadAsync("ScannerProvider"),
+            await CanReadAsync("ScannerReference"),
+            await CanReadAsync("ScanDetail"));
     }
 
     private async Task<(ApplicationUser? User, ActionResult<ApiResponse<T>>? Error)> SessionAsync<T>(string permission)
@@ -580,16 +604,23 @@ public sealed class StrategicDocumentsController : ControllerBase
     private static StrategicDocumentTypeResponse ToResponse(StrategicDocumentType item) => new(
         item.PublicId, item.Code, item.Name, item.Description, item.AllowsExternalLinks, item.IsActive, item.DisplayOrder, Convert.ToBase64String(item.RowVersion));
 
-    private static StrategicDocumentResponse ToResponse(StrategicDocument item, bool includeAdministration) => new(
+    private static StrategicDocumentResponse ToResponse(StrategicDocument item, bool includeAdministration, StrategicDocumentMemberAccess memberAccess) => new(
         item.PublicId, item.DocumentFamilyId, item.PreviousVersion?.PublicId, item.VersionNumber,
         item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.MunicipalityFinancialYear.FinancialYear.Name,
         item.DocumentType.PublicId, item.DocumentType.Code, item.DocumentType.Name, item.SdbipLayer, item.Title, item.Description,
-        item.DocumentDate, item.DisplayOrder, item.IsCurrent, item.IsActive, item.IsApproved, item.ApprovedAt, item.ApprovedByUserId,
-        item.ApprovalReference, item.IsPublished, item.PublicationDate, item.PublishedAt, item.PublishedByUserId, item.CreatedAt,
-        item.CreatedByUserId, item.FileName, item.Blob?.ContentType, item.Blob?.SizeInBytes, item.Blob?.Sha256, item.Blob?.ScanStatus,
+        item.DocumentDate, item.DisplayOrder, item.IsCurrent, item.IsActive, item.IsApproved, item.ApprovedAt,
+        memberAccess.ApprovedByUserId ? item.ApprovedByUserId : null,
+        item.ApprovalReference, item.IsPublished, item.PublicationDate, item.PublishedAt,
+        memberAccess.PublishedByUserId ? item.PublishedByUserId : null, item.CreatedAt,
+        memberAccess.CreatedByUserId ? item.CreatedByUserId : null, item.FileName, item.Blob?.ContentType, item.Blob?.SizeInBytes,
+        item.Blob?.Sha256, item.Blob?.ScanStatus,
+        memberAccess.ScannerProvider ? item.Blob?.ScannerProvider : null,
+        memberAccess.ScannerReference ? item.Blob?.ScannerReference : null,
+        memberAccess.ScanDetail ? item.Blob?.ScanDetail : null,
         item.Blob?.IsQuarantined ?? false, item.ExternalUrl, item.Blob == null ? null : $"/api/v1/strategic-documents/{item.PublicId}/content",
         Convert.ToBase64String(item.RowVersion), includeAdministration ? item.Events.OrderBy(eventItem => eventItem.OccurredAt)
-            .Select(eventItem => new StrategicDocumentEventResponse(eventItem.PublicId, eventItem.Action.ToString(), eventItem.Reason, eventItem.ActorUserId, eventItem.OccurredAt)).ToArray() : []);
+            .Select(eventItem => new StrategicDocumentEventResponse(eventItem.PublicId, eventItem.Action.ToString(), eventItem.Reason,
+                memberAccess.EventActorUserId ? eventItem.ActorUserId : null, eventItem.OccurredAt)).ToArray() : []);
 
     private static bool TryNormalizeType(SaveStrategicDocumentTypeRequest request, out NormalizedType value, out string? error)
     {

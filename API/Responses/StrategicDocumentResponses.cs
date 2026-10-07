@@ -14,7 +14,7 @@ public sealed record StrategicDocumentEventResponse(
     Guid PublicId,
     string Action,
     string Reason,
-    string ActorUserId,
+    string? ActorUserId,
     DateTime OccurredAt);
 
 public sealed record StrategicDocumentResponse(
@@ -44,12 +44,15 @@ public sealed record StrategicDocumentResponse(
     DateTime? PublishedAt,
     string? PublishedByUserId,
     DateTime CreatedAt,
-    string CreatedByUserId,
+    string? CreatedByUserId,
     string? FileName,
     string? ContentType,
     long? SizeInBytes,
     string? Sha256,
     string? ScanStatus,
+    string? ScannerProvider,
+    string? ScannerReference,
+    string? ScanDetail,
     bool IsQuarantined,
     string? ExternalUrl,
     string? ContentUrl,

@@ -123,6 +123,9 @@ public class StrategicDocumentsControllerTests
         var created = Payload(await manager.CreateVersion(request));
         created.IsQuarantined.Should().BeTrue();
         created.ScanStatus.Should().Be("ThreatDetected");
+        created.ScannerProvider.Should().Be("test-scanner");
+        created.ScannerReference.Should().Be("scan-1");
+        created.ScanDetail.Should().Be("Threat");
         (await manager.Download(created.PublicId)).Should().BeOfType<NotFoundResult>();
         var blockedApproval = await manager.Approve(created.PublicId, new ApproveStrategicDocumentRequest(created.RowVersion, "Council 20/2026", "Approve"));
         blockedApproval.Result.Should().BeOfType<ConflictObjectResult>();
@@ -134,6 +137,14 @@ public class StrategicDocumentsControllerTests
         var ordinary = Controller(context, setup.User, setup.Municipality.Id, manager: false, storage: storage, inspection: inspection, scanner: scanner);
         var rows = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest { PageSize = 100 }, setup.Year.PublicId));
         rows.Items.Should().ContainSingle().Which.Title.Should().Be("Spatial development framework");
+        rows.Items.Single().CreatedByUserId.Should().BeNull();
+        rows.Items.Single().ApprovedByUserId.Should().BeNull();
+        rows.Items.Single().PublishedByUserId.Should().BeNull();
+        rows.Items.Single().ScannerProvider.Should().BeNull();
+        rows.Items.Single().ScannerReference.Should().BeNull();
+        rows.Items.Single().ScanDetail.Should().BeNull();
+        (await ordinary.Rescan(published.PublicId)).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         var download = await ordinary.Download(published.PublicId);
         download.Should().BeOfType<FileContentResult>().Which.FileContents.Should().Equal(bytes);
         (await context.EvidenceBlobs.SingleAsync()).StorageKey.Should().StartWith($"strategic-documents{Path.DirectorySeparatorChar}");
@@ -176,6 +187,42 @@ public class StrategicDocumentsControllerTests
         response.Result.Should().BeOfType<BadRequestObjectResult>();
         controller.GetDocuments(setup.Year.PublicId).Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
+    [Fact]
+    public async Task Sensitive_identity_members_are_masked_non_inferable_and_granted_dynamically()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, allowsExternalLinks: true);
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.UPDATE"
+        };
+        var controller = Controller(context, setup.User, setup.Municipality.Id, grantedPermissions: permissions);
+
+        var created = Payload(await controller.CreateVersion(
+            ExternalRequest(setup, "Governed identity metadata", "https://example.gov.za/identity.pdf")));
+        created.CreatedByUserId.Should().BeNull();
+        created.Events.Should().ContainSingle().Which.ActorUserId.Should().BeNull();
+
+        var hiddenSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
+        {
+            Search = setup.User.Id,
+            PageSize = 10
+        }));
+        hiddenSearch.TotalCount.Should().Be(0);
+
+        foreach (var member in new[] { "CreatedByUserId", "ApprovedByUserId", "PublishedByUserId", "EventActorUserId", "ScannerProvider", "ScannerReference", "ScanDetail" })
+            permissions.Add($"STRATEGIC_DOCUMENT.{member}.READ");
+
+        var visibleSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
+        {
+            Search = setup.User.Id,
+            PageSize = 10
+        }));
+        visibleSearch.TotalCount.Should().Be(1);
+        visibleSearch.Items.Should().ContainSingle().Which.CreatedByUserId.Should().Be(setup.User.Id);
+        visibleSearch.Items.Single().Events.Should().ContainSingle().Which.ActorUserId.Should().Be(setup.User.Id);
     }
 
     [Fact]
@@ -226,13 +273,14 @@ public class StrategicDocumentsControllerTests
         Mock<IEvidenceInspectionService>? inspection = null,
         Mock<IEvidenceMalwareScanner>? scanner = null,
         bool allow = true,
-        bool manager = true)
+        bool manager = true,
+        ISet<string>? grantedPermissions = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
             {
-                var granted = allow && (manager || permission == "STRATEGIC_DOCUMENT.READ");
+                var granted = allow && (grantedPermissions?.Contains(permission) ?? (manager || permission == "STRATEGIC_DOCUMENT.READ"));
                 return new AccessDecisionResult(granted, granted ? "Allowed" : "Denied", [], [], []);
             });
         storage ??= new Mock<IEvidenceBlobStorage>();

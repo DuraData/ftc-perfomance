@@ -3549,7 +3549,7 @@ export interface StrategicDocumentEvent {
   publicId: string;
   action: string;
   reason: string;
-  actorUserId: string;
+  actorUserId?: string | null;
   occurredAt: string;
 }
 
@@ -3580,12 +3580,15 @@ export interface StrategicDocument {
   publishedAt?: string | null;
   publishedByUserId?: string | null;
   createdAt: string;
-  createdByUserId: string;
+  createdByUserId?: string | null;
   fileName?: string | null;
   contentType?: string | null;
   sizeInBytes?: number | null;
   sha256?: string | null;
   scanStatus?: string | null;
+  scannerProvider?: string | null;
+  scannerReference?: string | null;
+  scanDetail?: string | null;
   isQuarantined: boolean;
   externalUrl?: string | null;
   contentUrl?: string | null;

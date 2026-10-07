@@ -26,10 +26,10 @@ const document = {
   municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', financialYearName: '2026/27',
   documentTypePublicId: 'type-1', documentTypeCode: 'IDP', documentTypeName: 'Integrated Development Plan',
   sdbipLayer: 'Top Layer', title: 'Approved IDP', description: 'Municipal five-year plan', documentDate: '2026-07-01T00:00:00Z',
-  displayOrder: 10, isCurrent: true, isActive: true, isApproved: false, approvedAt: null, approvedByUserId: null,
-  approvalReference: null, isPublished: false, publicationDate: null, publishedAt: null, publishedByUserId: null,
+  displayOrder: 10, isCurrent: true, isActive: true, isApproved: false, approvedAt: null, approvedByUserId: 'approver-secret',
+  approvalReference: null, isPublished: false, publicationDate: null, publishedAt: null, publishedByUserId: 'publisher-secret',
   createdAt: '2026-07-01T00:00:00Z', createdByUserId: 'owner', fileName: null, contentType: null, sizeInBytes: null,
-  sha256: null, scanStatus: null, isQuarantined: false, externalUrl: 'https://example.gov.za/idp.pdf', contentUrl: null,
+  sha256: null, scanStatus: 'Clean', scannerProvider: 'scanner-secret', scannerReference: 'reference-secret', scanDetail: 'detail-secret', isQuarantined: false, externalUrl: 'https://example.gov.za/idp.pdf', contentUrl: null,
   rowVersion: 'Ag==', events: [{ publicId: 'event-1', action: 'VersionCreated', reason: 'Initial version', actorUserId: 'owner', occurredAt: '2026-07-01T00:00:00Z' }],
 };
 
@@ -40,6 +40,7 @@ describe('Strategic documents workspace', () => {
     capabilities.canCreate.mockReturnValue(true);
     capabilities.canUpdate.mockReturnValue(true);
     capabilities.canExecute.mockReturnValue(true);
+    capabilities.canReadField.mockReturnValue(true);
     api.getStrategicDocumentTypesPage.mockResolvedValue({ success: true, data: { items: [type], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -132,5 +133,18 @@ describe('Strategic documents workspace', () => {
     await waitFor(() => expect(api.getStrategicDocumentHistoryPage).toHaveBeenCalledWith('family-1', expect.objectContaining({
       page: 1, pageSize: 10, search: 'council', sortBy: 'versionNumber', sortDirection: 'desc',
     })));
+  });
+
+  it('does not render hostile sensitive metadata when member reads are denied', async () => {
+    capabilities.canReadField.mockReturnValue(false);
+    render(<StrategicDocumentsWorkspace />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
+    await screen.findByText('Version and action history');
+
+    for (const secret of ['owner', 'approver-secret', 'publisher-secret', 'scanner-secret', 'reference-secret', 'detail-secret'])
+      expect(screen.queryByText(secret, { exact: false })).not.toBeInTheDocument();
+    expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'CreatedByUserId');
+    expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'EventActorUserId');
   });
 });
