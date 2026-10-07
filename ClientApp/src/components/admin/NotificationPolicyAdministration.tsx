@@ -9,12 +9,26 @@ import { useApp } from '../../context/AppContext';
 import { Badge, Button, Card } from '../ui';
 import { Checkbox, FormPanel, Input, Select, Textarea } from '../common/Form';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
+import { useSecurity } from '../../context/SecurityContext';
 
 const localDate = (date = new Date()) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const lifecycleName = (value: number) => ['Unknown', 'Draft', 'Active', 'Inactive', 'Superseded'][value] ?? 'Unknown';
 
 export function NotificationPolicyAdministration() {
   const { pushToast } = useApp();
+  const { canRead, canCreate, canExecute, canReadField, canEditField } = useSecurity();
+  const canReadPolicies = canRead('NOTIFICATION_POLICY');
+  const canCreatePolicy = canCreate('NOTIFICATION_POLICY');
+  const canEditRecipients = canEditField('NOTIFICATION_POLICY', 'RecipientValues');
+  const canEditTitleTemplate = canEditField('NOTIFICATION_POLICY', 'TitleTemplate');
+  const canEditMessageTemplate = canEditField('NOTIFICATION_POLICY', 'MessageTemplate');
+  const canReadTemplates = canReadField('NOTIFICATION_POLICY', 'TitleTemplate') && canReadField('NOTIFICATION_POLICY', 'MessageTemplate');
+  const canActivate = canExecute('NOTIFICATION_POLICY.ACTIVATE');
+  const canCopy = canExecute('NOTIFICATION_POLICY.COPY');
+  const canSetDeliveryState = canExecute('NOTIFICATION_POLICY.SET_DELIVERY_STATE');
+  const canPreview = canExecute('NOTIFICATION_POLICY.PREVIEW') && canReadTemplates;
+  const canTest = canExecute('NOTIFICATION_POLICY.TEST') && canReadTemplates;
+  const canRunDue = canExecute('NOTIFICATION_POLICY.RUN_DUE');
   const [items, setItems] = useState<NotificationPolicyDto[]>([]);
   const [holidays, setHolidays] = useState<WorkingCalendarHolidayDto[]>([]);
   const [policyPage, setPolicyPage] = useState(1);
@@ -45,10 +59,11 @@ export function NotificationPolicyAdministration() {
   const [holiday, setHoliday] = useState({ municipalityFinancialYearPublicId: '', date: '', name: '', reason: '' });
 
   const loadPolicies = useCallback(async () => {
+    if (!canReadPolicies) { setItems([]); setPolicyTotalCount(0); setPolicyTotalPages(0); return; }
     const result = await getNotificationPoliciesPage({ page: policyPage, pageSize: 25, search: policySearch, sortBy: policySortBy, sortDirection: policySortDirection }, undefined, Number(policyLifecycle) || undefined);
     if (!result.success) setError(result.message ?? 'Notification policies could not be loaded.');
     setItems(result.data?.items ?? []); setPolicyTotalCount(result.data?.totalCount ?? 0); setPolicyTotalPages(result.data?.totalPages ?? 0);
-  }, [policyLifecycle, policyPage, policySearch, policySortBy, policySortDirection]);
+  }, [canReadPolicies, policyLifecycle, policyPage, policySearch, policySortBy, policySortDirection]);
 
   const loadHolidays = useCallback(async () => {
     const result = await getWorkingCalendarHolidaysPage({ page: holidayPage, pageSize: 25, search: holidaySearch, sortBy: holidaySortBy, sortDirection: holidaySortDirection });
@@ -128,22 +143,22 @@ export function NotificationPolicyAdministration() {
           <Input label="Effective from" type="datetime-local" value={draft.effectiveFrom} onChange={event => setDraft(current => ({ ...current, effectiveFrom: event.target.value }))} />
           <div><Input label="Working-day offsets" value={draft.offsets} onChange={event => setDraft(current => ({ ...current, offsets: event.target.value }))} /><p className="mt-1 text-xs text-secondary-500">Comma-separated; negative before due, zero due day, positive overdue.</p></div>
           <Select label="Recipients" value={draft.recipientKind} options={[{ value: 1, label: 'Primary assignees' }, { value: 2, label: 'Dynamic role codes' }, { value: 3, label: 'Specific user IDs' }]} onChange={event => setDraft(current => ({ ...current, recipientKind: Number(event.target.value) as 1 | 2 | 3 }))} />
-          {draft.recipientKind !== 1 && <div><Input label={draft.recipientKind === 2 ? 'Role codes' : 'User IDs'} value={draft.recipientValues} onChange={event => setDraft(current => ({ ...current, recipientValues: event.target.value }))} /><p className="mt-1 text-xs text-secondary-500">Comma-separated.</p></div>}
+          {draft.recipientKind !== 1 && <div><Input label={draft.recipientKind === 2 ? 'Role codes' : 'User IDs'} value={draft.recipientValues} disabled={!canEditRecipients} onChange={event => setDraft(current => ({ ...current, recipientValues: event.target.value }))} /><p className="mt-1 text-xs text-secondary-500">Comma-separated.</p></div>}
         </div>
         <div className="grid gap-2 sm:grid-cols-3">{['IN_APP', 'EMAIL', 'SMS'].map(channel => <Checkbox key={channel} label={channel.replace('_', ' ')} checked={draft.channels.includes(channel)} disabled={channel === 'IN_APP'} onChange={event => setDraft(current => ({ ...current, channels: event.target.checked ? [...current.channels, channel] : current.channels.filter(value => value !== channel) }))} />)}</div>
-        <Input label="Title template" value={draft.titleTemplate} onChange={event => setDraft(current => ({ ...current, titleTemplate: event.target.value }))} />
-        <Textarea label="Message template" value={draft.messageTemplate} onChange={event => setDraft(current => ({ ...current, messageTemplate: event.target.value }))} /><p className="text-xs text-secondary-500">Allowed placeholders: {'{Item}'}, {'{Period}'}, {'{Municipality}'}, {'{DueDate}'}, {'{Days}'}.</p>
+        <Input label="Title template" value={draft.titleTemplate} disabled={!canEditTitleTemplate} onChange={event => setDraft(current => ({ ...current, titleTemplate: event.target.value }))} />
+        <Textarea label="Message template" value={draft.messageTemplate} disabled={!canEditMessageTemplate} onChange={event => setDraft(current => ({ ...current, messageTemplate: event.target.value }))} /><p className="text-xs text-secondary-500">Allowed placeholders: {'{Item}'}, {'{Period}'}, {'{Municipality}'}, {'{DueDate}'}, {'{Days}'}.</p>
         <Textarea label="Governance reason" value={draft.reason} onChange={event => setDraft(current => ({ ...current, reason: event.target.value }))} required />
-        <Button variant="primary" onClick={() => void saveDraft()} disabled={busy}>Create draft</Button>
+        <Button variant="primary" onClick={() => void saveDraft()} disabled={busy || !canCreatePolicy || !canEditRecipients || !canEditTitleTemplate || !canEditMessageTemplate}>Create draft</Button>
       </FormPanel>
-      <Card className="p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Policy versions</h3><p className="text-xs text-secondary-500">Activation supersedes the effective policy at the same scope.</p></div><Button size="sm" variant="outline" onClick={() => void runDue()} disabled={busy}>Run due now</Button></div>
+      <Card className="p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold">Policy versions</h3><p className="text-xs text-secondary-500">Activation supersedes the effective policy at the same scope.</p></div>{canRunDue && <Button size="sm" variant="outline" onClick={() => void runDue()} disabled={busy}>Run due now</Button>}</div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <Input label="Search notification policies" value={policySearchInput} onChange={event => setPolicySearchInput(event.target.value)} placeholder="Code, name, year or period" />
         <Select label="Policy lifecycle" value={policyLifecycle} onChange={event => { setPolicyLifecycle(event.target.value); setPolicyPage(1); }} options={[{ value: '', label: 'All lifecycles' }, { value: '1', label: 'Draft' }, { value: '2', label: 'Active' }, { value: '3', label: 'Inactive' }, { value: '4', label: 'Superseded' }]} />
         <Select label="Sort policies by" value={policySortBy} onChange={event => { setPolicySortBy(event.target.value); setPolicyPage(1); }} options={[{ value: 'createdAt', label: 'Created' }, { value: 'code', label: 'Code' }, { value: 'name', label: 'Name' }, { value: 'version', label: 'Version' }, { value: 'effectiveFrom', label: 'Effective from' }, { value: 'financialYear', label: 'Financial year' }]} />
         <Select label="Policy sort direction" value={policySortDirection} onChange={event => { setPolicySortDirection(event.target.value as 'asc' | 'desc'); setPolicyPage(1); }} options={[{ value: 'desc', label: 'Descending' }, { value: 'asc', label: 'Ascending' }]} />
       </div><div className="mt-3 space-y-3">
-        {items.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code} · v{item.version} · {item.financialYearCode}</p></div><div className="flex gap-1"><Badge variant={item.lifecycle === 2 ? 'success' : 'default'}>{lifecycleName(item.lifecycle)}</Badge>{item.deliveryPaused && <Badge variant="warning">Paused</Badge>}</div></div><p className="mt-2 text-xs text-secondary-500">{item.channels.join(' + ')} · {item.rules.map(rule => `${rule.workingDayOffset}d`).join(', ')}</p><Textarea label={`Governance reason for ${item.code} v${item.version}`} value={reasons[item.publicId] ?? ''} onChange={event => setReasons(current => ({ ...current, [item.publicId]: event.target.value }))} /><div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => void act(item, 'preview')}>Preview</Button><Button size="sm" variant="outline" onClick={() => void act(item, 'test')} disabled={busy}>Queue test</Button>{item.lifecycle === 1 && <Button size="sm" variant="primary" onClick={() => void act(item, 'activate')} disabled={busy}>Activate</Button>}{item.lifecycle === 2 && <Button size="sm" variant="outline" onClick={() => void act(item, item.deliveryPaused ? 'resume' : 'pause')} disabled={busy}>{item.deliveryPaused ? 'Resume delivery' : 'Pause delivery'}</Button>}<Button size="sm" variant="outline" onClick={() => void act(item, 'copy')} disabled={busy}>Copy to selected FY</Button></div></div>)}
+        {items.map(item => <div key={item.publicId} className="rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code} · v{item.version} · {item.financialYearCode}</p></div><div className="flex gap-1"><Badge variant={item.lifecycle === 2 ? 'success' : 'default'}>{lifecycleName(item.lifecycle)}</Badge>{item.deliveryPaused && <Badge variant="warning">Paused</Badge>}</div></div><p className="mt-2 text-xs text-secondary-500">{item.channels.join(' + ')} · {item.rules.map(rule => `${rule.workingDayOffset}d`).join(', ')}</p><Textarea label={`Governance reason for ${item.code} v${item.version}`} value={reasons[item.publicId] ?? ''} onChange={event => setReasons(current => ({ ...current, [item.publicId]: event.target.value }))} /><div className="mt-2 flex flex-wrap gap-2">{canPreview && <Button size="sm" variant="outline" onClick={() => void act(item, 'preview')}>Preview</Button>}{canTest && <Button size="sm" variant="outline" onClick={() => void act(item, 'test')} disabled={busy}>Queue test</Button>}{item.lifecycle === 1 && canActivate && <Button size="sm" variant="primary" onClick={() => void act(item, 'activate')} disabled={busy}>Activate</Button>}{item.lifecycle === 2 && canSetDeliveryState && <Button size="sm" variant="outline" onClick={() => void act(item, item.deliveryPaused ? 'resume' : 'pause')} disabled={busy}>{item.deliveryPaused ? 'Resume delivery' : 'Pause delivery'}</Button>}{canCreatePolicy && canCopy && canEditRecipients && canEditTitleTemplate && canEditMessageTemplate && <Button size="sm" variant="outline" onClick={() => void act(item, 'copy')} disabled={busy}>Copy to selected FY</Button>}</div></div>)}
         {!items.length && <p className="text-sm text-secondary-500">No notification policies configured.</p>}
       </div><div className="mt-3 flex items-center justify-between gap-3 text-xs text-secondary-500"><span>{policyTotalCount} policies · Page {policyPage} of {Math.max(policyTotalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={policyPage <= 1} onClick={() => setPolicyPage(value => Math.max(1, value - 1))}>Previous policies</Button><Button size="sm" variant="outline" disabled={policyPage >= policyTotalPages} onClick={() => setPolicyPage(value => value + 1)}>Next policies</Button></span></div>{preview && <div className="mt-4 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm"><p className="font-medium">{preview.title}</p><p>{preview.message}</p><p className="mt-1 text-xs">Channels: {preview.channels.join(', ')}</p></div>}</Card>
     </div>

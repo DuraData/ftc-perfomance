@@ -127,6 +127,17 @@ public sealed class UsersControllerSecurityTests
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "NOTIFICATION_DELIVERY")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "NOTIFICATION_DELIVERY.RETRY").ToArrayAsync());
 
+        var notificationPolicyMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "NOTIFICATION_POLICY")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        Assert.Equal(new[] { "MessageTemplate", "RecipientValues", "TitleTemplate" },
+            notificationPolicyMembers.Select(item => item.MemberCode));
+        Assert.All(notificationPolicyMembers, item => { Assert.True(item.IsSensitive); Assert.False(item.IsSystemManaged); });
+        Assert.Equal(6, await context.Permissions.CountAsync(item => item.ResourceCode == "NOTIFICATION_POLICY" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "NOTIFICATION_POLICY")).SupportsFieldSecurity);
+        Assert.Equal(6, await context.SecurityActionDefinitions.CountAsync(item => item.ResourceCode == "NOTIFICATION_POLICY"));
+
         foreach (var resourceCode in new[] { "OPMS_POE", "IPMS_POE" })
         {
             var evidenceMembers = await context.SecurityMemberDefinitions

@@ -60,6 +60,7 @@ public static class SecurityRegistrySeeder
             Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, true, true),
             Resource("LOGIN_AUDIT", "Login Audit History", false, true, false, false, true, true),
             Resource("AUDIT_TRAIL", "Business and Security Audit Trail", false, true, false, false, true, true),
+            Resource("NOTIFICATION_POLICY", "Notification Policy", true, true, true, false, true, true),
             Resource("NOTIFICATION_DELIVERY", "Notification Delivery Operations", false, true, false, false, true, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
@@ -112,6 +113,12 @@ public static class SecurityRegistrySeeder
             Action("AUTHENTICATION.LINK_IDENTITIES", "Link Enterprise Identities", "AUTHENTICATION"),
             Action("AUTHENTICATION.VIEW_EVENTS", "View Authentication Events", "AUTHENTICATION"),
             Action("WORKFLOW.CONFIGURE", "Configure Workflow and Reporting Windows", "OPMS_WORKFLOW"),
+            Action("NOTIFICATION_POLICY.ACTIVATE", "Activate Notification Policy", "NOTIFICATION_POLICY"),
+            Action("NOTIFICATION_POLICY.COPY", "Copy Notification Policy", "NOTIFICATION_POLICY"),
+            Action("NOTIFICATION_POLICY.SET_DELIVERY_STATE", "Pause or Resume Notification Delivery", "NOTIFICATION_POLICY"),
+            Action("NOTIFICATION_POLICY.PREVIEW", "Preview Notification Policy", "NOTIFICATION_POLICY"),
+            Action("NOTIFICATION_POLICY.TEST", "Queue Notification Policy Test", "NOTIFICATION_POLICY"),
+            Action("NOTIFICATION_POLICY.RUN_DUE", "Run Due Notification Policies", "NOTIFICATION_POLICY"),
             Action("NOTIFICATION_DELIVERY.RETRY", "Retry Notification Delivery", "NOTIFICATION_DELIVERY"),
             Action("TID.CONFIGURE", "Configure TID Policy", "TID"), Action("TID.UPLOAD_SOURCE", "Upload TID Source Document", "TID"),
             Action("TID.RESCAN_SOURCE", "Rescan TID Source Document", "TID"),
@@ -257,6 +264,9 @@ public static class SecurityRegistrySeeder
             Member("AUDIT_TRAIL", "Reason", "Audit Governance Reason", sensitive: true, systemManaged: true),
             Member("AUDIT_TRAIL", "UserAgent", "Audit User Agent", sensitive: true, systemManaged: true),
             Member("AUDIT_TRAIL", "SessionId", "Audit Session Identity", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_POLICY", "RecipientValues", "Notification Recipient Identities", sensitive: true),
+            Member("NOTIFICATION_POLICY", "TitleTemplate", "Notification Title Template", sensitive: true),
+            Member("NOTIFICATION_POLICY", "MessageTemplate", "Notification Message Template", sensitive: true),
             Member("NOTIFICATION_DELIVERY", "AggregateId", "Notification Record Identity", sensitive: true, systemManaged: true),
             Member("NOTIFICATION_DELIVERY", "LastError", "Notification Queue Failure Detail", sensitive: true, systemManaged: true),
             Member("NOTIFICATION_DELIVERY", "RecipientUserId", "Notification Recipient Identity", sensitive: true, systemManaged: true),
@@ -272,6 +282,7 @@ public static class SecurityRegistrySeeder
                      || string.Equals(item.ResourceCode, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "NOTIFICATION_POLICY", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(item.ResourceCode, "OPMS_POE", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(item.ResourceCode, "IPMS_POE", StringComparison.OrdinalIgnoreCase)
@@ -459,6 +470,12 @@ public static class SecurityRegistrySeeder
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT"]
         };
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "NOTIFICATION_POLICY.CREATE", "NOTIFICATION_POLICY.READ", "NOTIFICATION_POLICY.UPDATE",
+            "NOTIFICATION_POLICY.ACTIVATE", "NOTIFICATION_POLICY.COPY", "NOTIFICATION_POLICY.SET_DELIVERY_STATE",
+            "NOTIFICATION_POLICY.PREVIEW", "NOTIFICATION_POLICY.TEST", "NOTIFICATION_POLICY.RUN_DUE",
+            "NOTIFICATION_POLICY.RecipientValues.READ", "NOTIFICATION_POLICY.RecipientValues.UPDATE",
+            "NOTIFICATION_POLICY.TitleTemplate.READ", "NOTIFICATION_POLICY.TitleTemplate.UPDATE",
+            "NOTIFICATION_POLICY.MessageTemplate.READ", "NOTIFICATION_POLICY.MessageTemplate.UPDATE",
             "OPMS_REPORT.ScheduleRecipientValues.READ", "OPMS_REPORT.ScheduleCreatedBy.READ",
             "OPMS_REPORT.JobRequestedBy.READ", "OPMS_REPORT.JobLastError.READ",
             "OPMS_REPORT.JobDistributionOutboxPublicId.READ", "OPMS_REPORT.JobRecipientUserIds.READ", "OPMS_REPORT.JobRetryReason.READ",

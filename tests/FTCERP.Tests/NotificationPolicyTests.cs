@@ -43,7 +43,8 @@ public sealed class NotificationPolicyTests
                 Scope = NotificationPolicyScope.MunicipalityDefault, Source = NotificationScheduleSource.ReportingWindow,
                 SubmissionKind = SubmissionKind.Opms, Lifecycle = NotificationPolicyLifecycle.Draft, IsMandatory = true,
                 ChannelsCsv = "IN_APP", TitleTemplate = "{Item}", MessageTemplate = "{Period}", EffectiveFrom = startsAt.AddDays(index),
-                CreatedAt = startsAt.AddMinutes(index), CreatedByUser = user
+                CreatedAt = startsAt.AddMinutes(index), CreatedByUser = user,
+                Rules = [new NotificationScheduleRule { Municipality = municipality, Code = "DUE", WorkingDayOffset = 0, RecipientKind = NotificationRecipientKind.User, RecipientValuesCsv = "recipient-secret" }]
             });
             context.WorkingCalendarHolidays.Add(new WorkingCalendarHoliday
             {
@@ -70,12 +71,54 @@ public sealed class NotificationPolicyTests
         });
         await context.SaveChangesAsync();
         tenantMunicipalityId = municipality.Id;
-        var controller = new NotificationPoliciesController(context, tenant.Object, new Mock<INotificationPolicyService>().Object, new Mock<IWorkflowGovernanceService>().Object);
+        var allowedPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "NOTIFICATION_POLICY.READ" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(
+                allowedPermissions.Contains(code), allowedPermissions.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        var controller = new NotificationPoliciesController(context, tenant.Object, new Mock<INotificationPolicyService>().Object,
+            new Mock<IWorkflowGovernanceService>().Object, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+        };
 
         var policiesResult = await controller.GetPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "code", SortDirection = "asc" });
         var policies = policiesResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<NotificationPolicyDto>>>().Subject.Data!;
         policies.TotalCount.Should().Be(11);
         policies.Items.Select(item => item.Code).Should().Equal("MATCH-03", "MATCH-04", "MATCH-05");
+        policies.Items.Should().OnlyContain(item => item.TitleTemplate == null && item.MessageTemplate == null);
+        policies.Items.SelectMany(item => item.Rules).Should().OnlyContain(rule => rule.RecipientValues.Length == 0);
+
+        allowedPermissions.UnionWith([
+            "NOTIFICATION_POLICY.RecipientValues.READ", "NOTIFICATION_POLICY.TitleTemplate.READ",
+            "NOTIFICATION_POLICY.MessageTemplate.READ", "NOTIFICATION_POLICY.PREVIEW"
+        ]);
+        var visibleResult = await controller.GetPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "code", SortDirection = "asc" });
+        var visiblePolicies = visibleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<NotificationPolicyDto>>>().Subject.Data!;
+        visiblePolicies.Items.Should().OnlyContain(item => item.TitleTemplate == "{Item}" && item.MessageTemplate == "{Period}");
+        visiblePolicies.Items.SelectMany(item => item.Rules).Should().OnlyContain(rule =>
+            rule.RecipientValues.Length == 1 && rule.RecipientValues[0] == "recipient-secret");
+
+        allowedPermissions.Remove("NOTIFICATION_POLICY.READ");
+        (await controller.GetPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        allowedPermissions.Add("NOTIFICATION_POLICY.READ");
+
+        allowedPermissions.Add("NOTIFICATION_POLICY.CREATE");
+        var protectedWrite = await controller.CreateDraft(new SaveNotificationPolicyRequest(
+            year.PublicId, null, "PROTECTED", "Protected policy", NotificationPolicyScope.MunicipalityDefault,
+            NotificationScheduleSource.ReportingWindow, SubmissionKind.Opms, null, null, true, false,
+            ["IN_APP"], "{Item}", "{Period}", startsAt, null,
+            [new SaveNotificationRuleRequest("DUE", 0, NotificationRecipientKind.User, ["recipient-secret"])],
+            "Governed protected policy creation"));
+        protectedWrite.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        allowedPermissions.Remove("NOTIFICATION_POLICY.PREVIEW");
+        (await controller.Preview(fixture.Policy.PublicId, new PreviewNotificationPolicyRequest("Item", "Q1", startsAt, 0))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        allowedPermissions.Add("NOTIFICATION_POLICY.PREVIEW");
+        (await controller.Preview(fixture.Policy.PublicId, new PreviewNotificationPolicyRequest("Item", "Q1", startsAt, 0))).Result
+            .Should().BeOfType<OkObjectResult>();
 
         var holidaysResult = await controller.GetHolidaysPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "name", SortDirection = "asc" });
         var holidays = holidaysResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<WorkingCalendarHolidayDto>>>().Subject.Data!;

@@ -5,6 +5,7 @@ using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,8 +14,16 @@ namespace FTCERP.Host.API.Controllers;
 [ApiController]
 [Route("api/v1/notification-policies")]
 [Authorize]
-public sealed class NotificationPoliciesController(ApplicationDbContext context, ITenantContext tenantContext, INotificationPolicyService policies, IWorkflowGovernanceService governance) : ControllerBase
+public sealed class NotificationPoliciesController(
+    ApplicationDbContext context,
+    ITenantContext tenantContext,
+    INotificationPolicyService policies,
+    IWorkflowGovernanceService governance,
+    UserManager<ApplicationUser> userManager,
+    IAccessControlService accessControl) : ControllerBase
 {
+    private sealed record NotificationPolicyMemberAccess(bool RecipientValues, bool TitleTemplate, bool MessageTemplate);
+
     [HttpGet("preferences/me")]
     public async Task<ActionResult<ApiResponse<NotificationPreferenceDto>>> GetMyPreferences()
     {
@@ -66,6 +75,10 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         [FromQuery] NotificationPolicyLifecycle? lifecycle = null)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<NotificationPolicyDto>>();
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<PagedResponse<NotificationPolicyDto>>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.READ"))
+            return ForbidResponse<PagedResponse<NotificationPolicyDto>>("Reading notification policies is denied.");
         if (request.NormalizedSortBy is not ("createdat" or "code" or "name" or "version" or "effectivefrom" or "financialyear"))
             return BadRequest(Fail<PagedResponse<NotificationPolicyDto>>("SortBy must be createdAt, code, name, version, effectiveFrom, or financialYear."));
         var query = context.NotificationConfigurations.AsNoTracking().AsQueryable();
@@ -92,8 +105,9 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         var values = await query.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear)
             .Include(x => x.ReportingPeriod).Include(x => x.Rules)
             .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
+        var memberAccess = await GetMemberAccessAsync(user);
         return Ok(new ApiResponse<PagedResponse<NotificationPolicyDto>>(true,
-            PagedResponse<NotificationPolicyDto>.Create(values.Select(ToDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<NotificationPolicyDto>.Create(values.Select(value => ToDto(value, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet]
@@ -110,8 +124,11 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<NotificationPolicyDto>>> CreateDraft(SaveNotificationPolicyRequest request)
     {
         if (!HasTenant()) return TenantRequired<NotificationPolicyDto>();
-        var actorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(actorId)) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.CREATE")) return ForbidResponse<NotificationPolicyDto>("Creating notification policies is denied.");
+        if (!await CanUpdateProtectedMembersAsync(user)) return ForbidResponse<NotificationPolicyDto>("Updating notification recipients and templates is denied.");
+        var actorId = user.Id;
         var validation = Validate(request);
         if (validation != null) return BadRequest(Fail<NotificationPolicyDto>(validation));
         var year = await context.MunicipalityFinancialYears.Include(x => x.FinancialYear).SingleOrDefaultAsync(x => x.PublicId == request.MunicipalityFinancialYearPublicId);
@@ -145,7 +162,7 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         governance.QueueAuditTrail(nameof(NotificationConfiguration), entity.PublicId.ToString(), "CreateDraft", null, new { entity.Code, entity.Version, entity.Scope, entity.Source, entity.EffectiveFrom, entity.EffectiveTo }, actorId, HttpContext.Connection.RemoteIpAddress?.ToString(), request.Reason);
         await context.SaveChangesAsync();
         entity.MunicipalityFinancialYear = year; entity.ReportingPeriod = period;
-        return Ok(new ApiResponse<NotificationPolicyDto>(true, ToDto(entity), "Draft notification policy created. It has no runtime effect until activated."));
+        return Ok(new ApiResponse<NotificationPolicyDto>(true, ToDto(entity, await GetMemberAccessAsync(user)), "Draft notification policy created. It has no runtime effect until activated."));
     }
 
     [HttpPost("{publicId:guid}/activate")]
@@ -153,8 +170,10 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<NotificationPolicyDto>>> Activate(Guid publicId, ActivateNotificationPolicyRequest request)
     {
         if (!HasTenant()) return TenantRequired<NotificationPolicyDto>();
-        var actorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(actorId)) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.ACTIVATE")) return ForbidResponse<NotificationPolicyDto>("Activating notification policies is denied.");
+        var actorId = user.Id;
         if (request.Reason.Trim().Length is < 10 or > 1000) return BadRequest(Fail<NotificationPolicyDto>("An activation reason of 10-1000 characters is required."));
         var entity = await context.NotificationConfigurations.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear).Include(x => x.ReportingPeriod).Include(x => x.Rules).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<NotificationPolicyDto>("Notification policy not found."));
@@ -174,7 +193,7 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         governance.QueueAuditTrail(nameof(NotificationConfiguration), entity.PublicId.ToString(), "Activate", new { Lifecycle = NotificationPolicyLifecycle.Draft }, new { entity.Lifecycle, entity.ActivatedAt }, actorId, null, request.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<NotificationPolicyDto>("The draft changed; reload before activation.")); }
-        return Ok(new ApiResponse<NotificationPolicyDto>(true, ToDto(entity)));
+        return Ok(new ApiResponse<NotificationPolicyDto>(true, ToDto(entity, await GetMemberAccessAsync(user))));
     }
 
     [HttpPost("{publicId:guid}/copy-to-financial-year")]
@@ -182,6 +201,9 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<NotificationPolicyDto>>> CopyToFinancialYear(Guid publicId, CopyNotificationPolicyRequest request)
     {
         if (!HasTenant()) return TenantRequired<NotificationPolicyDto>();
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.COPY")) return ForbidResponse<NotificationPolicyDto>("Copying notification policies is denied.");
         var source = await context.NotificationConfigurations.AsNoTracking().Include(x => x.ReportingPeriod).Include(x => x.Rules).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (source == null) return NotFound(Fail<NotificationPolicyDto>("Source notification policy not found."));
         var targetYear = await context.MunicipalityFinancialYears.AsNoTracking().Include(x => x.FinancialYear).Include(x => x.ReportingPeriods).SingleOrDefaultAsync(x => x.PublicId == request.MunicipalityFinancialYearPublicId);
@@ -202,8 +224,10 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<NotificationPolicyDto>>> SetDeliveryState(Guid publicId, SetNotificationDeliveryStateRequest request)
     {
         if (!HasTenant()) return TenantRequired<NotificationPolicyDto>();
-        var actorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(actorId)) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<NotificationPolicyDto>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.SET_DELIVERY_STATE")) return ForbidResponse<NotificationPolicyDto>("Pausing or resuming notification delivery is denied.");
+        var actorId = user.Id;
         if (request.Reason.Trim().Length is < 10 or > 1000) return BadRequest(Fail<NotificationPolicyDto>("A reason of 10-1000 characters is required."));
         var entity = await context.NotificationConfigurations.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear).Include(x => x.ReportingPeriod).Include(x => x.Rules).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<NotificationPolicyDto>("Notification policy not found."));
@@ -215,7 +239,7 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
         governance.QueueAuditTrail(nameof(NotificationConfiguration), entity.PublicId.ToString(), request.Paused ? "PauseDelivery" : "ResumeDelivery", new { DeliveryPaused = before }, new { entity.DeliveryPaused }, actorId, null, request.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<NotificationPolicyDto>("The policy changed; reload before updating delivery state.")); }
-        return Ok(new ApiResponse<NotificationPolicyDto>(true, ToDto(entity), request.Paused ? "Delivery paused; workflow deadlines continue." : "Delivery resumed; due reminders will be caught up."));
+        return Ok(new ApiResponse<NotificationPolicyDto>(true, ToDto(entity, await GetMemberAccessAsync(user)), request.Paused ? "Delivery paused; workflow deadlines continue." : "Delivery resumed; due reminders will be caught up."));
     }
 
     [HttpPost("{publicId:guid}/preview")]
@@ -223,6 +247,10 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<NotificationTemplatePreview>>> Preview(Guid publicId, PreviewNotificationPolicyRequest request)
     {
         if (!HasTenant()) return TenantRequired<NotificationTemplatePreview>();
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<NotificationTemplatePreview>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.PREVIEW")) return ForbidResponse<NotificationTemplatePreview>("Previewing notification policies is denied.");
+        if (!await CanReadTemplatesAsync(user)) return ForbidResponse<NotificationTemplatePreview>("Reading notification templates is denied.");
         var entity = await context.NotificationConfigurations.AsNoTracking().Include(x => x.Municipality).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<NotificationTemplatePreview>("Notification policy not found."));
         return Ok(new ApiResponse<NotificationTemplatePreview>(true, policies.Preview(entity, new(request.Item.Trim(), request.Period.Trim(), entity.Municipality.Name, request.DeadlineAt, request.WorkingDayOffset))));
@@ -233,8 +261,11 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<bool>>> QueueTest(Guid publicId, PreviewNotificationPolicyRequest request)
     {
         if (!HasTenant()) return TenantRequired<bool>();
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(Fail<bool>("User not found."));
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<bool>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.TEST")) return ForbidResponse<bool>("Testing notification policies is denied.");
+        if (!await CanReadTemplatesAsync(user)) return ForbidResponse<bool>("Reading notification templates is denied.");
+        var userId = user.Id;
         var entity = await context.NotificationConfigurations.AsNoTracking().Include(x => x.Municipality).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<bool>("Notification policy not found."));
         var rendered = policies.Preview(entity, new(request.Item.Trim(), request.Period.Trim(), entity.Municipality.Name, request.DeadlineAt, request.WorkingDayOffset));
@@ -250,6 +281,9 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     public async Task<ActionResult<ApiResponse<int>>> RunDue()
     {
         if (!HasTenant()) return TenantRequired<int>();
+        var user = await CurrentUserAsync();
+        if (user == null) return Unauthorized(Fail<int>("User not found."));
+        if (!await CanAsync(user, "NOTIFICATION_POLICY.RUN_DUE")) return ForbidResponse<int>("Running due notification policies is denied.");
         var count = await policies.ProcessDueAsync(DateTime.UtcNow, tenantContext.MunicipalityId, HttpContext.RequestAborted);
         return Ok(new ApiResponse<int>(true, count, $"Queued {count} due notification(s)."));
     }
@@ -334,9 +368,28 @@ public sealed class NotificationPoliciesController(ApplicationDbContext context,
     private static string NormalizeChannels(IEnumerable<string> values) => string.Join(',', values.Select(x => x.Trim().ToUpperInvariant()).Distinct());
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
+    private Task<ApplicationUser?> CurrentUserAsync()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : userManager.FindByIdAsync(userId);
+    }
     private ActionResult<ApiResponse<T>> TenantRequired<T>() => Conflict(Fail<T>("Select a municipality context."));
+    private ObjectResult ForbidResponse<T>(string message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message));
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
-    private static NotificationPolicyDto ToDto(NotificationConfiguration x) => new(x.PublicId, x.FamilyId, x.Version, x.Code, x.Name, x.MunicipalityFinancialYear.PublicId, x.MunicipalityFinancialYear.FinancialYear.Code, x.Scope, x.Source, x.SubmissionKind, x.WorkflowStageCode, x.ReportingPeriod?.PublicId, x.ReportingPeriod?.Name, x.Lifecycle, x.IsMandatory, x.DeliveryPaused, x.ChannelsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries), x.TitleTemplate, x.MessageTemplate, x.EffectiveFrom, x.EffectiveTo, x.Rules.OrderBy(r => r.WorkingDayOffset).Select(r => new NotificationScheduleRuleDto(r.PublicId, r.Code, r.WorkingDayOffset, r.RecipientKind, r.RecipientValuesCsv.Split(',', StringSplitOptions.RemoveEmptyEntries), r.IsActive)).ToArray(), Convert.ToBase64String(x.RowVersion));
+    private async Task<bool> CanAsync(ApplicationUser user, string permissionCode) =>
+        (await accessControl.CheckPermissionAsync(user, permissionCode, new AccessScopeContext(MunicipalityId: tenantContext.MunicipalityId))).Allowed;
+    private async Task<NotificationPolicyMemberAccess> GetMemberAccessAsync(ApplicationUser user) => new(
+        await CanAsync(user, "NOTIFICATION_POLICY.RecipientValues.READ"),
+        await CanAsync(user, "NOTIFICATION_POLICY.TitleTemplate.READ"),
+        await CanAsync(user, "NOTIFICATION_POLICY.MessageTemplate.READ"));
+    private async Task<bool> CanUpdateProtectedMembersAsync(ApplicationUser user) =>
+        await CanAsync(user, "NOTIFICATION_POLICY.RecipientValues.UPDATE")
+        && await CanAsync(user, "NOTIFICATION_POLICY.TitleTemplate.UPDATE")
+        && await CanAsync(user, "NOTIFICATION_POLICY.MessageTemplate.UPDATE");
+    private async Task<bool> CanReadTemplatesAsync(ApplicationUser user) =>
+        await CanAsync(user, "NOTIFICATION_POLICY.TitleTemplate.READ")
+        && await CanAsync(user, "NOTIFICATION_POLICY.MessageTemplate.READ");
+    private static NotificationPolicyDto ToDto(NotificationConfiguration x, NotificationPolicyMemberAccess access) => new(x.PublicId, x.FamilyId, x.Version, x.Code, x.Name, x.MunicipalityFinancialYear.PublicId, x.MunicipalityFinancialYear.FinancialYear.Code, x.Scope, x.Source, x.SubmissionKind, x.WorkflowStageCode, x.ReportingPeriod?.PublicId, x.ReportingPeriod?.Name, x.Lifecycle, x.IsMandatory, x.DeliveryPaused, x.ChannelsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries), access.TitleTemplate ? x.TitleTemplate : null, access.MessageTemplate ? x.MessageTemplate : null, x.EffectiveFrom, x.EffectiveTo, x.Rules.OrderBy(r => r.WorkingDayOffset).Select(r => new NotificationScheduleRuleDto(r.PublicId, r.Code, r.WorkingDayOffset, r.RecipientKind, access.RecipientValues ? r.RecipientValuesCsv.Split(',', StringSplitOptions.RemoveEmptyEntries) : [], r.IsActive)).ToArray(), Convert.ToBase64String(x.RowVersion));
     private static WorkingCalendarHolidayDto ToDto(WorkingCalendarHoliday x) => new(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.MunicipalityFinancialYear.FinancialYear.Code, x.Date, x.Name, Convert.ToBase64String(x.RowVersion));
     private static NotificationPreferenceDto ToDto(NotificationPreference x) => new(x.EmailEnabled, x.SmsEnabled, x.DailyDigestEnabled, x.WeeklySummaryEnabled, Convert.ToBase64String(x.RowVersion));
 }
@@ -349,7 +402,7 @@ public sealed record SetNotificationDeliveryStateRequest(bool Paused, string Row
 public sealed record PreviewNotificationPolicyRequest(string Item, string Period, DateTime DeadlineAt, int WorkingDayOffset);
 public sealed record SaveWorkingCalendarHolidayRequest(Guid MunicipalityFinancialYearPublicId, DateTime Date, string Name, string Reason);
 public sealed record NotificationScheduleRuleDto(Guid PublicId, string Code, int WorkingDayOffset, NotificationRecipientKind RecipientKind, string[] RecipientValues, bool IsActive);
-public sealed record NotificationPolicyDto(Guid PublicId, Guid FamilyId, int Version, string Code, string Name, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, NotificationPolicyScope Scope, NotificationScheduleSource Source, SubmissionKind? SubmissionKind, string? WorkflowStageCode, Guid? ReportingPeriodPublicId, string? ReportingPeriodName, NotificationPolicyLifecycle Lifecycle, bool IsMandatory, bool DeliveryPaused, string[] Channels, string TitleTemplate, string MessageTemplate, DateTime EffectiveFrom, DateTime? EffectiveTo, NotificationScheduleRuleDto[] Rules, string RowVersion);
+public sealed record NotificationPolicyDto(Guid PublicId, Guid FamilyId, int Version, string Code, string Name, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, NotificationPolicyScope Scope, NotificationScheduleSource Source, SubmissionKind? SubmissionKind, string? WorkflowStageCode, Guid? ReportingPeriodPublicId, string? ReportingPeriodName, NotificationPolicyLifecycle Lifecycle, bool IsMandatory, bool DeliveryPaused, string[] Channels, string? TitleTemplate, string? MessageTemplate, DateTime EffectiveFrom, DateTime? EffectiveTo, NotificationScheduleRuleDto[] Rules, string RowVersion);
 public sealed record WorkingCalendarHolidayDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, DateTime Date, string Name, string RowVersion);
 public sealed record SaveNotificationPreferenceRequest(bool EmailEnabled, bool SmsEnabled, bool DailyDigestEnabled, bool WeeklySummaryEnabled, string? RowVersion);
 public sealed record NotificationPreferenceDto(bool EmailEnabled, bool SmsEnabled, bool DailyDigestEnabled, bool WeeklySummaryEnabled, string? RowVersion);

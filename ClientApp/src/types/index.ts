@@ -1829,8 +1829,8 @@ export interface NotificationPolicyDto {
   isMandatory: boolean;
   deliveryPaused: boolean;
   channels: string[];
-  titleTemplate: string;
-  messageTemplate: string;
+  titleTemplate?: string | null;
+  messageTemplate?: string | null;
   effectiveFrom: string;
   effectiveTo?: string | null;
   rules: NotificationScheduleRuleDto[];

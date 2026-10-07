@@ -35,14 +35,34 @@ const api = vi.hoisted(() => ({
   getTargetNormalizationPreview: vi.fn(),
   executeTargetNormalization: vi.fn(),
 }));
+const security = vi.hoisted(() => ({ permissions: new Set<string>() }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: ['OPMS_KPI.NORMALIZE_LEGACY'], pushToast: vi.fn() }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({
+  canRead: (resource: string) => security.permissions.has(`${resource}.READ`),
+  canCreate: (resource: string) => security.permissions.has(`${resource}.CREATE`),
+  canUpdate: (resource: string) => security.permissions.has(`${resource}.UPDATE`),
+  canDelete: (resource: string) => security.permissions.has(`${resource}.DELETE`),
+  canExport: (resource: string) => security.permissions.has(`${resource}.EXPORT`),
+  canImport: (resource: string) => security.permissions.has(`${resource}.IMPORT`),
+  canExecute: (action: string) => security.permissions.has(action),
+  canReadField: (resource: string, member: string) => security.permissions.has(`${resource}.${member}.READ`),
+  canEditField: (resource: string, member: string) => security.permissions.has(`${resource}.${member}.UPDATE`),
+}) }));
 
 describe('WorkflowGovernanceAdminPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.permissions = new Set([
+      'NOTIFICATION_POLICY.READ', 'NOTIFICATION_POLICY.CREATE', 'NOTIFICATION_POLICY.ACTIVATE',
+      'NOTIFICATION_POLICY.COPY', 'NOTIFICATION_POLICY.SET_DELIVERY_STATE', 'NOTIFICATION_POLICY.PREVIEW',
+      'NOTIFICATION_POLICY.TEST', 'NOTIFICATION_POLICY.RUN_DUE',
+      'NOTIFICATION_POLICY.RecipientValues.READ', 'NOTIFICATION_POLICY.RecipientValues.UPDATE',
+      'NOTIFICATION_POLICY.TitleTemplate.READ', 'NOTIFICATION_POLICY.TitleTemplate.UPDATE',
+      'NOTIFICATION_POLICY.MessageTemplate.READ', 'NOTIFICATION_POLICY.MessageTemplate.UPDATE',
+    ]);
     api.getWorkflowDefinitionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getReportingPeriodMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: '' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -69,6 +89,42 @@ describe('WorkflowGovernanceAdminPage', () => {
     expect(screen.getByText('New notification policy draft')).toBeInTheDocument();
     expect(screen.getByText('Working-calendar holiday')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run due now' })).toBeInTheDocument();
+  });
+
+  it('applies dynamic notification-policy member and action permissions without recompilation', async () => {
+    api.getNotificationPoliciesPage.mockResolvedValue({ success: true, data: { items: [{
+      publicId: 'policy-sensitive', familyId: 'family-sensitive', version: 1, code: 'SENSITIVE', name: 'Sensitive policy',
+      municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', scope: 1, source: 1, submissionKind: 1,
+      lifecycle: 1, isMandatory: true, deliveryPaused: false, channels: ['IN_APP'], titleTemplate: 'HOSTILE-TITLE',
+      messageTemplate: 'HOSTILE-MESSAGE', effectiveFrom: '2026-07-01T00:00:00Z',
+      rules: [{ publicId: 'rule-1', code: 'DUE', workingDayOffset: 0, recipientKind: 3, recipientValues: ['HOSTILE-RECIPIENT'], isActive: true }], rowVersion: 'AQ=='
+    }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    security.permissions = new Set(['NOTIFICATION_POLICY.READ']);
+    const rendered = render(<WorkflowGovernanceAdminPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    expect(await screen.findByText('Sensitive policy')).toBeInTheDocument();
+    expect(screen.queryByText('HOSTILE-TITLE')).not.toBeInTheDocument();
+    expect(screen.queryByText('HOSTILE-MESSAGE')).not.toBeInTheDocument();
+    expect(screen.queryByText('HOSTILE-RECIPIENT')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Title template')).toBeDisabled();
+    expect(screen.getByLabelText('Message template')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Create draft' })).toBeDisabled();
+    for (const action of ['Run due now', 'Preview', 'Queue test', 'Activate', 'Copy to selected FY'])
+      expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
+
+    security.permissions = new Set([
+      'NOTIFICATION_POLICY.READ', 'NOTIFICATION_POLICY.CREATE', 'NOTIFICATION_POLICY.ACTIVATE',
+      'NOTIFICATION_POLICY.COPY', 'NOTIFICATION_POLICY.PREVIEW', 'NOTIFICATION_POLICY.TEST', 'NOTIFICATION_POLICY.RUN_DUE',
+      'NOTIFICATION_POLICY.RecipientValues.UPDATE', 'NOTIFICATION_POLICY.TitleTemplate.READ',
+      'NOTIFICATION_POLICY.TitleTemplate.UPDATE', 'NOTIFICATION_POLICY.MessageTemplate.READ',
+      'NOTIFICATION_POLICY.MessageTemplate.UPDATE',
+    ]);
+    rendered.rerender(<WorkflowGovernanceAdminPage />);
+    expect(screen.getByLabelText('Title template')).not.toBeDisabled();
+    expect(screen.getByLabelText('Message template')).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Create draft' })).not.toBeDisabled();
+    for (const action of ['Run due now', 'Preview', 'Queue test', 'Activate', 'Copy to selected FY'])
+      expect(screen.getByRole('button', { name: action })).toBeInTheDocument();
   });
 
   it('pages and searches notification policies and working-calendar holidays independently', async () => {
