@@ -1764,12 +1764,12 @@ export interface StageRatingDto {
   stageCode: string;
   ratingSchemePublicId: string;
   ratingSchemeCode: string;
-  ratingValuePublicId: string;
-  value: number;
-  label: string;
+  ratingValuePublicId?: string | null;
+  value?: number | null;
+  label?: string | null;
   achievementPercent?: number | null;
   comment?: string | null;
-  ratedByUserId: string;
+  ratedByUserId?: string | null;
   ratedByName?: string | null;
   ratedAt: string;
 }

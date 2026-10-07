@@ -15,12 +15,12 @@ public static class SecurityRegistrySeeder
             Resource("OPMS_RFI", "OPMS Request for Information", true, true, true, false, true, true),
             Resource("OPMS_REPORT", "OPMS Report", false, true, false, false, true, true),
             Resource("IPMS_REPORT", "IPMS Report", false, true, false, false, true, true),
-            Resource("OPMS_WORKFLOW", "OPMS Workflow", false, true, false, false, false, true),
+            Resource("OPMS_WORKFLOW", "OPMS Workflow", false, true, false, false, true, true),
             Resource("IPMS_KPI", "IPMS KPI", true, true, true, false, true, true),
             Resource("IPMS_SUBMISSION", "IPMS Submission", true, true, true, false, true, true),
             Resource("IPMS_POE", "IPMS Evidence", true, true, true, false, true, true),
             Resource("IPMS_RFI", "IPMS Request for Information", true, true, true, false, true, true),
-            Resource("IPMS_WORKFLOW", "IPMS Workflow", false, true, false, false, false, true),
+            Resource("IPMS_WORKFLOW", "IPMS Workflow", false, true, false, false, true, true),
             Resource("MUNICIPALITY", "Municipality", true, true, true, false, true, true),
             Resource("DEPARTMENT", "Department", true, true, true, false, true, true),
             Resource("UNIT", "Unit", true, true, true, false, true, true),
@@ -80,6 +80,8 @@ public static class SecurityRegistrySeeder
         if (existingNotificationDeliveryResource != null) existingNotificationDeliveryResource.SupportsFieldSecurity = true;
         var existingStrategicDocumentResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "STRATEGIC_DOCUMENT", StringComparison.OrdinalIgnoreCase));
         if (existingStrategicDocumentResource != null) existingStrategicDocumentResource.SupportsFieldSecurity = true;
+        foreach (var workflowResource in existingResources.Where(item => item.Code is "OPMS_WORKFLOW" or "IPMS_WORKFLOW"))
+            workflowResource.SupportsFieldSecurity = true;
 
         var actions = new[]
         {
@@ -174,6 +176,22 @@ public static class SecurityRegistrySeeder
             Member("IPMS_SUBMISSION", "InternalAuditScore", "Internal Audit Score", sensitive: true),
             Member("IPMS_SUBMISSION", "InternalAuditAssessedBy", "Internal Audit Assessor Identity", sensitive: true, systemManaged: true),
             Member("IPMS_SUBMISSION", "InternalAuditRfi", "Internal Audit RFI Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "ActionActorUserId", "Workflow Action Actor Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "ActionComment", "Workflow Action Comment", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "ActionRatingValue", "Workflow Action Rating Value", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "StageRatingValue", "Stage Rating Value and Label", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "StageRatingAchievementPercent", "Stage Rating Achievement Percentage", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "StageRatingComment", "Stage Rating Comment", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "StageRatingRatedByUserId", "Stage Rating Actor Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "StageRatingRatedByName", "Stage Rating Actor Name", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "ActionActorUserId", "Workflow Action Actor Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "ActionComment", "Workflow Action Comment", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "ActionRatingValue", "Workflow Action Rating Value", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "StageRatingValue", "Stage Rating Value and Label", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "StageRatingAchievementPercent", "Stage Rating Achievement Percentage", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "StageRatingComment", "Stage Rating Comment", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "StageRatingRatedByUserId", "Stage Rating Actor Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "StageRatingRatedByName", "Stage Rating Actor Name", sensitive: true, systemManaged: true),
             Member("OPMS_POE", "UploadedByUserId", "Evidence Uploader Identity", sensitive: true, systemManaged: true),
             Member("OPMS_POE", "UploadedByName", "Evidence Uploader Name", sensitive: true, systemManaged: true),
             Member("OPMS_POE", "ScannerProvider", "Evidence Scanner Provider", sensitive: true, systemManaged: true),
@@ -448,7 +466,7 @@ public static class SecurityRegistrySeeder
             ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE", "NAV.SETTINGS"],
             ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "SDBIP_LAYER.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE", "OPMS_KPI.IMPORT"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
             ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.IMPORT", "NAV.SDBIP.VOTE_NUMBERS", "SDBIP_LAYER.READ", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "NAV.STRATEGIC_DOCUMENTS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
-            ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.VarianceReason.READ", "OPMS_SUBMISSION.CorrectiveMeasure.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE", "OPMS_SUBMISSION.VarianceReason.UPDATE", "OPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
+            ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.VarianceReason.READ", "OPMS_SUBMISSION.CorrectiveMeasure.READ", "OPMS_WORKFLOW.ActionActorUserId.READ", "OPMS_WORKFLOW.ActionComment.READ", "OPMS_WORKFLOW.ActionRatingValue.READ", "OPMS_WORKFLOW.StageRatingValue.READ", "OPMS_WORKFLOW.StageRatingAchievementPercent.READ", "OPMS_WORKFLOW.StageRatingComment.READ", "OPMS_WORKFLOW.StageRatingRatedByUserId.READ", "OPMS_WORKFLOW.StageRatingRatedByName.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE", "OPMS_SUBMISSION.VarianceReason.UPDATE", "OPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
             ["Workflow.Submit.View"] = ["NAV.SDBIP.CAPTURE", "NAV.WORKFLOW.MY_QUEUE"], ["Workflow.Verify.View"] = ["NAV.WORKFLOW.VERIFY"], ["Workflow.Review.View"] = ["NAV.WORKFLOW.REVIEW"], ["Workflow.Approve.View"] = ["NAV.WORKFLOW.APPROVE"], ["Workflow.Audit.View"] = ["NAV.WORKFLOW.AUDIT"],
             ["OPMS.Submissions.Submit"] = ["OPMS_SUBMISSION.SUBMIT"], ["OPMS.Submissions.Verify"] = ["OPMS_SUBMISSION.VERIFY"], ["OPMS.Submissions.VerifyReject"] = ["OPMS_SUBMISSION.VERIFY_REJECT"],
             ["OPMS.Submissions.Approve"] = ["OPMS_SUBMISSION.APPROVE"], ["OPMS.Submissions.Reject"] = ["OPMS_SUBMISSION.REJECT"], ["OPMS.Submissions.Review"] = ["OPMS_WORKFLOW.PMS_REVIEW"],
@@ -460,7 +478,7 @@ public static class SecurityRegistrySeeder
             ["Units.View"] = ["UNIT.READ", "NAV.ORGANISATION.UNITS", "POSITION.READ", "NAV.ORGANISATION.POSITIONS"], ["Units.Manage"] = ["UNIT.CREATE", "UNIT.UPDATE", "POSITION.CREATE", "POSITION.UPDATE"],
             ["IPMS.Targets.View"] = ["IPMS_KPI.READ"], ["IPMS.Targets.Create"] = ["IPMS_KPI.CREATE"], ["IPMS.Targets.Edit"] = ["IPMS_KPI.UPDATE"], ["IPMS.Targets.Delete"] = ["IPMS_KPI.WITHDRAW"],
             ["IPMS.View"] = ["NAV.IPMS.DASHBOARD", "NAV.IPMS.REGISTER"], ["IPMS.Library.View"] = ["NAV.IPMS.LIBRARY"],
-            ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.VarianceReason.READ", "IPMS_SUBMISSION.CorrectiveMeasure.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE", "IPMS_SUBMISSION.VarianceReason.UPDATE", "IPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["IPMS.Submissions.Delete"] = ["IPMS_SUBMISSION.WITHDRAW"],
+            ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.VarianceReason.READ", "IPMS_SUBMISSION.CorrectiveMeasure.READ", "IPMS_WORKFLOW.ActionActorUserId.READ", "IPMS_WORKFLOW.ActionComment.READ", "IPMS_WORKFLOW.ActionRatingValue.READ", "IPMS_WORKFLOW.StageRatingValue.READ", "IPMS_WORKFLOW.StageRatingAchievementPercent.READ", "IPMS_WORKFLOW.StageRatingComment.READ", "IPMS_WORKFLOW.StageRatingRatedByUserId.READ", "IPMS_WORKFLOW.StageRatingRatedByName.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE", "IPMS_SUBMISSION.VarianceReason.UPDATE", "IPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["IPMS.Submissions.Delete"] = ["IPMS_SUBMISSION.WITHDRAW"],
             ["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW"], ["IDP.Plan.View"] = ["NAV.IDP.PLANS"], ["IDP.Hierarchy.Manage"] = ["NAV.IDP.HIERARCHY", "IDP_PLAN.IMPORT"], ["IDP.Participation.View"] = ["NAV.IDP.PARTICIPATION", "IDP_STAKEHOLDER.READ", "IDP_STAKEHOLDER.ContactPerson.READ", "IDP_STAKEHOLDER.ContactEmail.READ"], ["IDP.Participation.Manage"] = ["IDP_STAKEHOLDER.CREATE", "IDP_STAKEHOLDER.READ", "IDP_STAKEHOLDER.UPDATE", "IDP_STAKEHOLDER.ContactPerson.READ", "IDP_STAKEHOLDER.ContactPerson.UPDATE", "IDP_STAKEHOLDER.ContactEmail.READ", "IDP_STAKEHOLDER.ContactEmail.UPDATE"], ["IDP.Alignment.View"] = ["NAV.IDP.ALIGNMENT"], ["IDP.Documents.Manage"] = ["NAV.IDP.DOCUMENTS", "IDP_DOCUMENT.READ", "IDP_DOCUMENT.CREATE", "IDP_DOCUMENT.UPDATE", "IDP_DOCUMENT.RESCAN", "IDP_DOCUMENT.UploadedByUserId.READ", "IDP_DOCUMENT.UploadedByName.READ", "IDP_DOCUMENT.ScannerProvider.READ", "IDP_DOCUMENT.ScannerReference.READ", "IDP_DOCUMENT.ScanDetail.READ"], ["IDP.Reports.Generate"] = ["NAV.IDP.REPORTS"], ["IDP.Risk.Manage"] = ["NAV.RISK.DASHBOARD", "NAV.RISK.REGISTER", "NAV.RISK.ASSESSMENTS", "NAV.RISK.TREATMENTS", "NAV.RISK.REPORTS", "FINANCIAL_YEAR.READ", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.UPDATE", "STRATEGIC_RISK.LINK_KPI", "STRATEGIC_RISK.UNLINK_KPI"],
             ["IPMS.Submissions.Submit"] = ["IPMS_SUBMISSION.SUBMIT"], ["IPMS.Submissions.Verify"] = ["IPMS_SUBMISSION.VERIFY"], ["IPMS.Submissions.VerifyReject"] = ["IPMS_SUBMISSION.VERIFY_REJECT"],
             ["IPMS.Submissions.Approve"] = ["IPMS_SUBMISSION.APPROVE"], ["IPMS.Submissions.Reject"] = ["IPMS_SUBMISSION.REJECT"], ["IPMS.Submissions.Review"] = ["IPMS_WORKFLOW.PMS_REVIEW"],

@@ -3,8 +3,16 @@ import { Star } from 'lucide-react';
 import { getSubmissionStageRatingsPage } from '../../api/api';
 import type { StageRatingDto } from '../../types';
 import { Badge, Button } from '../ui';
+import { useSecurity } from '../../context/SecurityContext';
 
 export function StageRatingHistory({ kind, submissionId }: { kind: 1 | 2; submissionId: string }) {
+  const security = useSecurity();
+  const resource = kind === 1 ? 'OPMS_WORKFLOW' : 'IPMS_WORKFLOW';
+  const canReadValue = security.canReadField(resource, 'StageRatingValue');
+  const canReadAchievement = security.canReadField(resource, 'StageRatingAchievementPercent');
+  const canReadComment = security.canReadField(resource, 'StageRatingComment');
+  const canReadActorId = security.canReadField(resource, 'StageRatingRatedByUserId');
+  const canReadActorName = security.canReadField(resource, 'StageRatingRatedByName');
   const [ratings, setRatings] = useState<StageRatingDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -33,8 +41,8 @@ export function StageRatingHistory({ kind, submissionId }: { kind: 1 | 2; submis
     {error && <p role="alert" className="mt-2 text-xs text-error-600">{error}</p>}
     {!error && ratings.length === 0 && <p className="mt-2 text-xs text-secondary-500">No governed stage rating has been recorded.</p>}
     <div className="mt-3 space-y-2">{ratings.map(rating => <div key={rating.publicId} className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-secondary-50 p-3 text-sm dark:bg-secondary-800">
-      <div><p className="font-medium text-secondary-900 dark:text-white">{rating.stageCode} · {rating.label}</p><p className="text-xs text-secondary-500">{rating.ratingSchemeCode} · {rating.ratedByName ?? rating.ratedByUserId} · {new Date(rating.ratedAt).toLocaleString()}</p>{rating.comment && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">{rating.comment}</p>}</div>
-      <Badge variant="info">{rating.value}</Badge>
+      <div><p className="font-medium text-secondary-900 dark:text-white">{rating.stageCode}{canReadValue && rating.label ? ` · ${rating.label}` : ''}</p><p className="text-xs text-secondary-500">{rating.ratingSchemeCode}{(canReadActorName && rating.ratedByName) || (canReadActorId && rating.ratedByUserId) ? ` · ${(canReadActorName && rating.ratedByName) || rating.ratedByUserId}` : ''} · {new Date(rating.ratedAt).toLocaleString()}</p>{canReadAchievement && rating.achievementPercent != null && <p className="text-xs text-secondary-500">Achievement: {rating.achievementPercent}%</p>}{canReadComment && rating.comment && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">{rating.comment}</p>}</div>
+      {canReadValue && rating.value != null && <Badge variant="info">{rating.value}</Badge>}
     </div>)}</div>
     {!error && totalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500">
       <span>Page {page} of {totalPages} · {totalCount} ratings</span>

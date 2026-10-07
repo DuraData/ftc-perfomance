@@ -257,20 +257,72 @@ public sealed class WorkflowConfigurationControllerTests
         ratingPage.Items.First().Label.Should().Be("match-label-10");
         ratingPage.Items.Should().NotContain(item => item.Label == "match-outside");
 
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
+        var restrictedController = Controller(context, municipality.Id, user, grants.Contains);
+        var maskedActions = (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { PageSize = 10, SortBy = "occurredAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        maskedActions.Items.Should().OnlyContain(item => item.ActorUserId == null && item.Comment == null && item.RatingValue == null);
+        var deniedActionSearch = (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = "match-comment-20", SortBy = "occurredAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        deniedActionSearch.TotalCount.Should().Be(0);
+        (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { SortBy = "actor" })).Result.Should().BeOfType<ForbidResult>();
+
+        var maskedRatings = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { PageSize = 10, SortBy = "ratedAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
+        maskedRatings.Items.Should().OnlyContain(item => item.RatingValuePublicId == null && item.Value == null
+            && item.Label == null && item.AchievementPercent == null && item.Comment == null
+            && item.RatedByUserId == null && item.RatedByName == null);
+        var deniedRatingSearch = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = "match-label-20", SortBy = "ratedAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
+        deniedRatingSearch.TotalCount.Should().Be(0);
+        (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { SortBy = "value" })).Result.Should().BeOfType<ForbidResult>();
+        (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { SortBy = "actor" })).Result.Should().BeOfType<ForbidResult>();
+
+        foreach (var member in new[] { "ActionActorUserId", "ActionComment", "ActionRatingValue", "StageRatingValue",
+                     "StageRatingAchievementPercent", "StageRatingComment", "StageRatingRatedByUserId", "StageRatingRatedByName" })
+            grants.Add($"OPMS_WORKFLOW.{member}.READ");
+        var grantedActions = (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = "match-comment-20", SortBy = "actor" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        grantedActions.Items.Should().ContainSingle(item => item.Comment == "match-comment-20" && item.ActorUserId == user.Id);
+        var grantedRatings = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = "match-label-20", SortBy = "value" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
+        grantedRatings.Items.Should().ContainSingle(item => item.Label == "match-label-20" && item.RatedByUserId == user.Id);
+
         (await controller.HistoryPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.RatingHistoryPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.History(SubmissionKind.Opms, submission.Id)).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         (await controller.RatingHistory(SubmissionKind.Opms, submission.Id)).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }
 
-    private static WorkflowConfigurationController Controller(ApplicationDbContext context, long municipalityId = 7, ApplicationUser? suppliedUser = null)
+    private static WorkflowConfigurationController Controller(
+        ApplicationDbContext context,
+        long municipalityId = 7,
+        ApplicationUser? suppliedUser = null,
+        Func<string, bool>? permissionPredicate = null)
     {
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(item => item.MunicipalityId).Returns(municipalityId);
         var user = suppliedUser ?? IdpTestFixture.CreateUser("workflow-admin");
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => permissionPredicate?.Invoke(code) is not false
+                ? new AccessDecisionResult(true, "Allowed", [], [], [])
+                : new AccessDecisionResult(false, "Denied", [], [], []));
         return new WorkflowConfigurationController(
             context,
             tenant.Object,
