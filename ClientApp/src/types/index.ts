@@ -3438,6 +3438,19 @@ export interface CreateIdpCommunitySessionPayload {
   minutesPath?: string | null;
 }
 
+export interface IdpStakeholderEngagement {
+  publicId: string;
+  communitySessionPublicId: string;
+  sessionDate: string;
+  venue: string;
+  stakeholderType: string;
+  stakeholderName: string;
+  contactPerson?: string | null;
+  contactEmail?: string | null;
+  keyInput?: string | null;
+  rowVersion: string;
+}
+
 export interface TidSourceDocument {
   publicId: string;
   title: string;

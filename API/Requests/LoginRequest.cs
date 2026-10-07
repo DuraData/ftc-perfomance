@@ -524,6 +524,13 @@ public record CreateIdpStakeholderEngagementRequest(
     string? ContactEmail,
     string? KeyInput);
 
+public record CreateIdpStakeholderEngagementV1Request(
+    string StakeholderType,
+    string StakeholderName,
+    string? ContactPerson,
+    string? ContactEmail,
+    string? KeyInput);
+
 public record CreateIdpRiskLinkRequest(
     int? IdpStrategicObjectiveId,
     int? IdpProjectId,

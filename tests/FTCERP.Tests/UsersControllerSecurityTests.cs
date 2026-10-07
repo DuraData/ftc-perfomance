@@ -88,6 +88,15 @@ public sealed class UsersControllerSecurityTests
         Assert.All(authenticationMembers, item => Assert.True(item.IsSensitive));
         Assert.Equal(9, await context.Permissions.CountAsync(item => item.ResourceCode == "AUTHENTICATION" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "AUTHENTICATION")).SupportsFieldSecurity);
+
+        var stakeholderMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "IDP_STAKEHOLDER")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        stakeholderMembers.Select(item => item.MemberCode).Should().Equal("ContactEmail", "ContactPerson");
+        Assert.All(stakeholderMembers, item => Assert.True(item.IsSensitive));
+        Assert.Equal(4, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_STAKEHOLDER" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_STAKEHOLDER")).SupportsFieldSecurity);
     }
 
     [Fact]

@@ -59,6 +59,7 @@ import type {
   CreateIdpPlanVersionPayload,
   CreateIdpCommentPayload,
   CreateIdpCommunitySessionPayload,
+  IdpStakeholderEngagement,
   SecurityPermissionDefinition,
   RoleSecurityConfiguration,
   RoleSecurityPermission,
@@ -2651,6 +2652,10 @@ export async function createIdpComment(payload: CreateIdpCommentPayload): Promis
 
 export async function createIdpCommunitySession(payload: CreateIdpCommunitySessionPayload): Promise<ApiResponse<boolean>> {
   return mapResponse(await post<{ id: number }>('/idp/community-sessions', payload), () => true);
+}
+
+export async function getIdpStakeholderEngagementsPage(planPublicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IdpStakeholderEngagement>>> {
+  return get<PagedResult<IdpStakeholderEngagement>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/stakeholder-engagements/page${registerPageQuery(query)}`);
 }
 
 export async function getIdpReport(planId: number, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { IdpAlignmentMatrixPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
+import { IdpAlignmentMatrixPage, IdpCommunityParticipationPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
-const security = vi.hoisted(() => ({ canImport: vi.fn(() => true) }));
+const security = vi.hoisted(() => ({ canImport: vi.fn(() => true), canReadField: vi.fn(() => false) }));
 const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   getIdpPlanVersionsPage: vi.fn(),
   getIdpDashboard: vi.fn(),
   getIdpAlignmentMatrixPage: vi.fn(),
+  getIdpStakeholderEngagementsPage: vi.fn(),
   getIdpImportBatch: vi.fn(),
   getIdpImportBatchesPage: vi.fn(),
   stageIdpKpiImport: vi.fn(),
@@ -55,6 +56,7 @@ describe('IDP plan lineage workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     security.canImport.mockReturnValue(true);
+    security.canReadField.mockReturnValue(false);
     api.getIdpPlansPage.mockResolvedValue({
       success: true,
       data: { items: [predecessor], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
@@ -80,6 +82,13 @@ describe('IDP plan lineage workspace', () => {
       success: true,
       data: {
         items: [{ strategicOutcomeCode: 'SO1', strategicOutcomeName: 'Outcome', objectiveCode: 'OBJ1', objectiveName: 'Objective', frameworkType: 'Circular88', frameworkReferenceCode: 'C88-1', frameworkReferenceTitle: 'Service delivery' }],
+        page: 1, pageSize: 25, totalCount: 26, totalPages: 2,
+      },
+    });
+    api.getIdpStakeholderEngagementsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{ publicId: 'stakeholder-id', communitySessionPublicId: 'session-id', sessionDate: '2026-09-01T00:00:00Z', venue: 'Library', stakeholderType: 'Civil Society', stakeholderName: 'Residents Association', contactPerson: null, contactEmail: null, keyInput: 'Water reliability' }],
         page: 1, pageSize: 25, totalCount: 26, totalPages: 2,
       },
     });
@@ -243,5 +252,24 @@ describe('IDP plan lineage workspace', () => {
       expect.objectContaining({ page: 2, search: 'service' }),
       'Circular88',
     ));
+  });
+
+  it('loads a bounded stakeholder register and hides denied contact fields and sort options', async () => {
+    render(<IdpCommunityParticipationPage />);
+
+    expect(await screen.findByText('26 stakeholder engagements')).toBeInTheDocument();
+    expect(api.getIdpStakeholderEngagementsPage).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({
+      page: 1, pageSize: 25, sortBy: 'sessionDate', sortDirection: 'desc',
+    }));
+    expect(screen.getByText('Residents Association')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Contact person' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Contact email' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Contact person' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Contact email' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Search stakeholder engagements'), { target: { value: 'residents' } });
+    await waitFor(() => expect(api.getIdpStakeholderEngagementsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ search: 'residents' })), { timeout: 1500 });
+    fireEvent.click(screen.getByRole('button', { name: 'Next stakeholders' }));
+    await waitFor(() => expect(api.getIdpStakeholderEngagementsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ page: 2, search: 'residents' })));
   });
 });

@@ -90,9 +90,10 @@ public static class IdpTestFixture
         UserManager<ApplicationUser> userManager,
         IWorkflowGovernanceService workflow,
         string userId,
-        ITenantContext? tenantContext = null)
+        ITenantContext? tenantContext = null,
+        IAccessControlService? accessControl = null)
     {
-        var controller = new IdpController(context, userManager, workflow, tenantContext)
+        var controller = new IdpController(context, userManager, workflow, tenantContext, accessControl: accessControl)
         {
             ControllerContext = new ControllerContext
             {

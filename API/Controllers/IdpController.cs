@@ -34,6 +34,7 @@ public class IdpController : ControllerBase
     private readonly IEvidenceBlobStorage? _evidenceStorage;
     private readonly IEvidenceInspectionService? _evidenceInspection;
     private readonly IEvidenceMalwareScanner? _malwareScanner;
+    private readonly IAccessControlService? _accessControl;
 
     public IdpController(
         ApplicationDbContext context,
@@ -42,7 +43,8 @@ public class IdpController : ControllerBase
         ITenantContext? tenantContext = null,
         IEvidenceBlobStorage? evidenceStorage = null,
         IEvidenceInspectionService? evidenceInspection = null,
-        IEvidenceMalwareScanner? malwareScanner = null)
+        IEvidenceMalwareScanner? malwareScanner = null,
+        IAccessControlService? accessControl = null)
     {
         _context = context;
         _userManager = userManager;
@@ -51,6 +53,7 @@ public class IdpController : ControllerBase
         _evidenceStorage = evidenceStorage;
         _evidenceInspection = evidenceInspection;
         _malwareScanner = malwareScanner;
+        _accessControl = accessControl;
     }
 
     [HttpGet("plans")]
@@ -993,31 +996,106 @@ public class IdpController : ControllerBase
         return Ok(new ApiResponse<IdpWardInputResponse>(true, ToWardInputResponse(entity, ward.Name)));
     }
 
-    [HttpPost("stakeholder-engagements")]
-    [Authorize(Policy = "Permission:IDP.Participation.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpStakeholderEngagementResponse>>> CreateStakeholderEngagement([FromBody] CreateIdpStakeholderEngagementRequest request)
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/stakeholder-engagements/page")]
+    [Authorize(Policy = "Permission:IDP_STAKEHOLDER.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>>> GetStakeholderEngagementsPage(
+        Guid planPublicId,
+        [FromQuery] PagedQueryRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<IdpStakeholderEngagementResponse>(false, null, "User not found"));
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>(false, null, "User not found"));
+        if (request.NormalizedSortBy is not ("sessiondate" or "stakeholdername" or "stakeholdertype" or "contactperson" or "contactemail"))
+            return BadRequest(new ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>(false, null,
+                "SortBy must be sessionDate, stakeholderName, stakeholderType, contactPerson, or contactEmail."));
 
-        var sessionExists = await _context.IdpCommunitySessions.AnyAsync(item => item.Id == request.IdpCommunitySessionId);
-        if (!sessionExists) return NotFound(new ApiResponse<IdpStakeholderEngagementResponse>(false, null, "Community session not found"));
+        var canReadContactPerson = await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Read);
+        var canReadContactEmail = await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Read);
+        if ((request.NormalizedSortBy == "contactperson" && !canReadContactPerson)
+            || (request.NormalizedSortBy == "contactemail" && !canReadContactEmail))
+            return Forbid();
+
+        var planExists = await _context.IdpPlans.AsNoTracking().AnyAsync(item => item.PublicId == planPublicId);
+        if (!planExists) return NotFound(new ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>(false, null, "IDP plan not found"));
+
+        var query = _context.IdpStakeholderEngagements.AsNoTracking()
+            .Where(item => item.IdpCommunitySession.IdpPlan.PublicId == planPublicId);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.StakeholderType.Contains(term)
+                || item.StakeholderName.Contains(term)
+                || item.KeyInput != null && item.KeyInput.Contains(term)
+                || canReadContactPerson && item.ContactPerson != null && item.ContactPerson.Contains(term)
+                || canReadContactEmail && item.ContactEmail != null && item.ContactEmail.Contains(term));
+        }
+
+        var totalCount = await query.CountAsync();
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("stakeholdername", false) => query.OrderBy(item => item.StakeholderName).ThenBy(item => item.Id),
+            ("stakeholdername", true) => query.OrderByDescending(item => item.StakeholderName).ThenByDescending(item => item.Id),
+            ("stakeholdertype", false) => query.OrderBy(item => item.StakeholderType).ThenBy(item => item.StakeholderName).ThenBy(item => item.Id),
+            ("stakeholdertype", true) => query.OrderByDescending(item => item.StakeholderType).ThenBy(item => item.StakeholderName).ThenByDescending(item => item.Id),
+            ("contactperson", false) => query.OrderBy(item => item.ContactPerson).ThenBy(item => item.Id),
+            ("contactperson", true) => query.OrderByDescending(item => item.ContactPerson).ThenByDescending(item => item.Id),
+            ("contactemail", false) => query.OrderBy(item => item.ContactEmail).ThenBy(item => item.Id),
+            ("contactemail", true) => query.OrderByDescending(item => item.ContactEmail).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.IdpCommunitySession.SessionDate).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.IdpCommunitySession.SessionDate).ThenByDescending(item => item.Id)
+        };
+        var rows = await query.Include(item => item.IdpCommunitySession)
+            .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var response = PagedResponse<IdpStakeholderEngagementPageItemResponse>.Create(rows.Select(item =>
+            ToStakeholderPageResponse(item, canReadContactPerson, canReadContactEmail)), request.Page, request.PageSize, totalCount);
+        return Ok(new ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>(true, response));
+    }
+
+    [HttpPost("stakeholder-engagements")]
+    [Authorize(Policy = "Permission:IDP.Participation.Manage")]
+    public ActionResult<ApiResponse<IdpStakeholderEngagementResponse>> CreateStakeholderEngagement([FromBody] CreateIdpStakeholderEngagementRequest request)
+    {
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpStakeholderEngagementResponse>(false, null,
+            "This numeric-session route is retired. Use POST /api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements."));
+    }
+
+    [HttpPost("~/api/v1/idp/community-sessions/{sessionPublicId:guid}/stakeholder-engagements")]
+    [Authorize(Policy = "Permission:IDP_STAKEHOLDER.CREATE")]
+    public async Task<ActionResult<ApiResponse<IdpStakeholderEngagementPageItemResponse>>> CreateStakeholderEngagementV1(
+        Guid sessionPublicId,
+        [FromBody] CreateIdpStakeholderEngagementV1Request request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpStakeholderEngagementPageItemResponse>(false, null, "User not found"));
+        if ((!string.IsNullOrWhiteSpace(request.ContactPerson)
+                && !await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Update))
+            || (!string.IsNullOrWhiteSpace(request.ContactEmail)
+                && !await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Update)))
+            return Forbid();
+
+        var session = await _context.IdpCommunitySessions.FirstOrDefaultAsync(item => item.PublicId == sessionPublicId);
+        if (session == null) return NotFound(new ApiResponse<IdpStakeholderEngagementPageItemResponse>(false, null, "Community session not found"));
 
         var entity = new IdpStakeholderEngagement
         {
-            IdpCommunitySessionId = request.IdpCommunitySessionId,
+            IdpCommunitySessionId = session.Id,
             StakeholderType = request.StakeholderType.Trim(),
             StakeholderName = request.StakeholderName.Trim(),
-            ContactPerson = request.ContactPerson,
-            ContactEmail = request.ContactEmail,
-            KeyInput = request.KeyInput
+            ContactPerson = NormalizeOptional(request.ContactPerson),
+            ContactEmail = NormalizeOptional(request.ContactEmail),
+            KeyInput = NormalizeOptional(request.KeyInput)
         };
 
         _context.IdpStakeholderEngagements.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpStakeholderEngagement", entity.PublicId.ToString(), "Create", null, ToStakeholderResponse(entity));
+        entity.IdpCommunitySession = session;
+        await WriteIdpAudit(user.Id, "IdpStakeholderEngagement", entity.PublicId.ToString(), "Create", null,
+            new { entity.PublicId, SessionPublicId = session.PublicId, entity.StakeholderType, entity.StakeholderName });
 
-        return Ok(new ApiResponse<IdpStakeholderEngagementResponse>(true, ToStakeholderResponse(entity)));
+        var canReadContactPerson = await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Read);
+        var canReadContactEmail = await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Read);
+        return Ok(new ApiResponse<IdpStakeholderEngagementPageItemResponse>(true,
+            ToStakeholderPageResponse(entity, canReadContactPerson, canReadContactEmail)));
     }
 
     [HttpPost("risk-links")]
@@ -1413,6 +1491,15 @@ public class IdpController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
+    private async Task<bool> CanAccessStakeholderMemberAsync(ApplicationUser user, string memberCode, SecurityOperation operation)
+    {
+        if (_accessControl == null) return false;
+        var decision = await _accessControl.CheckPermissionAsync(user,
+            $"IDP_STAKEHOLDER.{memberCode}.{operation.ToString().ToUpperInvariant()}",
+            new AccessScopeContext(MunicipalityId: _tenantContext?.MunicipalityId));
+        return decision.Allowed;
+    }
+
     private Task WriteIdpAudit(string changedBy, string entityName, string entityId, string action, object? before, object? after)
     {
         return _workflowGovernanceService.WriteAuditTrailAsync(entityName, entityId, action, before, after, changedBy, PerformanceApiSupport.GetIpAddress(HttpContext));
@@ -1561,6 +1648,16 @@ public class IdpController : ControllerBase
 
     private static IdpStakeholderEngagementResponse ToStakeholderResponse(IdpStakeholderEngagement stakeholder) =>
         new(stakeholder.PublicId, stakeholder.IdpCommunitySessionId, stakeholder.StakeholderType, stakeholder.StakeholderName, stakeholder.ContactPerson, stakeholder.ContactEmail, stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
+
+    private static IdpStakeholderEngagementPageItemResponse ToStakeholderPageResponse(
+        IdpStakeholderEngagement stakeholder,
+        bool includeContactPerson,
+        bool includeContactEmail) =>
+        new(stakeholder.PublicId, stakeholder.IdpCommunitySession.PublicId, stakeholder.IdpCommunitySession.SessionDate,
+            stakeholder.IdpCommunitySession.Venue, stakeholder.StakeholderType, stakeholder.StakeholderName,
+            includeContactPerson ? stakeholder.ContactPerson : null,
+            includeContactEmail ? stakeholder.ContactEmail : null,
+            stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
 
     private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk) =>
         new(risk.PublicId, risk.IdpStrategicObjectiveId, risk.IdpProjectId, risk.IdpKpiId, risk.RiskReference, risk.RiskTitle, risk.MitigationPlan, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));

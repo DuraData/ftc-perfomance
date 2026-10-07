@@ -830,6 +830,18 @@ public record IdpStakeholderEngagementResponse(
     string? KeyInput,
     string RowVersion);
 
+public record IdpStakeholderEngagementPageItemResponse(
+    Guid PublicId,
+    Guid CommunitySessionPublicId,
+    DateTime SessionDate,
+    string Venue,
+    string StakeholderType,
+    string StakeholderName,
+    string? ContactPerson,
+    string? ContactEmail,
+    string? KeyInput,
+    string RowVersion);
+
 public record IdpRiskLinkResponse(
     Guid PublicId,
     int? IdpStrategicObjectiveId,

@@ -13,6 +13,7 @@ import {
   getIdpPlansPage,
   getIdpHierarchyPathsPage,
   getIdpPlanVersionsPage,
+  getIdpStakeholderEngagementsPage,
   getIdpReport,
   stageIdpHierarchyImport,
   stageIdpKpiImport,
@@ -34,9 +35,11 @@ import type {
   IdpPlanSummary,
   IdpPlanVersion,
   IdpReportDocument,
+  IdpStakeholderEngagement,
 } from '../../types';
 import { idpHierarchyCsvTemplate, idpKpiCsvTemplate, parseIdpHierarchyCsv, parseIdpKpiCsv } from './idpImportCsv';
 import { IdpPlanPicker } from './IdpPlanPicker';
+import { Input, Select } from '../common/Form';
 
 function metricCard(title: string, value: string | number, caption?: string) {
   return (
@@ -735,9 +738,21 @@ export function IdpHierarchyPage() {
 
 export function IdpCommunityParticipationPage() {
   const { pushToast } = useApp();
+  const security = useSecurity();
   const canManageParticipation = useHasAnyPermission(['IDP.Participation.Manage']);
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
+  const [stakeholders, setStakeholders] = useState<IdpStakeholderEngagement[]>([]);
+  const [stakeholderPage, setStakeholderPage] = useState(1);
+  const [stakeholderTotalCount, setStakeholderTotalCount] = useState(0);
+  const [stakeholderTotalPages, setStakeholderTotalPages] = useState(0);
+  const [stakeholderSearchInput, setStakeholderSearchInput] = useState('');
+  const [stakeholderSearch, setStakeholderSearch] = useState('');
+  const [stakeholderSort, setStakeholderSort] = useState('sessionDate');
+  const [stakeholderRevision, setStakeholderRevision] = useState(0);
+  const canReadContactPerson = security.canReadField('IDP_STAKEHOLDER', 'ContactPerson');
+  const canReadContactEmail = security.canReadField('IDP_STAKEHOLDER', 'ContactEmail');
 
   const load = async (planId = selectedPlanId) => {
     if (planId) {
@@ -748,14 +763,39 @@ export function IdpCommunityParticipationPage() {
     }
   };
 
+  useEffect(() => {
+    const next = stakeholderSearchInput.trim();
+    if (next === stakeholderSearch) return;
+    const timeout = window.setTimeout(() => { setStakeholderPage(1); setStakeholderSearch(next); }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [stakeholderSearch, stakeholderSearchInput]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPlanPublicId) {
+      setStakeholders([]); setStakeholderTotalCount(0); setStakeholderTotalPages(0);
+      return () => { cancelled = true; };
+    }
+    void getIdpStakeholderEngagementsPage(selectedPlanPublicId, {
+      page: stakeholderPage, pageSize: 25, search: stakeholderSearch || undefined,
+      sortBy: stakeholderSort, sortDirection: stakeholderSort === 'sessionDate' ? 'desc' : 'asc',
+    }).then(result => {
+      if (cancelled) return;
+      setStakeholders(result.data?.items ?? []);
+      setStakeholderTotalCount(result.data?.totalCount ?? 0);
+      setStakeholderTotalPages(result.data?.totalPages ?? 0);
+    });
+    return () => { cancelled = true; };
+  }, [selectedPlanPublicId, stakeholderPage, stakeholderRevision, stakeholderSearch, stakeholderSort]);
+
   return (
     <AppShell title="Community Participation" subtitle="Ward consultations, public meetings, and stakeholder inputs">
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => void load()}>Refresh</Button>
+            <Button variant="outline" onClick={() => { void load(); setStakeholderRevision(value => value + 1); }}>Refresh</Button>
             {!canManageParticipation ? <Badge variant="warning">Read Only</Badge> : null}
-            <IdpPlanPicker label="Participation plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
+            <IdpPlanPicker label="Participation plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={(value, plan) => { setSelectedPlanPublicId(value); setSelectedPlanId(plan?.id ?? null); setStakeholderPage(1); void load(plan?.id ?? null); }} />
             {canManageParticipation ? (
               <Button
                 variant="primary"
@@ -802,6 +842,27 @@ export function IdpCommunityParticipationPage() {
             ))}
             {!(dashboard?.wardParticipation.length) ? <p className="text-sm text-secondary-500">No participation records available.</p> : null}
           </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Stakeholder Engagement Register</h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <Input label="Search stakeholder engagements" value={stakeholderSearchInput} onChange={event => setStakeholderSearchInput(event.target.value)} />
+            <Select label="Sort stakeholder engagements" value={stakeholderSort} options={[
+              { value: 'sessionDate', label: 'Session date' }, { value: 'stakeholderName', label: 'Stakeholder name' },
+              { value: 'stakeholderType', label: 'Stakeholder type' },
+              ...(canReadContactPerson ? [{ value: 'contactPerson', label: 'Contact person' }] : []),
+              ...(canReadContactEmail ? [{ value: 'contactEmail', label: 'Contact email' }] : []),
+            ]} onChange={event => { setStakeholderSort(event.target.value); setStakeholderPage(1); }} />
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700"><tr><th className="px-2 py-2">Session</th><th className="px-2 py-2">Stakeholder</th><th className="px-2 py-2">Type</th>{canReadContactPerson ? <th className="px-2 py-2">Contact person</th> : null}{canReadContactEmail ? <th className="px-2 py-2">Contact email</th> : null}<th className="px-2 py-2">Key input</th></tr></thead>
+              <tbody>{stakeholders.map(item => <tr key={item.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-2">{new Date(item.sessionDate).toLocaleDateString()} · {item.venue}</td><td className="px-2 py-2">{item.stakeholderName}</td><td className="px-2 py-2">{item.stakeholderType}</td>{canReadContactPerson ? <td className="px-2 py-2">{item.contactPerson ?? '-'}</td> : null}{canReadContactEmail ? <td className="px-2 py-2">{item.contactEmail ?? '-'}</td> : null}<td className="px-2 py-2">{item.keyInput ?? '-'}</td></tr>)}</tbody>
+            </table>
+            {!stakeholders.length ? <p className="p-3 text-sm text-secondary-500">No stakeholder engagements match the current filters.</p> : null}
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs text-secondary-500"><span>{stakeholderTotalCount} stakeholder engagement{stakeholderTotalCount === 1 ? '' : 's'}</span><span className="flex items-center gap-2"><Button size="sm" variant="ghost" disabled={stakeholderPage <= 1} onClick={() => setStakeholderPage(value => Math.max(1, value - 1))}>Previous stakeholders</Button><span>Page {stakeholderPage} of {Math.max(stakeholderTotalPages, 1)}</span><Button size="sm" variant="ghost" disabled={stakeholderPage >= stakeholderTotalPages} onClick={() => setStakeholderPage(value => value + 1)}>Next stakeholders</Button></span></div>
         </Card>
       </div>
     </AppShell>
@@ -891,6 +952,7 @@ export function IdpAlignmentMatrixPage() {
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 text-xs text-secondary-500"><span>{totalCount} alignment link{totalCount === 1 ? '' : 's'}</span><span className="flex items-center gap-2"><Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous alignments</Button><span>Page {page} of {Math.max(totalPages, 1)}</span><Button size="sm" variant="ghost" disabled={page >= totalPages} onClick={() => setPage(current => current + 1)}>Next alignments</Button></span></div>
         </Card>
+
       </div>
     </AppShell>
   );

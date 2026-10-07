@@ -37,6 +37,7 @@ public static class SecurityRegistrySeeder
             Resource("IDP_PLAN", "IDP Plan", true, true, true, false, true, true),
             Resource("IDP_PROJECT", "IDP Project", true, true, true, false, true, true),
             Resource("IDP_INDICATOR", "IDP Indicator", true, true, true, false, true, true),
+            Resource("IDP_STAKEHOLDER", "IDP Stakeholder Engagement", true, true, true, false, true, true),
             Resource("TID", "Technical Indicator Definition", true, true, true, false, true, true),
             Resource("STRATEGIC_DOCUMENT", "Strategic Document", true, true, true, false, true, true),
             Resource("STRATEGIC_RISK", "Strategic Risk", true, true, true, false, false, true),
@@ -150,7 +151,9 @@ public static class SecurityRegistrySeeder
             Member("AUTHENTICATION", "Issuer", "External Identity Issuer", sensitive: true),
             Member("AUTHENTICATION", "Subject", "External Identity Subject", sensitive: true),
             Member("AUTHENTICATION", "EventUserId", "Authentication Event User", sensitive: true, systemManaged: true),
-            Member("AUTHENTICATION", "EventIpAddress", "Authentication Event IP Address", sensitive: true, systemManaged: true)
+            Member("AUTHENTICATION", "EventIpAddress", "Authentication Event IP Address", sensitive: true, systemManaged: true),
+            Member("IDP_STAKEHOLDER", "ContactPerson", "Stakeholder Contact Person", sensitive: true),
+            Member("IDP_STAKEHOLDER", "ContactEmail", "Stakeholder Contact Email", sensitive: true)
         };
         var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
         var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -158,6 +161,8 @@ public static class SecurityRegistrySeeder
         foreach (var definition in existingMembers.Where(item =>
                      string.Equals(item.ResourceCode, "USER", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "IDP_STAKEHOLDER", StringComparison.OrdinalIgnoreCase)
+                        && new[] { "ContactPerson", "ContactEmail" }.Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)
                         && new[] { "EmployeeNumber", "SalaryReference", "EmailAddress", "IdentityUserId" }
                             .Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)))
@@ -312,7 +317,7 @@ public static class SecurityRegistrySeeder
             ["IPMS.Targets.View"] = ["IPMS_KPI.READ"], ["IPMS.Targets.Create"] = ["IPMS_KPI.CREATE"], ["IPMS.Targets.Edit"] = ["IPMS_KPI.UPDATE"], ["IPMS.Targets.Delete"] = ["IPMS_KPI.WITHDRAW"],
             ["IPMS.View"] = ["NAV.IPMS.DASHBOARD", "NAV.IPMS.REGISTER"], ["IPMS.Library.View"] = ["NAV.IPMS.LIBRARY"],
             ["IPMS.Submissions.View"] = ["IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.VarianceReason.READ", "IPMS_SUBMISSION.CorrectiveMeasure.READ"], ["IPMS.Submissions.Create"] = ["IPMS_SUBMISSION.CREATE"], ["IPMS.Submissions.Edit"] = ["IPMS_SUBMISSION.UPDATE", "IPMS_SUBMISSION.VarianceReason.UPDATE", "IPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["IPMS.Submissions.Delete"] = ["IPMS_SUBMISSION.WITHDRAW"],
-            ["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW"], ["IDP.Plan.View"] = ["NAV.IDP.PLANS"], ["IDP.Hierarchy.Manage"] = ["NAV.IDP.HIERARCHY", "IDP_PLAN.IMPORT"], ["IDP.Participation.View"] = ["NAV.IDP.PARTICIPATION"], ["IDP.Alignment.View"] = ["NAV.IDP.ALIGNMENT"], ["IDP.Documents.Manage"] = ["NAV.IDP.DOCUMENTS"], ["IDP.Reports.Generate"] = ["NAV.IDP.REPORTS"], ["IDP.Risk.Manage"] = ["NAV.RISK.DASHBOARD", "NAV.RISK.REGISTER", "NAV.RISK.ASSESSMENTS", "NAV.RISK.TREATMENTS", "NAV.RISK.REPORTS", "FINANCIAL_YEAR.READ", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.UPDATE", "STRATEGIC_RISK.LINK_KPI", "STRATEGIC_RISK.UNLINK_KPI"],
+            ["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW"], ["IDP.Plan.View"] = ["NAV.IDP.PLANS"], ["IDP.Hierarchy.Manage"] = ["NAV.IDP.HIERARCHY", "IDP_PLAN.IMPORT"], ["IDP.Participation.View"] = ["NAV.IDP.PARTICIPATION", "IDP_STAKEHOLDER.READ", "IDP_STAKEHOLDER.ContactPerson.READ", "IDP_STAKEHOLDER.ContactEmail.READ"], ["IDP.Participation.Manage"] = ["IDP_STAKEHOLDER.CREATE", "IDP_STAKEHOLDER.READ", "IDP_STAKEHOLDER.UPDATE", "IDP_STAKEHOLDER.ContactPerson.READ", "IDP_STAKEHOLDER.ContactPerson.UPDATE", "IDP_STAKEHOLDER.ContactEmail.READ", "IDP_STAKEHOLDER.ContactEmail.UPDATE"], ["IDP.Alignment.View"] = ["NAV.IDP.ALIGNMENT"], ["IDP.Documents.Manage"] = ["NAV.IDP.DOCUMENTS"], ["IDP.Reports.Generate"] = ["NAV.IDP.REPORTS"], ["IDP.Risk.Manage"] = ["NAV.RISK.DASHBOARD", "NAV.RISK.REGISTER", "NAV.RISK.ASSESSMENTS", "NAV.RISK.TREATMENTS", "NAV.RISK.REPORTS", "FINANCIAL_YEAR.READ", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.UPDATE", "STRATEGIC_RISK.LINK_KPI", "STRATEGIC_RISK.UNLINK_KPI"],
             ["IPMS.Submissions.Submit"] = ["IPMS_SUBMISSION.SUBMIT"], ["IPMS.Submissions.Verify"] = ["IPMS_SUBMISSION.VERIFY"], ["IPMS.Submissions.VerifyReject"] = ["IPMS_SUBMISSION.VERIFY_REJECT"],
             ["IPMS.Submissions.Approve"] = ["IPMS_SUBMISSION.APPROVE"], ["IPMS.Submissions.Reject"] = ["IPMS_SUBMISSION.REJECT"], ["IPMS.Submissions.Review"] = ["IPMS_WORKFLOW.PMS_REVIEW"],
             ["IPMS.Submissions.Audit"] = ["IPMS_WORKFLOW.INTERNAL_AUDIT", "IPMS_SUBMISSION.InternalAuditObservation.READ", "IPMS_SUBMISSION.InternalAuditObservation.UPDATE", "IPMS_POE.ASSESS", "IPMS_POE.PLACE_HOLD", "IPMS_POE.RELEASE_HOLD", "IPMS_POE.DISPOSE"],
