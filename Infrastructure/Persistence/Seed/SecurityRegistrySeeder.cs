@@ -57,6 +57,7 @@ public static class SecurityRegistrySeeder
             Resource("KPI_UNIT_OF_MEASURE", "KPI Unit of Measure", true, true, true, false, true, true),
             Resource("STRATEGIC_HIERARCHY", "Strategic Planning Relationships", true, true, true, false, false, true),
             Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, true, true),
+            Resource("LOGIN_AUDIT", "Login Audit History", false, true, false, false, true, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
@@ -67,6 +68,8 @@ public static class SecurityRegistrySeeder
         if (existingUserResource != null) existingUserResource.SupportsDelete = true;
         var existingAuthenticationResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase));
         if (existingAuthenticationResource != null) existingAuthenticationResource.SupportsFieldSecurity = true;
+        var existingLoginAuditResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase));
+        if (existingLoginAuditResource != null) existingLoginAuditResource.SupportsFieldSecurity = true;
 
         var actions = new[]
         {
@@ -153,7 +156,12 @@ public static class SecurityRegistrySeeder
             Member("AUTHENTICATION", "EventUserId", "Authentication Event User", sensitive: true, systemManaged: true),
             Member("AUTHENTICATION", "EventIpAddress", "Authentication Event IP Address", sensitive: true, systemManaged: true),
             Member("IDP_STAKEHOLDER", "ContactPerson", "Stakeholder Contact Person", sensitive: true),
-            Member("IDP_STAKEHOLDER", "ContactEmail", "Stakeholder Contact Email", sensitive: true)
+            Member("IDP_STAKEHOLDER", "ContactEmail", "Stakeholder Contact Email", sensitive: true),
+            Member("LOGIN_AUDIT", "UserId", "Login User Identity", sensitive: true, systemManaged: true),
+            Member("LOGIN_AUDIT", "Email", "Login Email Address", sensitive: true, systemManaged: true),
+            Member("LOGIN_AUDIT", "IpAddress", "Login IP Address", sensitive: true, systemManaged: true),
+            Member("LOGIN_AUDIT", "UserAgent", "Login User Agent", sensitive: true, systemManaged: true),
+            Member("LOGIN_AUDIT", "FailureReason", "Login Failure Detail", sensitive: true, systemManaged: true)
         };
         var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
         var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -161,6 +169,7 @@ public static class SecurityRegistrySeeder
         foreach (var definition in existingMembers.Where(item =>
                      string.Equals(item.ResourceCode, "USER", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "IDP_STAKEHOLDER", StringComparison.OrdinalIgnoreCase)
                         && new[] { "ContactPerson", "ContactEmail" }.Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)
@@ -329,6 +338,7 @@ public static class SecurityRegistrySeeder
             ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY", "SECURITY.VIEW", "SECURITY.MANAGE_PERMISSIONS", "SECURITY.MANAGE_NAVIGATION", "SECURITY.VIEW_EFFECTIVE"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT"],
             ["AUTHENTICATION.LINK_IDENTITIES"] = ["AUTHENTICATION.UserEmail.READ", "AUTHENTICATION.ExpectedEmail.READ", "AUTHENTICATION.ExpectedEmail.UPDATE", "AUTHENTICATION.Issuer.READ", "AUTHENTICATION.Issuer.UPDATE", "AUTHENTICATION.Subject.READ", "AUTHENTICATION.Subject.UPDATE"],
             ["AUTHENTICATION.VIEW_EVENTS"] = ["AUTHENTICATION.EventUserId.READ", "AUTHENTICATION.EventIpAddress.READ"],
+            ["Audit.LoginLogs.View"] = ["LOGIN_AUDIT.READ", "LOGIN_AUDIT.UserId.READ", "LOGIN_AUDIT.Email.READ", "LOGIN_AUDIT.IpAddress.READ", "LOGIN_AUDIT.UserAgent.READ", "LOGIN_AUDIT.FailureReason.READ"],
             ["Notifications.View"] = ["NAV.NOTIFICATIONS"],
             ["Reports.View"] = ["OPMS_REPORT.READ", "IPMS_REPORT.READ", "NAV.REPORTS"],
             ["Reports.Generate"] = ["OPMS_REPORT.GENERATE", "IPMS_REPORT.GENERATE"],

@@ -2308,7 +2308,7 @@ export interface UserPermissions {
 export interface LoginAuditLog {
   publicId: string;
   userId?: string | null;
-  email: string;
+  email?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
   success: boolean;

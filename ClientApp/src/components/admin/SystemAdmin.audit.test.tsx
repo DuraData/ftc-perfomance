@@ -5,6 +5,10 @@ const api = vi.hoisted(() => ({
   getLoginAuditLogs: vi.fn(),
   getAuditTrailsPage: vi.fn(),
 }));
+const security = vi.hoisted(() => ({
+  canRead: vi.fn(() => true),
+  canReadField: vi.fn(() => true),
+}));
 
 vi.mock('../../api/api', async importOriginal => ({
   ...(await importOriginal<typeof import('../../api/api')>()),
@@ -13,6 +17,7 @@ vi.mock('../../api/api', async importOriginal => ({
 vi.mock('../../context/AppContext', () => ({
   useApp: () => ({ permissions: ['Audit.LoginLogs.View', 'Audit.Trails.View'], pushToast: vi.fn() }),
 }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
 const login = {
@@ -28,6 +33,8 @@ const trail = {
 describe('Audit administration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.canRead.mockReturnValue(true);
+    security.canReadField.mockReturnValue(true);
     api.getLoginAuditLogs.mockResolvedValue({ success: true, data: { items: [login], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
     api.getAuditTrailsPage.mockResolvedValue({ success: true, data: { items: [trail], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
   });
@@ -51,5 +58,26 @@ describe('Audit administration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Audit Trails' }));
     expect(await screen.findByText('OpmsSubmission')).toBeInTheDocument();
     expect(api.getAuditTrailsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDirection: 'desc' });
+  });
+
+  it('hides protected login-audit members and uses a non-sensitive fallback sort when denied', async () => {
+    security.canReadField.mockReturnValue(false);
+    api.getLoginAuditLogs.mockResolvedValue({
+      success: true,
+      data: { items: [{ ...login, email: null, ipAddress: null, userAgent: null, failureReason: null }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+
+    render(<AdminAuditLogsPage />);
+
+    await waitFor(() => expect(api.getLoginAuditLogs).toHaveBeenCalledWith(
+      { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDirection: 'desc' }, false,
+    ));
+    expect(screen.queryByRole('columnheader', { name: 'Email' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'IP' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'User Agent' })).not.toBeInTheDocument();
+    expect(screen.queryByText('anna@example.test')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.queryByText('Failure Reason')).not.toBeInTheDocument();
+    expect(screen.queryByText('IP Address')).not.toBeInTheDocument();
   });
 });

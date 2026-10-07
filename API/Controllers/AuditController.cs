@@ -1,6 +1,8 @@
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
+using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
+using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,36 +14,53 @@ namespace FTCERP.Host.API.Controllers;
 public class AuditController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IAccessControlService _accessControl;
+    private readonly ITenantContext _tenantContext;
 
-    public AuditController(ApplicationDbContext context)
+    public AuditController(ApplicationDbContext context, IAccessControlService accessControl, ITenantContext tenantContext)
     {
         _context = context;
+        _accessControl = accessControl;
+        _tenantContext = tenantContext;
     }
 
     [HttpGet("login-logs")]
-    [Authorize(Policy = "Permission:Audit.LoginLogs.View")]
+    [Authorize(Policy = "Permission:LOGIN_AUDIT.READ")]
     public ActionResult<ApiResponse<LoginAuditLogResponse[]>> GetLoginLogs() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<LoginAuditLogResponse[]>(false, null,
             "This fixed-limit route is retired. Use /api/v1/audit/login-logs/page."));
 
     [HttpGet("/api/v1/audit/login-logs/page")]
-    [Authorize(Policy = "Permission:Audit.LoginLogs.View")]
+    [Authorize(Policy = "Permission:LOGIN_AUDIT.READ")]
     public async Task<ActionResult<ApiResponse<PagedResponse<LoginAuditLogResponse>>>> GetLoginLogsPage(
         [FromQuery] PagedQueryRequest request,
         [FromQuery] bool failuresOnly = false)
     {
+        var actorId = PerformanceApiSupport.GetCurrentUserId(User);
+        if (string.IsNullOrWhiteSpace(actorId)) return Unauthorized();
+        var actor = await _context.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == actorId);
+        if (actor == null) return Unauthorized();
+
         if (request.NormalizedSortBy is not ("createdat" or "email" or "success"))
             return BadRequest(new ApiResponse<PagedResponse<LoginAuditLogResponse>>(false, null, "SortBy must be createdAt, email, or success."));
+
+        var canReadUserId = await CanReadLoginMemberAsync(actor, "UserId");
+        var canReadEmail = await CanReadLoginMemberAsync(actor, "Email");
+        var canReadIpAddress = await CanReadLoginMemberAsync(actor, "IpAddress");
+        var canReadUserAgent = await CanReadLoginMemberAsync(actor, "UserAgent");
+        var canReadFailureReason = await CanReadLoginMemberAsync(actor, "FailureReason");
+        if (request.NormalizedSortBy == "email" && !canReadEmail) return Forbid();
 
         var query = _context.LoginAuditLogs.AsNoTracking().AsQueryable();
         if (failuresOnly) query = query.Where(item => !item.Success);
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch;
-            query = query.Where(item => item.Email.Contains(search)
-                || (item.IpAddress != null && item.IpAddress.Contains(search))
-                || (item.FailureReason != null && item.FailureReason.Contains(search))
-                || (item.UserAgent != null && item.UserAgent.Contains(search)));
+            query = query.Where(item => canReadEmail && item.Email.Contains(search)
+                || canReadUserId && item.UserId != null && item.UserId.Contains(search)
+                || canReadIpAddress && item.IpAddress != null && item.IpAddress.Contains(search)
+                || canReadFailureReason && item.FailureReason != null && item.FailureReason.Contains(search)
+                || canReadUserAgent && item.UserAgent != null && item.UserAgent.Contains(search));
         }
 
         var totalCount = await query.CountAsync();
@@ -55,10 +74,24 @@ public class AuditController : ControllerBase
             _ => query.OrderByDescending(item => item.LoggedAt).ThenByDescending(item => item.Id)
         };
         var rows = await query.Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new LoginAuditLogResponse(item.PublicId, item.UserId, item.Email, item.IpAddress, item.UserAgent, item.Success, item.FailureReason, item.LoggedAt))
+            .Select(item => new LoginAuditLogResponse(item.PublicId,
+                canReadUserId ? item.UserId : null,
+                canReadEmail ? item.Email : null,
+                canReadIpAddress ? item.IpAddress : null,
+                canReadUserAgent ? item.UserAgent : null,
+                item.Success,
+                canReadFailureReason ? item.FailureReason : null,
+                item.LoggedAt))
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<LoginAuditLogResponse>>(true,
             PagedResponse<LoginAuditLogResponse>.Create(rows, request.Page, request.PageSize, totalCount)));
+    }
+
+    private async Task<bool> CanReadLoginMemberAsync(ApplicationUser actor, string memberCode)
+    {
+        var decision = await _accessControl.CheckPermissionAsync(actor, $"LOGIN_AUDIT.{memberCode}.READ",
+            new AccessScopeContext(MunicipalityId: _tenantContext.MunicipalityId));
+        return decision.Allowed;
     }
 
     [HttpGet("security-events")]

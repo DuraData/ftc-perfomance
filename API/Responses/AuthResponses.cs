@@ -28,7 +28,7 @@ public record PermissionResponse(int Id, string Module, string Feature, string A
 
 public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider, string? Code = null);
 
-public record LoginAuditLogResponse(Guid PublicId, string? UserId, string Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
+public record LoginAuditLogResponse(Guid PublicId, string? UserId, string? Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
 
 public record UserResponse(string Id, string UserName, string FirstName, string LastName, string FullName, string? Email, string? PhoneNumber, string? Department, string? Position, bool IsActive, bool MustChangePassword, DateTime? LastLoginAt)
 {

@@ -10,6 +10,7 @@ public sealed class AuditPaginationTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
         long tenantAId;
         long tenantBId;
+        string auditorAId;
 
         await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
         {
@@ -25,6 +26,7 @@ public sealed class AuditPaginationTests
             var auditorB = IdpTestFixture.CreateUser("auditor-b"); auditorB.MunicipalityId = tenantBId;
             setup.AddRange(auditorA, plannerA, auditorB);
             await setup.SaveChangesAsync();
+            auditorAId = auditorA.Id;
 
             setup.LoginAuditLogs.AddRange(
                 Login(tenantAId, "anna@example.test", false, "Account locked", new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
@@ -39,7 +41,13 @@ public sealed class AuditPaginationTests
         }
 
         await using var tenantAContext = new ApplicationDbContext(options, new TenantContext(tenantAId));
-        var controller = new AuditController(tenantAContext);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "allowed", [], [], []));
+        var controller = new AuditController(tenantAContext, access.Object, new TenantContext(tenantAId))
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(auditorAId) } }
+        };
 
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetLoginLogs().Result).StatusCode);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetSecurityEvents().Result).StatusCode);
@@ -64,6 +72,61 @@ public sealed class AuditPaginationTests
         trailPage.TotalCount.Should().Be(1);
         trailPage.Items.Should().ContainSingle().Which.EntityId.Should().Be("a-1");
         trailPage.Items.Should().NotContain(item => item.EntityId == "b-1");
+    }
+
+    [Fact]
+    public async Task Login_audit_member_permissions_mask_and_prevent_sensitive_query_inference_dynamically()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var tenant = new Municipality { Code = "LOG-MEMBER", Name = "Login Member Municipality" };
+        var actor = IdpTestFixture.CreateUser("login-auditor");
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+        context.Municipalities.Add(tenant);
+        await context.SaveChangesAsync();
+        actor.MunicipalityId = tenant.Id;
+        context.Users.Add(actor);
+        var protectedLogin = Login(tenant.Id, "protected@example.test", false, "Account locked", DateTime.UtcNow);
+        protectedLogin.UserId = actor.Id;
+        context.LoginAuditLogs.Add(protectedLogin);
+        await context.SaveChangesAsync();
+
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "allowed" : "denied", [], [], []));
+        var controller = new AuditController(context, access.Object, new TenantContext(tenant.Id))
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var deniedResult = await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "createdAt" });
+        var deniedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(
+            Assert.IsType<OkObjectResult>(deniedResult.Result).Value).Data!.Items);
+        Assert.Null(deniedItem.UserId);
+        Assert.Null(deniedItem.Email);
+        Assert.Null(deniedItem.IpAddress);
+        Assert.Null(deniedItem.UserAgent);
+        Assert.Null(deniedItem.FailureReason);
+
+        var hiddenSearch = await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "createdAt", Search = "protected@example.test" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(
+            Assert.IsType<OkObjectResult>(hiddenSearch.Result).Value).Data!.TotalCount);
+        Assert.IsType<ForbidResult>((await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "email" })).Result);
+
+        allowedCodes.Add("LOGIN_AUDIT.Email.READ");
+        allowedCodes.Add("LOGIN_AUDIT.IpAddress.READ");
+        allowedCodes.Add("LOGIN_AUDIT.FailureReason.READ");
+        var allowedResult = await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "email", Search = "protected@example.test" });
+        var allowedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(
+            Assert.IsType<OkObjectResult>(allowedResult.Result).Value).Data!.Items);
+        Assert.Equal("protected@example.test", allowedItem.Email);
+        Assert.Equal("127.0.0.1", allowedItem.IpAddress);
+        Assert.Equal("Account locked", allowedItem.FailureReason);
+        Assert.Null(allowedItem.UserAgent);
     }
 
     [Fact]

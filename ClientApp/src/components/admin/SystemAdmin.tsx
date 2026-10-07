@@ -1090,7 +1090,12 @@ export function AdminPermissionsPage() {
 }
 
 export function AdminAuditLogsPage() {
-  const canViewLoginLogs = useHasPermission('Audit.LoginLogs.View');
+  const { canRead, canReadField } = useSecurity();
+  const canViewLoginLogs = canRead('LOGIN_AUDIT');
+  const canReadLoginEmail = canReadField('LOGIN_AUDIT', 'Email');
+  const canReadLoginIpAddress = canReadField('LOGIN_AUDIT', 'IpAddress');
+  const canReadLoginUserAgent = canReadField('LOGIN_AUDIT', 'UserAgent');
+  const canReadLoginFailureReason = canReadField('LOGIN_AUDIT', 'FailureReason');
   const canViewAuditTrailsByPermission = useHasPermission('Audit.Trails.View');
   const canViewAuditLogsByPermission = useHasPermission('Audit.Logs.View');
   const canViewAuditTrails = canViewAuditTrailsByPermission || canViewAuditLogsByPermission;
@@ -1111,6 +1116,9 @@ export function AdminAuditLogsPage() {
   const [trailSearch, setTrailSearch] = useState('');
   const [trailSort, setTrailSort] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
   const pageSize = 25;
+  const effectiveLoginSort = loginSort.key === 'email' && !canReadLoginEmail
+    ? { key: 'createdAt', direction: 'desc' as const }
+    : loginSort;
 
   useEffect(() => {
     let cancelled = false;
@@ -1119,7 +1127,7 @@ export function AdminAuditLogsPage() {
       setLoading(true);
       setError(null);
       if (activeTab === 'login' && canViewLoginLogs) {
-        const result = await getLoginAuditLogs({ page: loginPage, pageSize, search: loginSearch, sortBy: loginSort.key, sortDirection: loginSort.direction }, showFailuresOnly);
+        const result = await getLoginAuditLogs({ page: loginPage, pageSize, search: loginSearch, sortBy: effectiveLoginSort.key, sortDirection: effectiveLoginSort.direction }, showFailuresOnly);
         if (cancelled) return;
         if (!result.success) setError(result.message ?? 'Failed to load login audit logs');
         else {
@@ -1138,12 +1146,12 @@ export function AdminAuditLogsPage() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [activeTab, canViewLoginLogs, canViewAuditTrails, loginPage, loginSearch, loginSort, showFailuresOnly, trailPage, trailSearch, trailSort]);
+  }, [activeTab, canViewLoginLogs, canViewAuditTrails, loginPage, loginSearch, effectiveLoginSort.key, effectiveLoginSort.direction, showFailuresOnly, trailPage, trailSearch, trailSort]);
 
   const loginColumns = [
-    { id: 'email', header: 'Email', accessor: (l: LoginAuditLog) => l.email, sortKey: 'email' },
-    { id: 'ip', header: 'IP', accessor: (l: LoginAuditLog) => l.ipAddress ?? '-', sortable: false },
-    { id: 'ua', header: 'User Agent', accessor: (l: LoginAuditLog) => <span className="text-xs">{l.userAgent ?? '-'}</span>, sortable: false },
+    ...(canReadLoginEmail ? [{ id: 'email', header: 'Email', accessor: (l: LoginAuditLog) => l.email ?? '-', sortKey: 'email' }] : []),
+    ...(canReadLoginIpAddress ? [{ id: 'ip', header: 'IP', accessor: (l: LoginAuditLog) => l.ipAddress ?? '-', sortable: false }] : []),
+    ...(canReadLoginUserAgent ? [{ id: 'ua', header: 'User Agent', accessor: (l: LoginAuditLog) => <span className="text-xs">{l.userAgent ?? '-'}</span>, sortable: false }] : []),
     { id: 'result', header: 'Result', accessor: (l: LoginAuditLog) => l.success ? <Badge variant="success" size="sm">Success</Badge> : <Badge variant="error" size="sm">Fail</Badge>, sortKey: 'success' },
     { id: 'time', header: 'When', accessor: (l: LoginAuditLog) => new Date(l.loggedAt).toLocaleString(), sortKey: 'createdAt' },
   ];
@@ -1222,7 +1230,7 @@ export function AdminAuditLogsPage() {
 
         <Card>
           {activeTab === 'login' ? (
-            <DataTable data={rows} columns={loginColumns} actions={loginActions} searchable searchPlaceholder="Search login audit logs" getRowId={(l) => l.publicId} emptyMessage={loading ? 'Loading...' : 'No logs'} serverState={{ page: loginPage, pageSize, totalCount: loginTotal, search: loginSearch, sortBy: loginSort.key, sortDirection: loginSort.direction, onPageChange: setLoginPage, onSearchChange: value => { setLoginSearch(value); setLoginPage(1); }, onSortChange: (key, direction) => { setLoginSort({ key, direction }); setLoginPage(1); } }} />
+            <DataTable data={rows} columns={loginColumns} actions={loginActions} searchable searchPlaceholder="Search login audit logs" getRowId={(l) => l.publicId} emptyMessage={loading ? 'Loading...' : 'No logs'} serverState={{ page: loginPage, pageSize, totalCount: loginTotal, search: loginSearch, sortBy: effectiveLoginSort.key, sortDirection: effectiveLoginSort.direction, onPageChange: setLoginPage, onSearchChange: value => { setLoginSearch(value); setLoginPage(1); }, onSortChange: (key, direction) => { setLoginSort({ key, direction }); setLoginPage(1); } }} />
           ) : (
             <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable searchPlaceholder="Search audit trails" getRowId={(entry) => entry.publicId} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} serverState={{ page: trailPage, pageSize, totalCount: trailTotal, search: trailSearch, sortBy: trailSort.key, sortDirection: trailSort.direction, onPageChange: setTrailPage, onSearchChange: value => { setTrailSearch(value); setTrailPage(1); }, onSortChange: (key, direction) => { setTrailSort({ key, direction }); setTrailPage(1); } }} />
           )}
@@ -1237,10 +1245,10 @@ export function AdminAuditLogsPage() {
         <Modal isOpen={!!selectedLog} onClose={() => setSelectedLog(null)} title="Login Audit Log" size="md">
           {selectedLog && (
             <div className="space-y-3">
-              <div>
+              {canReadLoginEmail ? <div>
                 <p className="text-[10px] text-secondary-500">Email</p>
-                <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedLog.email}</p>
-              </div>
+                <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedLog.email ?? '-'}</p>
+              </div> : null}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-[10px] text-secondary-500">Result</p>
@@ -1251,15 +1259,15 @@ export function AdminAuditLogsPage() {
                   <p className="text-xs text-secondary-700 dark:text-secondary-300">{new Date(selectedLog.loggedAt).toLocaleString()}</p>
                 </div>
               </div>
-              <div>
+              {canReadLoginIpAddress ? <div>
                 <p className="text-[10px] text-secondary-500">IP Address</p>
                 <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedLog.ipAddress ?? '-'}</p>
-              </div>
-              <div>
+              </div> : null}
+              {canReadLoginUserAgent ? <div>
                 <p className="text-[10px] text-secondary-500">User Agent</p>
                 <p className="text-xs text-secondary-700 dark:text-secondary-300 break-words">{selectedLog.userAgent ?? '-'}</p>
-              </div>
-              {!selectedLog.success && (
+              </div> : null}
+              {!selectedLog.success && canReadLoginFailureReason && (
                 <div>
                   <p className="text-[10px] text-secondary-500">Failure Reason</p>
                   <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedLog.failureReason ?? '-'}</p>
