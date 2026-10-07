@@ -130,11 +130,18 @@ public class TidsController : ControllerBase
             .Include(item => item.OpmsTarget)
             .Include(item => item.ResponsibleEmployee)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
+            .Include(item => item.SourceDocuments).ThenInclude(item => item.UploadedByUser)
             .Where(item => targetIds.Contains(item.OpmsTargetId) && item.IsCurrent)
             .ToDictionaryAsync(item => item.OpmsTargetId);
-        var items = targets.Select(target => new TidRegisterItemResponse(
-            target.PublicId, target.IndicatorNumber, target.TargetName, target.Department?.Name, target.Unit?.Name,
-            municipality.TidAllKpisRequired, tids.TryGetValue(target.Id, out var tid) ? ToResponse(tid) : null));
+        var items = new List<TidRegisterItemResponse>(targets.Length);
+        foreach (var target in targets)
+        {
+            TidVersionResponse? current = null;
+            if (tids.TryGetValue(target.Id, out var tid))
+                current = ToResponse(tid, await GetSourceDocumentMemberAccessAsync(user, target));
+            items.Add(new TidRegisterItemResponse(target.PublicId, target.IndicatorNumber, target.TargetName,
+                target.Department?.Name, target.Unit?.Name, municipality.TidAllKpisRequired, current));
+        }
         return Ok(new ApiResponse<PagedResponse<TidRegisterItemResponse>>(true,
             PagedResponse<TidRegisterItemResponse>.Create(items, request.Page, request.PageSize, totalCount)));
     }
@@ -182,6 +189,7 @@ public class TidsController : ControllerBase
             .Include(item => item.PreviousVersion)
             .Include(item => item.ResponsibleEmployee)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
+            .Include(item => item.SourceDocuments).ThenInclude(item => item.UploadedByUser)
             .Where(item => item.OpmsTargetId == target.Id);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorDefinition.Contains(request.NormalizedSearch)
@@ -210,8 +218,9 @@ public class TidsController : ControllerBase
         };
         var versions = await ordered.Skip(request.Offset).Take(request.PageSize)
             .ToArrayAsync();
+        var memberAccess = await GetSourceDocumentMemberAccessAsync(user, target);
         return Ok(new ApiResponse<PagedResponse<TidVersionResponse>>(true,
-            PagedResponse<TidVersionResponse>.Create(versions.Select(ToResponse), request.Page, request.PageSize, totalCount)));
+            PagedResponse<TidVersionResponse>.Create(versions.Select(item => ToResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("targets/{targetPublicId:guid}/versions")]
@@ -284,7 +293,7 @@ public class TidsController : ControllerBase
             entity.OpmsTarget = target;
             entity.PreviousVersion = current;
             entity.ResponsibleEmployee = employee;
-            return Ok(new ApiResponse<TidVersionResponse>(true, ToResponse(entity)));
+            return Ok(new ApiResponse<TidVersionResponse>(true, ToResponse(entity, DocumentMetadataMemberAccess.Full)));
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -336,6 +345,7 @@ public class TidsController : ControllerBase
             Title = normalizedTitle,
             FileName = Path.GetFileName(file.FileName),
             UploadedByUserId = user.Id,
+            UploadedByUser = user,
             Blob = new EvidenceBlob
             {
                 MunicipalityId = tid.MunicipalityId, StorageKey = storageKey, ContentType = file.ContentType, SizeInBytes = content.LongLength,
@@ -353,7 +363,8 @@ public class TidsController : ControllerBase
             throw;
         }
         entity.TechnicalIndicatorDescription = tid;
-        return Ok(new ApiResponse<TidSourceDocumentResponse>(true, ToResponse(entity), scan.IsClean ? "Source document uploaded." : "Source document quarantined pending a clean scan."));
+        var memberAccess = await GetSourceDocumentMemberAccessAsync(user, tid.OpmsTarget);
+        return Ok(new ApiResponse<TidSourceDocumentResponse>(true, ToResponse(entity, memberAccess), scan.IsClean ? "Source document uploaded." : "Source document quarantined pending a clean scan."));
     }
 
     [HttpGet("{tidPublicId:guid}/documents/{documentPublicId:guid}/content")]
@@ -381,10 +392,11 @@ public class TidsController : ControllerBase
         var document = await context.TidSourceDocuments
             .Include(item => item.TechnicalIndicatorDescription).ThenInclude(item => item.OpmsTarget)
             .Include(item => item.Blob)
+            .Include(item => item.UploadedByUser)
             .SingleOrDefaultAsync(item => item.PublicId == documentPublicId && item.TechnicalIndicatorDescription.PublicId == tidPublicId);
         if (document == null) return NotFound(new ApiResponse<TidSourceDocumentResponse>(false, null, "TID source document not found."));
         if (document.Blob.IsContentDeleted) return Conflict(new ApiResponse<TidSourceDocumentResponse>(false, null, "Disposed content cannot be rescanned."));
-        var decision = await accessControl.CheckPermissionAsync(user, "TID.UPLOAD_SOURCE", Scope(document.TechnicalIndicatorDescription.OpmsTarget));
+        var decision = await accessControl.CheckPermissionAsync(user, "TID.RESCAN_SOURCE", Scope(document.TechnicalIndicatorDescription.OpmsTarget));
         if (!decision.Allowed) return Forbidden<TidSourceDocumentResponse>(decision.Reason);
         var stored = await storage.ReadAsync(document.Blob.StorageKey, HttpContext.RequestAborted);
         if (!stored.Found) return stored.Available
@@ -401,7 +413,8 @@ public class TidsController : ControllerBase
         workflow.QueueAuditTrail("TidSourceDocument", document.PublicId.ToString(), "MalwareRescan", before,
             new { scan.Status, document.Blob.IsQuarantined, scan.ProviderReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await context.SaveChangesAsync();
-        return Ok(new ApiResponse<TidSourceDocumentResponse>(true, ToResponse(document), scan.IsClean ? "Source document released after a clean scan." : "Source document remains quarantined."));
+        var memberAccess = await GetSourceDocumentMemberAccessAsync(user, document.TechnicalIndicatorDescription.OpmsTarget);
+        return Ok(new ApiResponse<TidSourceDocumentResponse>(true, ToResponse(document, memberAccess), scan.IsClean ? "Source document released after a clean scan." : "Source document remains quarantined."));
     }
 
     private async Task<TidConfigurationResponse> BuildConfigurationAsync(Municipality municipality, ApplicationUser user)
@@ -423,6 +436,22 @@ public class TidsController : ControllerBase
             || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
 
     private static AccessScopeContext Scope(OpmsTarget target) => new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, KpiId: target.Id, MunicipalityId: target.MunicipalityId);
+
+    private async Task<DocumentMetadataMemberAccess> GetSourceDocumentMemberAccessAsync(ApplicationUser user, OpmsTarget target)
+    {
+        async Task<bool> CanReadAsync(string memberCode)
+        {
+            var decision = await accessControl.CheckPermissionAsync(user, $"TID.Source{memberCode}.READ", Scope(target));
+            return decision.Allowed;
+        }
+
+        return new DocumentMetadataMemberAccess(
+            await CanReadAsync("UploadedByUserId"),
+            await CanReadAsync("UploadedByName"),
+            await CanReadAsync("ScannerProvider"),
+            await CanReadAsync("ScannerReference"),
+            await CanReadAsync("ScanDetail"));
+    }
 
     private async Task<ApplicationUser?> GetCurrentUserAsync()
     {
@@ -496,17 +525,22 @@ public class TidsController : ControllerBase
         return true;
     }
 
-    private static TidVersionResponse ToResponse(TechnicalIndicatorDescription item) => new(
+    private static TidVersionResponse ToResponse(TechnicalIndicatorDescription item, DocumentMetadataMemberAccess memberAccess) => new(
         item.PublicId, item.OpmsTarget.PublicId, item.VersionNumber, item.PreviousVersion?.PublicId,
         item.IndicatorDefinition, item.Purpose, item.DataSource, item.CollectionMethod, item.CalculationMethod,
         item.NumeratorDescription, item.DenominatorDescription, item.Limitations, item.Assumptions, item.VerificationMethod,
         item.ResponsibleEmployee?.PublicId, item.ResponsibleEmployee == null ? null : $"{item.ResponsibleEmployee.FirstName} {item.ResponsibleEmployee.LastName}".Trim(),
         item.Notes, item.EffectiveFrom, item.EffectiveTo, item.IsCurrent, item.CreatedAt, item.CreatedByUserId,
-        Convert.ToBase64String(item.RowVersion), item.SourceDocuments.OrderByDescending(document => document.UploadedAt).Select(ToResponse).ToArray());
+        Convert.ToBase64String(item.RowVersion), item.SourceDocuments.OrderByDescending(document => document.UploadedAt).Select(document => ToResponse(document, memberAccess)).ToArray());
 
-    private static TidSourceDocumentResponse ToResponse(TidSourceDocument item) => new(
+    private static TidSourceDocumentResponse ToResponse(TidSourceDocument item, DocumentMetadataMemberAccess memberAccess) => new(
         item.PublicId, item.Title, item.FileName, item.Blob.ContentType, item.Blob.SizeInBytes, item.Blob.Sha256,
-        item.Blob.ScanStatus, item.Blob.IsQuarantined, item.UploadedAt, item.UploadedByUserId,
+        item.Blob.ScanStatus, item.Blob.IsQuarantined, item.UploadedAt,
+        memberAccess.UploadedByUserId ? item.UploadedByUserId : null,
+        memberAccess.UploadedByName ? item.UploadedByUser?.FullName : null,
+        memberAccess.ScannerProvider ? item.Blob.ScannerProvider : null,
+        memberAccess.ScannerReference ? item.Blob.ScannerReference : null,
+        memberAccess.ScanDetail ? item.Blob.ScanDetail : null,
         $"/api/v1/tids/{item.TechnicalIndicatorDescription.PublicId}/documents/{item.PublicId}/content");
 
     private sealed record NormalizedTid(

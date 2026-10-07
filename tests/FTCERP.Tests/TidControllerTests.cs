@@ -114,7 +114,15 @@ public class TidControllerTests
         scanner.SetupSequence(service => service.ScanAsync(It.IsAny<byte[]>(), It.IsAny<string>(), "application/pdf", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EvidenceMalwareScanResult("ThreatDetected", false, "test-scanner", "scan-1", "Threat"))
             .ReturnsAsync(new EvidenceMalwareScanResult("Clean", true, "test-scanner", "scan-2", null));
-        var controller = Controller(context, setup.User, setup.Municipality.Id, storage: storage, inspection: inspection, scanner: scanner);
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "TID.CREATE", "TID.READ", "TID.UPLOAD_SOURCE", "TID.RESCAN_SOURCE" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        access.Setup(service => service.GetQueryScopeAsync(setup.User, It.IsAny<string>()))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [setup.Municipality.Id]));
+        var controller = Controller(context, setup.User, setup.Municipality.Id, storage: storage, inspection: inspection, scanner: scanner, access: access);
         var tid = Payload(await controller.CreateVersion(setup.Target.PublicId, Request("Definition", new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc))));
         var bytes = "%PDF-source"u8.ToArray();
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "source.pdf") { Headers = new HeaderDictionary(), ContentType = "application/pdf" };
@@ -123,14 +131,31 @@ public class TidControllerTests
         document.ScanStatus.Should().Be("ThreatDetected");
         document.IsQuarantined.Should().BeTrue();
         document.ContentUrl.Should().Contain(tid.PublicId.ToString());
+        document.UploadedByUserId.Should().BeNull();
+        document.UploadedByName.Should().BeNull();
+        document.ScannerProvider.Should().BeNull();
+        document.ScannerReference.Should().BeNull();
+        document.ScanDetail.Should().BeNull();
         var blob = await context.EvidenceBlobs.SingleAsync();
         blob.StorageKey.Should().StartWith($"tid{Path.DirectorySeparatorChar}");
         blob.Sha256.Should().Be(new string('a', 64));
+
+        foreach (var member in new[] { "UploadedByUserId", "UploadedByName", "ScannerProvider", "ScannerReference", "ScanDetail" })
+            allowedCodes.Add($"TID.Source{member}.READ");
+        var history = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
+            new PagedQueryRequest { Page = 1, PageSize = 10, SortBy = "versionNumber" }));
+        var visibleDocument = history.Items.Single().SourceDocuments.Single();
+        visibleDocument.UploadedByUserId.Should().Be(setup.User.Id);
+        visibleDocument.UploadedByName.Should().Be(setup.User.FullName);
+        visibleDocument.ScannerProvider.Should().Be("test-scanner");
+        visibleDocument.ScannerReference.Should().Be("scan-1");
+        visibleDocument.ScanDetail.Should().Be("Threat");
 
         (await controller.DownloadSourceDocument(tid.PublicId, document.PublicId)).Should().BeOfType<NotFoundResult>();
         var rescanned = Payload(await controller.RescanSourceDocument(tid.PublicId, document.PublicId));
         rescanned.ScanStatus.Should().Be("Clean");
         rescanned.IsQuarantined.Should().BeFalse();
+        access.Verify(service => service.CheckPermissionAsync(setup.User, "TID.RESCAN_SOURCE", It.IsAny<AccessScopeContext?>()), Times.Once);
         var downloaded = await controller.DownloadSourceDocument(tid.PublicId, document.PublicId);
         downloaded.Should().BeOfType<FileContentResult>().Which.FileContents.Should().Equal(bytes);
 
@@ -199,13 +224,17 @@ public class TidControllerTests
         Mock<IEvidenceBlobStorage>? storage = null,
         Mock<IEvidenceInspectionService>? inspection = null,
         Mock<IEvidenceMalwareScanner>? scanner = null,
-        bool allow = true)
+        bool allow = true,
+        Mock<IAccessControlService>? access = null)
     {
-        var access = new Mock<IAccessControlService>();
-        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync(new AccessDecisionResult(allow, allow ? "Allowed" : "Denied", [], [], []));
-        access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>()))
-            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [municipalityId]));
+        if (access == null)
+        {
+            access = new Mock<IAccessControlService>();
+            access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+                .ReturnsAsync(new AccessDecisionResult(allow, allow ? "Allowed" : "Denied", [], [], []));
+            access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>()))
+                .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [municipalityId]));
+        }
         storage ??= new Mock<IEvidenceBlobStorage>();
         inspection ??= new Mock<IEvidenceInspectionService>();
         scanner ??= new Mock<IEvidenceMalwareScanner>();

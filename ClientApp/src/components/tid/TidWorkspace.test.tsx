@@ -5,11 +5,11 @@ const app = vi.hoisted(() => ({ pushToast: vi.fn() }));
 const capabilities = vi.hoisted(() => ({
   canRead: vi.fn(() => true), canCreate: vi.fn(() => true), canUpdate: vi.fn(() => true),
   canDelete: vi.fn(() => false), canExport: vi.fn(() => false), canImport: vi.fn(() => false),
-  canExecute: vi.fn(() => true), canReadField: vi.fn(() => true), canEditField: vi.fn(() => true),
+  canExecute: vi.fn((code: string) => typeof code === 'string'), canReadField: vi.fn(() => true), canEditField: vi.fn(() => true),
 }));
 const api = vi.hoisted(() => ({
   getTidConfiguration: vi.fn(), updateTidConfiguration: vi.fn(), getTidRegisterPage: vi.fn(), getTidHistoryPage: vi.fn(),
-  createTidVersion: vi.fn(), uploadTidSourceDocument: vi.fn(), downloadTidSourceDocument: vi.fn(), getMunicipalEmployeesPage: vi.fn(),
+  createTidVersion: vi.fn(), uploadTidSourceDocument: vi.fn(), downloadTidSourceDocument: vi.fn(), rescanTidSourceDocument: vi.fn(), getMunicipalEmployeesPage: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
@@ -35,6 +35,7 @@ describe('TID workspace', () => {
     capabilities.canCreate.mockReturnValue(true);
     capabilities.canUpdate.mockReturnValue(true);
     capabilities.canExecute.mockReturnValue(true);
+    capabilities.canReadField.mockReturnValue(true);
     api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getTidConfiguration.mockResolvedValue({ success: true, data: configuration });
     api.getTidRegisterPage.mockResolvedValue({ success: true, data: { items: [item], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -83,6 +84,27 @@ describe('TID workspace', () => {
     expect(await screen.findByText('Version 1')).toBeInTheDocument();
     expect(screen.queryByLabelText('TID indicator definition')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save Policy' })).not.toBeInTheDocument();
+  });
+
+  it('hides protected source-document metadata and the independent rescan action', async () => {
+    capabilities.canReadField.mockReturnValue(false);
+    capabilities.canExecute.mockImplementation(code => code === 'TID.UPLOAD_SOURCE');
+    const protectedDocument = {
+      publicId: 'source-1', title: 'Protected methodology', fileName: 'source.pdf', contentType: 'application/pdf', sizeInBytes: 100,
+      sha256: 'a'.repeat(64), scanStatus: 'ThreatDetected', isQuarantined: true, uploadedAt: '2026-07-01T01:00:00Z',
+      uploadedByUserId: 'owner', uploadedByName: 'Protected Owner', scannerProvider: 'ProtectedScanner',
+      scannerReference: 'protected-reference', scanDetail: 'protected-detail', contentUrl: '/api/v1/tids/tid-1/documents/source-1/content',
+    };
+    api.getTidHistoryPage.mockResolvedValue({ success: true, data: { items: [{ ...version, sourceDocuments: [protectedDocument] }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
+
+    render(<TidWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /KPI-1/i }));
+    expect(await screen.findByText(/Protected methodology/)).toBeInTheDocument();
+    expect(screen.queryByText(/Protected Owner/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ProtectedScanner/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/protected-reference/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/protected-detail/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rescan' })).not.toBeInTheDocument();
   });
 
   it('loads the authorised KPI register in bounded server pages', async () => {

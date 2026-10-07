@@ -29,9 +29,14 @@ const emptyDraft = (): SaveTidVersionPayload => ({
 
 export function TidWorkspace() {
   const { pushToast } = useApp();
-  const { canCreate, canRead, canUpdate, canExecute } = useSecurity();
+  const { canCreate, canRead, canUpdate, canExecute, canReadField } = useSecurity();
   const canConfigure = canExecute('TID.CONFIGURE');
   const canUpload = canExecute('TID.UPLOAD_SOURCE');
+  const canRescan = canExecute('TID.RESCAN_SOURCE');
+  const canReadSourceUploader = canReadField('TID', 'SourceUploadedByUserId') || canReadField('TID', 'SourceUploadedByName');
+  const canReadSourceScannerProvider = canReadField('TID', 'SourceScannerProvider');
+  const canReadSourceScannerReference = canReadField('TID', 'SourceScannerReference');
+  const canReadSourceScanDetail = canReadField('TID', 'SourceScanDetail');
   const [configuration, setConfiguration] = useState<TidConfiguration | null>(null);
   const [items, setItems] = useState<TidRegisterItem[]>([]);
   const [employees, setEmployees] = useState<MunicipalEmployeeDto[]>([]);
@@ -286,7 +291,7 @@ export function TidWorkspace() {
                           <p className="mt-2"><strong>Definition:</strong> {version.indicatorDefinition}</p>
                           <p><strong>Calculation:</strong> {version.calculationMethod}</p>
                           <p><strong>Responsible:</strong> {version.responsibleEmployeeName ?? 'Not assigned'}</p>
-                          <div className="mt-2 space-y-1">{version.sourceDocuments.map(document => <div key={document.publicId} className="flex items-center justify-between rounded bg-secondary-50 px-2 py-1 dark:bg-secondary-800"><span>{document.title} ({document.fileName})</span><div className="flex items-center gap-2"><Badge variant={document.isQuarantined ? 'warning' : 'success'}>{document.scanStatus}</Badge>{!document.isQuarantined && document.scanStatus === 'Clean' ? <Button size="sm" variant="ghost" onClick={() => void downloadTidSourceDocument(document)}>Download</Button> : canUpload ? <Button size="sm" variant="ghost" onClick={() => void rescanTidSourceDocument(version.publicId, document.publicId).then(() => selected && selectItem(selected))}>Rescan</Button> : null}</div></div>)}</div>
+                          <div className="mt-2 space-y-1">{version.sourceDocuments.map(document => <div key={document.publicId} className="flex items-start justify-between gap-3 rounded bg-secondary-50 px-2 py-1 dark:bg-secondary-800"><div><span>{document.title} ({document.fileName})</span>{canReadSourceUploader ? <p className="text-xs text-secondary-500">Uploaded by {document.uploadedByName ?? document.uploadedByUserId ?? 'Unavailable'}</p> : null}{canReadSourceScannerProvider && document.scannerProvider ? <p className="text-xs text-secondary-500">Provider: {document.scannerProvider}</p> : null}{canReadSourceScannerReference && document.scannerReference ? <p className="text-xs text-secondary-500">Reference: {document.scannerReference}</p> : null}{canReadSourceScanDetail && document.scanDetail ? <p className="text-xs text-secondary-500">{document.scanDetail}</p> : null}</div><div className="flex items-center gap-2"><Badge variant={document.isQuarantined ? 'warning' : 'success'}>{document.scanStatus}</Badge>{!document.isQuarantined && document.scanStatus === 'Clean' ? <Button size="sm" variant="ghost" onClick={() => void downloadTidSourceDocument(document)}>Download</Button> : canRescan ? <Button size="sm" variant="ghost" onClick={() => void rescanTidSourceDocument(version.publicId, document.publicId).then(() => selected && selectItem(selected))}>Rescan</Button> : null}</div></div>)}</div>
                         </div>
                       ))}
                       {!history.length ? <p className="text-sm text-secondary-500">No TID version exists for this KPI.</p> : null}

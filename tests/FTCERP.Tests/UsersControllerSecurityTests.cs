@@ -150,6 +150,17 @@ public sealed class UsersControllerSecurityTests
         Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_DOCUMENT" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_DOCUMENT")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "IDP_DOCUMENT.RESCAN").ToArrayAsync());
+
+        var tidSourceMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "TID" && item.MemberCode.StartsWith("Source"))
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        Assert.Equal(new[] { "SourceScanDetail", "SourceScannerProvider", "SourceScannerReference", "SourceUploadedByName", "SourceUploadedByUserId" },
+            tidSourceMembers.Select(item => item.MemberCode));
+        Assert.All(tidSourceMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
+        Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == "TID" && item.MemberCode != null && item.MemberCode.StartsWith("Source")));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "TID")).SupportsFieldSecurity);
+        Assert.Single(await context.Permissions.Where(item => item.Code == "TID.RESCAN_SOURCE").ToArrayAsync());
     }
 
     [Fact]

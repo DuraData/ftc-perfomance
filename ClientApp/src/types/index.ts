@@ -3461,7 +3461,11 @@ export interface TidSourceDocument {
   scanStatus: string;
   isQuarantined: boolean;
   uploadedAt: string;
-  uploadedByUserId: string;
+  uploadedByUserId?: string | null;
+  uploadedByName?: string | null;
+  scannerProvider?: string | null;
+  scannerReference?: string | null;
+  scanDetail?: string | null;
   contentUrl: string;
 }
 

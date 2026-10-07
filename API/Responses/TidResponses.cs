@@ -54,5 +54,9 @@ public record TidSourceDocumentResponse(
     string ScanStatus,
     bool IsQuarantined,
     DateTime UploadedAt,
-    string UploadedByUserId,
+    string? UploadedByUserId,
+    string? UploadedByName,
+    string? ScannerProvider,
+    string? ScannerReference,
+    string? ScanDetail,
     string ContentUrl);
