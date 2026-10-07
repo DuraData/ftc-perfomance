@@ -139,6 +139,17 @@ public sealed class UsersControllerSecurityTests
             Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
             Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
         }
+
+        var idpDocumentMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "IDP_DOCUMENT")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        Assert.Equal(new[] { "ScanDetail", "ScannerProvider", "ScannerReference", "UploadedByName", "UploadedByUserId" },
+            idpDocumentMembers.Select(item => item.MemberCode));
+        Assert.All(idpDocumentMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
+        Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_DOCUMENT" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_DOCUMENT")).SupportsFieldSecurity);
+        Assert.Single(await context.Permissions.Where(item => item.Code == "IDP_DOCUMENT.RESCAN").ToArrayAsync());
     }
 
     [Fact]

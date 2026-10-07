@@ -3,7 +3,7 @@ import { Download, FileText, RefreshCw, ShieldCheck, Upload } from 'lucide-react
 import { downloadIdpDocument, getIdpDocumentsPage, rescanIdpDocument, uploadIdpDocument } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import type { IdpDocument } from '../../types';
-import { useHasAnyPermission } from '../security/AccessControl';
+import { useSecurity } from '../../context/SecurityContext';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState } from '../ui';
 import { IdpPlanPicker } from './IdpPlanPicker';
@@ -19,7 +19,14 @@ const formatBytes = (value: number) => value >= 1024 * 1024
 
 export function IdpDocumentsPage() {
   const { pushToast } = useApp();
-  const canManage = useHasAnyPermission(['IDP.Documents.Manage']);
+  const security = useSecurity();
+  const canRead = security.canRead('IDP_DOCUMENT');
+  const canCreate = security.canCreate('IDP_DOCUMENT');
+  const canRescan = security.canExecute('IDP_DOCUMENT.RESCAN');
+  const canReadUploader = security.canReadField('IDP_DOCUMENT', 'UploadedByUserId') || security.canReadField('IDP_DOCUMENT', 'UploadedByName');
+  const canReadScannerProvider = security.canReadField('IDP_DOCUMENT', 'ScannerProvider');
+  const canReadScannerReference = security.canReadField('IDP_DOCUMENT', 'ScannerReference');
+  const canReadScanDetail = security.canReadField('IDP_DOCUMENT', 'ScanDetail');
   const [planPublicId, setPlanPublicId] = useState('');
   const [documents, setDocuments] = useState<IdpDocument[]>([]);
   const [page, setPage] = useState(1);
@@ -42,7 +49,7 @@ export function IdpDocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
-    if (!canManage || !planPublicId) {
+    if (!canRead || !planPublicId) {
       setDocuments([]); setTotalCount(0); setTotalPages(0);
       return;
     }
@@ -65,7 +72,7 @@ export function IdpDocumentsPage() {
     };
     void load();
     return () => { cancelled = true; };
-  }, [canManage, category, page, planPublicId, pushToast, quarantine, refreshKey, scanStatus, search, sortBy, sortDirection]);
+  }, [canRead, category, page, planPublicId, pushToast, quarantine, refreshKey, scanStatus, search, sortBy, sortDirection]);
 
   const upload = async () => {
     if (!planPublicId || !file || !title.trim()) {
@@ -105,7 +112,7 @@ export function IdpDocumentsPage() {
 
   return <AppShell title="IDP Documents" subtitle="Governed IDP publications, resolutions, policies, and supporting evidence">
     <div className="space-y-4">
-      {!canManage ? <Card><p className="text-sm text-secondary-600">You do not have permission to manage IDP documents.</p></Card> : <>
+      {!canRead ? <Card><p className="text-sm text-secondary-600">You do not have permission to read IDP documents.</p></Card> : <>
         <Card>
           <div className="grid gap-3 lg:grid-cols-2">
             <IdpPlanPicker label="Document plan" value={planPublicId} valueField="publicId" autoSelectFirst onChange={value => { setPlanPublicId(value); setPage(1); }} />
@@ -124,7 +131,7 @@ export function IdpDocumentsPage() {
           </div>
         </Card>
 
-        <Card>
+        {canCreate ? <Card>
           <h2 className="text-base font-semibold text-secondary-900 dark:text-white">Upload governed document</h2>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className="text-xs text-secondary-600">Title<input aria-label="IDP document title" className={fieldClass} value={title} onChange={event => setTitle(event.target.value)} /></label>
@@ -133,7 +140,7 @@ export function IdpDocumentsPage() {
             <label className="text-xs text-secondary-600">Document file<input aria-label="IDP document file" className={fieldClass} type="file" accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx" onChange={event => setFile(event.target.files?.[0] ?? null)} /></label>
           </div>
           <div className="mt-3"><Button icon={<Upload className="h-4 w-4" />} loading={uploading} disabled={!planPublicId || uploading} onClick={() => void upload()}>Upload and scan</Button></div>
-        </Card>
+        </Card> : null}
 
         <Card padding="none">
           <div className="overflow-x-auto">
@@ -142,9 +149,9 @@ export function IdpDocumentsPage() {
               <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">{documents.map(document => <tr key={document.publicId}>
                 <td className="p-3"><p className="font-medium text-secondary-900 dark:text-white">{document.title}</p><p className="text-xs text-secondary-500">{document.fileName} · {formatBytes(document.sizeInBytes)}</p></td>
                 <td className="p-3"><p>{document.category}</p><p className="text-xs text-secondary-500">Document v{document.versionNumber}{document.planVersionNumber ? ` · Plan v${document.planVersionNumber}` : ''}</p></td>
-                <td className="p-3"><p>{new Date(document.uploadedAt).toLocaleString()}</p><p className="text-xs text-secondary-500">{document.uploadedByName ?? document.uploadedByUserId}</p></td>
-                <td className="p-3"><Badge variant={document.isQuarantined ? 'error' : document.scanStatus === 'Clean' ? 'success' : 'warning'}>{document.isQuarantined ? 'Quarantined' : document.scanStatus}</Badge><p className="mt-1 text-xs text-secondary-500">{document.signatureVerified ? 'Signature verified' : 'Signature unverified'}</p></td>
-                <td className="p-3"><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" icon={<Download className="h-3.5 w-3.5" />} disabled={!document.downloadUrl || busyDocumentId === document.publicId} onClick={() => void download(document)}>Download</Button><Button size="sm" variant="outline" icon={<ShieldCheck className="h-3.5 w-3.5" />} loading={busyDocumentId === document.publicId} disabled={document.isContentDeleted} onClick={() => void rescan(document)}>Rescan</Button></div></td>
+                <td className="p-3"><p>{new Date(document.uploadedAt).toLocaleString()}</p>{canReadUploader ? <p className="text-xs text-secondary-500">{document.uploadedByName ?? document.uploadedByUserId ?? 'Uploader unavailable'}</p> : null}</td>
+                <td className="p-3"><Badge variant={document.isQuarantined ? 'error' : document.scanStatus === 'Clean' ? 'success' : 'warning'}>{document.isQuarantined ? 'Quarantined' : document.scanStatus}</Badge><p className="mt-1 text-xs text-secondary-500">{document.signatureVerified ? 'Signature verified' : 'Signature unverified'}</p>{canReadScannerProvider && document.scannerProvider ? <p className="mt-1 text-xs text-secondary-500">Provider: {document.scannerProvider}</p> : null}{canReadScannerReference && document.scannerReference ? <p className="mt-1 text-xs text-secondary-500">Reference: {document.scannerReference}</p> : null}{canReadScanDetail && document.scanDetail ? <p className="mt-1 text-xs text-secondary-500">{document.scanDetail}</p> : null}</td>
+                <td className="p-3"><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" icon={<Download className="h-3.5 w-3.5" />} disabled={!document.downloadUrl || busyDocumentId === document.publicId} onClick={() => void download(document)}>Download</Button>{canRescan ? <Button size="sm" variant="outline" icon={<ShieldCheck className="h-3.5 w-3.5" />} loading={busyDocumentId === document.publicId} disabled={document.isContentDeleted} onClick={() => void rescan(document)}>Rescan</Button> : null}</div></td>
               </tr>)}</tbody>
             </table>
           </div>

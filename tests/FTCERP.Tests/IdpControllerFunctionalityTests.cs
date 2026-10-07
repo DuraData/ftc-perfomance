@@ -859,7 +859,7 @@ public class IdpControllerFunctionalityTests
             Title = "Approved plan",
             FileName = "approved.pdf",
             UploadedAt = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc),
-            Blob = new EvidenceBlob { MunicipalityId = 71, StorageKey = "idp/private-clean.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean", IsQuarantined = false },
+            Blob = new EvidenceBlob { MunicipalityId = 71, StorageKey = "idp/private-clean.pdf", ContentType = "application/pdf", SizeInBytes = 100, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean", IsQuarantined = false, ScannerProvider = "ProtectedScanner", ScannerReference = "protected-reference", ScanDetail = "protected-detail" },
             UploadedByUserId = user.Id,
             UploadedByUser = user
         };
@@ -900,12 +900,18 @@ public class IdpControllerFunctionalityTests
 
         await using var context = new ApplicationDbContext(options, tenant);
 
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "allowed" : "denied", [], [], []));
         var controller = IdpTestFixture.CreateController(
             context,
             IdpTestFixture.CreateUserManagerMock(user).Object,
             Mock.Of<IWorkflowGovernanceService>(),
             user.Id,
-            tenant);
+            tenant,
+            access.Object);
         controller.HttpContext.Request.Scheme = "https";
         controller.HttpContext.Request.Host = new HostString("opms.test");
 
@@ -923,6 +929,23 @@ public class IdpControllerFunctionalityTests
         page.Items[0].IdpPlanPublicId.Should().Be(plan.PublicId);
         page.Items[0].EvidenceBlobPublicId.Should().Be(clean.Blob.PublicId);
         page.Items[0].IsContentDeleted.Should().BeFalse();
+        page.Items[0].UploadedByUserId.Should().BeNull();
+        page.Items[0].UploadedByName.Should().BeNull();
+        page.Items[0].ScannerProvider.Should().BeNull();
+        page.Items[0].ScannerReference.Should().BeNull();
+        page.Items[0].ScanDetail.Should().BeNull();
+
+        foreach (var member in new[] { "UploadedByUserId", "UploadedByName", "ScannerProvider", "ScannerReference", "ScanDetail" })
+            allowedCodes.Add($"IDP_DOCUMENT.{member}.READ");
+        var refreshedResult = await controller.GetDocumentsPage(plan.PublicId,
+            new PagedQueryRequest { Page = 1, PageSize = 1, Search = "plan", SortBy = "title", SortDirection = "asc" });
+        var refreshed = refreshedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<IdpDocumentResponse>>>().Subject.Data!.Items.Single();
+        refreshed.UploadedByUserId.Should().Be(user.Id);
+        refreshed.UploadedByName.Should().Be(user.FullName);
+        refreshed.ScannerProvider.Should().Be("ProtectedScanner");
+        refreshed.ScannerReference.Should().Be("protected-reference");
+        refreshed.ScanDetail.Should().Be("protected-detail");
 
         var quarantineResult = await controller.GetDocumentsPage(plan.PublicId,
             new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "scanStatus" },

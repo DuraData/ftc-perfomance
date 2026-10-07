@@ -1155,7 +1155,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpPost("documents")]
-    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [Authorize(Policy = "Permission:IDP_DOCUMENT.CREATE")]
     public ActionResult<ApiResponse<IdpDocumentResponse>> CreateDocument([FromBody] CreateIdpDocumentRequest request)
     {
         _ = request;
@@ -1164,7 +1164,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents")]
-    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [Authorize(Policy = "Permission:IDP_DOCUMENT.READ")]
     public ActionResult<ApiResponse<IdpDocumentResponse[]>> GetDocuments(Guid planPublicId)
     {
         _ = planPublicId;
@@ -1173,7 +1173,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents/page")]
-    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [Authorize(Policy = "Permission:IDP_DOCUMENT.READ")]
     public async Task<ActionResult<ApiResponse<PagedResponse<IdpDocumentResponse>>>> GetDocumentsPage(
         Guid planPublicId,
         [FromQuery] PagedQueryRequest request,
@@ -1181,15 +1181,22 @@ public class IdpController : ControllerBase
         [FromQuery] string? scanStatus = null,
         [FromQuery] bool? quarantined = null)
     {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null, "User not found."));
         if (request.NormalizedSortBy is not ("createdat" or "uploadedat" or "title" or "filename" or "category" or "scanstatus" or "versionnumber"))
             return BadRequest(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null,
                 "SortBy must be createdAt, uploadedAt, title, fileName, category, scanStatus, or versionNumber."));
         if (!string.IsNullOrWhiteSpace(category) && !TryParseEnum(category, out IdpDocumentCategory _))
             return BadRequest(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null, "Invalid document category."));
 
-        var planExists = await _context.IdpPlans.AsNoTracking().AnyAsync(item => item.PublicId == planPublicId);
-        if (!planExists)
+        var plan = await _context.IdpPlans.AsNoTracking()
+            .Where(item => item.PublicId == planPublicId)
+            .Select(item => new { item.MunicipalityId })
+            .FirstOrDefaultAsync();
+        if (plan == null)
             return NotFound(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null, "IDP plan not found."));
+        if (!plan.MunicipalityId.HasValue)
+            return NotFound(new ApiResponse<PagedResponse<IdpDocumentResponse>>(false, null, "IDP plan is not assigned to a municipality."));
 
         IQueryable<IdpDocument> query = _context.IdpDocuments
             .AsNoTracking()
@@ -1226,13 +1233,14 @@ public class IdpController : ControllerBase
             _ => descending ? query.OrderByDescending(item => item.UploadedAt).ThenByDescending(item => item.PublicId) : query.OrderBy(item => item.UploadedAt).ThenBy(item => item.PublicId)
         };
         var documents = await query.Skip(request.Offset).Take(request.PageSize).ToListAsync();
+        var memberAccess = await GetDocumentMemberAccessAsync(user, plan.MunicipalityId.Value);
 
         return Ok(new ApiResponse<PagedResponse<IdpDocumentResponse>>(true,
-            PagedResponse<IdpDocumentResponse>.Create(documents.Select(ToDocumentResponse), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IdpDocumentResponse>.Create(documents.Select(item => ToDocumentResponse(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("~/api/v1/idp/plans/{planPublicId:guid}/documents")]
-    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [Authorize(Policy = "Permission:IDP_DOCUMENT.CREATE")]
     [RequestSizeLimit(MaximumDocumentBytes)]
     public async Task<ActionResult<ApiResponse<IdpDocumentResponse>>> UploadDocument(
         Guid planPublicId,
@@ -1260,6 +1268,8 @@ public class IdpController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IdpDocumentResponse>(false, null, "User not found."));
         var plan = await _context.IdpPlans.Include(item => item.Versions).FirstOrDefaultAsync(item => item.PublicId == planPublicId);
         if (plan == null) return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP plan not found."));
+        if (!plan.MunicipalityId.HasValue)
+            return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP plan is not assigned to a municipality."));
 
         IdpPlanVersion? planVersion = null;
         if (planVersionNumber.HasValue)
@@ -1309,14 +1319,15 @@ public class IdpController : ControllerBase
             await _evidenceStorage.DisposeAsync(relativePath, CancellationToken.None);
             throw;
         }
-        var response = ToDocumentResponse(entity);
-        await WriteIdpAudit(user.Id, "IdpDocument", entity.PublicId.ToString(), "Upload", null, response);
+        var auditResponse = ToDocumentResponse(entity, DocumentMetadataMemberAccess.Full);
+        await WriteIdpAudit(user.Id, "IdpDocument", entity.PublicId.ToString(), "Upload", null, auditResponse);
+        var response = ToDocumentResponse(entity, await GetDocumentMemberAccessAsync(user, plan.MunicipalityId.Value));
         return Ok(new ApiResponse<IdpDocumentResponse>(true, response,
             malwareScan.IsClean ? "Document uploaded and released after a clean scan." : "Document uploaded and quarantined pending a clean scan."));
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/documents/{documentPublicId:guid}/content")]
-    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [Authorize(Policy = "Permission:IDP_DOCUMENT.READ")]
     public async Task<IActionResult> DownloadDocument(Guid planPublicId, Guid documentPublicId)
     {
         if (_evidenceStorage == null) return StatusCode(StatusCodes.Status503ServiceUnavailable);
@@ -1330,7 +1341,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpPost("~/api/v1/idp/plans/{planPublicId:guid}/documents/{documentPublicId:guid}/rescan")]
-    [Authorize(Policy = "Permission:IDP.Documents.Manage")]
+    [Authorize(Policy = "Permission:IDP_DOCUMENT.RESCAN")]
     public async Task<ActionResult<ApiResponse<IdpDocumentResponse>>> RescanDocument(Guid planPublicId, Guid documentPublicId)
     {
         if (_evidenceStorage == null || _malwareScanner == null)
@@ -1344,6 +1355,8 @@ public class IdpController : ControllerBase
             .Include(item => item.Blob)
             .FirstOrDefaultAsync(item => item.PublicId == documentPublicId && item.IdpPlan.PublicId == planPublicId && item.IsActive);
         if (document == null) return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP document not found."));
+        if (!document.IdpPlan.MunicipalityId.HasValue)
+            return NotFound(new ApiResponse<IdpDocumentResponse>(false, null, "IDP plan is not assigned to a municipality."));
         if (document.Blob.IsContentDeleted) return Conflict(new ApiResponse<IdpDocumentResponse>(false, null, "Disposed document content cannot be rescanned."));
         var stored = await _evidenceStorage.ReadAsync(document.Blob.StorageKey, HttpContext.RequestAborted);
         if (!stored.Found)
@@ -1360,8 +1373,9 @@ public class IdpController : ControllerBase
         document.Blob.ScanDetail = scan.Detail;
         document.Blob.ScannedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
-        var response = ToDocumentResponse(document);
-        await WriteIdpAudit(user.Id, "IdpDocument", document.PublicId.ToString(), "MalwareRescan", before, response);
+        var auditResponse = ToDocumentResponse(document, DocumentMetadataMemberAccess.Full);
+        await WriteIdpAudit(user.Id, "IdpDocument", document.PublicId.ToString(), "MalwareRescan", before, auditResponse);
+        var response = ToDocumentResponse(document, await GetDocumentMemberAccessAsync(user, document.IdpPlan.MunicipalityId.Value));
         return Ok(new ApiResponse<IdpDocumentResponse>(true, response, scan.IsClean ? "Document released after a clean scan." : "Document remains quarantined."));
     }
 
@@ -1498,6 +1512,24 @@ public class IdpController : ControllerBase
             $"IDP_STAKEHOLDER.{memberCode}.{operation.ToString().ToUpperInvariant()}",
             new AccessScopeContext(MunicipalityId: _tenantContext?.MunicipalityId));
         return decision.Allowed;
+    }
+
+    private async Task<DocumentMetadataMemberAccess> GetDocumentMemberAccessAsync(ApplicationUser user, long municipalityId)
+    {
+        if (_accessControl == null) return new DocumentMetadataMemberAccess(false, false, false, false, false);
+        async Task<bool> CanReadAsync(string memberCode)
+        {
+            var decision = await _accessControl.CheckPermissionAsync(user, $"IDP_DOCUMENT.{memberCode}.READ",
+                new AccessScopeContext(MunicipalityId: municipalityId));
+            return decision.Allowed;
+        }
+
+        return new DocumentMetadataMemberAccess(
+            await CanReadAsync("UploadedByUserId"),
+            await CanReadAsync("UploadedByName"),
+            await CanReadAsync("ScannerProvider"),
+            await CanReadAsync("ScannerReference"),
+            await CanReadAsync("ScanDetail"));
     }
 
     private Task WriteIdpAudit(string changedBy, string entityName, string entityId, string action, object? before, object? after)
@@ -1665,8 +1697,9 @@ public class IdpController : ControllerBase
     private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot) =>
         new(snapshot.PublicId, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear, snapshot.PlannedBudget, snapshot.ApprovedBudget, snapshot.ActualExpenditure, snapshot.SourceSystem, snapshot.CapturedAt);
 
-    private IdpDocumentResponse ToDocumentResponse(IdpDocument document)
+    private IdpDocumentResponse ToDocumentResponse(IdpDocument document, DocumentMetadataMemberAccess? memberAccess = null)
     {
+        memberAccess ??= DocumentMetadataMemberAccess.Full;
         var downloadUrl = document.IsActive && !document.Blob.IsContentDeleted && !document.Blob.IsQuarantined && document.Blob.SignatureVerified && document.Blob.ScanStatus == "Clean"
             ? $"{Request.Scheme}://{Request.Host}/api/v1/idp/plans/{document.IdpPlan.PublicId}/documents/{document.PublicId}/content"
             : string.Empty;
@@ -1683,15 +1716,15 @@ public class IdpController : ControllerBase
             document.VersionNumber,
             document.IsApproved,
             document.UploadedAt,
-            document.UploadedByUserId,
-            document.UploadedByUser?.FullName,
+            memberAccess.UploadedByUserId ? document.UploadedByUserId : null,
+            memberAccess.UploadedByName ? document.UploadedByUser?.FullName : null,
             document.Blob.Sha256,
             document.Blob.SignatureVerified,
             document.Blob.ScanStatus,
             document.Blob.IsQuarantined,
-            document.Blob.ScannerProvider,
-            document.Blob.ScannerReference,
-            document.Blob.ScanDetail,
+            memberAccess.ScannerProvider ? document.Blob.ScannerProvider : null,
+            memberAccess.ScannerReference ? document.Blob.ScannerReference : null,
+            memberAccess.ScanDetail ? document.Blob.ScanDetail : null,
             document.Blob.ScannedAt,
             document.RetainUntil,
             document.Blob.PublicId,

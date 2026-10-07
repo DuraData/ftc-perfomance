@@ -2,7 +2,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IdpDocumentsPage } from './IdpDocumentsPage';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn() }));
-const access = vi.hoisted(() => ({ allowed: true }));
+const security = vi.hoisted(() => ({
+  canRead: vi.fn(() => true),
+  canCreate: vi.fn(() => true),
+  canExecute: vi.fn(() => true),
+  canReadField: vi.fn(() => true),
+}));
 const api = vi.hoisted(() => ({
   downloadIdpDocument: vi.fn(),
   getIdpDocumentsPage: vi.fn(),
@@ -12,7 +17,7 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
-vi.mock('../security/AccessControl', () => ({ useHasAnyPermission: () => access.allowed }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('../../api/api', () => api);
 
@@ -33,7 +38,10 @@ const document = {
 describe('IDP document register', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    access.allowed = true;
+    security.canRead.mockReturnValue(true);
+    security.canCreate.mockReturnValue(true);
+    security.canExecute.mockReturnValue(true);
+    security.canReadField.mockReturnValue(true);
     api.getIdpPlansPage.mockResolvedValue({ success: true, data: { items: [plan], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getIdpDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
     api.uploadIdpDocument.mockResolvedValue({ success: true, data: document, message: 'Document uploaded.' });
@@ -82,10 +90,27 @@ describe('IDP document register', () => {
   });
 
   it('does not call protected endpoints when direct navigation lacks permission', async () => {
-    access.allowed = false;
+    security.canRead.mockReturnValue(false);
     render(<IdpDocumentsPage />);
-    expect(screen.getByText('You do not have permission to manage IDP documents.')).toBeInTheDocument();
+    expect(screen.getByText('You do not have permission to read IDP documents.')).toBeInTheDocument();
     expect(api.getIdpPlansPage).not.toHaveBeenCalled();
     expect(api.getIdpDocumentsPage).not.toHaveBeenCalled();
+  });
+
+  it('hides denied uploader and scanner metadata plus independent actions', async () => {
+    security.canCreate.mockReturnValue(false);
+    security.canExecute.mockReturnValue(false);
+    security.canReadField.mockReturnValue(false);
+    api.getIdpDocumentsPage.mockResolvedValue({ success: true, data: { items: [{ ...document, scanDetail: 'Protected scanner diagnostic' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<IdpDocumentsPage />);
+    expect(await screen.findByText('Approved IDP policy')).toBeInTheDocument();
+    expect(screen.queryByText('Document Owner')).not.toBeInTheDocument();
+    expect(screen.queryByText('Provider: test')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reference: scan-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Protected scanner diagnostic')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Upload and scan' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rescan' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
   });
 });
