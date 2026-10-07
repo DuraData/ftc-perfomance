@@ -86,6 +86,19 @@ public sealed class UsersControllerSecurityTests
             (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(20);
         }
 
+        foreach (var resourceCode in new[] { "OPMS_KPI", "IPMS_KPI" })
+        {
+            var revisionMembers = await context.SecurityMemberDefinitions
+                .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("Revision"))
+                .OrderBy(item => item.MemberCode)
+                .ToArrayAsync();
+            revisionMembers.Select(item => item.MemberCode).Should().Equal(
+                "RevisionActor", "RevisionApprovalReference", "RevisionOriginalValue", "RevisionReason", "RevisionRevisedValue");
+            revisionMembers.Should().OnlyContain(item => item.IsSensitive && item.IsSystemManaged);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode
+                && item.MemberCode != null && item.MemberCode.StartsWith("Revision"))).Should().Be(5);
+        }
+
         foreach (var resourceCode in new[] { "OPMS_WORKFLOW", "IPMS_WORKFLOW" })
         {
             var workflowMembers = await context.SecurityMemberDefinitions

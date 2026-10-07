@@ -66,6 +66,50 @@ public sealed class KpiPeriodOrderingTests
     }
 
     [Fact]
+    public async Task Revision_history_members_AreMaskedAndCannotInfluenceSearchOrActorSort()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "REV-SEC", Name = "Revision security municipality" };
+        var user = IdpTestFixture.CreateUser("revision-security-user");
+        user.FirstName = "Public";
+        user.LastName = "Reviewer";
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        var target = Target("revision-security-target", municipality.Id, "REV-1", 1, 1);
+        context.OpmsTargets.Add(target);
+        context.KpiFieldRevisions.Add(new KpiFieldRevision
+        {
+            MunicipalityId = municipality.Id, OpmsTargetId = target.Id, FieldName = nameof(OpmsTarget.TargetName),
+            OriginalValue = "protected original", RevisedValue = "protected revision", Reason = "protected governance reason",
+            ApprovalReference = "SECRET-COUNCIL-1", EffectiveAt = DateTime.UtcNow, RevisedByUserId = user.Id
+        });
+        await context.SaveChangesAsync();
+        var denied = OpmsController(context, municipality.Id, user, code => code == "OPMS_KPI.READ");
+
+        var maskedResult = await denied.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { SortBy = "recordedAt" });
+        var masked = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>(maskedResult.Result).Value).Data!.Items);
+        Assert.Null(masked.OriginalValue);
+        Assert.Null(masked.RevisedValue);
+        Assert.Null(masked.Reason);
+        Assert.Null(masked.ApprovalReference);
+        Assert.Null(masked.RevisedByUserPublicId);
+        Assert.Null(masked.RevisedByName);
+        var hiddenSearch = await denied.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { Search = "protected governance reason", SortBy = "recordedAt" });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>(hiddenSearch.Result).Value).Data!.TotalCount);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>((await denied.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { SortBy = "revisedBy" })).Result).StatusCode);
+
+        var allowed = OpmsController(context, municipality.Id, user, _ => true);
+        var visibleResult = await allowed.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { Search = "protected governance reason", SortBy = "revisedBy" });
+        var visible = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>(visibleResult.Result).Value).Data!.Items);
+        Assert.Equal("protected original", visible.OriginalValue);
+        Assert.Equal("protected revision", visible.RevisedValue);
+        Assert.Equal("protected governance reason", visible.Reason);
+        Assert.Equal("SECRET-COUNCIL-1", visible.ApprovalReference);
+        Assert.Equal(user.PublicId, visible.RevisedByUserPublicId);
+        Assert.Equal("Public Reviewer", visible.RevisedByName);
+    }
+
+    [Fact]
     public async Task Ipms_definition_revision_persists_only_the_independently_flagged_field()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -398,11 +442,12 @@ public sealed class KpiPeriodOrderingTests
         ActualPerformance = "1"
     };
 
-    private static OpmsTargetsController OpmsController(ApplicationDbContext context, long municipalityId, ApplicationUser user)
+    private static OpmsTargetsController OpmsController(ApplicationDbContext context, long municipalityId, ApplicationUser user, Func<string, bool>? allowed = null)
     {
+        allowed ??= _ => true;
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(allowed(code), allowed(code) ? "Allowed" : "Denied", allowed(code) ? [code] : [], [], []));
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
         var governance = new Mock<IWorkflowGovernanceService>();

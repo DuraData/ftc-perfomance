@@ -376,11 +376,19 @@ public sealed record KpiFieldRevisionResponse(
     string FieldName,
     string? OriginalValue,
     string? RevisedValue,
-    string Reason,
-    string ApprovalReference,
+    string? Reason,
+    string? ApprovalReference,
     DateTime EffectiveAt,
-    string RevisedByUserId,
+    Guid? RevisedByUserPublicId,
+    string? RevisedByName,
     DateTime RecordedAt);
+
+public sealed record KpiRevisionMemberAccess(
+    bool OriginalValue,
+    bool RevisedValue,
+    bool Reason,
+    bool ApprovalReference,
+    bool Actor);
 
 public record OpmsSubmissionResponse(
     string Id,

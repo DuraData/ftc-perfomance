@@ -84,6 +84,7 @@ public sealed class OfficialReportGenerationTests
     [InlineData(OfficialReportType.OutstandingRfi, "OPMS_RFI.Response.READ")]
     [InlineData(OfficialReportType.EvidenceRegister, "OPMS_POE.UploadedByName.READ")]
     [InlineData(OfficialReportType.AuditTrail, "AUDIT_TRAIL.CorrelationId.READ")]
+    [InlineData(OfficialReportType.VersionTrail, "OPMS_KPI.RevisionActor.READ")]
     public void ReportContentPermissions_CoverProtectedConfiguredColumns(OfficialReportType reportType, string expectedPermission)
     {
         var permissions = OfficialReportsController.ReportContentReadPermissions(
@@ -333,6 +334,7 @@ public sealed class OfficialReportGenerationTests
     [InlineData(OfficialReportType.InternalAudit, "OPMS_SUBMISSION.InternalAuditFindings.READ")]
     [InlineData(OfficialReportType.EvidenceRegister, "OPMS_POE.READ")]
     [InlineData(OfficialReportType.AuditTrail, "AUDIT_TRAIL.Reason.READ")]
+    [InlineData(OfficialReportType.VersionTrail, "OPMS_KPI.RevisionReason.READ")]
     public async Task DirectGenerationCall_IsDeniedWhenAConfiguredSourcePermissionIsMissing(
         OfficialReportType reportType, string deniedPermission)
     {

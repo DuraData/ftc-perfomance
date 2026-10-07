@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
-vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreate: () => true, canExecute: () => true }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreate: () => true, canExecute: () => true, canReadField: () => true }) }));
 
 describe('PerformancePeriodTargetEditor', () => {
   beforeEach(() => {
@@ -34,7 +34,7 @@ describe('PerformancePeriodTargetEditor', () => {
       { publicId: 'value-1', reportingPeriodPublicId: 'period-q1', periodCode: 'Q1', periodType: 1, unitKind: 2, direction: 1, opmsUnitPublicId: 'unit-number', opmsUnitCode: 'NUMBER', performanceDirectionPublicId: 'direction-target-or-higher', performanceDirectionCode: 'TARGET_OR_HIGHER', targetValue: '25', budgetValue: 1000, originalUnitKind: 2, originalOpmsUnitPublicId: 'unit-number', originalOpmsUnitCode: 'NUMBER', originalTargetValue: '25', originalBudgetValue: 1000, isTargetRevised: false, isBudgetRevised: false, description: 'Households connected', isActive: true, rowVersion: 'AQ==' },
     ] });
     api.getPerformanceTargetRevisionsPage.mockResolvedValue({ success: true, data: { items: [
-      { publicId: 'revision-1', fieldName: 'TargetValue', originalValue: '20', revisedValue: '25', reason: 'Council adjustment', approvalReference: 'COUNCIL-1', effectiveAt: '2026-10-01T00:00:00Z', revisedByUserId: 'user', recordedAt: '2026-10-01T00:00:00Z' },
+      { publicId: 'revision-1', fieldName: 'TargetValue', originalValue: '20', revisedValue: '25', reason: 'Council adjustment', approvalReference: 'COUNCIL-1', effectiveAt: '2026-10-01T00:00:00Z', revisedByUserPublicId: 'user-public-id', revisedByName: 'Revision User', recordedAt: '2026-10-01T00:00:00Z' },
     ], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
   });
 

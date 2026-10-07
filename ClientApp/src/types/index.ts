@@ -1721,10 +1721,11 @@ export interface PerformanceTargetRevisionDto {
   fieldName: string;
   originalValue?: string | null;
   revisedValue?: string | null;
-  reason: string;
-  approvalReference: string;
+  reason?: string | null;
+  approvalReference?: string | null;
   effectiveAt: string;
-  revisedByUserId: string;
+  revisedByUserPublicId?: string | null;
+  revisedByName?: string | null;
   recordedAt: string;
 }
 
@@ -1733,10 +1734,11 @@ export interface KpiFieldRevisionDto {
   fieldName: string;
   originalValue?: string | null;
   revisedValue?: string | null;
-  reason: string;
-  approvalReference: string;
+  reason?: string | null;
+  approvalReference?: string | null;
   effectiveAt: string;
-  revisedByUserId: string;
+  revisedByUserPublicId?: string | null;
+  revisedByName?: string | null;
   recordedAt: string;
 }
 

@@ -179,15 +179,25 @@ public sealed class PerformancePeriodTargetsController(
         var unitId = entity.OpmsTarget?.UnitId ?? entity.IpmsTarget?.UnitId;
         var ownerId = entity.OpmsTarget?.AssignedUserId ?? entity.IpmsTarget?.AssignedUserId;
         var targetId = entity.OpmsTargetId ?? entity.IpmsTargetId;
-        if (!(await accessControl.CheckPermissionAsync(user, permission, new AccessScopeContext(departmentId, unitId, ownerId, TargetId: targetId, MunicipalityId: entity.MunicipalityId))).Allowed) return Forbid();
-        if (request.NormalizedSortBy is not ("createdat" or "recordedat" or "effectiveat" or "fieldname" or "revisedbyuserid"))
-            return BadRequest(Fail<PagedResponse<PerformanceTargetRevisionDto>>("SortBy must be recordedAt, effectiveAt, fieldName, or revisedByUserId."));
+        var scope = new AccessScopeContext(departmentId, unitId, ownerId, TargetId: targetId, MunicipalityId: entity.MunicipalityId);
+        if (!(await accessControl.CheckPermissionAsync(user, permission, scope)).Allowed) return Forbid();
+        var resource = entity.OpmsTargetId != null ? "OPMS_KPI" : "IPMS_KPI";
+        async Task<bool> CanRead(string member) => (await accessControl.CheckPermissionAsync(user, $"{resource}.{member}.READ", scope)).Allowed;
+        var memberAccess = new KpiRevisionMemberAccess(
+            await CanRead("RevisionOriginalValue"), await CanRead("RevisionRevisedValue"), await CanRead("RevisionReason"),
+            await CanRead("RevisionApprovalReference"), await CanRead("RevisionActor"));
+        if (request.NormalizedSortBy is not ("createdat" or "recordedat" or "effectiveat" or "fieldname" or "revisedby" or "revisedbyuserid"))
+            return BadRequest(Fail<PagedResponse<PerformanceTargetRevisionDto>>("SortBy must be recordedAt, effectiveAt, fieldName, or revisedBy."));
+        if (request.NormalizedSortBy is "revisedby" or "revisedbyuserid" && !memberAccess.Actor)
+            return Forbid();
         var query = context.PerformanceTargetRevisions.AsNoTracking().Where(x => x.PerformancePeriodTargetId == entity.Id);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.FieldName.Contains(request.NormalizedSearch) || item.Reason.Contains(request.NormalizedSearch)
-                || item.ApprovalReference.Contains(request.NormalizedSearch) || item.RevisedByUserId.Contains(request.NormalizedSearch)
-                || (item.OriginalValue != null && item.OriginalValue.Contains(request.NormalizedSearch))
-                || (item.RevisedValue != null && item.RevisedValue.Contains(request.NormalizedSearch)));
+            query = query.Where(item => item.FieldName.Contains(request.NormalizedSearch)
+                || memberAccess.Reason && item.Reason.Contains(request.NormalizedSearch)
+                || memberAccess.ApprovalReference && item.ApprovalReference.Contains(request.NormalizedSearch)
+                || memberAccess.Actor && (item.RevisedByUser.FirstName.Contains(request.NormalizedSearch) || item.RevisedByUser.LastName.Contains(request.NormalizedSearch))
+                || memberAccess.OriginalValue && item.OriginalValue != null && item.OriginalValue.Contains(request.NormalizedSearch)
+                || memberAccess.RevisedValue && item.RevisedValue != null && item.RevisedValue.Contains(request.NormalizedSearch));
         var totalCount = await query.CountAsync();
         var ordered = (request.NormalizedSortBy, request.Descending) switch
         {
@@ -195,13 +205,17 @@ public sealed class PerformancePeriodTargetsController(
             ("effectiveat", true) => query.OrderByDescending(item => item.EffectiveAt).ThenByDescending(item => item.PublicId),
             ("fieldname", false) => query.OrderBy(item => item.FieldName).ThenBy(item => item.PublicId),
             ("fieldname", true) => query.OrderByDescending(item => item.FieldName).ThenByDescending(item => item.PublicId),
-            ("revisedbyuserid", false) => query.OrderBy(item => item.RevisedByUserId).ThenBy(item => item.PublicId),
-            ("revisedbyuserid", true) => query.OrderByDescending(item => item.RevisedByUserId).ThenByDescending(item => item.PublicId),
+            ("revisedby" or "revisedbyuserid", false) => query.OrderBy(item => item.RevisedByUser.LastName).ThenBy(item => item.RevisedByUser.FirstName).ThenBy(item => item.RevisedByUser.PublicId).ThenBy(item => item.PublicId),
+            ("revisedby" or "revisedbyuserid", true) => query.OrderByDescending(item => item.RevisedByUser.LastName).ThenByDescending(item => item.RevisedByUser.FirstName).ThenByDescending(item => item.RevisedByUser.PublicId).ThenByDescending(item => item.PublicId),
             (_, false) => query.OrderBy(item => item.RecordedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.RecordedAt).ThenByDescending(item => item.PublicId)
         };
-        var rows = await ordered.Skip(request.Offset).Take(request.PageSize)
-            .Select(x => new PerformanceTargetRevisionDto(x.PublicId, x.FieldName, x.OriginalValue, x.RevisedValue, x.Reason, x.ApprovalReference, x.EffectiveAt, x.RevisedByUserId, x.RecordedAt)).ToArrayAsync();
+        var items = await ordered.Skip(request.Offset).Take(request.PageSize).Include(item => item.RevisedByUser).ToArrayAsync();
+        var rows = items.Select(item => new PerformanceTargetRevisionDto(item.PublicId, item.FieldName,
+            memberAccess.OriginalValue ? item.OriginalValue : null, memberAccess.RevisedValue ? item.RevisedValue : null,
+            memberAccess.Reason ? item.Reason : null, memberAccess.ApprovalReference ? item.ApprovalReference : null,
+            item.EffectiveAt, memberAccess.Actor ? item.RevisedByUser.PublicId : null,
+            memberAccess.Actor ? item.RevisedByUser.FullName : null, item.RecordedAt)).ToArray();
         return Ok(new ApiResponse<PagedResponse<PerformanceTargetRevisionDto>>(true,
             PagedResponse<PerformanceTargetRevisionDto>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
@@ -273,4 +287,4 @@ public sealed record RevisePerformancePeriodTargetRequest(PerformanceUnitKind Un
     public bool IsTargetRevised { get; init; } = true;
     public bool IsBudgetRevised { get; init; } = true;
 }
-public sealed record PerformanceTargetRevisionDto(Guid PublicId, string FieldName, string? OriginalValue, string? RevisedValue, string Reason, string ApprovalReference, DateTime EffectiveAt, string RevisedByUserId, DateTime RecordedAt);
+public sealed record PerformanceTargetRevisionDto(Guid PublicId, string FieldName, string? OriginalValue, string? RevisedValue, string? Reason, string? ApprovalReference, DateTime EffectiveAt, Guid? RevisedByUserPublicId, string? RevisedByName, DateTime RecordedAt);

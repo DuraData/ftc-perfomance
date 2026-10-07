@@ -453,16 +453,25 @@ public class OpmsTargetsController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "User not found"));
         var entity = await _context.OpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "OPMS target not found"));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", BuildScope(entity));
+        var scope = BuildScope(entity);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, decision.Reason));
-        if (request.NormalizedSortBy is not ("createdat" or "recordedat" or "effectiveat" or "fieldname" or "revisedbyuserid"))
-            return BadRequest(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "SortBy must be recordedAt, effectiveAt, fieldName, or revisedByUserId."));
+        async Task<bool> CanRead(string member) => (await _accessControlService.CheckPermissionAsync(user, $"OPMS_KPI.{member}.READ", scope)).Allowed;
+        var memberAccess = new KpiRevisionMemberAccess(
+            await CanRead("RevisionOriginalValue"), await CanRead("RevisionRevisedValue"), await CanRead("RevisionReason"),
+            await CanRead("RevisionApprovalReference"), await CanRead("RevisionActor"));
+        if (request.NormalizedSortBy is not ("createdat" or "recordedat" or "effectiveat" or "fieldname" or "revisedby" or "revisedbyuserid"))
+            return BadRequest(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "SortBy must be recordedAt, effectiveAt, fieldName, or revisedBy."));
+        if (request.NormalizedSortBy is "revisedby" or "revisedbyuserid" && !memberAccess.Actor)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "Revision actor sorting requires RevisionActor READ permission."));
         var query = _context.KpiFieldRevisions.AsNoTracking().Where(item => item.OpmsTargetId == entity.Id && fieldNames.Contains(item.FieldName));
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.FieldName.Contains(request.NormalizedSearch) || item.Reason.Contains(request.NormalizedSearch)
-                || item.ApprovalReference.Contains(request.NormalizedSearch) || item.RevisedByUserId.Contains(request.NormalizedSearch)
-                || (item.OriginalValue != null && item.OriginalValue.Contains(request.NormalizedSearch))
-                || (item.RevisedValue != null && item.RevisedValue.Contains(request.NormalizedSearch)));
+            query = query.Where(item => item.FieldName.Contains(request.NormalizedSearch)
+                || memberAccess.Reason && item.Reason.Contains(request.NormalizedSearch)
+                || memberAccess.ApprovalReference && item.ApprovalReference.Contains(request.NormalizedSearch)
+                || memberAccess.Actor && (item.RevisedByUser.FirstName.Contains(request.NormalizedSearch) || item.RevisedByUser.LastName.Contains(request.NormalizedSearch))
+                || memberAccess.OriginalValue && item.OriginalValue != null && item.OriginalValue.Contains(request.NormalizedSearch)
+                || memberAccess.RevisedValue && item.RevisedValue != null && item.RevisedValue.Contains(request.NormalizedSearch));
         var totalCount = await query.CountAsync();
         var ordered = (request.NormalizedSortBy, request.Descending) switch
         {
@@ -470,13 +479,17 @@ public class OpmsTargetsController : ControllerBase
             ("effectiveat", true) => query.OrderByDescending(item => item.EffectiveAt).ThenByDescending(item => item.PublicId),
             ("fieldname", false) => query.OrderBy(item => item.FieldName).ThenBy(item => item.PublicId),
             ("fieldname", true) => query.OrderByDescending(item => item.FieldName).ThenByDescending(item => item.PublicId),
-            ("revisedbyuserid", false) => query.OrderBy(item => item.RevisedByUserId).ThenBy(item => item.PublicId),
-            ("revisedbyuserid", true) => query.OrderByDescending(item => item.RevisedByUserId).ThenByDescending(item => item.PublicId),
+            ("revisedby" or "revisedbyuserid", false) => query.OrderBy(item => item.RevisedByUser.LastName).ThenBy(item => item.RevisedByUser.FirstName).ThenBy(item => item.RevisedByUser.PublicId).ThenBy(item => item.PublicId),
+            ("revisedby" or "revisedbyuserid", true) => query.OrderByDescending(item => item.RevisedByUser.LastName).ThenByDescending(item => item.RevisedByUser.FirstName).ThenByDescending(item => item.RevisedByUser.PublicId).ThenByDescending(item => item.PublicId),
             (_, false) => query.OrderBy(item => item.RecordedAt).ThenBy(item => item.PublicId),
             _ => query.OrderByDescending(item => item.RecordedAt).ThenByDescending(item => item.PublicId)
         };
-        var rows = await ordered.Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new KpiFieldRevisionResponse(item.PublicId, item.FieldName, item.OriginalValue, item.RevisedValue, item.Reason, item.ApprovalReference, item.EffectiveAt, item.RevisedByUserId, item.RecordedAt)).ToArrayAsync();
+        var items = await ordered.Skip(request.Offset).Take(request.PageSize).Include(item => item.RevisedByUser).ToArrayAsync();
+        var rows = items.Select(item => new KpiFieldRevisionResponse(item.PublicId, item.FieldName,
+            memberAccess.OriginalValue ? item.OriginalValue : null, memberAccess.RevisedValue ? item.RevisedValue : null,
+            memberAccess.Reason ? item.Reason : null, memberAccess.ApprovalReference ? item.ApprovalReference : null,
+            item.EffectiveAt, memberAccess.Actor ? item.RevisedByUser.PublicId : null,
+            memberAccess.Actor ? item.RevisedByUser.FullName : null, item.RecordedAt)).ToArray();
         return Ok(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(true,
             PagedResponse<KpiFieldRevisionResponse>.Create(rows, request.Page, request.PageSize, totalCount)));
     }

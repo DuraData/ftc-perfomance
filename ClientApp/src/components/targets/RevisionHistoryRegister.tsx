@@ -7,11 +7,12 @@ import {
   getPerformanceTargetRevisionsPage,
 } from '../../api/api';
 import type { KpiFieldRevisionDto } from '../../types';
+import { useSecurity } from '../../context/SecurityContext';
 import { Button } from '../ui';
 
 type Props = {
   source: 'definition' | 'ordering' | 'period';
-  kind?: 'opms' | 'ipms';
+  kind: 'opms' | 'ipms';
   parentId: string;
   title: string;
   emptyMessage: string;
@@ -20,6 +21,13 @@ type Props = {
 };
 
 export function RevisionHistoryRegister({ source, kind, parentId, title, emptyMessage, refreshKey = 0, compact = false }: Props) {
+  const security = useSecurity();
+  const resource = kind === 'opms' ? 'OPMS_KPI' : 'IPMS_KPI';
+  const canReadOriginal = security.canReadField(resource, 'RevisionOriginalValue');
+  const canReadRevised = security.canReadField(resource, 'RevisionRevisedValue');
+  const canReadReason = security.canReadField(resource, 'RevisionReason');
+  const canReadApproval = security.canReadField(resource, 'RevisionApprovalReference');
+  const canReadActor = security.canReadField(resource, 'RevisionActor');
   const [items, setItems] = useState<KpiFieldRevisionDto[]>([]);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -74,7 +82,13 @@ export function RevisionHistoryRegister({ source, kind, parentId, title, emptyMe
     </div>
     {error && <p role="alert" className="mt-2 text-xs text-danger-600">{error}</p>}
     {busy && <p className="mt-2 text-xs text-secondary-500">Loading revision history…</p>}
-    {!busy && !error && items.length === 0 ? <p className="mt-2 text-xs text-secondary-500">{emptyMessage}</p> : <ul className="mt-2 space-y-1 text-xs text-secondary-600">{items.map(item => <li key={item.publicId} className={compact ? '' : 'rounded border border-secondary-200 p-2 dark:border-secondary-700'}>{new Date(item.recordedAt).toLocaleString()} · <strong>{item.fieldName}</strong>: {item.originalValue ?? '—'} → {item.revisedValue ?? '—'} · {item.approvalReference}{!compact && <div className="text-secondary-500">{item.reason} · effective {new Date(item.effectiveAt).toLocaleString()}</div>}</li>)}</ul>}
+    {!busy && !error && items.length === 0 ? <p className="mt-2 text-xs text-secondary-500">{emptyMessage}</p> : <ul className="mt-2 space-y-1 text-xs text-secondary-600">{items.map(item => <li key={item.publicId} className={compact ? '' : 'rounded border border-secondary-200 p-2 dark:border-secondary-700'}>
+      {new Date(item.recordedAt).toLocaleString()} · <strong>{item.fieldName}</strong>
+      {canReadOriginal && <>: {item.originalValue ?? '—'}</>}{canReadRevised && <> → {item.revisedValue ?? '—'}</>}
+      {canReadApproval && item.approvalReference && <> · {item.approvalReference}</>}
+      {canReadActor && item.revisedByName && <> · {item.revisedByName}{item.revisedByUserPublicId ? ` (${item.revisedByUserPublicId})` : ''}</>}
+      {!compact && <div className="text-secondary-500">{canReadReason && item.reason ? <>{item.reason} · </> : null}effective {new Date(item.effectiveAt).toLocaleString()}</div>}
+    </li>)}</ul>}
     {totalPages > 1 && <div className="mt-3 flex items-center justify-between gap-2 text-xs"><Button size="sm" variant="outline" aria-label={`Previous ${title.toLowerCase()}`} disabled={page <= 1 || busy} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous</Button><span>Page {page} of {totalPages}</span><Button size="sm" variant="outline" aria-label={`Next ${title.toLowerCase()}`} disabled={page >= totalPages || busy} onClick={() => setPage(value => value + 1)}>Next</Button></div>}
   </div>;
 }

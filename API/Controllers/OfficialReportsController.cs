@@ -679,6 +679,7 @@ public sealed class OfficialReportsController(
     {
         var columns = OfficialReportCatalog.ValidateColumns(reportType, columnConfigurationJson)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kpi = kind == SubmissionKind.Opms ? "OPMS_KPI" : "IPMS_KPI";
         var submission = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION" : "IPMS_SUBMISSION";
         var workflow = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW" : "IPMS_WORKFLOW";
         var rfi = kind == SubmissionKind.Opms ? "OPMS_RFI" : "IPMS_RFI";
@@ -732,6 +733,15 @@ public sealed class OfficialReportsController(
             RequireAny("AUDIT_TRAIL.ChangedBy.READ", "changedBy");
             RequireAny("AUDIT_TRAIL.Reason.READ", "reason");
             RequireAny("AUDIT_TRAIL.CorrelationId.READ", "correlationId");
+        }
+
+        if (reportType == OfficialReportType.VersionTrail)
+        {
+            RequireAny($"{kpi}.RevisionOriginalValue.READ", "originalValue");
+            RequireAny($"{kpi}.RevisionRevisedValue.READ", "revisedValue");
+            RequireAny($"{kpi}.RevisionReason.READ", "reason");
+            RequireAny($"{kpi}.RevisionApprovalReference.READ", "approvalReference");
+            RequireAny($"{kpi}.RevisionActor.READ", "actor");
         }
 
         return permissions.Order(StringComparer.OrdinalIgnoreCase).ToArray();
