@@ -113,6 +113,10 @@ public sealed class WorkflowConfigurationControllerTests
         var financialYear = new FinancialYear { Code = "2034/35", Name = "2034/35", StartDate = new(2034, 7, 1), EndDate = new(2035, 6, 30) };
         context.FinancialYears.Add(financialYear);
         await context.SaveChangesAsync();
+        var governanceActor = IdpTestFixture.CreateUser("governance-admin");
+        governanceActor.MunicipalityId = municipality.Id;
+        context.Users.Add(governanceActor);
+        await context.SaveChangesAsync();
         var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, FinancialYear = financialYear, EffectiveFrom = financialYear.StartDate };
         context.MunicipalityFinancialYears.Add(year);
         await context.SaveChangesAsync();
@@ -131,12 +135,21 @@ public sealed class WorkflowConfigurationControllerTests
         await context.SaveChangesAsync();
         var exceptionWindow = await context.ReportingWindows.OrderBy(item => item.Id).FirstAsync();
         var otherWindow = await context.ReportingWindows.OrderBy(item => item.Id).Skip(1).FirstAsync();
+        var exceptionDepartments = Enumerable.Range(0, 11).Select(index => new Department
+        {
+            MunicipalityId = municipality.Id,
+            Code = $"MATCH-D{index:00}",
+            Name = $"Match department {index:00}",
+            EffectiveFrom = startsAt
+        }).ToArray();
+        context.Departments.AddRange(exceptionDepartments);
+        await context.SaveChangesAsync();
         for (var index = 0; index < 11; index++)
-            context.ReportingWindowExceptions.Add(new ReportingWindowException { MunicipalityId = municipality.Id, ReportingWindowId = exceptionWindow.Id, ReportingWindow = exceptionWindow, DepartmentId = index + 1, ExtendedClosesAt = exceptionWindow.ClosesAt.AddDays(index + 1), Reason = $"match extension {index:00}", ApprovedByUserId = "governance-admin", ApprovedAt = startsAt.AddMinutes(index) });
-        context.ReportingWindowExceptions.Add(new ReportingWindowException { MunicipalityId = municipality.Id, ReportingWindowId = otherWindow.Id, ReportingWindow = otherWindow, DepartmentId = 99, ExtendedClosesAt = otherWindow.ClosesAt.AddDays(1), Reason = "match outside window", ApprovedByUserId = "governance-admin", ApprovedAt = startsAt });
+            context.ReportingWindowExceptions.Add(new ReportingWindowException { MunicipalityId = municipality.Id, ReportingWindowId = exceptionWindow.Id, ReportingWindow = exceptionWindow, DepartmentId = exceptionDepartments[index].Id, ExtendedClosesAt = exceptionWindow.ClosesAt.AddDays(index + 1), Reason = $"match extension {index:00}", ApprovedByUserId = governanceActor.Id, ApprovedAt = startsAt.AddMinutes(index) });
+        context.ReportingWindowExceptions.Add(new ReportingWindowException { MunicipalityId = municipality.Id, ReportingWindowId = otherWindow.Id, ReportingWindow = otherWindow, DepartmentId = 99, ExtendedClosesAt = otherWindow.ClosesAt.AddDays(1), Reason = "match outside window", ApprovedByUserId = governanceActor.Id, ApprovedAt = startsAt });
         await context.SaveChangesAsync();
 
-        var controller = Controller(context, municipality.Id);
+        var controller = Controller(context, municipality.Id, governanceActor);
         var definitionResult = await controller.GetDefinitionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "version", SortDirection = "asc" }, SubmissionKind.Opms);
         var definitions = definitionResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<WorkflowDefinitionDto>>>().Subject.Data!;
         definitions.TotalCount.Should().Be(11);
@@ -155,7 +168,47 @@ public sealed class WorkflowConfigurationControllerTests
         var exceptionResult = await controller.GetWindowExceptionsPage(exceptionWindow.PublicId, new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "approvedAt", SortDirection = "asc" }, "department");
         var exceptions = exceptionResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<ReportingWindowExceptionDto>>>().Subject.Data!;
         exceptions.TotalCount.Should().Be(11);
-        exceptions.Items.Select(item => item.DepartmentId).Should().Equal((int?)4, 5, 6);
+        exceptions.Items.Select(item => item.ScopeName).Should().Equal("Match department 03", "Match department 04", "Match department 05");
+        exceptions.Items.Should().OnlyContain(item => item.ScopeType == "Department" && item.ScopePublicId.HasValue);
+
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "WORKFLOW.CONFIGURE" };
+        var restricted = Controller(context, municipality.Id, governanceActor, grants.Contains);
+        var maskedResult = await restricted.GetWindowExceptionsPage(exceptionWindow.PublicId,
+            new PagedQueryRequest { PageSize = 3, SortBy = "approvedAt" });
+        var masked = maskedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<ReportingWindowExceptionDto>>>().Subject.Data!;
+        masked.Items.Should().OnlyContain(item => item.ScopePublicId == null && item.ScopeName == null
+            && item.Reason == null && item.ApprovedByUserPublicId == null && item.ApprovedByName == null);
+        var deniedSearch = (await restricted.GetWindowExceptionsPage(exceptionWindow.PublicId,
+            new PagedQueryRequest { Search = "match extension 10", SortBy = "approvedAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<ReportingWindowExceptionDto>>>().Subject.Data!;
+        deniedSearch.TotalCount.Should().Be(0);
+        (await restricted.GetWindowExceptionsPage(exceptionWindow.PublicId,
+            new PagedQueryRequest { SortBy = "scope" })).Result.Should().BeOfType<ForbidResult>();
+        (await restricted.GetWindowExceptionsPage(exceptionWindow.PublicId,
+            new PagedQueryRequest { SortBy = "approvedAt" }, "department")).Result.Should().BeOfType<ForbidResult>();
+        (await restricted.CreateWindowException(exceptionWindow.PublicId,
+            new SaveReportingWindowExceptionRequest(null, exceptionDepartments[0].PublicId, null,
+                exceptionWindow.ClosesAt.AddDays(20), "Controlled extension reason"))).Result.Should().BeOfType<ForbidResult>();
+
+        foreach (var permission in new[] { "OPMS_WORKFLOW.WindowExceptionScope.READ", "OPMS_WORKFLOW.WindowExceptionScope.UPDATE",
+                     "OPMS_WORKFLOW.WindowExceptionReason.READ", "OPMS_WORKFLOW.WindowExceptionReason.UPDATE",
+                     "OPMS_WORKFLOW.WindowExceptionApprovedBy.READ" })
+            grants.Add(permission);
+        var grantedSearch = (await restricted.GetWindowExceptionsPage(exceptionWindow.PublicId,
+            new PagedQueryRequest { Search = "match extension 10", SortBy = "scope" }, "department")).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<ReportingWindowExceptionDto>>>().Subject.Data!;
+        grantedSearch.Items.Should().ContainSingle(item => item.Reason == "match extension 10"
+            && item.ScopePublicId == exceptionDepartments[10].PublicId);
+        var createResult = await restricted.CreateWindowException(exceptionWindow.PublicId,
+            new SaveReportingWindowExceptionRequest(null, exceptionDepartments[0].PublicId, null,
+                exceptionWindow.ClosesAt.AddDays(20), "Controlled extension reason"));
+        var created = createResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<ReportingWindowExceptionDto>>().Subject.Data!;
+        created.ScopePublicId.Should().Be(exceptionDepartments[0].PublicId);
+        created.Reason.Should().Be("Controlled extension reason");
 
         (await controller.GetDefinitionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetWindowExceptionsPage(exceptionWindow.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();

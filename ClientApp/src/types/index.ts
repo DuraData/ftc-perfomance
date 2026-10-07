@@ -1890,12 +1890,13 @@ export interface ReportingWindowDto {
 
 export interface ReportingWindowExceptionDto {
   publicId: string;
-  userId?: string | null;
-  departmentId?: number | null;
-  unitId?: number | null;
+  scopeType: string;
+  scopePublicId?: string | null;
+  scopeName?: string | null;
   extendedClosesAt: string;
-  reason: string;
-  approvedByUserId: string;
+  reason?: string | null;
+  approvedByUserPublicId?: string | null;
+  approvedByName?: string | null;
   approvedAt: string;
   rowVersion: string;
 }

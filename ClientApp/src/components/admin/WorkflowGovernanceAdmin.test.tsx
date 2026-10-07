@@ -62,6 +62,12 @@ describe('WorkflowGovernanceAdminPage', () => {
       'NOTIFICATION_POLICY.RecipientValues.READ', 'NOTIFICATION_POLICY.RecipientValues.UPDATE',
       'NOTIFICATION_POLICY.TitleTemplate.READ', 'NOTIFICATION_POLICY.TitleTemplate.UPDATE',
       'NOTIFICATION_POLICY.MessageTemplate.READ', 'NOTIFICATION_POLICY.MessageTemplate.UPDATE',
+      'OPMS_WORKFLOW.WindowExceptionScope.READ', 'OPMS_WORKFLOW.WindowExceptionScope.UPDATE',
+      'OPMS_WORKFLOW.WindowExceptionReason.READ', 'OPMS_WORKFLOW.WindowExceptionReason.UPDATE',
+      'OPMS_WORKFLOW.WindowExceptionApprovedBy.READ',
+      'IPMS_WORKFLOW.WindowExceptionScope.READ', 'IPMS_WORKFLOW.WindowExceptionScope.UPDATE',
+      'IPMS_WORKFLOW.WindowExceptionReason.READ', 'IPMS_WORKFLOW.WindowExceptionReason.UPDATE',
+      'IPMS_WORKFLOW.WindowExceptionApprovedBy.READ',
     ]);
     api.getWorkflowDefinitionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
@@ -193,6 +199,29 @@ describe('WorkflowGovernanceAdminPage', () => {
     expect(screen.getByText('Scoped exceptions · Q1 OPMS')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'FIN · Finance' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve exception' })).toBeInTheDocument();
+  });
+
+  it('fails closed against hostile reporting-window exception identities and reasons', async () => {
+    security.permissions = new Set();
+    api.getReportingWindowsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'window-1', reportingPeriodPublicId: 'period-1', periodCode: 'Q1', submissionKind: 1, opensAt: '2026-07-01T00:00:00Z', closesAt: '2026-07-31T00:00:00Z', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getReportingWindowExceptionsPage.mockResolvedValue({ success: true, data: { items: [{
+      publicId: 'exception-1', scopeType: 'User', scopePublicId: 'hostile-user-public', scopeName: 'Hostile Scoped User',
+      extendedClosesAt: '2026-08-07T00:00:00Z', reason: 'Hostile confidential reason',
+      approvedByUserPublicId: 'hostile-approver-public', approvedByName: 'Hostile Approver',
+      approvedAt: '2026-07-30T00:00:00Z', rowVersion: 'AQ==',
+    }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    render(<WorkflowGovernanceAdminPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Windows' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage exceptions' }));
+
+    expect(await screen.findByText('User scope protected')).toBeInTheDocument();
+    expect(screen.queryByText('Hostile Scoped User')).not.toBeInTheDocument();
+    expect(screen.queryByText('Hostile confidential reason')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Hostile Approver|hostile-approver-public/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Search scoped exceptions')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve exception' })).not.toBeInTheDocument();
+    expect(api.getUsersPage).not.toHaveBeenCalled();
   });
 
   it('pages and searches scoped reporting-window exceptions', async () => {

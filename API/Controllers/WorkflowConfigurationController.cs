@@ -236,18 +236,22 @@ public sealed class WorkflowConfigurationController(
         if (!HasTenant()) return TenantRequired<PagedResponse<ReportingWindowExceptionDto>>();
         var window = await context.ReportingWindows.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == windowPublicId);
         if (window == null) return NotFound(Fail<PagedResponse<ReportingWindowExceptionDto>>("Reporting window not found."));
+        var actor = await CurrentUser();
+        if (actor == null) return Unauthorized(Fail<PagedResponse<ReportingWindowExceptionDto>>("User not found."));
+        var memberAccess = await ReadWindowExceptionMembersAsync(actor, window.SubmissionKind);
         if (!ReportingWindowExceptionSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(Fail<PagedResponse<ReportingWindowExceptionDto>>("SortBy must be approvedAt, extendedClosesAt, or scope."));
         var normalizedScope = scope?.Trim().ToLowerInvariant() ?? string.Empty;
         if (normalizedScope is not ("" or "user" or "department" or "unit"))
             return BadRequest(Fail<PagedResponse<ReportingWindowExceptionDto>>("Scope must be user, department, or unit."));
+        if ((request.NormalizedSortBy == "scope" || normalizedScope.Length > 0) && !memberAccess.ScopeRead) return Forbid();
         var query = context.ReportingWindowExceptions.AsNoTracking().Where(x => x.ReportingWindowId == window.Id);
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch.ToLowerInvariant();
-            query = query.Where(x => x.Reason.ToLower().Contains(search)
-                || (x.UserId != null && x.UserId.ToLower().Contains(search))
-                || x.ApprovedByUserId.ToLower().Contains(search));
+            query = query.Where(x => (memberAccess.ReasonRead && x.Reason.ToLower().Contains(search))
+                || (memberAccess.ScopeRead && x.UserId != null && x.UserId.ToLower().Contains(search))
+                || (memberAccess.ApprovedByRead && x.ApprovedByUserId.ToLower().Contains(search)));
         }
         query = normalizedScope switch
         {
@@ -259,8 +263,9 @@ public sealed class WorkflowConfigurationController(
         var totalCount = await query.CountAsync();
         var rows = await ApplyReportingWindowExceptionOrdering(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var responseRows = await ToWindowExceptionDtosAsync(rows, memberAccess);
         return Ok(new ApiResponse<PagedResponse<ReportingWindowExceptionDto>>(true,
-            PagedResponse<ReportingWindowExceptionDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<ReportingWindowExceptionDto>.Create(responseRows, request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("reporting-windows/{windowPublicId:guid}/exceptions")]
@@ -283,6 +288,8 @@ public sealed class WorkflowConfigurationController(
         if (actor == null) return Unauthorized(Fail<ReportingWindowExceptionDto>("User not found."));
         var window = await context.ReportingWindows.SingleOrDefaultAsync(x => x.PublicId == windowPublicId);
         if (window == null) return NotFound(Fail<ReportingWindowExceptionDto>("Reporting window not found."));
+        var memberAccess = await ReadWindowExceptionMembersAsync(actor, window.SubmissionKind);
+        if (!memberAccess.ScopeUpdate || !memberAccess.ReasonUpdate) return Forbid();
         if (request.ExtendedClosesAt <= window.ClosesAt || string.IsNullOrWhiteSpace(request.Reason)) return BadRequest(Fail<ReportingWindowExceptionDto>("An exception requires a reason and a close time after the normal window."));
         var scopeCount = (request.UserPublicId.HasValue ? 1 : 0) + (request.DepartmentPublicId.HasValue ? 1 : 0) + (request.UnitPublicId.HasValue ? 1 : 0);
         if (scopeCount != 1) return BadRequest(Fail<ReportingWindowExceptionDto>("Select exactly one user, department, or unit scope."));
@@ -306,7 +313,8 @@ public sealed class WorkflowConfigurationController(
         context.ReportingWindowExceptions.Add(entity);
         context.AuditTrails.Add(new AuditTrail { EntityName = nameof(ReportingWindowException), EntityId = entity.PublicId.ToString(), Action = "Create", NewValue = JsonSerializer.Serialize(request), ChangedBy = actor.Id, Reason = entity.Reason, CorrelationId = HttpContext.TraceIdentifier, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString() });
         await context.SaveChangesAsync();
-        return Ok(new ApiResponse<ReportingWindowExceptionDto>(true, ToDto(entity)));
+        var response = (await ToWindowExceptionDtosAsync([entity], memberAccess))[0];
+        return Ok(new ApiResponse<ReportingWindowExceptionDto>(true, response));
     }
 
     [HttpGet("rating-schemes/page")]
@@ -774,7 +782,56 @@ public sealed class WorkflowConfigurationController(
     private ActionResult<ApiResponse<T>> TenantRequired<T>() => StatusCode(StatusCodes.Status409Conflict, Fail<T>("Select a municipality context before using workflow."));
     private static WorkflowDefinitionDto ToDto(WorkflowDefinition x) => new(x.PublicId, x.MunicipalityFinancialYear.PublicId, x.SubmissionKind, x.Code, x.Name, x.Version, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion), x.Stages.OrderBy(s => s.Sequence).Select(s => new WorkflowStageDto(s.PublicId, s.Code, s.Name, s.Sequence, s.RequiredActionCode, s.RequiredPermissionCode, s.IsOptional, s.AllowBypass, s.RequireDifferentActorFromSubmitter, s.RequireDifferentActorFromPreviousStage, s.IsTerminal, s.RejectionStageCode, s.RequiresRating, s.RatingScheme?.PublicId, s.RatingScheme?.Code)).ToArray());
     private static ReportingWindowDto ToDto(ReportingWindow x) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, x.SubmissionKind, x.OpensAt, x.ClosesAt, x.IsActive, Convert.ToBase64String(x.RowVersion));
-    private static ReportingWindowExceptionDto ToDto(ReportingWindowException x) => new(x.PublicId, x.UserId, x.DepartmentId, x.UnitId, x.ExtendedClosesAt, x.Reason, x.ApprovedByUserId, x.ApprovedAt, Convert.ToBase64String(x.RowVersion));
+    private async Task<WindowExceptionMemberAccess> ReadWindowExceptionMembersAsync(ApplicationUser user, SubmissionKind kind)
+    {
+        var resource = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW" : "IPMS_WORKFLOW";
+        var scope = new AccessScopeContext(MunicipalityId: tenantContext.MunicipalityId);
+        async Task<bool> Allowed(string member, string operation) =>
+            (await accessControl.CheckPermissionAsync(user, $"{resource}.{member}.{operation}", scope)).Allowed;
+        return new WindowExceptionMemberAccess(
+            await Allowed("WindowExceptionScope", "READ"), await Allowed("WindowExceptionReason", "READ"),
+            await Allowed("WindowExceptionApprovedBy", "READ"), await Allowed("WindowExceptionScope", "UPDATE"),
+            await Allowed("WindowExceptionReason", "UPDATE"));
+    }
+    private async Task<ReportingWindowExceptionDto[]> ToWindowExceptionDtosAsync(
+        IReadOnlyCollection<ReportingWindowException> rows,
+        WindowExceptionMemberAccess members)
+    {
+        var userIds = members.ScopeRead ? rows.Where(x => x.UserId != null).Select(x => x.UserId!).Distinct().ToArray() : [];
+        var departmentIds = members.ScopeRead ? rows.Where(x => x.DepartmentId.HasValue).Select(x => x.DepartmentId!.Value).Distinct().ToArray() : [];
+        var unitIds = members.ScopeRead ? rows.Where(x => x.UnitId.HasValue).Select(x => x.UnitId!.Value).Distinct().ToArray() : [];
+        var approverIds = members.ApprovedByRead ? rows.Select(x => x.ApprovedByUserId).Distinct().ToArray() : [];
+        var users = userIds.Length == 0 ? [] : await context.Users.AsNoTracking().Where(x => userIds.Contains(x.Id)).Select(x => new { x.Id, x.PublicId, x.FirstName, x.LastName }).ToArrayAsync();
+        var departments = departmentIds.Length == 0 ? [] : await context.Departments.AsNoTracking().Where(x => departmentIds.Contains(x.Id)).Select(x => new { x.Id, x.PublicId, x.Name }).ToArrayAsync();
+        var units = unitIds.Length == 0 ? [] : await context.Units.AsNoTracking().Where(x => unitIds.Contains(x.Id)).Select(x => new { x.Id, x.PublicId, x.Name }).ToArrayAsync();
+        var approvers = approverIds.Length == 0 ? [] : await context.Users.AsNoTracking().Where(x => approverIds.Contains(x.Id)).Select(x => new { x.Id, x.PublicId, x.FirstName, x.LastName }).ToArrayAsync();
+        return rows.Select(x =>
+        {
+            var scopeType = x.UserId != null ? "User" : x.DepartmentId.HasValue ? "Department" : "Unit";
+            Guid? scopePublicId = null; string? scopeName = null;
+            if (members.ScopeRead && x.UserId != null)
+            {
+                var user = users.SingleOrDefault(item => item.Id == x.UserId);
+                scopePublicId = user?.PublicId; scopeName = user == null ? null : $"{user.FirstName} {user.LastName}".Trim();
+            }
+            else if (members.ScopeRead && x.DepartmentId.HasValue)
+            {
+                var department = departments.SingleOrDefault(item => item.Id == x.DepartmentId.Value);
+                scopePublicId = department?.PublicId; scopeName = department?.Name;
+            }
+            else if (members.ScopeRead && x.UnitId.HasValue)
+            {
+                var unit = units.SingleOrDefault(item => item.Id == x.UnitId.Value);
+                scopePublicId = unit?.PublicId; scopeName = unit?.Name;
+            }
+            var approver = members.ApprovedByRead ? approvers.SingleOrDefault(item => item.Id == x.ApprovedByUserId) : null;
+            return new ReportingWindowExceptionDto(
+                x.PublicId, scopeType, scopePublicId, scopeName, x.ExtendedClosesAt,
+                members.ReasonRead ? x.Reason : null,
+                approver?.PublicId, approver == null ? null : $"{approver.FirstName} {approver.LastName}".Trim(),
+                x.ApprovedAt, Convert.ToBase64String(x.RowVersion));
+        }).ToArray();
+    }
     private static RatingSchemeDto ToDto(RatingScheme x) => new(x.PublicId, x.Code, x.Name, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Values.OrderBy(v => v.SortOrder).Select(v => new RatingValueDto(v.PublicId, v.Value, v.Label, v.MinimumAchievementPercent, v.MaximumAchievementPercent, v.SortOrder)).ToArray());
     private async Task<WorkflowMemberAccess> ReadWorkflowMembersAsync(ApplicationUser user, SubmissionKind kind, AccessScopeContext scope)
     {
@@ -807,6 +864,8 @@ public sealed class WorkflowConfigurationController(
         bool ActionActorUserId, bool ActionComment, bool ActionRatingValue,
         bool StageRatingValue, bool StageRatingAchievementPercent, bool StageRatingComment,
         bool StageRatingRatedByUserId, bool StageRatingRatedByName);
+    private sealed record WindowExceptionMemberAccess(
+        bool ScopeRead, bool ReasonRead, bool ApprovedByRead, bool ScopeUpdate, bool ReasonUpdate);
 }
 
 public sealed record SaveWorkflowStageRequest(string Code, string Name, int Sequence, string RequiredActionCode, string RequiredPermissionCode, bool IsOptional, bool AllowBypass, bool RequireDifferentActorFromSubmitter, bool RequireDifferentActorFromPreviousStage, bool IsTerminal, string? RejectionStageCode, bool RequiresRating, Guid? RatingSchemePublicId);
@@ -819,7 +878,7 @@ public sealed record WorkflowDefinitionComparisonDto(WorkflowDefinitionDto From,
 public sealed record SaveReportingWindowRequest(Guid ReportingPeriodPublicId, SubmissionKind SubmissionKind, DateTime OpensAt, DateTime ClosesAt);
 public sealed record ReportingWindowDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, SubmissionKind SubmissionKind, DateTime OpensAt, DateTime ClosesAt, bool IsActive, string RowVersion);
 public sealed record SaveReportingWindowExceptionRequest(Guid? UserPublicId, Guid? DepartmentPublicId, Guid? UnitPublicId, DateTime ExtendedClosesAt, string Reason);
-public sealed record ReportingWindowExceptionDto(Guid PublicId, string? UserId, int? DepartmentId, int? UnitId, DateTime ExtendedClosesAt, string Reason, string ApprovedByUserId, DateTime ApprovedAt, string RowVersion);
+public sealed record ReportingWindowExceptionDto(Guid PublicId, string ScopeType, Guid? ScopePublicId, string? ScopeName, DateTime ExtendedClosesAt, string? Reason, Guid? ApprovedByUserPublicId, string? ApprovedByName, DateTime ApprovedAt, string RowVersion);
 public sealed record SaveRatingValueRequest(decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
 public sealed record SaveRatingSchemeRequest(string Code, string Name, IReadOnlyList<SaveRatingValueRequest> Values);
 public sealed record RatingValueDto(Guid PublicId, decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
