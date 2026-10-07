@@ -75,8 +75,15 @@ public sealed class UsersControllerSecurityTests
                 .Where(item => item.ResourceCode == resourceCode)
                 .Select(item => item.MemberCode)
                 .ToArrayAsync();
-            submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "SubmittedDate", "InternalAuditObservation"]);
-            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(10);
+            submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "SubmittedDate",
+                "InternalAuditObservation", "InternalAuditComment", "InternalAuditFindings", "InternalAuditRecommendation",
+                "InternalAuditScore", "InternalAuditAssessedBy", "InternalAuditRfi"]);
+            var internalAuditMembers = await context.SecurityMemberDefinitions
+                .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("InternalAudit"))
+                .ToArrayAsync();
+            internalAuditMembers.Should().HaveCount(7);
+            internalAuditMembers.Should().OnlyContain(item => item.IsSensitive);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(20);
         }
 
         var authenticationMembers = await context.SecurityMemberDefinitions

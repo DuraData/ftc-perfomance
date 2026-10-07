@@ -225,17 +225,94 @@ public sealed class InternalAuditAssessmentTests
         bootstrap.LatestAssessment!.DetailedObservation.Should().Be("outside history search");
     }
 
+    [Fact]
+    public async Task Assessment_members_are_masked_non_inferable_and_write_protected_by_dynamic_permissions()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, InternalAuditAssessmentModel.Detailed);
+        var instance = await context.SubmissionWorkflowInstances.SingleAsync();
+        var configuration = await context.InternalAuditAssessmentConfigurations.SingleAsync();
+        var rfi = new PerformanceRfi
+        {
+            MunicipalityId = seed.Municipality.Id, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
+            Question = "secret RFI", RaisedByUserId = seed.User.Id, RaisedAt = DateTime.UtcNow, ResponseDueAt = DateTime.UtcNow.AddDays(3)
+        };
+        context.InternalAuditAssessments.Add(new InternalAuditAssessment
+        {
+            MunicipalityId = seed.Municipality.Id, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
+            ConfigurationId = configuration.Id, Configuration = configuration, Outcome = InternalAuditAssessmentOutcome.NotAchieved,
+            DetailedObservation = "secret observation", Comment = "secret comment", Findings = "secret finding",
+            Recommendation = "secret recommendation", Score = 2, AssessedByUserId = seed.User.Id, AssessedByUser = seed.User,
+            AssessedAt = DateTime.UtcNow, CorrelationId = "secret-correlation", PerformanceRfi = rfi
+        });
+        await context.SaveChangesAsync();
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
+        var controller = Controller(context, seed, permissions.Contains);
+
+        var masked = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
+            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest())).Result!);
+        masked.Items.Should().ContainSingle();
+        masked.Items[0].DetailedObservation.Should().BeNull();
+        masked.Items[0].Comment.Should().BeNull();
+        masked.Items[0].Findings.Should().BeNull();
+        masked.Items[0].Recommendation.Should().BeNull();
+        masked.Items[0].Score.Should().BeNull();
+        masked.Items[0].AssessedByUserId.Should().BeNull();
+        masked.Items[0].AssessedByName.Should().BeNull();
+        masked.Items[0].RfiPublicId.Should().BeNull();
+        masked.Items[0].RfiResponseDueAt.Should().BeNull();
+
+        var hiddenSearch = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
+            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = "secret" })).Result!);
+        hiddenSearch.TotalCount.Should().Be(0);
+        (await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.Id,
+            new PagedQueryRequest { SortBy = "assessedBy" })).Result.Should().BeOfType<ForbidResult>();
+
+        permissions.UnionWith(new[]
+        {
+            "OPMS_SUBMISSION.InternalAuditObservation.READ", "OPMS_SUBMISSION.InternalAuditComment.READ",
+            "OPMS_SUBMISSION.InternalAuditFindings.READ", "OPMS_SUBMISSION.InternalAuditRecommendation.READ",
+            "OPMS_SUBMISSION.InternalAuditScore.READ", "OPMS_SUBMISSION.InternalAuditAssessedBy.READ",
+            "OPMS_SUBMISSION.InternalAuditRfi.READ"
+        });
+        var visible = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
+            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = "secret" })).Result!);
+        visible.TotalCount.Should().Be(1);
+        visible.Items[0].DetailedObservation.Should().Be("secret observation");
+        visible.Items[0].Findings.Should().Be("secret finding");
+        visible.Items[0].AssessedByUserId.Should().Be(seed.User.Id);
+        visible.Items[0].RfiPublicId.Should().Be(rfi.PublicId);
+        visible.Items[0].RfiResponseDueAt.Should().Be(rfi.ResponseDueAt);
+
+        permissions.Add("OPMS_WORKFLOW.INTERNAL_AUDIT");
+        var deniedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+            new(InternalAuditAssessmentOutcome.Achieved, "new protected observation", null, null, null, null, null, null));
+        deniedWrite.Result.Should().BeOfType<ForbidResult>();
+        permissions.Add("OPMS_SUBMISSION.InternalAuditObservation.UPDATE");
+        var allowedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+            new(InternalAuditAssessmentOutcome.Achieved, "new protected observation", null, null, null, null, null,
+                (await context.InternalAuditAssessments.OrderByDescending(item => item.AssessedAt).FirstAsync()).PublicId));
+        allowedWrite.Result.Should().BeOfType<OkObjectResult>();
+    }
+
     private static T Data<T>(IActionResult result) where T : class =>
         Assert.IsType<ApiResponse<T>>(Assert.IsType<OkObjectResult>(result).Value).Data!;
 
     private static InternalAuditAssessmentsController Controller(ApplicationDbContext context, Seed seed, bool allowed)
+        => Controller(context, seed, _ => allowed);
+
+    private static InternalAuditAssessmentsController Controller(ApplicationDbContext context, Seed seed, Func<string, bool> allowed)
     {
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(item => item.MunicipalityId).Returns(seed.Municipality.Id);
         tenant.SetupGet(item => item.UserId).Returns(seed.User.Id);
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(seed.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync(new AccessDecisionResult(allowed, allowed ? "Allowed" : "Denied", [], [], []));
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? _) =>
+            {
+                var granted = allowed(permission);
+                return new AccessDecisionResult(granted, granted ? "Allowed" : "Denied", [], [], []);
+            });
         return new(context, tenant.Object, access.Object, new WorkflowGovernanceService(context), IdpTestFixture.CreateUserManagerMock(seed.User).Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seed.User.Id), TraceIdentifier = "ia-test" } }

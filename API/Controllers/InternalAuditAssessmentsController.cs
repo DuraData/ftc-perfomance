@@ -139,7 +139,8 @@ public sealed class InternalAuditAssessmentsController(
         if (loaded.Instance == null) return Conflict(Fail<InternalAuditSubmissionDto>("The submission has no configured workflow instance."));
         var configuration = await EffectiveConfiguration(loaded.Instance.WorkflowDefinition.MunicipalityFinancialYearId);
         if (configuration == null) return Conflict(Fail<InternalAuditSubmissionDto>("No Internal Audit assessment model is configured for this financial year."));
-        var latestAssessment = await LatestAssessment(loaded.Instance.Id);
+        var memberAccess = await GetMemberAccess(user, kind, loaded.Scope);
+        var latestAssessment = await LatestAssessment(loaded.Instance.Id, memberAccess);
         return Ok(new ApiResponse<InternalAuditSubmissionDto>(true, new(ToDto(configuration), latestAssessment)));
     }
 
@@ -157,17 +158,19 @@ public sealed class InternalAuditAssessmentsController(
         if (loaded.Instance == null) return Conflict(Fail<PagedResponse<InternalAuditAssessmentDto>>("The submission has no configured workflow instance."));
         if (request.NormalizedSortBy is not ("createdat" or "assessedat" or "outcome" or "assessedby"))
             return BadRequest(Fail<PagedResponse<InternalAuditAssessmentDto>>("SortBy must be assessedAt, outcome, or assessedBy."));
+        var memberAccess = await GetMemberAccess(user, kind, loaded.Scope);
+        if (request.NormalizedSortBy == "assessedby" && !memberAccess.AssessedByRead) return Forbid();
 
         var query = context.InternalAuditAssessments.AsNoTracking()
             .Where(item => item.SubmissionWorkflowInstanceId == loaded.Instance.Id);
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item => item.DetailedObservation.Contains(request.NormalizedSearch)
-                || (item.Comment != null && item.Comment.Contains(request.NormalizedSearch))
-                || (item.Findings != null && item.Findings.Contains(request.NormalizedSearch))
-                || (item.Recommendation != null && item.Recommendation.Contains(request.NormalizedSearch))
-                || item.AssessedByUserId.Contains(request.NormalizedSearch)
-                || (item.AssessedByUser != null && (item.AssessedByUser.FirstName.Contains(request.NormalizedSearch)
-                    || item.AssessedByUser.LastName.Contains(request.NormalizedSearch))));
+            query = query.Where(item => memberAccess.ObservationRead && item.DetailedObservation.Contains(request.NormalizedSearch)
+                || memberAccess.CommentRead && item.Comment != null && item.Comment.Contains(request.NormalizedSearch)
+                || memberAccess.FindingsRead && item.Findings != null && item.Findings.Contains(request.NormalizedSearch)
+                || memberAccess.RecommendationRead && item.Recommendation != null && item.Recommendation.Contains(request.NormalizedSearch)
+                || memberAccess.AssessedByRead && item.AssessedByUserId.Contains(request.NormalizedSearch)
+                || memberAccess.AssessedByRead && item.AssessedByUser != null && (item.AssessedByUser.FirstName.Contains(request.NormalizedSearch)
+                    || item.AssessedByUser.LastName.Contains(request.NormalizedSearch)));
         var totalCount = await query.CountAsync();
         var ordered = (request.NormalizedSortBy, request.Descending) switch
         {
@@ -182,7 +185,7 @@ public sealed class InternalAuditAssessmentsController(
             .Include(item => item.PreviousAssessment).Include(item => item.PerformanceRfi)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<InternalAuditAssessmentDto>>(true,
-            PagedResponse<InternalAuditAssessmentDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
+            PagedResponse<InternalAuditAssessmentDto>.Create(rows.Select(item => ToDto(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPost("submissions/{kind}/{submissionId}/assessments")]
@@ -196,6 +199,13 @@ public sealed class InternalAuditAssessmentsController(
         if (user == null) return Unauthorized(Fail<InternalAuditAssessmentDto>("User not found."));
         var permissionCode = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW.INTERNAL_AUDIT" : "IPMS_WORKFLOW.INTERNAL_AUDIT";
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, loaded.Scope)).Allowed) return Forbid();
+        var memberAccess = await GetMemberAccess(user, kind, loaded.Scope);
+        if (!memberAccess.ObservationUpdate
+            || request.Comment != null && !memberAccess.CommentUpdate
+            || request.Findings != null && !memberAccess.FindingsUpdate
+            || request.Recommendation != null && !memberAccess.RecommendationUpdate
+            || request.Score.HasValue && !memberAccess.ScoreUpdate)
+            return Forbid();
 
         var configuration = await EffectiveConfiguration(loaded.Instance.WorkflowDefinition.MunicipalityFinancialYearId);
         if (configuration == null) return Conflict(Fail<InternalAuditAssessmentDto>("No Internal Audit assessment model is configured for this financial year."));
@@ -275,7 +285,7 @@ public sealed class InternalAuditAssessmentsController(
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<InternalAuditAssessmentDto>("The assessment could not be appended because the workflow changed.")); }
-        return Ok(new ApiResponse<InternalAuditAssessmentDto>(true, ToDto(entity, configuration.Model)));
+        return Ok(new ApiResponse<InternalAuditAssessmentDto>(true, ToDto(entity, configuration.Model, memberAccess)));
     }
 
     private static string? Validate(InternalAuditAssessmentModel model, SaveInternalAuditAssessmentRequest request)
@@ -309,13 +319,13 @@ public sealed class InternalAuditAssessmentsController(
             .Where(item => item.MunicipalityFinancialYearId == yearId && item.IsCurrent && item.EffectiveFrom <= DateTime.UtcNow && (!item.EffectiveTo.HasValue || item.EffectiveTo > DateTime.UtcNow))
             .OrderByDescending(item => item.Version).FirstOrDefaultAsync();
 
-    private async Task<InternalAuditAssessmentDto?> LatestAssessment(long instanceId)
+    private async Task<InternalAuditAssessmentDto?> LatestAssessment(long instanceId, InternalAuditMemberAccess memberAccess)
     {
         var row = await context.InternalAuditAssessments.AsNoTracking().Include(item => item.Configuration).Include(item => item.AssessedByUser)
             .Include(item => item.PreviousAssessment).Include(item => item.PerformanceRfi)
             .Where(item => item.SubmissionWorkflowInstanceId == instanceId)
             .OrderByDescending(item => item.AssessedAt).ThenByDescending(item => item.Id).FirstOrDefaultAsync();
-        return row == null ? null : ToDto(row);
+        return row == null ? null : ToDto(row, memberAccess);
     }
 
     private async Task<SubmissionAccess?> LoadSubmission(SubmissionKind kind, string submissionId)
@@ -349,19 +359,45 @@ public sealed class InternalAuditAssessmentsController(
     };
 
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
+    private async Task<InternalAuditMemberAccess> GetMemberAccess(ApplicationUser user, SubmissionKind kind, AccessScopeContext scope)
+    {
+        var resource = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION" : "IPMS_SUBMISSION";
+        async Task<bool> Allowed(string member, string operation) =>
+            (await accessControl.CheckPermissionAsync(user, $"{resource}.{member}.{operation}", scope)).Allowed;
+        return new(
+            await Allowed("InternalAuditObservation", "READ"), await Allowed("InternalAuditObservation", "UPDATE"),
+            await Allowed("InternalAuditComment", "READ"), await Allowed("InternalAuditComment", "UPDATE"),
+            await Allowed("InternalAuditFindings", "READ"), await Allowed("InternalAuditFindings", "UPDATE"),
+            await Allowed("InternalAuditRecommendation", "READ"), await Allowed("InternalAuditRecommendation", "UPDATE"),
+            await Allowed("InternalAuditScore", "READ"), await Allowed("InternalAuditScore", "UPDATE"),
+            await Allowed("InternalAuditAssessedBy", "READ"), await Allowed("InternalAuditRfi", "READ"));
+    }
     private bool HasTenant() => tenantContext.MunicipalityId is > 0;
     private bool TrySetRowVersion(InternalAuditAssessmentConfiguration entity, string encoded) { try { context.Entry(entity).Property(item => item.RowVersion).OriginalValue = Convert.FromBase64String(encoded); return true; } catch (FormatException) { return false; } }
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ActionResult<ApiResponse<T>> TenantRequired<T>() => StatusCode(StatusCodes.Status409Conflict, Fail<T>("Select a municipality context before using Internal Audit."));
     private static InternalAuditConfigurationDto ToDto(InternalAuditAssessmentConfiguration item) => new(item.PublicId, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.Model, item.Version, item.IsCurrent, item.EffectiveFrom, item.EffectiveTo, item.Reason, Convert.ToBase64String(item.RowVersion));
-    private static InternalAuditAssessmentDto ToDto(InternalAuditAssessment item) => new(item.PublicId, item.Configuration.Model, item.Outcome, item.DetailedObservation, item.Comment, item.Findings, item.Recommendation, item.Score, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.PreviousAssessment?.PublicId, item.PerformanceRfi?.PublicId, item.PerformanceRfi?.ResponseDueAt);
-    private static InternalAuditAssessmentDto ToDto(InternalAuditAssessment item, InternalAuditAssessmentModel model) => new(item.PublicId, model, item.Outcome, item.DetailedObservation, item.Comment, item.Findings, item.Recommendation, item.Score, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.PreviousAssessment?.PublicId, item.PerformanceRfi?.PublicId, item.PerformanceRfi?.ResponseDueAt);
+    private static InternalAuditAssessmentDto ToDto(InternalAuditAssessment item, InternalAuditMemberAccess access) => ToDto(item, item.Configuration.Model, access);
+    private static InternalAuditAssessmentDto ToDto(InternalAuditAssessment item, InternalAuditAssessmentModel model, InternalAuditMemberAccess access) => new(item.PublicId, model, item.Outcome,
+        access.ObservationRead ? item.DetailedObservation : null,
+        access.CommentRead ? item.Comment : null,
+        access.FindingsRead ? item.Findings : null,
+        access.RecommendationRead ? item.Recommendation : null,
+        access.ScoreRead ? item.Score : null,
+        access.AssessedByRead ? item.AssessedByUserId : null,
+        access.AssessedByRead ? item.AssessedByUser?.FullName : null,
+        item.AssessedAt, item.PreviousAssessment?.PublicId,
+        access.RfiRead ? item.PerformanceRfi?.PublicId : null,
+        access.RfiRead ? item.PerformanceRfi?.ResponseDueAt : null);
     private sealed record SubmissionAccess(AccessScopeContext Scope, SubmissionWorkflowInstance? Instance, string[] Recipients);
+    private sealed record InternalAuditMemberAccess(bool ObservationRead, bool ObservationUpdate, bool CommentRead, bool CommentUpdate,
+        bool FindingsRead, bool FindingsUpdate, bool RecommendationRead, bool RecommendationUpdate, bool ScoreRead, bool ScoreUpdate,
+        bool AssessedByRead, bool RfiRead);
 }
 
 public sealed record SaveInternalAuditConfigurationRequest(Guid MunicipalityFinancialYearPublicId, InternalAuditAssessmentModel Model, DateTime EffectiveFrom, string Reason, string? CurrentRowVersion);
 public sealed record InternalAuditConfigurationDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, InternalAuditAssessmentModel Model, int Version, bool IsCurrent, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string RowVersion);
 public sealed record SaveInternalAuditAssessmentRequest(InternalAuditAssessmentOutcome Outcome, string DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, DateTime? ResponseDueAt, Guid? PreviousAssessmentPublicId);
-public sealed record InternalAuditAssessmentDto(Guid PublicId, InternalAuditAssessmentModel Model, InternalAuditAssessmentOutcome Outcome, string DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, string AssessedByUserId, string? AssessedByName, DateTime AssessedAt, Guid? PreviousAssessmentPublicId, Guid? RfiPublicId, DateTime? RfiResponseDueAt);
+public sealed record InternalAuditAssessmentDto(Guid PublicId, InternalAuditAssessmentModel Model, InternalAuditAssessmentOutcome Outcome, string? DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, string? AssessedByUserId, string? AssessedByName, DateTime AssessedAt, Guid? PreviousAssessmentPublicId, Guid? RfiPublicId, DateTime? RfiResponseDueAt);
 public sealed record InternalAuditSubmissionDto(InternalAuditConfigurationDto Configuration, InternalAuditAssessmentDto? LatestAssessment);
