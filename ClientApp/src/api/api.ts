@@ -73,6 +73,7 @@ import type {
   MunicipalityFinancialYearMasterDto,
   SdbipLayerMasterDto,
   OpmsImportBatchDto,
+  OpmsImportBatchSummaryDto,
   MunicipalEmployeeDto,
   EmployeeAssignmentMasterDto,
   AuthSessionDto,
@@ -1291,6 +1292,18 @@ export async function getSdbipLayerMastersPage(query: CalendarMasterPageQuery = 
 
 export const stageOpmsImport = (layerPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/layers/${layerPublicId}/stage`, payload);
 export const commitOpmsImport = (batchPublicId: string, payload: unknown): Promise<ApiResponse<OpmsImportBatchDto>> => post<OpmsImportBatchDto>(`/v1/opms/imports/${batchPublicId}/commit`, payload);
+export const getOpmsImportBatch = (batchPublicId: string): Promise<ApiResponse<OpmsImportBatchDto>> => get<OpmsImportBatchDto>(`/v1/opms/imports/${encodeURIComponent(batchPublicId)}`);
+export async function getOpmsImportBatchesPage(layerPublicId: string, query: RegisterPageQuery & { status?: string } = {}): Promise<ApiResponse<PagedResult<OpmsImportBatchSummaryDto>>> {
+  const parameters = new URLSearchParams();
+  if (query.page) parameters.set('page', String(query.page));
+  if (query.pageSize) parameters.set('pageSize', String(query.pageSize));
+  if (query.search?.trim()) parameters.set('search', query.search.trim());
+  if (query.sortBy) parameters.set('sortBy', query.sortBy);
+  if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
+  if (query.status) parameters.set('status', query.status);
+  const value = parameters.toString();
+  return get<PagedResult<OpmsImportBatchSummaryDto>>(`/v1/opms/imports/layers/${encodeURIComponent(layerPublicId)}/batches/page${value ? `?${value}` : ''}`);
+}
 
 export async function downloadOpmsImportCsv(layerPublicId?: string): Promise<ApiResponse<boolean>> {
   const endpoint = layerPublicId ? `/v1/opms/imports/layers/${encodeURIComponent(layerPublicId)}/export.csv` : '/v1/opms/imports/template.csv';

@@ -243,6 +243,15 @@ public sealed class UsersControllerSecurityTests
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_DOCUMENT")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "IDP_DOCUMENT.RESCAN").ToArrayAsync());
 
+        var opmsImportMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "OPMS_KPI" && item.MemberCode.StartsWith("Import"))
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        Assert.Equal(new[] { "ImportActor", "ImportClientRequestId", "ImportErrorDetail", "ImportRowPayload", "ImportSourceFileName", "ImportSourceHash" },
+            opmsImportMembers.Select(item => item.MemberCode));
+        Assert.All(opmsImportMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
+        Assert.Equal(6, await context.Permissions.CountAsync(item => item.ResourceCode == "OPMS_KPI" && item.MemberCode != null && item.MemberCode.StartsWith("Import")));
+
         var idpImportMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_PLAN" && item.MemberCode.StartsWith("Import"))
             .OrderBy(item => item.MemberCode)

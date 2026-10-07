@@ -22,6 +22,8 @@ public sealed class OpmsImportsController(
 {
     private const int MaximumRows = 5000;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly HashSet<string> ImportBatchSortFields = new(StringComparer.OrdinalIgnoreCase)
+        { "createdat", "filename", "status", "totalrows", "committedat" };
     [HttpGet("template.csv"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
     public IActionResult Template() => CsvFile(OpmsImportCsv.WideHeader + "\r\n", "opms-sdbip-import-template.csv");
 
@@ -90,6 +92,66 @@ public sealed class OpmsImportsController(
         return CsvFile(csv.ToString(), $"sdbip-{SafeFileName(layer.Code)}-{DateTime.UtcNow:yyyyMMddHHmmss}.csv");
     }
 
+    [HttpGet("layers/{layerPublicId:guid}/batches/page"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>>> GetBatchesPage(
+        Guid layerPublicId, [FromQuery] PagedQueryRequest request, [FromQuery] string? status = null)
+    {
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(false, null, "User not found."));
+        var layer = await FindLayerAsync(layerPublicId, activeOnly: false);
+        if (layer == null) return NotFound(new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(false, null, "SDBIP layer not found."));
+        var permission = await CheckImportPermissionAsync(user, layer.MunicipalityId);
+        if (!permission.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
+            new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(false, null, permission.Reason));
+        if (!ImportBatchSortFields.Contains(request.NormalizedSortBy))
+            return BadRequest(new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(false, null,
+                "SortBy must be createdAt, fileName, status, totalRows, or committedAt."));
+
+        OpmsImportBatchStatus? parsedStatus = null;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<OpmsImportBatchStatus>(status.Trim(), true, out var value) || !Enum.IsDefined(value))
+                return BadRequest(new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(false, null, "Status must be Staged or Committed."));
+            parsedStatus = value;
+        }
+
+        var members = await GetImportMemberAccessAsync(user, layer.MunicipalityId);
+        if (request.NormalizedSortBy == "filename" && !members.SourceFileName)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(false, null, "File-name sorting requires ImportSourceFileName READ permission."));
+
+        var query = context.OpmsImportBatches.AsNoTracking()
+            .Include(item => item.SdbipLayer).Include(item => item.CreatedByUser).Include(item => item.CommittedByUser)
+            .Where(item => item.SdbipLayerId == layer.Id);
+        if (parsedStatus.HasValue) query = query.Where(item => item.Status == parsedStatus.Value);
+        if (request.NormalizedSearch.Length > 0)
+            query = query.Where(item => members.SourceFileName && item.SourceFileName.Contains(request.NormalizedSearch)
+                || members.SourceHash && item.SourceSha256.Contains(request.NormalizedSearch)
+                || members.Actor && item.CreatedByUser != null && (item.CreatedByUser.FirstName.Contains(request.NormalizedSearch) || item.CreatedByUser.LastName.Contains(request.NormalizedSearch))
+                || members.Actor && item.CommittedByUser != null && (item.CommittedByUser.FirstName.Contains(request.NormalizedSearch) || item.CommittedByUser.LastName.Contains(request.NormalizedSearch)));
+
+        var totalCount = await query.CountAsync();
+        query = ApplyImportBatchOrdering(query, request.NormalizedSortBy, request.Descending);
+        var batches = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        return Ok(new ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>(true,
+            PagedResponse<OpmsImportBatchSummaryResponse>.Create(batches.Select(item => ToSummaryResponse(item, members)), request.Page, request.PageSize, totalCount)));
+    }
+
+    [HttpGet("{batchPublicId:guid}"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
+    public async Task<ActionResult<ApiResponse<OpmsImportBatchResponse>>> GetBatch(Guid batchPublicId)
+    {
+        var user = await CurrentUser();
+        if (user == null) return Unauthorized(new ApiResponse<OpmsImportBatchResponse>(false, null, "User not found."));
+        var batch = await context.OpmsImportBatches.AsNoTracking()
+            .Include(item => item.SdbipLayer).Include(item => item.CreatedByUser).Include(item => item.CommittedByUser).Include(item => item.Rows)
+            .SingleOrDefaultAsync(item => item.PublicId == batchPublicId);
+        if (batch == null) return NotFound(new ApiResponse<OpmsImportBatchResponse>(false, null, "OPMS import batch not found."));
+        var permission = await CheckImportPermissionAsync(user, batch.MunicipalityId);
+        if (!permission.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsImportBatchResponse>(false, null, permission.Reason));
+        return Ok(new ApiResponse<OpmsImportBatchResponse>(true,
+            ToResponse(batch, await GetImportMemberAccessAsync(user, batch.MunicipalityId))));
+    }
+
     [HttpPost("layers/{layerPublicId:guid}/stage"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
     public async Task<ActionResult<ApiResponse<OpmsImportBatchResponse>>> Stage(Guid layerPublicId, StageOpmsImportRequest request)
     {
@@ -104,13 +166,17 @@ public sealed class OpmsImportsController(
         var layer = await context.SdbipLayers.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear)
             .SingleOrDefaultAsync(x => x.MunicipalityId == municipalityId && x.PublicId == layerPublicId && x.IsActive);
         if (layer == null) return NotFound(new ApiResponse<OpmsImportBatchResponse>(false, null, "Active SDBIP layer not found."));
+        var permission = await CheckImportPermissionAsync(user, layer.MunicipalityId);
+        if (!permission.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsImportBatchResponse>(false, null, permission.Reason));
+        var members = await GetImportMemberAccessAsync(user, layer.MunicipalityId);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request.Rows, JsonOptions)))).ToLowerInvariant();
-        var existingBatch = await context.OpmsImportBatches.Include(x => x.SdbipLayer).Include(x => x.Rows)
+        var existingBatch = await context.OpmsImportBatches.Include(x => x.SdbipLayer)
+            .Include(x => x.CreatedByUser).Include(x => x.CommittedByUser).Include(x => x.Rows)
             .SingleOrDefaultAsync(x => x.ClientRequestId == request.ClientRequestId);
         if (existingBatch != null)
             return existingBatch.SourceSha256 != hash
                 ? Conflict(new ApiResponse<OpmsImportBatchResponse>(false, null, "ClientRequestId was already used for different content."))
-                : Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(existingBatch), "Existing staged result returned."));
+                : Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(existingBatch, members), "Existing staged result returned."));
 
         var candidates = await BuildCandidates(layer, request.Rows);
         var batch = new OpmsImportBatch
@@ -120,7 +186,7 @@ public sealed class OpmsImportsController(
             TotalRows = candidates.Count, NewRows = candidates.Count(x => x.Status == OpmsImportRowStatus.New),
             UnchangedRows = candidates.Count(x => x.Status == OpmsImportRowStatus.Unchanged),
             ChangedRows = candidates.Count(x => x.Status == OpmsImportRowStatus.Changed),
-            InvalidRows = candidates.Count(x => x.Status == OpmsImportRowStatus.Invalid), CreatedByUserId = user.Id,
+            InvalidRows = candidates.Count(x => x.Status == OpmsImportRowStatus.Invalid), CreatedByUserId = user.Id, CreatedByUser = user,
             Rows = candidates
         };
         context.Add(batch);
@@ -129,7 +195,7 @@ public sealed class OpmsImportsController(
         await workflow.WriteAuditTrailAsync("OpmsImportBatch", batch.PublicId.ToString(), "Stage", null,
             new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(batch)));
+        return Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(batch, members)));
     }
 
     [HttpPost("{batchPublicId:guid}/commit"), Authorize(Policy = "Permission:OPMS_KPI.IMPORT")]
@@ -142,8 +208,12 @@ public sealed class OpmsImportsController(
             return BadRequest(new ApiResponse<OpmsImportBatchResponse>(false, null, "A commit reason of at most 1000 characters is required."));
         var municipalityId = tenantContext.MunicipalityId.Value;
         var batch = await context.OpmsImportBatches.Include(x => x.SdbipLayer).ThenInclude(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear)
-            .Include(x => x.Rows).SingleOrDefaultAsync(x => x.MunicipalityId == municipalityId && x.PublicId == batchPublicId);
+            .Include(x => x.CreatedByUser).Include(x => x.CommittedByUser).Include(x => x.Rows)
+            .SingleOrDefaultAsync(x => x.MunicipalityId == municipalityId && x.PublicId == batchPublicId);
         if (batch == null) return NotFound(new ApiResponse<OpmsImportBatchResponse>(false, null, "OPMS import batch not found."));
+        var permission = await CheckImportPermissionAsync(user, batch.MunicipalityId);
+        if (!permission.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsImportBatchResponse>(false, null, permission.Reason));
+        var members = await GetImportMemberAccessAsync(user, batch.MunicipalityId);
         if (batch.Status != OpmsImportBatchStatus.Staged) return Conflict(new ApiResponse<OpmsImportBatchResponse>(false, null, "Only a staged import can be committed."));
         if (batch.InvalidRows > 0) return BadRequest(new ApiResponse<OpmsImportBatchResponse>(false, null, "The complete batch must be valid before commit."));
         if (batch.ChangedRows > 0 && (string.IsNullOrWhiteSpace(request.ApprovalReference) || !request.EffectiveAt.HasValue))
@@ -230,7 +300,7 @@ public sealed class OpmsImportsController(
                     }
                 }
             }
-            batch.Status = OpmsImportBatchStatus.Committed; batch.CommittedAt = DateTime.UtcNow; batch.CommittedByUserId = user.Id;
+            batch.Status = OpmsImportBatchStatus.Committed; batch.CommittedAt = DateTime.UtcNow; batch.CommittedByUserId = user.Id; batch.CommittedByUser = user;
             context.Entry(batch).Property(x => x.RowVersion).OriginalValue = version;
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -242,7 +312,7 @@ public sealed class OpmsImportsController(
         }
         await workflow.WriteAuditTrailAsync("OpmsImportBatch", batch.PublicId.ToString(), "Commit", new { Status = "Staged" },
             new { Status = "Committed", Reason = request.Reason.Trim() }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(batch)));
+        return Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(batch, members)));
     }
 
     private async Task<List<OpmsImportRow>> BuildCandidates(SdbipLayer layer, OpmsImportRowRequest[] rows)
@@ -446,10 +516,57 @@ public sealed class OpmsImportsController(
     }
     private static string? DetectPeriod(string error) => Enum.GetNames<ReportingPeriodType>().FirstOrDefault(error.Contains);
     private Task<ApplicationUser?> CurrentUser() { var id = PerformanceApiSupport.GetCurrentUserId(User); return string.IsNullOrWhiteSpace(id) ? Task.FromResult<ApplicationUser?>(null) : userManager.FindByIdAsync(id); }
+    private Task<SdbipLayer?> FindLayerAsync(Guid publicId, bool activeOnly) => tenantContext.MunicipalityId is not > 0
+        ? Task.FromResult<SdbipLayer?>(null)
+        : context.SdbipLayers.AsNoTracking().SingleOrDefaultAsync(item => item.MunicipalityId == tenantContext.MunicipalityId.Value
+            && item.PublicId == publicId && (!activeOnly || item.IsActive));
+    private Task<AccessDecisionResult> CheckImportPermissionAsync(ApplicationUser user, long municipalityId) =>
+        accessControl.CheckPermissionAsync(user, "OPMS_KPI.IMPORT", new AccessScopeContext(MunicipalityId: municipalityId));
+    private async Task<OpmsImportMemberAccess> GetImportMemberAccessAsync(ApplicationUser user, long municipalityId)
+    {
+        async Task<bool> Read(string member) =>
+            (await accessControl.CheckPermissionAsync(user, $"OPMS_KPI.{member}.READ", new AccessScopeContext(MunicipalityId: municipalityId))).Allowed;
+        return new OpmsImportMemberAccess(
+            await Read("ImportClientRequestId"), await Read("ImportSourceFileName"), await Read("ImportSourceHash"),
+            await Read("ImportActor"), await Read("ImportRowPayload"), await Read("ImportErrorDetail"));
+    }
+    private static IQueryable<OpmsImportBatch> ApplyImportBatchOrdering(IQueryable<OpmsImportBatch> query, string sortBy, bool descending) =>
+        (sortBy, descending) switch
+        {
+            ("filename", false) => query.OrderBy(item => item.SourceFileName).ThenBy(item => item.PublicId),
+            ("filename", true) => query.OrderByDescending(item => item.SourceFileName).ThenByDescending(item => item.PublicId),
+            ("status", false) => query.OrderBy(item => item.Status).ThenBy(item => item.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.Status).ThenByDescending(item => item.PublicId),
+            ("totalrows", false) => query.OrderBy(item => item.TotalRows).ThenBy(item => item.PublicId),
+            ("totalrows", true) => query.OrderByDescending(item => item.TotalRows).ThenByDescending(item => item.PublicId),
+            ("committedat", false) => query.OrderBy(item => item.CommittedAt).ThenBy(item => item.PublicId),
+            ("committedat", true) => query.OrderByDescending(item => item.CommittedAt).ThenByDescending(item => item.PublicId),
+            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
+            _ => query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.PublicId)
+        };
     private static bool VersionsEqual(byte[]? a, byte[]? b) => a == null ? b == null : b != null && a.SequenceEqual(b);
     private FileContentResult CsvFile(string value, string fileName) => File(new UTF8Encoding(true).GetBytes(value), "text/csv; charset=utf-8", fileName);
     private static string SafeFileName(string value) => string.Concat(value.Where(character => char.IsLetterOrDigit(character) || character is '-' or '_')).ToLowerInvariant();
-    private static OpmsImportBatchResponse ToResponse(OpmsImportBatch x) => new(x.PublicId, x.ClientRequestId, x.SdbipLayer.PublicId, x.SourceFileName, x.SourceSha256, x.Status.ToString(), x.TotalRows, x.NewRows, x.UnchangedRows, x.ChangedRows, x.InvalidRows, x.CreatedAt, x.CommittedAt, Convert.ToBase64String(x.RowVersion), x.Rows.OrderBy(r => r.SourceRowNumber).Select(r => new OpmsImportRowResponse(r.PublicId, r.SourceRowNumber, r.Reference, r.Status.ToString(), r.ExistingValueJson, r.NormalizedJson, r.ErrorCode, r.ErrorPeriod, r.ErrorField, r.SuppliedValue, r.ErrorMessage)).ToArray());
+    private static OpmsImportBatchResponse ToResponse(OpmsImportBatch x, OpmsImportMemberAccess access) => new(
+        x.PublicId, access.ClientRequestId ? x.ClientRequestId : null, x.SdbipLayer.PublicId,
+        access.SourceFileName ? x.SourceFileName : null, access.SourceHash ? x.SourceSha256 : null,
+        x.Status.ToString(), x.TotalRows, x.NewRows, x.UnchangedRows, x.ChangedRows, x.InvalidRows,
+        access.Actor ? x.CreatedByUser?.PublicId : null, access.Actor ? x.CreatedByUser?.FullName : null, x.CreatedAt,
+        access.Actor ? x.CommittedByUser?.PublicId : null, access.Actor ? x.CommittedByUser?.FullName : null, x.CommittedAt,
+        Convert.ToBase64String(x.RowVersion), x.Rows.OrderBy(r => r.SourceRowNumber).Select(r => new OpmsImportRowResponse(
+            r.PublicId, r.SourceRowNumber, r.Reference, r.Status.ToString(),
+            access.RowPayload ? r.ExistingValueJson : null, access.RowPayload ? r.NormalizedJson : null,
+            access.ErrorDetail ? r.ErrorCode : null, access.ErrorDetail ? r.ErrorPeriod : null,
+            access.ErrorDetail ? r.ErrorField : null, access.RowPayload ? r.SuppliedValue : null,
+            access.ErrorDetail ? r.ErrorMessage : null)).ToArray());
+    private static OpmsImportBatchSummaryResponse ToSummaryResponse(OpmsImportBatch x, OpmsImportMemberAccess access) => new(
+        x.PublicId, access.ClientRequestId ? x.ClientRequestId : null, x.SdbipLayer.PublicId,
+        access.SourceFileName ? x.SourceFileName : null, access.SourceHash ? x.SourceSha256 : null,
+        x.Status.ToString(), x.TotalRows, x.NewRows, x.UnchangedRows, x.ChangedRows, x.InvalidRows,
+        access.Actor ? x.CreatedByUser?.PublicId : null, access.Actor ? x.CreatedByUser?.FullName : null, x.CreatedAt,
+        access.Actor ? x.CommittedByUser?.PublicId : null, access.Actor ? x.CommittedByUser?.FullName : null, x.CommittedAt,
+        Convert.ToBase64String(x.RowVersion));
+    private sealed record OpmsImportMemberAccess(bool ClientRequestId, bool SourceFileName, bool SourceHash, bool Actor, bool RowPayload, bool ErrorDetail);
     private sealed record ReferenceMatch(Guid? PublicId, string? ErrorCode, string Field, string? Value, string? ErrorMessage);
     private sealed record NormalizedRow(string IndicatorNumber, int OrderNumber, string TargetName, string KpiDescription, int DepartmentId, int? UnitId,
         StrategicClassificationSelection ClassificationSelection, string NationalKpa, string MunicipalKpa, string PerformanceObjective,

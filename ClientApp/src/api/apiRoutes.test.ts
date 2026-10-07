@@ -6,6 +6,7 @@ import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, ge
 import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './api';
 import { archiveIpmsTargetTemplate, archiveOpmsTargetTemplate } from './api';
 import { saveSecurityUserRoles } from './api';
+import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -122,6 +123,17 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/imports/batch-public-id'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/idp/plans/plan-public-id/imports/kpis/stage'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('"clientRequestId":"request-id"') }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/idp/imports/batch-public-id/commit'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ rowVersion: 'AQ==', reason: 'Approved reconciliation' }) }));
+  });
+
+  it('transports bounded OPMS import history queries and public batch identity', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 10, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getOpmsImportBatchesPage('layer-public-id', { page: 2, pageSize: 10, search: 'council', status: 'Committed', sortBy: 'fileName', sortDirection: 'asc' });
+    await getOpmsImportBatch('batch-public-id');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms/imports/layers/layer-public-id/batches/page?page=2&pageSize=10&search=council&sortBy=fileName&sortDirection=asc&status=Committed'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/opms/imports/batch-public-id'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('transports bounded IDP plan search, sorting, and pages', async () => {

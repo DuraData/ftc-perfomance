@@ -160,12 +160,69 @@ public sealed class OpmsImportControllerTests
     }
 
     [Fact]
+    public async Task Import_history_masks_members_prevents_query_inference_and_uses_public_actor_identity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_KPI.IMPORT" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowed.Contains(code) && scope?.MunicipalityId == setup.Municipality.Id,
+                    allowed.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        access.Setup(service => service.GetQueryScopeAsync(setup.User, It.IsAny<string>()))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [setup.Municipality.Id]));
+        var controller = Controller(context, setup, access.Object);
+
+        var staged = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "SECRET-OPMS-IMPORT.csv", [Row(2, "SECRET-KPI", "UNKNOWN")])));
+        staged.ClientRequestId.Should().BeNull();
+        staged.SourceFileName.Should().BeNull();
+        staged.SourceSha256.Should().BeNull();
+        staged.CreatedByUserPublicId.Should().BeNull();
+        staged.CreatedByName.Should().BeNull();
+        staged.Rows.Should().ContainSingle();
+        staged.Rows[0].ExistingValueJson.Should().BeNull();
+        staged.Rows[0].NormalizedJson.Should().BeNull();
+        staged.Rows[0].SuppliedValue.Should().BeNull();
+        staged.Rows[0].ErrorCode.Should().BeNull();
+        staged.Rows[0].ErrorField.Should().BeNull();
+        staged.Rows[0].ErrorMessage.Should().BeNull();
+
+        var hiddenAction = await controller.GetBatchesPage(setup.Layer.PublicId,
+            new PagedQueryRequest { Search = "SECRET-OPMS-IMPORT" });
+        var hidden = ((hiddenAction.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>)!.Data!;
+        hidden.TotalCount.Should().Be(0);
+        (await controller.GetBatchesPage(setup.Layer.PublicId, new PagedQueryRequest { SortBy = "fileName" })).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        foreach (var member in new[] { "ImportClientRequestId", "ImportSourceFileName", "ImportSourceHash", "ImportActor", "ImportRowPayload", "ImportErrorDetail" })
+            allowed.Add($"OPMS_KPI.{member}.READ");
+
+        var visible = Payload(await controller.GetBatch(staged.PublicId));
+        visible.ClientRequestId.Should().NotBeNull();
+        visible.SourceFileName.Should().Be("SECRET-OPMS-IMPORT.csv");
+        visible.SourceSha256.Should().HaveLength(64);
+        visible.CreatedByUserPublicId.Should().Be(setup.User.PublicId);
+        visible.CreatedByName.Should().Be(setup.User.FullName);
+        visible.Rows[0].ErrorCode.Should().Be("DEPARTMENT_NOT_FOUND");
+        visible.Rows[0].ErrorMessage.Should().NotBeNullOrWhiteSpace();
+
+        var visibleAction = await controller.GetBatchesPage(setup.Layer.PublicId,
+            new PagedQueryRequest { Search = "SECRET-OPMS-IMPORT", SortBy = "fileName" });
+        var visiblePage = ((visibleAction.Result as OkObjectResult)!.Value as ApiResponse<PagedResponse<OpmsImportBatchSummaryResponse>>)!.Data!;
+        visiblePage.Items.Should().ContainSingle().Which.CreatedByUserPublicId.Should().Be(setup.User.PublicId);
+    }
+
+    [Fact]
     public void Template_and_export_require_their_distinct_dynamic_permissions()
     {
         Policy(nameof(OpmsImportsController.Template)).Should().Be("Permission:OPMS_KPI.IMPORT");
         Policy(nameof(OpmsImportsController.Export)).Should().Be("Permission:OPMS_KPI.EXPORT");
         Policy(nameof(OpmsImportsController.Stage)).Should().Be("Permission:OPMS_KPI.IMPORT");
         Policy(nameof(OpmsImportsController.Commit)).Should().Be("Permission:OPMS_KPI.IMPORT");
+        Policy(nameof(OpmsImportsController.GetBatchesPage)).Should().Be("Permission:OPMS_KPI.IMPORT");
+        Policy(nameof(OpmsImportsController.GetBatch)).Should().Be("Permission:OPMS_KPI.IMPORT");
     }
 
     [Fact]
@@ -218,12 +275,14 @@ public sealed class OpmsImportControllerTests
         [new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.AbsoluteCount, PerformanceDirection.HigherIsBetter, "100", 1000, "Annual")],
         KpiUnitOfMeasure: "COUNT");
 
-    private static OpmsImportsController Controller(ApplicationDbContext context, Setup setup)
+    private static OpmsImportsController Controller(ApplicationDbContext context, Setup setup, IAccessControlService? configuredAccess = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(x => x.GetQueryScopeAsync(setup.User, It.IsAny<string>())).ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [setup.Municipality.Id]));
+        access.Setup(x => x.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string _, AccessScopeContext? scope) => new AccessDecisionResult(scope?.MunicipalityId == setup.Municipality.Id, "Allowed", [], [], []));
         return new OpmsImportsController(context, IdpTestFixture.CreateUserManagerMock(setup.User).Object,
-            new Tenant(setup.Municipality.Id, setup.User.Id), new PerformanceUnitEngine(), new Mock<IWorkflowGovernanceService>().Object, access.Object)
+            new Tenant(setup.Municipality.Id, setup.User.Id), new PerformanceUnitEngine(), new Mock<IWorkflowGovernanceService>().Object, configuredAccess ?? access.Object)
         { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(setup.User.Id) } } };
     }
 

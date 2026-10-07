@@ -169,6 +169,12 @@ public static class SecurityRegistrySeeder
             Member("OPMS_KPI", "RevisionReason", "Revision Governance Reason", sensitive: true, systemManaged: true),
             Member("OPMS_KPI", "RevisionApprovalReference", "Revision Approval Reference", sensitive: true, systemManaged: true),
             Member("OPMS_KPI", "RevisionActor", "Revision Actor Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_KPI", "ImportClientRequestId", "Import Idempotency Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_KPI", "ImportSourceFileName", "Import Source File Name", sensitive: true, systemManaged: true),
+            Member("OPMS_KPI", "ImportSourceHash", "Import Source Content Hash", sensitive: true, systemManaged: true),
+            Member("OPMS_KPI", "ImportActor", "Import Creator and Committer Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_KPI", "ImportRowPayload", "Import Row Before, After and Supplied Values", sensitive: true, systemManaged: true),
+            Member("OPMS_KPI", "ImportErrorDetail", "Import Validation Diagnostics", sensitive: true, systemManaged: true),
             Member("IPMS_SUBMISSION", "ActualPerformance", "Actual Performance"),
             Member("IPMS_SUBMISSION", "Variance", "Variance", systemManaged: true),
             Member("IPMS_SUBMISSION", "VarianceReason", "Variance Reason"),
@@ -502,7 +508,7 @@ public static class SecurityRegistrySeeder
         var mappings = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["Dashboard.View"] = ["NAV.DASHBOARD", "NAV.PROFILE", "NAV.SETTINGS"],
-            ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "OPMS_KPI.RevisionOriginalValue.READ", "OPMS_KPI.RevisionRevisedValue.READ", "OPMS_KPI.RevisionReason.READ", "OPMS_KPI.RevisionApprovalReference.READ", "OPMS_KPI.RevisionActor.READ", "SDBIP_LAYER.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE", "OPMS_KPI.IMPORT"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
+            ["OPMS.Targets.View"] = ["OPMS_KPI.READ", "OPMS_KPI.RevisionOriginalValue.READ", "OPMS_KPI.RevisionRevisedValue.READ", "OPMS_KPI.RevisionReason.READ", "OPMS_KPI.RevisionApprovalReference.READ", "OPMS_KPI.RevisionActor.READ", "SDBIP_LAYER.READ", "WARD.READ", "VOTE_NUMBER.READ"], ["OPMS.Targets.Create"] = ["OPMS_KPI.CREATE", "OPMS_KPI.IMPORT", "OPMS_KPI.ImportClientRequestId.READ", "OPMS_KPI.ImportSourceFileName.READ", "OPMS_KPI.ImportSourceHash.READ", "OPMS_KPI.ImportActor.READ", "OPMS_KPI.ImportRowPayload.READ", "OPMS_KPI.ImportErrorDetail.READ"], ["OPMS.Targets.Edit"] = ["OPMS_KPI.UPDATE"], ["OPMS.Targets.Delete"] = ["OPMS_KPI.WITHDRAW"],
             ["OPMS.View"] = ["NAV.SDBIP.REGISTER", "NAV.SDBIP.IMPORT", "NAV.SDBIP.VOTE_NUMBERS", "SDBIP_LAYER.READ", "VOTE_NUMBER.READ", "TID.READ", "NAV.SDBIP.TIDS", "STRATEGIC_DOCUMENT.READ", "NAV.STRATEGIC_DOCUMENTS"], ["OPMS.Library.View"] = ["NAV.SDBIP.LIBRARY"],
             ["OPMS.Submissions.View"] = ["OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.VarianceReason.READ", "OPMS_SUBMISSION.CorrectiveMeasure.READ", "OPMS_RFI.READ", "OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.ClosedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionActorUserId.READ", "OPMS_WORKFLOW.ActionComment.READ", "OPMS_WORKFLOW.ActionRatingValue.READ", "OPMS_WORKFLOW.StageRatingValue.READ", "OPMS_WORKFLOW.StageRatingAchievementPercent.READ", "OPMS_WORKFLOW.StageRatingComment.READ", "OPMS_WORKFLOW.StageRatingRatedByUserId.READ", "OPMS_WORKFLOW.StageRatingRatedByName.READ"], ["OPMS.Submissions.Create"] = ["OPMS_SUBMISSION.CREATE"], ["OPMS.Submissions.Edit"] = ["OPMS_SUBMISSION.UPDATE", "OPMS_SUBMISSION.VarianceReason.UPDATE", "OPMS_SUBMISSION.CorrectiveMeasure.UPDATE"], ["OPMS.Submissions.Delete"] = ["OPMS_SUBMISSION.WITHDRAW"],
             ["Workflow.Submit.View"] = ["NAV.SDBIP.CAPTURE", "NAV.WORKFLOW.MY_QUEUE"], ["Workflow.Verify.View"] = ["NAV.WORKFLOW.VERIFY"], ["Workflow.Review.View"] = ["NAV.WORKFLOW.REVIEW"], ["Workflow.Approve.View"] = ["NAV.WORKFLOW.APPROVE"], ["Workflow.Audit.View"] = ["NAV.WORKFLOW.AUDIT"],
