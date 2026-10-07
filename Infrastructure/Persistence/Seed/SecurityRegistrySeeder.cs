@@ -59,6 +59,7 @@ public static class SecurityRegistrySeeder
             Resource("AUTHENTICATION", "Authentication Configuration", true, true, true, false, true, true),
             Resource("LOGIN_AUDIT", "Login Audit History", false, true, false, false, true, true),
             Resource("AUDIT_TRAIL", "Business and Security Audit Trail", false, true, false, false, true, true),
+            Resource("NOTIFICATION_DELIVERY", "Notification Delivery Operations", false, true, false, false, true, true),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
@@ -73,6 +74,8 @@ public static class SecurityRegistrySeeder
         if (existingLoginAuditResource != null) existingLoginAuditResource.SupportsFieldSecurity = true;
         var existingAuditTrailResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase));
         if (existingAuditTrailResource != null) existingAuditTrailResource.SupportsFieldSecurity = true;
+        var existingNotificationDeliveryResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase));
+        if (existingNotificationDeliveryResource != null) existingNotificationDeliveryResource.SupportsFieldSecurity = true;
 
         var actions = new[]
         {
@@ -106,6 +109,7 @@ public static class SecurityRegistrySeeder
             Action("AUTHENTICATION.LINK_IDENTITIES", "Link Enterprise Identities", "AUTHENTICATION"),
             Action("AUTHENTICATION.VIEW_EVENTS", "View Authentication Events", "AUTHENTICATION"),
             Action("WORKFLOW.CONFIGURE", "Configure Workflow and Reporting Windows", "OPMS_WORKFLOW"),
+            Action("NOTIFICATION_DELIVERY.RETRY", "Retry Notification Delivery", "NOTIFICATION_DELIVERY"),
             Action("TID.CONFIGURE", "Configure TID Policy", "TID"), Action("TID.UPLOAD_SOURCE", "Upload TID Source Document", "TID"),
             Action("STRATEGIC_DOCUMENT.MANAGE_TYPES", "Manage Strategic Document Types", "STRATEGIC_DOCUMENT"),
             Action("STRATEGIC_DOCUMENT.APPROVE", "Approve Strategic Document", "STRATEGIC_DOCUMENT"),
@@ -173,7 +177,13 @@ public static class SecurityRegistrySeeder
             Member("AUDIT_TRAIL", "CorrelationId", "Audit Correlation Identity", sensitive: true, systemManaged: true),
             Member("AUDIT_TRAIL", "Reason", "Audit Governance Reason", sensitive: true, systemManaged: true),
             Member("AUDIT_TRAIL", "UserAgent", "Audit User Agent", sensitive: true, systemManaged: true),
-            Member("AUDIT_TRAIL", "SessionId", "Audit Session Identity", sensitive: true, systemManaged: true)
+            Member("AUDIT_TRAIL", "SessionId", "Audit Session Identity", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_DELIVERY", "AggregateId", "Notification Record Identity", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_DELIVERY", "LastError", "Notification Queue Failure Detail", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_DELIVERY", "RecipientUserId", "Notification Recipient Identity", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_DELIVERY", "ProviderReference", "Provider Receipt Reference", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_DELIVERY", "Error", "Delivery Failure Detail", sensitive: true, systemManaged: true),
+            Member("NOTIFICATION_DELIVERY", "ResponseDetail", "Provider Response Detail", sensitive: true, systemManaged: true)
         };
         var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
         var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -183,6 +193,7 @@ public static class SecurityRegistrySeeder
                      || string.Equals(item.ResourceCode, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(item.ResourceCode, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "IDP_STAKEHOLDER", StringComparison.OrdinalIgnoreCase)
                         && new[] { "ContactPerson", "ContactEmail" }.Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)
                      || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)
@@ -360,6 +371,10 @@ public static class SecurityRegistrySeeder
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT"]
         };
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "NOTIFICATION_DELIVERY.READ", "NOTIFICATION_DELIVERY.RETRY",
+            "NOTIFICATION_DELIVERY.AggregateId.READ", "NOTIFICATION_DELIVERY.LastError.READ",
+            "NOTIFICATION_DELIVERY.RecipientUserId.READ", "NOTIFICATION_DELIVERY.ProviderReference.READ",
+            "NOTIFICATION_DELIVERY.Error.READ", "NOTIFICATION_DELIVERY.ResponseDetail.READ",
             "KPI_TYPE.READ", "KPI_TYPE.CREATE", "KPI_TYPE.UPDATE",
             "INDICATOR_TYPE.READ", "INDICATOR_TYPE.CREATE", "INDICATOR_TYPE.UPDATE",
             "FUNCTIONAL_AREA.READ", "FUNCTIONAL_AREA.CREATE", "FUNCTIONAL_AREA.UPDATE",

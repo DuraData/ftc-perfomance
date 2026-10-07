@@ -1776,7 +1776,7 @@ export interface StageRatingDto {
 
 export interface NotificationDeliveryAttemptDto {
   publicId: string;
-  recipientUserId: string;
+  recipientUserId?: string | null;
   channel: string;
   status: string;
   attemptCount: number;
@@ -1792,7 +1792,7 @@ export interface NotificationOutboxItemDto {
   publicId: string;
   eventType: string;
   aggregateType: string;
-  aggregateId: string;
+  aggregateId?: string | null;
   occurredAt: string;
   availableAt: string;
   attemptCount: number;

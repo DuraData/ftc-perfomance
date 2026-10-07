@@ -115,6 +115,17 @@ public sealed class UsersControllerSecurityTests
         Assert.All(auditTrailMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
         Assert.Equal(9, await context.Permissions.CountAsync(item => item.ResourceCode == "AUDIT_TRAIL" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "AUDIT_TRAIL")).SupportsFieldSecurity);
+
+        var notificationDeliveryMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "NOTIFICATION_DELIVERY")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        Assert.Equal(new[] { "AggregateId", "Error", "LastError", "ProviderReference", "RecipientUserId", "ResponseDetail" },
+            notificationDeliveryMembers.Select(item => item.MemberCode));
+        Assert.All(notificationDeliveryMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
+        Assert.Equal(6, await context.Permissions.CountAsync(item => item.ResourceCode == "NOTIFICATION_DELIVERY" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "NOTIFICATION_DELIVERY")).SupportsFieldSecurity);
+        Assert.Single(await context.Permissions.Where(item => item.Code == "NOTIFICATION_DELIVERY.RETRY").ToArrayAsync());
     }
 
     [Fact]

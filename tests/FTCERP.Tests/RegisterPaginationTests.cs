@@ -331,6 +331,8 @@ public sealed class RegisterPaginationTests
     public async Task Notification_delivery_page_is_bounded_searchable_and_prioritizes_dead_letters()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("notification-operations-reader");
+        context.Users.Add(actor);
         context.BusinessEventOutbox.AddRange(
             NotificationEvent("Notification.Zeta", "record-z", 10, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
             NotificationEvent("Notification.Alpha", "record-a", 1, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
@@ -339,7 +341,13 @@ public sealed class RegisterPaginationTests
         await context.SaveChangesAsync();
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(value => value.MunicipalityId).Returns(7);
-        var controller = new NotificationOperationsController(context, tenant.Object);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(value => value.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = new NotificationOperationsController(context, tenant.Object, access.Object)
+        {
+            ControllerContext = ControllerContext(actor.Id)
+        };
 
         var retired = Assert.IsType<ObjectResult>(controller.GetPending().Result);
         Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
@@ -366,11 +374,71 @@ public sealed class RegisterPaginationTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(value => value.MunicipalityId).Returns(7);
-        var controller = new NotificationOperationsController(context, tenant.Object);
+        var controller = new NotificationOperationsController(context, tenant.Object, Mock.Of<IAccessControlService>());
 
         var result = await controller.GetPendingPage(new PagedQueryRequest { SortBy = "payload" });
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task Notification_delivery_members_are_masked_and_excluded_from_search_until_granted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("notification-member-reader");
+        var row = NotificationEvent("Notification.MemberSecurity", "protected-record", 2, DateTime.UtcNow);
+        row.LastError = "protected-queue-error";
+        row.DeliveryAttempts.Add(new NotificationDeliveryAttempt
+        {
+            RecipientUserId = "protected-recipient", Channel = "EMAIL", Status = "Failed", IdempotencyKey = "protected-delivery-key",
+            Provider = "MailProvider", ProviderReference = "protected-provider-reference", Error = "protected-delivery-error",
+            ResponseDetail = "protected-response-detail", AttemptCount = 2
+        });
+        context.AddRange(actor, row);
+        await context.SaveChangesAsync();
+
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(value => value.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(value => value.MunicipalityId).Returns(7);
+        var controller = new NotificationOperationsController(context, tenant.Object, access.Object)
+        {
+            ControllerContext = ControllerContext(actor.Id)
+        };
+
+        var deniedResult = await controller.GetPendingPage(new PagedQueryRequest { SortBy = "createdAt" });
+        var denied = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<NotificationOutboxItemDto>>>(
+            Assert.IsType<OkObjectResult>(deniedResult.Result).Value).Data!.Items);
+        Assert.Null(denied.AggregateId);
+        Assert.Null(denied.LastError);
+        var deniedDelivery = Assert.Single(denied.Deliveries);
+        Assert.Null(deniedDelivery.RecipientUserId);
+        Assert.Null(deniedDelivery.ProviderReference);
+        Assert.Null(deniedDelivery.Error);
+        Assert.Null(deniedDelivery.ResponseDetail);
+
+        foreach (var hiddenSearch in new[] { "protected-record", "protected-queue-error" })
+        {
+            var result = await controller.GetPendingPage(new PagedQueryRequest { SortBy = "createdAt", Search = hiddenSearch });
+            Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<NotificationOutboxItemDto>>>(
+                Assert.IsType<OkObjectResult>(result.Result).Value).Data!.TotalCount);
+        }
+
+        foreach (var member in new[] { "AggregateId", "LastError", "RecipientUserId", "ProviderReference", "Error", "ResponseDetail" })
+            allowedCodes.Add($"NOTIFICATION_DELIVERY.{member}.READ");
+        var allowedResult = await controller.GetPendingPage(new PagedQueryRequest { SortBy = "createdAt", Search = "protected-record" });
+        var allowed = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<NotificationOutboxItemDto>>>(
+            Assert.IsType<OkObjectResult>(allowedResult.Result).Value).Data!.Items);
+        Assert.Equal("protected-record", allowed.AggregateId);
+        Assert.Equal("protected-queue-error", allowed.LastError);
+        var allowedDelivery = Assert.Single(allowed.Deliveries);
+        Assert.Equal("protected-recipient", allowedDelivery.RecipientUserId);
+        Assert.Equal("protected-provider-reference", allowedDelivery.ProviderReference);
+        Assert.Equal("protected-delivery-error", allowedDelivery.Error);
+        Assert.Equal("protected-response-detail", allowedDelivery.ResponseDetail);
     }
 
     [Fact]
