@@ -105,6 +105,16 @@ public sealed class UsersControllerSecurityTests
         Assert.All(loginAuditMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
         Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == "LOGIN_AUDIT" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "LOGIN_AUDIT")).SupportsFieldSecurity);
+
+        var auditTrailMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "AUDIT_TRAIL")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        Assert.Equal(new[] { "ChangedBy", "CorrelationId", "EntityId", "IpAddress", "NewValue", "OldValue", "Reason", "SessionId", "UserAgent" },
+            auditTrailMembers.Select(item => item.MemberCode));
+        Assert.All(auditTrailMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
+        Assert.Equal(9, await context.Permissions.CountAsync(item => item.ResourceCode == "AUDIT_TRAIL" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "AUDIT_TRAIL")).SupportsFieldSecurity);
     }
 
     [Fact]

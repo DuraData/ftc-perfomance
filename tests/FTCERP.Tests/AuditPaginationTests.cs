@@ -130,6 +130,81 @@ public sealed class AuditPaginationTests
     }
 
     [Fact]
+    public async Task Audit_trail_member_permissions_mask_and_prevent_sensitive_query_inference_dynamically()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var tenant = new Municipality { Code = "AUD-MEMBER", Name = "Audit Member Municipality" };
+        var actor = IdpTestFixture.CreateUser("audit-member-reader");
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+        context.Municipalities.Add(tenant);
+        await context.SaveChangesAsync();
+        actor.MunicipalityId = tenant.Id;
+        context.Users.Add(actor);
+        var protectedTrail = Trail(tenant.Id, "ProtectedEntity", "protected-entity-id", "Update", actor.Id, DateTime.UtcNow);
+        protectedTrail.OldValue = "{\"secret\":\"before\"}";
+        protectedTrail.NewValue = "{\"secret\":\"after\"}";
+        protectedTrail.IpAddress = "192.0.2.10";
+        protectedTrail.CorrelationId = "protected-correlation";
+        protectedTrail.Reason = "protected-reason";
+        protectedTrail.UserAgent = "protected-agent";
+        protectedTrail.SessionId = "protected-session";
+        context.AuditTrails.Add(protectedTrail);
+        await context.SaveChangesAsync();
+
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "allowed" : "denied", [], [], []));
+        var controller = new AuditController(context, access.Object, new TenantContext(tenant.Id))
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var deniedResult = await controller.GetAuditTrailsPage(new PagedQueryRequest { SortBy = "createdAt" });
+        var deniedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<AuditTrailEntryResponse>>>(
+            Assert.IsType<OkObjectResult>(deniedResult.Result).Value).Data!.Items);
+        Assert.Null(deniedItem.EntityId);
+        Assert.Null(deniedItem.OldValue);
+        Assert.Null(deniedItem.NewValue);
+        Assert.Null(deniedItem.ChangedBy);
+        Assert.Null(deniedItem.IpAddress);
+        Assert.Null(deniedItem.CorrelationId);
+        Assert.Null(deniedItem.Reason);
+        Assert.Null(deniedItem.UserAgent);
+        Assert.Null(deniedItem.SessionId);
+
+        foreach (var hiddenValue in new[] { "protected-entity-id", actor.Id, "protected-reason", "protected-correlation" })
+        {
+            var hiddenSearch = await controller.GetAuditTrailsPage(new PagedQueryRequest { SortBy = "createdAt", Search = hiddenValue });
+            Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<AuditTrailEntryResponse>>>(
+                Assert.IsType<OkObjectResult>(hiddenSearch.Result).Value).Data!.TotalCount);
+        }
+        Assert.IsType<ForbidResult>((await controller.GetAuditTrailsPage(new PagedQueryRequest { SortBy = "changedBy" })).Result);
+        Assert.IsType<ForbidResult>((await controller.GetAuditTrailsPage(new PagedQueryRequest { SortBy = "createdAt" }, entityId: "protected-entity-id")).Result);
+
+        foreach (var member in new[] { "EntityId", "OldValue", "NewValue", "ChangedBy", "IpAddress", "CorrelationId", "Reason", "UserAgent", "SessionId" })
+            allowedCodes.Add($"AUDIT_TRAIL.{member}.READ");
+
+        var allowedResult = await controller.GetAuditTrailsPage(
+            new PagedQueryRequest { SortBy = "changedBy", Search = actor.Id }, entityId: "protected-entity-id");
+        var allowedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<AuditTrailEntryResponse>>>(
+            Assert.IsType<OkObjectResult>(allowedResult.Result).Value).Data!.Items);
+        Assert.Equal("protected-entity-id", allowedItem.EntityId);
+        Assert.Equal("{\"secret\":\"before\"}", allowedItem.OldValue);
+        Assert.Equal("{\"secret\":\"after\"}", allowedItem.NewValue);
+        Assert.Equal(actor.Id, allowedItem.ChangedBy);
+        Assert.Equal("192.0.2.10", allowedItem.IpAddress);
+        Assert.Equal("protected-correlation", allowedItem.CorrelationId);
+        Assert.Equal("protected-reason", allowedItem.Reason);
+        Assert.Equal("protected-agent", allowedItem.UserAgent);
+        Assert.Equal("protected-session", allowedItem.SessionId);
+    }
+
+    [Fact]
     public async Task Login_audit_history_is_tenant_filtered_and_append_only()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

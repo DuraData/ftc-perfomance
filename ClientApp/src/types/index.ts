@@ -2778,11 +2778,11 @@ export interface AuditTrailEntryDto {
   publicId: string;
   municipalityId?: number | null;
   entityName: string;
-  entityId: string;
+  entityId?: string | null;
   action: string;
   oldValue?: string | null;
   newValue?: string | null;
-  changedBy: string;
+  changedBy?: string | null;
   changedAt: string;
   ipAddress?: string | null;
   correlationId?: string | null;

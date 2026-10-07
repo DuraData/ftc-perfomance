@@ -134,7 +134,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         {
             "OPMS_KPI.READ", "OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.UPDATE",
             "OPMS_SUBMISSION.APPROVE", "OPMS_POE.UPLOAD", "OPMS_REPORT.GENERATE",
-            "Audit.Trails.View"
+            "AUDIT_TRAIL.READ", "AUDIT_TRAIL.EntityId.READ"
         };
         var permissions = await context.Permissions.Where(item => permissionCodes.Contains(item.Code)).ToListAsync();
         foreach (var missingCode in permissionCodes.Except(permissions.Select(item => item.Code), StringComparer.OrdinalIgnoreCase))

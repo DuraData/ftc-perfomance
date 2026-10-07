@@ -1096,9 +1096,12 @@ export function AdminAuditLogsPage() {
   const canReadLoginIpAddress = canReadField('LOGIN_AUDIT', 'IpAddress');
   const canReadLoginUserAgent = canReadField('LOGIN_AUDIT', 'UserAgent');
   const canReadLoginFailureReason = canReadField('LOGIN_AUDIT', 'FailureReason');
-  const canViewAuditTrailsByPermission = useHasPermission('Audit.Trails.View');
-  const canViewAuditLogsByPermission = useHasPermission('Audit.Logs.View');
-  const canViewAuditTrails = canViewAuditTrailsByPermission || canViewAuditLogsByPermission;
+  const canViewAuditTrails = canRead('AUDIT_TRAIL');
+  const canReadAuditEntityId = canReadField('AUDIT_TRAIL', 'EntityId');
+  const canReadAuditOldValue = canReadField('AUDIT_TRAIL', 'OldValue');
+  const canReadAuditNewValue = canReadField('AUDIT_TRAIL', 'NewValue');
+  const canReadAuditChangedBy = canReadField('AUDIT_TRAIL', 'ChangedBy');
+  const canReadAuditIpAddress = canReadField('AUDIT_TRAIL', 'IpAddress');
   const [activeTab, setActiveTab] = useState<'login' | 'trail'>(canViewLoginLogs ? 'login' : 'trail');
   const [rows, setRows] = useState<LoginAuditLog[]>([]);
   const [trailRows, setTrailRows] = useState<AuditTrailEntryDto[]>([]);
@@ -1119,6 +1122,9 @@ export function AdminAuditLogsPage() {
   const effectiveLoginSort = loginSort.key === 'email' && !canReadLoginEmail
     ? { key: 'createdAt', direction: 'desc' as const }
     : loginSort;
+  const effectiveTrailSort = trailSort.key === 'changedBy' && !canReadAuditChangedBy
+    ? { key: 'createdAt', direction: 'desc' as const }
+    : trailSort;
 
   useEffect(() => {
     let cancelled = false;
@@ -1135,7 +1141,7 @@ export function AdminAuditLogsPage() {
           setLoginTotal(result.data?.totalCount ?? 0);
         }
       } else if (activeTab === 'trail' && canViewAuditTrails) {
-        const result = await getAuditTrailsPage({ page: trailPage, pageSize, search: trailSearch, sortBy: trailSort.key, sortDirection: trailSort.direction });
+        const result = await getAuditTrailsPage({ page: trailPage, pageSize, search: trailSearch, sortBy: effectiveTrailSort.key, sortDirection: effectiveTrailSort.direction });
         if (cancelled) return;
         if (!result.success) setError(result.message ?? 'Failed to load audit trails');
         else {
@@ -1146,7 +1152,7 @@ export function AdminAuditLogsPage() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [activeTab, canViewLoginLogs, canViewAuditTrails, loginPage, loginSearch, effectiveLoginSort.key, effectiveLoginSort.direction, showFailuresOnly, trailPage, trailSearch, trailSort]);
+  }, [activeTab, canViewLoginLogs, canViewAuditTrails, loginPage, loginSearch, effectiveLoginSort.key, effectiveLoginSort.direction, showFailuresOnly, trailPage, trailSearch, effectiveTrailSort.key, effectiveTrailSort.direction]);
 
   const loginColumns = [
     ...(canReadLoginEmail ? [{ id: 'email', header: 'Email', accessor: (l: LoginAuditLog) => l.email ?? '-', sortKey: 'email' }] : []),
@@ -1158,10 +1164,10 @@ export function AdminAuditLogsPage() {
 
   const trailColumns = [
     { id: 'entity', header: 'Entity', accessor: (row: AuditTrailEntryDto) => row.entityName, sortKey: 'entityName' },
-    { id: 'entityId', header: 'Entity ID', accessor: (row: AuditTrailEntryDto) => <span className="font-mono text-xs">{row.entityId}</span>, sortable: false },
+    ...(canReadAuditEntityId ? [{ id: 'entityId', header: 'Entity ID', accessor: (row: AuditTrailEntryDto) => <span className="font-mono text-xs">{row.entityId ?? '-'}</span>, sortable: false }] : []),
     { id: 'action', header: 'Action', accessor: (row: AuditTrailEntryDto) => <Badge variant="info" size="sm">{row.action}</Badge>, sortKey: 'action' },
-    { id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedBy, sortKey: 'changedBy' },
-    { id: 'ip', header: 'IP', accessor: (row: AuditTrailEntryDto) => row.ipAddress ?? '-', sortable: false },
+    ...(canReadAuditChangedBy ? [{ id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedBy ?? '-', sortKey: 'changedBy' }] : []),
+    ...(canReadAuditIpAddress ? [{ id: 'ip', header: 'IP', accessor: (row: AuditTrailEntryDto) => row.ipAddress ?? '-', sortable: false }] : []),
     { id: 'time', header: 'When', accessor: (row: AuditTrailEntryDto) => new Date(row.changedAt).toLocaleString(), sortKey: 'createdAt' },
   ];
 
@@ -1232,7 +1238,7 @@ export function AdminAuditLogsPage() {
           {activeTab === 'login' ? (
             <DataTable data={rows} columns={loginColumns} actions={loginActions} searchable searchPlaceholder="Search login audit logs" getRowId={(l) => l.publicId} emptyMessage={loading ? 'Loading...' : 'No logs'} serverState={{ page: loginPage, pageSize, totalCount: loginTotal, search: loginSearch, sortBy: effectiveLoginSort.key, sortDirection: effectiveLoginSort.direction, onPageChange: setLoginPage, onSearchChange: value => { setLoginSearch(value); setLoginPage(1); }, onSortChange: (key, direction) => { setLoginSort({ key, direction }); setLoginPage(1); } }} />
           ) : (
-            <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable searchPlaceholder="Search audit trails" getRowId={(entry) => entry.publicId} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} serverState={{ page: trailPage, pageSize, totalCount: trailTotal, search: trailSearch, sortBy: trailSort.key, sortDirection: trailSort.direction, onPageChange: setTrailPage, onSearchChange: value => { setTrailSearch(value); setTrailPage(1); }, onSortChange: (key, direction) => { setTrailSort({ key, direction }); setTrailPage(1); } }} />
+            <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable searchPlaceholder="Search audit trails" getRowId={(entry) => entry.publicId} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} serverState={{ page: trailPage, pageSize, totalCount: trailTotal, search: trailSearch, sortBy: effectiveTrailSort.key, sortDirection: effectiveTrailSort.direction, onPageChange: setTrailPage, onSearchChange: value => { setTrailSearch(value); setTrailPage(1); }, onSortChange: (key, direction) => { setTrailSort({ key, direction }); setTrailPage(1); } }} />
           )}
         </Card>
 
@@ -1293,34 +1299,34 @@ export function AdminAuditLogsPage() {
                   <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedTrail.action}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              {(canReadAuditEntityId || canReadAuditChangedBy) && <div className="grid grid-cols-2 gap-3">
+                {canReadAuditEntityId && <div>
                   <p className="text-[10px] text-secondary-500">Entity ID</p>
-                  <p className="text-xs font-mono text-secondary-700 dark:text-secondary-300 break-all">{selectedTrail.entityId}</p>
-                </div>
-                <div>
+                  <p className="text-xs font-mono text-secondary-700 dark:text-secondary-300 break-all">{selectedTrail.entityId ?? '-'}</p>
+                </div>}
+                {canReadAuditChangedBy && <div>
                   <p className="text-[10px] text-secondary-500">Changed By</p>
-                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.changedBy}</p>
-                </div>
-              </div>
+                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.changedBy ?? '-'}</p>
+                </div>}
+              </div>}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-[10px] text-secondary-500">Changed At</p>
                   <p className="text-xs text-secondary-700 dark:text-secondary-300">{new Date(selectedTrail.changedAt).toLocaleString()}</p>
                 </div>
-                <div>
+                {canReadAuditIpAddress && <div>
                   <p className="text-[10px] text-secondary-500">IP Address</p>
                   <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.ipAddress ?? '-'}</p>
-                </div>
+                </div>}
               </div>
-              <div>
+              {canReadAuditOldValue && <div>
                 <p className="text-[10px] text-secondary-500">Old Value</p>
                 <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-secondary-50 p-3 text-[11px] text-secondary-700 dark:bg-secondary-900 dark:text-secondary-300 whitespace-pre-wrap break-words">{selectedTrail.oldValue ?? '-'}</pre>
-              </div>
-              <div>
+              </div>}
+              {canReadAuditNewValue && <div>
                 <p className="text-[10px] text-secondary-500">New Value</p>
                 <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-secondary-50 p-3 text-[11px] text-secondary-700 dark:bg-secondary-900 dark:text-secondary-300 whitespace-pre-wrap break-words">{selectedTrail.newValue ?? '-'}</pre>
-              </div>
+              </div>}
               <div className="flex justify-end">
                 <Button variant="ghost" size="sm" onClick={() => setSelectedTrail(null)}>Close</Button>
               </div>

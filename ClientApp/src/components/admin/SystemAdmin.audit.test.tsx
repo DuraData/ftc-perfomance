@@ -6,8 +6,8 @@ const api = vi.hoisted(() => ({
   getAuditTrailsPage: vi.fn(),
 }));
 const security = vi.hoisted(() => ({
-  canRead: vi.fn(() => true),
-  canReadField: vi.fn(() => true),
+  canRead: vi.fn((resource: string) => Boolean(resource)),
+  canReadField: vi.fn((resource: string, member: string) => Boolean(resource && member)),
 }));
 
 vi.mock('../../api/api', async importOriginal => ({
@@ -27,7 +27,8 @@ const login = {
 const trail = {
   publicId: '11111111-1111-1111-1111-111111111111', municipalityId: 1,
   entityName: 'OpmsSubmission', entityId: 'submission-a', action: 'Approve', changedBy: 'auditor-a',
-  changedAt: '2026-01-03T00:00:00Z', correlationId: 'correlation-a',
+  changedAt: '2026-01-03T00:00:00Z', ipAddress: '192.0.2.10', correlationId: 'correlation-a',
+  oldValue: '{"secret":"before"}', newValue: '{"secret":"after"}',
 };
 
 describe('Audit administration', () => {
@@ -79,5 +80,43 @@ describe('Audit administration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.queryByText('Failure Reason')).not.toBeInTheDocument();
     expect(screen.queryByText('IP Address')).not.toBeInTheDocument();
+  });
+
+  it('hides protected audit-trail members and never sends a denied actor sort', async () => {
+    const { rerender } = render(<AdminAuditLogsPage />);
+    await screen.findByText('anna@example.test');
+    fireEvent.click(screen.getByRole('button', { name: 'Audit Trails' }));
+    expect(await screen.findByText('OpmsSubmission')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Changed By/ }));
+    await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sortBy: 'changedBy' }),
+    ));
+
+    security.canReadField.mockImplementation((resource: string) => resource !== 'AUDIT_TRAIL');
+    api.getAuditTrailsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{ ...trail, entityId: null, changedBy: null, ipAddress: null, oldValue: null, newValue: null }],
+        page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+      },
+    });
+    rerender(<AdminAuditLogsPage />);
+
+    await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenLastCalledWith(
+      { page: 1, pageSize: 25, search: '', sortBy: 'createdAt', sortDirection: 'desc' },
+    ));
+    expect(screen.queryByRole('columnheader', { name: 'Entity ID' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Changed By/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'IP' })).not.toBeInTheDocument();
+    expect(screen.queryByText('submission-a')).not.toBeInTheDocument();
+    expect(screen.queryByText('auditor-a')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.queryByText('Entity ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('Changed By')).not.toBeInTheDocument();
+    expect(screen.queryByText('IP Address')).not.toBeInTheDocument();
+    expect(screen.queryByText('Old Value')).not.toBeInTheDocument();
+    expect(screen.queryByText('New Value')).not.toBeInTheDocument();
   });
 });

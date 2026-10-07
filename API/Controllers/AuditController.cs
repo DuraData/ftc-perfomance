@@ -36,9 +36,7 @@ public class AuditController : ControllerBase
         [FromQuery] PagedQueryRequest request,
         [FromQuery] bool failuresOnly = false)
     {
-        var actorId = PerformanceApiSupport.GetCurrentUserId(User);
-        if (string.IsNullOrWhiteSpace(actorId)) return Unauthorized();
-        var actor = await _context.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == actorId);
+        var actor = await GetActorAsync();
         if (actor == null) return Unauthorized();
 
         if (request.NormalizedSortBy is not ("createdat" or "email" or "success"))
@@ -94,6 +92,21 @@ public class AuditController : ControllerBase
         return decision.Allowed;
     }
 
+    private async Task<bool> CanReadAuditTrailMemberAsync(ApplicationUser actor, string memberCode)
+    {
+        var decision = await _accessControl.CheckPermissionAsync(actor, $"AUDIT_TRAIL.{memberCode}.READ",
+            new AccessScopeContext(MunicipalityId: _tenantContext.MunicipalityId));
+        return decision.Allowed;
+    }
+
+    private Task<ApplicationUser?> GetActorAsync()
+    {
+        var actorId = PerformanceApiSupport.GetCurrentUserId(User);
+        return string.IsNullOrWhiteSpace(actorId)
+            ? Task.FromResult<ApplicationUser?>(null)
+            : _context.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == actorId);
+    }
+
     [HttpGet("security-events")]
     [Authorize(Policy = "Permission:Audit.View")]
     public ActionResult<ApiResponse<object[]>> GetSecurityEvents() =>
@@ -102,31 +115,49 @@ public class AuditController : ControllerBase
 
     [HttpGet("trails")]
     [HttpGet("/api/v1/audit/trails")]
-    [Authorize(Policy = "Permission:Audit.Trails.View")]
+    [Authorize(Policy = "Permission:AUDIT_TRAIL.READ")]
     public ActionResult<ApiResponse<AuditTrailEntryResponse[]>> GetAuditTrails() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<AuditTrailEntryResponse[]>(false, null,
             "This fixed-limit route is retired. Use /api/v1/audit/trails/page."));
 
     [HttpGet("/api/v1/audit/trails/page")]
-    [Authorize(Policy = "Permission:Audit.Trails.View")]
+    [Authorize(Policy = "Permission:AUDIT_TRAIL.READ")]
     public async Task<ActionResult<ApiResponse<PagedResponse<AuditTrailEntryResponse>>>> GetAuditTrailsPage(
         [FromQuery] PagedQueryRequest request,
         [FromQuery] string? entityName = null,
         [FromQuery] string? entityId = null)
     {
+        var actor = await GetActorAsync();
+        if (actor == null) return Unauthorized();
         if (request.NormalizedSortBy is not ("createdat" or "entityname" or "action" or "changedby"))
             return BadRequest(new ApiResponse<PagedResponse<AuditTrailEntryResponse>>(false, null, "SortBy must be createdAt, entityName, action, or changedBy."));
 
+        var canReadEntityId = await CanReadAuditTrailMemberAsync(actor, "EntityId");
+        var canReadOldValue = await CanReadAuditTrailMemberAsync(actor, "OldValue");
+        var canReadNewValue = await CanReadAuditTrailMemberAsync(actor, "NewValue");
+        var canReadChangedBy = await CanReadAuditTrailMemberAsync(actor, "ChangedBy");
+        var canReadIpAddress = await CanReadAuditTrailMemberAsync(actor, "IpAddress");
+        var canReadCorrelationId = await CanReadAuditTrailMemberAsync(actor, "CorrelationId");
+        var canReadReason = await CanReadAuditTrailMemberAsync(actor, "Reason");
+        var canReadUserAgent = await CanReadAuditTrailMemberAsync(actor, "UserAgent");
+        var canReadSessionId = await CanReadAuditTrailMemberAsync(actor, "SessionId");
+        if (request.NormalizedSortBy == "changedby" && !canReadChangedBy) return Forbid();
+
         var query = _context.AuditTrails.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(entityName)) query = query.Where(item => item.EntityName == entityName.Trim());
-        if (!string.IsNullOrWhiteSpace(entityId)) query = query.Where(item => item.EntityId == entityId.Trim());
+        if (!string.IsNullOrWhiteSpace(entityId))
+        {
+            if (!canReadEntityId) return Forbid();
+            query = query.Where(item => item.EntityId == entityId.Trim());
+        }
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch;
-            query = query.Where(item => item.EntityName.Contains(search) || item.EntityId.Contains(search)
-                || item.Action.Contains(search) || item.ChangedBy.Contains(search)
-                || (item.Reason != null && item.Reason.Contains(search))
-                || (item.CorrelationId != null && item.CorrelationId.Contains(search)));
+            query = query.Where(item => item.EntityName.Contains(search) || item.Action.Contains(search)
+                || canReadEntityId && item.EntityId.Contains(search)
+                || canReadChangedBy && item.ChangedBy.Contains(search)
+                || canReadReason && item.Reason != null && item.Reason.Contains(search)
+                || canReadCorrelationId && item.CorrelationId != null && item.CorrelationId.Contains(search));
         }
 
         var totalCount = await query.CountAsync();
@@ -141,8 +172,20 @@ public class AuditController : ControllerBase
             (_, false) => query.OrderBy(item => item.ChangedAt).ThenBy(item => item.Id),
             _ => query.OrderByDescending(item => item.ChangedAt).ThenByDescending(item => item.Id)
         };
-        var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var rows = await query.Skip(request.Offset).Take(request.PageSize)
+            .Select(item => new AuditTrailEntryResponse(item.PublicId, item.MunicipalityId, item.EntityName,
+                canReadEntityId ? item.EntityId : null, item.Action,
+                canReadOldValue ? item.OldValue : null,
+                canReadNewValue ? item.NewValue : null,
+                canReadChangedBy ? item.ChangedBy : null,
+                item.ChangedAt,
+                canReadIpAddress ? item.IpAddress : null,
+                canReadCorrelationId ? item.CorrelationId : null,
+                canReadReason ? item.Reason : null,
+                canReadUserAgent ? item.UserAgent : null,
+                canReadSessionId ? item.SessionId : null))
+            .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<AuditTrailEntryResponse>>(true,
-            PagedResponse<AuditTrailEntryResponse>.Create(rows.Select(item => item.ToResponse()), request.Page, request.PageSize, totalCount)));
+            PagedResponse<AuditTrailEntryResponse>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
 }

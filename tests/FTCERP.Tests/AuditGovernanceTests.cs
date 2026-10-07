@@ -39,7 +39,7 @@ public sealed class AuditGovernanceTests
     {
         var method = typeof(AuditController).GetMethod(nameof(AuditController.GetAuditTrailsPage))!;
         var authorization = method.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().Single();
-        authorization.Policy.Should().Be("Permission:Audit.Trails.View");
+        authorization.Policy.Should().Be("Permission:AUDIT_TRAIL.READ");
         method.GetCustomAttributes(typeof(HttpGetAttribute), true).Cast<HttpGetAttribute>().Select(item => item.Template)
             .Should().Contain("/api/v1/audit/trails/page");
     }
