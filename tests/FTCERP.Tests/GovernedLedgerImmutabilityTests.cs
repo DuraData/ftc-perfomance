@@ -178,4 +178,28 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be hard deleted*");
     }
+
+    [Fact]
+    public async Task Official_report_job_request_identity_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var job = new OfficialReportJob { Id = 91 };
+        context.Attach(job);
+        context.Entry(job).Property(nameof(OfficialReportJob.ReportTemplateId)).IsModified = true;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*request identity is immutable*");
+    }
+
+    [Fact]
+    public async Task Official_report_job_history_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new OfficialReportJob { Id = 92 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
 }

@@ -2185,6 +2185,16 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Official report templates and generated report history are append-only.");
         if (ChangeTracker.Entries<OfficialReportSchedule>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("Official report schedule versions cannot be deleted.");
+        foreach (var entry in ChangeTracker.Entries<OfficialReportJob>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Official report job history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(OfficialReportJob.OfficialReportGenerationId), nameof(OfficialReportJob.DistributionOutboxId), nameof(OfficialReportJob.State),
+                    nameof(OfficialReportJob.AvailableAt), nameof(OfficialReportJob.AttemptCount), nameof(OfficialReportJob.StartedAt),
+                    nameof(OfficialReportJob.CompletedAt), nameof(OfficialReportJob.LastError), nameof(OfficialReportJob.RetryReason), nameof(OfficialReportJob.RowVersion)],
+                "Official report job request identity is immutable; only execution and delivery lifecycle state may change.");
+        }
         if (ChangeTracker.Entries<NotificationConfiguration>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<NotificationScheduleRule>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<WorkingCalendarHoliday>().Any(entry => entry.State == EntityState.Deleted))
