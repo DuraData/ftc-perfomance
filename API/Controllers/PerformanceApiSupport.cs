@@ -531,7 +531,7 @@ public static class PerformanceApiSupport
 
     public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context, PoeResponseMemberAccess? memberAccess = null)
     {
-        memberAccess ??= PoeResponseMemberAccess.Full;
+        memberAccess ??= PoeResponseMemberAccess.None;
         return new(
             file.Id,
             file.SubmissionKind.ToString(),
@@ -555,30 +555,49 @@ public static class PerformanceApiSupport
             ScanDetail = memberAccess.ScanDetail ? file.Blob.ScanDetail : null,
             ScannedAt = file.Blob.ScannedAt,
             RetainUntil = file.RetainUntil,
-            Assessments = file.Assessments.OrderBy(item => item.AssessedAt).Select(item => new PoeEvidenceAssessmentResponse(item.PublicId, item.Outcome.ToString(), item.Comment, item.AssessedByUserId, item.AssessedByUser?.FullName, item.AssessedAt, item.CorrelationId)).ToArray(),
+            Assessments = file.Assessments.OrderBy(item => item.AssessedAt).Select(item => new PoeEvidenceAssessmentResponse(
+                item.PublicId, item.Outcome.ToString(), memberAccess.AssessmentComment ? item.Comment : null,
+                memberAccess.AssessedByUserId ? item.AssessedByUserId : null,
+                memberAccess.AssessedByName ? item.AssessedByUser?.FullName : null,
+                item.AssessedAt, memberAccess.AssessmentCorrelationId ? item.CorrelationId : null)).ToArray(),
             RowVersion = Convert.ToBase64String(file.RowVersion),
-            ReplacementOf = file.ReplacementAsNew == null ? null : ToReplacementResponse(file.ReplacementAsNew),
-            ReplacedBy = file.ReplacementsAsOld.OrderByDescending(item => item.ReplacedAt).Select(ToReplacementResponse).FirstOrDefault()
-            , LegalHolds = file.LegalHoldEvents.GroupBy(item => item.HoldId).Select(group => ToLegalHoldResponse(group.OrderBy(item => item.OccurredAt).ToArray())).OrderByDescending(item => item.PlacedAt).ToArray(),
+            ReplacementOf = file.ReplacementAsNew == null ? null : ToReplacementResponse(file.ReplacementAsNew, memberAccess),
+            ReplacedBy = file.ReplacementsAsOld.OrderByDescending(item => item.ReplacedAt).Select(item => ToReplacementResponse(item, memberAccess)).FirstOrDefault()
+            , LegalHolds = file.LegalHoldEvents.GroupBy(item => item.HoldId).Select(group => ToLegalHoldResponse(group.OrderBy(item => item.OccurredAt).ToArray(), memberAccess)).OrderByDescending(item => item.PlacedAt).ToArray(),
             IsActive = file.IsActive,
-            Disposals = file.DisposalEvents.GroupBy(item => item.DisposalId).Select(group => ToDisposalResponse(group.OrderBy(item => item.OccurredAt).ToArray())).OrderByDescending(item => item.RequestedAt).ToArray()
+            Disposals = file.DisposalEvents.GroupBy(item => item.DisposalId).Select(group => ToDisposalResponse(group.OrderBy(item => item.OccurredAt).ToArray(), memberAccess)).OrderByDescending(item => item.RequestedAt).ToArray()
             , IsContentDeleted = file.Blob.IsContentDeleted
         };
     }
 
-    private static PoeEvidenceReplacementResponse ToReplacementResponse(PoeEvidenceReplacement item) => new(item.PublicId, item.SupersededPoeFile.PublicId, item.SupersededPoeFile.FileName, item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName, item.Reason, item.ReplacedByUserId, item.ReplacedByUser?.FullName, item.ReplacedAt, item.CorrelationId);
-    private static PoeLegalHoldResponse ToLegalHoldResponse(PoeLegalHoldEvent[] events)
+    private static PoeEvidenceReplacementResponse ToReplacementResponse(PoeEvidenceReplacement item, PoeResponseMemberAccess memberAccess) => new(
+        item.PublicId, item.SupersededPoeFile.PublicId, item.SupersededPoeFile.FileName,
+        item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName, item.Reason,
+        memberAccess.ReplacedByUserId ? item.ReplacedByUserId : null,
+        memberAccess.ReplacedByName ? item.ReplacedByUser?.FullName : null,
+        item.ReplacedAt, memberAccess.ReplacementCorrelationId ? item.CorrelationId : null);
+    private static PoeLegalHoldResponse ToLegalHoldResponse(PoeLegalHoldEvent[] events, PoeResponseMemberAccess memberAccess)
     {
         var placed = events.First(item => item.Action == PoeLegalHoldAction.Placed);
         var released = events.LastOrDefault(item => item.Action == PoeLegalHoldAction.Released);
-        return new(placed.HoldId, placed.HoldReference, released == null, placed.Reason, placed.ActorUserId, placed.ActorUser?.FullName, placed.OccurredAt, released?.Reason, released?.ActorUserId, released?.ActorUser?.FullName, released?.OccurredAt);
+        return new(placed.HoldId, placed.HoldReference, released == null, placed.Reason,
+            memberAccess.LegalHoldActorUserId ? placed.ActorUserId : null,
+            memberAccess.LegalHoldActorName ? placed.ActorUser?.FullName : null,
+            placed.OccurredAt, released?.Reason,
+            memberAccess.LegalHoldActorUserId ? released?.ActorUserId : null,
+            memberAccess.LegalHoldActorName ? released?.ActorUser?.FullName : null,
+            released?.OccurredAt);
     }
-    private static PoeDisposalResponse ToDisposalResponse(PoeDisposalEvent[] events)
+    private static PoeDisposalResponse ToDisposalResponse(PoeDisposalEvent[] events, PoeResponseMemberAccess memberAccess)
     {
         var requested = events.First(item => item.Action == PoeDisposalAction.Requested);
         var completed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Completed);
         var failed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Failed);
         var status = completed != null ? "Completed" : failed != null ? "Failed" : "Pending";
-        return new(requested.DisposalId, status, requested.ApprovalReference, requested.Reason, requested.ActorUserId, requested.ActorUser?.FullName, requested.OccurredAt, completed?.OccurredAt, failed?.OccurredAt, completed?.Detail ?? failed?.Detail);
+        return new(requested.DisposalId, status, requested.ApprovalReference, requested.Reason,
+            memberAccess.DisposalRequestedByUserId ? requested.ActorUserId : null,
+            memberAccess.DisposalRequestedByName ? requested.ActorUser?.FullName : null,
+            requested.OccurredAt, completed?.OccurredAt, failed?.OccurredAt,
+            memberAccess.DisposalDetail ? completed?.Detail ?? failed?.Detail : null);
     }
 }

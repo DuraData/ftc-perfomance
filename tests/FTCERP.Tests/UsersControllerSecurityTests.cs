@@ -133,10 +133,17 @@ public sealed class UsersControllerSecurityTests
                 .Where(item => item.ResourceCode == resourceCode)
                 .OrderBy(item => item.MemberCode)
                 .ToArrayAsync();
-            Assert.Equal(new[] { "ScanDetail", "ScannerProvider", "ScannerReference", "UploadedByName", "UploadedByUserId" },
+            Assert.Equal(new[]
+                {
+                    "AssessedByName", "AssessedByUserId", "AssessmentComment", "AssessmentCorrelationId",
+                    "DisposalDetail", "DisposalRequestedByName", "DisposalRequestedByUserId",
+                    "LegalHoldActorName", "LegalHoldActorUserId", "ReplacedByName", "ReplacedByUserId",
+                    "ReplacementCorrelationId", "ScanDetail", "ScannerProvider", "ScannerReference",
+                    "UploadedByName", "UploadedByUserId"
+                },
                 evidenceMembers.Select(item => item.MemberCode));
             Assert.All(evidenceMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
-            Assert.Equal(5, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
+            Assert.Equal(17, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
             Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
         }
 

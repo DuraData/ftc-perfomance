@@ -193,11 +193,96 @@ public sealed class RegisterPaginationTests
         Assert.Equal("protected-reference-2", refreshed.ScannerReference);
         Assert.Equal("protected-detail-2", refreshed.ScanDetail);
         access.Verify(service => service.CheckPermissionAsync(user, "OPMS_POE.READ", It.IsAny<AccessScopeContext?>()), Times.AtLeastOnce);
+        foreach (var member in new[]
+                 {
+                     "AssessmentComment", "AssessedByUserId", "AssessedByName", "AssessmentCorrelationId",
+                     "ReplacedByUserId", "ReplacedByName", "ReplacementCorrelationId",
+                     "LegalHoldActorUserId", "LegalHoldActorName", "DisposalRequestedByUserId",
+                     "DisposalRequestedByName", "DisposalDetail"
+                 })
+            access.Verify(service => service.CheckPermissionAsync(user, $"OPMS_POE.{member}.READ", It.IsAny<AccessScopeContext?>()), Times.AtLeastOnce);
         var retired = Assert.IsType<ObjectResult>(controller.GetAttachments(submission.Id).Result);
         Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
 
         var invalidSort = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest { SortBy = "unsafe" });
         Assert.IsType<BadRequestObjectResult>(invalidSort.Result);
+    }
+
+    [Fact]
+    public void Poe_governance_response_masks_nested_sensitive_members()
+    {
+        var actor = IdpTestFixture.CreateUser("poe-governance-actor", "Evidence", "Auditor");
+        var prior = new PoeFile { Id = "prior", PublicId = Guid.NewGuid(), FileName = "prior.pdf" };
+        var evidence = new PoeFile
+        {
+            Id = "current", PublicId = Guid.NewGuid(), SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "submission", FileName = "current.pdf", UploadedByUserId = actor.Id,
+            UploadedByUser = actor, Blob = new EvidenceBlob
+            {
+                PublicId = Guid.NewGuid(), ContentType = "application/pdf", SizeInBytes = 100,
+                Sha256 = new string('a', 64), ScanStatus = "Clean", ScannerProvider = "scanner",
+                ScannerReference = "scan-reference", ScanDetail = "scan-detail"
+            }
+        };
+        evidence.Assessments.Add(new PoeEvidenceAssessment
+        {
+            PublicId = Guid.NewGuid(), Outcome = PoeAssessmentOutcome.Accepted, Comment = "protected assessment",
+            AssessedByUserId = actor.Id, AssessedByUser = actor, CorrelationId = "assessment-correlation"
+        });
+        evidence.ReplacementAsNew = new PoeEvidenceReplacement
+        {
+            PublicId = Guid.NewGuid(), SupersededPoeFile = prior, ReplacementPoeFile = evidence,
+            Reason = "approved replacement", ReplacedByUserId = actor.Id, ReplacedByUser = actor,
+            CorrelationId = "replacement-correlation"
+        };
+        var holdId = Guid.NewGuid();
+        evidence.LegalHoldEvents.Add(new PoeLegalHoldEvent
+        {
+            HoldId = holdId, Action = PoeLegalHoldAction.Placed, HoldReference = "CASE-1",
+            Reason = "investigation", ActorUserId = actor.Id, ActorUser = actor
+        });
+        var disposalId = Guid.NewGuid();
+        evidence.DisposalEvents.Add(new PoeDisposalEvent
+        {
+            DisposalId = disposalId, Action = PoeDisposalAction.Requested, ApprovalReference = "COUNCIL-1",
+            Reason = "retention elapsed", ActorUserId = actor.Id, ActorUser = actor
+        });
+        evidence.DisposalEvents.Add(new PoeDisposalEvent
+        {
+            DisposalId = disposalId, Action = PoeDisposalAction.Failed, ApprovalReference = "COUNCIL-1",
+            Reason = "retention elapsed", ActorUserId = actor.Id, ActorUser = actor, Detail = "protected failure detail"
+        });
+        var http = new DefaultHttpContext();
+        http.Request.Scheme = "https";
+        http.Request.Host = new HostString("opms.local");
+
+        var denied = evidence.ToResponse(http, PoeResponseMemberAccess.None);
+        var deniedAssessment = Assert.Single(denied.Assessments);
+        Assert.Null(deniedAssessment.Comment);
+        Assert.Null(deniedAssessment.AssessedByUserId);
+        Assert.Null(deniedAssessment.AssessedByName);
+        Assert.Null(deniedAssessment.CorrelationId);
+        Assert.Null(denied.ReplacementOf!.ReplacedByUserId);
+        Assert.Null(denied.ReplacementOf.ReplacedByName);
+        Assert.Null(denied.ReplacementOf.CorrelationId);
+        Assert.Null(Assert.Single(denied.LegalHolds).PlacedByUserId);
+        var deniedDisposal = Assert.Single(denied.Disposals);
+        Assert.Null(deniedDisposal.RequestedByUserId);
+        Assert.Null(deniedDisposal.RequestedByName);
+        Assert.Null(deniedDisposal.Detail);
+
+        var allowed = evidence.ToResponse(http, PoeResponseMemberAccess.Full);
+        var allowedAssessment = Assert.Single(allowed.Assessments);
+        Assert.Equal("protected assessment", allowedAssessment.Comment);
+        Assert.Equal(actor.Id, allowedAssessment.AssessedByUserId);
+        Assert.Equal(actor.FullName, allowedAssessment.AssessedByName);
+        Assert.Equal("assessment-correlation", allowedAssessment.CorrelationId);
+        Assert.Equal(actor.Id, allowed.ReplacementOf!.ReplacedByUserId);
+        Assert.Equal("replacement-correlation", allowed.ReplacementOf.CorrelationId);
+        Assert.Equal(actor.Id, Assert.Single(allowed.LegalHolds).PlacedByUserId);
+        var allowedDisposal = Assert.Single(allowed.Disposals);
+        Assert.Equal(actor.Id, allowedDisposal.RequestedByUserId);
+        Assert.Equal("protected failure detail", allowedDisposal.Detail);
     }
 
     [Fact]

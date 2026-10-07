@@ -33,17 +33,34 @@ public record PoeFileResponse(
     public bool IsContentDeleted { get; init; }
 }
 
-public record PoeEvidenceAssessmentResponse(Guid PublicId, string Outcome, string? Comment, string AssessedByUserId, string? AssessedByName, DateTime AssessedAt, string CorrelationId);
-public record PoeEvidenceReplacementResponse(Guid PublicId, Guid SupersededEvidencePublicId, string SupersededFileName, Guid ReplacementEvidencePublicId, string ReplacementFileName, string Reason, string ReplacedByUserId, string? ReplacedByName, DateTime ReplacedAt, string CorrelationId);
-public record PoeLegalHoldResponse(Guid HoldId, string HoldReference, bool IsActive, string PlacedReason, string PlacedByUserId, string? PlacedByName, DateTime PlacedAt, string? ReleasedReason, string? ReleasedByUserId, string? ReleasedByName, DateTime? ReleasedAt);
-public record PoeDisposalResponse(Guid DisposalId, string Status, string ApprovalReference, string Reason, string RequestedByUserId, string? RequestedByName, DateTime RequestedAt, DateTime? CompletedAt, DateTime? FailedAt, string? Detail);
+public record PoeEvidenceAssessmentResponse(Guid PublicId, string Outcome, string? Comment, string? AssessedByUserId, string? AssessedByName, DateTime AssessedAt, string? CorrelationId);
+public record PoeEvidenceReplacementResponse(Guid PublicId, Guid SupersededEvidencePublicId, string SupersededFileName, Guid ReplacementEvidencePublicId, string ReplacementFileName, string Reason, string? ReplacedByUserId, string? ReplacedByName, DateTime ReplacedAt, string? CorrelationId);
+public record PoeLegalHoldResponse(Guid HoldId, string HoldReference, bool IsActive, string PlacedReason, string? PlacedByUserId, string? PlacedByName, DateTime PlacedAt, string? ReleasedReason, string? ReleasedByUserId, string? ReleasedByName, DateTime? ReleasedAt);
+public record PoeDisposalResponse(Guid DisposalId, string Status, string ApprovalReference, string Reason, string? RequestedByUserId, string? RequestedByName, DateTime RequestedAt, DateTime? CompletedAt, DateTime? FailedAt, string? Detail);
 
 public sealed record PoeResponseMemberAccess(
     bool UploadedByUserId,
     bool UploadedByName,
     bool ScannerProvider,
     bool ScannerReference,
-    bool ScanDetail)
+    bool ScanDetail,
+    bool AssessmentComment,
+    bool AssessedByUserId,
+    bool AssessedByName,
+    bool AssessmentCorrelationId,
+    bool ReplacedByUserId,
+    bool ReplacedByName,
+    bool ReplacementCorrelationId,
+    bool LegalHoldActorUserId,
+    bool LegalHoldActorName,
+    bool DisposalRequestedByUserId,
+    bool DisposalRequestedByName,
+    bool DisposalDetail)
 {
-    public static PoeResponseMemberAccess Full { get; } = new(true, true, true, true, true);
+    public static PoeResponseMemberAccess None { get; } = new(
+        false, false, false, false, false, false, false, false, false,
+        false, false, false, false, false, false, false, false);
+    public static PoeResponseMemberAccess Full { get; } = new(
+        true, true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true);
 }

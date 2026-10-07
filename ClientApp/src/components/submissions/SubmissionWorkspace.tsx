@@ -543,6 +543,18 @@ export function SubmissionWorkspace({
   const canManageConsolidation = canEditActual;
   const canReadPoeUploader = security.canReadField(poeResourceCode, 'UploadedByUserId') || security.canReadField(poeResourceCode, 'UploadedByName');
   const canReadPoeScanDetail = security.canReadField(poeResourceCode, 'ScanDetail');
+  const canReadAssessmentComment = security.canReadField(poeResourceCode, 'AssessmentComment');
+  const canReadAssessorId = security.canReadField(poeResourceCode, 'AssessedByUserId');
+  const canReadAssessorName = security.canReadField(poeResourceCode, 'AssessedByName');
+  const canReadAssessmentCorrelation = security.canReadField(poeResourceCode, 'AssessmentCorrelationId');
+  const canReadReplacementActorId = security.canReadField(poeResourceCode, 'ReplacedByUserId');
+  const canReadReplacementActorName = security.canReadField(poeResourceCode, 'ReplacedByName');
+  const canReadReplacementCorrelation = security.canReadField(poeResourceCode, 'ReplacementCorrelationId');
+  const canReadHoldActorId = security.canReadField(poeResourceCode, 'LegalHoldActorUserId');
+  const canReadHoldActorName = security.canReadField(poeResourceCode, 'LegalHoldActorName');
+  const canReadDisposalActorId = security.canReadField(poeResourceCode, 'DisposalRequestedByUserId');
+  const canReadDisposalActorName = security.canReadField(poeResourceCode, 'DisposalRequestedByName');
+  const canReadDisposalDetail = security.canReadField(poeResourceCode, 'DisposalDetail');
 
   const smallTitle = `${titlePrefix}`;
   const pageTitle = `Submission: ${submissionType}-${currentSubmission.quarter}-${currentSubmission.id.padStart(4, '0')}`;
@@ -571,13 +583,35 @@ export function SubmissionWorkspace({
     scanStatus: attachment.scanStatus,
     isQuarantined: attachment.isQuarantined,
     scanDetail: canReadPoeScanDetail ? attachment.scanDetail : undefined,
-    assessments: attachment.assessments,
+    assessments: attachment.assessments?.map(item => ({
+      ...item,
+      comment: canReadAssessmentComment ? item.comment : undefined,
+      assessedByUserId: canReadAssessorId ? item.assessedByUserId : undefined,
+      assessedByName: canReadAssessorName ? item.assessedByName : undefined,
+      correlationId: canReadAssessmentCorrelation ? item.correlationId : undefined,
+    })),
     rowVersion: attachment.rowVersion,
-    replacementOf: attachment.replacementOf,
-    legalHolds: attachment.legalHolds,
+    replacementOf: attachment.replacementOf ? {
+      ...attachment.replacementOf,
+      replacedByUserId: canReadReplacementActorId ? attachment.replacementOf.replacedByUserId : undefined,
+      replacedByName: canReadReplacementActorName ? attachment.replacementOf.replacedByName : undefined,
+      correlationId: canReadReplacementCorrelation ? attachment.replacementOf.correlationId : undefined,
+    } : attachment.replacementOf,
+    legalHolds: attachment.legalHolds?.map(item => ({
+      ...item,
+      placedByUserId: canReadHoldActorId ? item.placedByUserId : undefined,
+      placedByName: canReadHoldActorName ? item.placedByName : undefined,
+      releasedByUserId: canReadHoldActorId ? item.releasedByUserId : undefined,
+      releasedByName: canReadHoldActorName ? item.releasedByName : undefined,
+    })),
     isActive: attachment.isActive,
     retainUntil: attachment.retainUntil,
-    disposals: attachment.disposals,
+    disposals: attachment.disposals?.map(item => ({
+      ...item,
+      requestedByUserId: canReadDisposalActorId ? item.requestedByUserId : undefined,
+      requestedByName: canReadDisposalActorName ? item.requestedByName : undefined,
+      detail: canReadDisposalDetail ? item.detail : undefined,
+    })),
     isContentDeleted: attachment.isContentDeleted,
     progress: 100,
   }));

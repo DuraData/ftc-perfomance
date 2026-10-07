@@ -137,6 +137,28 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.getByText(/Authorized Uploader/)).toBeInTheDocument();
   });
 
+  it('does not render nested POE governance secrets supplied by a hostile API payload', async () => {
+    api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [{
+        id: 'evidence-governance', publicId: 'public-governance', fileName: 'governed.pdf', fileSize: 10,
+        fileType: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence',
+        url: '/content/governance', scanStatus: 'Clean', isActive: false, retainUntil: '2020-01-01T00:00:00Z',
+        assessments: [{ publicId: 'assessment-1', outcome: 'Accepted', comment: 'Secret assessment note', assessedByUserId: 'secret-assessor-id', assessedByName: 'Secret Assessor', assessedAt: '2026-10-02T00:00:00Z', correlationId: 'secret-assessment-correlation' }],
+        legalHolds: [{ holdId: 'hold-1', holdReference: 'CASE-1', isActive: true, placedReason: 'Preservation', placedByUserId: 'secret-legal-id', placedByName: 'Secret Legal Actor', placedAt: '2026-10-03T00:00:00Z' }],
+        disposals: [{ disposalId: 'disposal-1', status: 'Failed', approvalReference: 'COUNCIL-1', reason: 'Retention elapsed', requestedByUserId: 'secret-disposal-id', requestedByName: 'Secret Disposal Actor', requestedAt: '2026-10-04T00:00:00Z', detail: 'Secret disposal failure' }],
+      }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    await waitFor(() => expect(screen.getByText('governed.pdf')).toBeInTheDocument());
+    for (const secret of ['Secret assessment note', 'Secret Assessor', 'Secret Legal Actor', 'Secret Disposal Actor', 'Secret disposal failure'])
+      expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'AssessmentComment');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'DisposalDetail');
+  });
+
   it('loads and navigates the bounded consolidation history register', async () => {
     security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
     const midyear = { ...submission, quarter: 'Mid-Year', systemSuggestedActualPerformance: '50' } as OPMSSubmission;

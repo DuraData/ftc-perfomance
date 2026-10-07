@@ -532,7 +532,7 @@ public class IpmsSubmissionsController : ControllerBase
         }
 
         var created = await _context.PoeFiles.IncludePoeGovernance().FirstAsync(item => item.Id == entity.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", entity.Id, "Upload", null, created.ToResponse(HttpContext), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", entity.Id, "Upload", null, created.ToResponse(HttpContext, PoeResponseMemberAccess.Full), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await _workflowGovernanceService.CreateWorkflowNotificationsAsync(GetRelevantUserIds(submission), NotificationType.Submission, "IPMS evidence uploaded", $"A POE file was uploaded for IPMS submission '{id}'.", "IpmsSubmission", id);
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(created, user, BuildScope(submission))));
     }
@@ -1050,7 +1050,19 @@ public class IpmsSubmissionsController : ControllerBase
             await CanReadAsync("UploadedByName"),
             await CanReadAsync("ScannerProvider"),
             await CanReadAsync("ScannerReference"),
-            await CanReadAsync("ScanDetail"));
+            await CanReadAsync("ScanDetail"),
+            await CanReadAsync("AssessmentComment"),
+            await CanReadAsync("AssessedByUserId"),
+            await CanReadAsync("AssessedByName"),
+            await CanReadAsync("AssessmentCorrelationId"),
+            await CanReadAsync("ReplacedByUserId"),
+            await CanReadAsync("ReplacedByName"),
+            await CanReadAsync("ReplacementCorrelationId"),
+            await CanReadAsync("LegalHoldActorUserId"),
+            await CanReadAsync("LegalHoldActorName"),
+            await CanReadAsync("DisposalRequestedByUserId"),
+            await CanReadAsync("DisposalRequestedByName"),
+            await CanReadAsync("DisposalDetail"));
     }
 
     private async Task<string?> ConsolidationPermissionDenialAsync(ApplicationUser user, IpmsSubmission submission, bool update)
