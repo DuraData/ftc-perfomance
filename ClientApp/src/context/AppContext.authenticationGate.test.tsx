@@ -33,6 +33,7 @@ function Harness() {
     <button type="button" onClick={() => void app.login('admin@opms.local', 'local-test-password')}>Sign in</button>
     <output aria-label="path">{app.currentPath}</output>
     <output aria-label="menu">{app.menuItems.map(item => item.code).join(',')}</output>
+    <output aria-label="access-ready">{String(app.accessReady)}</output>
   </>;
 }
 
@@ -65,6 +66,7 @@ describe('mandatory account-security bootstrap', () => {
     expect(canAccessPath('/dashboard', RESTRICTED_ACCOUNT_MENU)).toBe(false);
     expect(localStorage.getItem('authentication_gate')).toBe('password_change');
     expect(getMyTenantContextsPage).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('access-ready')).toHaveTextContent('true');
   });
 
   it('recovers an existing first-login session from the former access-denied screen', async () => {
@@ -79,5 +81,26 @@ describe('mandatory account-security bootstrap', () => {
     expect(screen.getByLabelText('menu')).toHaveTextContent('NAV.ACCOUNT.SECURITY');
     expect(window.location.pathname).toBe('/settings');
     expect(getMyTenantContextsPage).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('access-ready')).toHaveTextContent('true');
+  });
+
+  it('does not resolve an empty menu as access denied while tenant access is loading', async () => {
+    let resolveContexts!: (value: Awaited<ReturnType<typeof getMyTenantContextsPage>>) => void;
+    vi.mocked(getMyTenantContextsPage).mockReturnValue(new Promise(resolve => { resolveContexts = resolve; }));
+    localStorage.setItem('user_profile', JSON.stringify({ ...requiredUser, mustChangePassword: false }));
+    localStorage.setItem('roles', JSON.stringify(['Super Admin']));
+    window.history.replaceState({}, '', '/dashboard');
+
+    render(<AppProvider><Harness /></AppProvider>);
+
+    await waitFor(() => expect(getMyTenantContextsPage).toHaveBeenCalled());
+    expect(screen.getByLabelText('access-ready')).toHaveTextContent('false');
+    expect(screen.getByLabelText('menu')).toBeEmptyDOMElement();
+
+    resolveContexts({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
+    await waitFor(() => expect(screen.getByLabelText('access-ready')).toHaveTextContent('true'));
   });
 });

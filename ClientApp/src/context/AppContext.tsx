@@ -33,6 +33,7 @@ interface AppContextType {
   roles: string[];
   permissions: string[];
   menuItems: MenuItem[];
+  accessReady: boolean;
   tenantContexts: TenantContextDto[];
   tenantContextPage: number;
   tenantContextTotalPages: number;
@@ -94,6 +95,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [accessReady, setAccessReady] = useState(!isAuthenticated());
   const [tenantContexts, setTenantContexts] = useState<TenantContextDto[]>([]);
   const [tenantContextPage, setTenantContextPage] = useState(1);
   const [tenantContextTotalPages, setTenantContextTotalPages] = useState(0);
@@ -175,7 +177,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (userProfile && authenticationGate === null) void loadTenantContexts(tenantContextPage, tenantContextSearch);
+    if (userProfile && authenticationGate === null) {
+      void loadTenantContexts(tenantContextPage, tenantContextSearch).finally(() => setAccessReady(true));
+    }
   }, [authenticationGate, loadTenantContexts, tenantContextPage, tenantContextSearch, userProfile]);
 
   const switchMunicipality = useCallback(async (municipalityId: number) => {
@@ -222,6 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
         window.history.replaceState({}, '', '/settings');
         setCurrentPathState('/settings');
+        setAccessReady(true);
       } else {
         setPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
         setMenuItems(storedMenu ? JSON.parse(storedMenu) as MenuItem[] : []);
@@ -255,6 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const result = await apiLogin({ email, password, twoFactorCode, recoveryCode });
     if (result.success && result.data) {
       const data = result.data as LoginResponse;
+      setAccessReady(false);
       setUserProfile(data.user);
       setRoles(data.roles ?? []);
       setCurrentMunicipalityId(null);
@@ -272,6 +278,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
         safeSetItem('settings_active_tab', 'security');
         setCurrentPath('/settings');
+        setAccessReady(true);
         return 'password_change_required';
       }
       if (data.mfaEnrollmentRequired) {
@@ -281,11 +288,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         safeSetItem('menu_items', JSON.stringify(RESTRICTED_ACCOUNT_MENU));
         safeSetItem('settings_active_tab', 'security');
         setCurrentPath('/settings');
+        setAccessReady(true);
         return 'mfa_enrollment_required';
       }
       setAuthenticationGate(null);
       safeRemoveItem(AUTHENTICATION_GATE_STORAGE_KEY);
       await loadTenantContexts();
+      setAccessReady(true);
       setCurrentPath('/dashboard');
       return 'success';
     }
@@ -296,6 +305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const result = await completeEnterpriseLogin();
     if (!result.success || !result.data) return 'failed';
     const data = result.data;
+    setAccessReady(false);
     setUserProfile(data.user);
     setRoles(data.roles ?? []);
     setCurrentMunicipalityId(null);
@@ -315,11 +325,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       safeSetItem('settings_active_tab', 'security');
       window.history.replaceState({}, '', '/settings');
       setCurrentPathState('/settings');
+      setAccessReady(true);
       return 'success';
     }
     setAuthenticationGate(null);
     safeRemoveItem(AUTHENTICATION_GATE_STORAGE_KEY);
     await loadTenantContexts();
+    setAccessReady(true);
     window.history.replaceState({}, '', '/dashboard');
     setCurrentPathState('/dashboard');
     return 'success';
@@ -331,6 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRoles([]);
     setPermissions([]);
     setMenuItems([]);
+    setAccessReady(true);
     setTenantContexts([]);
     setTenantContextPage(1);
     setTenantContextTotalPages(0);
@@ -396,6 +409,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         roles,
         permissions,
         menuItems,
+        accessReady,
         tenantContexts,
         tenantContextPage,
         tenantContextTotalPages,

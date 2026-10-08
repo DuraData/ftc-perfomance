@@ -64,11 +64,15 @@ const RiskHeatmapPage = lazy(() => import('./components/risk/RiskWorkspace').the
 const RiskReportsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskReportsPage })));
 
 function AppContent() {
-  const { currentPath, isAuthenticated } = useApp();
+  const { currentPath, isAuthenticated, accessReady } = useApp();
   const canAccessPath = useCanAccessPath(currentPath);
 
   if (!isAuthenticated) {
     return <Login />;
+  }
+
+  if (!accessReady) {
+    return <div role="status" aria-live="polite" className="flex min-h-screen items-center justify-center bg-secondary-50 p-6 text-sm text-secondary-600 dark:bg-secondary-950 dark:text-secondary-300">Loading your authorised workspace…</div>;
   }
 
   if (!canAccessPath) {
