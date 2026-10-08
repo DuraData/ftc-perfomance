@@ -1556,7 +1556,7 @@ export async function getReportingWindowsPage(query: GovernancePageQuery = {}): 
   return get<PagedResult<ReportingWindowDto>>(`/v1/workflow/reporting-windows/page${governancePageQuery(query)}`);
 }
 
-export async function createReportingWindow(payload: { reportingPeriodPublicId: string; submissionKind: number; opensAt: string; closesAt: string }): Promise<ApiResponse<ReportingWindowDto>> {
+export async function createReportingWindow(payload: { reportingPeriodPublicId: string; submissionKind: number; opensAt: string; closesAt: string; reason: string }): Promise<ApiResponse<ReportingWindowDto>> {
   return post<ReportingWindowDto>('/v1/workflow/reporting-windows', payload);
 }
 

@@ -162,6 +162,7 @@ describe('WorkflowGovernanceAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Windows' }));
     expect(screen.getByText('Open a reporting window')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Governance reason/ })).toBeInTheDocument();
     expect(await screen.findByRole('option', { name: /Q1 · Quarter 1/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Ratings' }));

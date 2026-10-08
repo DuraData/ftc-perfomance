@@ -217,12 +217,22 @@ public sealed class WorkflowConfigurationController(
     public async Task<ActionResult<ApiResponse<ReportingWindowDto>>> CreateWindow(SaveReportingWindowRequest request)
     {
         if (!HasTenant()) return TenantRequired<ReportingWindowDto>();
-        if (request.ClosesAt <= request.OpensAt) return BadRequest(Fail<ReportingWindowDto>("Window close must be after open."));
+        var actor = await CurrentUser();
+        if (actor == null) return Unauthorized(Fail<ReportingWindowDto>("User not found."));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 10 or > 1000)
+            return BadRequest(Fail<ReportingWindowDto>("A governance reason of 10 to 1000 characters is required."));
+        if (request.OpensAt.Kind == DateTimeKind.Unspecified || request.ClosesAt.Kind == DateTimeKind.Unspecified || request.ClosesAt <= request.OpensAt)
+            return BadRequest(Fail<ReportingWindowDto>("Timezone-aware opening and closing times are required, and close must be after open."));
         var period = await context.ReportingPeriods.SingleOrDefaultAsync(x => x.PublicId == request.ReportingPeriodPublicId);
         if (period == null) return BadRequest(Fail<ReportingWindowDto>("Reporting period not found."));
         if (await context.ReportingWindows.AnyAsync(x => x.ReportingPeriodId == period.Id && x.SubmissionKind == request.SubmissionKind)) return Conflict(Fail<ReportingWindowDto>("A reporting window already exists for this period and submission type."));
-        var entity = new ReportingWindow { MunicipalityId = tenantContext.MunicipalityId!.Value, ReportingPeriodId = period.Id, ReportingPeriod = period, SubmissionKind = request.SubmissionKind, OpensAt = request.OpensAt, ClosesAt = request.ClosesAt };
-        context.ReportingWindows.Add(entity); await context.SaveChangesAsync();
+        var entity = new ReportingWindow { MunicipalityId = tenantContext.MunicipalityId!.Value, ReportingPeriodId = period.Id, ReportingPeriod = period, SubmissionKind = request.SubmissionKind, OpensAt = request.OpensAt.ToUniversalTime(), ClosesAt = request.ClosesAt.ToUniversalTime() };
+        context.ReportingWindows.Add(entity);
+        governance.QueueAuditTrail(nameof(ReportingWindow), entity.PublicId.ToString(), "Create", null,
+            new { ReportingPeriodPublicId = period.PublicId, entity.SubmissionKind, entity.OpensAt, entity.ClosesAt },
+            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+        await context.SaveChangesAsync();
         return Ok(new ApiResponse<ReportingWindowDto>(true, ToDto(entity)));
     }
 
@@ -948,7 +958,7 @@ public sealed record WorkflowDefinitionDto(Guid PublicId, Guid MunicipalityFinan
 public sealed record RetireWorkflowDefinitionRequest(string Reason, DateTime? EffectiveTo, string RowVersion);
 public sealed record WorkflowStageDifferenceDto(string Change, string StageCode, int? FromSequence, int? ToSequence, string[] ChangedFields);
 public sealed record WorkflowDefinitionComparisonDto(WorkflowDefinitionDto From, WorkflowDefinitionDto To, WorkflowStageDifferenceDto[] StageDifferences);
-public sealed record SaveReportingWindowRequest(Guid ReportingPeriodPublicId, SubmissionKind SubmissionKind, DateTime OpensAt, DateTime ClosesAt);
+public sealed record SaveReportingWindowRequest(Guid ReportingPeriodPublicId, SubmissionKind SubmissionKind, DateTime OpensAt, DateTime ClosesAt, string Reason);
 public sealed record ReportingWindowDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, SubmissionKind SubmissionKind, DateTime OpensAt, DateTime ClosesAt, bool IsActive, string RowVersion);
 public sealed record SaveReportingWindowExceptionRequest(Guid? UserPublicId, Guid? DepartmentPublicId, Guid? UnitPublicId, DateTime ExtendedClosesAt, string Reason);
 public sealed record ReportingWindowExceptionDto(Guid PublicId, string ScopeType, Guid? ScopePublicId, string? ScopeName, DateTime ExtendedClosesAt, string? Reason, Guid? ApprovedByUserPublicId, string? ApprovedByName, DateTime ApprovedAt, string RowVersion);

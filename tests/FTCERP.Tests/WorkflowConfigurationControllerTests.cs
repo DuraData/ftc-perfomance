@@ -6,6 +6,43 @@ namespace FTCERP.Tests;
 public sealed class WorkflowConfigurationControllerTests
 {
     [Fact]
+    public async Task CreateWindow_RequiresReasonAndWritesContextualAudit()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var actor = IdpTestFixture.CreateUser("window-admin");
+        actor.MunicipalityId = 7;
+        var year = new MunicipalityFinancialYear { Id = 610, MunicipalityId = 7, FinancialYearId = 1, EffectiveFrom = new DateTime(2035, 7, 1) };
+        var period = new ReportingPeriod
+        {
+            Id = 611,
+            MunicipalityFinancialYearId = year.Id,
+            MunicipalityFinancialYear = year,
+            Code = "Q1",
+            Name = "Quarter 1",
+            PeriodType = ReportingPeriodType.Quarter1,
+            Sequence = 1,
+            StartDate = new DateTime(2035, 7, 1),
+            EndDate = new DateTime(2035, 9, 30)
+        };
+        context.AddRange(actor, year, period);
+        await context.SaveChangesAsync();
+        var controller = Controller(context, 7, actor);
+        var opensAt = new DateTime(2035, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        var closesAt = new DateTime(2035, 7, 31, 23, 59, 59, DateTimeKind.Utc);
+
+        var result = await controller.CreateWindow(new SaveReportingWindowRequest(
+            period.PublicId, SubmissionKind.Opms, opensAt, closesAt, "Approved quarterly submission timetable"));
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        var window = await context.ReportingWindows.SingleAsync();
+        var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == nameof(ReportingWindow));
+        audit.EntityId.Should().Be(window.PublicId.ToString());
+        audit.Action.Should().Be("Create");
+        audit.Reason.Should().Be("Approved quarterly submission timetable");
+        audit.NewValue.Should().Contain(period.PublicId.ToString());
+    }
+
+    [Fact]
     public async Task RetireDefinition_UsesRowVersionAndWritesReasonedAuditWithoutDeletingDefinition()
     {
         await using var context = IdpTestFixture.CreateContext();

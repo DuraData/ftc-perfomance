@@ -2206,6 +2206,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !currentActive && !entry.Property(nameof(WorkflowDefinition.IsActive)).IsModified)
                 throw new InvalidOperationException("Workflow lifecycle may only close or retire an active version without extending its effective period.");
         }
+        if (ChangeTracker.Entries<ReportingWindow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Reporting-window history is append-only; create a new governed period configuration instead of rewriting evidence.");
+        if (ChangeTracker.Entries<ReportingWindowException>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Reporting-window exception approvals are append-only.");
         if (ChangeTracker.Entries<OfficialReportTemplate>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGenerationScopeGrant>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

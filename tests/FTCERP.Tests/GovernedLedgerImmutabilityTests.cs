@@ -337,4 +337,28 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be hard deleted*");
     }
+
+    [Fact]
+    public async Task Reporting_window_definition_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var window = new ReportingWindow { Id = 121, OpensAt = DateTime.UtcNow.AddDays(-1), ClosesAt = DateTime.UtcNow.AddDays(1) };
+        context.Attach(window);
+        window.ClosesAt = window.ClosesAt.AddDays(10);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Reporting-window history is append-only*");
+    }
+
+    [Fact]
+    public async Task Reporting_window_exception_approval_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new ReportingWindowException { Id = 122 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exception approvals are append-only*");
+    }
 }

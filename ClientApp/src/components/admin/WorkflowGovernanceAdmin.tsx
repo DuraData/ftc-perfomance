@@ -104,7 +104,7 @@ export function WorkflowGovernanceAdminPage() {
   const [definition, setDefinition] = useState({ code: 'DEFAULT', name: 'Default performance workflow', submissionKind: 1, effectiveFrom: localDate(), reason: '' });
   const [workflowYearId, setWorkflowYearId] = useState('');
   const [stages, setStages] = useState<StageDraft[]>([emptyStage(0), emptyStage(1)]);
-  const [windowDraft, setWindowDraft] = useState({ reportingPeriodPublicId: '', submissionKind: 1, opensAt: localDate(), closesAt: localDate(new Date(Date.now() + 7 * 86400000)) });
+  const [windowDraft, setWindowDraft] = useState({ reportingPeriodPublicId: '', submissionKind: 1, opensAt: localDate(), closesAt: localDate(new Date(Date.now() + 7 * 86400000)), reason: '' });
   const [exceptionDraft, setExceptionDraft] = useState({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(Date.now() + 8 * 86400000)), reason: '' });
   const [rating, setRating] = useState({ code: '', name: '' });
   const [ratingValues, setRatingValues] = useState([{ value: '1', label: 'Not achieved', minimum: '0', maximum: '49.99' }, { value: '2', label: 'Achieved', minimum: '50', maximum: '100' }]);
@@ -195,6 +195,7 @@ export function WorkflowGovernanceAdminPage() {
 
   const saveWindow = async () => {
     if (!windowDraft.reportingPeriodPublicId) { setError('Select a reporting period.'); return; }
+    if (windowDraft.reason.trim().length < 10) { setError('Enter a governance reason of at least 10 characters.'); return; }
     setBusy(true); setError(null);
     const result = await createReportingWindow({ ...windowDraft, opensAt: new Date(windowDraft.opensAt).toISOString(), closesAt: new Date(windowDraft.closesAt).toISOString() });
     if (!result.success) setError(result.message ?? 'Reporting window could not be saved.');
@@ -344,6 +345,7 @@ export function WorkflowGovernanceAdminPage() {
             <Select label="Submission type" value={windowDraft.submissionKind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => setWindowDraft(current => ({ ...current, submissionKind: Number(event.target.value) }))} />
             <Input label="Opens" type="datetime-local" value={windowDraft.opensAt} onChange={event => setWindowDraft(current => ({ ...current, opensAt: event.target.value }))} />
             <Input label="Closes" type="datetime-local" value={windowDraft.closesAt} onChange={event => setWindowDraft(current => ({ ...current, closesAt: event.target.value }))} />
+            <Textarea id="reporting-window-governance-reason" label="Governance reason" value={windowDraft.reason} maxLength={1000} onChange={event => setWindowDraft(current => ({ ...current, reason: event.target.value }))} required />
             <Button variant="primary" onClick={() => void saveWindow()} disabled={busy}>Create window</Button>
           </FormPanel>
           <Card className="p-4"><h3 className="font-semibold text-secondary-900 dark:text-white">Configured windows</h3><div className="mt-3"><Input label="Search reporting windows" value={windowSearch} onChange={event => { setWindowSearch(event.target.value); setWindowPage(1); }} /></div><div className="mt-3 space-y-2">{windows.map(item => <div key={item.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{item.periodCode} · {kindName(item.submissionKind)}</p><p className="text-xs text-secondary-500">{new Date(item.opensAt).toLocaleString()} — {new Date(item.closesAt).toLocaleString()}</p></div><div className="flex items-center gap-2"><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge><Button size="sm" variant="outline" onClick={() => void openExceptions(item)}>Manage exceptions</Button></div></div>)}</div><RegisterPaging label="windows" page={windowPage} totalPages={windowMeta.totalPages} totalCount={windowMeta.totalCount} onPageChange={setWindowPage} /></Card>
