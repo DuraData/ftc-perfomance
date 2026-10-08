@@ -2271,8 +2271,32 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Rating-scheme definitions are append-only; create a new scheme instead of rewriting assessment evidence.");
         if (ChangeTracker.Entries<RatingSchemeValue>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Rating-scheme value bands are append-only.");
-        if (ChangeTracker.Entries<OfficialReportTemplate>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+        foreach (var entry in ChangeTracker.Entries<OfficialReportTemplate>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Official report template-version history cannot be hard deleted.");
+
+            EnsureOnlyProperties(entry,
+                [nameof(OfficialReportTemplate.IsCurrent), nameof(OfficialReportTemplate.EffectiveTo), nameof(OfficialReportTemplate.RowVersion)],
+                "Official report template versions are append-preserved; definition changes require a successor version.");
+            var originalEnd = entry.OriginalValues.GetValue<DateTime?>(nameof(OfficialReportTemplate.EffectiveTo));
+            var currentEnd = entry.CurrentValues.GetValue<DateTime?>(nameof(OfficialReportTemplate.EffectiveTo));
+            var successors = ChangeTracker.Entries<OfficialReportTemplate>()
+                .Where(candidate => candidate.State == EntityState.Added && candidate.Entity.PreviousVersionId == entry.Entity.Id)
+                .Select(candidate => candidate.Entity)
+                .ToArray();
+            if (!entry.OriginalValues.GetValue<bool>(nameof(OfficialReportTemplate.IsCurrent))
+                || entry.CurrentValues.GetValue<bool>(nameof(OfficialReportTemplate.IsCurrent))
+                || originalEnd.HasValue
+                || !currentEnd.HasValue
+                || currentEnd < entry.OriginalValues.GetValue<DateTime>(nameof(OfficialReportTemplate.EffectiveFrom))
+                || successors.Length != 1
+                || successors[0].TemplateFamilyPublicId != entry.OriginalValues.GetValue<Guid>(nameof(OfficialReportTemplate.TemplateFamilyPublicId))
+                || successors[0].VersionNumber != entry.OriginalValues.GetValue<int>(nameof(OfficialReportTemplate.VersionNumber)) + 1
+                || successors[0].EffectiveFrom != currentEnd.Value.AddTicks(1))
+                throw new InvalidOperationException("An official report template may be closed only by its exact chronological successor version.");
+        }
+        if (ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGenerationScopeGrant>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Official report templates and generated report history are append-only.");
         foreach (var entry in ChangeTracker.Entries<OfficialReportSchedule>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))

@@ -132,6 +132,7 @@ public sealed class OfficialReportsController(
             if (previous == null || !previous.IsCurrent) return Conflict(Fail<OfficialReportTemplateResponse>("The selected template is no longer the current version."));
             if (previous.SubmissionKind != request.SubmissionKind) return BadRequest(Fail<OfficialReportTemplateResponse>("A template lineage cannot change performance framework."));
             if (previous.ReportType != request.ReportType) return BadRequest(Fail<OfficialReportTemplateResponse>("A template lineage cannot change report class."));
+            if (request.EffectiveFrom <= previous.EffectiveFrom) return BadRequest(Fail<OfficialReportTemplateResponse>("A successor template must become effective after its predecessor."));
             if (!TryRowVersion(request.PreviousVersionRowVersion, out var rowVersion)) return BadRequest(Fail<OfficialReportTemplateResponse>("The prior template RowVersion is required."));
             context.Entry(previous).Property(item => item.RowVersion).OriginalValue = rowVersion;
             previous.IsCurrent = false;

@@ -555,4 +555,56 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*terminal workflow instance cannot be reopened*");
     }
+
+    [Fact]
+    public async Task Official_report_template_definition_requires_a_successor_version()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var template = new OfficialReportTemplate
+        {
+            Id = 133,
+            TemplateFamilyPublicId = Guid.NewGuid(),
+            Code = "QUARTERLY",
+            Name = "Approved quarterly report",
+            EffectiveFrom = DateTime.UtcNow.AddDays(-10)
+        };
+        context.Attach(template);
+        template.Name = "Retrospectively rewritten report";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*definition changes require a successor version*");
+    }
+
+    [Fact]
+    public async Task Official_report_template_history_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new OfficialReportTemplate { Id = 134 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*template-version history cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Official_report_template_cannot_be_closed_without_its_exact_successor()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var template = new OfficialReportTemplate
+        {
+            Id = 135,
+            TemplateFamilyPublicId = Guid.NewGuid(),
+            VersionNumber = 1,
+            IsCurrent = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-10)
+        };
+        context.Attach(template);
+        template.IsCurrent = false;
+        template.EffectiveTo = DateTime.UtcNow.AddDays(-1);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact chronological successor version*");
+    }
 }
