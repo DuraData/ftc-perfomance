@@ -366,6 +366,11 @@ public sealed class WorkflowConfigurationController(
     public async Task<ActionResult<ApiResponse<RatingSchemeDto>>> CreateRatingScheme(SaveRatingSchemeRequest request)
     {
         if (!HasTenant()) return TenantRequired<RatingSchemeDto>();
+        var actor = await CurrentUser();
+        if (actor == null) return Unauthorized(Fail<RatingSchemeDto>("User not found."));
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 10 or > 1000)
+            return BadRequest(Fail<RatingSchemeDto>("A governance reason of 10 to 1000 characters is required."));
         if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name) || request.Values.Count == 0) return BadRequest(Fail<RatingSchemeDto>("Code, name, and rating values are required."));
         if (request.Values.Select(x => x.Value).Distinct().Count() != request.Values.Count || request.Values.Select(x => x.SortOrder).Distinct().Count() != request.Values.Count) return BadRequest(Fail<RatingSchemeDto>("Rating values and sort orders must be unique."));
         if (request.Values.Any(x => x.MinimumAchievementPercent.HasValue != x.MaximumAchievementPercent.HasValue || x.MinimumAchievementPercent > x.MaximumAchievementPercent)) return BadRequest(Fail<RatingSchemeDto>("Rating achievement ranges must have valid minimum and maximum values."));
@@ -375,7 +380,11 @@ public sealed class WorkflowConfigurationController(
         if (await context.RatingSchemes.AnyAsync(x => x.Code == code)) return Conflict(Fail<RatingSchemeDto>("Rating scheme code already exists."));
         var entity = new RatingScheme { MunicipalityId = tenantContext.MunicipalityId!.Value, Code = code, Name = request.Name.Trim(), IsActive = true };
         foreach (var value in request.Values.OrderBy(x => x.SortOrder)) entity.Values.Add(new RatingSchemeValue { MunicipalityId = tenantContext.MunicipalityId.Value, Value = value.Value, Label = value.Label.Trim(), MinimumAchievementPercent = value.MinimumAchievementPercent, MaximumAchievementPercent = value.MaximumAchievementPercent, SortOrder = value.SortOrder });
-        context.RatingSchemes.Add(entity); await context.SaveChangesAsync();
+        context.RatingSchemes.Add(entity);
+        governance.QueueAuditTrail(nameof(RatingScheme), entity.PublicId.ToString(), "Create", null,
+            new { entity.Code, entity.Name, entity.IsActive, Values = entity.Values.OrderBy(x => x.SortOrder).Select(x => new { x.PublicId, x.Value, x.Label, x.MinimumAchievementPercent, x.MaximumAchievementPercent, x.SortOrder }).ToArray() },
+            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+        await context.SaveChangesAsync();
         return Ok(new ApiResponse<RatingSchemeDto>(true, ToDto(entity)));
     }
 
@@ -963,7 +972,7 @@ public sealed record ReportingWindowDto(Guid PublicId, Guid ReportingPeriodPubli
 public sealed record SaveReportingWindowExceptionRequest(Guid? UserPublicId, Guid? DepartmentPublicId, Guid? UnitPublicId, DateTime ExtendedClosesAt, string Reason);
 public sealed record ReportingWindowExceptionDto(Guid PublicId, string ScopeType, Guid? ScopePublicId, string? ScopeName, DateTime ExtendedClosesAt, string? Reason, Guid? ApprovedByUserPublicId, string? ApprovedByName, DateTime ApprovedAt, string RowVersion);
 public sealed record SaveRatingValueRequest(decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
-public sealed record SaveRatingSchemeRequest(string Code, string Name, IReadOnlyList<SaveRatingValueRequest> Values);
+public sealed record SaveRatingSchemeRequest(string Code, string Name, IReadOnlyList<SaveRatingValueRequest> Values, string Reason);
 public sealed record RatingValueDto(Guid PublicId, decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
 public sealed record RatingSchemeDto(Guid PublicId, string Code, string Name, bool IsActive, string RowVersion, RatingValueDto[] Values);
 public sealed record WorkflowActionRequest(string ActionCode, WorkflowActionOutcome Outcome, string? Comment, decimal? RatingValue);

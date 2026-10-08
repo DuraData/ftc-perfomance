@@ -1700,7 +1700,7 @@ export async function saveMyNotificationPreferences(payload: NotificationPrefere
   return put<NotificationPreferenceDto>('/v1/notification-policies/preferences/me', payload);
 }
 
-export async function createRatingScheme(payload: { code: string; name: string; values: Array<{ value: number; label: string; minimumAchievementPercent?: number; maximumAchievementPercent?: number; sortOrder: number }> }): Promise<ApiResponse<RatingSchemeDto>> {
+export async function createRatingScheme(payload: { code: string; name: string; reason: string; values: Array<{ value: number; label: string; minimumAchievementPercent?: number; maximumAchievementPercent?: number; sortOrder: number }> }): Promise<ApiResponse<RatingSchemeDto>> {
   return post<RatingSchemeDto>('/v1/workflow/rating-schemes', payload);
 }
 

@@ -167,6 +167,7 @@ describe('WorkflowGovernanceAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Ratings' }));
     expect(screen.getByText('Create rating scheme')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Governance reason/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Internal Audit' }));
     expect(screen.getByText('Select Internal Audit model')).toBeInTheDocument();

@@ -361,4 +361,28 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*exception approvals are append-only*");
     }
+
+    [Fact]
+    public async Task Rating_scheme_definition_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var scheme = new RatingScheme { Id = 123, Code = "FIVE_POINT", Name = "Five point scale" };
+        context.Attach(scheme);
+        scheme.Name = "Rewritten scale";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Rating-scheme definitions are append-only*");
+    }
+
+    [Fact]
+    public async Task Rating_scheme_value_band_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new RatingSchemeValue { Id = 124 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*value bands are append-only*");
+    }
 }

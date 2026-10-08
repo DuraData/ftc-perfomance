@@ -2210,6 +2210,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Reporting-window history is append-only; create a new governed period configuration instead of rewriting evidence.");
         if (ChangeTracker.Entries<ReportingWindowException>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Reporting-window exception approvals are append-only.");
+        if (ChangeTracker.Entries<RatingScheme>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Rating-scheme definitions are append-only; create a new scheme instead of rewriting assessment evidence.");
+        if (ChangeTracker.Entries<RatingSchemeValue>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Rating-scheme value bands are append-only.");
         if (ChangeTracker.Entries<OfficialReportTemplate>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGeneration>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<OfficialReportGenerationScopeGrant>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

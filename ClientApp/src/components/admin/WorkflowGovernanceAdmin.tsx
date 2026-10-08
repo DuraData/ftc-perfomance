@@ -106,7 +106,7 @@ export function WorkflowGovernanceAdminPage() {
   const [stages, setStages] = useState<StageDraft[]>([emptyStage(0), emptyStage(1)]);
   const [windowDraft, setWindowDraft] = useState({ reportingPeriodPublicId: '', submissionKind: 1, opensAt: localDate(), closesAt: localDate(new Date(Date.now() + 7 * 86400000)), reason: '' });
   const [exceptionDraft, setExceptionDraft] = useState({ scopeType: 'department', scopePublicId: '', extendedClosesAt: localDate(new Date(Date.now() + 8 * 86400000)), reason: '' });
-  const [rating, setRating] = useState({ code: '', name: '' });
+  const [rating, setRating] = useState({ code: '', name: '', reason: '' });
   const [ratingValues, setRatingValues] = useState([{ value: '1', label: 'Not achieved', minimum: '0', maximum: '49.99' }, { value: '2', label: 'Achieved', minimum: '50', maximum: '100' }]);
   const [auditDraft, setAuditDraft] = useState({ municipalityFinancialYearPublicId: '', model: 1 as 1 | 2, effectiveFrom: localDate(), reason: '' });
   const exceptionResource = exceptionWindow?.submissionKind === 2 ? 'IPMS_WORKFLOW' : 'OPMS_WORKFLOW';
@@ -269,14 +269,16 @@ export function WorkflowGovernanceAdminPage() {
   };
 
   const saveRating = async () => {
+    if (rating.reason.trim().length < 10) { setError('Enter a governance reason of at least 10 characters.'); return; }
     setBusy(true); setError(null);
     const result = await createRatingScheme({
       code: rating.code,
       name: rating.name,
+      reason: rating.reason,
       values: ratingValues.map((value, index) => ({ value: Number(value.value), label: value.label, minimumAchievementPercent: Number(value.minimum), maximumAchievementPercent: Number(value.maximum), sortOrder: index + 1 })),
     });
     if (!result.success) setError(result.message ?? 'Rating scheme could not be saved.');
-    else { pushToast('success', 'Rating scheme created'); setRating({ code: '', name: '' }); await load(); }
+    else { pushToast('success', 'Rating scheme created'); setRating({ code: '', name: '', reason: '' }); await load(); }
     setBusy(false);
   };
 
@@ -360,6 +362,7 @@ export function WorkflowGovernanceAdminPage() {
         {tab === 'ratings' && <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
           <FormPanel title="Create rating scheme" description="Achievement ranges must be complete and non-overlapping." icon={<Star className="h-5 w-5" />}>
             <div className="grid gap-3 sm:grid-cols-2"><Input label="Code" value={rating.code} onChange={event => setRating(current => ({ ...current, code: event.target.value.toUpperCase() }))} /><Input label="Name" value={rating.name} onChange={event => setRating(current => ({ ...current, name: event.target.value }))} /></div>
+            <Textarea id="rating-scheme-governance-reason" label="Governance reason" value={rating.reason} maxLength={1000} onChange={event => setRating(current => ({ ...current, reason: event.target.value }))} required />
             {ratingValues.map((value, index) => <div key={index} className="grid gap-2 rounded-xl border border-secondary-200 p-3 sm:grid-cols-4 dark:border-secondary-700"><Input label="Value" type="number" value={value.value} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))} /><Input label="Label" value={value.label} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} /><Input label="Minimum %" type="number" value={value.minimum} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, minimum: event.target.value } : item))} /><Input label="Maximum %" type="number" value={value.maximum} onChange={event => setRatingValues(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, maximum: event.target.value } : item))} /></div>)}
             <div className="flex justify-between"><Button size="sm" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setRatingValues(current => [...current, { value: String(current.length + 1), label: '', minimum: '', maximum: '' }])}>Add value</Button><Button size="sm" variant="primary" onClick={() => void saveRating()} disabled={busy}>Create scheme</Button></div>
           </FormPanel>

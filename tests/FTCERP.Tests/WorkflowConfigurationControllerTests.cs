@@ -43,6 +43,39 @@ public sealed class WorkflowConfigurationControllerTests
     }
 
     [Fact]
+    public async Task CreateRatingScheme_RequiresReasonAndWritesContextualAudit()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var actor = IdpTestFixture.CreateUser("rating-admin");
+        actor.MunicipalityId = 7;
+        context.Add(actor);
+        await context.SaveChangesAsync();
+        var controller = Controller(context, 7, actor);
+        var values = new[]
+        {
+            new SaveRatingValueRequest(1m, "Not achieved", 0m, 49.99m, 1),
+            new SaveRatingValueRequest(2m, "Achieved", 50m, 100m, 2)
+        };
+
+        var denied = await controller.CreateRatingScheme(new SaveRatingSchemeRequest(
+            "TWO_POINT", "Two point scale", values, "short"));
+        denied.Result.Should().BeOfType<BadRequestObjectResult>();
+        context.RatingSchemes.Should().BeEmpty();
+
+        var result = await controller.CreateRatingScheme(new SaveRatingSchemeRequest(
+            "TWO_POINT", "Two point scale", values, "Approved assessment rating definition"));
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        var scheme = await context.RatingSchemes.Include(item => item.Values).SingleAsync();
+        scheme.Values.Should().HaveCount(2);
+        var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == nameof(RatingScheme));
+        audit.EntityId.Should().Be(scheme.PublicId.ToString());
+        audit.Action.Should().Be("Create");
+        audit.Reason.Should().Be("Approved assessment rating definition");
+        audit.NewValue.Should().Contain("TWO_POINT").And.Contain("Not achieved");
+    }
+
+    [Fact]
     public async Task RetireDefinition_UsesRowVersionAndWritesReasonedAuditWithoutDeletingDefinition()
     {
         await using var context = IdpTestFixture.CreateContext();
