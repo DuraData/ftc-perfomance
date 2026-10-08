@@ -2174,6 +2174,63 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Performance suggestion history is append-only.");
         if (ChangeTracker.Entries<SubmissionWorkflowAction>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Submission workflow action history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<SubmissionWorkflowInstance>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Submission workflow-instance history cannot be hard deleted.");
+
+            EnsureOnlyProperties(entry,
+                [nameof(SubmissionWorkflowInstance.CurrentStageId), nameof(SubmissionWorkflowInstance.State),
+                    nameof(SubmissionWorkflowInstance.NextSequence), nameof(SubmissionWorkflowInstance.CompletedAt),
+                    nameof(SubmissionWorkflowInstance.RowVersion)],
+                "Submission workflow identity and pinned definition are immutable; only governed lifecycle state may advance.");
+
+            var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+            var originalSequence = entry.OriginalValues.GetValue<int>(nameof(SubmissionWorkflowInstance.NextSequence));
+            var currentSequence = entry.CurrentValues.GetValue<int>(nameof(SubmissionWorkflowInstance.NextSequence));
+            var appendedActions = ChangeTracker.Entries<SubmissionWorkflowAction>()
+                .Where(action => action.State == EntityState.Added
+                    && (ReferenceEquals(action.Entity.SubmissionWorkflowInstance, entry.Entity)
+                        || entry.Entity.Id != 0 && action.Entity.SubmissionWorkflowInstanceId == entry.Entity.Id))
+                .Select(action => action.Entity)
+                .OrderBy(action => action.Sequence)
+                .ToArray();
+
+            if (!changed.Contains(nameof(SubmissionWorkflowInstance.NextSequence))
+                || currentSequence <= originalSequence
+                || currentSequence != originalSequence + appendedActions.Length
+                || !appendedActions.Select(action => action.Sequence).SequenceEqual(Enumerable.Range(originalSequence, appendedActions.Length)))
+                throw new InvalidOperationException("Workflow action sequence may only advance by the exact append-only actions saved with the instance.");
+
+            var originalState = entry.OriginalValues.GetValue<WorkflowInstanceState>(nameof(SubmissionWorkflowInstance.State));
+            var currentState = entry.CurrentValues.GetValue<WorkflowInstanceState>(nameof(SubmissionWorkflowInstance.State));
+            var originalStage = entry.OriginalValues.GetValue<long?>(nameof(SubmissionWorkflowInstance.CurrentStageId));
+            var currentStage = entry.CurrentValues.GetValue<long?>(nameof(SubmissionWorkflowInstance.CurrentStageId));
+            var originalCompletedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(SubmissionWorkflowInstance.CompletedAt));
+            var currentCompletedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(SubmissionWorkflowInstance.CompletedAt));
+            var lifecycleChanged = changed.Contains(nameof(SubmissionWorkflowInstance.State))
+                || changed.Contains(nameof(SubmissionWorkflowInstance.CurrentStageId))
+                || changed.Contains(nameof(SubmissionWorkflowInstance.CompletedAt));
+
+            if (originalState is WorkflowInstanceState.Completed or WorkflowInstanceState.Cancelled && lifecycleChanged)
+                throw new InvalidOperationException("A terminal workflow instance cannot be reopened or have its completion evidence rewritten.");
+
+            var lastAction = appendedActions[^1];
+            if (lifecycleChanged)
+            {
+                if (lastAction.ToStageId != currentStage
+                    || currentState is WorkflowInstanceState.Completed or WorkflowInstanceState.Cancelled
+                        && (currentStage.HasValue || !currentCompletedAt.HasValue || currentCompletedAt != lastAction.OccurredAt)
+                    || currentState is WorkflowInstanceState.Active or WorkflowInstanceState.Rework
+                        && (!currentStage.HasValue || currentCompletedAt.HasValue))
+                    throw new InvalidOperationException("Workflow lifecycle state must match the final appended action and cannot be reversed.");
+            }
+            else if (currentState != originalState || currentStage != originalStage || currentCompletedAt != originalCompletedAt
+                || appendedActions.Any(action => action.FromStageId != originalStage || action.ToStageId != originalStage))
+            {
+                throw new InvalidOperationException("Non-transition workflow actions must remain pinned to the current stage.");
+            }
+        }
         if (ChangeTracker.Entries<SubmissionStageRating>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Submission stage rating history is append-only.");
         if (ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

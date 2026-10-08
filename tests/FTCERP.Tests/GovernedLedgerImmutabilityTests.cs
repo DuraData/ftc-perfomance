@@ -464,4 +464,95 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*closed exactly once after response*");
     }
+
+    [Fact]
+    public async Task Workflow_instance_pinned_definition_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var instance = new SubmissionWorkflowInstance
+        {
+            Id = 129,
+            WorkflowDefinitionId = 10,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "submission-129",
+            CurrentStageId = 20,
+            NextSequence = 3
+        };
+        context.Attach(instance);
+        instance.WorkflowDefinitionId = 11;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*pinned definition are immutable*");
+    }
+
+    [Fact]
+    public async Task Workflow_instance_history_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new SubmissionWorkflowInstance { Id = 130 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*workflow-instance history cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Workflow_instance_sequence_cannot_advance_without_matching_actions()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var instance = new SubmissionWorkflowInstance
+        {
+            Id = 131,
+            WorkflowDefinitionId = 10,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "submission-131",
+            CurrentStageId = 20,
+            NextSequence = 3
+        };
+        context.Attach(instance);
+        instance.NextSequence = 8;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact append-only actions*");
+    }
+
+    [Fact]
+    public async Task Terminal_workflow_instance_cannot_be_reopened()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var completedAt = DateTime.UtcNow.AddHours(-1);
+        var instance = new SubmissionWorkflowInstance
+        {
+            Id = 132,
+            WorkflowDefinitionId = 10,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "submission-132",
+            State = WorkflowInstanceState.Completed,
+            CurrentStageId = null,
+            CompletedAt = completedAt,
+            NextSequence = 3
+        };
+        context.Attach(instance);
+        instance.State = WorkflowInstanceState.Active;
+        instance.CurrentStageId = 20;
+        instance.CompletedAt = null;
+        instance.NextSequence = 4;
+        context.SubmissionWorkflowActions.Add(new SubmissionWorkflowAction
+        {
+            MunicipalityId = instance.MunicipalityId,
+            SubmissionWorkflowInstanceId = instance.Id,
+            SubmissionWorkflowInstance = instance,
+            Sequence = 3,
+            FromStageId = null,
+            ToStageId = 20,
+            ActionCode = "REOPEN",
+            ActorUserId = "actor"
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*terminal workflow instance cannot be reopened*");
+    }
 }
