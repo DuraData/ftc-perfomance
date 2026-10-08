@@ -2310,6 +2310,52 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
         if (ChangeTracker.Entries<PerformanceRfiEvidence>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("RFI evidence provenance is append-only.");
+        foreach (var entry in ChangeTracker.Entries<PerformanceRfi>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("RFI history cannot be hard deleted.");
+
+            EnsureOnlyProperties(entry,
+                [nameof(PerformanceRfi.Response), nameof(PerformanceRfi.RespondedByUserId), nameof(PerformanceRfi.RespondedAt),
+                    nameof(PerformanceRfi.ClosedByUserId), nameof(PerformanceRfi.ClosedAt), nameof(PerformanceRfi.RowVersion)],
+                "RFI source, scope, question, raiser and due-date evidence are immutable; only response and closure lifecycle state may advance.");
+
+            var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+            var responseProperties = new[] { nameof(PerformanceRfi.Response), nameof(PerformanceRfi.RespondedByUserId), nameof(PerformanceRfi.RespondedAt) };
+            var closureProperties = new[] { nameof(PerformanceRfi.ClosedByUserId), nameof(PerformanceRfi.ClosedAt) };
+            var responseChanged = responseProperties.Any(changed.Contains);
+            var closureChanged = closureProperties.Any(changed.Contains);
+
+            if (responseChanged)
+            {
+                if (closureChanged
+                    || responseProperties.Any(property => !changed.Contains(property))
+                    || entry.OriginalValues.GetValue<string?>(nameof(PerformanceRfi.Response)) != null
+                    || entry.OriginalValues.GetValue<string?>(nameof(PerformanceRfi.RespondedByUserId)) != null
+                    || entry.OriginalValues.GetValue<DateTime?>(nameof(PerformanceRfi.RespondedAt)).HasValue
+                    || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(PerformanceRfi.Response)))
+                    || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(PerformanceRfi.RespondedByUserId)))
+                    || !entry.CurrentValues.GetValue<DateTime?>(nameof(PerformanceRfi.RespondedAt)).HasValue
+                    || entry.CurrentValues.GetValue<DateTime?>(nameof(PerformanceRfi.RespondedAt)) < entry.OriginalValues.GetValue<DateTime>(nameof(PerformanceRfi.RaisedAt)))
+                    throw new InvalidOperationException("An RFI response may be recorded exactly once with an immutable actor and timestamp.");
+            }
+            else if (closureChanged)
+            {
+                if (closureProperties.Any(property => !changed.Contains(property))
+                    || !entry.OriginalValues.GetValue<DateTime?>(nameof(PerformanceRfi.RespondedAt)).HasValue
+                    || string.IsNullOrWhiteSpace(entry.OriginalValues.GetValue<string?>(nameof(PerformanceRfi.Response)))
+                    || entry.OriginalValues.GetValue<string?>(nameof(PerformanceRfi.ClosedByUserId)) != null
+                    || entry.OriginalValues.GetValue<DateTime?>(nameof(PerformanceRfi.ClosedAt)).HasValue
+                    || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(PerformanceRfi.ClosedByUserId)))
+                    || !entry.CurrentValues.GetValue<DateTime?>(nameof(PerformanceRfi.ClosedAt)).HasValue
+                    || entry.CurrentValues.GetValue<DateTime?>(nameof(PerformanceRfi.ClosedAt)) < entry.OriginalValues.GetValue<DateTime?>(nameof(PerformanceRfi.RespondedAt)))
+                    throw new InvalidOperationException("An RFI may be closed exactly once after response with an immutable actor and timestamp.");
+            }
+            else
+            {
+                throw new InvalidOperationException("RFI lifecycle state may only advance through response or closure.");
+            }
+        }
         if (ChangeTracker.Entries<PoeEvidenceAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("POE assessment history is append-only.");
         if (ChangeTracker.Entries<PoeEvidenceReplacement>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

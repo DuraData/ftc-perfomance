@@ -139,7 +139,7 @@ public sealed class WorkflowConfigurationControllerTests
         var otherInstance = new SubmissionWorkflowInstance { MunicipalityId = municipality.Id, WorkflowDefinitionId = workflow.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms, SubmissionId = "other-submission" };
         context.AddRange(instance, otherInstance);
         await context.SaveChangesAsync();
-        var raisedAt = new DateTime(2032, 8, 1, 0, 0, 0, DateTimeKind.Utc);
+        var raisedAt = DateTime.UtcNow.AddDays(-10);
         for (var index = 0; index < 31; index++)
         {
             context.PerformanceRfis.Add(new PerformanceRfi
@@ -178,7 +178,7 @@ public sealed class WorkflowConfigurationControllerTests
         (await controller.GetRfis(SubmissionKind.Opms, submission.Id)).Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
 
-        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_RFI.READ", "OPMS_RFI.RAISE", "OPMS_RFI.RESPOND" };
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_RFI.READ", "OPMS_RFI.RAISE", "OPMS_RFI.RESPOND", "OPMS_RFI.CLOSE" };
         var restricted = Controller(context, municipality.Id, user, grants.Contains);
         var masked = (await restricted.GetRfisPage(SubmissionKind.Opms, submission.Id,
             new PagedQueryRequest { PageSize = 5, SortBy = "raisedAt" })).Result
@@ -228,6 +228,12 @@ public sealed class WorkflowConfigurationControllerTests
             .Should().BeOfType<ApiResponse<PerformanceRfiDto>>().Subject.Data!;
         responded.Response.Should().Be("Protected response");
         responded.RespondedByUserPublicId.Should().Be(user.PublicId);
+        var closeResult = await restricted.CloseRfi(openRfi.PublicId,
+            new ClosePerformanceRfiRequest("Response accepted", responded.RowVersion));
+        var closed = closeResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PerformanceRfiDto>>().Subject.Data!;
+        closed.ClosedAt.Should().NotBeNull();
+        closed.ClosedByUserPublicId.Should().Be(user.PublicId);
     }
 
     [Fact]

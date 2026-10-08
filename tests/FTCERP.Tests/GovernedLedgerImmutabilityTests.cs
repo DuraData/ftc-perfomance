@@ -385,4 +385,83 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*value bands are append-only*");
     }
+
+    [Fact]
+    public async Task Rfi_question_and_due_date_evidence_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var rfi = new PerformanceRfi
+        {
+            Id = 125,
+            Question = "Original governed question",
+            RaisedAt = DateTime.UtcNow.AddDays(-1),
+            ResponseDueAt = DateTime.UtcNow.AddDays(2)
+        };
+        context.Attach(rfi);
+        rfi.Question = "Retrospectively rewritten question";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*question, raiser and due-date evidence are immutable*");
+    }
+
+    [Fact]
+    public async Task Rfi_history_cannot_be_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(new PerformanceRfi { Id = 126 }).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*RFI history cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Rfi_response_cannot_be_rewritten_or_cleared()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var respondedAt = DateTime.UtcNow.AddHours(-1);
+        var rfi = new PerformanceRfi
+        {
+            Id = 127,
+            Question = "Governed question",
+            RaisedAt = respondedAt.AddHours(-1),
+            ResponseDueAt = respondedAt.AddDays(1),
+            Response = "Original response",
+            RespondedByUserId = "original-responder",
+            RespondedAt = respondedAt
+        };
+        context.Attach(rfi);
+        rfi.Response = "Rewritten response";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*recorded exactly once*");
+    }
+
+    [Fact]
+    public async Task Rfi_closure_cannot_be_reversed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var respondedAt = DateTime.UtcNow.AddHours(-2);
+        var rfi = new PerformanceRfi
+        {
+            Id = 128,
+            Question = "Governed question",
+            RaisedAt = respondedAt.AddHours(-1),
+            ResponseDueAt = respondedAt.AddDays(1),
+            Response = "Governed response",
+            RespondedByUserId = "responder",
+            RespondedAt = respondedAt,
+            ClosedByUserId = "closer",
+            ClosedAt = respondedAt.AddHours(1)
+        };
+        context.Attach(rfi);
+        rfi.ClosedByUserId = null;
+        rfi.ClosedAt = null;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*closed exactly once after response*");
+    }
 }
