@@ -542,7 +542,8 @@ public class AuthController : ControllerBase
         var configuredMode = await _context.AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking()
             .Where(item => item.MunicipalityId == user.MunicipalityId && item.IsActive && item.EffectiveFrom <= now
                 && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
-            .Select(item => (AuthenticationMode?)item.Mode).SingleOrDefaultAsync();
+            .OrderByDescending(item => item.VersionNumber)
+            .Select(item => (AuthenticationMode?)item.Mode).FirstOrDefaultAsync();
         var mode = configuredMode ?? await _context.Municipalities.IgnoreQueryFilters().AsNoTracking()
             .Where(item => item.Id == user.MunicipalityId).Select(item => item.AuthenticationMode).SingleAsync();
         return mode is AuthenticationMode.Local or AuthenticationMode.Hybrid;

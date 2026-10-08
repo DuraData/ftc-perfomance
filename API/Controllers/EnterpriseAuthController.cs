@@ -108,8 +108,10 @@ public sealed class EnterpriseAuthController(
     {
         var now = DateTime.UtcNow;
         return await context.AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking()
-            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId && item.IsActive && item.EffectiveFrom <= now
-                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now), cancellationToken);
+            .Where(item => item.MunicipalityId == municipalityId && item.IsActive && item.EffectiveFrom <= now
+                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
+            .OrderByDescending(item => item.VersionNumber)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     private async Task<Municipality?> ResolveMunicipalityAsync(string? identifier, CancellationToken cancellationToken)

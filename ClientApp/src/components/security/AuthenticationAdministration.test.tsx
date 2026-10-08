@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthenticationAdministrationPage } from './AuthenticationAdministration';
 
 const api = vi.hoisted(() => ({
-  getAuthenticationConfiguration: vi.fn(), getAuthenticationEventsPage: vi.fn(), getAuthenticationProviders: vi.fn(),
+  getAuthenticationConfiguration: vi.fn(), getAuthenticationConfigurationHistoryPage: vi.fn(), getAuthenticationEventsPage: vi.fn(), getAuthenticationProviders: vi.fn(),
   getSecurityUsersPage: vi.fn(), getUserAuthenticatorsPage: vi.fn(), provisionUserAuthenticator: vi.fn(),
   saveAuthenticationConfiguration: vi.fn(), setUserAuthenticatorStatus: vi.fn(),
 }));
@@ -16,7 +16,7 @@ describe('AuthenticationAdministrationPage', () => {
     security.canReadField.mockReturnValue(true);
     security.canEditField.mockReturnValue(true);
     api.getAuthenticationConfiguration.mockResolvedValue({ success: true, data: {
-      publicId: 'configuration-1', mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in',
+      publicId: 'configuration-1', configurationFamilyPublicId: 'family-1', versionNumber: 1, isCurrent: true, mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in',
       isActive: true, effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
       policy: {
         publicId: 'policy-1', minimumPasswordLength: 14, maximumFailedAttempts: 4, lockoutMinutes: 30,
@@ -25,6 +25,12 @@ describe('AuthenticationAdministrationPage', () => {
         sessionAbsoluteTimeoutHours: 12, maximumConcurrentSessions: 3, rowVersion: 'Ag==',
       },
     } });
+    api.getAuthenticationConfigurationHistoryPage.mockResolvedValue({ success: true, data: { items: [{
+      publicId: 'configuration-1', configurationFamilyPublicId: 'family-1', versionNumber: 1, isCurrent: true,
+      mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in', isActive: true,
+      effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
+      policy: { minimumPasswordLength: 14, maximumFailedAttempts: 4, sessionIdleTimeoutMinutes: 20 },
+    }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     api.getAuthenticationEventsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'event-1', providerCode: 'ENTRA', eventType: 'ExternalSignIn', success: true, occurredAt: '2026-10-01T09:00:00Z', correlationId: 'trace-1' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
     api.getAuthenticationProviders.mockResolvedValue({ success: true, data: [] });
     api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
@@ -39,7 +45,7 @@ describe('AuthenticationAdministrationPage', () => {
     fireEvent.change(passwordLength, { target: { value: '18' } });
     fireEvent.click(screen.getByRole('checkbox', { name: 'MFA for all local users' }));
     fireEvent.change(screen.getByLabelText(/Governance reason/, { selector: '#authentication-policy-reason' }), { target: { value: 'Approved security policy update' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create configuration version' }));
 
     await waitFor(() => expect(api.saveAuthenticationConfiguration).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'Approved security policy update',

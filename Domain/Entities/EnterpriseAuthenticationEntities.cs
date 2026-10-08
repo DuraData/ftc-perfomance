@@ -4,6 +4,10 @@ public sealed class AuthenticationConfiguration
 {
     public long Id { get; set; }
     public Guid PublicId { get; set; } = Guid.NewGuid();
+    public Guid ConfigurationFamilyPublicId { get; set; } = Guid.NewGuid();
+    public int VersionNumber { get; set; } = 1;
+    public bool IsCurrent { get; set; } = true;
+    public long? PreviousVersionId { get; set; }
     public long MunicipalityId { get; set; }
     public AuthenticationMode Mode { get; set; } = AuthenticationMode.Local;
     public string? ProviderRegistrationCode { get; set; }
@@ -21,6 +25,8 @@ public sealed class AuthenticationConfiguration
     public ApplicationUser CreatedByUser { get; set; } = null!;
     public ApplicationUser? ModifiedByUser { get; set; }
     public AuthenticationPolicy? Policy { get; set; }
+    public AuthenticationConfiguration? PreviousVersion { get; set; }
+    public ICollection<AuthenticationConfiguration> SuccessorVersions { get; set; } = new List<AuthenticationConfiguration>();
 }
 
 public sealed class AuthenticationPolicy

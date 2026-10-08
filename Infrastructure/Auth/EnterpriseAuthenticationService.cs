@@ -29,8 +29,10 @@ public sealed class EnterpriseAuthenticationService(ApplicationDbContext context
 
         var now = DateTime.UtcNow;
         var configuration = await context.AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking()
-            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId && item.IsActive && item.EffectiveFrom <= now
-                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now), cancellationToken);
+            .Where(item => item.MunicipalityId == municipalityId && item.IsActive && item.EffectiveFrom <= now
+                && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
+            .OrderByDescending(item => item.VersionNumber)
+            .FirstOrDefaultAsync(cancellationToken);
         if (configuration == null || !string.Equals(configuration.ProviderRegistrationCode, providerCode, StringComparison.OrdinalIgnoreCase)
             || !ModeAllows(configuration.Mode, provider.Kind))
             return await FailAsync(municipalityId, null, providerCode, "CONFIGURATION_DENIED", httpContext, cancellationToken);

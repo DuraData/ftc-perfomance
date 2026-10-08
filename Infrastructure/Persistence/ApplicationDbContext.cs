@@ -171,19 +171,26 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<ApplicationUser>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<AuthenticationConfiguration>().HasIndex(item => item.PublicId).IsUnique();
-        builder.Entity<AuthenticationConfiguration>().HasIndex(item => item.MunicipalityId).IsUnique();
+        builder.Entity<AuthenticationConfiguration>().HasIndex(item => new { item.MunicipalityId, item.VersionNumber }).IsUnique();
+        builder.Entity<AuthenticationConfiguration>().HasIndex(item => new { item.MunicipalityId, item.IsCurrent }).IsUnique().HasFilter("[IsCurrent] = 1");
+        builder.Entity<AuthenticationConfiguration>().HasIndex(item => new { item.ConfigurationFamilyPublicId, item.VersionNumber }).IsUnique();
         builder.Entity<AuthenticationConfiguration>().Property(item => item.ProviderRegistrationCode).HasMaxLength(40);
         builder.Entity<AuthenticationConfiguration>().Property(item => item.DisplayName).HasMaxLength(160);
-        builder.Entity<AuthenticationConfiguration>().ToTable(table => table.HasCheckConstraint("CK_AuthenticationConfigurations_Dates", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]"));
+        builder.Entity<AuthenticationConfiguration>().ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_AuthenticationConfigurations_Dates", "[EffectiveTo] IS NULL OR [EffectiveTo] >= [EffectiveFrom]");
+            table.HasCheckConstraint("CK_AuthenticationConfigurations_Version", "[VersionNumber] >= 1");
+        });
         ConfigureRowVersion(builder.Entity<AuthenticationConfiguration>().Property(item => item.RowVersion));
         builder.Entity<AuthenticationConfiguration>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuthenticationConfiguration>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuthenticationConfiguration>().HasOne(item => item.ModifiedByUser).WithMany().HasForeignKey(item => item.ModifiedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuthenticationConfiguration>().HasOne(item => item.PreviousVersion).WithMany(item => item.SuccessorVersions).HasForeignKey(item => item.PreviousVersionId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuthenticationConfiguration>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<AuthenticationPolicy>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<AuthenticationPolicy>().HasIndex(item => item.AuthenticationConfigurationId).IsUnique();
-        builder.Entity<AuthenticationPolicy>().HasIndex(item => item.MunicipalityId).IsUnique();
+        builder.Entity<AuthenticationPolicy>().HasIndex(item => item.MunicipalityId);
         builder.Entity<AuthenticationPolicy>().ToTable(table => table.HasCheckConstraint("CK_AuthenticationPolicies_Bounds", "[MinimumPasswordLength] BETWEEN 12 AND 128 AND [MaximumFailedAttempts] BETWEEN 1 AND 20 AND [LockoutMinutes] BETWEEN 1 AND 1440 AND [SessionIdleTimeoutMinutes] BETWEEN 5 AND 1440 AND [SessionAbsoluteTimeoutHours] BETWEEN 1 AND 720 AND [MaximumConcurrentSessions] BETWEEN 1 AND 50"));
         ConfigureRowVersion(builder.Entity<AuthenticationPolicy>().Property(item => item.RowVersion));
         builder.Entity<AuthenticationPolicy>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
@@ -2126,6 +2133,47 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            if (row.VersionNumber < 1 || row.ConfigurationFamilyPublicId == Guid.Empty || !row.IsCurrent
+                || row.VersionNumber == 1 && row.PreviousVersionId.HasValue
+                || row.VersionNumber > 1 && !row.PreviousVersionId.HasValue)
+                throw new InvalidOperationException("Authentication configuration versions require a valid family, sequence, current marker, and predecessor lineage.");
+            if (row.VersionNumber > 1 && !ChangeTracker.Entries<AuthenticationConfiguration>().Any(candidate =>
+                    candidate.State == EntityState.Modified && candidate.Entity.Id == row.PreviousVersionId))
+                throw new InvalidOperationException("An authentication configuration successor must close its tracked predecessor in the same unit of work.");
+        }
+        foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Authentication configuration-version history cannot be hard deleted.");
+
+            EnsureOnlyProperties(entry,
+                [nameof(AuthenticationConfiguration.IsCurrent), nameof(AuthenticationConfiguration.EffectiveTo),
+                    nameof(AuthenticationConfiguration.ModifiedByUserId), nameof(AuthenticationConfiguration.ModifiedAt),
+                    nameof(AuthenticationConfiguration.RowVersion)],
+                "Authentication configuration versions are append-preserved; definition changes require a successor version.");
+            var currentEnd = entry.CurrentValues.GetValue<DateTime?>(nameof(AuthenticationConfiguration.EffectiveTo));
+            var successors = ChangeTracker.Entries<AuthenticationConfiguration>()
+                .Where(candidate => candidate.State == EntityState.Added && candidate.Entity.PreviousVersionId == entry.Entity.Id)
+                .Select(candidate => candidate.Entity)
+                .ToArray();
+            if (!entry.OriginalValues.GetValue<bool>(nameof(AuthenticationConfiguration.IsCurrent))
+                || entry.CurrentValues.GetValue<bool>(nameof(AuthenticationConfiguration.IsCurrent))
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(AuthenticationConfiguration.EffectiveTo)).HasValue
+                || !currentEnd.HasValue
+                || successors.Length != 1
+                || successors[0].MunicipalityId != entry.OriginalValues.GetValue<long>(nameof(AuthenticationConfiguration.MunicipalityId))
+                || successors[0].ConfigurationFamilyPublicId != entry.OriginalValues.GetValue<Guid>(nameof(AuthenticationConfiguration.ConfigurationFamilyPublicId))
+                || successors[0].VersionNumber != entry.OriginalValues.GetValue<int>(nameof(AuthenticationConfiguration.VersionNumber)) + 1
+                || successors[0].EffectiveFrom != currentEnd.Value.AddTicks(1)
+                || successors[0].CreatedByUserId != entry.CurrentValues.GetValue<string?>(nameof(AuthenticationConfiguration.ModifiedByUserId))
+                || successors[0].CreatedAt != entry.CurrentValues.GetValue<DateTime?>(nameof(AuthenticationConfiguration.ModifiedAt)))
+                throw new InvalidOperationException("An authentication configuration may be closed only by its exact chronological, actor-stamped successor version.");
+        }
+        if (ChangeTracker.Entries<AuthenticationPolicy>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Authentication policy history is append-only; create a successor configuration version instead.");
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)

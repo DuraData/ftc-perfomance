@@ -607,4 +607,72 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*exact chronological successor version*");
     }
+
+    [Fact]
+    public async Task Authentication_configuration_definition_requires_a_successor_version()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var configuration = new AuthenticationConfiguration
+        {
+            Id = 136,
+            ConfigurationFamilyPublicId = Guid.NewGuid(),
+            VersionNumber = 1,
+            IsCurrent = true,
+            MunicipalityId = 1,
+            Mode = AuthenticationMode.Local,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-10),
+            CreatedByUserId = "actor"
+        };
+        context.Attach(configuration);
+        configuration.Mode = AuthenticationMode.Hybrid;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*definition changes require a successor version*");
+    }
+
+    [Fact]
+    public async Task Authentication_policy_history_cannot_be_rewritten_or_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var policy = new AuthenticationPolicy
+        {
+            Id = 137,
+            MunicipalityId = 1,
+            AuthenticationConfigurationId = 136,
+            MinimumPasswordLength = 12,
+            ModifiedByUserId = "actor"
+        };
+        context.Attach(policy);
+        policy.MinimumPasswordLength = 18;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Authentication policy history is append-only*");
+    }
+
+    [Fact]
+    public async Task Authentication_configuration_cannot_be_closed_without_its_exact_successor()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var configuration = new AuthenticationConfiguration
+        {
+            Id = 138,
+            ConfigurationFamilyPublicId = Guid.NewGuid(),
+            VersionNumber = 1,
+            IsCurrent = true,
+            MunicipalityId = 1,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-10),
+            CreatedByUserId = "actor"
+        };
+        context.Attach(configuration);
+        configuration.IsCurrent = false;
+        configuration.EffectiveTo = DateTime.UtcNow.AddTicks(-1);
+        configuration.ModifiedByUserId = "actor";
+        configuration.ModifiedAt = DateTime.UtcNow;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact chronological, actor-stamped successor version*");
+    }
 }

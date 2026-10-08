@@ -32,8 +32,42 @@ public sealed class AuthenticationAdministrationController(
     {
         if (!TryTenant(out var municipalityId, out var failure)) return failure!;
         var value = await context.AuthenticationConfigurations.AsNoTracking().Include(item => item.Policy)
-            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId, cancellationToken);
+            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId && item.IsCurrent, cancellationToken);
         return Ok(new ApiResponse<AuthenticationConfigurationDto?>(true, value == null ? null : ToDto(value)));
+    }
+
+    [HttpGet("history/page")]
+    [Authorize(Policy = "Permission:AUTHENTICATION.READ")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<AuthenticationConfigurationDto>>>> GetHistoryPage(
+        [FromQuery] PagedQueryRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!TryTenant(out var municipalityId, out var failure)) return failure!;
+        if (request.NormalizedSortBy is not ("version" or "effectivefrom" or "mode" or "displayname"))
+            return BadRequest(Fail<PagedResponse<AuthenticationConfigurationDto>>("SortBy must be version, effectiveFrom, mode, or displayName."));
+
+        var query = context.AuthenticationConfigurations.AsNoTracking().Include(item => item.Policy)
+            .Where(item => item.MunicipalityId == municipalityId);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var term = request.NormalizedSearch;
+            query = query.Where(item => item.DisplayName.Contains(term)
+                || item.ProviderRegistrationCode != null && item.ProviderRegistrationCode.Contains(term));
+        }
+        var totalCount = await query.CountAsync(cancellationToken);
+        query = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("effectivefrom", false) => query.OrderBy(item => item.EffectiveFrom).ThenBy(item => item.VersionNumber),
+            ("effectivefrom", true) => query.OrderByDescending(item => item.EffectiveFrom).ThenByDescending(item => item.VersionNumber),
+            ("mode", false) => query.OrderBy(item => item.Mode).ThenByDescending(item => item.VersionNumber),
+            ("mode", true) => query.OrderByDescending(item => item.Mode).ThenByDescending(item => item.VersionNumber),
+            ("displayname", false) => query.OrderBy(item => item.DisplayName).ThenByDescending(item => item.VersionNumber),
+            ("displayname", true) => query.OrderByDescending(item => item.DisplayName).ThenByDescending(item => item.VersionNumber),
+            (_, false) => query.OrderBy(item => item.VersionNumber),
+            _ => query.OrderByDescending(item => item.VersionNumber)
+        };
+        var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync(cancellationToken);
+        return Ok(new ApiResponse<PagedResponse<AuthenticationConfigurationDto>>(true,
+            PagedResponse<AuthenticationConfigurationDto>.Create(rows.Select(ToDto), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpPut]
@@ -51,18 +85,54 @@ public sealed class AuthenticationAdministrationController(
             return BadRequest(Fail<AuthenticationConfigurationDto>("EffectiveTo cannot precede EffectiveFrom."));
 
         var municipality = await context.Municipalities.SingleAsync(item => item.Id == municipalityId, cancellationToken);
-        var entity = await context.AuthenticationConfigurations.Include(item => item.Policy)
-            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId, cancellationToken);
-        var created = entity == null;
-        if (entity == null)
+        var previous = await context.AuthenticationConfigurations.Include(item => item.Policy)
+            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId && item.IsCurrent, cancellationToken);
+        var created = previous == null;
+        AuthenticationConfiguration entity;
+        if (previous == null)
         {
             if (!string.IsNullOrWhiteSpace(request.RowVersion) || !string.IsNullOrWhiteSpace(request.Policy.RowVersion))
                 return Conflict(Fail<AuthenticationConfigurationDto>("Authentication configuration does not yet exist; reload and retry."));
-            entity = new AuthenticationConfiguration { MunicipalityId = municipalityId, CreatedByUserId = actor, CreatedAt = DateTime.UtcNow };
-            context.AuthenticationConfigurations.Add(entity);
+            entity = new AuthenticationConfiguration
+            {
+                MunicipalityId = municipalityId,
+                ConfigurationFamilyPublicId = Guid.NewGuid(),
+                VersionNumber = 1,
+                IsCurrent = true,
+                CreatedByUserId = actor,
+                CreatedAt = DateTime.UtcNow
+            };
         }
-        else if (!SetVersion(entity, request.RowVersion))
-            return BadRequest(Fail<AuthenticationConfigurationDto>("A valid configuration RowVersion is required."));
+        else
+        {
+            if (!SetVersion(previous, request.RowVersion))
+                return BadRequest(Fail<AuthenticationConfigurationDto>("A valid configuration RowVersion is required."));
+            if (previous.Policy == null)
+            {
+                if (!string.IsNullOrWhiteSpace(request.Policy.RowVersion))
+                    return Conflict(Fail<AuthenticationConfigurationDto>("The stored configuration has no policy row; reload and retry."));
+            }
+            else if (!SetVersion(previous.Policy, request.Policy.RowVersion))
+                return BadRequest(Fail<AuthenticationConfigurationDto>("A valid policy RowVersion is required."));
+            if (request.EffectiveFrom <= previous.EffectiveFrom)
+                return BadRequest(Fail<AuthenticationConfigurationDto>("A successor authentication configuration must become effective after its predecessor."));
+
+            var now = DateTime.UtcNow;
+            previous.IsCurrent = false;
+            previous.EffectiveTo = request.EffectiveFrom.AddTicks(-1);
+            previous.ModifiedByUserId = actor;
+            previous.ModifiedAt = now;
+            entity = new AuthenticationConfiguration
+            {
+                MunicipalityId = municipalityId,
+                ConfigurationFamilyPublicId = previous.ConfigurationFamilyPublicId,
+                VersionNumber = previous.VersionNumber + 1,
+                IsCurrent = true,
+                PreviousVersionId = previous.Id,
+                CreatedByUserId = actor,
+                CreatedAt = now
+            };
+        }
 
         entity.Mode = request.Mode;
         entity.ProviderRegistrationCode = providerCode;
@@ -70,19 +140,12 @@ public sealed class AuthenticationAdministrationController(
         entity.IsActive = request.IsActive;
         entity.EffectiveFrom = request.EffectiveFrom;
         entity.EffectiveTo = request.EffectiveTo;
-        entity.ModifiedByUserId = actor;
-        entity.ModifiedAt = DateTime.UtcNow;
         municipality.AuthenticationMode = request.Mode;
-
-        if (entity.Policy == null)
-        {
-            entity.Policy = new AuthenticationPolicy { MunicipalityId = municipalityId, ModifiedByUserId = actor };
-        }
-        else if (!SetVersion(entity.Policy, request.Policy.RowVersion))
-            return BadRequest(Fail<AuthenticationConfigurationDto>("A valid policy RowVersion is required."));
+        entity.Policy = new AuthenticationPolicy { MunicipalityId = municipalityId, ModifiedByUserId = actor };
         ApplyPolicy(entity.Policy, request.Policy, actor);
-        AddAudit(municipalityId, actor, created ? "AuthenticationConfigurationCreated" : "AuthenticationConfigurationUpdated", entity.PublicId.ToString(), request.Reason,
-            new { request.Mode, ProviderRegistrationCode = providerCode, request.IsActive, request.EffectiveFrom, request.EffectiveTo });
+        context.AuthenticationConfigurations.Add(entity);
+        AddAudit(municipalityId, actor, created ? "AuthenticationConfigurationCreated" : "AuthenticationConfigurationVersionCreated", entity.PublicId.ToString(), request.Reason,
+            new { entity.ConfigurationFamilyPublicId, entity.VersionNumber, PreviousVersionPublicId = previous?.PublicId, request.Mode, ProviderRegistrationCode = providerCode, request.IsActive, request.EffectiveFrom, request.EffectiveTo });
         try
         {
             await context.SaveChangesAsync(cancellationToken);
@@ -331,7 +394,9 @@ public sealed class AuthenticationAdministrationController(
     private static bool ValidReason(string? value) => value?.Trim().Length is >= 5 and <= 500;
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
-    private static AuthenticationConfigurationDto ToDto(AuthenticationConfiguration item) => new(item.PublicId, item.Mode, item.ProviderRegistrationCode, item.DisplayName, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), item.Policy == null ? null : ToDto(item.Policy));
+    private static AuthenticationConfigurationDto ToDto(AuthenticationConfiguration item) => new(item.PublicId, item.ConfigurationFamilyPublicId,
+        item.VersionNumber, item.IsCurrent, item.Mode, item.ProviderRegistrationCode, item.DisplayName, item.IsActive,
+        item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion), item.Policy == null ? null : ToDto(item.Policy));
     private static AuthenticationPolicyDto ToDto(AuthenticationPolicy item) => new(item.PublicId, item.MinimumPasswordLength, item.MaximumFailedAttempts, item.LockoutMinutes, item.RequireMfaForPrivilegedLocalUsers, item.RequireMfaForAllLocalUsers, item.RequireFirstLoginPasswordChange, item.SessionIdleTimeoutMinutes, item.SessionAbsoluteTimeoutHours, item.MaximumConcurrentSessions, Convert.ToBase64String(item.RowVersion));
     private static UserAuthenticatorDto ToDto(UserAuthenticator item, ApplicationUser user, bool includeUserEmail, bool includeExpectedEmail, bool includeIssuer, bool includeSubject) =>
         new(item.PublicId, user.PublicId, includeUserEmail ? user.Email : null, item.ProviderRegistrationCode,
@@ -361,7 +426,9 @@ public sealed class AuthenticationAdministrationController(
     }
 }
 
-public sealed record AuthenticationConfigurationDto(Guid PublicId, AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, AuthenticationPolicyDto? Policy);
+public sealed record AuthenticationConfigurationDto(Guid PublicId, Guid ConfigurationFamilyPublicId, int VersionNumber, bool IsCurrent,
+    AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom,
+    DateTime? EffectiveTo, string RowVersion, AuthenticationPolicyDto? Policy);
 public sealed record AuthenticationPolicyDto(Guid PublicId, int MinimumPasswordLength, int MaximumFailedAttempts, int LockoutMinutes, bool RequireMfaForPrivilegedLocalUsers, bool RequireMfaForAllLocalUsers, bool RequireFirstLoginPasswordChange, int SessionIdleTimeoutMinutes, int SessionAbsoluteTimeoutHours, int MaximumConcurrentSessions, string RowVersion);
 public sealed record UserAuthenticatorDto(Guid PublicId, Guid UserPublicId, string? UserEmail, string ProviderRegistrationCode, string? ExpectedEmail, string? Issuer, string? Subject, bool IsActive, DateTime? LinkedAt, DateTime? LastAuthenticatedAt, string RowVersion);
 public sealed record AuthenticationEventDto(Guid PublicId, string? UserId, string ProviderCode, string EventType, bool Success, string? FailureCode, DateTime OccurredAt, string? IpAddress, string CorrelationId);

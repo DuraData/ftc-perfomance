@@ -1142,6 +1142,9 @@ export function enterpriseSignInUrl(municipalityCode: string, providerCode: stri
 }
 
 export async function getAuthenticationConfiguration(): Promise<ApiResponse<AuthenticationConfiguration | null>> { return get<AuthenticationConfiguration | null>('/v1/admin/authentication'); }
+export async function getAuthenticationConfigurationHistoryPage(query: RegisterPageQuery): Promise<ApiResponse<PagedResult<AuthenticationConfiguration>>> {
+  return get<PagedResult<AuthenticationConfiguration>>(`/v1/admin/authentication/history/page${registerPageQuery(query)}`);
+}
 export async function getAuthenticationProviders(): Promise<ApiResponse<EnterpriseProviderOption[]>> { return get<EnterpriseProviderOption[]>('/v1/admin/authentication/providers'); }
 export async function saveAuthenticationConfiguration(payload: unknown): Promise<ApiResponse<AuthenticationConfiguration>> { return put<AuthenticationConfiguration>('/v1/admin/authentication', payload); }
 export type UserAuthenticatorPageQuery = RegisterPageQuery & { active?: boolean; providerCode?: string };

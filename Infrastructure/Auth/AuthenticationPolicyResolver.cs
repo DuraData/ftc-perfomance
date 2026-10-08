@@ -41,12 +41,13 @@ public sealed class AuthenticationPolicyResolver(
                     && item.AuthenticationConfiguration.IsActive
                     && item.AuthenticationConfiguration.EffectiveFrom <= now
                     && (!item.AuthenticationConfiguration.EffectiveTo.HasValue || item.AuthenticationConfiguration.EffectiveTo > now))
+                .OrderByDescending(item => item.AuthenticationConfiguration.VersionNumber)
                 .Select(item => new EffectiveAuthenticationPolicy(
                     item.MinimumPasswordLength, item.MaximumFailedAttempts, item.LockoutMinutes,
                     item.RequireMfaForPrivilegedLocalUsers, item.RequireMfaForAllLocalUsers,
                     item.RequireFirstLoginPasswordChange, item.SessionIdleTimeoutMinutes,
                     item.SessionAbsoluteTimeoutHours, item.MaximumConcurrentSessions))
-                .SingleOrDefaultAsync(cancellationToken);
+                .FirstOrDefaultAsync(cancellationToken);
             if (stored != null) return stored;
         }
 

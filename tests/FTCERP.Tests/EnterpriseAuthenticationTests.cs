@@ -207,6 +207,61 @@ public sealed class EnterpriseAuthenticationTests
     }
 
     [Fact]
+    public async Task Authentication_administration_creates_append_preserved_policy_versions_and_bounded_history()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Code = "AUTH-VERSIONS", Name = "Versioned Authentication" };
+        var actor = User("authentication-version-admin", municipality);
+        context.AddRange(municipality, actor);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id),
+            new EnterpriseProviderRegistry([Provider()]), access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = Http(actor.Id) }
+        };
+        var firstEffective = DateTime.UtcNow.AddDays(-2);
+        var firstResult = await controller.Save(new SaveAuthenticationConfigurationRequest(
+            AuthenticationMode.Local, null, "Municipal sign-in", true, firstEffective, null,
+            new AuthenticationPolicyRequest(12, 5, 15, true, false, true, 30, 24, 5, null),
+            "Initial approved authentication policy", null), default);
+        var first = Assert.IsType<ApiResponse<AuthenticationConfigurationDto>>(Assert.IsType<OkObjectResult>(firstResult.Result).Value).Data!;
+        Assert.Equal(1, first.VersionNumber);
+        Assert.True(first.IsCurrent);
+
+        var secondEffective = DateTime.UtcNow.AddDays(-1);
+        var secondResult = await controller.Save(new SaveAuthenticationConfigurationRequest(
+            AuthenticationMode.Local, null, "Stronger municipal sign-in", true, secondEffective, null,
+            new AuthenticationPolicyRequest(16, 4, 30, true, true, true, 20, 12, 3, first.Policy!.RowVersion),
+            "Security committee approved stronger controls", first.RowVersion), default);
+        var second = Assert.IsType<ApiResponse<AuthenticationConfigurationDto>>(Assert.IsType<OkObjectResult>(secondResult.Result).Value).Data!;
+        Assert.Equal(2, second.VersionNumber);
+        Assert.Equal(first.ConfigurationFamilyPublicId, second.ConfigurationFamilyPublicId);
+        Assert.True(second.IsCurrent);
+
+        var versions = await context.AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking().Include(item => item.Policy)
+            .OrderBy(item => item.VersionNumber).ToArrayAsync();
+        Assert.Equal(2, versions.Length);
+        Assert.False(versions[0].IsCurrent);
+        Assert.Equal(secondEffective.AddTicks(-1), versions[0].EffectiveTo);
+        Assert.Equal(12, versions[0].Policy!.MinimumPasswordLength);
+        Assert.Equal(16, versions[1].Policy!.MinimumPasswordLength);
+        Assert.Equal(versions[0].Id, versions[1].PreviousVersionId);
+
+        var historyResult = await controller.GetHistoryPage(new PagedQueryRequest { Page = 1, PageSize = 1, SortBy = "version", SortDirection = "desc" });
+        var history = Assert.IsType<ApiResponse<PagedResponse<AuthenticationConfigurationDto>>>(Assert.IsType<OkObjectResult>(historyResult.Result).Value).Data!;
+        Assert.Equal(2, history.TotalCount);
+        Assert.Single(history.Items);
+        Assert.Equal(2, history.Items[0].VersionNumber);
+        Assert.Equal(2, await context.AuditTrails.CountAsync(item => item.EntityName == "AuthenticationConfiguration"));
+    }
+
+    [Fact]
     public async Task Authentication_administration_masks_denied_members_and_prevents_search_sort_and_write_inference()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

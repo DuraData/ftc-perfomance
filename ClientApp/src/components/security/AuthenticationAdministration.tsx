@@ -3,13 +3,17 @@ import { ShieldCheck } from 'lucide-react';
 import { Button } from '../ui';
 import { Checkbox, Input, Select } from '../common/Form';
 import {
-  getAuthenticationConfiguration, getAuthenticationEventsPage, getAuthenticationProviders, getSecurityUsersPage,
+  getAuthenticationConfiguration, getAuthenticationConfigurationHistoryPage, getAuthenticationEventsPage, getAuthenticationProviders, getSecurityUsersPage,
   getUserAuthenticatorsPage, provisionUserAuthenticator, saveAuthenticationConfiguration, setUserAuthenticatorStatus,
 } from '../../api/api';
 import type { AuthenticationConfiguration, AuthenticationEvent, EnterpriseProviderOption, SecurityUserSummary, UserAuthenticator } from '../../types';
 import { useSecurity } from '../../context/SecurityContext';
 
 const nowLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+const successorLocal = (previous: string) => {
+  const candidate = Math.ceil(Math.max(Date.now(), new Date(previous).getTime() + 60_000) / 60_000) * 60_000;
+  return new Date(candidate - new Date(candidate).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
 const modeOptions = [
   { value: 1, label: 'Local passwords' }, { value: 2, label: 'Microsoft Entra ID' },
   { value: 3, label: 'Active Directory federation' }, { value: 4, label: 'Hybrid' },
@@ -23,6 +27,11 @@ export function AuthenticationAdministrationPage() {
   const canReadEventUser = security.canReadField('AUTHENTICATION', 'EventUserId');
   const canReadEventIp = security.canReadField('AUTHENTICATION', 'EventIpAddress');
   const [configuration, setConfiguration] = useState<AuthenticationConfiguration | null>(null);
+  const [configurationVersions, setConfigurationVersions] = useState<AuthenticationConfiguration[]>([]);
+  const [configurationVersionPage, setConfigurationVersionPage] = useState(1);
+  const [configurationVersionTotalCount, setConfigurationVersionTotalCount] = useState(0);
+  const [configurationVersionTotalPages, setConfigurationVersionTotalPages] = useState(0);
+  const [configurationVersionSearch, setConfigurationVersionSearch] = useState('');
   const [providers, setProviders] = useState<EnterpriseProviderOption[]>([]);
   const [users, setUsers] = useState<SecurityUserSummary[]>([]);
   const [userPage, setUserPage] = useState(1);
@@ -68,7 +77,7 @@ export function AuthenticationAdministrationPage() {
     setConfiguration(config); setProviders(providerResult.data ?? []);
     if (config) {
       setMode(config.mode); setProviderCode(config.providerRegistrationCode ?? ''); setDisplayName(config.displayName);
-      setEffectiveFrom(new Date(new Date(config.effectiveFrom).getTime() - new Date(config.effectiveFrom).getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+      setEffectiveFrom(successorLocal(config.effectiveFrom));
       if (config.policy) {
         setMinimumPasswordLength(config.policy.minimumPasswordLength);
         setMaximumFailedAttempts(config.policy.maximumFailedAttempts);
@@ -84,6 +93,19 @@ export function AuthenticationAdministrationPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void getAuthenticationConfigurationHistoryPage({
+        page: configurationVersionPage, pageSize: 10, search: configurationVersionSearch,
+        sortBy: 'version', sortDirection: 'desc',
+      }).then(result => {
+        setConfigurationVersions(result.data?.items ?? []);
+        setConfigurationVersionTotalCount(result.data?.totalCount ?? 0);
+        setConfigurationVersionTotalPages(result.data?.totalPages ?? 0);
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [configurationVersionPage, configurationVersionSearch]);
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void getUserAuthenticatorsPage({
@@ -131,8 +153,8 @@ export function AuthenticationAdministrationPage() {
         rowVersion: configuration?.policy?.rowVersion ?? null,
       },
     });
-    setMessage(result.success ? 'Authentication configuration saved.' : result.message ?? 'Unable to save authentication configuration.');
-    if (result.success) { setReason(''); await load(); }
+    setMessage(result.success ? 'Authentication configuration version created.' : result.message ?? 'Unable to save authentication configuration.');
+    if (result.success) { setReason(''); setConfigurationVersionPage(1); await load(); }
     setBusy(false);
   };
 
@@ -157,12 +179,12 @@ export function AuthenticationAdministrationPage() {
     <header className="flex items-center gap-3"><ShieldCheck className="w-7 h-7 text-primary-600" /><div><h1 className="text-2xl font-semibold">Authentication governance</h1><p className="text-sm text-secondary-500">Configure municipality sign-in modes and pre-provision external identities. Provider secrets remain deployment-managed.</p></div></header>
     {message ? <p role="status" className="rounded border border-secondary-200 p-3 text-sm">{message}</p> : null}
     <section className="rounded-xl border border-secondary-200 dark:border-secondary-700 p-5 space-y-4">
-      <h2 className="font-semibold">Municipality authentication mode</h2>
+      <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Municipality authentication mode</h2>{configuration ? <span className="text-xs text-secondary-500">Current version {configuration.versionNumber}</span> : null}</div>
       <div className="grid md:grid-cols-2 gap-4">
         <Select label="Mode" options={modeOptions} value={mode} onChange={event => setMode(Number(event.target.value) as 1 | 2 | 3 | 4)} />
         <Select label="Enterprise provider" options={providers.map(item => ({ value: item.code, label: `${item.displayName} (${item.kind})` }))} placeholder="Select provider" value={providerCode} disabled={mode === 1} onChange={event => setProviderCode(event.target.value)} />
         <Input label="Display name" value={displayName} onChange={event => setDisplayName(event.target.value)} />
-        <Input label="Effective from" type="datetime-local" value={effectiveFrom} onChange={event => setEffectiveFrom(event.target.value)} />
+        <Input label={configuration ? 'New version effective from' : 'Effective from'} type="datetime-local" value={effectiveFrom} onChange={event => setEffectiveFrom(event.target.value)} />
       </div>
       <div className="border-t border-secondary-200 pt-4 dark:border-secondary-700">
         <h3 className="mb-3 text-sm font-semibold">Local authentication policy</h3>
@@ -181,7 +203,13 @@ export function AuthenticationAdministrationPage() {
         </div>
       </div>
       <Input id="authentication-policy-reason" label="Governance reason" value={reason} onChange={event => setReason(event.target.value)} required />
-      <Button onClick={save} loading={busy} disabled={busy || reason.trim().length < 5 || (mode !== 1 && !providerCode)}>Save configuration</Button>
+      <Button onClick={save} loading={busy} disabled={busy || reason.trim().length < 5 || (mode !== 1 && !providerCode)}>{configuration ? 'Create configuration version' : 'Create configuration'}</Button>
+    </section>
+    <section className="rounded-xl border border-secondary-200 p-5 dark:border-secondary-700">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-semibold">Configuration version history</h2><p className="text-xs text-secondary-500">Append-preserved authentication modes and local security policies.</p></div><Input label="Search configuration versions" value={configurationVersionSearch} onChange={event => { setConfigurationVersionSearch(event.target.value); setConfigurationVersionPage(1); }} /></div>
+      <p className="mt-3 text-xs text-secondary-500">{configurationVersionTotalCount} versions</p>
+      <div className="mt-3 space-y-2">{configurationVersions.map(item => <div key={item.publicId} className="rounded border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex justify-between gap-3"><strong>Version {item.versionNumber} · {modeOptions.find(option => option.value === item.mode)?.label ?? item.mode}</strong><span className="text-xs text-secondary-500">{item.isCurrent ? 'Current' : 'Historic'}</span></div><p className="text-xs text-secondary-500">{item.displayName} · effective {new Date(item.effectiveFrom).toLocaleString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleString() : 'open-ended'}</p><p className="mt-1 text-xs">Minimum password {item.policy?.minimumPasswordLength ?? '—'} · failed attempts {item.policy?.maximumFailedAttempts ?? '—'} · idle timeout {item.policy?.sessionIdleTimeoutMinutes ?? '—'} minutes</p></div>)}{!configurationVersions.length ? <p className="text-sm text-secondary-500">No authentication configuration versions.</p> : null}</div>
+      {configurationVersionTotalPages > 1 ? <div className="mt-4 flex items-center justify-end gap-2 text-xs"><Button size="sm" variant="outline" disabled={configurationVersionPage <= 1} onClick={() => setConfigurationVersionPage(value => value - 1)}>Previous versions</Button><span>{configurationVersionPage}/{configurationVersionTotalPages}</span><Button size="sm" variant="outline" disabled={configurationVersionPage >= configurationVersionTotalPages} onClick={() => setConfigurationVersionPage(value => value + 1)}>Next versions</Button></div> : null}
     </section>
     <section className="rounded-xl border border-secondary-200 dark:border-secondary-700 p-5 space-y-4">
       <h2 className="font-semibold">Pre-provision enterprise identity</h2>
