@@ -1278,7 +1278,7 @@ export async function getFinancialYearMastersPage(query: CalendarMasterPageQuery
   return get<PagedResult<FinancialYearMasterDto>>(`/v1/masters/financial-years/page${calendarMasterPageQuery(query)}`);
 }
 
-export async function createFinancialYearMaster(payload: { code: string; name: string; startDate: string; endDate: string }): Promise<ApiResponse<FinancialYearMasterDto>> {
+export async function createFinancialYearMaster(payload: { code: string; name: string; startDate: string; endDate: string; reason: string }): Promise<ApiResponse<FinancialYearMasterDto>> {
   return post<FinancialYearMasterDto>('/v1/masters/financial-years', payload);
 }
 
@@ -1286,11 +1286,11 @@ export async function getMunicipalityFinancialYearMastersPage(query: CalendarMas
   return get<PagedResult<MunicipalityFinancialYearMasterDto>>(`/v1/masters/municipality-financial-years/page${calendarMasterPageQuery(query)}`);
 }
 
-export async function createMunicipalityFinancialYearMaster(payload: { financialYearPublicId: string; isCurrent: boolean; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
+export async function createMunicipalityFinancialYearMaster(payload: { financialYearPublicId: string; isCurrent: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
   return post<MunicipalityFinancialYearMasterDto>('/v1/masters/municipality-financial-years', payload);
 }
 
-export async function updateMunicipalityFinancialYearMaster(publicId: string, payload: { isCurrent: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
+export async function updateMunicipalityFinancialYearMaster(publicId: string, payload: { isCurrent: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion: string }): Promise<ApiResponse<MunicipalityFinancialYearMasterDto>> {
   return put<MunicipalityFinancialYearMasterDto>(`/v1/masters/municipality-financial-years/${publicId}`, payload);
 }
 
@@ -1333,7 +1333,7 @@ export async function updateSdbipLayerMaster(publicId: string, payload: { code: 
   return put<SdbipLayerMasterDto>(`/v1/masters/sdbip-layers/${publicId}`, payload);
 }
 
-export async function createReportingPeriodMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; periodType: number; sequence: number; startDate: string; endDate: string }): Promise<ApiResponse<ReportingPeriodMasterDto>> {
+export async function createReportingPeriodMaster(payload: { municipalityFinancialYearPublicId: string; code: string; name: string; periodType: number; sequence: number; startDate: string; endDate: string; reason: string }): Promise<ApiResponse<ReportingPeriodMasterDto>> {
   return post<ReportingPeriodMasterDto>('/v1/masters/reporting-periods', payload);
 }
 

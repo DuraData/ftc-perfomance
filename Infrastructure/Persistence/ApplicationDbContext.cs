@@ -2243,6 +2243,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (!bindingChanged && !authenticatedChanged && !statusChanged)
                 throw new InvalidOperationException("Enterprise-authenticator history cannot be rewritten.");
         }
+        if (ChangeTracker.Entries<FinancialYear>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<MunicipalityFinancialYear>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<ReportingPeriod>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<SdbipLayer>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Tenant calendar and SDBIP master history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<FinancialYear>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(FinancialYear), entry.Entity.PublicId, null);
+        foreach (var entry in ChangeTracker.Entries<MunicipalityFinancialYear>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(MunicipalityFinancialYear), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<ReportingPeriod>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(ReportingPeriod), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<SdbipLayer>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(SdbipLayer), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
@@ -2728,5 +2741,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         if (entry.Properties.Where(property => property.IsModified).Any(property => !allowedProperties.Contains(property.Metadata.Name)))
             throw new InvalidOperationException(message);
+    }
+
+    private void RequireGovernanceAudit(string entityName, Guid publicId, long? municipalityId)
+    {
+        var hasAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "Update"
+            && candidate.Entity.MunicipalityId == municipalityId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && candidate.Entity.OldValue != null
+            && candidate.Entity.NewValue != null);
+        if (!hasAudit)
+            throw new InvalidOperationException($"{entityName} changes require same-transaction reasoned before/after audit evidence.");
     }
 }

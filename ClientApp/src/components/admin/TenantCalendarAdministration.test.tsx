@@ -37,11 +37,13 @@ describe('TenantCalendarAdministration', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).not.toBeDisabled());
     fireEvent.change((await screen.findAllByRole('combobox', { name: /Municipality year/ }))[0], { target: { value: 'mfy-1' } });
+    fireEvent.change(screen.getByLabelText(/^Reporting period governance reason/), { target: { value: 'Create the approved first-quarter period' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create period' }));
-    await waitFor(() => expect(api.createReportingPeriodMaster).toHaveBeenCalledWith(expect.objectContaining({ municipalityFinancialYearPublicId: 'mfy-1', code: 'Q1', periodType: 1 })));
+    await waitFor(() => expect(api.createReportingPeriodMaster).toHaveBeenCalledWith(expect.objectContaining({ municipalityFinancialYearPublicId: 'mfy-1', code: 'Q1', periodType: 1, reason: 'Create the approved first-quarter period' })));
 
+    fireEvent.change(screen.getByLabelText(/^Current-year governance reason/), { target: { value: 'Council approved this as the current year' } });
     fireEvent.click(screen.getByRole('button', { name: 'Make current' }));
-    await waitFor(() => expect(api.updateMunicipalityFinancialYearMaster).toHaveBeenCalledWith('mfy-1', expect.objectContaining({ isCurrent: true, rowVersion: 'Ag==' })));
+    await waitFor(() => expect(api.updateMunicipalityFinancialYearMaster).toHaveBeenCalledWith('mfy-1', expect.objectContaining({ isCurrent: true, reason: 'Council approved this as the current year', rowVersion: 'Ag==' })));
   }, 10_000);
 
   it('searches, filters, sorts, and pages calendar registers on the server', async () => {

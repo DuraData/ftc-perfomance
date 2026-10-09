@@ -17,6 +17,7 @@ namespace FTCERP.Host.API.Controllers;
 [Authorize]
 public sealed class TenantMastersController(ApplicationDbContext context, ITenantContext tenantContext, IAccessControlService? accessControl = null) : ControllerBase
 {
+    private const string GovernanceReasonMessage = "A governance reason between 10 and 1000 characters is required.";
     private static readonly HashSet<string> FinancialYearSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "startdate", "enddate", "status" };
     private static readonly HashSet<string> MunicipalityYearSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "startdate", "effectivefrom", "status", "current" };
     private static readonly HashSet<string> PeriodSortFields = new(StringComparer.OrdinalIgnoreCase) { "createdat", "code", "name", "sequence", "startdate", "enddate", "status" };
@@ -54,10 +55,12 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     {
         if (!tenantContext.IsSystem) return Forbid();
         if (!ValidDates(request.StartDate, request.EndDate)) return BadRequest(Fail<FinancialYearDto>("End date must be on or after start date."));
+        if (!ValidGovernanceReason(request.Reason)) return BadRequest(Fail<FinancialYearDto>(GovernanceReasonMessage));
         var code = request.Code.Trim().ToUpperInvariant();
         if (await context.FinancialYears.AnyAsync(x => x.Code == code)) return Conflict(Fail<FinancialYearDto>("Financial year code already exists."));
         var entity = new FinancialYear { Code = code, Name = request.Name.Trim(), StartDate = request.StartDate, EndDate = request.EndDate };
         context.FinancialYears.Add(entity);
+        QueueTenantMasterAudit(null, nameof(FinancialYear), entity.PublicId, "Create", null, FinancialYearSnapshot(entity), request.Reason);
         await context.SaveChangesAsync();
         return Ok(new ApiResponse<FinancialYearDto>(true, ToDto(entity)));
     }
@@ -68,12 +71,15 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     {
         if (!tenantContext.IsSystem) return Forbid();
         if (!ValidDates(request.StartDate, request.EndDate)) return BadRequest(Fail<FinancialYearDto>("End date must be on or after start date."));
+        if (!ValidGovernanceReason(request.Reason)) return BadRequest(Fail<FinancialYearDto>(GovernanceReasonMessage));
         var entity = await context.FinancialYears.SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<FinancialYearDto>("Financial year not found."));
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<FinancialYearDto>("A valid row version is required."));
         var code = request.Code.Trim().ToUpperInvariant();
         if (await context.FinancialYears.AnyAsync(x => x.Id != entity.Id && x.Code == code)) return Conflict(Fail<FinancialYearDto>("Financial year code already exists."));
+        var before = FinancialYearSnapshot(entity);
         entity.Code = code; entity.Name = request.Name.Trim(); entity.StartDate = request.StartDate; entity.EndDate = request.EndDate; entity.IsActive = request.IsActive;
+        QueueTenantMasterAudit(null, nameof(FinancialYear), entity.PublicId, "Update", before, FinancialYearSnapshot(entity), request.Reason);
         return await SaveVersioned(entity, ToDto, "Financial year was changed by another user.");
     }
 
@@ -110,12 +116,14 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     {
         if (!HasTenant()) return TenantRequired<MunicipalityFinancialYearDto>();
         if (!ValidDates(request.EffectiveFrom, request.EffectiveTo)) return BadRequest(Fail<MunicipalityFinancialYearDto>("Effective-to must be on or after effective-from."));
+        if (!ValidGovernanceReason(request.Reason)) return BadRequest(Fail<MunicipalityFinancialYearDto>(GovernanceReasonMessage));
         var year = await context.FinancialYears.SingleOrDefaultAsync(x => x.PublicId == request.FinancialYearPublicId && x.IsActive);
         if (year == null) return BadRequest(Fail<MunicipalityFinancialYearDto>("Financial year not found or inactive."));
         if (await context.MunicipalityFinancialYears.AnyAsync(x => x.FinancialYearId == year.Id)) return Conflict(Fail<MunicipalityFinancialYearDto>("Financial year is already configured for this municipality."));
-        if (request.IsCurrent) await ClearCurrentFinancialYear();
+        if (request.IsCurrent) await ClearCurrentFinancialYear(request.Reason);
         var entity = new MunicipalityFinancialYear { MunicipalityId = tenantContext.MunicipalityId!.Value, FinancialYearId = year.Id, FinancialYear = year, IsCurrent = request.IsCurrent, EffectiveFrom = request.EffectiveFrom, EffectiveTo = request.EffectiveTo };
         context.MunicipalityFinancialYears.Add(entity);
+        QueueTenantMasterAudit(entity.MunicipalityId, nameof(MunicipalityFinancialYear), entity.PublicId, "Create", null, MunicipalityFinancialYearSnapshot(entity), request.Reason);
         await context.SaveChangesAsync();
         return Ok(new ApiResponse<MunicipalityFinancialYearDto>(true, ToDto(entity)));
     }
@@ -126,11 +134,14 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     {
         if (!HasTenant()) return TenantRequired<MunicipalityFinancialYearDto>();
         if (!ValidDates(request.EffectiveFrom, request.EffectiveTo)) return BadRequest(Fail<MunicipalityFinancialYearDto>("Effective-to must be on or after effective-from."));
+        if (!ValidGovernanceReason(request.Reason)) return BadRequest(Fail<MunicipalityFinancialYearDto>(GovernanceReasonMessage));
         var entity = await context.MunicipalityFinancialYears.Include(x => x.FinancialYear).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<MunicipalityFinancialYearDto>("Municipality financial year not found."));
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<MunicipalityFinancialYearDto>("A valid row version is required."));
-        if (request.IsCurrent) await ClearCurrentFinancialYear(entity.Id);
+        var before = MunicipalityFinancialYearSnapshot(entity);
+        if (request.IsCurrent) await ClearCurrentFinancialYear(request.Reason, entity.Id);
         entity.IsCurrent = request.IsCurrent; entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
+        QueueTenantMasterAudit(entity.MunicipalityId, nameof(MunicipalityFinancialYear), entity.PublicId, "Update", before, MunicipalityFinancialYearSnapshot(entity), request.Reason);
         return await SaveVersioned(entity, ToDto, "Municipality financial year was changed by another user.");
     }
 
@@ -171,13 +182,16 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     {
         if (!HasTenant()) return TenantRequired<ReportingPeriodDto>();
         if (!ValidDates(request.StartDate, request.EndDate) || request.Sequence < 1) return BadRequest(Fail<ReportingPeriodDto>("Valid dates and a positive sequence are required."));
+        if (!ValidGovernanceReason(request.Reason)) return BadRequest(Fail<ReportingPeriodDto>(GovernanceReasonMessage));
         var parent = await context.MunicipalityFinancialYears.Include(x => x.FinancialYear).SingleOrDefaultAsync(x => x.PublicId == request.MunicipalityFinancialYearPublicId);
         if (parent == null) return BadRequest(Fail<ReportingPeriodDto>("Municipality financial year not found."));
         var code = request.Code.Trim().ToUpperInvariant();
         if (request.StartDate < parent.FinancialYear.StartDate || request.EndDate > parent.FinancialYear.EndDate) return BadRequest(Fail<ReportingPeriodDto>("Reporting period must fall within the financial year."));
         if (await context.ReportingPeriods.AnyAsync(x => x.MunicipalityFinancialYearId == parent.Id && (x.Code == code || x.Sequence == request.Sequence))) return Conflict(Fail<ReportingPeriodDto>("Reporting-period code or sequence already exists."));
         var entity = new ReportingPeriod { MunicipalityFinancialYearId = parent.Id, MunicipalityFinancialYear = parent, Code = code, Name = request.Name.Trim(), PeriodType = request.PeriodType, Sequence = request.Sequence, StartDate = request.StartDate, EndDate = request.EndDate };
-        context.ReportingPeriods.Add(entity); await context.SaveChangesAsync();
+        context.ReportingPeriods.Add(entity);
+        QueueTenantMasterAudit(parent.MunicipalityId, nameof(ReportingPeriod), entity.PublicId, "Create", null, ReportingPeriodSnapshot(entity), request.Reason);
+        await context.SaveChangesAsync();
         return Ok(new ApiResponse<ReportingPeriodDto>(true, ToDto(entity)));
     }
 
@@ -186,11 +200,14 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     public async Task<ActionResult<ApiResponse<ReportingPeriodDto>>> UpdateReportingPeriod(Guid publicId, UpdateReportingPeriodRequest request)
     {
         if (!HasTenant()) return TenantRequired<ReportingPeriodDto>();
+        if (!ValidGovernanceReason(request.Reason)) return BadRequest(Fail<ReportingPeriodDto>(GovernanceReasonMessage));
         var entity = await context.ReportingPeriods.Include(x => x.MunicipalityFinancialYear).ThenInclude(x => x.FinancialYear).SingleOrDefaultAsync(x => x.PublicId == publicId);
         if (entity == null) return NotFound(Fail<ReportingPeriodDto>("Reporting period not found."));
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<ReportingPeriodDto>("A valid row version is required."));
         if (!ValidDates(request.StartDate, request.EndDate) || request.StartDate < entity.MunicipalityFinancialYear.FinancialYear.StartDate || request.EndDate > entity.MunicipalityFinancialYear.FinancialYear.EndDate) return BadRequest(Fail<ReportingPeriodDto>("Reporting period dates must fall within the financial year."));
+        var before = ReportingPeriodSnapshot(entity);
         entity.Name = request.Name.Trim(); entity.PeriodType = request.PeriodType; entity.Sequence = request.Sequence; entity.StartDate = request.StartDate; entity.EndDate = request.EndDate; entity.IsActive = request.IsActive;
+        QueueTenantMasterAudit(entity.MunicipalityFinancialYear.MunicipalityId, nameof(ReportingPeriod), entity.PublicId, "Update", before, ReportingPeriodSnapshot(entity), request.Reason);
         return await SaveVersioned(entity, ToDto, "Reporting period was changed by another user.");
     }
 
@@ -614,7 +631,17 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ActionResult<ApiResponse<T>> TenantRequired<T>() => StatusCode(StatusCodes.Status409Conflict, Fail<T>("Select a municipality context before using tenant master data."));
     private async Task<bool> HasAssignmentOverlap(long employeeId, DateTime from, DateTime? to) => await context.EmployeeAssignments.AnyAsync(x => x.MunicipalEmployeeId == employeeId && x.IsActive && (!x.EffectiveTo.HasValue || from < x.EffectiveTo.Value) && (!to.HasValue || x.EffectiveFrom < to.Value));
-    private async Task ClearCurrentFinancialYear(long? exceptId = null) { var rows = await context.MunicipalityFinancialYears.Where(x => x.IsCurrent && (!exceptId.HasValue || x.Id != exceptId.Value)).ToArrayAsync(); foreach (var row in rows) row.IsCurrent = false; }
+    private async Task ClearCurrentFinancialYear(string reason, long? exceptId = null)
+    {
+        var rows = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear)
+            .Where(item => item.IsCurrent && (!exceptId.HasValue || item.Id != exceptId.Value)).ToArrayAsync();
+        foreach (var row in rows)
+        {
+            var before = MunicipalityFinancialYearSnapshot(row);
+            row.IsCurrent = false;
+            QueueTenantMasterAudit(row.MunicipalityId, nameof(MunicipalityFinancialYear), row.PublicId, "Update", before, MunicipalityFinancialYearSnapshot(row), reason);
+        }
+    }
     private bool TrySetVersion<TEntity>(TEntity entity, string? value) where TEntity : class { if (string.IsNullOrWhiteSpace(value)) return false; try { context.Entry(entity).Property("RowVersion").OriginalValue = Convert.FromBase64String(value); return true; } catch (FormatException) { return false; } }
     private async Task<ActionResult<ApiResponse<TDto>>> SaveVersioned<TEntity, TDto>(TEntity entity, Func<TEntity, TDto> map, string conflict) where TEntity : class { try { await context.SaveChangesAsync(); return Ok(new ApiResponse<TDto>(true, map(entity))); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<TDto>(conflict)); } }
     private static FinancialYearDto ToDto(FinancialYear x) => new(x.PublicId, x.Code, x.Name, x.StartDate, x.EndDate, x.IsActive, Convert.ToBase64String(x.RowVersion));
@@ -624,6 +651,16 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
     private static EmployeeDto ToDto(MunicipalEmployee x, bool includeNumber = false, bool includeSalary = false, bool includeEmail = false, bool includeIdentity = false, Guid? identityUserPublicId = null) => new(x.PublicId, includeNumber ? x.EmployeeNumber : null, includeSalary ? x.SalaryReference : null, x.FirstName, x.LastName, includeEmail ? x.EmailAddress : null, includeIdentity ? identityUserPublicId : null, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static EmployeeAssignmentDto ToDto(EmployeeAssignment x) => new(x.PublicId, x.MunicipalEmployee.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.PositionCode, x.PositionName, x.EffectiveFrom, x.EffectiveTo, x.IsPrimary, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Position?.PublicId);
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static bool ValidGovernanceReason(string? reason) => reason?.Trim().Length is >= 10 and <= 1000;
+    private static object FinancialYearSnapshot(FinancialYear entity) => new { entity.Code, entity.Name, entity.StartDate, entity.EndDate, entity.IsActive };
+    private static object MunicipalityFinancialYearSnapshot(MunicipalityFinancialYear entity) => new
+    {
+        entity.FinancialYearId, entity.IsCurrent, entity.IsActive, entity.EffectiveFrom, entity.EffectiveTo
+    };
+    private static object ReportingPeriodSnapshot(ReportingPeriod entity) => new
+    {
+        entity.MunicipalityFinancialYearId, entity.Code, entity.Name, entity.PeriodType, entity.Sequence, entity.StartDate, entity.EndDate, entity.IsActive
+    };
     private static string? ValidateSdbipLayer(string? code, string? name, string? description, int displayOrder, string? reason)
     {
         if (string.IsNullOrWhiteSpace(code) || code.Trim().Length > 80) return "A code of at most 80 characters is required.";
@@ -634,27 +671,31 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
         return null;
     }
     private void QueueSdbipLayerAudit(SdbipLayer entity, string action, object? oldValue, string reason)
+        => QueueTenantMasterAudit(entity.MunicipalityId, nameof(SdbipLayer), entity.PublicId, action, oldValue,
+            new { entity.Code, entity.Name, entity.Description, entity.DisplayOrder, entity.IsActive, entity.MunicipalityFinancialYearId }, reason);
+
+    private void QueueTenantMasterAudit(long? municipalityId, string entityName, Guid publicId, string action, object? oldValue, object newValue, string reason)
     {
         var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(actor)) throw new UnauthorizedAccessException("An authenticated actor is required for SDBIP layer governance.");
+        if (string.IsNullOrWhiteSpace(actor)) throw new UnauthorizedAccessException("An authenticated actor is required for tenant-master governance.");
         context.AuditTrails.Add(new AuditTrail
         {
-            MunicipalityId = entity.MunicipalityId, EntityName = nameof(SdbipLayer), EntityId = entity.PublicId.ToString(), Action = action,
+            MunicipalityId = municipalityId, EntityName = entityName, EntityId = publicId.ToString(), Action = action,
             OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue),
-            NewValue = JsonSerializer.Serialize(new { entity.Code, entity.Name, entity.Description, entity.DisplayOrder, entity.IsActive, entity.MunicipalityFinancialYearId }),
+            NewValue = JsonSerializer.Serialize(newValue),
             ChangedBy = actor, ChangedAt = DateTime.UtcNow, Reason = reason.Trim(), CorrelationId = HttpContext.TraceIdentifier
         });
     }
 }
 
 public sealed record FinancialYearDto(Guid PublicId, string Code, string Name, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
-public sealed record SaveFinancialYearRequest(string Code, string Name, DateTime StartDate, DateTime EndDate, bool IsActive = true, string? RowVersion = null);
+public sealed record SaveFinancialYearRequest(string Code, string Name, DateTime StartDate, DateTime EndDate, string Reason, bool IsActive = true, string? RowVersion = null);
 public sealed record MunicipalityFinancialYearDto(Guid PublicId, Guid FinancialYearPublicId, string Code, string Name, bool IsCurrent, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record SaveMunicipalityFinancialYearRequest(Guid FinancialYearPublicId, bool IsCurrent, DateTime EffectiveFrom, DateTime? EffectiveTo);
-public sealed record UpdateMunicipalityFinancialYearRequest(bool IsCurrent, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record SaveMunicipalityFinancialYearRequest(Guid FinancialYearPublicId, bool IsCurrent, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason);
+public sealed record UpdateMunicipalityFinancialYearRequest(bool IsCurrent, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string RowVersion);
 public sealed record ReportingPeriodDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string Code, string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
-public sealed record SaveReportingPeriodRequest(Guid MunicipalityFinancialYearPublicId, string Code, string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate);
-public sealed record UpdateReportingPeriodRequest(string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, bool IsActive, string RowVersion);
+public sealed record SaveReportingPeriodRequest(Guid MunicipalityFinancialYearPublicId, string Code, string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, string Reason);
+public sealed record UpdateReportingPeriodRequest(string Name, ReportingPeriodType PeriodType, int Sequence, DateTime StartDate, DateTime EndDate, bool IsActive, string Reason, string RowVersion);
 public sealed record SdbipLayerDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, string Code, string Name, string? Description, int DisplayOrder, bool IsActive, string RowVersion);
 public sealed record SaveSdbipLayerRequest(Guid MunicipalityFinancialYearPublicId, string Code, string Name, string? Description, int DisplayOrder, string Reason);
 public sealed record UpdateSdbipLayerRequest(string Code, string Name, string? Description, int DisplayOrder, bool IsActive, string Reason, string RowVersion);
