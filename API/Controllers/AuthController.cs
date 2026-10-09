@@ -71,14 +71,15 @@ public class AuthController : ControllerBase
         var authenticationPolicy = await _authenticationPolicies.ResolveAsync(user);
         var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
         var dynamicallyLocked = await EnforceDynamicLockoutAsync(user, result, authenticationPolicy);
-        if (result.RequiresTwoFactor)
+        var requiresTwoFactor = result.Succeeded && await _userManager.GetTwoFactorEnabledAsync(user);
+        if (requiresTwoFactor)
         {
             if (string.IsNullOrWhiteSpace(request.TwoFactorCode) && string.IsNullOrWhiteSpace(request.RecoveryCode))
                 return StatusCode(StatusCodes.Status428PreconditionRequired, new ApiResponse<LoginResponse>(false, null, "MFA_REQUIRED"));
 
             var secondFactorValid = !string.IsNullOrWhiteSpace(request.RecoveryCode)
-                ? (await _userManager.RedeemTwoFactorRecoveryCodeAsync(user, NormalizeCode(request.RecoveryCode))).Succeeded
-                : await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.TwoFactorCode));
+                ? (await _userManager.RedeemTwoFactorRecoveryCodeAsync(user, AuthenticationCodeNormalizer.Recovery(request.RecoveryCode))).Succeeded
+                : await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, AuthenticationCodeNormalizer.Authenticator(request.TwoFactorCode));
             if (!secondFactorValid)
             {
                 await RecordAuthenticationEventAsync(user.Id, user.Email ?? request.Email, false, "Invalid MFA code");
@@ -396,7 +397,7 @@ public class AuthController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
         if (user.TwoFactorEnabled) return Conflict(new ApiResponse<MfaEnableResponse>(false, null, "MFA is already enabled."));
-        if (!await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.Code)))
+        if (!await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, AuthenticationCodeNormalizer.Authenticator(request.Code)))
         {
             await RecordAuthenticationEventAsync(user.Id, user.Email ?? user.Id, false, "MFA enrollment verification failed");
             return BadRequest(new ApiResponse<MfaEnableResponse>(false, null, "The authenticator code is invalid."));
@@ -422,8 +423,8 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Password)) return BadRequest(new ApiResponse<bool>(false, false, "Password is required."));
         if (!await _userManager.CheckPasswordAsync(user, request.Password)) return Unauthorized(new ApiResponse<bool>(false, false, "Password verification failed."));
         var secondFactorValid = !string.IsNullOrWhiteSpace(request.RecoveryCode)
-            ? (await _userManager.RedeemTwoFactorRecoveryCodeAsync(user, NormalizeCode(request.RecoveryCode))).Succeeded
-            : await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, NormalizeCode(request.Code));
+            ? (await _userManager.RedeemTwoFactorRecoveryCodeAsync(user, AuthenticationCodeNormalizer.Recovery(request.RecoveryCode))).Succeeded
+            : await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, AuthenticationCodeNormalizer.Authenticator(request.Code));
         if (!secondFactorValid) return BadRequest(new ApiResponse<bool>(false, false, "The authentication code is invalid."));
 
         var disabled = await _userManager.SetTwoFactorEnabledAsync(user, false);
@@ -494,8 +495,6 @@ public class AuthController : ControllerBase
             UserAgent = Request.Headers.UserAgent.ToString()
         });
     }
-
-    private static string NormalizeCode(string? code) => (code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
 
     private static string FormatKey(string key) => string.Join(" ", Enumerable.Range(0, (key.Length + 3) / 4).Select(index => key.Substring(index * 4, Math.Min(4, key.Length - index * 4)))).ToLowerInvariant();
 

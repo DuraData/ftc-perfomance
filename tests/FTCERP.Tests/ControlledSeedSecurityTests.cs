@@ -4,7 +4,9 @@ using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
+using Moq;
 
 namespace FTCERP.Tests;
 
@@ -75,6 +77,94 @@ public sealed class ControlledSeedSecurityTests
         var delete = async () => await context.SaveChangesAsync();
         await delete.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Initial_role_permission_seed_never_replaces_existing_dynamic_configuration()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+        var configuredRole = new ApplicationRole { Id = "configured-role", Name = "Configured", NormalizedName = "CONFIGURED", RoleCode = "CONFIGURED" };
+        var emptyRole = new ApplicationRole { Id = "empty-role", Name = "Empty", NormalizedName = "EMPTY", RoleCode = "EMPTY" };
+        var denied = new Permission { Code = "NAV.DENIED", Module = "Navigation", Feature = "Denied", Action = "View", Kind = SecurityPermissionKind.Navigation, IsActive = true };
+        var baseline = new Permission { Code = "NAV.BASELINE", Module = "Navigation", Feature = "Baseline", Action = "View", Kind = SecurityPermissionKind.Navigation, IsActive = true };
+        context.AddRange(configuredRole, emptyRole, denied, baseline);
+        await context.SaveChangesAsync();
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = configuredRole.Id,
+            PermissionId = denied.Id,
+            IsAllowed = false,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedInitialRolePermissionsAsync(context, configuredRole.Id, [baseline.Id]);
+        await DbInitializer.SeedInitialRolePermissionsAsync(context, emptyRole.Id, [baseline.Id]);
+        await DbInitializer.SeedInitialRolePermissionsAsync(context, emptyRole.Id, [denied.Id]);
+
+        var configured = await context.RolePermissions.SingleAsync(item => item.RoleId == configuredRole.Id);
+        configured.PermissionId.Should().Be(denied.Id);
+        configured.IsAllowed.Should().BeFalse();
+        var initialized = await context.RolePermissions.SingleAsync(item => item.RoleId == emptyRole.Id);
+        initialized.PermissionId.Should().Be(baseline.Id);
+        initialized.IsAllowed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Baseline_role_seed_does_not_rewrite_existing_or_disable_dynamic_roles()
+    {
+        var existing = new ApplicationRole { Id = "super", Name = SecurityModel.SuperAdmin, NormalizedName = "SUPER ADMIN", RoleCode = "SUPER_ADMIN", Description = "Administrator configured", IsSystemRole = false, IsActive = false };
+        var dynamicRole = new ApplicationRole { Id = "dynamic", Name = "Municipal Data Steward", NormalizedName = "MUNICIPAL DATA STEWARD", RoleCode = "DATA_STEWARD", IsActive = true };
+        var store = new Mock<IRoleStore<ApplicationRole>>();
+        var roleManager = new Mock<RoleManager<ApplicationRole>>(store.Object, null!, null!, null!, null!);
+        roleManager.Setup(manager => manager.FindByNameAsync(It.IsAny<string>()))
+            .ReturnsAsync((string roleName) => string.Equals(roleName, SecurityModel.SuperAdmin, StringComparison.OrdinalIgnoreCase) ? existing : null);
+        roleManager.Setup(manager => manager.CreateAsync(It.IsAny<ApplicationRole>())).ReturnsAsync(IdentityResult.Success);
+        roleManager.SetupGet(manager => manager.Roles).Returns(new[] { existing, dynamicRole }.AsQueryable());
+
+        await DbInitializer.SeedRolesAsync(roleManager.Object);
+
+        existing.Description.Should().Be("Administrator configured");
+        existing.IsSystemRole.Should().BeFalse();
+        existing.IsActive.Should().BeFalse();
+        dynamicRole.IsActive.Should().BeTrue();
+        roleManager.Verify(manager => manager.UpdateAsync(It.IsAny<ApplicationRole>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Security_catalogue_seed_is_additive_and_preserves_administrator_configuration()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        await DbInitializer.SeedPermissionsAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
+        var dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
+        var userResource = await context.SecurityResources.SingleAsync(item => item.Code == "USER");
+        var emailMember = await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email");
+        dashboard.Description = "Administrator-defined dashboard description";
+        dashboard.IsActive = false;
+        userResource.SupportsDelete = false;
+        emailMember.IsSensitive = false;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        await DbInitializer.SeedPermissionsAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
+
+        dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
+        dashboard.Description.Should().Be("Administrator-defined dashboard description");
+        dashboard.IsActive.Should().BeFalse();
+        (await context.SecurityResources.SingleAsync(item => item.Code == "USER")).SupportsDelete.Should().BeFalse();
+        (await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email")).IsSensitive.Should().BeFalse();
     }
 
     private sealed class SystemTenantContext : ITenantContext

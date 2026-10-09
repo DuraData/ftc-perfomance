@@ -95,7 +95,8 @@ public class AccessControlService : IAccessControlService
         var assignmentQuery = _context.SecurityUserRoleAssignments
             .Where(link => link.UserId == user.Id && link.IsActive && link.EffectiveFrom <= now && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue)
             .AsNoTracking();
-        if (municipalityId.HasValue) assignmentQuery = assignmentQuery.Where(link => link.MunicipalityId == municipalityId.Value);
+        if (municipalityId.HasValue)
+            assignmentQuery = assignmentQuery.Where(link => !link.MunicipalityId.HasValue || link.MunicipalityId == municipalityId.Value);
         var roleAssignments = await assignmentQuery.ToArrayAsync();
         var roleIds = roleAssignments.Select(link => link.RoleId).Distinct().ToArray();
         var roles = await _context.Roles.Where(role => roleIds.Contains(role.Id) && role.IsActive && role.EffectiveFrom <= now && (!role.EffectiveTo.HasValue || role.EffectiveTo > now)).Select(role => role.Name!).ToArrayAsync();

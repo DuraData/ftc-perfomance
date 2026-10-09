@@ -18,6 +18,61 @@ namespace FTCERP.Tests;
 
 public sealed class AuthSessionTests
 {
+    [Theory]
+    [InlineData("123 456", "123456")]
+    [InlineData("123-456", "123456")]
+    [InlineData(" 123\t456\r\n", "123456")]
+    public void Authenticator_code_normalization_removes_layout_separators(string value, string expected)
+    {
+        AuthenticationCodeNormalizer.Authenticator(value).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("abcd-efgh", "abcd-efgh")]
+    [InlineData(" abcd-efgh ", "abcd-efgh")]
+    [InlineData("abcd-\tefgh\r\n", "abcd-efgh")]
+    public void Recovery_code_normalization_preserves_identity_hyphens(string value, string expected)
+    {
+        AuthenticationCodeNormalizer.Recovery(value).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Password_only_login_requires_second_factor_when_mfa_is_enabled()
+    {
+        var user = User("mfa-login-user");
+        user.Email = "mfa-login@local.test";
+        user.UserName = user.Email;
+        user.TwoFactorEnabled = true;
+        var userManager = IdpTestFixture.CreateUserManagerMock(user);
+        userManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+        userManager.Setup(manager => manager.GetTwoFactorEnabledAsync(user)).ReturnsAsync(true);
+
+        var signInManager = new Mock<SignInManager<ApplicationUser>>(
+            userManager.Object,
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object,
+            new Mock<IUserClaimsPrincipalFactory<ApplicationUser>>().Object,
+            Options.Create(new IdentityOptions()),
+            new Mock<Microsoft.Extensions.Logging.ILogger<SignInManager<ApplicationUser>>>().Object,
+            new Mock<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>().Object,
+            new Mock<IUserConfirmation<ApplicationUser>>().Object);
+        signInManager.Setup(manager => manager.CheckPasswordSignInAsync(user, "ValidPassword!1", true))
+            .ReturnsAsync(Microsoft.AspNetCore.Identity.SignInResult.Success);
+        var policies = new Mock<IAuthenticationPolicyResolver>();
+        policies.Setup(resolver => resolver.ResolveAsync(user, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveAuthenticationPolicy(12, 5, 15, true, true, true, 30, 24, 5));
+        var controller = new AuthController(userManager.Object, signInManager.Object, null!, null!, null!,
+            Options.Create(new JwtSettings()), null!, policies.Object, null!)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var response = await controller.Login(new LoginRequest(user.Email, "ValidPassword!1"));
+
+        var challenge = Assert.IsType<ObjectResult>(response.Result);
+        Assert.Equal(StatusCodes.Status428PreconditionRequired, challenge.StatusCode);
+        Assert.Equal("MFA_REQUIRED", Assert.IsType<ApiResponse<LoginResponse>>(challenge.Value).Message);
+    }
+
     [Fact]
     public async Task Sqlite_enforces_unique_session_token_digests()
     {

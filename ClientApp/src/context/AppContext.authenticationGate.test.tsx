@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider, RESTRICTED_ACCOUNT_MENU, useApp } from './AppContext';
 import { canAccessPath } from '../components/security/AccessControl';
-import { login as apiLogin, getMyTenantContextsPage } from '../api/api';
+import { login as apiLogin, getMyMenu, getMyPermissions, getMyTenantContextsPage } from '../api/api';
 
 vi.mock('../api/api', () => ({
   getCurrentMunicipalityId: vi.fn(() => null),
@@ -42,6 +42,8 @@ describe('mandatory account-security bootstrap', () => {
     localStorage.clear();
     window.history.replaceState({}, '', '/login');
     vi.clearAllMocks();
+    vi.mocked(getMyPermissions).mockResolvedValue({ success: true, data: [] });
+    vi.mocked(getMyMenu).mockResolvedValue({ success: true, data: [] });
   });
 
   it('routes first login to the only permitted security-settings page', async () => {
@@ -102,5 +104,34 @@ describe('mandatory account-security bootstrap', () => {
       data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
     });
     await waitFor(() => expect(screen.getByLabelText('access-ready')).toHaveTextContent('true'));
+  });
+
+  it('retains backend-authorized system access when no municipality context is required', async () => {
+    vi.mocked(apiLogin).mockResolvedValue({
+      success: true,
+      data: {
+        expiresAt: '2026-10-08T00:00:00Z',
+        user: { ...requiredUser, mustChangePassword: false },
+        roles: ['Super Admin'],
+        permissions: ['SECURITY.SYSTEM_SCOPE', 'NAV.DASHBOARD'],
+        menu: [{ label: 'Dashboard', path: '/dashboard', isDivider: false, code: 'NAV.DASHBOARD' }],
+        mfaEnrollmentRequired: false,
+      },
+    });
+    vi.mocked(getMyTenantContextsPage).mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
+    vi.mocked(getMyPermissions).mockResolvedValue({ success: true, data: ['SECURITY.SYSTEM_SCOPE', 'NAV.DASHBOARD'] });
+    vi.mocked(getMyMenu).mockResolvedValue({ success: true, data: [{ label: 'Dashboard', path: '/dashboard', isDivider: false, code: 'NAV.DASHBOARD' }] });
+
+    render(<AppProvider><Harness /></AppProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(screen.getByLabelText('menu')).toHaveTextContent('NAV.DASHBOARD'));
+    expect(screen.getByLabelText('path')).toHaveTextContent('/dashboard');
+    expect(localStorage.getItem('permissions')).toContain('SECURITY.SYSTEM_SCOPE');
+    expect(localStorage.getItem('menu_items')).toContain('NAV.DASHBOARD');
+    expect(screen.getByLabelText('access-ready')).toHaveTextContent('true');
   });
 });

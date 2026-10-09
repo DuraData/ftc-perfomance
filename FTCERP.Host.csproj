@@ -39,6 +39,10 @@
     <None Remove="tests\**" />
     <Content Remove="tests\**" />
     <EmbeddedResource Remove="tests\**" />
+    <Compile Remove="artifacts\**\*.cs" />
+    <None Remove="artifacts\**" />
+    <Content Remove="artifacts\**" />
+    <EmbeddedResource Remove="artifacts\**" />
   </ItemGroup>
 
   <Target Name="EnsureNodeEnvironment" BeforeTargets="Build;Publish" Condition="'$(SkipClientBuild)' != 'true'">

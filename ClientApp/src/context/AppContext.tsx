@@ -119,7 +119,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizePath(window.location.pathname || '/dashboard') : '/login');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const refreshTenantAccess = useCallback(async (municipalityId: number) => {
+  const refreshTenantAccess = useCallback(async (municipalityId: number | null) => {
     setCurrentMunicipalityId(municipalityId);
     setCurrentMunicipalityIdState(municipalityId);
     const [permissionsResult, menuResult] = await Promise.all([getMyPermissions(), getMyMenu()]);
@@ -161,13 +161,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ? storedId
       : !search && result.data.totalCount === 1 ? result.data.items[0]?.id ?? null : null;
     if (selectedId === null) {
-      setCurrentMunicipalityId(null);
-      setCurrentMunicipalityIdState(null);
-      setPermissions([]);
-      setMenuItems([]);
-      safeRemoveItem('permissions');
-      safeRemoveItem('menu_items');
-      return result.data.totalCount === 0;
+      return refreshTenantAccess(null);
     }
     return refreshTenantAccess(selectedId);
   }, [refreshTenantAccess]);

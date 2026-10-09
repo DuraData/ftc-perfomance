@@ -166,21 +166,15 @@ public static class DbInitializer
         await context.SaveChangesAsync();
     }
 
-    private static async Task SeedPermissionsAsync(ApplicationDbContext context)
+    internal static async Task SeedPermissionsAsync(ApplicationDbContext context)
     {
         var permissions = BuildPermissionCatalog();
-        var existing = await context.Permissions.AsNoTracking().ToDictionaryAsync(p => p.Code, StringComparer.OrdinalIgnoreCase);
+        var existing = await context.Permissions.AsNoTracking().Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
 
         foreach (var permission in permissions)
         {
-            if (!existing.TryGetValue(permission.Code, out var current))
-            {
+            if (!existing.Contains(permission.Code))
                 context.Permissions.Add(permission);
-                continue;
-            }
-
-            permission.Id = current.Id;
-            context.Permissions.Update(permission);
         }
 
         await context.SaveChangesAsync();
@@ -241,7 +235,7 @@ public static class DbInitializer
         await context.SaveChangesAsync();
     }
 
-    private static async Task SeedRolesAsync(RoleManager<ApplicationRole> roleManager)
+    internal static async Task SeedRolesAsync(RoleManager<ApplicationRole> roleManager)
     {
         foreach (var roleSeed in GetRoleSeeds())
         {
@@ -259,18 +253,9 @@ public static class DbInitializer
                 continue;
             }
 
-            existingRole.Description = roleSeed.Description;
-            existingRole.IsSystemRole = roleSeed.IsSystemRole;
-            existingRole.IsActive = true;
-            await roleManager.UpdateAsync(existingRole);
-        }
-
-        var validRoles = SecurityModel.OrderedRoles.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var allRoles = roleManager.Roles.ToList();
-        foreach (var role in allRoles.Where(role => !validRoles.Contains(role.Name!)))
-        {
-            role.IsActive = false;
-            await roleManager.UpdateAsync(role);
+            // Existing roles are administrator-owned configuration. Controlled
+            // startup seeding only creates missing baseline roles and never
+            // rewrites, reactivates, or disables roles that already exist.
         }
     }
 
@@ -301,7 +286,7 @@ public static class DbInitializer
                     .Distinct();
             }
 
-            await SyncRolePermissionsAsync(context, role.Id, permissionIds);
+            await SeedInitialRolePermissionsAsync(context, role.Id, permissionIds);
         }
     }
 
@@ -454,19 +439,10 @@ public static class DbInitializer
         }
     }
 
-    private static async Task SyncRolePermissionsAsync(ApplicationDbContext context, string roleId, IEnumerable<int> desiredPermissionIds)
+    internal static async Task SeedInitialRolePermissionsAsync(ApplicationDbContext context, string roleId, IEnumerable<int> desiredPermissionIds)
     {
-        var desired = desiredPermissionIds.ToHashSet();
-        var existing = await context.RolePermissions.Where(rp => rp.RoleId == roleId).ToListAsync();
-
-        var toRemove = existing.Where(rp => !desired.Contains(rp.PermissionId)).ToList();
-        if (toRemove.Count > 0)
-        {
-            context.RolePermissions.RemoveRange(toRemove);
-        }
-
-        var existingIds = existing.Select(rp => rp.PermissionId).ToHashSet();
-        foreach (var permissionId in desired.Except(existingIds))
+        if (await context.RolePermissions.AnyAsync(item => item.RoleId == roleId)) return;
+        foreach (var permissionId in desiredPermissionIds.Distinct())
         {
             context.RolePermissions.Add(new RolePermission
             {

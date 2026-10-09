@@ -3,6 +3,43 @@ namespace FTCERP.Tests;
 public class DynamicSecurityTests
 {
     [Fact]
+    public async Task Global_role_assignment_remains_effective_in_selected_tenant_without_leaking_foreign_assignment()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("global-tenant-admin", "Global", "Administrator");
+        var selectedMunicipality = new Municipality { Id = 7, Code = "SELECTED-7", Name = "Selected Municipality" };
+        var foreignMunicipality = new Municipality { Id = 8, Code = "FOREIGN-8", Name = "Foreign Municipality" };
+        var globalRole = Role("global-role", "GLOBAL_ROLE");
+        var localRole = Role("local-role", "LOCAL_ROLE");
+        var foreignRole = Role("foreign-role", "FOREIGN_ROLE");
+        var globalPermission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action, IsActive = true };
+        var localPermission = new Permission { Code = "NAV.DASHBOARD", Module = "Navigation", Feature = "Dashboard", Action = "View", Kind = SecurityPermissionKind.Navigation, NavigationCode = "NAV.DASHBOARD", IsActive = true };
+        var foreignPermission = new Permission { Code = "NAV.FOREIGN", Module = "Navigation", Feature = "Foreign", Action = "View", Kind = SecurityPermissionKind.Navigation, NavigationCode = "NAV.FOREIGN", IsActive = true };
+        context.AddRange(user, selectedMunicipality, foreignMunicipality, globalRole, localRole, foreignRole, globalPermission, localPermission, foreignPermission);
+        await context.SaveChangesAsync();
+        var now = DateTime.UtcNow;
+        context.SecurityUserRoleAssignments.AddRange(
+            new SecurityUserRoleAssignment { UserId = user.Id, RoleId = globalRole.Id, MunicipalityId = null, IsActive = true, EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = "test" },
+            new SecurityUserRoleAssignment { UserId = user.Id, RoleId = localRole.Id, MunicipalityId = 7, IsActive = true, EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = "test" },
+            new SecurityUserRoleAssignment { UserId = user.Id, RoleId = foreignRole.Id, MunicipalityId = 8, IsActive = true, EffectiveFrom = now.AddDays(-1), AssignedAt = now, AssignedBy = "test" });
+        context.RolePermissions.AddRange(
+            new RolePermission { RoleId = globalRole.Id, PermissionId = globalPermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = now.AddDays(-1) },
+            new RolePermission { RoleId = localRole.Id, PermissionId = localPermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = now.AddDays(-1) },
+            new RolePermission { RoleId = foreignRole.Id, PermissionId = foreignPermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = now.AddDays(-1) });
+        await context.SaveChangesAsync();
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(7);
+        var roleStore = new Mock<IRoleStore<ApplicationRole>>();
+        var roleManager = new Mock<RoleManager<ApplicationRole>>(roleStore.Object, null!, null!, null!, null!);
+        var service = new AccessControlService(context, IdpTestFixture.CreateUserManagerMock(user).Object, roleManager.Object, tenant.Object);
+
+        var access = await service.GetEffectiveAccessAsync(user);
+
+        access.EffectivePermissions.Should().Contain(globalPermission.Code).And.Contain(localPermission.Code).And.NotContain(foreignPermission.Code);
+        access.RoleAssignments.Should().HaveCount(2).And.NotContain(item => item.MunicipalityId == 8);
+    }
+
+    [Fact]
     public async Task Role_access_matrix_pages_tenant_roles_and_uses_effective_dynamic_assignments()
     {
         var tenant = new Mock<ITenantContext>();

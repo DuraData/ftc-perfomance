@@ -65,25 +65,9 @@ public static class SecurityRegistrySeeder
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
-        var existingResources = await context.SecurityResources.ToListAsync();
+        var existingResources = await context.SecurityResources.AsNoTracking().ToListAsync();
         var existingResourceCodes = existingResources.Select(item => item.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         context.SecurityResources.AddRange(resources.Where(item => !existingResourceCodes.Contains(item.Code)));
-        var existingUserResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "USER", StringComparison.OrdinalIgnoreCase));
-        if (existingUserResource != null) existingUserResource.SupportsDelete = true;
-        var existingAuthenticationResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase));
-        if (existingAuthenticationResource != null) existingAuthenticationResource.SupportsFieldSecurity = true;
-        var existingLoginAuditResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase));
-        if (existingLoginAuditResource != null) existingLoginAuditResource.SupportsFieldSecurity = true;
-        var existingAuditTrailResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase));
-        if (existingAuditTrailResource != null) existingAuditTrailResource.SupportsFieldSecurity = true;
-        var existingNotificationDeliveryResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase));
-        if (existingNotificationDeliveryResource != null) existingNotificationDeliveryResource.SupportsFieldSecurity = true;
-        var existingStrategicDocumentResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "STRATEGIC_DOCUMENT", StringComparison.OrdinalIgnoreCase));
-        if (existingStrategicDocumentResource != null) existingStrategicDocumentResource.SupportsFieldSecurity = true;
-        var existingStrategicRiskResource = existingResources.SingleOrDefault(item => string.Equals(item.Code, "STRATEGIC_RISK", StringComparison.OrdinalIgnoreCase));
-        if (existingStrategicRiskResource != null) existingStrategicRiskResource.SupportsFieldSecurity = true;
-        foreach (var workflowResource in existingResources.Where(item => item.Code is "OPMS_WORKFLOW" or "IPMS_WORKFLOW"))
-            workflowResource.SupportsFieldSecurity = true;
 
         var actions = new[]
         {
@@ -419,33 +403,9 @@ public static class SecurityRegistrySeeder
             Member("C88_REPORT", "WorkflowReason", "Circular 88 Workflow Reason", sensitive: true),
             Member("C88_REPORT", "WorkflowActor", "Circular 88 Workflow Actor Identity", sensitive: true, systemManaged: true)
         };
-        var existingMembers = await context.SecurityMemberDefinitions.ToListAsync();
+        var existingMembers = await context.SecurityMemberDefinitions.AsNoTracking().ToListAsync();
         var existing = existingMembers.Select(item => item.ResourceCode + "|" + item.MemberCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
         context.SecurityMemberDefinitions.AddRange(members.Where(item => !existing.Contains(item.ResourceCode + "|" + item.MemberCode)));
-        foreach (var definition in existingMembers.Where(item =>
-                     string.Equals(item.ResourceCode, "USER", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "AUTHENTICATION", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "LOGIN_AUDIT", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "AUDIT_TRAIL", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "NOTIFICATION_POLICY", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "NOTIFICATION_DELIVERY", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "OPMS_POE", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "IPMS_POE", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "OPMS_REPORT", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "IPMS_REPORT", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "OPMS_RFI", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "IPMS_RFI", StringComparison.OrdinalIgnoreCase)
-                      || string.Equals(item.ResourceCode, "IDP_DOCUMENT", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "STRATEGIC_DOCUMENT", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "TID", StringComparison.OrdinalIgnoreCase)
-                        && (item.MemberCode.StartsWith("Source", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(item.MemberCode, "CreatedByUserId", StringComparison.OrdinalIgnoreCase))
-                     || string.Equals(item.ResourceCode, "IDP_STAKEHOLDER", StringComparison.OrdinalIgnoreCase)
-                        && new[] { "ContactPerson", "ContactEmail" }.Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)
-                     || string.Equals(item.ResourceCode, "EMPLOYEE", StringComparison.OrdinalIgnoreCase)
-                        && new[] { "EmployeeNumber", "SalaryReference", "EmailAddress", "IdentityUserId" }
-                            .Contains(item.MemberCode, StringComparer.OrdinalIgnoreCase)))
-            definition.IsSensitive = true;
         await context.SaveChangesAsync();
     }
 
