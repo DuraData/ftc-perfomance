@@ -2276,6 +2276,16 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             RequireGovernanceAudit(nameof(Ward), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         foreach (var entry in ChangeTracker.Entries<VoteNumber>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(VoteNumber), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        var strategicMasterEntries = ChangeTracker.Entries()
+            .Where(entry => entry.Entity is StrategicPlanningMasterBase)
+            .ToArray();
+        if (strategicMasterEntries.Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-planning master history cannot be hard deleted.");
+        foreach (var entry in strategicMasterEntries.Where(entry => entry.State == EntityState.Modified))
+        {
+            var entity = (StrategicPlanningMasterBase)entry.Entity;
+            RequireGovernanceAudit(entry.Metadata.ClrType.Name, entity.PublicId, entity.MunicipalityId);
+        }
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)

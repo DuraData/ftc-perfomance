@@ -74,7 +74,12 @@ public sealed class StrategicPlanningMastersControllerTests
     {
         await using var fixture = await Fixture.CreateAsync(); Guid id; string stale;
         await using (var context = fixture.Context(fixture.MunicipalityA.Id)) { var dto = Data(await Controller(context, fixture.MunicipalityA.Id).CreateStrategicObjective(new("SO", "Objective", null, null, null, 1, true, "Create objective for concurrency"))); id = dto.PublicId; stale = dto.RowVersion; }
-        await using (var writer = fixture.Context(fixture.MunicipalityA.Id)) { var entity = await writer.MunicipalStrategicObjectives.SingleAsync(); entity.Name = "Changed elsewhere"; await writer.SaveChangesAsync(); }
+        await using (var writer = fixture.Context(fixture.MunicipalityA.Id))
+        {
+            var result = await Controller(writer, fixture.MunicipalityA.Id).UpdateStrategicObjective(id,
+                new("SO", "Changed elsewhere", null, null, null, 1, true, "Approved concurrent objective correction", stale));
+            Assert.IsType<OkObjectResult>(result.Result);
+        }
         await using (var context = fixture.Context(fixture.MunicipalityA.Id)) { var result = await Controller(context, fixture.MunicipalityA.Id).UpdateStrategicObjective(id, new("SO", "Stale", null, null, null, 1, true, "Attempt stale objective update", stale)); Assert.IsType<ConflictObjectResult>(result.Result); }
     }
 
@@ -322,8 +327,10 @@ public sealed class StrategicPlanningMastersControllerTests
 
         await using (var writer = fixture.Context(fixture.MunicipalityA.Id))
         {
-            var entity = await writer.GovernedKpiUnitOfMeasures.SingleAsync(item => item.PublicId == currentPublicId);
-            entity.Symbol = "items"; await writer.SaveChangesAsync();
+            var result = await Controller(writer, fixture.MunicipalityA.Id).UpdateKpiUnitOfMeasure(currentPublicId,
+                new("COUNT", "Count", "Items counted", fixture.Year2026.PublicId, null, 1, true,
+                    "Approved concurrent unit symbol correction", staleVersion, "items"));
+            Assert.IsType<OkObjectResult>(result.Result);
         }
         await using (var stale = fixture.Context(fixture.MunicipalityA.Id))
         {
@@ -342,6 +349,56 @@ public sealed class StrategicPlanningMastersControllerTests
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/strategic-interventions" && item.RequiredPermissionCode == "NAV.CONFIGURATION.STRATEGIC_INTERVENTIONS");
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/budget-sources" && item.RequiredPermissionCode == "NAV.CONFIGURATION.BUDGET_SOURCES");
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/admin/units-measure" && item.RequiredPermissionCode == "NAV.CONFIGURATION.KPI_UNITS_OF_MEASURE");
+    }
+
+    [Fact]
+    public async Task Strategic_planning_masters_reject_unaudited_rewrites_and_hard_deletes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using (var setup = fixture.SystemContext())
+        {
+            setup.AddRange(
+                new MunicipalKpa { MunicipalityId = fixture.MunicipalityA.Id, Code = "KPA", Name = "Municipal KPA" },
+                new MunicipalStrategicGoal { MunicipalityId = fixture.MunicipalityA.Id, Code = "GOAL", Name = "Strategic goal" },
+                new StrategicIntervention { MunicipalityId = fixture.MunicipalityA.Id, Code = "INT", Name = "Strategic intervention" },
+                new MunicipalStrategicObjective { MunicipalityId = fixture.MunicipalityA.Id, Code = "OBJ", Name = "Strategic objective" },
+                new PerformanceObjective { MunicipalityId = fixture.MunicipalityA.Id, Code = "PERF", Name = "Performance objective" },
+                new GovernedBudgetSource { MunicipalityId = fixture.MunicipalityA.Id, Code = "BS", Name = "Budget source" },
+                new GovernedBudgetType { MunicipalityId = fixture.MunicipalityA.Id, Code = "BT", Name = "Budget type" },
+                new GovernedKpiType { MunicipalityId = fixture.MunicipalityA.Id, Code = "KT", Name = "KPI type" },
+                new GovernedIndicatorType { MunicipalityId = fixture.MunicipalityA.Id, Code = "IT", Name = "Indicator type" },
+                new GovernedFunctionalArea { MunicipalityId = fixture.MunicipalityA.Id, Code = "FA", Name = "Functional area" },
+                new GovernedStandardClassification { MunicipalityId = fixture.MunicipalityA.Id, Code = "SC", Name = "Standard classification" },
+                new GovernedKpiUnitOfMeasure { MunicipalityId = fixture.MunicipalityA.Id, Code = "UOM", Name = "Unit", Symbol = "#" });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        await AssertUnauditedRewriteRejected(context, context.MunicipalKpas);
+        await AssertUnauditedRewriteRejected(context, context.MunicipalStrategicGoals);
+        await AssertUnauditedRewriteRejected(context, context.StrategicInterventions);
+        await AssertUnauditedRewriteRejected(context, context.MunicipalStrategicObjectives);
+        await AssertUnauditedRewriteRejected(context, context.PerformanceObjectives);
+        await AssertUnauditedRewriteRejected(context, context.GovernedBudgetSources);
+        await AssertUnauditedRewriteRejected(context, context.GovernedBudgetTypes);
+        await AssertUnauditedRewriteRejected(context, context.GovernedKpiTypes);
+        await AssertUnauditedRewriteRejected(context, context.GovernedIndicatorTypes);
+        await AssertUnauditedRewriteRejected(context, context.GovernedFunctionalAreas);
+        await AssertUnauditedRewriteRejected(context, context.GovernedStandardClassifications);
+        await AssertUnauditedRewriteRejected(context, context.GovernedKpiUnitOfMeasures);
+
+        await AssertHardDeleteRejected(context, context.MunicipalKpas);
+        await AssertHardDeleteRejected(context, context.MunicipalStrategicGoals);
+        await AssertHardDeleteRejected(context, context.StrategicInterventions);
+        await AssertHardDeleteRejected(context, context.MunicipalStrategicObjectives);
+        await AssertHardDeleteRejected(context, context.PerformanceObjectives);
+        await AssertHardDeleteRejected(context, context.GovernedBudgetSources);
+        await AssertHardDeleteRejected(context, context.GovernedBudgetTypes);
+        await AssertHardDeleteRejected(context, context.GovernedKpiTypes);
+        await AssertHardDeleteRejected(context, context.GovernedIndicatorTypes);
+        await AssertHardDeleteRejected(context, context.GovernedFunctionalAreas);
+        await AssertHardDeleteRejected(context, context.GovernedStandardClassifications);
+        await AssertHardDeleteRejected(context, context.GovernedKpiUnitOfMeasures);
     }
 
     [Theory]
@@ -378,6 +435,22 @@ public sealed class StrategicPlanningMastersControllerTests
 
     private static StrategicPlanningMasterDto Data(Task<ActionResult<ApiResponse<StrategicPlanningMasterDto>>> task) => Data(task.GetAwaiter().GetResult());
     private static StrategicPlanningMasterDto Data(ActionResult<ApiResponse<StrategicPlanningMasterDto>> result) => Assert.IsType<OkObjectResult>(result.Result).Value.As<ApiResponse<StrategicPlanningMasterDto>>().Data!;
+    private static async Task AssertUnauditedRewriteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set) where TEntity : StrategicPlanningMasterBase
+    {
+        var entity = await set.SingleAsync();
+        entity.Name += " silently rewritten";
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("same-transaction reasoned before/after audit evidence", exception.Message);
+        context.ChangeTracker.Clear();
+    }
+    private static async Task AssertHardDeleteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set) where TEntity : StrategicPlanningMasterBase
+    {
+        var entity = await set.SingleAsync();
+        set.Remove(entity);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("cannot be hard deleted", exception.Message);
+        context.ChangeTracker.Clear();
+    }
     private static StrategicPlanningMastersController Controller(ApplicationDbContext context, long municipalityId) { var controller = new StrategicPlanningMastersController(context, new TestTenantContext(municipalityId, "planner-1", false)); controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }; return controller; }
 
     private sealed class Fixture(SqliteConnection connection, DbContextOptions<ApplicationDbContext> options, Municipality municipalityA, Municipality municipalityB, MunicipalityFinancialYear year2025, MunicipalityFinancialYear year2026) : IAsyncDisposable
