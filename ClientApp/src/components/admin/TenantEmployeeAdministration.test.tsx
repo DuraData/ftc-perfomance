@@ -30,6 +30,7 @@ describe('TenantEmployeeAdministration', () => {
     api.createEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
     api.closeEmployeeAssignment.mockResolvedValue({ success: true, data: {} });
     api.createMunicipalEmployee.mockResolvedValue({ success: true, data: {} });
+    api.updateMunicipalEmployee.mockResolvedValue({ success: true, data: {} });
   });
 
   it('loads tenant employees and creates an effective-dated placement using public identifiers', async () => {
@@ -66,10 +67,23 @@ describe('TenantEmployeeAdministration', () => {
     fireEvent.change(screen.getByLabelText('Salary reference'), { target: { value: 'SAL-002' } });
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Lebo' } });
     fireEvent.change(screen.getByLabelText(/Last name/), { target: { value: 'Dlamini' } });
+    fireEvent.change(screen.getByLabelText(/Employee governance reason/), { target: { value: 'Approved municipal employee appointment' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create employee' }));
 
     await waitFor(() => expect(api.createMunicipalEmployee).toHaveBeenCalledWith(expect.objectContaining({
-      employeeNumber: 'E002', salaryReference: 'SAL-002', firstName: 'Lebo', lastName: 'Dlamini',
+      employeeNumber: 'E002', salaryReference: 'SAL-002', firstName: 'Lebo', lastName: 'Dlamini', reason: 'Approved municipal employee appointment',
+    })));
+  });
+
+  it('deactivates an employee only with reasoned RowVersion governance', async () => {
+    api.getEmployeeAssignmentsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
+    render(<TenantEmployeeAdministration />);
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Mokoena/ }));
+    fireEvent.change(await screen.findByLabelText(/Employee deactivation reason/), { target: { value: 'Employment ended after approved separation' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate employee' }));
+
+    await waitFor(() => expect(api.updateMunicipalEmployee).toHaveBeenCalledWith('employee-1', expect.objectContaining({
+      isActive: false, reason: 'Employment ended after approved separation', rowVersion: 'AQ==',
     })));
   });
 

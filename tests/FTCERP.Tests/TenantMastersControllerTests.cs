@@ -203,16 +203,57 @@ public sealed class TenantMastersControllerTests
         };
 
         var createdResult = await controller.CreateEmployee(new SaveEmployeeRequest(
-            "E083", "Salary", "Protected", null, null, DateTime.UtcNow.AddDays(-1), null, "SAL-083"));
+            "E083", "Salary", "Protected", null, null, DateTime.UtcNow.AddDays(-1), null, "SAL-083",
+            "Approved employee master creation"));
         var created = Assert.IsType<ApiResponse<EmployeeDto>>(Assert.IsType<OkObjectResult>(createdResult.Result).Value).Data!;
         Assert.Equal("SAL-083", created.SalaryReference);
 
         var updatedResult = await controller.UpdateEmployee(created.PublicId, new UpdateEmployeeRequest(
             created.FirstName, created.LastName, null, null, true, created.EffectiveFrom, null, created.RowVersion,
-            false, false, "SAL-083-REVISED", true));
+            false, false, "SAL-083-REVISED", true, "Approved salary reference correction"));
         var updated = Assert.IsType<ApiResponse<EmployeeDto>>(Assert.IsType<OkObjectResult>(updatedResult.Result).Value).Data!;
         Assert.Equal("SAL-083-REVISED", updated.SalaryReference);
         Assert.Equal("SAL-083-REVISED", (await context.MunicipalEmployees.SingleAsync()).SalaryReference);
+        var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(MunicipalEmployee)).OrderBy(item => item.Id).ToArrayAsync();
+        Assert.Equal(2, audits.Length);
+        Assert.Equal("Approved employee master creation", audits[0].Reason);
+        Assert.Null(audits[0].OldValue);
+        Assert.Contains("\"SalaryReference\":\"SAL-083\"", audits[0].NewValue);
+        Assert.Equal("Approved salary reference correction", audits[1].Reason);
+        Assert.Contains("\"SalaryReference\":\"SAL-083\"", audits[1].OldValue);
+        Assert.Contains("\"SalaryReference\":\"SAL-083-REVISED\"", audits[1].NewValue);
+    }
+
+    [Fact]
+    public async Task Employee_master_rejects_unaudited_rewrite_and_hard_delete()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 84;
+        await using (var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true)))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var municipality = new Municipality { Id = municipalityId, Code = "M84", Name = "Municipality 84" };
+            setup.AddRange(municipality, new MunicipalEmployee
+            {
+                MunicipalityId = municipalityId, EmployeeNumber = "E084", FirstName = "Protected", LastName = "Employee",
+                EffectiveFrom = DateTime.UtcNow.AddYears(-1)
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "employee-governor"));
+        var employee = await context.MunicipalEmployees.SingleAsync();
+        employee.LastName = "Silent rewrite";
+        var rewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("same-transaction reasoned before/after audit evidence", rewrite.Message);
+
+        context.ChangeTracker.Clear();
+        employee = await context.MunicipalEmployees.SingleAsync();
+        context.MunicipalEmployees.Remove(employee);
+        var deletion = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("cannot be hard deleted", deletion.Message);
     }
 
     [Fact]

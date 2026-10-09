@@ -1344,11 +1344,11 @@ export async function getMunicipalEmployeesPage(query: RegisterPageQuery = {}, a
   return get<PagedResult<MunicipalEmployeeDto>>(`/v1/masters/employees/page${suffix}`);
 }
 
-export async function createMunicipalEmployee(payload: { employeeNumber: string; salaryReference?: string | null; firstName: string; lastName: string; emailAddress?: string | null; identityUserPublicId?: string | null; effectiveFrom: string; effectiveTo?: string | null }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+export async function createMunicipalEmployee(payload: { employeeNumber: string; salaryReference?: string | null; firstName: string; lastName: string; emailAddress?: string | null; identityUserPublicId?: string | null; effectiveFrom: string; effectiveTo?: string | null; reason: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
   return post<MunicipalEmployeeDto>('/v1/masters/employees', payload);
 }
 
-export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; salaryReference?: string | null; salaryReferenceSpecified?: boolean; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserPublicId?: string | null; identityUserPublicIdSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
+export async function updateMunicipalEmployee(publicId: string, payload: { firstName: string; lastName: string; salaryReference?: string | null; salaryReferenceSpecified?: boolean; emailAddress?: string | null; emailAddressSpecified?: boolean; identityUserPublicId?: string | null; identityUserPublicIdSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion: string }): Promise<ApiResponse<MunicipalEmployeeDto>> {
   return put<MunicipalEmployeeDto>(`/v1/masters/employees/${publicId}`, payload);
 }
 

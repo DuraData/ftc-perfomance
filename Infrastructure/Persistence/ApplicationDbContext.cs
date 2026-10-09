@@ -2256,6 +2256,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             RequireGovernanceAudit(nameof(ReportingPeriod), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
         foreach (var entry in ChangeTracker.Entries<SdbipLayer>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(SdbipLayer), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        if (ChangeTracker.Entries<MunicipalEmployee>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Municipal-employee history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<MunicipalEmployee>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(MunicipalEmployee), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
