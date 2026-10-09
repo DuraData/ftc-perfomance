@@ -2174,6 +2174,75 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
         if (ChangeTracker.Entries<AuthenticationPolicy>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Authentication policy history is append-only; create a successor configuration version instead.");
+        foreach (var entry in ChangeTracker.Entries<UserAuthenticator>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Enterprise-authenticator identity and lifecycle history cannot be hard deleted.");
+
+            EnsureOnlyProperties(entry,
+                [nameof(UserAuthenticator.Issuer), nameof(UserAuthenticator.Subject), nameof(UserAuthenticator.ExternalIdentityHash),
+                    nameof(UserAuthenticator.LinkedAt), nameof(UserAuthenticator.LinkedByUserId), nameof(UserAuthenticator.IsActive),
+                    nameof(UserAuthenticator.LastAuthenticatedAt), nameof(UserAuthenticator.DisabledByUserId), nameof(UserAuthenticator.DisabledAt),
+                    nameof(UserAuthenticator.RowVersion)],
+                "Enterprise-authenticator municipality, user, provider, expected email and creation evidence are immutable.");
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name).Where(name => name != nameof(UserAuthenticator.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            var binding = new[] { nameof(UserAuthenticator.Issuer), nameof(UserAuthenticator.Subject), nameof(UserAuthenticator.ExternalIdentityHash),
+                nameof(UserAuthenticator.LinkedAt), nameof(UserAuthenticator.LinkedByUserId) };
+            var status = new[] { nameof(UserAuthenticator.IsActive), nameof(UserAuthenticator.DisabledByUserId), nameof(UserAuthenticator.DisabledAt) };
+            var bindingChanged = binding.Any(changed.Contains);
+            var statusChanged = status.Any(changed.Contains);
+            var authenticatedChanged = changed.Contains(nameof(UserAuthenticator.LastAuthenticatedAt));
+
+            if (bindingChanged)
+            {
+                if (statusChanged || !authenticatedChanged || binding.Any(property => !changed.Contains(property))
+                    || binding.Any(property => entry.OriginalValues[property] != null)
+                    || binding.Any(property => entry.CurrentValues[property] == null)
+                    || entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.LinkedAt))
+                        < entry.OriginalValues.GetValue<DateTime>(nameof(UserAuthenticator.CreatedAt)))
+                    throw new InvalidOperationException("An enterprise identity may be bound exactly once, atomically with its first successful authentication evidence.");
+            }
+
+            if (authenticatedChanged)
+            {
+                var currentAuthentication = entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.LastAuthenticatedAt));
+                var originalAuthentication = entry.OriginalValues.GetValue<DateTime?>(nameof(UserAuthenticator.LastAuthenticatedAt));
+                var hasEvent = ChangeTracker.Entries<AuthenticationEvent>().Any(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.UserId == entry.Entity.UserId
+                    && candidate.Entity.ProviderCode == entry.Entity.ProviderRegistrationCode
+                    && candidate.Entity.EventType == "ExternalSignIn" && candidate.Entity.Success);
+                if (statusChanged || !currentAuthentication.HasValue
+                    || originalAuthentication.HasValue && currentAuthentication <= originalAuthentication
+                    || !hasEvent)
+                    throw new InvalidOperationException("Enterprise-authenticator last-use evidence may advance only with its append-only successful authentication event.");
+            }
+
+            if (statusChanged)
+            {
+                var originalActive = entry.OriginalValues.GetValue<bool>(nameof(UserAuthenticator.IsActive));
+                var currentActive = entry.CurrentValues.GetValue<bool>(nameof(UserAuthenticator.IsActive));
+                var expectedAction = currentActive ? "EnterpriseIdentityEnabled" : "EnterpriseIdentityDisabled";
+                var hasAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.EntityName == "UserAuthenticator"
+                    && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+                    && candidate.Entity.Action == expectedAction);
+                if (bindingChanged || authenticatedChanged || originalActive == currentActive
+                    || status.Any(property => !changed.Contains(property))
+                    || currentActive && (entry.CurrentValues.GetValue<string?>(nameof(UserAuthenticator.DisabledByUserId)) != null
+                        || entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.DisabledAt)).HasValue)
+                    || !currentActive && (string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(UserAuthenticator.DisabledByUserId)))
+                        || !entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.DisabledAt)).HasValue)
+                    || !hasAudit)
+                    throw new InvalidOperationException("Enterprise-authenticator status changes require a complete state tuple and append-only governance audit evidence.");
+            }
+
+            if (!bindingChanged && !authenticatedChanged && !statusChanged)
+                throw new InvalidOperationException("Enterprise-authenticator history cannot be rewritten.");
+        }
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)

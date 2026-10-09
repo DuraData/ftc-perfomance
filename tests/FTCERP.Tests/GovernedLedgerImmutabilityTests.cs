@@ -675,4 +675,71 @@ public sealed class GovernedLedgerImmutabilityTests
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*exact chronological, actor-stamped successor version*");
     }
+
+    [Fact]
+    public async Task Enterprise_authenticator_identity_cannot_be_rewritten()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var authenticator = new UserAuthenticator
+        {
+            Id = 139,
+            MunicipalityId = 1,
+            UserId = "user",
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = "original@example.test",
+            CreatedByUserId = "actor"
+        };
+        context.Attach(authenticator);
+        authenticator.ExpectedEmail = "replacement@example.test";
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*expected email and creation evidence are immutable*");
+    }
+
+    [Fact]
+    public async Task Enterprise_authenticator_last_use_requires_append_only_success_event()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var authenticator = new UserAuthenticator
+        {
+            Id = 140,
+            MunicipalityId = 1,
+            UserId = "user",
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = "user@example.test",
+            CreatedByUserId = "actor",
+            LastAuthenticatedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        context.Attach(authenticator);
+        authenticator.LastAuthenticatedAt = DateTime.UtcNow;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-only successful authentication event*");
+    }
+
+    [Fact]
+    public async Task Enterprise_authenticator_status_requires_governance_audit()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var authenticator = new UserAuthenticator
+        {
+            Id = 141,
+            MunicipalityId = 1,
+            UserId = "user",
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = "user@example.test",
+            CreatedByUserId = "actor",
+            IsActive = true
+        };
+        context.Attach(authenticator);
+        authenticator.IsActive = false;
+        authenticator.DisabledByUserId = "actor";
+        authenticator.DisabledAt = DateTime.UtcNow;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-only governance audit evidence*");
+    }
 }

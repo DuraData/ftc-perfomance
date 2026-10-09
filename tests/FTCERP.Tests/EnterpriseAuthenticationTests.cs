@@ -318,6 +318,49 @@ public sealed class EnterpriseAuthenticationTests
         Assert.IsType<ForbidResult>(write.Result);
     }
 
+    [Fact]
+    public async Task Authentication_administration_status_changes_preserve_actor_stamped_audit_history()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Code = "AUTH-STATUS", Name = "Authentication Status" };
+        var actor = User("authentication-status-admin", municipality);
+        var linked = User("authentication-status-user", municipality);
+        var authenticator = new UserAuthenticator
+        {
+            Municipality = municipality,
+            User = linked,
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = linked.Email!,
+            CreatedByUserId = actor.Id,
+            IsActive = true
+        };
+        context.AddRange(municipality, actor, linked, authenticator);
+        await context.SaveChangesAsync();
+
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id),
+            new EnterpriseProviderRegistry([Provider()]), Mock.Of<IAccessControlService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = Http(actor.Id) }
+        };
+        var disabledResult = await controller.SetStatus(authenticator.PublicId,
+            new SetUserAuthenticatorStatusRequest(false, "Security owner suspended the identity", Convert.ToBase64String(authenticator.RowVersion)), default);
+        var disabled = Assert.IsType<ApiResponse<UserAuthenticatorDto>>(Assert.IsType<OkObjectResult>(disabledResult.Result).Value).Data!;
+        Assert.False(disabled.IsActive);
+        var disabledAudit = await context.AuditTrails.SingleAsync(item => item.Action == "EnterpriseIdentityDisabled");
+        Assert.Equal("UserAuthenticator", disabledAudit.EntityName);
+        Assert.Equal(actor.Id, disabledAudit.ChangedBy);
+
+        var enabledResult = await controller.SetStatus(authenticator.PublicId,
+            new SetUserAuthenticatorStatusRequest(true, "Security owner restored the identity", disabled.RowVersion), default);
+        var enabled = Assert.IsType<ApiResponse<UserAuthenticatorDto>>(Assert.IsType<OkObjectResult>(enabledResult.Result).Value).Data!;
+        Assert.True(enabled.IsActive);
+        Assert.Equal(2, await context.AuditTrails.CountAsync(item => item.EntityName == "UserAuthenticator"));
+    }
+
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
     private static EnterpriseAuthController DiscoveryController(ApplicationDbContext context) => new(

@@ -144,7 +144,7 @@ public sealed class AuthenticationAdministrationController(
         entity.Policy = new AuthenticationPolicy { MunicipalityId = municipalityId, ModifiedByUserId = actor };
         ApplyPolicy(entity.Policy, request.Policy, actor);
         context.AuthenticationConfigurations.Add(entity);
-        AddAudit(municipalityId, actor, created ? "AuthenticationConfigurationCreated" : "AuthenticationConfigurationVersionCreated", entity.PublicId.ToString(), request.Reason,
+        AddAudit(municipalityId, actor, "AuthenticationConfiguration", created ? "AuthenticationConfigurationCreated" : "AuthenticationConfigurationVersionCreated", entity.PublicId.ToString(), request.Reason,
             new { entity.ConfigurationFamilyPublicId, entity.VersionNumber, PreviousVersionPublicId = previous?.PublicId, request.Mode, ProviderRegistrationCode = providerCode, request.IsActive, request.EffectiveFrom, request.EffectiveTo });
         try
         {
@@ -257,7 +257,7 @@ public sealed class AuthenticationAdministrationController(
             CreatedAt = DateTime.UtcNow
         };
         context.UserAuthenticators.Add(row);
-        AddAudit(municipalityId, actor, "EnterpriseIdentityProvisioned", row.PublicId.ToString(), request.Reason,
+        AddAudit(municipalityId, actor, "UserAuthenticator", "EnterpriseIdentityProvisioned", row.PublicId.ToString(), request.Reason,
             new { user.PublicId, Provider = provider.Code, Prelinked = issuer != null });
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException) { return Conflict(Fail<UserAuthenticatorDto>("That user or external identity is already linked for this provider.")); }
@@ -279,7 +279,7 @@ public sealed class AuthenticationAdministrationController(
         row.IsActive = request.IsActive;
         row.DisabledAt = request.IsActive ? null : DateTime.UtcNow;
         row.DisabledByUserId = request.IsActive ? null : actor;
-        AddAudit(municipalityId, actor, request.IsActive ? "EnterpriseIdentityEnabled" : "EnterpriseIdentityDisabled", row.PublicId.ToString(), request.Reason, null);
+        AddAudit(municipalityId, actor, "UserAuthenticator", request.IsActive ? "EnterpriseIdentityEnabled" : "EnterpriseIdentityDisabled", row.PublicId.ToString(), request.Reason, null);
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<UserAuthenticatorDto>("The authenticator changed since it was loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<UserAuthenticatorDto>(true, await ToAuthorizedDtoAsync(row, row.User, municipalityId)));
@@ -381,9 +381,9 @@ public sealed class AuthenticationAdministrationController(
         entity.MaximumConcurrentSessions = value.MaximumConcurrentSessions; entity.ModifiedByUserId = actor; entity.ModifiedAt = DateTime.UtcNow;
     }
 
-    private void AddAudit(long municipalityId, string actor, string action, string entityId, string reason, object? value) => context.AuditTrails.Add(new AuditTrail
+    private void AddAudit(long municipalityId, string actor, string entityName, string action, string entityId, string reason, object? value) => context.AuditTrails.Add(new AuditTrail
     {
-        MunicipalityId = municipalityId, EntityName = "AuthenticationConfiguration", EntityId = entityId, Action = action,
+        MunicipalityId = municipalityId, EntityName = entityName, EntityId = entityId, Action = action,
         OldValue = JsonSerializer.Serialize(new { Reason = reason }), NewValue = value == null ? null : JsonSerializer.Serialize(value),
         ChangedBy = actor, ChangedAt = DateTime.UtcNow, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         CorrelationId = HttpContext.TraceIdentifier, UserAgent = Request.Headers.UserAgent.ToString()
