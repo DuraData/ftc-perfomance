@@ -2286,6 +2286,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             var entity = (StrategicPlanningMasterBase)entry.Entity;
             RequireGovernanceAudit(entry.Metadata.ClrType.Name, entity.PublicId, entity.MunicipalityId);
         }
+        if (ChangeTracker.Entries<NationalKpa>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<BackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<MunicipalityNationalKpa>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<MunicipalityBackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Global strategic-reference history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<NationalKpa>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(NationalKpa), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<BackToBasicsPillar>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(BackToBasicsPillar), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<MunicipalityNationalKpa>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(MunicipalityNationalKpa), entry.Entity.PublicId, entry.Entity.MunicipalityId, "UpdateAvailability");
+        foreach (var entry in ChangeTracker.Entries<MunicipalityBackToBasicsPillar>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(MunicipalityBackToBasicsPillar), entry.Entity.PublicId, entry.Entity.MunicipalityId, "UpdateAvailability");
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
@@ -2773,12 +2786,12 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException(message);
     }
 
-    private void RequireGovernanceAudit(string entityName, Guid publicId, long? municipalityId)
+    private void RequireGovernanceAudit(string entityName, Guid publicId, long? municipalityId, string action = "Update")
     {
         var hasAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
             && candidate.Entity.EntityName == entityName
             && candidate.Entity.EntityId == publicId.ToString()
-            && candidate.Entity.Action == "Update"
+            && candidate.Entity.Action == action
             && candidate.Entity.MunicipalityId == municipalityId
             && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
             && candidate.Entity.OldValue != null

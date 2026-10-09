@@ -76,9 +76,9 @@ public sealed class GlobalStrategicReferencesControllerTests
         }
         await using (var writer = fixture.Context(fixture.MunicipalityA.Id))
         {
-            var entity = await writer.NationalKpas.SingleAsync();
-            entity.Name = "Updated elsewhere";
-            await writer.SaveChangesAsync();
+            var result = await Controller(writer, fixture.MunicipalityA.Id).UpdateNationalKpa(fixture.NationalKpa.PublicId,
+                new("BSD", "Updated elsewhere", null, 10, true, "Approved concurrent global catalogue correction", staleVersion));
+            Assert.IsType<OkObjectResult>(result.Result);
         }
         await using (var stale = fixture.Context(fixture.MunicipalityA.Id))
         {
@@ -113,11 +113,56 @@ public sealed class GlobalStrategicReferencesControllerTests
         Assert.Contains(await context.SecurityNavigationItems.ToArrayAsync(), item => item.Route == "/idp/documents" && item.RequiredPermissionCode == "NAV.IDP.DOCUMENTS");
     }
 
+    [Fact]
+    public async Task Global_references_and_municipality_availability_reject_unaudited_rewrites_and_hard_deletes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using (var setup = fixture.SystemContext())
+        {
+            var pillar = new BackToBasicsPillar { Code = "PEOPLE", Name = "Putting people first", DisplayOrder = 10 };
+            setup.BackToBasicsPillars.Add(pillar);
+            await setup.SaveChangesAsync();
+            setup.AddRange(
+                new MunicipalityNationalKpa { MunicipalityId = fixture.MunicipalityA.Id, NationalKpaId = fixture.NationalKpa.Id, IsEnabled = true },
+                new MunicipalityBackToBasicsPillar { MunicipalityId = fixture.MunicipalityA.Id, BackToBasicsPillarId = pillar.Id, IsEnabled = true });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        await AssertUnauditedRewriteRejected(context, context.NationalKpas, item => item.Name = "Silent global rewrite");
+        await AssertUnauditedRewriteRejected(context, context.BackToBasicsPillars, item => item.Name = "Silent pillar rewrite");
+        await AssertUnauditedRewriteRejected(context, context.MunicipalityNationalKpas, item => item.IsEnabled = false);
+        await AssertUnauditedRewriteRejected(context, context.MunicipalityBackToBasicsPillars, item => item.IsEnabled = false);
+
+        await AssertHardDeleteRejected(context, context.NationalKpas);
+        await AssertHardDeleteRejected(context, context.BackToBasicsPillars);
+        await AssertHardDeleteRejected(context, context.MunicipalityNationalKpas);
+        await AssertHardDeleteRejected(context, context.MunicipalityBackToBasicsPillars);
+    }
+
     private static GlobalStrategicReferencesController Controller(ApplicationDbContext context, long municipalityId, bool isSystem = true)
     {
         var controller = new GlobalStrategicReferencesController(context, new TestTenantContext(municipalityId, "user-1", isSystem));
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
         return controller;
+    }
+
+    private static async Task AssertUnauditedRewriteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set, Action<TEntity> mutate) where TEntity : class
+    {
+        var entity = await set.SingleAsync();
+        mutate(entity);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("same-transaction reasoned before/after audit evidence", exception.Message);
+        context.ChangeTracker.Clear();
+    }
+
+    private static async Task AssertHardDeleteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set) where TEntity : class
+    {
+        var entity = await set.SingleAsync();
+        set.Remove(entity);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("cannot be hard deleted", exception.Message);
+        context.ChangeTracker.Clear();
     }
 
     private sealed class Fixture(SqliteConnection connection, DbContextOptions<ApplicationDbContext> options, Municipality municipalityA, Municipality municipalityB, NationalKpa nationalKpa) : IAsyncDisposable
