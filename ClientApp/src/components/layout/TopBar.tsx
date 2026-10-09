@@ -24,6 +24,7 @@ type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 export function TopBar({ title, subtitle }: TopBarProps) {
   const {
     userProfile,
+    authenticationGate,
     darkMode,
     toggleDarkMode,
     logout,
@@ -53,6 +54,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   }, [setTenantContextSearch, tenantSearchInput]);
 
   const loadNotifications = useCallback(async () => {
+    if (authenticationGate !== null) return;
     setLoadingNotifications(true);
     const result = await getNotifications({ page: 1, pageSize: 8, sortBy: 'createdAt', sortDirection: 'desc' });
     if (result.success && result.data) {
@@ -62,11 +64,11 @@ export function TopBar({ title, subtitle }: TopBarProps) {
       pushToast('error', result.message ?? 'Failed to load notifications');
     }
     setLoadingNotifications(false);
-  }, [pushToast]);
+  }, [authenticationGate, pushToast]);
 
   useEffect(() => {
-    void loadNotifications();
-  }, [loadNotifications]);
+    if (authenticationGate === null) void loadNotifications();
+  }, [authenticationGate, loadNotifications]);
 
   const recentNotifications = useMemo(
     () => notifications
@@ -151,7 +153,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           </div>
         )}
         {/* Search */}
-        <div className="relative">
+        {authenticationGate === null && <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />
           <input
             type="text"
@@ -160,7 +162,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-64 pl-10 pr-4 py-2 text-sm bg-secondary-50 dark:bg-secondary-800 border border-secondary-200 dark:border-secondary-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
           />
-        </div>
+        </div>}
 
         {/* Dark mode toggle */}
         <button
@@ -176,7 +178,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
         </button>
 
         {/* Notifications */}
-        <div className="relative">
+        {authenticationGate === null && <div className="relative">
           <button
             className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors relative"
             onClick={toggleNotifications}
@@ -256,7 +258,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
               </div>
             </>
           )}
-        </div>
+        </div>}
 
         {/* User menu */}
         {userProfile && (

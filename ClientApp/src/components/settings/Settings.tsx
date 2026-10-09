@@ -203,7 +203,7 @@ function SecuritySettings() {
     setBusy(true); setSessionError(null);
     const result = await disableMfa(mfaPassword, mfaCode);
     if (!result.success) { setSessionError(result.message ?? 'MFA could not be disabled.'); setBusy(false); return; }
-    logout();
+    logout(false);
   };
   const savePassword = async () => {
     setSessionError(null);
@@ -211,13 +211,13 @@ function SecuritySettings() {
     setBusy(true);
     const result = await changePassword(currentPassword, newPassword);
     if (!result.success) { setSessionError(result.errors?.join(' ') || result.message || 'Password could not be changed.'); setBusy(false); return; }
-    logout();
+    logout(false);
   };
   const revoke = async (session: AuthSessionDto) => {
     setBusy(true); setSessionError(null);
     const result = await revokeAuthSession(session.sessionId, 'User revoked session from account settings');
     if (!result.success) setSessionError(result.message ?? 'Session could not be revoked.');
-    else if (session.isCurrent) logout();
+    else if (session.isCurrent) logout(false);
     else { pushToast('success', 'Session revoked'); await loadSessions(sessionPage, sessionSearch); }
     setBusy(false);
   };
@@ -225,7 +225,7 @@ function SecuritySettings() {
     setBusy(true); setSessionError(null);
     const result = await revokeAllAuthSessions('User signed out all sessions from account settings');
     if (!result.success) { setSessionError(result.message ?? 'Sessions could not be revoked.'); setBusy(false); return; }
-    logout();
+    logout(false);
   };
   return (
     <div className="space-y-3">
@@ -266,7 +266,7 @@ function SecuritySettings() {
         {recoveryCodes.length > 0 && <div role="status" className="space-y-2 rounded border border-warning-300 bg-warning-50 p-3">
           <p className="text-xs font-semibold">Save these one-time recovery codes now. They will not be shown again.</p>
           <div className="grid grid-cols-2 gap-1 font-mono text-xs">{recoveryCodes.map(code => <span key={code}>{code}</span>)}</div>
-          <Button variant="primary" size="sm" onClick={logout}>I saved the codes — sign in again</Button>
+          <Button variant="primary" size="sm" onClick={() => logout(false)}>I saved the codes — sign in again</Button>
         </div>}
         {mfaStatus?.isEnabled && recoveryCodes.length === 0 && <div className="space-y-2">
           <p className="text-xs text-secondary-500">{mfaStatus.recoveryCodesLeft} recovery codes remain.</p>
@@ -286,7 +286,12 @@ function SecuritySettings() {
 }
 
 export function Settings() {
+  const { authenticationGate } = useApp();
   const [activeTab, setActiveTab] = useState<SettingsTabId>(() => readStoredSettingsTab());
+
+  useEffect(() => {
+    if (authenticationGate !== null && activeTab !== 'security') setActiveTab('security');
+  }, [activeTab, authenticationGate]);
 
   useEffect(() => {
     try {
@@ -297,6 +302,7 @@ export function Settings() {
   }, [activeTab]);
 
   const renderTabContent = () => {
+    if (authenticationGate !== null) return <SecuritySettings />;
     switch (activeTab) {
       case 'profile': return <ProfileSettings />;
       case 'notifications': return <NotificationSettings />;
@@ -309,7 +315,7 @@ export function Settings() {
   return (
     <AppShell title="Settings" subtitle="Account preferences">
       <div className="max-w-3xl mx-auto space-y-4">
-        <Tabs tabs={SETTINGS_TABS} activeTab={activeTab} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
+        <Tabs tabs={authenticationGate === null ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id === 'security')} activeTab={authenticationGate === null ? activeTab : 'security'} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
         <Card>
           {renderTabContent()}
         </Card>

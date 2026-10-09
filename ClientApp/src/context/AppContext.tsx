@@ -34,6 +34,7 @@ interface AppContextType {
   permissions: string[];
   menuItems: MenuItem[];
   accessReady: boolean;
+  authenticationGate: AuthenticationGate | null;
   tenantContexts: TenantContextDto[];
   tenantContextPage: number;
   tenantContextTotalPages: number;
@@ -45,7 +46,7 @@ interface AppContextType {
   switchMunicipality: (municipalityId: number) => Promise<boolean>;
   login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'>;
   resumeEnterpriseLogin: () => Promise<'success' | 'failed'>;
-  logout: () => void;
+  logout: (notifyServer?: boolean) => void;
   sidebarCollapsed: boolean;
   expandedSidebarGroups: string[];
   darkMode: boolean;
@@ -337,8 +338,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return 'success';
   }, [loadTenantContexts]);
 
-  const logout = () => {
-    apiLogout();
+  const logout = (notifyServer = true) => {
+    if (notifyServer) void apiLogout();
     setUserProfile(null);
     setRoles([]);
     setPermissions([]);
@@ -410,6 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         permissions,
         menuItems,
         accessReady,
+        authenticationGate,
         tenantContexts,
         tenantContextPage,
         tenantContextTotalPages,

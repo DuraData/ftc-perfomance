@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Settings } from './Settings';
 
 const api = vi.hoisted(() => ({ getAuthSessionsPage: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn(), changePassword: vi.fn(), getMyNotificationPreferences: vi.fn(), saveMyNotificationPreferences: vi.fn() }));
-const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn(), userProfile: null as null | { mustChangePassword: boolean } }));
+const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn(), userProfile: null as null | { mustChangePassword: boolean }, authenticationGate: null as null | 'password_change' | 'mfa_enrollment' }));
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ ...app, darkMode: false, toggleDarkMode: vi.fn() }) }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -21,6 +21,7 @@ describe('Security session settings', () => {
     api.getMyNotificationPreferences.mockResolvedValue({ success: true, data: { emailEnabled: true, smsEnabled: false, dailyDigestEnabled: true, weeklySummaryEnabled: false, rowVersion: 'AQ==' } });
     api.saveMyNotificationPreferences.mockImplementation(async (value) => ({ success: true, data: { ...value, rowVersion: 'Ag==' }, message: 'Optional preferences saved.' }));
     app.userProfile = null;
+    app.authenticationGate = null;
   });
 
   it('loads and persists notification preferences while explaining mandatory delivery', async () => {
@@ -57,7 +58,7 @@ describe('Security session settings', () => {
     await screen.findByText(/Test Browser/);
     fireEvent.click(screen.getByRole('button', { name: 'Sign out all' }));
     await waitFor(() => expect(api.revokeAllAuthSessions).toHaveBeenCalled());
-    expect(app.logout).toHaveBeenCalled();
+    expect(app.logout).toHaveBeenCalledWith(false);
   });
 
   it('enrolls an authenticator and shows one-time recovery codes', async () => {
@@ -74,16 +75,21 @@ describe('Security session settings', () => {
 
   it('enforces a matching new password and signs out after changing it', async () => {
     app.userProfile = { mustChangePassword: true };
+    app.authenticationGate = 'password_change';
     render(<Settings />);
     expect(screen.getByText(/must change your password/i)).toBeInTheDocument();
     expect(screen.getByText(/You will then be guided through required multi-factor authentication/i)).toBeInTheDocument();
     expect(api.getMfaStatus).not.toHaveBeenCalled();
     expect(api.getAuthSessionsPage).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Security' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Profile' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Notifications' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Appearance' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'OldPassword1!' } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword2@' } });
     fireEvent.change(screen.getByLabelText('Confirm'), { target: { value: 'NewPassword2@' } });
     fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
     await waitFor(() => expect(api.changePassword).toHaveBeenCalledWith('OldPassword1!', 'NewPassword2@'));
-    expect(app.logout).toHaveBeenCalled();
+    expect(app.logout).toHaveBeenCalledWith(false);
   });
 });

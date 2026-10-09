@@ -3,6 +3,7 @@ import { TopBar } from './TopBar';
 
 const app = vi.hoisted(() => ({
   userProfile: { firstName: 'Test', lastName: 'User', fullName: 'Test User', email: 'test@example.gov.za' },
+  authenticationGate: null as null | 'password_change' | 'mfa_enrollment',
   darkMode: false,
   toggleDarkMode: vi.fn(),
   logout: vi.fn(),
@@ -29,6 +30,7 @@ describe('TopBar notification feed', () => {
     app.tenantContextPage = 1;
     app.tenantContextTotalPages = 0;
     app.tenantContextTotalCount = 0;
+    app.authenticationGate = null;
     vi.clearAllMocks();
   });
 
@@ -74,5 +76,14 @@ describe('TopBar notification feed', () => {
     await waitFor(() => expect(app.setTenantContextSearch).toHaveBeenCalledWith('seventh'));
     fireEvent.click(screen.getByRole('button', { name: 'Next municipality contexts' }));
     expect(app.setTenantContextPage).toHaveBeenCalledWith(2);
+  });
+
+  it('does not request or expose notifications while account security remediation is required', () => {
+    app.authenticationGate = 'password_change';
+
+    render(<TopBar title="Account Security" />);
+
+    expect(api.getNotifications).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^Notifications/ })).not.toBeInTheDocument();
   });
 });
