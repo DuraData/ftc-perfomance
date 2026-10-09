@@ -11,6 +11,8 @@ using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Moq;
 
@@ -34,6 +36,48 @@ public sealed class AuthSessionTests
     public void Recovery_code_normalization_preserves_identity_hyphens(string value, string expected)
     {
         AuthenticationCodeNormalizer.Recovery(value).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Disabling_mfa_rotates_authentication_state_revokes_sessions_and_is_audited()
+    {
+        await using var context = NewContext();
+        var user = User("mfa-disable-user");
+        user.TwoFactorEnabled = true;
+        var userManager = IdpTestFixture.CreateUserManagerMock(user);
+        userManager.Setup(manager => manager.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager.Setup(manager => manager.CheckPasswordAsync(user, "ValidPassword!1")).ReturnsAsync(true);
+        userManager.Setup(manager => manager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, "123456")).ReturnsAsync(true);
+        userManager.Setup(manager => manager.SetTwoFactorEnabledAsync(user, false)).ReturnsAsync(IdentityResult.Success);
+        userManager.Setup(manager => manager.ResetAuthenticatorKeyAsync(user)).ReturnsAsync(IdentityResult.Success);
+        userManager.Setup(manager => manager.UpdateSecurityStampAsync(user)).ReturnsAsync(IdentityResult.Success);
+        var jwt = new Mock<IJwtService>();
+        jwt.Setup(service => service.RevokeAllSessionsAsync(user.Id, It.IsAny<string?>(), "MFA disabled")).ReturnsAsync(3);
+        var environment = new Mock<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        environment.SetupGet(item => item.EnvironmentName).Returns(Environments.Development);
+        var services = new ServiceCollection().AddSingleton(environment.Object).BuildServiceProvider();
+        var controller = new AuthController(userManager.Object, null!, jwt.Object, null!, context,
+            Options.Create(new JwtSettings()), null!, null!, null!)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    RequestServices = services,
+                    User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test"))
+                }
+            }
+        };
+
+        var response = await controller.DisableMfa(new DisableMfaRequest("ValidPassword!1", "123-456"));
+
+        Assert.True(Assert.IsType<ApiResponse<bool>>(Assert.IsType<OkObjectResult>(response.Result).Value).Data);
+        userManager.Verify(manager => manager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, "123456"), Times.Once);
+        userManager.Verify(manager => manager.SetTwoFactorEnabledAsync(user, false), Times.Once);
+        userManager.Verify(manager => manager.ResetAuthenticatorKeyAsync(user), Times.Once);
+        userManager.Verify(manager => manager.UpdateSecurityStampAsync(user), Times.Once);
+        jwt.Verify(service => service.RevokeAllSessionsAsync(user.Id, It.IsAny<string?>(), "MFA disabled"), Times.Once);
+        context.AuditTrails.Local.Should().ContainSingle(item => item.EntityId == user.Id && item.Action == "MfaDisable");
     }
 
     [Fact]
