@@ -2260,6 +2260,22 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Municipal-employee history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<MunicipalEmployee>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(MunicipalEmployee), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        if (ChangeTracker.Entries<Department>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<Unit>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<Position>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<Ward>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<VoteNumber>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Organization-master history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<Department>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(Department), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<Unit>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(Unit), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<Position>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(Position), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<Ward>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(Ward), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<VoteNumber>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(VoteNumber), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)

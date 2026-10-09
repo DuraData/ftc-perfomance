@@ -127,9 +127,11 @@ public sealed class OrganizationMastersControllerTests
             var tenantA = new Municipality { Code = "REF-A", Name = "Reference A", RowVersion = [1] };
             var tenantB = new Municipality { Code = "REF-B", Name = "Reference B", RowVersion = [1] };
             setup.AddRange(tenantA, tenantB); await setup.SaveChangesAsync(); tenantAId = tenantA.Id; tenantBId = tenantB.Id;
+            var tenantAActor = IdpTestFixture.CreateUser("tenant-a"); tenantAActor.MunicipalityId = tenantAId;
+            var staleActor = IdpTestFixture.CreateUser("stale-editor"); staleActor.MunicipalityId = tenantAId;
             var departmentA = new Department { MunicipalityId = tenantAId, Code = "FIN", Name = "Finance A", RowVersion = [1] };
             var departmentB = new Department { MunicipalityId = tenantBId, Code = "FIN", Name = "Finance B", RowVersion = [1] };
-            setup.AddRange(departmentA, departmentB); await setup.SaveChangesAsync();
+            setup.AddRange(tenantAActor, staleActor, departmentA, departmentB); await setup.SaveChangesAsync();
             setup.Wards.AddRange(
                 new Ward { MunicipalityId = tenantAId, LegacyMunicipality = tenantA.Name, Code = "W01", Name = "Ward A", RowVersion = [1] },
                 new Ward { MunicipalityId = tenantBId, LegacyMunicipality = tenantB.Name, Code = "W01", Name = "Ward B", RowVersion = [1] });
@@ -150,8 +152,10 @@ public sealed class OrganizationMastersControllerTests
         var currentWard = await tenantAContext.Wards.SingleAsync();
         var staleWard = await staleContext.Wards.SingleAsync();
         currentWard.Name = "Ward A updated";
+        tenantAContext.AuditTrails.Add(GovernanceAudit(tenantAId, "tenant-a", nameof(Ward), currentWard.PublicId, "Ward A", "Ward A updated"));
         await tenantAContext.SaveChangesAsync();
         staleWard.Name = "Stale overwrite";
+        staleContext.AuditTrails.Add(GovernanceAudit(tenantAId, "stale-editor", nameof(Ward), staleWard.PublicId, "Ward A", "Stale overwrite"));
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => staleContext.SaveChangesAsync());
 
         tenantAContext.Wards.Add(new Ward { MunicipalityId = tenantAId, LegacyMunicipality = "Reference A", Code = "W01", Name = "Duplicate", RowVersion = [1] });
@@ -311,6 +315,46 @@ public sealed class OrganizationMastersControllerTests
     }
 
     [Fact]
+    public async Task Organization_masters_reject_unaudited_rewrites_and_hard_deletes()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 721;
+        await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var municipality = new Municipality { Id = municipalityId, Code = "ORG-721", Name = "Organization Municipality" };
+            var year = new FinancialYear { Code = "2035/36", Name = "2035/36", StartDate = new DateTime(2035, 7, 1), EndDate = new DateTime(2036, 6, 30) };
+            var department = new Department { MunicipalityId = municipalityId, Code = "FIN", Name = "Finance", EffectiveFrom = year.StartDate };
+            setup.AddRange(municipality, year, department);
+            await setup.SaveChangesAsync();
+            var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = municipalityId, FinancialYearId = year.Id, EffectiveFrom = year.StartDate };
+            setup.MunicipalityFinancialYears.Add(municipalityYear);
+            await setup.SaveChangesAsync();
+            setup.AddRange(
+                new Unit { MunicipalityId = municipalityId, DepartmentId = department.Id, Code = "BUD", Name = "Budget", EffectiveFrom = year.StartDate },
+                new Position { MunicipalityId = municipalityId, DepartmentId = department.Id, Code = "CFO", Name = "Chief Financial Officer", EffectiveFrom = year.StartDate },
+                new Ward { MunicipalityId = municipalityId, LegacyMunicipality = municipality.Name, Code = "W01", Name = "Ward One", EffectiveFrom = year.StartDate },
+                new VoteNumber { MunicipalityId = municipalityId, MunicipalityFinancialYearId = municipalityYear.Id, DepartmentId = department.Id, Code = "V01", Number = "001", Name = "Operating Vote", EffectiveFrom = year.StartDate });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var context = new ApplicationDbContext(options, new TenantContext(municipalityId, "organization-governor"));
+        await AssertUnauditedRewriteRejected(context, context.Departments, item => item.Name = "Silent department rewrite");
+        await AssertUnauditedRewriteRejected(context, context.Units, item => item.Name = "Silent unit rewrite");
+        await AssertUnauditedRewriteRejected(context, context.Positions, item => item.Name = "Silent position rewrite");
+        await AssertUnauditedRewriteRejected(context, context.Wards, item => item.Name = "Silent ward rewrite");
+        await AssertUnauditedRewriteRejected(context, context.VoteNumbers, item => item.Name = "Silent vote rewrite");
+
+        await AssertHardDeleteRejected(context, context.Departments);
+        await AssertHardDeleteRejected(context, context.Units);
+        await AssertHardDeleteRejected(context, context.Positions);
+        await AssertHardDeleteRejected(context, context.Wards);
+        await AssertHardDeleteRejected(context, context.VoteNumbers);
+    }
+
+    [Fact]
     public async Task CreateAssignment_uses_governed_position_and_preserves_its_snapshot()
     {
         var tenant = new TenantContext(73, "org-admin");
@@ -357,6 +401,28 @@ public sealed class OrganizationMastersControllerTests
     }
 
     private static ApplicationDbContext NewContext(ITenantContext tenant) => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options, tenant);
+    private static AuditTrail GovernanceAudit(long municipalityId, string changedBy, string entityName, Guid publicId, string oldValue, string newValue) => new()
+    {
+        MunicipalityId = municipalityId, EntityName = entityName, EntityId = publicId.ToString(), Action = "Update",
+        OldValue = oldValue, NewValue = newValue, ChangedBy = changedBy, ChangedAt = DateTime.UtcNow,
+        Reason = "Approved organization master correction"
+    };
+    private static async Task AssertUnauditedRewriteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set, Action<TEntity> mutate) where TEntity : class
+    {
+        var entity = await set.SingleAsync();
+        mutate(entity);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("same-transaction reasoned before/after audit evidence", exception.Message);
+        context.ChangeTracker.Clear();
+    }
+    private static async Task AssertHardDeleteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set) where TEntity : class
+    {
+        var entity = await set.SingleAsync();
+        set.Remove(entity);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("cannot be hard deleted", exception.Message);
+        context.ChangeTracker.Clear();
+    }
     private static OrganizationMastersController CreateController(ApplicationDbContext context, ITenantContext tenant) => new(context, tenant) { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
     private sealed class TenantContext(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
     private sealed class SystemTenantContext : ITenantContext { public long? MunicipalityId => null; public bool IsSystem => true; public string? UserId => "system"; }
