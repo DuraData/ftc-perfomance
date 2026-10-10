@@ -164,13 +164,16 @@ public sealed class InternalAuditAssessmentsController(
         var query = context.InternalAuditAssessments.AsNoTracking()
             .Where(item => item.SubmissionWorkflowInstanceId == loaded.Instance.Id);
         if (request.NormalizedSearch.Length > 0)
+        {
+            var actorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedActorPublicId) ? parsedActorPublicId : (Guid?)null;
             query = query.Where(item => memberAccess.ObservationRead && item.DetailedObservation.Contains(request.NormalizedSearch)
                 || memberAccess.CommentRead && item.Comment != null && item.Comment.Contains(request.NormalizedSearch)
                 || memberAccess.FindingsRead && item.Findings != null && item.Findings.Contains(request.NormalizedSearch)
                 || memberAccess.RecommendationRead && item.Recommendation != null && item.Recommendation.Contains(request.NormalizedSearch)
-                || memberAccess.AssessedByRead && item.AssessedByUserId.Contains(request.NormalizedSearch)
-                || memberAccess.AssessedByRead && item.AssessedByUser != null && (item.AssessedByUser.FirstName.Contains(request.NormalizedSearch)
+                || memberAccess.AssessedByRead && item.AssessedByUser != null && ((actorPublicId.HasValue && item.AssessedByUser.PublicId == actorPublicId.Value)
+                    || item.AssessedByUser.FirstName.Contains(request.NormalizedSearch)
                     || item.AssessedByUser.LastName.Contains(request.NormalizedSearch)));
+        }
         var totalCount = await query.CountAsync();
         var ordered = (request.NormalizedSortBy, request.Descending) switch
         {
@@ -385,7 +388,7 @@ public sealed class InternalAuditAssessmentsController(
         access.FindingsRead ? item.Findings : null,
         access.RecommendationRead ? item.Recommendation : null,
         access.ScoreRead ? item.Score : null,
-        access.AssessedByRead ? item.AssessedByUserId : null,
+        access.AssessedByRead ? item.AssessedByUser?.PublicId : null,
         access.AssessedByRead ? item.AssessedByUser?.FullName : null,
         item.AssessedAt, item.PreviousAssessment?.PublicId,
         access.RfiRead ? item.PerformanceRfi?.PublicId : null,
@@ -399,5 +402,5 @@ public sealed class InternalAuditAssessmentsController(
 public sealed record SaveInternalAuditConfigurationRequest(Guid MunicipalityFinancialYearPublicId, InternalAuditAssessmentModel Model, DateTime EffectiveFrom, string Reason, string? CurrentRowVersion);
 public sealed record InternalAuditConfigurationDto(Guid PublicId, Guid MunicipalityFinancialYearPublicId, string FinancialYearCode, InternalAuditAssessmentModel Model, int Version, bool IsCurrent, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string RowVersion);
 public sealed record SaveInternalAuditAssessmentRequest(InternalAuditAssessmentOutcome Outcome, string DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, DateTime? ResponseDueAt, Guid? PreviousAssessmentPublicId);
-public sealed record InternalAuditAssessmentDto(Guid PublicId, InternalAuditAssessmentModel Model, InternalAuditAssessmentOutcome Outcome, string? DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, string? AssessedByUserId, string? AssessedByName, DateTime AssessedAt, Guid? PreviousAssessmentPublicId, Guid? RfiPublicId, DateTime? RfiResponseDueAt);
+public sealed record InternalAuditAssessmentDto(Guid PublicId, InternalAuditAssessmentModel Model, InternalAuditAssessmentOutcome Outcome, string? DetailedObservation, string? Comment, string? Findings, string? Recommendation, decimal? Score, Guid? AssessedByUserPublicId, string? AssessedByName, DateTime AssessedAt, Guid? PreviousAssessmentPublicId, Guid? RfiPublicId, DateTime? RfiResponseDueAt);
 public sealed record InternalAuditSubmissionDto(InternalAuditConfigurationDto Configuration, InternalAuditAssessmentDto? LatestAssessment);

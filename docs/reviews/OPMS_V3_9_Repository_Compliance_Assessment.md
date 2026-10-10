@@ -3348,6 +3348,12 @@ OPMS/IPMS POE responses no longer expose ASP.NET Identity primary keys for uploa
 
 The shared serializer uses the governed user relationships across bounded registers and every mutation response, so list, upload, rescan, assessment, replacement, legal-hold and disposal paths cannot diverge. Contract reflection tests reject every former raw-key property; authorized and denied assertions cover nested assessment, replacement, both legal-hold actor roles and disposal provenance. The SPA consumes the public-ID contract, uses names with public-ID fallback and independently suppresses hostile nested payloads when member grants are absent. Focused coverage passes **19/19 backend** and **69/69 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.251 Internal Audit assessor public identity
+
+Internal Audit assessment summaries and bounded reassessment history no longer expose the assessor's ASP.NET Identity primary key. The independently governed `InternalAuditAssessedBy` member retains its established permission code, while authorized responses return the stable user public ID plus display name and denied responses remain null. Newly appended assessments and latest-assessment summaries use the same public serializer without changing the internal actor foreign key.
+
+Authorized assessor search now evaluates stable public IDs and names through the user relationship instead of matching internal keys. A raw internal key produces no result after the member grant is enabled, while public-ID search remains available; contract reflection rejects reintroduction of `AssessedByUserId`. The production assessment panel consumes only the public identity contract and preserves member-permission suppression. Focused coverage passes **9/9 backend** and **3/3 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

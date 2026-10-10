@@ -53,10 +53,10 @@ describe('InternalAuditAssessmentPanel', () => {
       success: true,
       data: {
         configuration: { publicId: 'config-1', municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', model: 2, version: 1, isCurrent: true, effectiveFrom: '2026-07-01T00:00:00Z', reason: 'Approved model', rowVersion: 'AQ==' },
-        latestAssessment: { publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserId: 'auditor-1', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' },
+        latestAssessment: { publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserPublicId: '11111111-1111-1111-1111-111111111111', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' },
       },
     });
-    api.getInternalAuditAssessmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserId: 'auditor-1', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
+    api.getInternalAuditAssessmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assessment-1', model: 2, outcome: 4, detailedObservation: 'Evidence is incomplete.', assessedByUserPublicId: '11111111-1111-1111-1111-111111111111', assessedByName: 'Audit User', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'rfi-1', rfiResponseDueAt: '2026-10-10T08:00:00Z' }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
     render(<InternalAuditAssessmentPanel submissionId="submission-1" canAssess={false} />);
 
     expect(await screen.findByText('Evidence is incomplete.')).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('InternalAuditAssessmentPanel', () => {
     });
     api.getInternalAuditAssessmentsPage.mockResolvedValue({ success: true, data: { items: [{
       publicId: 'assessment-1', model: 1, outcome: 2, detailedObservation: 'SECRET OBSERVATION', comment: 'SECRET COMMENT',
-      findings: 'SECRET FINDING', recommendation: 'SECRET RECOMMENDATION', score: 1, assessedByUserId: 'secret-auditor',
+      findings: 'SECRET FINDING', recommendation: 'SECRET RECOMMENDATION', score: 1, assessedByUserPublicId: '22222222-2222-2222-2222-222222222222',
       assessedByName: 'SECRET AUDITOR', assessedAt: '2026-10-03T08:00:00Z', rfiPublicId: 'secret-rfi', rfiResponseDueAt: '2026-10-10T08:00:00Z',
     }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
 

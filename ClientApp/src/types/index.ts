@@ -1990,7 +1990,7 @@ export interface InternalAuditAssessmentDto {
   findings?: string | null;
   recommendation?: string | null;
   score?: number | null;
-  assessedByUserId?: string | null;
+  assessedByUserPublicId?: string | null;
   assessedByName?: string | null;
   assessedAt: string;
   previousAssessmentPublicId?: string | null;

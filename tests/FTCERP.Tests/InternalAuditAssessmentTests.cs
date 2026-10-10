@@ -257,7 +257,7 @@ public sealed class InternalAuditAssessmentTests
         masked.Items[0].Findings.Should().BeNull();
         masked.Items[0].Recommendation.Should().BeNull();
         masked.Items[0].Score.Should().BeNull();
-        masked.Items[0].AssessedByUserId.Should().BeNull();
+        masked.Items[0].AssessedByUserPublicId.Should().BeNull();
         masked.Items[0].AssessedByName.Should().BeNull();
         masked.Items[0].RfiPublicId.Should().BeNull();
         masked.Items[0].RfiResponseDueAt.Should().BeNull();
@@ -280,9 +280,17 @@ public sealed class InternalAuditAssessmentTests
         visible.TotalCount.Should().Be(1);
         visible.Items[0].DetailedObservation.Should().Be("secret observation");
         visible.Items[0].Findings.Should().Be("secret finding");
-        visible.Items[0].AssessedByUserId.Should().Be(seed.User.Id);
+        visible.Items[0].AssessedByUserPublicId.Should().Be(seed.User.PublicId);
         visible.Items[0].RfiPublicId.Should().Be(rfi.PublicId);
         visible.Items[0].RfiResponseDueAt.Should().Be(rfi.ResponseDueAt);
+
+        var rawKeySearch = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
+            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = seed.User.Id })).Result!);
+        rawKeySearch.TotalCount.Should().Be(0);
+        var publicIdSearch = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
+            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = seed.User.PublicId.ToString() })).Result!);
+        publicIdSearch.TotalCount.Should().Be(1);
+        typeof(InternalAuditAssessmentDto).GetProperty("AssessedByUserId").Should().BeNull();
 
         permissions.Add("OPMS_WORKFLOW.INTERNAL_AUDIT");
         var deniedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
