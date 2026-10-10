@@ -83,6 +83,9 @@ export function IPMSTargetList() {
     pushToast,
   } = useApp();
   const canManageTargets = useHasAnyPermission(['IPMS_KPI.CREATE', 'IPMS_KPI.UPDATE', 'IPMS_KPI.WITHDRAW']);
+  const canExecuteWithdrawal = useHasAnyPermission(['IPMS_KPI.WITHDRAW']);
+  const canEditWithdrawalReason = useHasAnyPermission(['IPMS_KPI.WithdrawalReason.UPDATE']);
+  const canWithdrawTarget = canExecuteWithdrawal && canEditWithdrawalReason;
   const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -254,7 +257,7 @@ export function IPMSTargetList() {
           >
             <Link2 className="w-4 h-4 text-secondary-400" />
           </button>
-          <button
+          {canWithdrawTarget && <button
             onClick={(e) => {
               e.stopPropagation();
               setWithdrawalTarget(row);
@@ -264,7 +267,7 @@ export function IPMSTargetList() {
             title={row.isWithdrawn ? 'Already withdrawn' : 'Withdraw'}
           >
             <Ban className="w-4 h-4 text-error-500" />
-          </button>
+          </button>}
         </>
       ) : (
         <button

@@ -558,6 +558,8 @@ public class OpmsTargetsController : ControllerBase
         var before = await FindTargetAsync(id);
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WITHDRAW", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        var reasonDecision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalReason.UPDATE", BuildScope(entity));
+        if (reasonDecision?.Allowed != true) return Forbid();
         if (!TrySetExpectedVersion(entity, request.RowVersion))
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A valid RowVersion is required."));
 
@@ -762,6 +764,22 @@ public class OpmsTargetsController : ControllerBase
         && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodBudgetValue.UPDATE", scope))?.Allowed == true
         && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true;
 
-    private async Task<OpmsTargetResponse> ToSecureResponseAsync(ApplicationUser user, OpmsTarget target, ReportingPeriodType? periodType = null) =>
-        target.ToResponse(periodType, await GetPeriodTargetMemberAccessAsync(user, BuildScope(target)));
+    private async Task<KpiLifecycleMemberAccess> GetLifecycleMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalReason.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalActor.READ", scope))?.Allowed == true);
+
+    private async Task<OpmsTargetResponse> ToSecureResponseAsync(ApplicationUser user, OpmsTarget target, ReportingPeriodType? periodType = null)
+    {
+        var scope = BuildScope(target);
+        var lifecycleAccess = await GetLifecycleMemberAccessAsync(user, scope);
+        var response = target.ToResponse(periodType, await GetPeriodTargetMemberAccessAsync(user, scope), lifecycleAccess);
+        if (!lifecycleAccess.WithdrawalActor || string.IsNullOrWhiteSpace(target.WithdrawnByUserId)) return response;
+        var actor = await _context.Users.AsNoTracking().Where(item => item.Id == target.WithdrawnByUserId)
+            .Select(item => new { item.PublicId, item.FirstName, item.LastName }).SingleOrDefaultAsync();
+        return actor == null ? response : response with
+        {
+            WithdrawnByUserPublicId = actor.PublicId,
+            WithdrawnByName = $"{actor.FirstName} {actor.LastName}".Trim()
+        };
+    }
 }

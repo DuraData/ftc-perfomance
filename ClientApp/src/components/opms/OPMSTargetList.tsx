@@ -126,6 +126,9 @@ export function OPMSTargetList() {
     pushToast,
   } = useApp();
   const canManageTargets = useHasAnyPermission(['OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE', 'OPMS_KPI.WITHDRAW']);
+  const canExecuteWithdrawal = useHasAnyPermission(['OPMS_KPI.WITHDRAW']);
+  const canEditWithdrawalReason = useHasAnyPermission(['OPMS_KPI.WithdrawalReason.UPDATE']);
+  const canWithdrawTarget = canExecuteWithdrawal && canEditWithdrawalReason;
   const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -310,7 +313,7 @@ export function OPMSTargetList() {
           >
             <Copy className="w-4 h-4 text-secondary-400" />
           </button>
-          <button
+          {canWithdrawTarget && <button
             onClick={(e) => {
               e.stopPropagation();
               setWithdrawalTarget(row);
@@ -320,7 +323,7 @@ export function OPMSTargetList() {
             title={row.isWithdrawn ? 'Already withdrawn' : 'Withdraw'}
           >
             <Ban className="w-4 h-4 text-error-500" />
-          </button>
+          </button>}
         </>
       ) : (
         <button

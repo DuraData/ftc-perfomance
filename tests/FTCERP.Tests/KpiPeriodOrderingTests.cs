@@ -246,6 +246,10 @@ public sealed class KpiPeriodOrderingTests
         await context.SaveChangesAsync();
         var period = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANN", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
         var target = Target("period-member-target", municipality.Id, "PERIOD-SEC-1", 1, 1);
+        target.IsWithdrawn = true;
+        target.ReasonForWithdrawal = "protected KPI withdrawal reason";
+        target.WithdrawnAt = DateTime.UtcNow;
+        target.WithdrawnByUserId = user.Id;
         context.AddRange(period, target);
         await context.SaveChangesAsync();
         var value = new PerformancePeriodTarget
@@ -274,6 +278,9 @@ public sealed class KpiPeriodOrderingTests
         Assert.Null(parentPeriod.TargetValue);
         Assert.Null(parentPeriod.BudgetValue);
         Assert.Null(parentPeriod.Description);
+        Assert.Null(parentTarget.ReasonForWithdrawal);
+        Assert.Null(parentTarget.WithdrawnByUserPublicId);
+        Assert.Null(parentTarget.WithdrawnByName);
 
         var deniedRevision = await denied.Revise(value.PublicId, new RevisePerformancePeriodTargetRequest(
             value.UnitKind, value.Direction, "changed", 100, "changed", true,
@@ -286,6 +293,42 @@ public sealed class KpiPeriodOrderingTests
         Assert.Equal("secret target", visible.TargetValue);
         Assert.Equal(9876, visible.BudgetValue);
         Assert.Equal("secret description", visible.Description);
+
+        var visibleParentResult = await OpmsController(context, municipality.Id, user).GetTarget(target.Id);
+        var visibleParent = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(visibleParentResult.Result).Value).Data!;
+        Assert.Equal("protected KPI withdrawal reason", visibleParent.ReasonForWithdrawal);
+        Assert.Equal(user.PublicId, visibleParent.WithdrawnByUserPublicId);
+        Assert.Equal(user.FullName, visibleParent.WithdrawnByName);
+        Assert.DoesNotContain(nameof(OpmsTarget.WithdrawnByUserId), typeof(OpmsTargetResponse).GetProperties().Select(item => item.Name));
+
+        var ipmsTarget = new IpmsTarget
+        {
+            Id = "period-member-ipms", MunicipalityId = municipality.Id, IndicatorNumber = "IPMS-SEC-1",
+            TargetName = "Protected IPMS target", KpiDescription = "Protected IPMS target", AnnualTargetDescription = "Protected",
+            IsWithdrawn = true, ReasonForWithdrawal = "protected IPMS withdrawal reason", WithdrawnAt = DateTime.UtcNow, WithdrawnByUserId = user.Id
+        };
+        context.Add(ipmsTarget);
+        await context.SaveChangesAsync();
+        var deniedIpmsResult = await IpmsController(context, municipality.Id, user, code => code == "IPMS_KPI.READ").GetTarget(ipmsTarget.Id);
+        var deniedIpms = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(deniedIpmsResult.Result).Value).Data!;
+        Assert.Null(deniedIpms.ReasonForWithdrawal);
+        Assert.Null(deniedIpms.WithdrawnByUserPublicId);
+        Assert.Null(deniedIpms.WithdrawnByName);
+        var visibleIpmsResult = await IpmsController(context, municipality.Id, user).GetTarget(ipmsTarget.Id);
+        var visibleIpms = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(visibleIpmsResult.Result).Value).Data!;
+        Assert.Equal("protected IPMS withdrawal reason", visibleIpms.ReasonForWithdrawal);
+        Assert.Equal(user.PublicId, visibleIpms.WithdrawnByUserPublicId);
+        Assert.Equal(user.FullName, visibleIpms.WithdrawnByName);
+        Assert.DoesNotContain(nameof(IpmsTarget.WithdrawnByUserId), typeof(IpmsTargetResponse).GetProperties().Select(item => item.Name));
+
+        var activeTarget = Target("period-withdrawal-target", municipality.Id, "PERIOD-SEC-2", 2, 2);
+        context.Add(activeTarget);
+        await context.SaveChangesAsync();
+        var deniedWithdrawal = await OpmsController(context, municipality.Id, user,
+            code => code == "OPMS_KPI.WITHDRAW").WithdrawTarget(activeTarget.Id,
+            new WithdrawGovernedRecordRequest("Protected reason write", Convert.ToBase64String(activeTarget.RowVersion)));
+        Assert.IsType<ForbidResult>(deniedWithdrawal.Result);
+        Assert.False((await context.OpmsTargets.SingleAsync(item => item.Id == activeTarget.Id)).IsWithdrawn);
     }
 
     [Fact]
@@ -525,11 +568,12 @@ public sealed class KpiPeriodOrderingTests
         };
     }
 
-    private static IpmsTargetsController IpmsController(ApplicationDbContext context, long municipalityId, ApplicationUser user)
+    private static IpmsTargetsController IpmsController(ApplicationDbContext context, long municipalityId, ApplicationUser user, Func<string, bool>? allowed = null)
     {
+        allowed ??= _ => true;
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(allowed(code), allowed(code) ? "Allowed" : "Denied", allowed(code) ? [code] : [], [], []));
         var governance = new Mock<IWorkflowGovernanceService>();
         governance.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>())).Returns(Task.CompletedTask);
         return new IpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance.Object, new TenantContext(municipalityId, user.Id), new PerformanceUnitEngine())

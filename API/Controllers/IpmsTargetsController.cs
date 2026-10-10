@@ -518,6 +518,8 @@ public class IpmsTargetsController : ControllerBase
         var before = await FindTargetAsync(id);
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.WITHDRAW", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
+        var reasonDecision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.WithdrawalReason.UPDATE", BuildScope(entity));
+        if (reasonDecision?.Allowed != true) return Forbid();
         if (!TrySetExpectedVersion(entity, request.RowVersion))
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A valid RowVersion is required."));
 
@@ -682,9 +684,21 @@ public class IpmsTargetsController : ControllerBase
         foreach (var item in targets)
         {
             var memberAccess = user == null ? PeriodTargetMemberAccess.None : await GetPeriodTargetMemberAccessAsync(user, BuildScope(item));
-            responses.Add(item.ToResponse(periodType,
+            var lifecycleAccess = user == null ? KpiLifecycleMemberAccess.None : await GetLifecycleMemberAccessAsync(user, BuildScope(item));
+            var response = item.ToResponse(periodType,
                 item.SupervisorId != null && publicIds.TryGetValue(item.SupervisorId, out var publicId) ? publicId : null,
-                memberAccess));
+                memberAccess, lifecycleAccess);
+            if (lifecycleAccess.WithdrawalActor && !string.IsNullOrWhiteSpace(item.WithdrawnByUserId))
+            {
+                var actor = await _context.Users.AsNoTracking().Where(value => value.Id == item.WithdrawnByUserId)
+                    .Select(value => new { value.PublicId, value.FirstName, value.LastName }).SingleOrDefaultAsync();
+                if (actor != null) response = response with
+                {
+                    WithdrawnByUserPublicId = actor.PublicId,
+                    WithdrawnByName = $"{actor.FirstName} {actor.LastName}".Trim()
+                };
+            }
+            responses.Add(response);
         }
         return responses.ToArray();
     }
@@ -704,4 +718,8 @@ public class IpmsTargetsController : ControllerBase
         (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodTargetValue.UPDATE", scope))?.Allowed == true
         && (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodBudgetValue.UPDATE", scope))?.Allowed == true
         && (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true;
+
+    private async Task<KpiLifecycleMemberAccess> GetLifecycleMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.WithdrawalReason.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.WithdrawalActor.READ", scope))?.Allowed == true);
 }

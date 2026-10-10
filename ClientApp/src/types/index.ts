@@ -543,7 +543,8 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   isWithdrawn: boolean;
   reasonForWithdrawal?: string;
   withdrawnAt?: string;
-  withdrawnByUserId?: string;
+  withdrawnByUserPublicId?: string;
+  withdrawnByName?: string;
 
   // Quarterly Targets
   q1Target?: number;
@@ -2560,7 +2561,8 @@ export interface OpmsTargetDto {
   isWithdrawn: boolean;
   reasonForWithdrawal?: string | null;
   withdrawnAt?: string | null;
-  withdrawnByUserId?: string | null;
+  withdrawnByUserPublicId?: string | null;
+  withdrawnByName?: string | null;
   periodTargets: PerformancePeriodTargetDto[];
   voteNumbers?: Array<{ id: number; publicId: string; code: string; number: string; name: string; amount: number }>;
   createdAt: string;
@@ -2633,7 +2635,8 @@ export interface IpmsTargetDto {
   isWithdrawn: boolean;
   reasonForWithdrawal?: string | null;
   withdrawnAt?: string | null;
-  withdrawnByUserId?: string | null;
+  withdrawnByUserPublicId?: string | null;
+  withdrawnByName?: string | null;
   periodTargets: PerformancePeriodTargetDto[];
   createdAt: string;
 }

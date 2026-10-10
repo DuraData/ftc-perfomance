@@ -166,6 +166,9 @@ public static class PerformanceApiSupport
     public static OpmsTargetResponse ToResponse(this OpmsTarget target) => target.ToResponse(PeriodTargetMemberAccess.Full);
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess) =>
+        target.ToResponse(memberAccess, KpiLifecycleMemberAccess.Full);
+
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
         new(
             target.Id,
             target.SourceTemplateId,
@@ -203,7 +206,7 @@ public static class PerformanceApiSupport
             target.FmsLink,
             target.IsRevised,
             target.IsWithdrawn,
-            target.ReasonForWithdrawal,
+            lifecycleAccess.WithdrawalReason ? target.ReasonForWithdrawal : null,
             target.CanonicalPeriodTargets.Select(item => ToResponse(item, memberAccess)).ToArray(),
             target.CreatedAt)
         {
@@ -218,7 +221,6 @@ public static class PerformanceApiSupport
             IsKpiDescriptionRevised = target.IsKpiDescriptionRevised,
             RevisedKpiDescription = target.RevisedKpiDescription,
             WithdrawnAt = target.WithdrawnAt,
-            WithdrawnByUserId = target.WithdrawnByUserId,
             SdbipLayerPublicId = target.SdbipLayer?.PublicId,
             MunicipalityFinancialYearPublicId = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.PublicId,
             MunicipalityFinancialYearName = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.FinancialYear.Name,
@@ -263,7 +265,10 @@ public static class PerformanceApiSupport
         target.ToResponse(periodType, PeriodTargetMemberAccess.Full);
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess) =>
-        !periodType.HasValue ? target.ToResponse(memberAccess) : target.ToResponse(memberAccess) with
+        target.ToResponse(periodType, memberAccess, KpiLifecycleMemberAccess.Full);
+
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
+        !periodType.HasValue ? target.ToResponse(memberAccess, lifecycleAccess) : target.ToResponse(memberAccess, lifecycleAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),
@@ -274,6 +279,9 @@ public static class PerformanceApiSupport
         target.ToResponse(supervisorPublicId, PeriodTargetMemberAccess.Full);
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess) =>
+        target.ToResponse(supervisorPublicId, memberAccess, KpiLifecycleMemberAccess.Full);
+
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
         new(
             target.Id,
             target.SourceTemplateId,
@@ -320,9 +328,8 @@ public static class PerformanceApiSupport
             IsKpiDescriptionRevised = target.IsKpiDescriptionRevised,
             RevisedKpiDescription = target.RevisedKpiDescription,
             IsWithdrawn = target.IsWithdrawn,
-            ReasonForWithdrawal = target.ReasonForWithdrawal,
+            ReasonForWithdrawal = lifecycleAccess.WithdrawalReason ? target.ReasonForWithdrawal : null,
             WithdrawnAt = target.WithdrawnAt,
-            WithdrawnByUserId = target.WithdrawnByUserId,
             DepartmentPublicId = target.Department?.PublicId,
             MunicipalityFinancialYearPublicId = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.PublicId,
             UnitPublicId = target.Unit?.PublicId,
@@ -351,7 +358,10 @@ public static class PerformanceApiSupport
         target.ToResponse(periodType, supervisorPublicId, PeriodTargetMemberAccess.Full);
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess) =>
-        !periodType.HasValue ? target.ToResponse(supervisorPublicId, memberAccess) : target.ToResponse(supervisorPublicId, memberAccess) with
+        target.ToResponse(periodType, supervisorPublicId, memberAccess, KpiLifecycleMemberAccess.Full);
+
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
+        !periodType.HasValue ? target.ToResponse(supervisorPublicId, memberAccess, lifecycleAccess) : target.ToResponse(supervisorPublicId, memberAccess, lifecycleAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),

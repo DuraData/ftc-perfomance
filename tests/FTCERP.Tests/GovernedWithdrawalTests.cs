@@ -169,8 +169,14 @@ public sealed class GovernedWithdrawalTests
     {
         var mock = new Mock<IAccessControlService>();
         mock.Setup(service => service.CheckPermissionAsync(
-                It.IsAny<ApplicationUser>(), code, It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [code], [], []));
+                It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string requested, AccessScopeContext? _) =>
+            {
+                var allowed = requested == code || requested == "OPMS_KPI.WithdrawalReason.UPDATE"
+                    || requested is "OPMS_KPI.WithdrawalReason.READ" or "OPMS_KPI.WithdrawalActor.READ"
+                    || requested.StartsWith("OPMS_KPI.Period", StringComparison.OrdinalIgnoreCase);
+                return new AccessDecisionResult(allowed, allowed ? "Allowed" : "Denied", allowed ? [requested] : [], [], []);
+            });
         return mock;
     }
 

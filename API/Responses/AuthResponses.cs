@@ -245,7 +245,8 @@ public record OpmsTargetResponse(
     public bool IsKpiDescriptionRevised { get; init; }
     public string? RevisedKpiDescription { get; init; }
     public DateTime? WithdrawnAt { get; init; }
-    public string? WithdrawnByUserId { get; init; }
+    public Guid? WithdrawnByUserPublicId { get; init; }
+    public string? WithdrawnByName { get; init; }
     public Guid? SdbipLayerPublicId { get; init; }
     public Guid? MunicipalityFinancialYearPublicId { get; init; }
     public string? MunicipalityFinancialYearName { get; init; }
@@ -332,7 +333,8 @@ public record IpmsTargetResponse(
     public bool IsWithdrawn { get; init; }
     public string? ReasonForWithdrawal { get; init; }
     public DateTime? WithdrawnAt { get; init; }
-    public string? WithdrawnByUserId { get; init; }
+    public Guid? WithdrawnByUserPublicId { get; init; }
+    public string? WithdrawnByName { get; init; }
     public Guid? DepartmentPublicId { get; init; }
     public Guid? MunicipalityFinancialYearPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
@@ -402,6 +404,12 @@ public sealed record PeriodTargetMemberAccess(bool TargetValue, bool BudgetValue
 {
     public static PeriodTargetMemberAccess Full { get; } = new(true, true, true);
     public static PeriodTargetMemberAccess None { get; } = new(false, false, false);
+}
+
+public sealed record KpiLifecycleMemberAccess(bool WithdrawalReason, bool WithdrawalActor)
+{
+    public static KpiLifecycleMemberAccess Full { get; } = new(true, true);
+    public static KpiLifecycleMemberAccess None { get; } = new(false, false);
 }
 
 public record OpmsSubmissionResponse(
