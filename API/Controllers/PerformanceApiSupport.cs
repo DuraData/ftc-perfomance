@@ -585,23 +585,6 @@ public static class PerformanceApiSupport
             notification.IsRead,
             notification.CreatedAt);
 
-    public static AuditTrailEntryResponse ToResponse(this AuditTrail audit) =>
-        new(
-            audit.PublicId,
-            audit.MunicipalityId,
-            audit.EntityName,
-            audit.EntityId,
-            audit.Action,
-            audit.OldValue,
-            audit.NewValue,
-            audit.ChangedBy,
-            audit.ChangedAt,
-            audit.IpAddress,
-            audit.CorrelationId,
-            audit.Reason,
-            audit.UserAgent,
-            audit.SessionId);
-
     public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context, PoeResponseMemberAccess? memberAccess = null)
     {
         memberAccess ??= PoeResponseMemberAccess.None;

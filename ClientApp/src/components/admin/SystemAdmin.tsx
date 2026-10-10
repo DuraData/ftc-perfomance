@@ -1166,7 +1166,7 @@ export function AdminAuditLogsPage() {
     { id: 'entity', header: 'Entity', accessor: (row: AuditTrailEntryDto) => row.entityName, sortKey: 'entityName' },
     ...(canReadAuditEntityId ? [{ id: 'entityId', header: 'Entity ID', accessor: (row: AuditTrailEntryDto) => <span className="font-mono text-xs">{row.entityId ?? '-'}</span>, sortable: false }] : []),
     { id: 'action', header: 'Action', accessor: (row: AuditTrailEntryDto) => <Badge variant="info" size="sm">{row.action}</Badge>, sortKey: 'action' },
-    ...(canReadAuditChangedBy ? [{ id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedBy ?? '-', sortKey: 'changedBy' }] : []),
+    ...(canReadAuditChangedBy ? [{ id: 'changedBy', header: 'Changed By', accessor: (row: AuditTrailEntryDto) => row.changedByName ?? row.changedByUserPublicId ?? '-', sortKey: 'changedBy' }] : []),
     ...(canReadAuditIpAddress ? [{ id: 'ip', header: 'IP', accessor: (row: AuditTrailEntryDto) => row.ipAddress ?? '-', sortable: false }] : []),
     { id: 'time', header: 'When', accessor: (row: AuditTrailEntryDto) => new Date(row.changedAt).toLocaleString(), sortKey: 'createdAt' },
   ];
@@ -1306,7 +1306,8 @@ export function AdminAuditLogsPage() {
                 </div>}
                 {canReadAuditChangedBy && <div>
                   <p className="text-[10px] text-secondary-500">Changed By</p>
-                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.changedBy ?? '-'}</p>
+                  <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.changedByName ?? '-'}</p>
+                  {selectedTrail.changedByUserPublicId && <p className="text-[10px] font-mono text-secondary-500 break-all">{selectedTrail.changedByUserPublicId}</p>}
                 </div>}
               </div>}
               <div className="grid grid-cols-2 gap-3">

@@ -154,9 +154,15 @@ public class AuditController : ControllerBase
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch;
+            var changedByPublicId = Guid.TryParse(search, out var parsedChangedByPublicId)
+                ? parsedChangedByPublicId
+                : (Guid?)null;
             query = query.Where(item => item.EntityName.Contains(search) || item.Action.Contains(search)
                 || canReadEntityId && item.EntityId.Contains(search)
-                || canReadChangedBy && item.ChangedBy.Contains(search)
+                || canReadChangedBy && _context.Users.Any(user => user.Id == item.ChangedBy
+                    && (changedByPublicId.HasValue && user.PublicId == changedByPublicId.Value
+                        || user.FirstName.Contains(search)
+                        || user.LastName.Contains(search)))
                 || canReadReason && item.Reason != null && item.Reason.Contains(search)
                 || canReadCorrelationId && item.CorrelationId != null && item.CorrelationId.Contains(search));
         }
@@ -168,24 +174,53 @@ public class AuditController : ControllerBase
             ("entityname", true) => query.OrderByDescending(item => item.EntityName).ThenByDescending(item => item.Id),
             ("action", false) => query.OrderBy(item => item.Action).ThenBy(item => item.Id),
             ("action", true) => query.OrderByDescending(item => item.Action).ThenByDescending(item => item.Id),
-            ("changedby", false) => query.OrderBy(item => item.ChangedBy).ThenBy(item => item.Id),
-            ("changedby", true) => query.OrderByDescending(item => item.ChangedBy).ThenByDescending(item => item.Id),
+            ("changedby", false) => query.OrderBy(item => _context.Users.Where(user => user.Id == item.ChangedBy)
+                .Select(user => user.FirstName + " " + user.LastName).FirstOrDefault()).ThenBy(item => item.Id),
+            ("changedby", true) => query.OrderByDescending(item => _context.Users.Where(user => user.Id == item.ChangedBy)
+                .Select(user => user.FirstName + " " + user.LastName).FirstOrDefault()).ThenByDescending(item => item.Id),
             (_, false) => query.OrderBy(item => item.ChangedAt).ThenBy(item => item.Id),
             _ => query.OrderByDescending(item => item.ChangedAt).ThenByDescending(item => item.Id)
         };
-        var rows = await query.Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new AuditTrailEntryResponse(item.PublicId, item.MunicipalityId, item.EntityName,
-                canReadEntityId ? item.EntityId : null, item.Action,
-                canReadOldValue ? item.OldValue : null,
-                canReadNewValue ? item.NewValue : null,
-                canReadChangedBy ? item.ChangedBy : null,
+        var pageRows = await query.Skip(request.Offset).Take(request.PageSize)
+            .Select(item => new
+            {
+                item.PublicId,
+                item.EntityName,
+                EntityId = canReadEntityId ? item.EntityId : null,
+                item.Action,
+                OldValue = canReadOldValue ? item.OldValue : null,
+                NewValue = canReadNewValue ? item.NewValue : null,
+                ChangedBy = canReadChangedBy ? item.ChangedBy : null,
                 item.ChangedAt,
-                canReadIpAddress ? item.IpAddress : null,
-                canReadCorrelationId ? item.CorrelationId : null,
-                canReadReason ? item.Reason : null,
-                canReadUserAgent ? item.UserAgent : null,
-                canReadSessionId ? item.SessionId : null))
+                IpAddress = canReadIpAddress ? item.IpAddress : null,
+                CorrelationId = canReadCorrelationId ? item.CorrelationId : null,
+                Reason = canReadReason ? item.Reason : null,
+                UserAgent = canReadUserAgent ? item.UserAgent : null,
+                SessionId = canReadSessionId ? item.SessionId : null
+            })
             .ToArrayAsync();
+        var changedByIds = pageRows.Where(item => !string.IsNullOrWhiteSpace(item.ChangedBy))
+            .Select(item => item.ChangedBy!).Distinct(StringComparer.Ordinal).ToArray();
+        var changedByUsers = changedByIds.Length == 0
+            ? []
+            : await _context.Users.AsNoTracking().Where(user => changedByIds.Contains(user.Id))
+                .Select(user => new { user.Id, user.PublicId, user.FirstName, user.LastName }).ToArrayAsync();
+        var changedByIdentities = changedByUsers.ToDictionary(
+            user => user.Id,
+            user => (user.PublicId, Name: $"{user.FirstName} {user.LastName}".Trim()),
+            StringComparer.Ordinal);
+        var rows = pageRows.Select(item =>
+        {
+            (Guid PublicId, string Name)? identity = item.ChangedBy != null
+                && changedByIdentities.TryGetValue(item.ChangedBy, out var resolvedIdentity)
+                    ? resolvedIdentity
+                    : null;
+            return new AuditTrailEntryResponse(item.PublicId, item.EntityName, item.EntityId, item.Action,
+                item.OldValue, item.NewValue,
+                identity?.PublicId,
+                identity?.Name,
+                item.ChangedAt, item.IpAddress, item.CorrelationId, item.Reason, item.UserAgent, item.SessionId);
+        }).ToArray();
         return Ok(new ApiResponse<PagedResponse<AuditTrailEntryResponse>>(true,
             PagedResponse<AuditTrailEntryResponse>.Create(rows, request.Page, request.PageSize, totalCount)));
     }

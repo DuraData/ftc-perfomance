@@ -180,7 +180,8 @@ public sealed class AuditPaginationTests
         Assert.Null(deniedItem.EntityId);
         Assert.Null(deniedItem.OldValue);
         Assert.Null(deniedItem.NewValue);
-        Assert.Null(deniedItem.ChangedBy);
+        Assert.Null(deniedItem.ChangedByUserPublicId);
+        Assert.Null(deniedItem.ChangedByName);
         Assert.Null(deniedItem.IpAddress);
         Assert.Null(deniedItem.CorrelationId);
         Assert.Null(deniedItem.Reason);
@@ -199,19 +200,27 @@ public sealed class AuditPaginationTests
         foreach (var member in new[] { "EntityId", "OldValue", "NewValue", "ChangedBy", "IpAddress", "CorrelationId", "Reason", "UserAgent", "SessionId" })
             allowedCodes.Add($"AUDIT_TRAIL.{member}.READ");
 
-        var allowedResult = await controller.GetAuditTrailsPage(
+        var rawKeyResult = await controller.GetAuditTrailsPage(
             new PagedQueryRequest { SortBy = "changedBy", Search = actor.Id }, entityId: "protected-entity-id");
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<AuditTrailEntryResponse>>>(
+            Assert.IsType<OkObjectResult>(rawKeyResult.Result).Value).Data!.TotalCount);
+
+        var allowedResult = await controller.GetAuditTrailsPage(
+            new PagedQueryRequest { SortBy = "changedBy", Search = actor.PublicId.ToString() }, entityId: "protected-entity-id");
         var allowedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<AuditTrailEntryResponse>>>(
             Assert.IsType<OkObjectResult>(allowedResult.Result).Value).Data!.Items);
         Assert.Equal("protected-entity-id", allowedItem.EntityId);
         Assert.Equal("{\"secret\":\"before\"}", allowedItem.OldValue);
         Assert.Equal("{\"secret\":\"after\"}", allowedItem.NewValue);
-        Assert.Equal(actor.Id, allowedItem.ChangedBy);
+        Assert.Equal(actor.PublicId, allowedItem.ChangedByUserPublicId);
+        Assert.Equal(actor.FullName, allowedItem.ChangedByName);
         Assert.Equal("192.0.2.10", allowedItem.IpAddress);
         Assert.Equal("protected-correlation", allowedItem.CorrelationId);
         Assert.Equal("protected-reason", allowedItem.Reason);
         Assert.Equal("protected-agent", allowedItem.UserAgent);
         Assert.Equal("protected-session", allowedItem.SessionId);
+        Assert.Null(typeof(AuditTrailEntryResponse).GetProperty("ChangedBy"));
+        Assert.Null(typeof(AuditTrailEntryResponse).GetProperty("MunicipalityId"));
     }
 
     [Fact]

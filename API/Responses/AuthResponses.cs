@@ -622,13 +622,13 @@ public sealed record NotificationPageResponse(
 
 public record AuditTrailEntryResponse(
     Guid PublicId,
-    long? MunicipalityId,
     string EntityName,
     string? EntityId,
     string Action,
     string? OldValue,
     string? NewValue,
-    string? ChangedBy,
+    Guid? ChangedByUserPublicId,
+    string? ChangedByName,
     DateTime ChangedAt,
     string? IpAddress,
     string? CorrelationId,

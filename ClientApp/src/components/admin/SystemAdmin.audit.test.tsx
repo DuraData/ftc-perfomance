@@ -25,8 +25,9 @@ const login = {
   success: false, failureReason: 'Account locked', loggedAt: '2026-01-03T00:00:00Z',
 };
 const trail = {
-  publicId: '11111111-1111-1111-1111-111111111111', municipalityId: 1,
-  entityName: 'OpmsSubmission', entityId: 'submission-a', action: 'Approve', changedBy: 'auditor-a',
+  publicId: '11111111-1111-1111-1111-111111111111',
+  entityName: 'OpmsSubmission', entityId: 'submission-a', action: 'Approve',
+  changedByUserPublicId: '44444444-4444-4444-4444-444444444444', changedByName: 'Audit Member',
   changedAt: '2026-01-03T00:00:00Z', ipAddress: '192.0.2.10', correlationId: 'correlation-a',
   oldValue: '{"secret":"before"}', newValue: '{"secret":"after"}',
 };
@@ -97,7 +98,7 @@ describe('Audit administration', () => {
     api.getAuditTrailsPage.mockResolvedValue({
       success: true,
       data: {
-        items: [{ ...trail, entityId: null, changedBy: null, ipAddress: null, oldValue: null, newValue: null }],
+        items: [{ ...trail, entityId: null, changedByUserPublicId: null, changedByName: null, ipAddress: null, oldValue: null, newValue: null }],
         page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
       },
     });
@@ -110,7 +111,7 @@ describe('Audit administration', () => {
     expect(screen.queryByRole('columnheader', { name: /Changed By/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'IP' })).not.toBeInTheDocument();
     expect(screen.queryByText('submission-a')).not.toBeInTheDocument();
-    expect(screen.queryByText('auditor-a')).not.toBeInTheDocument();
+    expect(screen.queryByText('Audit Member')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.queryByText('Entity ID')).not.toBeInTheDocument();

@@ -393,7 +393,7 @@ function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { e
                 <span className="text-[10px] text-secondary-500">{new Date(item.changedAt).toLocaleDateString()}</span>
               </div>
               <p className="text-xs text-secondary-600">{item.entityName} {item.entityId}</p>
-              <p className="text-[10px] text-secondary-500 mt-0.5">By: {item.changedBy}</p>
+              <p className="text-[10px] text-secondary-500 mt-0.5">By: {item.changedByName ?? item.changedByUserPublicId ?? '-'}</p>
             </div>
           </div>
         ))}

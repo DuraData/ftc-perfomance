@@ -2847,13 +2847,13 @@ export interface NotificationPageResult extends PagedResult<NotificationDto> {
 
 export interface AuditTrailEntryDto {
   publicId: string;
-  municipalityId?: number | null;
   entityName: string;
   entityId?: string | null;
   action: string;
   oldValue?: string | null;
   newValue?: string | null;
-  changedBy?: string | null;
+  changedByUserPublicId?: string | null;
+  changedByName?: string | null;
   changedAt: string;
   ipAddress?: string | null;
   correlationId?: string | null;
