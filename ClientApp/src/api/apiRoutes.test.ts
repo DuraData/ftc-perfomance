@@ -71,16 +71,16 @@ describe('versioned API routes', () => {
 
     await saveSecurityUserRoles('user-1', {
       userPublicId: 'user-1', userName: 'Review User', assignments: [{
-        publicId: 'assignment-public-id', rolePublicId: 'role-1', roleName: 'Reviewer', municipalityId: 7,
+        publicId: 'assignment-public-id', rolePublicId: 'role-1', roleName: 'Reviewer', municipalityPublicId: 'municipality-public-id',
         effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==',
       }],
-    }, [{ rolePublicId: 'role-1', municipalityId: 7 }]);
+    }, [{ rolePublicId: 'role-1', municipalityPublicId: 'municipality-public-id' }]);
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/security/users/user-1/roles'), expect.objectContaining({
       method: 'PUT',
       body: JSON.stringify({
         expectedAssignments: [{ assignmentPublicId: 'assignment-public-id', rowVersion: 'AQ==' }],
-        assignments: [{ rolePublicId: 'role-1', municipalityId: 7 }],
+        assignments: [{ rolePublicId: 'role-1', municipalityPublicId: 'municipality-public-id' }],
       }),
     }));
   });

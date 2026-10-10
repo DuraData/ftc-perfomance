@@ -23,14 +23,17 @@ import type {
 import { NavigationRegistryEditor } from './NavigationRegistryEditor';
 import { SecurityRegistryEditor } from './SecurityRegistryEditor';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
+import { useApp } from '../../context/AppContext';
 
 type EditableRule = Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>;
-type AssignmentDraft = { rolePublicId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; departmentName?: string; unitId?: number; unitPublicId?: string; unitName?: string; effectiveFrom: string; effectiveTo?: string };
+type AssignmentDraft = { rolePublicId: string; municipalityPublicId?: string; departmentPublicId?: string; departmentName?: string; unitPublicId?: string; unitName?: string; effectiveFrom: string; effectiveTo?: string };
 const scopes = ['', 'Self', 'AssignedKpiScope', 'AssignedTargetScope', 'AssignedProjectScope', 'AssignedTaskScope', 'UnitScope', 'DepartmentScope', 'InstitutionScope', 'System'];
 const kinds = ['Resource', 'Navigation', 'Member', 'Action', 'Report'] as const;
 const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
 
 export function SecurityAdministrationPage() {
+  const { currentMunicipalityId, tenantContexts } = useApp();
+  const currentMunicipalityPublicId = tenantContexts.find(item => item.id === currentMunicipalityId)?.publicId;
   const [roles, setRoles] = useState<SecurityRoleSummary[]>([]);
   const [rolePage, setRolePage] = useState(1);
   const [roleTotalPages, setRoleTotalPages] = useState(0);
@@ -186,14 +189,14 @@ export function SecurityAdministrationPage() {
     if (!userPublicId) { setUserRoles(null); setAssignmentDrafts([]); return; }
     const result = await getSecurityUserRoles(userPublicId);
     setUserRoles(result.data ?? null);
-    setAssignmentDrafts(result.data?.assignments.map(item => ({ rolePublicId: item.rolePublicId, municipalityId: item.municipalityId, departmentId: item.departmentId, departmentPublicId: item.departmentPublicId, departmentName: item.departmentName, unitId: item.unitId, unitPublicId: item.unitPublicId, unitName: item.unitName, effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo })) ?? []);
+    setAssignmentDrafts(result.data?.assignments.map(item => ({ rolePublicId: item.rolePublicId, municipalityPublicId: item.municipalityPublicId, departmentPublicId: item.departmentPublicId, departmentName: item.departmentName, unitPublicId: item.unitPublicId, unitName: item.unitName, effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo })) ?? []);
   };
 
   const saveUserRoles = async () => {
     if (!userRoles) return;
     setBusy(true);
     const invalid = assignmentDrafts.find(item => item.effectiveTo && new Date(item.effectiveTo) <= new Date(item.effectiveFrom));
-    if (invalid) { setMessage('Every assignment end must be later than its start.'); return; }
+    if (invalid) { setMessage('Every assignment end must be later than its start.'); setBusy(false); return; }
     const result = await saveSecurityUserRoles(userRoles.userPublicId, userRoles, assignmentDrafts.map(item => ({ ...item, effectiveFrom: new Date(item.effectiveFrom).toISOString(), effectiveTo: item.effectiveTo ? new Date(item.effectiveTo).toISOString() : undefined })));
     setMessage(result.success ? 'User role assignments saved, effective immediately, and audited.' : result.message ?? 'Role assignments could not be saved.');
     if (result.success) await loadUserRoles(userRoles.userPublicId);
@@ -290,14 +293,14 @@ export function SecurityAdministrationPage() {
           <p className="mt-3 text-xs text-gray-500">Role choices follow the paged role search above; selections from other pages are preserved.</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-3">{roles.filter(role => role.isActive).map(role => {
             const assigned = assignmentDrafts.some(item => item.rolePublicId === role.publicId);
-            return <label key={role.publicId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { rolePublicId: role.publicId, municipalityId: role.municipalityId, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.rolePublicId !== role.publicId))}/><span>{role.name}</span></label>;
+            return <label key={role.publicId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { rolePublicId: role.publicId, municipalityPublicId: role.municipalityPublicId ?? currentMunicipalityPublicId, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.rolePublicId !== role.publicId))}/><span>{role.name}</span></label>;
           })}</div>
           <div className="mt-4 space-y-3">{assignmentDrafts.map((assignment, index) => {
             const role = roles.find(item => item.publicId === assignment.rolePublicId);
             return <div key={assignment.rolePublicId} className="grid gap-2 rounded bg-gray-50 p-3 md:grid-cols-2 lg:grid-cols-5">
               <div className="text-sm font-medium text-gray-800">{role?.name ?? assignment.rolePublicId}<div className="font-mono text-xs text-gray-500">{role?.roleCode}</div></div>
-              <OrganizationMasterPicker kind="department" label={`${role?.name} department`} value={assignment.departmentPublicId ?? ''} selectedLabel={assignment.departmentName} emptyLabel="All permitted departments" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentId: undefined, departmentPublicId: value || undefined, departmentName: option?.name, unitId: undefined, unitPublicId: undefined, unitName: undefined } : item))} />
-              <OrganizationMasterPicker kind="unit" label={`${role?.name} unit`} value={assignment.unitPublicId ?? ''} selectedLabel={assignment.unitName} departmentPublicId={assignment.departmentPublicId} emptyLabel="All permitted units" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitId: undefined, unitPublicId: value || undefined, unitName: option?.name } : item))} />
+              <OrganizationMasterPicker kind="department" label={`${role?.name} department`} value={assignment.departmentPublicId ?? ''} selectedLabel={assignment.departmentName} emptyLabel="All permitted departments" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentPublicId: value || undefined, departmentName: option?.name, unitPublicId: undefined, unitName: undefined } : item))} />
+              <OrganizationMasterPicker kind="unit" label={`${role?.name} unit`} value={assignment.unitPublicId ?? ''} selectedLabel={assignment.unitName} departmentPublicId={assignment.departmentPublicId} emptyLabel="All permitted units" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitPublicId: value || undefined, unitName: option?.name } : item))} />
               <label className="text-xs text-gray-600">Effective from<input aria-label={`${role?.name} effective from`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveFrom)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveFrom: event.target.value } : item))} /></label>
               <label className="text-xs text-gray-600">Effective to<input aria-label={`${role?.name} effective to`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveTo)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveTo: event.target.value || undefined } : item))} /></label>
             </div>;

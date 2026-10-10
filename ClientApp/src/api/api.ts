@@ -2044,7 +2044,7 @@ export async function getSecurityUserRoles(userPublicId: string): Promise<ApiRes
   return get<SecurityUserRoleConfiguration>(`/v1/security/users/${userPublicId}/roles`);
 }
 
-export async function saveSecurityUserRoles(userPublicId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ rolePublicId: string; municipalityId?: number; departmentId?: number; departmentPublicId?: string; unitId?: number; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
+export async function saveSecurityUserRoles(userPublicId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ rolePublicId: string; municipalityPublicId?: string; departmentPublicId?: string; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
   return put<boolean>(`/v1/security/users/${userPublicId}/roles`, {
     expectedAssignments: current.assignments.map(item => ({ assignmentPublicId: item.publicId, rowVersion: item.rowVersion })),
     assignments,

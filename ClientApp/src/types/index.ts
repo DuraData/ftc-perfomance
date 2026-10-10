@@ -2303,7 +2303,7 @@ export interface EffectiveSecurityPreview {
 
 export interface SecurityRoleSummary extends AdminRole {
   roleCode: string;
-  municipalityId?: number;
+  municipalityPublicId?: string;
   effectiveFrom: string;
   effectiveTo?: string;
   rowVersion: string;
@@ -2319,11 +2319,9 @@ export interface SecurityUserRoleAssignment {
   publicId: string;
   rolePublicId: string;
   roleName: string;
-  municipalityId?: number;
-  departmentId?: number;
+  municipalityPublicId?: string;
   departmentPublicId?: string;
   departmentName?: string;
-  unitId?: number;
   unitPublicId?: string;
   unitName?: string;
   effectiveFrom: string;

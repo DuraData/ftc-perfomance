@@ -8,12 +8,13 @@ const api = vi.hoisted(() => ({
   createSecurityRole: vi.fn(), saveRoleSecurityConfiguration: vi.fn(), updateSecurityRole: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ currentMunicipalityId: 7, tenantContexts: [{ id: 7, publicId: 'municipality-public' }] }) }));
 vi.mock('./NavigationRegistryEditor', () => ({ NavigationRegistryEditor: () => <div>Navigation editor</div> }));
 vi.mock('./SecurityRegistryEditor', () => ({ SecurityRegistryEditor: () => <div>Security registry editor</div> }));
 
 describe('SecurityAdministrationPage role assignments', () => {
   beforeEach(() => {
-    api.getSecurityRolesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'role-public', roleCode: 'DEPARTMENT_REVIEWER', name: 'Department Reviewer', municipalityId: 7, isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getSecurityRolesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'role-public', roleCode: 'DEPARTMENT_REVIEWER', name: 'Department Reviewer', municipalityPublicId: 'municipality-public', isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'user-public', fullName: 'Review User', email: 'review@example.test' }], page: 1, pageSize: 100, totalCount: 1, totalPages: 1 } });
     api.getSecurityPermissionDefinitionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'dep-1', code: 'FIN', name: 'Finance', isActive: true }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -40,7 +41,7 @@ describe('SecurityAdministrationPage role assignments', () => {
     fireEvent.change(screen.getByLabelText('Department Reviewer effective to'), { target: { value: '2026-12-31T17:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save user roles' }));
 
-    await waitFor(() => expect(api.saveSecurityUserRoles).toHaveBeenCalledWith('user-public', expect.anything(), [expect.objectContaining({ rolePublicId: 'role-public', municipalityId: 7, departmentPublicId: 'dep-1', unitPublicId: 'unit-1', effectiveFrom: expect.any(String), effectiveTo: expect.any(String) })]));
+    await waitFor(() => expect(api.saveSecurityUserRoles).toHaveBeenCalledWith('user-public', expect.anything(), [expect.objectContaining({ rolePublicId: 'role-public', municipalityPublicId: 'municipality-public', departmentPublicId: 'dep-1', unitPublicId: 'unit-1', effectiveFrom: expect.any(String), effectiveTo: expect.any(String) })]));
   });
 
   it('preserves role rules while permission-definition pages change', async () => {

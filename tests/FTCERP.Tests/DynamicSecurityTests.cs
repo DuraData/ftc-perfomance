@@ -226,6 +226,7 @@ public class DynamicSecurityTests
         active.TotalCount.Should().Be(2);
         active.Items.Should().ContainSingle();
         active.TotalPages.Should().Be(2);
+        active.Items.Should().OnlyContain(item => item.MunicipalityPublicId == municipalityA.PublicId);
 
         var inactiveResult = await controller.GetRolesPage(new PagedQueryRequest { Search = "FORMER", SortBy = "code", SortDirection = "asc" }, includeInactive: true);
         var inactive = inactiveResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityRoleDto>>>().Subject.Data!;
@@ -697,7 +698,7 @@ public class DynamicSecurityTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
         };
 
-        var result = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [new UpdateUserRoleAssignment(tenantRole.PublicId, 7, department.Id, unit.Id, DateTime.UtcNow, null)]));
+        var result = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [new UpdateUserRoleAssignment(tenantRole.PublicId, null, department.PublicId, unit.PublicId, DateTime.UtcNow, null)]));
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         context.SecurityUserRoleAssignments.Should().ContainSingle(item => item.UserId == actor.Id);
@@ -712,9 +713,11 @@ public class DynamicSecurityTests
         var systemRole = Role("public-system-role", "SYSTEM_ADMIN");
         var tenantRole = Role("public-tenant-role", "UNIT_REVIEWER"); tenantRole.MunicipalityId = 7;
         var systemPermission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action };
+        var municipality = new Municipality { Id = 7, Code = "PUB", Name = "Public Municipality" };
+        var foreignMunicipality = new Municipality { Id = 8, Code = "FOR", Name = "Foreign Municipality" };
         var department = new Department { MunicipalityId = 7, Code = "FIN", Name = "Finance", IsActive = true };
         var unit = new Unit { MunicipalityId = 7, Department = department, Code = "REV", Name = "Revenue", IsActive = true };
-        context.AddRange(actor, target, systemRole, tenantRole, systemPermission, department, unit);
+        context.AddRange(actor, target, systemRole, tenantRole, systemPermission, municipality, foreignMunicipality, department, unit);
         await context.SaveChangesAsync();
         context.SecurityUserRoleAssignments.Add(Assignment(actor, systemRole));
         context.RolePermissions.Add(new RolePermission { RoleId = systemRole.Id, PermissionId = systemPermission.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
@@ -727,8 +730,13 @@ public class DynamicSecurityTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
         };
 
+        var foreignResult = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [
+            new UpdateUserRoleAssignment(tenantRole.PublicId, foreignMunicipality.PublicId, department.PublicId, unit.PublicId, DateTime.UtcNow.AddMinutes(-1), null)
+        ]));
+        foreignResult.Result.Should().BeOfType<BadRequestObjectResult>();
+
         var savedResult = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [
-            new UpdateUserRoleAssignment(tenantRole.PublicId, 7, null, null, DateTime.UtcNow.AddMinutes(-1), null, department.PublicId, unit.PublicId)
+            new UpdateUserRoleAssignment(tenantRole.PublicId, municipality.PublicId, department.PublicId, unit.PublicId, DateTime.UtcNow.AddMinutes(-1), null)
         ]));
 
         savedResult.Result.Should().BeOfType<OkObjectResult>();
@@ -741,10 +749,23 @@ public class DynamicSecurityTests
         var assignment = loaded.Assignments.Should().ContainSingle().Subject;
         assignment.PublicId.Should().Be(stored.PublicId);
         assignment.PublicId.Should().NotBe(Guid.Empty);
+        assignment.MunicipalityPublicId.Should().Be(municipality.PublicId);
         assignment.DepartmentPublicId.Should().Be(department.PublicId);
         assignment.DepartmentName.Should().Be("Finance");
         assignment.UnitPublicId.Should().Be(unit.PublicId);
         assignment.UnitName.Should().Be("Revenue");
+        var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == "SecurityUserRoleAssignment" && item.EntityId == target.PublicId.ToString());
+        audit.NewValue.Should().Contain(municipality.PublicId.ToString()).And.Contain(department.PublicId.ToString()).And.Contain(unit.PublicId.ToString());
+        audit.NewValue.Should().NotContain("\"MunicipalityId\":").And.NotContain("\"DepartmentId\":").And.NotContain("\"UnitId\":");
+
+        typeof(SecurityRoleDto).GetProperty("MunicipalityId").Should().BeNull();
+        typeof(SecurityRoleDto).GetProperty("MunicipalityPublicId").Should().NotBeNull();
+        typeof(UserRoleAssignmentDto).GetProperty("MunicipalityId").Should().BeNull();
+        typeof(UserRoleAssignmentDto).GetProperty("DepartmentId").Should().BeNull();
+        typeof(UserRoleAssignmentDto).GetProperty("UnitId").Should().BeNull();
+        typeof(UpdateUserRoleAssignment).GetProperty("MunicipalityId").Should().BeNull();
+        typeof(UpdateUserRoleAssignment).GetProperty("DepartmentId").Should().BeNull();
+        typeof(UpdateUserRoleAssignment).GetProperty("UnitId").Should().BeNull();
     }
 
     private static AccessControlService CreateService(ApplicationDbContext context, ApplicationUser user)
