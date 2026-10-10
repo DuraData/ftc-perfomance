@@ -71,7 +71,7 @@ describe('IPMS dashboard', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Achieved KPIs: 1 of 4' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Achieved KPIs: 1 of 4' }));
-    expect(setCurrentPath).toHaveBeenCalledWith('/ipms/targets?municipalityFinancialYearPublicId=year-1&reportingPeriodPublicId=period-1&dashboardFilter=achieved');
+    await waitFor(() => expect(setCurrentPath).toHaveBeenCalledWith('/ipms/targets?municipalityFinancialYearPublicId=year-1&reportingPeriodPublicId=period-1&dashboardFilter=achieved'));
   });
 
   it('reloads the exact authorised aggregate population when a period is selected', async () => {

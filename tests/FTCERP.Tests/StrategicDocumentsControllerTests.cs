@@ -137,9 +137,12 @@ public class StrategicDocumentsControllerTests
         var ordinary = Controller(context, setup.User, setup.Municipality.Id, manager: false, storage: storage, inspection: inspection, scanner: scanner);
         var rows = Payload(await ordinary.GetDocumentsPage(new PagedQueryRequest { PageSize = 100 }, setup.Year.PublicId));
         rows.Items.Should().ContainSingle().Which.Title.Should().Be("Spatial development framework");
-        rows.Items.Single().CreatedByUserId.Should().BeNull();
-        rows.Items.Single().ApprovedByUserId.Should().BeNull();
-        rows.Items.Single().PublishedByUserId.Should().BeNull();
+        rows.Items.Single().CreatedByUserPublicId.Should().BeNull();
+        rows.Items.Single().CreatedByName.Should().BeNull();
+        rows.Items.Single().ApprovedByUserPublicId.Should().BeNull();
+        rows.Items.Single().ApprovedByName.Should().BeNull();
+        rows.Items.Single().PublishedByUserPublicId.Should().BeNull();
+        rows.Items.Single().PublishedByName.Should().BeNull();
         rows.Items.Single().ScannerProvider.Should().BeNull();
         rows.Items.Single().ScannerReference.Should().BeNull();
         rows.Items.Single().ScanDetail.Should().BeNull();
@@ -202,8 +205,10 @@ public class StrategicDocumentsControllerTests
 
         var created = Payload(await controller.CreateVersion(
             ExternalRequest(setup, "Governed identity metadata", "https://example.gov.za/identity.pdf")));
-        created.CreatedByUserId.Should().BeNull();
-        created.Events.Should().ContainSingle().Which.ActorUserId.Should().BeNull();
+        created.CreatedByUserPublicId.Should().BeNull();
+        created.CreatedByName.Should().BeNull();
+        created.Events.Should().ContainSingle().Which.ActorUserPublicId.Should().BeNull();
+        created.Events.Single().ActorName.Should().BeNull();
         created.Events.Single().Reason.Should().BeNull();
 
         var hiddenSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
@@ -224,19 +229,31 @@ public class StrategicDocumentsControllerTests
 
         var visibleSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
         {
-            Search = setup.User.Id,
+            Search = setup.User.PublicId.ToString(),
             PageSize = 10
         }));
         visibleSearch.TotalCount.Should().Be(1);
-        visibleSearch.Items.Should().ContainSingle().Which.CreatedByUserId.Should().Be(setup.User.Id);
-        visibleSearch.Items.Single().Events.Should().ContainSingle().Which.ActorUserId.Should().Be(setup.User.Id);
+        visibleSearch.Items.Should().ContainSingle().Which.CreatedByUserPublicId.Should().Be(setup.User.PublicId);
+        visibleSearch.Items.Single().CreatedByName.Should().Be(setup.User.FullName);
+        visibleSearch.Items.Single().Events.Should().ContainSingle().Which.ActorUserPublicId.Should().Be(setup.User.PublicId);
+        visibleSearch.Items.Single().Events.Single().ActorName.Should().Be(setup.User.FullName);
         visibleSearch.Items.Single().Events.Single().Reason.Should().Be("Council-governed version");
+        var rawIdentitySearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
+        {
+            Search = setup.User.Id,
+            PageSize = 10
+        }));
+        rawIdentitySearch.TotalCount.Should().Be(0);
         var visibleReasonSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
         {
             Search = "Council-governed version",
             PageSize = 10
         }));
         visibleReasonSearch.TotalCount.Should().Be(1);
+        typeof(StrategicDocumentResponse).GetProperty("CreatedByUserId").Should().BeNull();
+        typeof(StrategicDocumentResponse).GetProperty("ApprovedByUserId").Should().BeNull();
+        typeof(StrategicDocumentResponse).GetProperty("PublishedByUserId").Should().BeNull();
+        typeof(StrategicDocumentEventResponse).GetProperty("ActorUserId").Should().BeNull();
     }
 
     [Fact]

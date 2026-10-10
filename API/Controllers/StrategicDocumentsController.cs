@@ -249,11 +249,22 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (!await query.AnyAsync()) return NotFound(Fail<PagedResponse<StrategicDocumentResponse>>("Strategic-document family not found."));
         var memberAccess = await GetMemberAccessAsync(session.User!, tenantContext.MunicipalityId!.Value);
         if (request.NormalizedSearch.Length > 0)
+        {
+            var actorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedActorPublicId)
+                ? parsedActorPublicId
+                : (Guid?)null;
             query = query.Where(item => item.Title.Contains(request.NormalizedSearch)
                 || (item.Description != null && item.Description.Contains(request.NormalizedSearch))
                 || (item.ApprovalReference != null && item.ApprovalReference.Contains(request.NormalizedSearch))
-                || (memberAccess.CreatedByUserId && item.CreatedByUserId.Contains(request.NormalizedSearch))
+                || (memberAccess.CreatedByUserId && ((actorPublicId.HasValue && item.CreatedByUser.PublicId == actorPublicId.Value)
+                    || item.CreatedByUser.FirstName.Contains(request.NormalizedSearch)
+                    || item.CreatedByUser.LastName.Contains(request.NormalizedSearch)))
+                || (memberAccess.EventActorUserId && item.Events.Any(eventItem =>
+                    (actorPublicId.HasValue && eventItem.ActorUser.PublicId == actorPublicId.Value)
+                    || eventItem.ActorUser.FirstName.Contains(request.NormalizedSearch)
+                    || eventItem.ActorUser.LastName.Contains(request.NormalizedSearch)))
                 || (memberAccess.EventReason && item.Events.Any(eventItem => eventItem.Reason.Contains(request.NormalizedSearch))));
+        }
         var totalCount = await query.CountAsync();
         var ordered = (sortBy, request.Descending) switch
         {
@@ -359,9 +370,10 @@ public sealed class StrategicDocumentsController : ControllerBase
             FileName = fileName,
             ExternalUrl = normalized.ExternalUrl,
             DisplayOrder = request.DisplayOrder,
-            CreatedByUserId = user.Id
+            CreatedByUserId = user.Id,
+            CreatedByUser = user
         };
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.VersionCreated, normalized.Reason, user.Id));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.VersionCreated, normalized.Reason, user));
         await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
@@ -406,8 +418,9 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.IsApproved = true;
         entity.ApprovedAt = DateTime.UtcNow;
         entity.ApprovedByUserId = loaded.User!.Id;
+        entity.ApprovedByUser = loaded.User;
         entity.ApprovalReference = reference;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Approved, reason, loaded.User.Id));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Approved, reason, loaded.User));
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Approve", null, new { ApprovalReference = reference, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return await SaveCommand(entity, loaded.User!, "The document changed before approval. Reload and retry.");
     }
@@ -427,7 +440,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.PublicationDate = NormalizeUtc(request.PublicationDate);
         entity.PublishedAt = DateTime.UtcNow;
         entity.PublishedByUserId = loaded.User!.Id;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Published, reason, loaded.User.Id));
+        entity.PublishedByUser = loaded.User;
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Published, reason, loaded.User));
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Publish", null, new { entity.PublicationDate, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return await SaveCommand(entity, loaded.User!, "The document changed before publication. Reload and retry.");
     }
@@ -439,11 +453,12 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (loaded.Error != null) return loaded.Error;
         if (!TryReason(request.Reason, out var reason, out var error)) return BadRequest(Fail<StrategicDocumentResponse>(error!));
         var entity = loaded.Document!;
+        var actor = loaded.User!;
         if (!entity.IsActive) return Conflict(Fail<StrategicDocumentResponse>("This version is already retired."));
         entity.IsActive = false;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Retired, reason, loaded.User!.Id));
-        workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Retire", null, new { Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return await SaveCommand(entity, loaded.User!, "The document changed before retirement. Reload and retry.");
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Retired, reason, actor));
+        workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Retire", null, new { Reason = reason }, actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        return await SaveCommand(entity, actor, "The document changed before retirement. Reload and retry.");
     }
 
     [HttpPost("{publicId:guid}/rescan")]
@@ -467,7 +482,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.Blob.ScannerReference = scan.ProviderReference;
         entity.Blob.ScanDetail = scan.Detail;
         entity.Blob.ScannedAt = DateTime.UtcNow;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.MalwareRescanned, scan.Detail ?? scan.Status, user.Id));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.MalwareRescanned, scan.Detail ?? scan.Status, user));
         workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "MalwareRescan", before,
             new { scan.Status, entity.Blob.IsQuarantined, scan.ProviderReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await context.SaveChangesAsync();
@@ -502,7 +517,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         var query = tracking ? context.StrategicDocuments.AsQueryable() : context.StrategicDocuments.AsNoTracking();
         return query.Include(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.DocumentType).Include(item => item.PreviousVersion).Include(item => item.Blob)
-            .Include(item => item.Events);
+            .Include(item => item.CreatedByUser).Include(item => item.ApprovedByUser).Include(item => item.PublishedByUser)
+            .Include(item => item.Events).ThenInclude(eventItem => eventItem.ActorUser);
     }
 
     private IQueryable<StrategicDocument> VisibleDocumentQuery(bool manager, bool includeHistory, DateTime now)
@@ -585,12 +601,13 @@ public sealed class StrategicDocumentsController : ControllerBase
 
     private AccessScopeContext MunicipalityScope() => new(MunicipalityId: tenantContext.MunicipalityId);
 
-    private static StrategicDocumentEvent NewEvent(StrategicDocument document, StrategicDocumentEventAction action, string reason, string actorUserId) => new()
+    private static StrategicDocumentEvent NewEvent(StrategicDocument document, StrategicDocumentEventAction action, string reason, ApplicationUser actor) => new()
     {
         MunicipalityId = document.MunicipalityId,
         Action = action,
         Reason = reason,
-        ActorUserId = actorUserId,
+        ActorUserId = actor.Id,
+        ActorUser = actor,
         SnapshotJson = JsonSerializer.Serialize(new
         {
             document.PublicId, document.DocumentFamilyId, document.VersionNumber, document.Title, document.IsCurrent,
@@ -610,10 +627,13 @@ public sealed class StrategicDocumentsController : ControllerBase
         item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code, item.MunicipalityFinancialYear.FinancialYear.Name,
         item.DocumentType.PublicId, item.DocumentType.Code, item.DocumentType.Name, item.SdbipLayer, item.Title, item.Description,
         item.DocumentDate, item.DisplayOrder, item.IsCurrent, item.IsActive, item.IsApproved, item.ApprovedAt,
-        memberAccess.ApprovedByUserId ? item.ApprovedByUserId : null,
+        memberAccess.ApprovedByUserId ? item.ApprovedByUser?.PublicId : null,
+        memberAccess.ApprovedByUserId ? item.ApprovedByUser?.FullName : null,
         item.ApprovalReference, item.IsPublished, item.PublicationDate, item.PublishedAt,
-        memberAccess.PublishedByUserId ? item.PublishedByUserId : null, item.CreatedAt,
-        memberAccess.CreatedByUserId ? item.CreatedByUserId : null, item.FileName, item.Blob?.ContentType, item.Blob?.SizeInBytes,
+        memberAccess.PublishedByUserId ? item.PublishedByUser?.PublicId : null,
+        memberAccess.PublishedByUserId ? item.PublishedByUser?.FullName : null, item.CreatedAt,
+        memberAccess.CreatedByUserId ? item.CreatedByUser.PublicId : null,
+        memberAccess.CreatedByUserId ? item.CreatedByUser.FullName : null, item.FileName, item.Blob?.ContentType, item.Blob?.SizeInBytes,
         item.Blob?.Sha256, item.Blob?.ScanStatus,
         memberAccess.ScannerProvider ? item.Blob?.ScannerProvider : null,
         memberAccess.ScannerReference ? item.Blob?.ScannerReference : null,
@@ -622,7 +642,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         Convert.ToBase64String(item.RowVersion), includeAdministration ? item.Events.OrderBy(eventItem => eventItem.OccurredAt)
             .Select(eventItem => new StrategicDocumentEventResponse(eventItem.PublicId, eventItem.Action.ToString(),
                 memberAccess.EventReason ? eventItem.Reason : null,
-                memberAccess.EventActorUserId ? eventItem.ActorUserId : null, eventItem.OccurredAt)).ToArray() : []);
+                memberAccess.EventActorUserId ? eventItem.ActorUser.PublicId : null,
+                memberAccess.EventActorUserId ? eventItem.ActorUser.FullName : null, eventItem.OccurredAt)).ToArray() : []);
 
     private static bool TryNormalizeType(SaveStrategicDocumentTypeRequest request, out NormalizedType value, out string? error)
     {

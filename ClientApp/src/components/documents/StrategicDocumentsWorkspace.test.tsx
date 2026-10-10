@@ -26,11 +26,11 @@ const document = {
   municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', financialYearName: '2026/27',
   documentTypePublicId: 'type-1', documentTypeCode: 'IDP', documentTypeName: 'Integrated Development Plan',
   sdbipLayer: 'Top Layer', title: 'Approved IDP', description: 'Municipal five-year plan', documentDate: '2026-07-01T00:00:00Z',
-  displayOrder: 10, isCurrent: true, isActive: true, isApproved: false, approvedAt: null, approvedByUserId: 'approver-secret',
-  approvalReference: null, isPublished: false, publicationDate: null, publishedAt: null, publishedByUserId: 'publisher-secret',
-  createdAt: '2026-07-01T00:00:00Z', createdByUserId: 'owner', fileName: null, contentType: null, sizeInBytes: null,
+  displayOrder: 10, isCurrent: true, isActive: true, isApproved: false, approvedAt: null, approvedByUserPublicId: '00000000-0000-0000-0000-000000000002', approvedByName: 'Secret Approver',
+  approvalReference: null, isPublished: false, publicationDate: null, publishedAt: null, publishedByUserPublicId: '00000000-0000-0000-0000-000000000003', publishedByName: 'Secret Publisher',
+  createdAt: '2026-07-01T00:00:00Z', createdByUserPublicId: '00000000-0000-0000-0000-000000000001', createdByName: 'Secret Owner', fileName: null, contentType: null, sizeInBytes: null,
   sha256: null, scanStatus: 'Clean', scannerProvider: 'scanner-secret', scannerReference: 'reference-secret', scanDetail: 'detail-secret', isQuarantined: false, externalUrl: 'https://example.gov.za/idp.pdf', contentUrl: null,
-  rowVersion: 'Ag==', events: [{ publicId: 'event-1', action: 'VersionCreated', reason: 'governance-reason-secret', actorUserId: 'owner', occurredAt: '2026-07-01T00:00:00Z' }],
+  rowVersion: 'Ag==', events: [{ publicId: 'event-1', action: 'VersionCreated', reason: 'governance-reason-secret', actorUserPublicId: '00000000-0000-0000-0000-000000000001', actorName: 'Secret Owner', occurredAt: '2026-07-01T00:00:00Z' }],
 };
 
 describe('Strategic documents workspace', () => {
@@ -142,7 +142,7 @@ describe('Strategic documents workspace', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
     await screen.findByText('Version and action history');
 
-    for (const secret of ['owner', 'approver-secret', 'publisher-secret', 'scanner-secret', 'reference-secret', 'detail-secret', 'governance-reason-secret'])
+    for (const secret of ['Secret Owner', 'Secret Approver', 'Secret Publisher', '00000000-0000-0000-0000-000000000001', 'scanner-secret', 'reference-secret', 'detail-secret', 'governance-reason-secret'])
       expect(screen.queryByText(secret, { exact: false })).not.toBeInTheDocument();
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'CreatedByUserId');
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'EventActorUserId');

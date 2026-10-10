@@ -3645,7 +3645,8 @@ export interface StrategicDocumentEvent {
   publicId: string;
   action: string;
   reason?: string | null;
-  actorUserId?: string | null;
+  actorUserPublicId?: string | null;
+  actorName?: string | null;
   occurredAt: string;
 }
 
@@ -3669,14 +3670,17 @@ export interface StrategicDocument {
   isActive: boolean;
   isApproved: boolean;
   approvedAt?: string | null;
-  approvedByUserId?: string | null;
+  approvedByUserPublicId?: string | null;
+  approvedByName?: string | null;
   approvalReference?: string | null;
   isPublished: boolean;
   publicationDate?: string | null;
   publishedAt?: string | null;
-  publishedByUserId?: string | null;
+  publishedByUserPublicId?: string | null;
+  publishedByName?: string | null;
   createdAt: string;
-  createdByUserId?: string | null;
+  createdByUserPublicId?: string | null;
+  createdByName?: string | null;
   fileName?: string | null;
   contentType?: string | null;
   sizeInBytes?: number | null;
