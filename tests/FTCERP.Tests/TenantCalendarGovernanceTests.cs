@@ -14,6 +14,44 @@ namespace FTCERP.Tests;
 public sealed class TenantCalendarGovernanceTests
 {
     [Fact]
+    public async Task System_financial_year_update_keeps_audit_system_scoped_when_a_municipality_is_selected()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 740;
+        const string actorId = "system-calendar-governor";
+        Guid yearPublicId;
+
+        await using (var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true)))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            var municipality = new Municipality { Id = municipalityId, Code = "CAL-740", Name = "System Calendar Municipality" };
+            var actor = User(actorId, municipalityId);
+            var year = new FinancialYear { Code = "2030/31", Name = "2030/31", StartDate = new DateTime(2030, 7, 1), EndDate = new DateTime(2031, 6, 30) };
+            setup.AddRange(municipality, actor, year);
+            await setup.SaveChangesAsync();
+            yearPublicId = year.PublicId;
+        }
+
+        var tenant = new TestTenantContext(municipalityId, actorId, true);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var controller = Controller(context, tenant, actorId);
+        var yearToUpdate = await context.FinancialYears.SingleAsync(item => item.PublicId == yearPublicId);
+        var update = await controller.UpdateFinancialYear(yearToUpdate.PublicId,
+            new SaveFinancialYearRequest(yearToUpdate.Code, "2030/31 Municipal Financial Year", yearToUpdate.StartDate, yearToUpdate.EndDate,
+                "Clarify the governed global financial year name", true, Convert.ToBase64String(yearToUpdate.RowVersion)));
+
+        Assert.IsType<OkObjectResult>(update.Result);
+        var audit = Assert.Single(await context.AuditTrails.IgnoreQueryFilters()
+            .Where(item => item.EntityName == nameof(FinancialYear) && item.Action == "Update").ToArrayAsync());
+        Assert.Null(audit.MunicipalityId);
+        Assert.Equal("Clarify the governed global financial year name", audit.Reason);
+        Assert.Contains("\"Name\":\"2030/31\"", audit.OldValue);
+        Assert.Contains("\"Name\":\"2030/31 Municipal Financial Year\"", audit.NewValue);
+    }
+
+    [Fact]
     public async Task Promoting_current_year_and_updating_period_append_reasoned_before_after_audits()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -122,10 +160,13 @@ public sealed class TenantCalendarGovernanceTests
     }
 
     private static TenantMastersController Controller(ApplicationDbContext context, long municipalityId, string actorId)
+        => Controller(context, new TestTenantContext(municipalityId, actorId), actorId);
+
+    private static TenantMastersController Controller(ApplicationDbContext context, ITenantContext tenantContext, string actorId)
     {
         var http = new DefaultHttpContext { TraceIdentifier = $"calendar-governance-{Guid.NewGuid():N}" };
         http.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, actorId)], "test"));
-        return new TenantMastersController(context, new TestTenantContext(municipalityId, actorId))
+        return new TenantMastersController(context, tenantContext)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };

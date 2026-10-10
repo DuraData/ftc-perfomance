@@ -2115,6 +2115,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
+            if (entry.Entity is AuditTrail { MunicipalityId: null, EntityName: nameof(FinancialYear) } && _tenantContext.IsSystem)
+                continue;
             if (!tenantId.HasValue || tenantId == long.MinValue) throw new UnauthorizedAccessException("A municipality context is required for this operation.");
             var property = entry.Property("MunicipalityId");
             var current = property.CurrentValue == null ? (long?)null : Convert.ToInt64(property.CurrentValue);
