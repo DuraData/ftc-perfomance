@@ -9,13 +9,23 @@ const api = vi.hoisted(() => ({
   createPerformancePeriodTarget: vi.fn(),
   revisePerformancePeriodTarget: vi.fn(),
 }));
+const security = vi.hoisted(() => ({
+  canUpdate: vi.fn(() => true),
+  canExecute: vi.fn(() => true),
+  canReadField: vi.fn(() => true),
+  canEditField: vi.fn(() => true),
+}));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast: vi.fn() }) }));
-vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canCreate: () => true, canExecute: () => true, canReadField: () => true }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 
 describe('PerformancePeriodTargetEditor', () => {
   beforeEach(() => {
+    security.canUpdate.mockReturnValue(true);
+    security.canExecute.mockReturnValue(true);
+    security.canReadField.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
     api.getPerformanceConfigurationCatalogue.mockResolvedValue({ success: true, data: {
       opmsUnits: [
         { publicId: 'unit-number', code: 'NUMBER', name: 'Number', inputControlType: 'NUMERIC', valueDataType: 'DECIMAL', decimalPlaces: 2, minValue: 0, supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-target-or-higher', requiresComponentUi: false, isQualitative: false, engineUnitKind: 2, isActive: true },
@@ -42,7 +52,7 @@ describe('PerformancePeriodTargetEditor', () => {
     render(<PerformancePeriodTargetEditor kind={1} targetPublicId="target-public-id" />);
 
     await waitFor(() => expect(api.getPerformancePeriodTargets).toHaveBeenCalledWith(1, 'target-public-id'));
-    expect(screen.getByText('25')).toBeInTheDocument();
+    expect(await screen.findByText('25')).toBeInTheDocument();
     expect(screen.getByText('Households connected')).toBeInTheDocument();
     expect(screen.getByText('Number · Target or higher')).toBeInTheDocument();
 
@@ -60,5 +70,19 @@ describe('PerformancePeriodTargetEditor', () => {
 
     expect(await screen.findByRole('option', { name: 'Q2 · Quarter 2' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Q1 · Quarter 1' })).not.toBeInTheDocument();
+  });
+
+  it('masks protected period values and hides mutation actions without member grants', async () => {
+    security.canReadField.mockReturnValue(false);
+    security.canEditField.mockReturnValue(false);
+
+    render(<PerformancePeriodTargetEditor kind={1} targetPublicId="target-public-id" />);
+
+    expect(await screen.findByText('Restricted')).toBeInTheDocument();
+    expect(screen.queryByText('25')).not.toBeInTheDocument();
+    expect(screen.queryByText('1000')).not.toBeInTheDocument();
+    expect(screen.queryByText('Households connected')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add period/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Revise/i })).not.toBeInTheDocument();
   });
 });

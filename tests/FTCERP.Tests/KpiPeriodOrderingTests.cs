@@ -233,6 +233,62 @@ public sealed class KpiPeriodOrderingTests
     }
 
     [Fact]
+    public async Task Period_target_members_are_masked_and_direct_revision_requires_update_grants()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "PERIOD-SEC", Name = "Period member security" };
+        var user = IdpTestFixture.CreateUser("period-member-user");
+        var year = new FinancialYear { Code = "2027/28", Name = "2027/28", StartDate = new(2027, 7, 1), EndDate = new(2028, 6, 30), IsActive = true };
+        context.AddRange(municipality, user, year);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = year.Id, IsCurrent = true, IsActive = true, EffectiveFrom = year.StartDate };
+        context.Add(municipalityYear);
+        await context.SaveChangesAsync();
+        var period = new ReportingPeriod { MunicipalityFinancialYearId = municipalityYear.Id, Code = "ANN", Name = "Annual", PeriodType = ReportingPeriodType.Annual, Sequence = 6, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
+        var target = Target("period-member-target", municipality.Id, "PERIOD-SEC-1", 1, 1);
+        context.AddRange(period, target);
+        await context.SaveChangesAsync();
+        var value = new PerformancePeriodTarget
+        {
+            MunicipalityId = municipality.Id, ReportingPeriodId = period.Id, OpmsTargetId = target.Id,
+            UnitKind = PerformanceUnitKind.AbsoluteCount, Direction = PerformanceDirection.HigherIsBetter,
+            TargetValue = "secret target", BudgetValue = 9876, Description = "secret description", CreatedByUserId = user.Id
+        };
+        context.Add(value);
+        await context.SaveChangesAsync();
+
+        var denied = PeriodController(context, municipality.Id, user, code => !code.Contains(".Period", StringComparison.OrdinalIgnoreCase));
+        var maskedResult = await denied.Get(target.PublicId, null);
+        var masked = Assert.Single(Assert.IsType<ApiResponse<PerformancePeriodTargetDto[]>>(Assert.IsType<OkObjectResult>(maskedResult.Result).Value).Data!);
+        Assert.Null(masked.TargetValue);
+        Assert.Null(masked.OriginalTargetValue);
+        Assert.Null(masked.RevisedTargetValue);
+        Assert.Null(masked.BudgetValue);
+        Assert.Null(masked.OriginalBudgetValue);
+        Assert.Null(masked.RevisedBudgetValue);
+        Assert.Null(masked.Description);
+
+        var parentResult = await OpmsController(context, municipality.Id, user, code => code == "OPMS_KPI.READ").GetTarget(target.Id);
+        var parentTarget = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(parentResult.Result).Value).Data!;
+        var parentPeriod = Assert.Single(parentTarget.PeriodTargets);
+        Assert.Null(parentPeriod.TargetValue);
+        Assert.Null(parentPeriod.BudgetValue);
+        Assert.Null(parentPeriod.Description);
+
+        var deniedRevision = await denied.Revise(value.PublicId, new RevisePerformancePeriodTargetRequest(
+            value.UnitKind, value.Direction, "changed", 100, "changed", true,
+            "Attempted without member grant", "SEC-1", DateTime.UtcNow, Convert.ToBase64String(value.RowVersion)));
+        Assert.IsType<ForbidResult>(deniedRevision.Result);
+
+        var allowed = PeriodController(context, municipality.Id, user);
+        var visibleResult = await allowed.Get(target.PublicId, null);
+        var visible = Assert.Single(Assert.IsType<ApiResponse<PerformancePeriodTargetDto[]>>(Assert.IsType<OkObjectResult>(visibleResult.Result).Value).Data!);
+        Assert.Equal("secret target", visible.TargetValue);
+        Assert.Equal(9876, visible.BudgetValue);
+        Assert.Equal("secret description", visible.Description);
+    }
+
+    [Fact]
     public async Task Ordering_revision_is_field_specific_audited_append_only_and_rowversion_protected()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -482,11 +538,12 @@ public sealed class KpiPeriodOrderingTests
         };
     }
 
-    private static PerformancePeriodTargetsController PeriodController(ApplicationDbContext context, long municipalityId, ApplicationUser user)
+    private static PerformancePeriodTargetsController PeriodController(ApplicationDbContext context, long municipalityId, ApplicationUser user, Func<string, bool>? allowed = null)
     {
+        allowed ??= _ => true;
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(allowed(code), allowed(code) ? "Allowed" : "Denied", allowed(code) ? [code] : [], [], []));
         return new PerformancePeriodTargetsController(context, new TenantContext(municipalityId, user.Id), new PerformanceUnitEngine(), access.Object, IdpTestFixture.CreateUserManagerMock(user).Object)
         {
             ControllerContext = ControllerContext(user.Id)

@@ -125,8 +125,10 @@ public class OpmsTargetsController : ControllerBase
             .AsSplitQuery()
             .ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
+        var responses = new List<OpmsTargetResponse>(items.Count);
+        foreach (var item in items) responses.Add(await ToSecureResponseAsync(user, item, request.ReportingPeriodType));
         return Ok(new ApiResponse<PagedResponse<OpmsTargetResponse>>(true,
-            PagedResponse<OpmsTargetResponse>.Create(items.Select(item => item.ToResponse(request.ReportingPeriodType)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<OpmsTargetResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname", "effectiveorder"];
@@ -197,7 +199,7 @@ public class OpmsTargetsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", BuildScope(target));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
 
-        return Ok(new ApiResponse<OpmsTargetResponse>(true, target.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, target)));
     }
 
     [HttpPost]
@@ -213,6 +215,8 @@ public class OpmsTargetsController : ControllerBase
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(organization.DepartmentId, organization.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        var memberScope = new AccessScopeContext(organization.DepartmentId, organization.UnitId, null, MunicipalityId: _tenantContext.MunicipalityId);
+        if (!await CanUpdatePeriodTargetMembersAsync(user, memberScope)) return Forbid();
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
@@ -287,7 +291,7 @@ public class OpmsTargetsController : ControllerBase
             await _workflowGovernanceService.CreateNotificationAsync(entity.AssignedUserId, NotificationType.Submission, "OPMS target assigned", $"You have been assigned OPMS target '{entity.TargetName}'.", "OpmsTarget", entity.Id);
         }
 
-        return Ok(new ApiResponse<OpmsTargetResponse>(true, entity.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, entity)));
     }
 
     [HttpPut("{id}")]
@@ -312,6 +316,7 @@ public class OpmsTargetsController : ControllerBase
         var before = (await FindTargetAsync(id))?.ToResponse();
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
+        if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
         var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
@@ -381,7 +386,7 @@ public class OpmsTargetsController : ControllerBase
 
         var after = await FindTargetAsync(id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Edit", before, after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<OpmsTargetResponse>(true, after.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
     [HttpPut("{id}/ordering")]
@@ -414,7 +419,7 @@ public class OpmsTargetsController : ControllerBase
 
         var after = await FindTargetAsync(id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<OpmsTargetResponse>(true, after.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
     [HttpPut("{id}/field-revisions")]
@@ -464,7 +469,7 @@ public class OpmsTargetsController : ControllerBase
 
         var after = await FindTargetAsync(id) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<OpmsTargetResponse>(true, after.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
     [HttpGet("{id}/ordering-revisions")]
@@ -586,7 +591,7 @@ public class OpmsTargetsController : ControllerBase
             return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target changed before withdrawal. Refresh and try again."));
         }
         var response = await FindTargetAsync(id) ?? entity;
-        return Ok(new ApiResponse<OpmsTargetResponse>(true, response.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, response)));
     }
 
     private bool TrySetExpectedVersion(OpmsTarget entity, string value)
@@ -746,4 +751,17 @@ public class OpmsTargetsController : ControllerBase
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>
         new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
+
+    private async Task<PeriodTargetMemberAccess> GetPeriodTargetMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodTargetValue.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodBudgetValue.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.READ", scope))?.Allowed == true);
+
+    private async Task<bool> CanUpdatePeriodTargetMembersAsync(ApplicationUser user, AccessScopeContext scope) =>
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodTargetValue.UPDATE", scope))?.Allowed == true
+        && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodBudgetValue.UPDATE", scope))?.Allowed == true
+        && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true;
+
+    private async Task<OpmsTargetResponse> ToSecureResponseAsync(ApplicationUser user, OpmsTarget target, ReportingPeriodType? periodType = null) =>
+        target.ToResponse(periodType, await GetPeriodTargetMemberAccessAsync(user, BuildScope(target)));
 }

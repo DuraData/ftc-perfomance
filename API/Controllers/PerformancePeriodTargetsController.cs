@@ -31,11 +31,15 @@ public sealed class PerformancePeriodTargetsController(
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<PerformancePeriodTargetDto[]>("User not found."));
         var query = Query();
+        string resource;
+        AccessScopeContext scope;
         if (opmsTargetId.HasValue)
         {
             var target = await context.OpmsTargets.SingleOrDefaultAsync(x => x.PublicId == opmsTargetId.Value);
             if (target == null) return NotFound(Fail<PerformancePeriodTargetDto[]>("OPMS target not found."));
-            var decision = await accessControl.CheckPermissionAsync(user, "OPMS_KPI.READ", new AccessScopeContext(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId));
+            resource = "OPMS_KPI";
+            scope = new AccessScopeContext(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
+            var decision = await accessControl.CheckPermissionAsync(user, $"{resource}.READ", scope);
             if (!decision.Allowed) return Forbid();
             query = query.Where(x => x.OpmsTargetId == target.Id);
         }
@@ -43,12 +47,15 @@ public sealed class PerformancePeriodTargetsController(
         {
             var target = await context.IpmsTargets.SingleOrDefaultAsync(x => x.PublicId == ipmsTargetId!.Value);
             if (target == null) return NotFound(Fail<PerformancePeriodTargetDto[]>("IPMS target not found."));
-            var decision = await accessControl.CheckPermissionAsync(user, "IPMS_KPI.READ", new AccessScopeContext(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId));
+            resource = "IPMS_KPI";
+            scope = new AccessScopeContext(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
+            var decision = await accessControl.CheckPermissionAsync(user, $"{resource}.READ", scope);
             if (!decision.Allowed) return Forbid();
             query = query.Where(x => x.IpmsTargetId == target.Id);
         }
         var entities = await query.OrderBy(x => x.ReportingPeriod.Sequence).ToArrayAsync();
-        var rows = entities.Select(ToDto).ToArray();
+        var memberAccess = await GetMemberAccess(user, resource, scope);
+        var rows = entities.Select(item => ToDto(item, memberAccess)).ToArray();
         return Ok(new ApiResponse<PerformancePeriodTargetDto[]>(true, rows));
     }
 
@@ -83,8 +90,11 @@ public sealed class PerformancePeriodTargetsController(
         var targetUnit = opms?.UnitId ?? ipms?.UnitId;
         var targetOwner = opms?.AssignedUserId ?? ipms?.AssignedUserId;
         var targetId = opms?.Id ?? ipms!.Id;
-        var decision = await accessControl.CheckPermissionAsync(user, permission, new AccessScopeContext(targetDepartment, targetUnit, targetOwner, TargetId: targetId, MunicipalityId: tenantContext.MunicipalityId));
+        var scope = new AccessScopeContext(targetDepartment, targetUnit, targetOwner, TargetId: targetId, MunicipalityId: tenantContext.MunicipalityId);
+        var resource = request.TargetKind == SubmissionKind.Opms ? "OPMS_KPI" : "IPMS_KPI";
+        var decision = await accessControl.CheckPermissionAsync(user, permission, scope);
         if (!decision.Allowed) return Forbid();
+        if (!await CanUpdateAllMembers(user, resource, scope)) return Forbid();
         var duplicate = opms != null
             ? await context.PerformancePeriodTargets.AnyAsync(x => x.ReportingPeriodId == period.Id && x.OpmsTargetId == opms.Id)
             : await context.PerformancePeriodTargets.AnyAsync(x => x.ReportingPeriodId == period.Id && x.IpmsTargetId == ipms!.Id);
@@ -102,7 +112,7 @@ public sealed class PerformancePeriodTargetsController(
         };
         context.PerformancePeriodTargets.Add(entity);
         await context.SaveChangesAsync();
-        return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity)));
+        return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity, await GetMemberAccess(user, resource, scope))));
     }
 
     [HttpPut("{publicId:guid}")]
@@ -122,7 +132,10 @@ public sealed class PerformancePeriodTargetsController(
         var unitId = target is OpmsTarget opmsTarget ? opmsTarget.UnitId : ((IpmsTarget)target).UnitId;
         var ownerId = target is OpmsTarget opmsOwner ? opmsOwner.AssignedUserId : ((IpmsTarget)target).AssignedUserId;
         var targetId = target is OpmsTarget opmsId ? opmsId.Id : ((IpmsTarget)target).Id;
-        if (!(await accessControl.CheckPermissionAsync(user, permission, new AccessScopeContext(departmentId, unitId, ownerId, TargetId: targetId, MunicipalityId: entity.MunicipalityId))).Allowed) return Forbid();
+        var scope = new AccessScopeContext(departmentId, unitId, ownerId, TargetId: targetId, MunicipalityId: entity.MunicipalityId);
+        var resource = entity.OpmsTargetId != null ? "OPMS_KPI" : "IPMS_KPI";
+        if (!(await accessControl.CheckPermissionAsync(user, permission, scope)).Allowed) return Forbid();
+        if (!await CanUpdateAllMembers(user, resource, scope)) return Forbid();
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<PerformancePeriodTargetDto>("A valid row version is required."));
         var configuration = await ResolveConfiguration(request.OpmsUnitPublicId, request.UnitKind, request.PerformanceDirectionPublicId, request.Direction);
         if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
@@ -158,7 +171,7 @@ public sealed class PerformancePeriodTargetsController(
         entity.Direction = configuration.Direction.EngineDirection; entity.Description = request.Description?.Trim(); entity.IsActive = request.IsActive;
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<PerformancePeriodTargetDto>("Target values changed since they were loaded. Refresh and try again.")); }
-        return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity)));
+        return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity, await GetMemberAccess(user, resource, scope))));
     }
 
     [HttpGet("{publicId:guid}/revisions")]
@@ -239,7 +252,17 @@ public sealed class PerformancePeriodTargetsController(
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ActionResult<ApiResponse<T>> TenantRequired<T>() => StatusCode(StatusCodes.Status409Conflict, Fail<T>("Select a municipality context before using performance targets."));
     private bool TrySetVersion(object entity, string value) { try { context.Entry(entity).Property("RowVersion").OriginalValue = Convert.FromBase64String(value); return true; } catch (FormatException) { return false; } }
-    private static PerformancePeriodTargetDto ToDto(PerformancePeriodTarget x) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, x.ReportingPeriod.PeriodType, PerformanceRevisionResolver.EffectiveUnitKind(x), x.Direction, PerformanceRevisionResolver.EffectiveTargetValue(x), PerformanceRevisionResolver.EffectiveBudgetValue(x), x.Description, x.IsActive, Convert.ToBase64String(x.RowVersion))
+    private async Task<PeriodTargetMemberAccess> GetMemberAccess(ApplicationUser user, string resource, AccessScopeContext scope) => new(
+        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodTargetValue.READ", scope)).Allowed,
+        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodBudgetValue.READ", scope)).Allowed,
+        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.READ", scope)).Allowed);
+
+    private async Task<bool> CanUpdateAllMembers(ApplicationUser user, string resource, AccessScopeContext scope) =>
+        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodTargetValue.UPDATE", scope)).Allowed
+        && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodBudgetValue.UPDATE", scope)).Allowed
+        && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.UPDATE", scope)).Allowed;
+
+    private static PerformancePeriodTargetDto ToDto(PerformancePeriodTarget x, PeriodTargetMemberAccess memberAccess) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, x.ReportingPeriod.PeriodType, PerformanceRevisionResolver.EffectiveUnitKind(x), x.Direction, memberAccess.TargetValue ? PerformanceRevisionResolver.EffectiveTargetValue(x) : null, memberAccess.BudgetValue ? PerformanceRevisionResolver.EffectiveBudgetValue(x) : null, memberAccess.Description ? x.Description : null, x.IsActive, Convert.ToBase64String(x.RowVersion))
     {
         OpmsUnitPublicId = (x.IsTargetRevised ? x.RevisedOpmsUnit : x.OpmsUnit)?.PublicId,
         OpmsUnitCode = (x.IsTargetRevised ? x.RevisedOpmsUnit : x.OpmsUnit)?.Code ?? TargetPeriodCutover.LegacyUnitCode(PerformanceRevisionResolver.EffectiveUnitKind(x)),
@@ -248,17 +271,17 @@ public sealed class PerformancePeriodTargetsController(
         OriginalOpmsUnitPublicId = x.OpmsUnit?.PublicId,
         OriginalOpmsUnitCode = x.OpmsUnit?.Code ?? TargetPeriodCutover.LegacyUnitCode(x.UnitKind),
         OriginalUnitKind = x.UnitKind,
-        OriginalTargetValue = x.TargetValue,
-        OriginalBudgetValue = x.BudgetValue,
+        OriginalTargetValue = memberAccess.TargetValue ? x.TargetValue : null,
+        OriginalBudgetValue = memberAccess.BudgetValue ? x.BudgetValue : null,
         IsTargetRevised = x.IsTargetRevised,
         RevisedUnitKind = x.RevisedUnitKind,
-        RevisedTargetValue = x.RevisedTargetValue,
+        RevisedTargetValue = memberAccess.TargetValue ? x.RevisedTargetValue : null,
         IsBudgetRevised = x.IsBudgetRevised,
-        RevisedBudgetValue = x.RevisedBudgetValue
+        RevisedBudgetValue = memberAccess.BudgetValue ? x.RevisedBudgetValue : null
     };
 }
 
-public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, ReportingPeriodType PeriodType, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string RowVersion)
+public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, ReportingPeriodType PeriodType, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string? TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string RowVersion)
 {
     public Guid? OpmsUnitPublicId { get; init; }
     public string? OpmsUnitCode { get; init; }
@@ -267,7 +290,7 @@ public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPer
     public Guid? OriginalOpmsUnitPublicId { get; init; }
     public string? OriginalOpmsUnitCode { get; init; }
     public PerformanceUnitKind OriginalUnitKind { get; init; }
-    public string OriginalTargetValue { get; init; } = string.Empty;
+    public string? OriginalTargetValue { get; init; }
     public decimal? OriginalBudgetValue { get; init; }
     public bool IsTargetRevised { get; init; }
     public PerformanceUnitKind? RevisedUnitKind { get; init; }

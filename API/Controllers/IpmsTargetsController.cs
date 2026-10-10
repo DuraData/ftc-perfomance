@@ -198,6 +198,8 @@ public class IpmsTargetsController : ControllerBase
         if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.CREATE", new AccessScopeContext(organization.DepartmentId, organization.UnitId, user.Id));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
+        var memberScope = new AccessScopeContext(organization.DepartmentId, organization.UnitId, user.Id, MunicipalityId: _tenantContext.MunicipalityId);
+        if (!await CanUpdatePeriodTargetMembersAsync(user, memberScope)) return Forbid();
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
@@ -282,6 +284,7 @@ public class IpmsTargetsController : ControllerBase
         var before = await FindTargetAsync(id);
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
+        if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
         var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
@@ -669,13 +672,21 @@ public class IpmsTargetsController : ControllerBase
 
     private async Task<IpmsTargetResponse[]> ToResponsesAsync(IReadOnlyCollection<IpmsTarget> targets, ReportingPeriodType? periodType = null)
     {
+        var user = await GetCurrentUserAsync();
         var supervisorIds = targets.Where(item => item.SupervisorId != null).Select(item => item.SupervisorId!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var publicIds = supervisorIds.Length == 0
             ? new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
             : await _context.Users.AsNoTracking().Where(item => supervisorIds.Contains(item.Id))
                 .ToDictionaryAsync(item => item.Id, item => item.PublicId, StringComparer.OrdinalIgnoreCase);
-        return targets.Select(item => item.ToResponse(periodType,
-            item.SupervisorId != null && publicIds.TryGetValue(item.SupervisorId, out var publicId) ? publicId : null)).ToArray();
+        var responses = new List<IpmsTargetResponse>(targets.Count);
+        foreach (var item in targets)
+        {
+            var memberAccess = user == null ? PeriodTargetMemberAccess.None : await GetPeriodTargetMemberAccessAsync(user, BuildScope(item));
+            responses.Add(item.ToResponse(periodType,
+                item.SupervisorId != null && publicIds.TryGetValue(item.SupervisorId, out var publicId) ? publicId : null,
+                memberAccess));
+        }
+        return responses.ToArray();
     }
 
     private async Task<IpmsTargetResponse> ToResponseAsync(IpmsTarget target, ReportingPeriodType? periodType = null) =>
@@ -683,4 +694,14 @@ public class IpmsTargetsController : ControllerBase
 
     private static AccessScopeContext BuildScope(IpmsTarget target) =>
         new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
+
+    private async Task<PeriodTargetMemberAccess> GetPeriodTargetMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodTargetValue.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodBudgetValue.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodDescription.READ", scope))?.Allowed == true);
+
+    private async Task<bool> CanUpdatePeriodTargetMembersAsync(ApplicationUser user, AccessScopeContext scope) =>
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodTargetValue.UPDATE", scope))?.Allowed == true
+        && (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodBudgetValue.UPDATE", scope))?.Allowed == true
+        && (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true;
 }

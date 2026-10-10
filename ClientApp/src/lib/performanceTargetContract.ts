@@ -78,6 +78,9 @@ export function canonicalPeriodTarget(
 
 export function canonicalSaveRows(rows: PerformancePeriodTargetDto[]): SaveTargetPeriodValuePayload[] {
   return rows.filter(row => row.isActive).map(row => {
+    if (row.targetValue == null) {
+      throw new Error('Period target values are restricted and cannot be saved without member-level read access.');
+    }
     const result: SaveTargetPeriodValuePayload = {
       periodType: row.periodType as SaveTargetPeriodValuePayload['periodType'],
       unitKind: row.unitKind,

@@ -1710,7 +1710,7 @@ export interface PerformancePeriodTargetDto {
   opmsUnitCode?: string | null;
   performanceDirectionPublicId?: string | null;
   performanceDirectionCode?: string | null;
-  targetValue: string;
+  targetValue: string | null;
   budgetValue?: number | null;
   description?: string | null;
   isActive: boolean;
@@ -1718,7 +1718,7 @@ export interface PerformancePeriodTargetDto {
   originalUnitKind: number;
   originalOpmsUnitPublicId?: string | null;
   originalOpmsUnitCode?: string | null;
-  originalTargetValue: string;
+  originalTargetValue: string | null;
   originalBudgetValue?: number | null;
   isTargetRevised: boolean;
   revisedUnitKind?: number | null;

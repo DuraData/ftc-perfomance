@@ -163,7 +163,9 @@ public static class PerformanceApiSupport
             template.CreatedDate,
             Convert.ToBase64String(template.RowVersion));
 
-    public static OpmsTargetResponse ToResponse(this OpmsTarget target) =>
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target) => target.ToResponse(PeriodTargetMemberAccess.Full);
+
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess) =>
         new(
             target.Id,
             target.SourceTemplateId,
@@ -202,7 +204,7 @@ public static class PerformanceApiSupport
             target.IsRevised,
             target.IsWithdrawn,
             target.ReasonForWithdrawal,
-            target.CanonicalPeriodTargets.Select(ToResponse).ToArray(),
+            target.CanonicalPeriodTargets.Select(item => ToResponse(item, memberAccess)).ToArray(),
             target.CreatedAt)
         {
             PublicId = target.PublicId,
@@ -258,7 +260,10 @@ public static class PerformanceApiSupport
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>
-        !periodType.HasValue ? target.ToResponse() : target.ToResponse() with
+        target.ToResponse(periodType, PeriodTargetMemberAccess.Full);
+
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess) =>
+        !periodType.HasValue ? target.ToResponse(memberAccess) : target.ToResponse(memberAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),
@@ -266,6 +271,9 @@ public static class PerformanceApiSupport
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId = null) =>
+        target.ToResponse(supervisorPublicId, PeriodTargetMemberAccess.Full);
+
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess) =>
         new(
             target.Id,
             target.SourceTemplateId,
@@ -298,7 +306,7 @@ public static class PerformanceApiSupport
             target.IdpReference,
             target.InternalReference,
             target.IsRevised,
-            target.CanonicalPeriodTargets.Select(ToResponse).ToArray(),
+            target.CanonicalPeriodTargets.Select(item => ToResponse(item, memberAccess)).ToArray(),
             target.CreatedAt)
         {
             PublicId = target.PublicId,
@@ -340,14 +348,17 @@ public static class PerformanceApiSupport
         };
 
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId = null) =>
-        !periodType.HasValue ? target.ToResponse(supervisorPublicId) : target.ToResponse(supervisorPublicId) with
+        target.ToResponse(periodType, supervisorPublicId, PeriodTargetMemberAccess.Full);
+
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess) =>
+        !periodType.HasValue ? target.ToResponse(supervisorPublicId, memberAccess) : target.ToResponse(supervisorPublicId, memberAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),
             KpiDescription = PerformanceRevisionResolver.EffectiveKpiDescription(target, periodType.Value)
         };
 
-    private static TargetPeriodValueResponse ToResponse(PerformancePeriodTarget target) =>
+    private static TargetPeriodValueResponse ToResponse(PerformancePeriodTarget target, PeriodTargetMemberAccess memberAccess) =>
         new(
             target.PublicId,
             target.ReportingPeriod.PublicId,
@@ -355,20 +366,20 @@ public static class PerformanceApiSupport
             target.ReportingPeriod.PeriodType,
             PerformanceRevisionResolver.EffectiveUnitKind(target),
             target.Direction,
-            PerformanceRevisionResolver.EffectiveTargetValue(target),
-            PerformanceRevisionResolver.EffectiveBudgetValue(target),
-            target.Description,
+            memberAccess.TargetValue ? PerformanceRevisionResolver.EffectiveTargetValue(target) : null,
+            memberAccess.BudgetValue ? PerformanceRevisionResolver.EffectiveBudgetValue(target) : null,
+            memberAccess.Description ? target.Description : null,
             target.IsActive,
             Convert.ToBase64String(target.RowVersion))
         {
             OriginalUnitKind = target.UnitKind,
-            OriginalTargetValue = target.TargetValue,
-            OriginalBudgetValue = target.BudgetValue,
+            OriginalTargetValue = memberAccess.TargetValue ? target.TargetValue : null,
+            OriginalBudgetValue = memberAccess.BudgetValue ? target.BudgetValue : null,
             IsTargetRevised = target.IsTargetRevised,
             RevisedUnitKind = target.RevisedUnitKind,
-            RevisedTargetValue = target.RevisedTargetValue,
+            RevisedTargetValue = memberAccess.TargetValue ? target.RevisedTargetValue : null,
             IsBudgetRevised = target.IsBudgetRevised,
-            RevisedBudgetValue = target.RevisedBudgetValue
+            RevisedBudgetValue = memberAccess.BudgetValue ? target.RevisedBudgetValue : null
         };
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>

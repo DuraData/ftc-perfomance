@@ -23,6 +23,14 @@ describe('canonical performance target contract', () => {
     expect(performanceUnitValue(8)).toBe('Ratios');
   });
 
+  it('fails closed instead of overwriting a masked target value', () => {
+    expect(() => canonicalSaveRows([{
+      publicId: 'masked-target', reportingPeriodPublicId: 'period', periodCode: 'Q1', periodType: 1,
+      unitKind: 2, direction: 1, targetValue: null, budgetValue: null, description: null, isActive: true, rowVersion: 'AQ==',
+      originalUnitKind: 2, originalTargetValue: null, originalBudgetValue: null, isTargetRevised: false, isBudgetRevised: false,
+    }])).toThrow(/restricted/i);
+  });
+
   it('uses persisted OPMS unit and performance-direction identifiers when a catalogue is supplied', () => {
     const result = canonicalPeriodTarget(6, '2027-06-30', 'Date', null, null, {
       opmsUnits: [{ publicId: 'unit-date', code: 'DATE', name: 'Date', inputControlType: 'DATE', valueDataType: 'DATE', supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-before', requiresComponentUi: false, isQualitative: false, engineUnitKind: 10, isActive: true }],

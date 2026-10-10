@@ -363,14 +363,14 @@ public record TargetPeriodValueResponse(
     ReportingPeriodType PeriodType,
     PerformanceUnitKind UnitKind,
     PerformanceDirection Direction,
-    string TargetValue,
+    string? TargetValue,
     decimal? BudgetValue,
     string? Description,
     bool IsActive,
     string RowVersion)
 {
     public PerformanceUnitKind OriginalUnitKind { get; init; }
-    public string OriginalTargetValue { get; init; } = string.Empty;
+    public string? OriginalTargetValue { get; init; }
     public decimal? OriginalBudgetValue { get; init; }
     public bool IsTargetRevised { get; init; }
     public PerformanceUnitKind? RevisedUnitKind { get; init; }
@@ -397,6 +397,12 @@ public sealed record KpiRevisionMemberAccess(
     bool Reason,
     bool ApprovalReference,
     bool Actor);
+
+public sealed record PeriodTargetMemberAccess(bool TargetValue, bool BudgetValue, bool Description)
+{
+    public static PeriodTargetMemberAccess Full { get; } = new(true, true, true);
+    public static PeriodTargetMemberAccess None { get; } = new(false, false, false);
+}
 
 public record OpmsSubmissionResponse(
     string Id,
