@@ -132,7 +132,7 @@ public class OpmsTargetLibraryController : ControllerBase
         _context.OpmsTargetTemplates.Add(template);
         await _context.SaveChangesAsync();
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
     }

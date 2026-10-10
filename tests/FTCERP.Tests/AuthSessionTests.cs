@@ -209,6 +209,55 @@ public sealed class AuthSessionTests
     }
 
     [Fact]
+    public async Task Parallel_access_session_touches_tolerate_a_winning_touch_but_fail_closed_on_revocation()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"opms-auth-session-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite($"Data Source={databasePath};Pooling=False")
+            .Options;
+        try
+        {
+            var user = User("parallel-session-user");
+            Guid sessionId;
+            await using (var seed = new ApplicationDbContext(options))
+            {
+                await seed.Database.EnsureCreatedAsync();
+                seed.Users.Add(user);
+                await seed.SaveChangesAsync();
+                await CreateService(seed, user).GenerateTokensAsync(user);
+                var session = await seed.RefreshTokens.SingleAsync();
+                session.LastUsedAt = DateTime.UtcNow.AddMinutes(-2);
+                await seed.SaveChangesAsync();
+                sessionId = session.SessionId;
+            }
+
+            await using (var stale = new ApplicationDbContext(options))
+            await using (var winner = new ApplicationDbContext(options))
+            {
+                _ = await stale.RefreshTokens.SingleAsync(item => item.SessionId == sessionId);
+                Assert.True(await CreateService(winner, user)
+                    .ValidateAccessSessionAsync(user.Id, sessionId, user.SecurityStamp!, "10.0.0.1"));
+                Assert.True(await CreateService(stale, user)
+                    .ValidateAccessSessionAsync(user.Id, sessionId, user.SecurityStamp!, "10.0.0.2"));
+            }
+
+            await using (var stale = new ApplicationDbContext(options))
+            await using (var revoker = new ApplicationDbContext(options))
+            {
+                _ = await stale.RefreshTokens.SingleAsync(item => item.SessionId == sessionId);
+                Assert.True(await CreateService(revoker, user)
+                    .RevokeSessionAsync(user.Id, sessionId, "10.0.0.3", "Concurrent sign-out"));
+                Assert.False(await CreateService(stale, user)
+                    .ValidateAccessSessionAsync(user.Id, sessionId, user.SecurityStamp!, "10.0.0.4"));
+            }
+        }
+        finally
+        {
+            if (File.Exists(databasePath)) File.Delete(databasePath);
+        }
+    }
+
+    [Fact]
     public async Task Concurrent_session_limit_revokes_the_oldest_family()
     {
         await using var context = NewContext();

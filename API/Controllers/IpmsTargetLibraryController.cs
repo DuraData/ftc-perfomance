@@ -129,7 +129,7 @@ public class IpmsTargetLibraryController : ControllerBase
         _context.IpmsTargetTemplates.Add(template);
         await _context.SaveChangesAsync();
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse()));
     }

@@ -167,6 +167,42 @@ public sealed class TargetLibraryPagingTests
         versions[0].RowVersion.Should().NotBeEmpty();
     }
 
+    [Fact]
+    public async Task Target_library_creation_persists_cycle_safe_version_and_audit_evidence()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("library-audit-writer");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var governance = new WorkflowGovernanceService(context);
+
+        var opmsResult = await OpmsController(context, user, governance)
+            .CreateTemplate(OpmsRequest("OP-AUDIT", "Audited OPMS template"));
+        var opms = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>(opmsResult.Result).Value).Data!;
+
+        var ipmsResult = await IpmsController(context, user, governance)
+            .CreateTemplate(IpmsRequest("IP-AUDIT", "Audited IPMS template"));
+        var ipms = Assert.IsType<ApiResponse<IpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>(ipmsResult.Result).Value).Data!;
+
+        (await context.OpmsTargetTemplateVersions.AsNoTracking().SingleAsync()).OpmsTargetTemplateId
+            .Should().Be((await context.OpmsTargetTemplates.AsNoTracking().SingleAsync()).Id);
+        (await context.IpmsTargetTemplateVersions.AsNoTracking().SingleAsync()).IpmsTargetTemplateId
+            .Should().Be((await context.IpmsTargetTemplates.AsNoTracking().SingleAsync()).Id);
+
+        var audits = await context.AuditTrails.AsNoTracking()
+            .Where(item => item.Action == "Create" &&
+                (item.EntityName == "OpmsTargetTemplate" || item.EntityName == "IpmsTargetTemplate"))
+            .OrderBy(item => item.EntityName)
+            .ToArrayAsync();
+        audits.Should().HaveCount(2);
+        audits.Should().Contain(item => item.EntityName == "OpmsTargetTemplate" &&
+            item.EntityId == opms.PublicId.ToString() && item.NewValue!.Contains("OP-AUDIT"));
+        audits.Should().Contain(item => item.EntityName == "IpmsTargetTemplate" &&
+            item.EntityId == ipms.PublicId.ToString() && item.NewValue!.Contains("IP-AUDIT"));
+    }
+
     private static SaveOpmsTargetTemplateRequest OpmsRequest(string code, string name, string? rowVersion = null) =>
         new(TemplateCode: code, TemplateName: name, IndicatorNumber: "KPI-1", TargetName: "Target",
             KpiDescription: "Description", Baseline: 0, AnnualTarget: 100, AnnualTargetDescription: null,
@@ -181,19 +217,27 @@ public sealed class TargetLibraryPagingTests
         new(code, name, "Target", "Description", null, null, null, "percentage", "%", 100, null, 100,
             null, null, null, null, false, null, true, rowVersion);
 
-    private static OpmsTargetLibraryController OpmsController(ApplicationDbContext context, ApplicationUser user)
+    private static OpmsTargetLibraryController OpmsController(
+        ApplicationDbContext context,
+        ApplicationUser user,
+        IWorkflowGovernanceService? governance = null)
     {
         var access = Access(user);
-        return new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, Mock.Of<IWorkflowGovernanceService>())
+        return new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            governance ?? Mock.Of<IWorkflowGovernanceService>())
         {
             ControllerContext = Context(user.Id)
         };
     }
 
-    private static IpmsTargetLibraryController IpmsController(ApplicationDbContext context, ApplicationUser user)
+    private static IpmsTargetLibraryController IpmsController(
+        ApplicationDbContext context,
+        ApplicationUser user,
+        IWorkflowGovernanceService? governance = null)
     {
         var access = Access(user);
-        return new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, Mock.Of<IWorkflowGovernanceService>())
+        return new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            governance ?? Mock.Of<IWorkflowGovernanceService>())
         {
             ControllerContext = Context(user.Id)
         };

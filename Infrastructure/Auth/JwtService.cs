@@ -226,22 +226,55 @@ public class JwtService : IJwtService
         var session = await _context.RefreshTokens
             .Where(item => item.UserId == userId && item.SessionId == sessionId && !item.RevokedAt.HasValue)
             .OrderByDescending(item => item.CreatedAt).FirstOrDefaultAsync();
-        if (session == null || session.ExpiresAt <= now || session.AbsoluteExpiresAt <= now || session.LastUsedAt <= idleCutoff || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(session.SecurityStamp), Encoding.UTF8.GetBytes(securityStamp)))
+        if (!IsAccessSessionValid(session, now, idleCutoff, securityStamp))
         {
             if (session != null)
             {
                 session.RevokedAt = now; session.RevokedByIp = ipAddress; session.RevokedReason = "Session validation failed";
-                await _context.SaveChangesAsync();
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    // Another request changed or revoked this session after it was read. This
+                    // request is already failing closed, so discard the stale tracked instance.
+                    _context.Entry(session).State = EntityState.Detached;
+                }
             }
             return false;
         }
-        if (session.LastUsedAt <= now.AddMinutes(-1))
+        var activeSession = session!;
+        if (activeSession.LastUsedAt <= now.AddMinutes(-1))
         {
-            session.LastUsedAt = now; session.LastUsedByIp = ipAddress;
-            await _context.SaveChangesAsync();
+            activeSession.LastUsedAt = now; activeSession.LastUsedByIp = ipAddress;
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Parallel API calls can legitimately race while advancing LastUsedAt. Re-read
+                // the winning value so a harmless activity touch never becomes an HTTP 500,
+                // while a concurrent revocation or expiry still invalidates the request.
+                _context.Entry(activeSession).State = EntityState.Detached;
+                var current = await _context.RefreshTokens.AsNoTracking()
+                    .SingleOrDefaultAsync(item => item.Id == activeSession.Id);
+                return IsAccessSessionValid(current, now, idleCutoff, securityStamp);
+            }
         }
         return true;
     }
+
+    private static bool IsAccessSessionValid(RefreshToken? session, DateTime now, DateTime idleCutoff, string securityStamp) =>
+        session != null
+        && !session.RevokedAt.HasValue
+        && session.ExpiresAt > now
+        && session.AbsoluteExpiresAt > now
+        && session.LastUsedAt > idleCutoff
+        && CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(session.SecurityStamp),
+            Encoding.UTF8.GetBytes(securityStamp));
 
     public async Task<bool> RevokeSessionAsync(string userId, Guid sessionId, string? ipAddress, string reason)
     {

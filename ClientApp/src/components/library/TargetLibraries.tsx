@@ -721,7 +721,17 @@ function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['
   };
 }
 
-function useOpmsTemplateForm(template?: OpmsTargetTemplate | null) {
+function referenceIdByName(
+  items: ReadonlyArray<{ id: number | string; name: string }>,
+  name?: string,
+) {
+  const normalized = name?.trim().toLocaleLowerCase();
+  if (!normalized) return '';
+  const match = items.find(item => item.name.trim().toLocaleLowerCase() === normalized);
+  return match ? String(match.id) : '';
+}
+
+function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lookups: PerformanceLookupsDto) {
   const [form, setForm] = useState({
     templateCode: '',
     templateName: '',
@@ -815,17 +825,17 @@ function useOpmsTemplateForm(template?: OpmsTargetTemplate | null) {
       annualTarget: String(template.annualTarget),
       annualTargetDescription: template.annualTargetDescription,
       targetUnitType: template.targetUnitType,
-      unitOfMeasureId: template.unitOfMeasure.id,
+      unitOfMeasureId: referenceIdByName(lookups.unitsOfMeasure, template.unitOfMeasure.name),
       nationalKPA: template.nationalKPA,
       municipalKPA: template.municipalKPA,
-      strategicGoalId: template.strategicGoal?.id ?? '',
-      strategicObjectiveId: template.strategicObjective?.id ?? '',
+      strategicGoalId: referenceIdByName(lookups.strategicGoals, template.strategicGoal?.name),
+      strategicObjectiveId: referenceIdByName(lookups.strategicObjectives, template.strategicObjective?.name),
       performanceObjective: template.performanceObjective,
       outcome: template.outcome ?? '',
       output: template.output ?? '',
       priorityIssue: template.priorityIssue ?? '',
-      budgetSourceId: template.budgetSource?.id ?? '',
-      budgetTypeId: template.budgetType?.id ?? '',
+      budgetSourceId: referenceIdByName(lookups.budgetSources, template.budgetSource?.name),
+      budgetTypeId: referenceIdByName(lookups.budgetTypes, template.budgetType?.name),
       weight: String(template.weight),
       kpiType: template.kpiType,
       indicatorType: template.indicatorType,
@@ -850,12 +860,12 @@ function useOpmsTemplateForm(template?: OpmsTargetTemplate | null) {
         };
       }),
     });
-  }, [template]);
+  }, [lookups, template]);
 
   return { form, setForm };
 }
 
-function useIpmsTemplateForm(template?: IpmsTargetTemplate | null) {
+function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lookups: PerformanceLookupsDto) {
   const [form, setForm] = useState({
     templateCode: '',
     templateName: '',
@@ -922,7 +932,7 @@ function useIpmsTemplateForm(template?: IpmsTargetTemplate | null) {
       employeeLevel: template.employeeLevel,
       jobGrade: template.jobGrade,
       targetUnitType: template.targetUnitType,
-      unitOfMeasureId: template.unitOfMeasure.id,
+      unitOfMeasureId: referenceIdByName(lookups.unitsOfMeasure, template.unitOfMeasure.name),
       annualTarget: String(template.annualTarget),
       annualTargetDescription: template.annualTargetDescription,
       weight: String(template.weight),
@@ -937,7 +947,7 @@ function useIpmsTemplateForm(template?: IpmsTargetTemplate | null) {
       createdBy: template.createdBy,
       createdDate: template.createdDate.slice(0, 10),
     });
-  }, [template]);
+  }, [lookups, template]);
 
   return { form, setForm };
 }
@@ -1362,7 +1372,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   const referenceData = usePerformanceReferenceData(false);
   const [template, setTemplate] = useState<OpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
-  const { form, setForm } = useOpmsTemplateForm(template);
+  const { form, setForm } = useOpmsTemplateForm(template, referenceData.lookups);
 
   useEffect(() => {
     if (!templateId) {
@@ -1962,7 +1972,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   const referenceData = usePerformanceReferenceData(false);
   const [template, setTemplate] = useState<IpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
-  const { form, setForm } = useIpmsTemplateForm(template);
+  const { form, setForm } = useIpmsTemplateForm(template, referenceData.lookups);
 
   useEffect(() => {
     if (!templateId) {
