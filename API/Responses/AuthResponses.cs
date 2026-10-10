@@ -843,11 +843,11 @@ public record IdpImportRowResponse(
     string? SuppliedValue,
     string? ErrorMessage);
 
-public record IdpAnnualTargetResponse(Guid PublicId, int IdpKpiId, int FinancialYear, decimal? TargetValue, decimal? ActualValue, string? ProgressComment, string RowVersion);
+public record IdpAnnualTargetResponse(Guid PublicId, Guid IdpKpiPublicId, int FinancialYear, decimal? TargetValue, decimal? ActualValue, string? ProgressComment, string RowVersion);
 
 public record IdpAlignmentLinkResponse(
     Guid PublicId,
-    int IdpStrategicObjectiveId,
+    Guid IdpStrategicObjectivePublicId,
     string FrameworkType,
     string FrameworkReferenceCode,
     string FrameworkReferenceTitle,
@@ -895,9 +895,9 @@ public record IdpStakeholderEngagementPageItemResponse(
 
 public record IdpRiskLinkResponse(
     Guid PublicId,
-    int? IdpStrategicObjectiveId,
-    int? IdpProjectId,
-    int? IdpKpiId,
+    Guid? IdpStrategicObjectivePublicId,
+    Guid? IdpProjectPublicId,
+    Guid? IdpKpiPublicId,
     string RiskReference,
     string RiskTitle,
     string? MitigationPlan,
@@ -906,8 +906,8 @@ public record IdpRiskLinkResponse(
 
 public record IdpBudgetSnapshotResponse(
     Guid PublicId,
-    int? IdpStrategicObjectiveId,
-    int? IdpProjectId,
+    Guid? IdpStrategicObjectivePublicId,
+    Guid? IdpProjectPublicId,
     int FinancialYear,
     decimal? PlannedBudget,
     decimal? ApprovedBudget,

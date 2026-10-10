@@ -1173,8 +1173,8 @@ public class IdpController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IdpAnnualTargetResponse>(false, null, "User not found"));
 
         var kpi = await _context.IdpKpis.AsNoTracking()
-            .Where(item => item.Id == request.IdpKpiId)
-            .Select(item => new { item.PublicId, ProjectPublicId = item.IdpProject.PublicId })
+            .Where(item => item.PublicId == request.IdpKpiPublicId)
+            .Select(item => new { item.Id, item.PublicId, ProjectPublicId = item.IdpProject.PublicId })
             .SingleOrDefaultAsync();
         if (kpi == null) return NotFound(new ApiResponse<IdpAnnualTargetResponse>(false, null, "KPI not found"));
 
@@ -1186,7 +1186,7 @@ public class IdpController : ControllerBase
 
         var entity = new IdpAnnualTarget
         {
-            IdpKpiId = request.IdpKpiId,
+            IdpKpiId = kpi.Id,
             FinancialYear = request.FinancialYear,
             TargetValue = request.TargetValue,
             ActualValue = request.ActualValue,
@@ -1195,9 +1195,11 @@ public class IdpController : ControllerBase
 
         _context.IdpAnnualTargets.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.PublicId.ToString(), "Create", null, ToAnnualTargetResponse(entity, IdpAnnualTargetMemberAccess.Full));
+        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.PublicId.ToString(), "Create", null,
+            ToAnnualTargetResponse(entity, kpi.PublicId, IdpAnnualTargetMemberAccess.Full));
 
-        return Ok(new ApiResponse<IdpAnnualTargetResponse>(true, ToAnnualTargetResponse(entity, await GetAnnualTargetMemberAccessAsync(user, Scope(kpiId: kpi.PublicId, projectId: kpi.ProjectPublicId)))));
+        return Ok(new ApiResponse<IdpAnnualTargetResponse>(true, ToAnnualTargetResponse(entity, kpi.PublicId,
+            await GetAnnualTargetMemberAccessAsync(user, Scope(kpiId: kpi.PublicId, projectId: kpi.ProjectPublicId)))));
     }
 
     [HttpPost("alignment-links")]
@@ -1212,12 +1214,15 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpAlignmentLinkResponse>(false, null, "Invalid framework type"));
         }
 
-        var objectiveExists = await _context.IdpStrategicObjectives.AnyAsync(item => item.Id == request.IdpStrategicObjectiveId);
-        if (!objectiveExists) return NotFound(new ApiResponse<IdpAlignmentLinkResponse>(false, null, "Strategic objective not found"));
+        var objective = await _context.IdpStrategicObjectives.AsNoTracking()
+            .Where(item => item.PublicId == request.IdpStrategicObjectivePublicId)
+            .Select(item => new { item.Id, item.PublicId })
+            .SingleOrDefaultAsync();
+        if (objective == null) return NotFound(new ApiResponse<IdpAlignmentLinkResponse>(false, null, "Strategic objective not found"));
 
         var entity = new IdpAlignmentLink
         {
-            IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
+            IdpStrategicObjectiveId = objective.Id,
             FrameworkType = frameworkType,
             FrameworkReferenceCode = request.FrameworkReferenceCode.Trim(),
             FrameworkReferenceTitle = request.FrameworkReferenceTitle.Trim(),
@@ -1226,9 +1231,10 @@ public class IdpController : ControllerBase
 
         _context.IdpAlignmentLinks.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpAlignmentLink", entity.PublicId.ToString(), "Create", null, ToAlignmentResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpAlignmentLink", entity.PublicId.ToString(), "Create", null,
+            ToAlignmentResponse(entity, objective.PublicId));
 
-        return Ok(new ApiResponse<IdpAlignmentLinkResponse>(true, ToAlignmentResponse(entity)));
+        return Ok(new ApiResponse<IdpAlignmentLinkResponse>(true, ToAlignmentResponse(entity, objective.PublicId)));
     }
 
     [HttpPost("community-sessions")]
@@ -1442,11 +1448,59 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpRiskLinkResponse>(false, null, "Invalid risk level"));
         }
 
+        if (!request.IdpStrategicObjectivePublicId.HasValue
+            && !request.IdpProjectPublicId.HasValue
+            && !request.IdpKpiPublicId.HasValue)
+            return BadRequest(new ApiResponse<IdpRiskLinkResponse>(false, null, "At least one objective, project, or KPI must be selected."));
+
+        var objective = request.IdpStrategicObjectivePublicId.HasValue
+            ? await _context.IdpStrategicObjectives.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpStrategicObjectivePublicId.Value)
+                .Select(item => new { item.Id, item.PublicId, PlanPublicId = item.IdpStrategicOutcome.IdpPlan.PublicId })
+                .SingleOrDefaultAsync()
+            : null;
+        if (request.IdpStrategicObjectivePublicId.HasValue && objective == null)
+            return NotFound(new ApiResponse<IdpRiskLinkResponse>(false, null, "Strategic objective not found"));
+
+        var project = request.IdpProjectPublicId.HasValue
+            ? await _context.IdpProjects.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpProjectPublicId.Value)
+                .Select(item => new
+                {
+                    item.Id, item.PublicId,
+                    ObjectivePublicId = item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.PublicId,
+                    PlanPublicId = item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.PublicId
+                }).SingleOrDefaultAsync()
+            : null;
+        if (request.IdpProjectPublicId.HasValue && project == null)
+            return NotFound(new ApiResponse<IdpRiskLinkResponse>(false, null, "Project not found"));
+
+        var kpi = request.IdpKpiPublicId.HasValue
+            ? await _context.IdpKpis.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpKpiPublicId.Value)
+                .Select(item => new
+                {
+                    item.Id, item.PublicId, ProjectPublicId = item.IdpProject.PublicId,
+                    ObjectivePublicId = item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.PublicId,
+                    PlanPublicId = item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.PublicId
+                }).SingleOrDefaultAsync()
+            : null;
+        if (request.IdpKpiPublicId.HasValue && kpi == null)
+            return NotFound(new ApiResponse<IdpRiskLinkResponse>(false, null, "KPI not found"));
+
+        var planPublicIds = new[] { objective?.PlanPublicId, project?.PlanPublicId, kpi?.PlanPublicId }
+            .Where(item => item.HasValue).Select(item => item!.Value).Distinct().ToArray();
+        if (planPublicIds.Length != 1
+            || objective != null && project != null && objective.PublicId != project.ObjectivePublicId
+            || objective != null && kpi != null && objective.PublicId != kpi.ObjectivePublicId
+            || project != null && kpi != null && project.PublicId != kpi.ProjectPublicId)
+            return BadRequest(new ApiResponse<IdpRiskLinkResponse>(false, null, "The selected objective, project, and KPI must belong to the same IDP hierarchy."));
+
         var entity = new IdpRiskLink
         {
-            IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
-            IdpProjectId = request.IdpProjectId,
-            IdpKpiId = request.IdpKpiId,
+            IdpStrategicObjectiveId = objective?.Id,
+            IdpProjectId = project?.Id,
+            IdpKpiId = kpi?.Id,
             RiskReference = request.RiskReference.Trim(),
             RiskTitle = request.RiskTitle.Trim(),
             MitigationPlan = request.MitigationPlan,
@@ -1455,9 +1509,10 @@ public class IdpController : ControllerBase
 
         _context.IdpRiskLinks.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.PublicId.ToString(), "Create", null, ToRiskResponse(entity));
+        var response = ToRiskResponse(entity, objective?.PublicId, project?.PublicId, kpi?.PublicId);
+        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.PublicId.ToString(), "Create", null, response);
 
-        return Ok(new ApiResponse<IdpRiskLinkResponse>(true, ToRiskResponse(entity)));
+        return Ok(new ApiResponse<IdpRiskLinkResponse>(true, response));
     }
 
     [HttpPost("budget-snapshots")]
@@ -1467,16 +1522,40 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "User not found"));
 
-        var scope = await ResolveBudgetScopeAsync(request.IdpStrategicObjectiveId, request.IdpProjectId);
-        if (scope == null) return NotFound(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "The IDP objective or project was not found."));
+        if (request.IdpStrategicObjectivePublicId.HasValue == request.IdpProjectPublicId.HasValue)
+            return BadRequest(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "Select exactly one strategic objective or project."));
+
+        int? objectiveId = null;
+        int? projectId = null;
+        AccessScopeContext? scope;
+        if (request.IdpStrategicObjectivePublicId.HasValue)
+        {
+            var objective = await _context.IdpStrategicObjectives.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpStrategicObjectivePublicId.Value)
+                .Select(item => new { item.Id, item.PublicId }).SingleOrDefaultAsync();
+            if (objective == null)
+                return NotFound(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "The IDP objective was not found."));
+            objectiveId = objective.Id;
+            scope = Scope(targetId: objective.PublicId);
+        }
+        else
+        {
+            var project = await _context.IdpProjects.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpProjectPublicId!.Value)
+                .Select(item => new { item.Id, item.PublicId }).SingleOrDefaultAsync();
+            if (project == null)
+                return NotFound(new ApiResponse<IdpBudgetSnapshotResponse>(false, null, "The IDP project was not found."));
+            projectId = project.Id;
+            scope = Scope(projectId: project.PublicId);
+        }
         if (await MemberUpdateDenialAsync(user, "IDP_PROJECT", scope,
                 ["BudgetSnapshotPlanned", "BudgetSnapshotApproved", "BudgetSnapshotActual", "BudgetSnapshotSource"]) is not null)
             return Forbid();
 
         var entity = new IdpBudgetSnapshot
         {
-            IdpStrategicObjectiveId = request.IdpStrategicObjectiveId,
-            IdpProjectId = request.IdpProjectId,
+            IdpStrategicObjectiveId = objectiveId,
+            IdpProjectId = projectId,
             FinancialYear = request.FinancialYear,
             PlannedBudget = request.PlannedBudget,
             ApprovedBudget = request.ApprovedBudget,
@@ -1487,9 +1566,11 @@ public class IdpController : ControllerBase
 
         _context.IdpBudgetSnapshots.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpBudgetSnapshot", entity.PublicId.ToString(), "Create", null, ToBudgetSnapshotResponse(entity, IdpBudgetMemberAccess.Full));
+        await WriteIdpAudit(user.Id, "IdpBudgetSnapshot", entity.PublicId.ToString(), "Create", null,
+            ToBudgetSnapshotResponse(entity, request.IdpStrategicObjectivePublicId, request.IdpProjectPublicId, IdpBudgetMemberAccess.Full));
 
-        return Ok(new ApiResponse<IdpBudgetSnapshotResponse>(true, ToBudgetSnapshotResponse(entity, await GetBudgetMemberAccessAsync(user, scope))));
+        return Ok(new ApiResponse<IdpBudgetSnapshotResponse>(true, ToBudgetSnapshotResponse(entity,
+            request.IdpStrategicObjectivePublicId, request.IdpProjectPublicId, await GetBudgetMemberAccessAsync(user, scope))));
     }
 
     [HttpPost("documents")]
@@ -1967,21 +2048,6 @@ public class IdpController : ControllerBase
             await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectBudget", SecurityOperation.Read, scope ?? Scope()),
             await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectFundingSource", SecurityOperation.Read, scope ?? Scope()));
 
-    private async Task<AccessScopeContext?> ResolveBudgetScopeAsync(int? objectiveId, int? projectId)
-    {
-        if (objectiveId.HasValue == projectId.HasValue) return null;
-        if (projectId.HasValue)
-        {
-            var publicId = await _context.IdpProjects.AsNoTracking().Where(item => item.Id == projectId.Value)
-                .Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync();
-            return publicId.HasValue ? Scope(projectId: publicId.Value) : null;
-        }
-
-        var objectivePublicId = await _context.IdpStrategicObjectives.AsNoTracking().Where(item => item.Id == objectiveId!.Value)
-            .Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync();
-        return objectivePublicId.HasValue ? Scope(targetId: objectivePublicId.Value) : null;
-    }
-
     private async Task<DocumentMetadataMemberAccess> GetDocumentMemberAccessAsync(ApplicationUser user, long municipalityId)
     {
         if (_accessControl == null) return new DocumentMetadataMemberAccess(false, false, false, false, false);
@@ -2117,15 +2183,15 @@ public class IdpController : ControllerBase
             kpi.TreasuryTidLinked,
             Convert.ToBase64String(kpi.RowVersion));
 
-    private static IdpAnnualTargetResponse ToAnnualTargetResponse(IdpAnnualTarget annualTarget, IdpAnnualTargetMemberAccess access) =>
-        new(annualTarget.PublicId, annualTarget.IdpKpiId, annualTarget.FinancialYear,
+    private static IdpAnnualTargetResponse ToAnnualTargetResponse(IdpAnnualTarget annualTarget, Guid kpiPublicId, IdpAnnualTargetMemberAccess access) =>
+        new(annualTarget.PublicId, kpiPublicId, annualTarget.FinancialYear,
             access.TargetValue ? annualTarget.TargetValue : null,
             access.ActualValue ? annualTarget.ActualValue : null,
             access.ProgressComment ? annualTarget.ProgressComment : null,
             Convert.ToBase64String(annualTarget.RowVersion));
 
-    private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link) =>
-        new(link.PublicId, link.IdpStrategicObjectiveId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
+    private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link, Guid objectivePublicId) =>
+        new(link.PublicId, objectivePublicId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
 
     private static IdpCommunitySessionResponse ToCommunitySessionResponse(IdpCommunitySession session, Guid planPublicId) =>
         new(session.PublicId, planPublicId, session.ParticipationType.ToString(), session.SessionDate, session.Venue, session.WardId, session.Ward?.Name, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath, Convert.ToBase64String(session.RowVersion));
@@ -2149,11 +2215,12 @@ public class IdpController : ControllerBase
             includeContactEmail ? stakeholder.ContactEmail : null,
             stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
 
-    private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk) =>
-        new(risk.PublicId, risk.IdpStrategicObjectiveId, risk.IdpProjectId, risk.IdpKpiId, risk.RiskReference, risk.RiskTitle, risk.MitigationPlan, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));
+    private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk, Guid? objectivePublicId, Guid? projectPublicId, Guid? kpiPublicId) =>
+        new(risk.PublicId, objectivePublicId, projectPublicId, kpiPublicId, risk.RiskReference, risk.RiskTitle,
+            risk.MitigationPlan, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));
 
-    private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot, IdpBudgetMemberAccess access) =>
-        new(snapshot.PublicId, snapshot.IdpStrategicObjectiveId, snapshot.IdpProjectId, snapshot.FinancialYear,
+    private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot, Guid? objectivePublicId, Guid? projectPublicId, IdpBudgetMemberAccess access) =>
+        new(snapshot.PublicId, objectivePublicId, projectPublicId, snapshot.FinancialYear,
             access.PlannedBudget ? snapshot.PlannedBudget : null,
             access.ApprovedBudget ? snapshot.ApprovedBudget : null,
             access.ActualExpenditure ? snapshot.ActualExpenditure : null,

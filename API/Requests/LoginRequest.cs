@@ -481,14 +481,14 @@ public record IdpHierarchyImportRowRequest(
 public record CommitIdpImportRequest(string RowVersion, string Reason);
 
 public record CreateIdpAnnualTargetRequest(
-    int IdpKpiId,
+    Guid IdpKpiPublicId,
     int FinancialYear,
     decimal TargetValue,
     decimal? ActualValue,
     string? ProgressComment);
 
 public record CreateIdpAlignmentLinkRequest(
-    int IdpStrategicObjectiveId,
+    Guid IdpStrategicObjectivePublicId,
     string FrameworkType,
     string FrameworkReferenceCode,
     string FrameworkReferenceTitle,
@@ -534,17 +534,17 @@ public record CreateIdpStakeholderEngagementV1Request(
     string? KeyInput);
 
 public record CreateIdpRiskLinkRequest(
-    int? IdpStrategicObjectiveId,
-    int? IdpProjectId,
-    int? IdpKpiId,
+    Guid? IdpStrategicObjectivePublicId,
+    Guid? IdpProjectPublicId,
+    Guid? IdpKpiPublicId,
     string RiskReference,
     string RiskTitle,
     string? MitigationPlan,
     string RiskLevel);
 
 public record CreateIdpBudgetSnapshotRequest(
-    int? IdpStrategicObjectiveId,
-    int? IdpProjectId,
+    Guid? IdpStrategicObjectivePublicId,
+    Guid? IdpProjectPublicId,
     int FinancialYear,
     decimal PlannedBudget,
     decimal ApprovedBudget,

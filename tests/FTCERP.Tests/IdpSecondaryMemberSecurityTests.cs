@@ -56,7 +56,7 @@ public class IdpSecondaryMemberSecurityTests
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var controller = Controller(context, actor, allowed, assignee);
 
-        var annualRequest = new CreateIdpAnnualTargetRequest(graph.Kpi.Id, 2026, 100, 75, "protected annual progress");
+        var annualRequest = new CreateIdpAnnualTargetRequest(graph.Kpi.PublicId, 2026, 100, 75, "protected annual progress");
         (await controller.CreateAnnualTarget(annualRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpAnnualTargets.Should().BeEmpty();
 
@@ -70,7 +70,7 @@ public class IdpSecondaryMemberSecurityTests
         maskedAnnual.ActualValue.Should().BeNull();
         maskedAnnual.ProgressComment.Should().BeNull();
 
-        var budgetRequest = new CreateIdpBudgetSnapshotRequest(null, graph.Project.Id, 2026, 1000, 900, 450, "PROTECTED-FMS");
+        var budgetRequest = new CreateIdpBudgetSnapshotRequest(null, graph.Project.PublicId, 2026, 1000, 900, 450, "PROTECTED-FMS");
         (await controller.CreateBudgetSnapshot(budgetRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpBudgetSnapshots.Should().BeEmpty();
         allowed.UnionWith([

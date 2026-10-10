@@ -129,7 +129,19 @@ public class IdpControllerFunctionalityTests
             (typeof(CreateIdpProgrammeRequest), ["IdpDevelopmentPriorityId", "ResponsibleDepartmentId"],
                 ["IdpDevelopmentPriorityPublicId", "ResponsibleDepartmentPublicId"]),
             (typeof(CreateIdpProjectRequest), ["IdpProgrammeId", "DepartmentId"], ["IdpProgrammePublicId", "DepartmentPublicId"]),
-            (typeof(CreateIdpKpiRequest), ["IdpProjectId", "ResponsibleDepartmentId"], ["IdpProjectPublicId", "ResponsibleDepartmentPublicId"])
+            (typeof(CreateIdpKpiRequest), ["IdpProjectId", "ResponsibleDepartmentId"], ["IdpProjectPublicId", "ResponsibleDepartmentPublicId"]),
+            (typeof(IdpAnnualTargetResponse), ["IdpKpiId"], ["IdpKpiPublicId"]),
+            (typeof(IdpAlignmentLinkResponse), ["IdpStrategicObjectiveId"], ["IdpStrategicObjectivePublicId"]),
+            (typeof(IdpRiskLinkResponse), ["IdpStrategicObjectiveId", "IdpProjectId", "IdpKpiId"],
+                ["IdpStrategicObjectivePublicId", "IdpProjectPublicId", "IdpKpiPublicId"]),
+            (typeof(IdpBudgetSnapshotResponse), ["IdpStrategicObjectiveId", "IdpProjectId"],
+                ["IdpStrategicObjectivePublicId", "IdpProjectPublicId"]),
+            (typeof(CreateIdpAnnualTargetRequest), ["IdpKpiId"], ["IdpKpiPublicId"]),
+            (typeof(CreateIdpAlignmentLinkRequest), ["IdpStrategicObjectiveId"], ["IdpStrategicObjectivePublicId"]),
+            (typeof(CreateIdpRiskLinkRequest), ["IdpStrategicObjectiveId", "IdpProjectId", "IdpKpiId"],
+                ["IdpStrategicObjectivePublicId", "IdpProjectPublicId", "IdpKpiPublicId"]),
+            (typeof(CreateIdpBudgetSnapshotRequest), ["IdpStrategicObjectiveId", "IdpProjectId"],
+                ["IdpStrategicObjectivePublicId", "IdpProjectPublicId"])
         };
 
         foreach (var contract in stableHierarchyContracts)
@@ -215,16 +227,57 @@ public class IdpControllerFunctionalityTests
         kpi.IdpProjectPublicId.Should().Be(project.PublicId);
         kpi.ResponsibleDepartmentPublicId.Should().Be(localDepartment.PublicId);
 
+        var annualTarget = Extract<IdpAnnualTargetResponse>((await controller.CreateAnnualTarget(
+            new CreateIdpAnnualTargetRequest(kpi.PublicId, 2027, 10, 2, "On track"))).Result!);
+        annualTarget.IdpKpiPublicId.Should().Be(kpi.PublicId);
+
+        var alignment = Extract<IdpAlignmentLinkResponse>((await controller.CreateAlignmentLink(
+            new CreateIdpAlignmentLinkRequest(objective.PublicId, "NationalDevelopmentPlan", "NDP-1",
+                "National reference", "Aligned"))).Result!);
+        alignment.IdpStrategicObjectivePublicId.Should().Be(objective.PublicId);
+
+        var risk = Extract<IdpRiskLinkResponse>((await controller.CreateRiskLink(new CreateIdpRiskLinkRequest(
+            objective.PublicId, project.PublicId, kpi.PublicId, "RISK-1", "Delivery risk", "Monitor", "Medium"))).Result!);
+        risk.IdpStrategicObjectivePublicId.Should().Be(objective.PublicId);
+        risk.IdpProjectPublicId.Should().Be(project.PublicId);
+        risk.IdpKpiPublicId.Should().Be(kpi.PublicId);
+
+        var budget = Extract<IdpBudgetSnapshotResponse>((await controller.CreateBudgetSnapshot(
+            new CreateIdpBudgetSnapshotRequest(null, project.PublicId, 2027, 800, 750, 100, "FMS"))).Result!);
+        budget.IdpStrategicObjectivePublicId.Should().BeNull();
+        budget.IdpProjectPublicId.Should().Be(project.PublicId);
+
+        var secondProject = Extract<IdpProjectResponse>((await controller.CreateProject(
+            new CreateIdpProjectRequest(programme.PublicId, "PRJ-2", "Second project", "Second project detail", "Capital",
+                localDepartment.PublicId, 500, "Grant", start, start.AddMonths(6), "Planned", null))).Result!);
+        var secondKpi = Extract<IdpKpiResponse>((await controller.CreateKpi(new CreateIdpKpiRequest(
+            secondProject.PublicId, "KPI-2", "Second KPI", "Second KPI detail", "Count", 0, 10, 50,
+            localDepartment.PublicId, "System", "Quarterly", "Output", false, false))).Result!);
+        var mismatchedRisk = await controller.CreateRiskLink(new CreateIdpRiskLinkRequest(
+            objective.PublicId, project.PublicId, secondKpi.PublicId, "RISK-MISMATCH", "Mixed hierarchy", null, "High"));
+        mismatchedRisk.Result.Should().BeOfType<BadRequestObjectResult>();
+
         var persistedObjective = await context.IdpStrategicObjectives.SingleAsync(item => item.PublicId == objective.PublicId);
         var persistedProgramme = await context.IdpProgrammes.SingleAsync(item => item.PublicId == programme.PublicId);
         var persistedProject = await context.IdpProjects.SingleAsync(item => item.PublicId == project.PublicId);
         var persistedKpi = await context.IdpKpis.SingleAsync(item => item.PublicId == kpi.PublicId);
+        var persistedAnnualTarget = await context.IdpAnnualTargets.SingleAsync(item => item.PublicId == annualTarget.PublicId);
+        var persistedAlignment = await context.IdpAlignmentLinks.SingleAsync(item => item.PublicId == alignment.PublicId);
+        var persistedRisk = await context.IdpRiskLinks.SingleAsync(item => item.PublicId == risk.PublicId);
+        var persistedBudget = await context.IdpBudgetSnapshots.SingleAsync(item => item.PublicId == budget.PublicId);
         persistedObjective.IdpStrategicOutcomeId.Should().Be(await context.IdpStrategicOutcomes
             .Where(item => item.PublicId == outcome.PublicId).Select(item => item.Id).SingleAsync());
         persistedObjective.ResponsibleDepartmentId.Should().Be(localDepartment.Id);
         persistedProgramme.ResponsibleDepartmentId.Should().Be(localDepartment.Id);
         persistedProject.DepartmentId.Should().Be(localDepartment.Id);
         persistedKpi.ResponsibleDepartmentId.Should().Be(localDepartment.Id);
+        persistedAnnualTarget.IdpKpiId.Should().Be(persistedKpi.Id);
+        persistedAlignment.IdpStrategicObjectiveId.Should().Be(persistedObjective.Id);
+        persistedRisk.IdpStrategicObjectiveId.Should().Be(persistedObjective.Id);
+        persistedRisk.IdpProjectId.Should().Be(persistedProject.Id);
+        persistedRisk.IdpKpiId.Should().Be(persistedKpi.Id);
+        persistedBudget.IdpStrategicObjectiveId.Should().BeNull();
+        persistedBudget.IdpProjectId.Should().Be(persistedProject.Id);
     }
 
     [Fact]
