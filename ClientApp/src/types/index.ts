@@ -643,9 +643,7 @@ export interface OPMSSubmission {
   withdrawnAt?: string;
   withdrawnBy?: Employee;
   withdrawnByUserPublicId?: string;
-  createdBy?: string;
   createdOn?: string;
-  updatedBy?: string;
   updatedOn?: string;
   organisationId?: string;
   attachments: Attachment[];
@@ -721,9 +719,7 @@ export interface IPMSSubmission {
   withdrawnAt?: string;
   withdrawnBy?: Employee;
   withdrawnByUserPublicId?: string;
-  createdBy?: string;
   createdOn?: string;
-  updatedBy?: string;
   updatedOn?: string;
   organisationId?: string;
   attachments: Attachment[];
@@ -2722,9 +2718,7 @@ export interface OpmsSubmissionDto {
   withdrawnAt?: string | null;
   withdrawnByUserPublicId?: string | null;
   withdrawnByName?: string | null;
-  createdBy?: string | null;
   createdOn?: string | null;
-  updatedBy?: string | null;
   updatedOn?: string | null;
   organisationId?: string | null;
   createdAt: string;
@@ -2809,9 +2803,7 @@ export interface IpmsSubmissionDto {
   withdrawnAt?: string | null;
   withdrawnByUserPublicId?: string | null;
   withdrawnByName?: string | null;
-  createdBy?: string | null;
   createdOn?: string | null;
-  updatedBy?: string | null;
   updatedOn?: string | null;
   organisationId?: string | null;
   createdAt: string;

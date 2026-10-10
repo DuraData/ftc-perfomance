@@ -22,6 +22,10 @@ public sealed class CanonicalActualPerformanceCutoverTests
         Assert.NotNull(typeof(SaveIpmsSubmissionRequest).GetProperty("ReportingPeriodPublicId"));
         Assert.Null(typeof(SaveOpmsSubmissionRequest).GetProperty("Quarter"));
         Assert.Null(typeof(SaveIpmsSubmissionRequest).GetProperty("Quarter"));
+        Assert.Null(typeof(OpmsSubmissionResponse).GetProperty("CreatedBy"));
+        Assert.Null(typeof(OpmsSubmissionResponse).GetProperty("UpdatedBy"));
+        Assert.Null(typeof(IpmsSubmissionResponse).GetProperty("CreatedBy"));
+        Assert.Null(typeof(IpmsSubmissionResponse).GetProperty("UpdatedBy"));
 
         using var context = IdpTestFixture.CreateRelationalContext();
         var opms = context.Model.FindEntityType(typeof(OpmsSubmission))!;

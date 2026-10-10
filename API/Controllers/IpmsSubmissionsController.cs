@@ -1145,9 +1145,7 @@ public class IpmsSubmissionsController : ControllerBase
             AuditorResponseDueDate = projectionAccess.Contains("InternalAuditRfi") ? response.AuditorResponseDueDate : null,
             WithdrawalReason = projectionAccess.Contains("WithdrawalReason") ? response.WithdrawalReason : null,
             WithdrawnByUserPublicId = withdrawnActor?.PublicId,
-            WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim(),
-            CreatedBy = null,
-            UpdatedBy = null
+            WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim()
         };
     }
 

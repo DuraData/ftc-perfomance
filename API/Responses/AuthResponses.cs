@@ -467,9 +467,7 @@ public record OpmsSubmissionResponse(
     int? DueDateExtendedDays,
     string? PoeType,
     bool IsDisabled,
-    string? CreatedBy,
     DateTime CreatedOn,
-    string? UpdatedBy,
     DateTime? UpdatedOn,
     string? OrganisationId,
     DateTime CreatedAt)
@@ -555,9 +553,7 @@ public record IpmsSubmissionResponse(
     int? DueDateExtendedDays,
     string? PoeType,
     bool IsDisabled,
-    string? CreatedBy,
     DateTime CreatedOn,
-    string? UpdatedBy,
     DateTime? UpdatedOn,
     string? OrganisationId,
     DateTime CreatedAt)

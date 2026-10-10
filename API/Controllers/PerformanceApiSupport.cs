@@ -448,9 +448,7 @@ public static class PerformanceApiSupport
             submission.DueDateExtendedDays,
             submission.PoeType,
             submission.IsDisabled,
-            submission.CreatedBy,
             submission.CreatedOn,
-            submission.UpdatedBy,
             submission.UpdatedOn,
             submission.OrganisationId,
             submission.CreatedAt)
@@ -537,9 +535,7 @@ public static class PerformanceApiSupport
             submission.DueDateExtendedDays,
             submission.PoeType,
             submission.IsDisabled,
-            submission.CreatedBy,
             submission.CreatedOn,
-            submission.UpdatedBy,
             submission.UpdatedOn,
             submission.OrganisationId,
             submission.CreatedAt)

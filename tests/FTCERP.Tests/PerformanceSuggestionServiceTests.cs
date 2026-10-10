@@ -255,8 +255,6 @@ public sealed class PerformanceSuggestionServiceTests
         hidden.AuditorComments.Should().BeNull();
         hidden.WithdrawalReason.Should().BeNull();
         hidden.WithdrawnByUserPublicId.Should().BeNull();
-        hidden.CreatedBy.Should().BeNull();
-        hidden.UpdatedBy.Should().BeNull();
         System.Text.Json.JsonSerializer.Serialize(hidden).Should().NotContain(seed.User.Id);
 
         foreach (var member in ProjectionMembers)
