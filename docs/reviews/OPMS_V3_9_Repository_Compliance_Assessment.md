@@ -3396,6 +3396,12 @@ The governed audit register no longer returns its private persisted `ChangedBy` 
 
 The existing `AUDIT_TRAIL.ChangedBy.READ` member remains the single database-driven authorization control for actor identity. Denial masks both public actor fields and forbids actor sorting; authorization enables display-name/public-ID projection, public-ID and name search, and display-name sorting. Searching by a raw Identity key now returns zero rows even with the member grant, eliminating query inference. The system administration audit register and OPMS/IPMS target history consumers display the governed name with public-ID fallback, while the detail panel can show the stable public identifier. Focused verification passes **4/4 backend tests** and **3/3 frontend tests**. Complete regression passes **615 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the 2,110-module production build, 78-chunk bundle budget and diff hygiene pass. No migration or provider-specific schema change is required.
 
+### 11.259 User-scope organization public identity
+
+The bounded user-scope history contract no longer publishes internal integer `DepartmentId` or `UnitId` keys. It now projects the governed `DepartmentPublicId` and `UnitPublicId` from the tenant-owned master relationships while retaining the authorized display names, scope identity, effective dates, active state and RowVersion. Persistence and permission evaluation continue using indexed foreign keys privately; mutation compatibility is unchanged, so this contract hardening requires no schema migration.
+
+Relational coverage creates a real tenant-owned department/unit pair, associates it with a historical user scope, searches that bounded history through the department relationship, verifies both stable public identifiers, and uses reflection to reject reintroduction of the numeric response properties. Focused coverage passes **1/1 test**. Complete regression passes **615 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint and diff hygiene pass, with the previously verified production frontend build unchanged by this backend-only contract update.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

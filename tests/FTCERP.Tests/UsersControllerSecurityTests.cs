@@ -463,11 +463,19 @@ public sealed class UsersControllerSecurityTests
         var other = User("other", 402, "other@example.test", "0333333333");
         context.AddRange(actor, target, other);
         await context.SaveChangesAsync();
+        var department = new Department { MunicipalityId = 401, Code = "D401", Name = "Department 401" };
+        context.Departments.Add(department);
+        await context.SaveChangesAsync();
+        var unit = new Unit { MunicipalityId = 401, DepartmentId = department.Id, Code = "U401", Name = "Unit 401" };
+        context.Units.Add(unit);
+        await context.SaveChangesAsync();
         for (var index = 1; index <= 12; index++)
         {
             context.UserScopes.Add(new UserScope
             {
                 UserId = target.Id, MunicipalityId = 401, ScopeType = ScopeType.AssignedTargetScope,
+                DepartmentId = index == 1 ? department.Id : null,
+                UnitId = index == 1 ? unit.Id : null,
                 TargetId = $"target-{index:00}", EffectiveFrom = DateTime.UtcNow.AddDays(-index), IsActive = true
             });
             context.UserAssignments.Add(new UserAssignment
@@ -495,6 +503,14 @@ public sealed class UsersControllerSecurityTests
             Assert.NotEqual(Guid.Empty, item.PublicId);
             Assert.False(string.IsNullOrWhiteSpace(item.RowVersion));
         });
+        var scopedResult = await controller.GetUserScopesPage(target.PublicId,
+            new PagedQueryRequest { Page = 1, PageSize = 5, Search = "Department 401", SortBy = "department" });
+        var scopedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<UserScopeResponse>>>(
+            Assert.IsType<OkObjectResult>(scopedResult.Result).Value).Data!.Items);
+        Assert.Equal(department.PublicId, scopedItem.DepartmentPublicId);
+        Assert.Equal(unit.PublicId, scopedItem.UnitPublicId);
+        Assert.Null(typeof(UserScopeResponse).GetProperty("DepartmentId"));
+        Assert.Null(typeof(UserScopeResponse).GetProperty("UnitId"));
 
         var assignmentsResult = await controller.GetUserAssignmentsPage(target.PublicId, new PagedQueryRequest
         {

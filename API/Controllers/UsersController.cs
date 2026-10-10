@@ -379,9 +379,9 @@ public class UsersController : ControllerBase
             .Select(scope => new UserScopeResponse(
                 scope.PublicId,
                 scope.ScopeType.ToString(),
-                scope.DepartmentId,
+                scope.Department != null ? scope.Department.PublicId : null,
                 scope.Department != null ? scope.Department.Name : null,
-                scope.UnitId,
+                scope.Unit != null ? scope.Unit.PublicId : null,
                 scope.Unit != null ? scope.Unit.Name : null,
                 scope.TargetId,
                 scope.KpiId,

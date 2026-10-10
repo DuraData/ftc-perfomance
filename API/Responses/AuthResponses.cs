@@ -60,9 +60,9 @@ public record UnitResponse(int Id, int DepartmentId, string DepartmentName, stri
 public record UserScopeResponse(
     Guid PublicId,
     string ScopeType,
-    int? DepartmentId,
+    Guid? DepartmentPublicId,
     string? DepartmentName,
-    int? UnitId,
+    Guid? UnitPublicId,
     string? UnitName,
     string? TargetId,
     string? KpiId,
