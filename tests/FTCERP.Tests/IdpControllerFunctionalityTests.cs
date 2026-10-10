@@ -111,6 +111,120 @@ public class IdpControllerFunctionalityTests
         typeof(IdpPlanVersionResponse).GetProperty("IdpPlanPublicId").Should().NotBeNull();
         typeof(CreateIdpCommentRequest).GetProperty("IdpPlanVersionPublicId").Should().NotBeNull();
         typeof(CreateIdpTaskRequest).GetProperty("AssignedToUserPublicId").Should().NotBeNull();
+
+        var stableHierarchyContracts = new (Type Type, string[] Forbidden, string[] Required)[]
+        {
+            (typeof(IdpStrategicOutcomeResponse), ["Id", "IdpPlanId"], ["PublicId", "IdpPlanPublicId"]),
+            (typeof(IdpStrategicObjectiveResponse), ["Id", "IdpStrategicOutcomeId", "ResponsibleDepartmentId", "StrategicOwnerUserId"],
+                ["PublicId", "IdpStrategicOutcomePublicId", "ResponsibleDepartmentPublicId", "StrategicOwnerUserPublicId"]),
+            (typeof(IdpDevelopmentPriorityResponse), ["Id", "IdpStrategicObjectiveId"], ["PublicId", "IdpStrategicObjectivePublicId"]),
+            (typeof(IdpProgrammeResponse), ["Id", "IdpDevelopmentPriorityId", "ResponsibleDepartmentId"],
+                ["PublicId", "IdpDevelopmentPriorityPublicId", "ResponsibleDepartmentPublicId"]),
+            (typeof(IdpProjectResponse), ["Id", "IdpProgrammeId", "DepartmentId"], ["PublicId", "IdpProgrammePublicId", "DepartmentPublicId"]),
+            (typeof(IdpKpiResponse), ["Id", "IdpProjectId", "ResponsibleDepartmentId"], ["PublicId", "IdpProjectPublicId", "ResponsibleDepartmentPublicId"]),
+            (typeof(CreateIdpStrategicOutcomeRequest), ["IdpPlanId"], ["IdpPlanPublicId"]),
+            (typeof(CreateIdpStrategicObjectiveRequest), ["IdpStrategicOutcomeId", "ResponsibleDepartmentId", "StrategicOwnerUserId"],
+                ["IdpStrategicOutcomePublicId", "ResponsibleDepartmentPublicId", "StrategicOwnerUserPublicId"]),
+            (typeof(CreateIdpDevelopmentPriorityRequest), ["IdpStrategicObjectiveId"], ["IdpStrategicObjectivePublicId"]),
+            (typeof(CreateIdpProgrammeRequest), ["IdpDevelopmentPriorityId", "ResponsibleDepartmentId"],
+                ["IdpDevelopmentPriorityPublicId", "ResponsibleDepartmentPublicId"]),
+            (typeof(CreateIdpProjectRequest), ["IdpProgrammeId", "DepartmentId"], ["IdpProgrammePublicId", "DepartmentPublicId"]),
+            (typeof(CreateIdpKpiRequest), ["IdpProjectId", "ResponsibleDepartmentId"], ["IdpProjectPublicId", "ResponsibleDepartmentPublicId"])
+        };
+
+        foreach (var contract in stableHierarchyContracts)
+        {
+            foreach (var property in contract.Forbidden)
+                contract.Type.GetProperty(property).Should().BeNull($"{contract.Type.Name} must not expose internal identity through {property}");
+            foreach (var property in contract.Required)
+                contract.Type.GetProperty(property).Should().NotBeNull($"{contract.Type.Name} must expose stable identity through {property}");
+        }
+    }
+
+    [Fact]
+    public async Task HierarchyMutations_ResolveStablePublicIdsAndRejectForeignDepartments()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var actor = IdpTestFixture.CreateUser("idp-hierarchy-public");
+        actor.MunicipalityId = 71;
+        var plan = new IdpPlan
+        {
+            MunicipalityId = 71, MunicipalityName = "Municipality 71", PlanCode = "IDP-PUBLIC-HIERARCHY",
+            PlanTitle = "Public hierarchy", StartFinancialYear = 2026, EndFinancialYear = 2031,
+            CreatedByUserId = actor.Id
+        };
+        var localDepartment = new Department { MunicipalityId = 71, Code = "LOCAL", Name = "Local Department" };
+        var foreignDepartment = new Department { MunicipalityId = 72, Code = "FOREIGN", Name = "Foreign Department" };
+
+        await using (var setup = new ApplicationDbContext(options, IdpTestFixture.Tenant(null, "system", true)))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.AddRange(
+                new Municipality { Id = 71, Code = "M71", Name = "Municipality 71" },
+                new Municipality { Id = 72, Code = "M72", Name = "Municipality 72" },
+                actor, plan, localDepartment, foreignDepartment);
+            await setup.SaveChangesAsync();
+        }
+
+        var tenant = IdpTestFixture.Tenant(71, actor.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "allowed", [], [], []));
+        var controller = IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(actor).Object,
+            Mock.Of<IWorkflowGovernanceService>(), actor.Id, tenant, access.Object);
+        var start = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var outcome = Extract<IdpStrategicOutcomeResponse>((await controller.CreateOutcome(
+            new CreateIdpStrategicOutcomeRequest(plan.PublicId, "OUT-1", "Outcome", "Outcome detail", 1))).Result!);
+        outcome.IdpPlanPublicId.Should().Be(plan.PublicId);
+
+        var foreignObjective = await controller.CreateObjective(new CreateIdpStrategicObjectiveRequest(
+            outcome.PublicId, "OBJ-FOREIGN", "Foreign", "Must fail", 0, 1, foreignDepartment.PublicId,
+            actor.PublicId, start, start.AddYears(1), 100, 1));
+        foreignObjective.Result.Should().BeOfType<BadRequestObjectResult>();
+
+        var objective = Extract<IdpStrategicObjectiveResponse>((await controller.CreateObjective(
+            new CreateIdpStrategicObjectiveRequest(outcome.PublicId, "OBJ-1", "Objective", "Objective detail",
+                0, 1, localDepartment.PublicId, actor.PublicId, start, start.AddYears(1), 100, 1))).Result!);
+        objective.IdpStrategicOutcomePublicId.Should().Be(outcome.PublicId);
+        objective.ResponsibleDepartmentPublicId.Should().Be(localDepartment.PublicId);
+        objective.StrategicOwnerUserPublicId.Should().Be(actor.PublicId);
+
+        var priority = Extract<IdpDevelopmentPriorityResponse>((await controller.CreatePriority(
+            new CreateIdpDevelopmentPriorityRequest(objective.PublicId, "Priority", "Priority detail", 1, "PRI-1"))).Result!);
+        priority.IdpStrategicObjectivePublicId.Should().Be(objective.PublicId);
+
+        var programme = Extract<IdpProgrammeResponse>((await controller.CreateProgramme(
+            new CreateIdpProgrammeRequest(priority.PublicId, "PRG-1", "Programme", "Programme detail",
+                localDepartment.PublicId, 1000, 900, 100))).Result!);
+        programme.IdpDevelopmentPriorityPublicId.Should().Be(priority.PublicId);
+        programme.ResponsibleDepartmentPublicId.Should().Be(localDepartment.PublicId);
+
+        var project = Extract<IdpProjectResponse>((await controller.CreateProject(
+            new CreateIdpProjectRequest(programme.PublicId, "PRJ-1", "Project", "Project detail", "Capital",
+                localDepartment.PublicId, 800, "Grant", start, start.AddMonths(6), "Planned", null))).Result!);
+        project.IdpProgrammePublicId.Should().Be(programme.PublicId);
+        project.DepartmentPublicId.Should().Be(localDepartment.PublicId);
+
+        var kpi = Extract<IdpKpiResponse>((await controller.CreateKpi(new CreateIdpKpiRequest(
+            project.PublicId, "KPI-1", "KPI", "KPI detail", "Count", 0, 10, 50,
+            localDepartment.PublicId, "System", "Quarterly", "Output", false, false))).Result!);
+        kpi.IdpProjectPublicId.Should().Be(project.PublicId);
+        kpi.ResponsibleDepartmentPublicId.Should().Be(localDepartment.PublicId);
+
+        var persistedObjective = await context.IdpStrategicObjectives.SingleAsync(item => item.PublicId == objective.PublicId);
+        var persistedProgramme = await context.IdpProgrammes.SingleAsync(item => item.PublicId == programme.PublicId);
+        var persistedProject = await context.IdpProjects.SingleAsync(item => item.PublicId == project.PublicId);
+        var persistedKpi = await context.IdpKpis.SingleAsync(item => item.PublicId == kpi.PublicId);
+        persistedObjective.IdpStrategicOutcomeId.Should().Be(await context.IdpStrategicOutcomes
+            .Where(item => item.PublicId == outcome.PublicId).Select(item => item.Id).SingleAsync());
+        persistedObjective.ResponsibleDepartmentId.Should().Be(localDepartment.Id);
+        persistedProgramme.ResponsibleDepartmentId.Should().Be(localDepartment.Id);
+        persistedProject.DepartmentId.Should().Be(localDepartment.Id);
+        persistedKpi.ResponsibleDepartmentId.Should().Be(localDepartment.Id);
     }
 
     [Fact]
@@ -974,12 +1088,12 @@ public class IdpControllerFunctionalityTests
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
 
         var projectResult = await controller.CreateProject(new CreateIdpProjectRequest(
-            IdpProgrammeId: -1,
+            IdpProgrammePublicId: Guid.NewGuid(),
             ProjectCode: "P1",
             ProjectName: "Test",
             Description: "desc",
             Category: "cat",
-            DepartmentId: null,
+            DepartmentPublicId: null,
             Budget: 100,
             FundingSource: "Grant",
             StartDate: DateTime.UtcNow,
@@ -988,7 +1102,7 @@ public class IdpControllerFunctionalityTests
             CommunityNeedReference: null));
 
         var kpiResult = await controller.CreateKpi(new CreateIdpKpiRequest(
-            IdpProjectId: -1,
+            IdpProjectPublicId: Guid.NewGuid(),
             KpiCode: "K1",
             KpiName: "KPI",
             Description: "desc",
@@ -996,7 +1110,7 @@ public class IdpControllerFunctionalityTests
             Baseline: 1,
             AnnualTarget: 2,
             FiveYearTarget: 3,
-            ResponsibleDepartmentId: null,
+            ResponsibleDepartmentPublicId: null,
             DataSource: "sys",
             ReportingFrequency: "Quarterly",
             IndicatorType: "Outcome",

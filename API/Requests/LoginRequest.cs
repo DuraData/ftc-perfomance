@@ -345,50 +345,50 @@ public record CreateIdpPlanVersionRequest(
     string? PublicationReference = null);
 
 public record CreateIdpStrategicOutcomeRequest(
-    int IdpPlanId,
+    Guid IdpPlanPublicId,
     string Code,
     string Name,
     string Description,
     int SortOrder);
 
 public record CreateIdpStrategicObjectiveRequest(
-    int IdpStrategicOutcomeId,
+    Guid IdpStrategicOutcomePublicId,
     string Code,
     string Name,
     string Description,
     decimal BaselineValue,
     decimal TargetValue,
-    int? ResponsibleDepartmentId,
-    string? StrategicOwnerUserId,
+    Guid? ResponsibleDepartmentPublicId,
+    Guid? StrategicOwnerUserPublicId,
     DateTime StartDate,
     DateTime EndDate,
     decimal BudgetAllocation,
     int SortOrder);
 
 public record CreateIdpDevelopmentPriorityRequest(
-    int IdpStrategicObjectiveId,
+    Guid IdpStrategicObjectivePublicId,
     string Name,
     string Description,
     int SortOrder,
     string? PriorityCode = null);
 
 public record CreateIdpProgrammeRequest(
-    int IdpDevelopmentPriorityId,
+    Guid IdpDevelopmentPriorityPublicId,
     string ProgrammeCode,
     string Name,
     string Description,
-    int? ResponsibleDepartmentId,
+    Guid? ResponsibleDepartmentPublicId,
     decimal PlannedBudget,
     decimal ApprovedBudget,
     decimal ActualExpenditure);
 
 public record CreateIdpProjectRequest(
-    int IdpProgrammeId,
+    Guid IdpProgrammePublicId,
     string ProjectCode,
     string ProjectName,
     string Description,
     string Category,
-    int? DepartmentId,
+    Guid? DepartmentPublicId,
     decimal Budget,
     string FundingSource,
     DateTime StartDate,
@@ -397,7 +397,7 @@ public record CreateIdpProjectRequest(
     string? CommunityNeedReference);
 
 public record CreateIdpKpiRequest(
-    int IdpProjectId,
+    Guid IdpProjectPublicId,
     string KpiCode,
     string KpiName,
     string Description,
@@ -405,7 +405,7 @@ public record CreateIdpKpiRequest(
     decimal Baseline,
     decimal AnnualTarget,
     decimal FiveYearTarget,
-    int? ResponsibleDepartmentId,
+    Guid? ResponsibleDepartmentPublicId,
     string DataSource,
     string ReportingFrequency,
     string IndicatorType,

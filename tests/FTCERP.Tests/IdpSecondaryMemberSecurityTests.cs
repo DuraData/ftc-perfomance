@@ -168,7 +168,9 @@ public class IdpSecondaryMemberSecurityTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var actor = IdpTestFixture.CreateUser("idp-hierarchy-governor", "Hierarchy", "Governor");
-        var graph = await SeedGraphAsync(context, actor);
+        actor.MunicipalityId = 8111;
+        context.Municipalities.Add(new Municipality { Id = 8111, Code = "IDP-GOV", Name = "IDP Governance Municipality" });
+        var graph = await SeedGraphAsync(context, actor, municipalityId: 8111);
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var controller = Controller(context, actor, allowed);
         var start = DateTime.UtcNow.Date;
@@ -189,8 +191,8 @@ public class IdpSecondaryMemberSecurityTests
         deniedFundingSearch.TotalCount.Should().Be(0);
 
         var objectiveRequest = new CreateIdpStrategicObjectiveRequest(
-            graph.Outcome.Id, "OBJ-PROTECTED-1", "Protected objective", "Protected objective detail",
-            10, 20, null, actor.Id, start, start.AddYears(1), 123456, 2);
+            graph.Outcome.PublicId, "OBJ-PROTECTED-1", "Protected objective", "Protected objective detail",
+            10, 20, null, actor.PublicId, start, start.AddYears(1), 123456, 2);
         (await controller.CreateObjective(objectiveRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpStrategicObjectives.Should().ContainSingle();
 
@@ -214,7 +216,7 @@ public class IdpSecondaryMemberSecurityTests
         visibleObjective.BudgetAllocation.Should().Be(123456);
 
         var programmeRequest = new CreateIdpProgrammeRequest(
-            graph.Priority.Id, "PRG-PROTECTED-1", "Protected programme", "Protected programme detail",
+            graph.Priority.PublicId, "PRG-PROTECTED-1", "Protected programme", "Protected programme detail",
             null, 900000, 800000, 700000);
         (await controller.CreateProgramme(programmeRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpProgrammes.Should().ContainSingle();
@@ -240,7 +242,7 @@ public class IdpSecondaryMemberSecurityTests
         visibleProgramme.ActualExpenditure.Should().Be(700000);
 
         var projectRequest = new CreateIdpProjectRequest(
-            graph.Programme.Id, "PRJ-PROTECTED-1", "Protected project", "Protected project detail",
+            graph.Programme.PublicId, "PRJ-PROTECTED-1", "Protected project", "Protected project detail",
             "Capital", null, 654321, "PROTECTED-GRANT", start, start.AddMonths(6), "Planned", null);
         (await controller.CreateProject(projectRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpProjects.Should().ContainSingle();
@@ -297,8 +299,8 @@ public class IdpSecondaryMemberSecurityTests
         var controller = Controller(context, actor, allowed, foreignOwner, tenantContext);
         var start = DateTime.UtcNow.Date;
         var request = new CreateIdpStrategicObjectiveRequest(
-            graph.Outcome.Id, "OBJ-FOREIGN", "Foreign-owned objective", "Must be rejected",
-            1, 2, null, foreignOwner.Id, start, start.AddYears(1), 100, 2);
+            graph.Outcome.PublicId, "OBJ-FOREIGN", "Foreign-owned objective", "Must be rejected",
+            1, 2, null, foreignOwner.PublicId, start, start.AddYears(1), 100, 2);
 
         var rejected = (await controller.CreateObjective(request)).Result.Should().BeOfType<BadRequestObjectResult>().Subject;
         rejected.Value.Should().BeOfType<ApiResponse<IdpStrategicObjectiveResponse>>()
@@ -306,7 +308,7 @@ public class IdpSecondaryMemberSecurityTests
         context.IdpStrategicObjectives.Should().ContainSingle();
 
         var accepted = Extract<IdpStrategicObjectiveResponse>((await controller.CreateObjective(
-            request with { Code = "OBJ-LOCAL", StrategicOwnerUserId = actor.Id })).Result!);
+            request with { Code = "OBJ-LOCAL", StrategicOwnerUserPublicId = actor.PublicId })).Result!);
         accepted.PublicId.Should().NotBeEmpty();
         context.IdpStrategicObjectives.Should().HaveCount(2);
     }

@@ -703,79 +703,75 @@ public record IdpHierarchyPathResponse(
     string KpiCode,
     string KpiName);
 
-public record IdpStrategicOutcomeResponse(int Id, int IdpPlanId, string Code, string Name, string Description, int SortOrder)
-{
-    public Guid PublicId { get; init; }
-    public string RowVersion { get; init; } = string.Empty;
-}
+public record IdpStrategicOutcomeResponse(
+    Guid PublicId,
+    Guid IdpPlanPublicId,
+    string Code,
+    string Name,
+    string Description,
+    int SortOrder,
+    string RowVersion);
 
 public record IdpStrategicObjectiveResponse(
-    int Id,
-    int IdpStrategicOutcomeId,
+    Guid PublicId,
+    Guid IdpStrategicOutcomePublicId,
     string Code,
     string Name,
     string Description,
     decimal BaselineValue,
     decimal TargetValue,
-    int? ResponsibleDepartmentId,
+    Guid? ResponsibleDepartmentPublicId,
     string? ResponsibleDepartmentName,
     Guid? StrategicOwnerUserPublicId,
     string? StrategicOwnerName,
     DateTime StartDate,
     DateTime EndDate,
     decimal? BudgetAllocation,
-    int SortOrder)
-{
-    public Guid PublicId { get; init; }
-    public string RowVersion { get; init; } = string.Empty;
-}
+    int SortOrder,
+    string RowVersion);
 
-public record IdpDevelopmentPriorityResponse(int Id, int IdpStrategicObjectiveId, string Name, string Description, int SortOrder)
-{
-    public Guid PublicId { get; init; }
-    public string PriorityCode { get; init; } = string.Empty;
-    public string RowVersion { get; init; } = string.Empty;
-}
+public record IdpDevelopmentPriorityResponse(
+    Guid PublicId,
+    Guid IdpStrategicObjectivePublicId,
+    string PriorityCode,
+    string Name,
+    string Description,
+    int SortOrder,
+    string RowVersion);
 
 public record IdpProgrammeResponse(
-    int Id,
-    int IdpDevelopmentPriorityId,
+    Guid PublicId,
+    Guid IdpDevelopmentPriorityPublicId,
     string ProgrammeCode,
     string Name,
     string Description,
-    int? ResponsibleDepartmentId,
+    Guid? ResponsibleDepartmentPublicId,
     string? ResponsibleDepartmentName,
     decimal? PlannedBudget,
     decimal? ApprovedBudget,
-    decimal? ActualExpenditure)
-{
-    public Guid PublicId { get; init; }
-    public string RowVersion { get; init; } = string.Empty;
-}
+    decimal? ActualExpenditure,
+    string RowVersion);
 
 public record IdpProjectResponse(
-    int Id,
-    int IdpProgrammeId,
+    Guid PublicId,
+    Guid IdpProgrammePublicId,
     string ProjectCode,
     string ProjectName,
     string Description,
     string Category,
-    int? DepartmentId,
+    Guid? DepartmentPublicId,
     string? DepartmentName,
     decimal? Budget,
     string? FundingSource,
     DateTime StartDate,
     DateTime EndDate,
     string Status,
-    string? CommunityNeedReference)
-{
-    public Guid PublicId { get; init; }
-    public string RowVersion { get; init; } = string.Empty;
-}
+    string? CommunityNeedReference,
+    string RowVersion);
 
 public record IdpKpiResponse(
-    int Id,
-    int IdpProjectId,
+    Guid PublicId,
+    Guid IdpProjectPublicId,
     string KpiCode,
     string KpiName,
     string Description,
@@ -783,14 +779,13 @@ public record IdpKpiResponse(
     decimal Baseline,
     decimal AnnualTarget,
     decimal FiveYearTarget,
-    int? ResponsibleDepartmentId,
+    Guid? ResponsibleDepartmentPublicId,
     string? ResponsibleDepartmentName,
     string DataSource,
     string ReportingFrequency,
     string IndicatorType,
     bool Circular88Linked,
     bool TreasuryTidLinked,
-    Guid PublicId,
     string RowVersion);
 
 public record IdpImportBatchResponse(

@@ -3138,10 +3138,9 @@ export interface IdpPlanVersion {
 }
 
 export interface IdpStrategicOutcome {
-  id: number;
   publicId: string;
   rowVersion: string;
-  idpPlanId: number;
+  idpPlanPublicId: string;
   code: string;
   name: string;
   description: string;
@@ -3149,16 +3148,15 @@ export interface IdpStrategicOutcome {
 }
 
 export interface IdpStrategicObjective {
-  id: number;
   publicId: string;
   rowVersion: string;
-  idpStrategicOutcomeId: number;
+  idpStrategicOutcomePublicId: string;
   code: string;
   name: string;
   description: string;
   baselineValue: number;
   targetValue: number;
-  responsibleDepartmentId?: number | null;
+  responsibleDepartmentPublicId?: string | null;
   responsibleDepartmentName?: string | null;
   strategicOwnerUserPublicId?: string | null;
   strategicOwnerName?: string | null;
@@ -3169,10 +3167,9 @@ export interface IdpStrategicObjective {
 }
 
 export interface IdpDevelopmentPriority {
-  id: number;
   publicId: string;
   rowVersion: string;
-  idpStrategicObjectiveId: number;
+  idpStrategicObjectivePublicId: string;
   priorityCode: string;
   name: string;
   description: string;
@@ -3180,14 +3177,13 @@ export interface IdpDevelopmentPriority {
 }
 
 export interface IdpProgramme {
-  id: number;
   publicId: string;
   rowVersion: string;
-  idpDevelopmentPriorityId: number;
+  idpDevelopmentPriorityPublicId: string;
   programmeCode: string;
   name: string;
   description: string;
-  responsibleDepartmentId?: number | null;
+  responsibleDepartmentPublicId?: string | null;
   responsibleDepartmentName?: string | null;
   plannedBudget?: number | null;
   approvedBudget?: number | null;
@@ -3195,15 +3191,14 @@ export interface IdpProgramme {
 }
 
 export interface IdpProject {
-  id: number;
   publicId: string;
   rowVersion: string;
-  idpProgrammeId: number;
+  idpProgrammePublicId: string;
   projectCode: string;
   projectName: string;
   description: string;
   category: string;
-  departmentId?: number | null;
+  departmentPublicId?: string | null;
   departmentName?: string | null;
   budget?: number | null;
   fundingSource?: string | null;
@@ -3214,9 +3209,8 @@ export interface IdpProject {
 }
 
 export interface IdpKpi {
-  id: number;
   publicId: string;
-  idpProjectId: number;
+  idpProjectPublicId: string;
   kpiCode: string;
   kpiName: string;
   description: string;
@@ -3224,7 +3218,7 @@ export interface IdpKpi {
   baseline: number;
   annualTarget: number;
   fiveYearTarget: number;
-  responsibleDepartmentId?: number | null;
+  responsibleDepartmentPublicId?: string | null;
   responsibleDepartmentName?: string | null;
   dataSource: string;
   reportingFrequency: string;

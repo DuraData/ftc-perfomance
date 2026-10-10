@@ -290,7 +290,7 @@ public class IdpImportControllerTests
         var workflow = new Mock<IWorkflowGovernanceService>();
         var manual = IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(setup.User).Object, workflow.Object, setup.User.Id);
         var manualResult = await manual.CreateKpi(new CreateIdpKpiRequest(
-            setup.Project.Id, "BAD-MANUAL", "Bad manual KPI", "Description", "x", 0, 1, 5,
+            setup.Project.PublicId, "BAD-MANUAL", "Bad manual KPI", "Description", "x", 0, 1, 5,
             null, "System", "Quarterly", "NotAType", false, false));
         manualResult.Result.Should().BeOfType<BadRequestObjectResult>();
 
