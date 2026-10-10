@@ -4,8 +4,8 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
-import { getPermissionsPage, getRoleAccessMatrixPage, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
-import type { AccessSimulationResult, AdminPermission, AdminUserDetail, RoleAccessMatrixRow, SystemCoverageAuditRow } from '../../types';
+import { getRoleAccessMatrixPage, getSecurityPermissionDefinitionsPage, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
+import type { AccessSimulationResult, AdminUserDetail, RoleAccessMatrixRow, SecurityPermissionDefinition, SystemCoverageAuditRow } from '../../types';
 
 function BooleanPill({ value }: { value: boolean }) {
   return value ? (
@@ -89,12 +89,12 @@ export function PermissionSimulationPage() {
   const [userTotalCount, setUserTotalCount] = useState(0);
   const [userTotalPages, setUserTotalPages] = useState(0);
   const [selectedUserSnapshot, setSelectedUserSnapshot] = useState<AdminUserDetail | null>(null);
-  const [permissions, setPermissions] = useState<AdminPermission[]>([]);
+  const [permissions, setPermissions] = useState<SecurityPermissionDefinition[]>([]);
   const [permissionPage, setPermissionPage] = useState(1);
   const [permissionSearch, setPermissionSearch] = useState('');
   const [permissionTotalCount, setPermissionTotalCount] = useState(0);
   const [permissionTotalPages, setPermissionTotalPages] = useState(0);
-  const [selectedPermissionSnapshot, setSelectedPermissionSnapshot] = useState<AdminPermission | null>(null);
+  const [selectedPermissionSnapshot, setSelectedPermissionSnapshot] = useState<SecurityPermissionDefinition | null>(null);
   const [result, setResult] = useState<AccessSimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +128,7 @@ export function PermissionSimulationPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const permissionsResult = await getPermissionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' });
+      const permissionsResult = await getSecurityPermissionDefinitionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' });
       if (!active) return;
       setPermissions(permissionsResult.data?.items ?? []);
       setPermissionTotalCount(permissionsResult.data?.totalCount ?? 0);
@@ -143,7 +143,7 @@ export function PermissionSimulationPage() {
   const availableUsers = selectedUserSnapshot && !users.some(item => item.user.publicId === selectedUserSnapshot.user.publicId)
     ? [...users, selectedUserSnapshot]
     : users;
-  const availablePermissions = selectedPermissionSnapshot && !permissions.some(item => item.id === selectedPermissionSnapshot.id)
+  const availablePermissions = selectedPermissionSnapshot && !permissions.some(item => item.code === selectedPermissionSnapshot.code)
     ? [...permissions, selectedPermissionSnapshot]
     : permissions;
 

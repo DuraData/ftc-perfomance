@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAuditPage } from './AccessGovernancePages';
 
 const api = vi.hoisted(() => ({
-  getPermissionsPage: vi.fn(),
+  getSecurityPermissionDefinitionsPage: vi.fn(),
   getRoleAccessMatrixPage: vi.fn(),
   getSystemCoverageAudit: vi.fn(),
   getUsersPage: vi.fn(),
@@ -16,10 +16,10 @@ vi.mock('../common/OrganizationMasterPicker', () => ({ OrganizationMasterPicker:
 describe('PermissionSimulationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.getPermissionsPage.mockImplementation(async ({ page = 1, search = '' }) => ({
+    api.getSecurityPermissionDefinitionsPage.mockImplementation(async ({ page = 1, search = '' }) => ({
       success: true,
       data: {
-        items: [{ id: page, module: 'Security', feature: 'Simulation', action: 'Read', code: `SIMULATION.PAGE_${page}`, isActive: true }],
+        items: [{ code: `SIMULATION.PAGE_${page}`, description: 'Simulation permission', kind: 'Action', resourceCode: 'SIMULATION', actionCode: `SIMULATION.PAGE_${page}` }],
         page,
         pageSize: 25,
         totalCount: search ? 1 : 26,
@@ -64,14 +64,14 @@ describe('PermissionSimulationPage', () => {
     fireEvent.change(screen.getByLabelText('Search users'), { target: { value: 'specific user' } });
     await waitFor(() => expect(api.getUsersPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'specific user', sortBy: 'name', sortDirection: 'asc' }));
 
-    await waitFor(() => expect(api.getPermissionsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' }));
+    await waitFor(() => expect(api.getSecurityPermissionDefinitionsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' }));
     fireEvent.change(screen.getByLabelText('Permission'), { target: { value: 'SIMULATION.PAGE_1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next permissions' }));
-    await waitFor(() => expect(api.getPermissionsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' }));
+    await waitFor(() => expect(api.getSecurityPermissionDefinitionsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' }));
     expect(screen.getByLabelText('Permission')).toHaveValue('SIMULATION.PAGE_1');
     expect(screen.getByRole('option', { name: 'SIMULATION.PAGE_1' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Search permissions'), { target: { value: 'submission' } });
-    await waitFor(() => expect(api.getPermissionsPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submission', sortBy: 'code', sortDirection: 'asc' }));
+    await waitFor(() => expect(api.getSecurityPermissionDefinitionsPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submission', sortBy: 'code', sortDirection: 'asc' }));
   });
 
   it('searches and pages the dynamic role access matrix', async () => {

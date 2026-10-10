@@ -637,39 +637,10 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{publicId:guid}/permissions")]
-    public async Task<ActionResult<ApiResponse<UserPermissionsResponse>>> GetUserPermissions(Guid publicId)
+    public ActionResult<ApiResponse<UserPermissionsResponse>> GetUserPermissions(Guid publicId)
     {
-        var actor = await GetCurrentActorAsync();
-        if (actor == null) return Unauthorized(Fail<UserPermissionsResponse>("User not found"));
-        if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
-        var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
-        if (user == null) return NotFound(new ApiResponse<UserPermissionsResponse>(false, null, "User not found"));
-
-        var roleNames = await _userManager.GetRolesAsync(user);
-        var roleIds = await _context.Roles.Where(r => roleNames.Contains(r.Name!)).Select(r => r.Id).ToListAsync();
-
-        var fromRoles = await _context.RolePermissions
-            .Where(rp => roleIds.Contains(rp.RoleId) && rp.IsAllowed)
-            .Select(rp => rp.Permission.Code)
-            .Distinct()
-            .ToListAsync();
-
-        var overrides = await _context.UserPermissionOverrides
-            .Where(o => o.UserId == user.Id)
-            .Select(o => new { o.PermissionId, o.Permission.Code, o.IsAllowed, o.Reason })
-            .ToListAsync();
-
-        var effective = new HashSet<string>(fromRoles, StringComparer.OrdinalIgnoreCase);
-        foreach (var o in overrides)
-        {
-            if (!o.IsAllowed) effective.Remove(o.Code);
-        }
-
-        var overrideResponses = overrides
-            .Select(o => new UserPermissionOverrideResponse(o.PermissionId, o.Code, o.IsAllowed, o.Reason))
-            .ToArray();
-
-        return Ok(new ApiResponse<UserPermissionsResponse>(true, new UserPermissionsResponse(fromRoles.ToArray(), overrideResponses, effective.OrderBy(x => x).ToArray())));
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<UserPermissionsResponse>(false, null,
+            "This legacy user-permission projection is retired. Use /api/v1/security/effective-permissions/{userPublicId}; effective access is derived from tenant-scoped role assignments."));
     }
 
     [HttpPut("{publicId:guid}/permission-overrides")]

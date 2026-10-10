@@ -651,6 +651,29 @@ public sealed class UsersControllerSecurityTests
         SecurityStamp = Guid.NewGuid().ToString()
     };
 
+    [Fact]
+    public async Task Legacy_user_permission_projection_and_override_mutation_are_retired()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var context = new ApplicationDbContext(options);
+        var actor = User("security-admin", 7, "security-admin@example.test", "+27000000000");
+        var target = User("target-user", 7, "target@example.test", "+27000000001");
+        context.Users.AddRange(actor, target);
+        await context.SaveChangesAsync();
+        var tenant = new FixedTenantContext(7, actor.Id);
+        var controller = Controller(context, tenant, actor, new Dictionary<string, ApplicationUser>
+        {
+            [actor.Id] = actor,
+            [target.Id] = target
+        }, Access(actor, "SECURITY.VIEW_EFFECTIVE", "SECURITY.MANAGE_PERMISSIONS").Object);
+
+        var read = Assert.IsType<ObjectResult>(controller.GetUserPermissions(target.PublicId).Result);
+        Assert.Equal(StatusCodes.Status410Gone, read.StatusCode);
+        var write = Assert.IsType<ObjectResult>((await controller.SetUserPermissionOverrides(target.PublicId,
+            new UpdateUserPermissionOverridesRequest([]))).Result);
+        Assert.Equal(StatusCodes.Status410Gone, write.StatusCode);
+    }
+
     private static Mock<IAccessControlService> Access(ApplicationUser actor, params string[] allowed)
     {
         var allowedSet = allowed.ToHashSet(StringComparer.OrdinalIgnoreCase);

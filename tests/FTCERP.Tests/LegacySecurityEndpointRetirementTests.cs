@@ -57,10 +57,7 @@ public sealed class LegacySecurityEndpointRetirementTests
 
         AssertGone(controller.GetPermissions().Result);
         AssertGone(controller.GetGrouped().Result);
-        var pageResult = await controller.GetPermissionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "USER", SortBy = "code", SortDirection = "asc" });
-        var page = Assert.IsType<ApiResponse<PagedResponse<PermissionResponse>>>(Assert.IsType<OkObjectResult>(pageResult.Result).Value).Data!;
-        Assert.Equal(1, page.TotalCount);
-        Assert.Equal("USER.READ", Assert.Single(page.Items).Code);
+        AssertGone(controller.GetPermissionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "USER", SortBy = "code", SortDirection = "asc" }).Result);
         AssertGone((await controller.CreatePermission(new CreatePermissionRequest("Unsafe", "Unsafe", "Grant", "UNSAFE.GRANT", null, true))).Result);
         AssertGone((await controller.UpdatePermission(permission.Id, new UpdatePermissionRequest("Unsafe", "Unsafe", "Grant", "UNSAFE.GRANT", null, true))).Result);
         AssertGone((await controller.DeletePermission(permission.Id)).Result);

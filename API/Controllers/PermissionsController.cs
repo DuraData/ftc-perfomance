@@ -23,45 +23,12 @@ public class PermissionsController : ControllerBase
     [HttpGet]
     public ActionResult<ApiResponse<PermissionResponse[]>> GetPermissions() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<PermissionResponse[]>(false, null,
-            "This unbounded route is retired. Use /api/permissions/page."));
+            "This legacy permission catalogue is retired. Use /api/v1/security/permissions/page; permission code is the authoritative public identity."));
 
     [HttpGet("page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<PermissionResponse>>>> GetPermissionsPage([FromQuery] PagedQueryRequest request)
-    {
-        if (!PermissionSortFields.Contains(request.NormalizedSortBy))
-            return BadRequest(new ApiResponse<PagedResponse<PermissionResponse>>(false, null,
-                "SortBy must be createdAt, module, feature, action, code, or status."));
-        var query = _context.Permissions.AsNoTracking().AsQueryable();
-        if (request.NormalizedSearch.Length > 0)
-        {
-            var term = request.NormalizedSearch;
-            query = query.Where(item => item.Module.Contains(term) || item.Feature.Contains(term)
-                || item.Action.Contains(term) || item.Code.Contains(term)
-                || (item.Description != null && item.Description.Contains(term)));
-        }
-        var totalCount = await query.CountAsync();
-        query = (request.NormalizedSortBy, request.Descending) switch
-        {
-            ("module", false) => query.OrderBy(item => item.Module).ThenBy(item => item.Feature).ThenBy(item => item.Action).ThenBy(item => item.Id),
-            ("module", true) => query.OrderByDescending(item => item.Module).ThenByDescending(item => item.Feature).ThenByDescending(item => item.Action).ThenBy(item => item.Id),
-            ("feature", false) => query.OrderBy(item => item.Feature).ThenBy(item => item.Action).ThenBy(item => item.Id),
-            ("feature", true) => query.OrderByDescending(item => item.Feature).ThenByDescending(item => item.Action).ThenBy(item => item.Id),
-            ("action", false) => query.OrderBy(item => item.Action).ThenBy(item => item.Code).ThenBy(item => item.Id),
-            ("action", true) => query.OrderByDescending(item => item.Action).ThenByDescending(item => item.Code).ThenBy(item => item.Id),
-            ("status", false) => query.OrderBy(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
-            ("status", true) => query.OrderByDescending(item => item.IsActive).ThenBy(item => item.Code).ThenBy(item => item.Id),
-            ("code", true) => query.OrderByDescending(item => item.Code).ThenBy(item => item.Id),
-            _ => query.OrderBy(item => item.Code).ThenBy(item => item.Id)
-        };
-        var permissions = await query.Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new PermissionResponse(item.Id, item.Module, item.Feature, item.Action, item.Code, item.Description, item.IsActive))
-            .ToArrayAsync();
-
-        return Ok(new ApiResponse<PagedResponse<PermissionResponse>>(true,
-            PagedResponse<PermissionResponse>.Create(permissions, request.Page, request.PageSize, totalCount)));
-    }
-
-    private static readonly HashSet<string> PermissionSortFields = ["createdat", "module", "feature", "action", "code", "status"];
+    public ActionResult<ApiResponse<PagedResponse<PermissionResponse>>> GetPermissionsPage([FromQuery] PagedQueryRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<PagedResponse<PermissionResponse>>(false, null,
+            "This legacy permission catalogue is retired. Use /api/v1/security/permissions/page; permission code is the authoritative public identity."));
 
     [HttpGet("grouped")]
     public ActionResult<ApiResponse<PermissionGroupResponse[]>> GetGrouped() =>

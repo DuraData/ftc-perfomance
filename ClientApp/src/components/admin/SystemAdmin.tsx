@@ -15,23 +15,21 @@ import {
   deleteRole,
   deleteUser,
   getAuditTrailsPage,
+  getEffectiveSecurityPreview,
   getLoginAuditLogs,
   getPermissions,
-  getPermissionsPage,
   getPermissionsGrouped,
-  getUserPermissions,
   getRolePermissions,
   getRoles,
   getSecurityRolesPage,
   getUsersPage,
   setRolePermissions,
-  setUserPermissionOverrides,
   setUserRoles,
   updatePermission,
   updateRole,
   updateUser,
 } from '../../api/api';
-import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, AuditTrailEntryDto, LoginAuditLog, UserPermissionOverride, UserPermissions } from '../../types';
+import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, AuditTrailEntryDto, EffectiveSecurityPreview, LoginAuditLog } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 
@@ -50,7 +48,6 @@ export function AdminUsersPage() {
   const canEditPhone = canEditField('USER', 'PhoneNumber');
   const canAssignRoles = canExecute('ROLE.ASSIGN');
   const canViewEffective = canExecute('SECURITY.VIEW_EFFECTIVE');
-  const canManagePermissions = canExecute('SECURITY.MANAGE_PERMISSIONS');
   const { pushToast } = useApp();
   const [rows, setRows] = useState<AdminUserDetail[]>([]);
   const [page, setPage] = useState(1);
@@ -75,13 +72,7 @@ export function AdminUsersPage() {
 
   const [permissionModalOpen, setPermissionModalOpen] = useState(false);
   const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<AdminUserDetail | null>(null);
-  const [allPermissions, setAllPermissions] = useState<AdminPermission[]>([]);
-  const [permissionPage, setPermissionPage] = useState(1);
-  const [permissionTotalCount, setPermissionTotalCount] = useState(0);
-  const [permissionTotalPages, setPermissionTotalPages] = useState(0);
-  const [permissionSearch, setPermissionSearch] = useState('');
-  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
-  const [overrideMap, setOverrideMap] = useState<Record<number, boolean>>({});
+  const [effectivePreview, setEffectivePreview] = useState<EffectiveSecurityPreview | null>(null);
 
   const [form, setForm] = useState({
     firstName: '',
@@ -104,15 +95,6 @@ export function AdminUsersPage() {
   }, [page, pageSize, search, sortBy, sortDirection]);
 
   useEffect(() => { void loadUsers(); }, [loadUsers]);
-
-  useEffect(() => {
-    void getPermissionsPage({ page: permissionPage, pageSize: 25, search: permissionSearch, sortBy: 'code', sortDirection: 'asc' }).then(permsRes => {
-      if (!permsRes.success) setError(permsRes.message ?? 'Failed to load permissions');
-      setAllPermissions(permsRes.data?.items ?? []);
-      setPermissionTotalCount(permsRes.data?.totalCount ?? 0);
-      setPermissionTotalPages(permsRes.data?.totalPages ?? 0);
-    });
-  }, [permissionPage, permissionSearch]);
 
   useEffect(() => {
     void getSecurityRolesPage({ page: rolePage, pageSize: 25, search: roleSearch, sortBy: 'name', sortDirection: 'asc' }).then(rolesRes => {
@@ -251,38 +233,15 @@ export function AdminUsersPage() {
   const openPermissions = async (u: AdminUserDetail) => {
     setError(null);
     setSelectedUserForPermissions(u);
-    setPermissionPage(1);
-    setPermissionSearch('');
-    const res = await getUserPermissions(u.user.publicId);
+    setEffectivePreview(null);
+    const res = await getEffectiveSecurityPreview(u.user.publicId);
     if (!res.success || !res.data) {
-      setError(res.message ?? 'Failed to load user permissions');
+      setSelectedUserForPermissions(null);
+      setError(res.message ?? 'Failed to calculate effective permissions');
       return;
     }
-    setUserPermissions(res.data);
-    const map: Record<number, boolean> = {};
-    (res.data.overrides ?? []).forEach(o => {
-      map[o.permissionId] = o.isAllowed;
-    });
-    setOverrideMap(map);
+    setEffectivePreview(res.data);
     setPermissionModalOpen(true);
-  };
-
-  const savePermissionOverrides = async () => {
-    if (!selectedUserForPermissions) return;
-    const overrides: UserPermissionOverride[] = Object.entries(overrideMap).map(([permissionId, isAllowed]) => ({
-      permissionId: Number(permissionId),
-      code: '',
-      isAllowed,
-      reason: undefined,
-    }));
-    const res = await setUserPermissionOverrides(selectedUserForPermissions.user.publicId, overrides);
-    if (!res.success) {
-      setError(res.message ?? 'Failed to save overrides');
-      return;
-    }
-    setPermissionModalOpen(false);
-    setSelectedUserForPermissions(null);
-    pushToast('success', 'Permission overrides saved');
   };
 
   const columns = [
@@ -453,107 +412,36 @@ export function AdminUsersPage() {
           </div>
         </Modal>
 
-        <Modal isOpen={permissionModalOpen} onClose={() => setPermissionModalOpen(false)} title="User Permissions & Overrides" size="xl">
+        <Modal isOpen={permissionModalOpen} onClose={() => setPermissionModalOpen(false)} title="Effective User Access" size="xl">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-secondary-400" />
-              <p className="text-sm text-secondary-700 dark:text-secondary-300">{selectedUserForPermissions?.user.email}</p>
+              <p className="text-sm text-secondary-700 dark:text-secondary-300">{selectedUserForPermissions?.user.email ?? selectedUserForPermissions?.user.fullName}</p>
             </div>
-
-            {!userPermissions ? (
+            {!effectivePreview ? (
               <p className="text-sm text-secondary-500">Loading...</p>
             ) : (
-              <div className="space-y-3">
-                <Input label="Search permissions" value={permissionSearch} onChange={(event) => { setPermissionSearch(event.target.value); setPermissionPage(1); }} />
-                <div className="max-h-[46vh] overflow-auto pr-1 space-y-3">
-                {Object.entries(
-                  allPermissions.reduce<Record<string, AdminPermission[]>>((acc, p) => {
-                    acc[p.module] = acc[p.module] ? [...acc[p.module], p] : [p];
-                    return acc;
-                  }, {})
-                ).sort(([a], [b]) => a.localeCompare(b)).map(([module, perms]) => {
-                  const fromRoles = new Set((userPermissions.fromRoles ?? []).map(x => x.toLowerCase()));
-                  const hasAllEffective = perms.every(p => {
-                    const inherited = fromRoles.has(p.code.toLowerCase());
-                    const override = overrideMap[p.id];
-                    const effective = override !== undefined ? override : inherited;
-                    return effective;
-                  });
-
-                  return (
-                    <div key={module} className="rounded-lg border border-secondary-200 dark:border-secondary-700 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-secondary-900 dark:text-white">{module}</p>
-                        <button
-                          className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800"
-                          onClick={() => {
-                            setOverrideMap(prev => {
-                              const next = { ...prev };
-                              perms.forEach(p => {
-                                const inherited = fromRoles.has(p.code.toLowerCase());
-                                const desired = !hasAllEffective;
-                                if (desired === inherited) delete next[p.id];
-                                else next[p.id] = desired;
-                              });
-                              return next;
-                            });
-                          }}
-                        >
-                          {hasAllEffective ? 'Clear module overrides' : 'Select all in module'}
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                        {perms
-                          .slice()
-                          .sort((a, b) => a.code.localeCompare(b.code))
-                          .map(p => {
-                            const inherited = fromRoles.has(p.code.toLowerCase());
-                            const override = overrideMap[p.id];
-                            const effective = override !== undefined ? override : inherited;
-                            const isOverride = override !== undefined && override !== inherited;
-
-                            return (
-                              <div key={p.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-secondary-50 dark:hover:bg-secondary-800">
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5 w-3.5 h-3.5 rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500"
-                                  checked={effective}
-                                  onChange={() => {
-                                    setOverrideMap(prev => {
-                                      const next = { ...prev };
-                                      const desired = !effective;
-                                      if (desired === inherited) delete next[p.id];
-                                      else next[p.id] = desired;
-                                      return next;
-                                    });
-                                  }}
-                                />
-                                <div className="min-w-0">
-                                  <p className="text-xs font-medium text-secondary-800 dark:text-secondary-200 truncate">{p.code}</p>
-                                  <p className="text-[10px] text-secondary-500">
-                                    {inherited ? 'Inherited' : 'Not inherited'}{isOverride ? ' • Overridden' : ''}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  );
-                })}
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs text-secondary-500">
-                  <span>{permissionTotalCount} permissions · Page {permissionPage} of {Math.max(permissionTotalPages, 1)}</span>
-                  <span className="flex gap-2"><Button variant="ghost" size="sm" disabled={permissionPage <= 1} onClick={() => setPermissionPage(value => Math.max(1, value - 1))}>Previous</Button><Button variant="ghost" size="sm" disabled={permissionPage >= permissionTotalPages} onClick={() => setPermissionPage(value => value + 1)}>Next</Button></span>
-                </div>
-                <p className="text-xs text-secondary-500">Overrides selected on other permission pages are preserved when you save.</p>
+              <div className="grid gap-4 md:grid-cols-3">
+                {([
+                  ['Roles', effectivePreview.roles],
+                  ['Scopes', effectivePreview.scopes],
+                  ['Effective permissions', effectivePreview.permissions],
+                ] as const).map(([title, values]) => (
+                  <section key={title} className="rounded-lg border border-secondary-200 p-3 dark:border-secondary-700">
+                    <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h3>
+                    <ul className="mt-2 max-h-[42vh] space-y-1 overflow-auto text-xs text-secondary-600 dark:text-secondary-300">
+                      {values.length ? values.map(value => <li key={value} className="break-all font-mono">{value}</li>) : <li>None</li>}
+                    </ul>
+                  </section>
+                ))}
+                <p className="md:col-span-3 text-xs text-secondary-500">
+                  Effective access is calculated from the user&apos;s current tenant-scoped role assignments. Change role rules or assignments in Security Administration; direct user permission overrides are retired.
+                </p>
               </div>
             )}
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="ghost" size="sm" onClick={() => setPermissionModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={savePermissionOverrides} disabled={!canManagePermissions}>Save</Button>
+            <Button variant="primary" size="sm" onClick={() => setPermissionModalOpen(false)}>Close</Button>
           </div>
         </Modal>
 
