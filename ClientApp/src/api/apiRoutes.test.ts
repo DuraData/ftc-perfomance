@@ -673,7 +673,7 @@ describe('versioned API routes', () => {
     };
     const attachment = {
       id: 'file-live', submissionKind: 'Opms', submissionId: 'submission-live', fileName: 'evidence.pdf',
-      sizeInBytes: 512, uploadedByUserId: 'uploader-live', uploadedByName: 'Live Uploader',
+      sizeInBytes: 512, uploadedByUserPublicId: '11111111-1111-1111-1111-111111111111', uploadedByName: 'Live Uploader',
       uploadedAt: '2026-08-01T00:00:00Z', url: '/files/file-live',
     };
     const fetchMock = vi.fn()
@@ -697,7 +697,7 @@ describe('versioned API routes', () => {
       verifier: { id: 'verifier-live', displayName: 'Live Verifier' },
       attachments: [], comments: [], history: [],
     });
-    expect(attachments.data?.items[0].uploadedBy).toMatchObject({ id: 'uploader-live', displayName: 'Live Uploader' });
+    expect(attachments.data?.items[0].uploadedBy).toMatchObject({ id: '11111111-1111-1111-1111-111111111111', displayName: 'Live Uploader' });
     expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/opms-submissions/submission-live/attachments/page?page=2&pageSize=25&search=evidence&scanStatus=Clean&quarantined=false&active=true'), expect.anything());
   });
 
@@ -765,7 +765,7 @@ describe('versioned API routes', () => {
   });
 
   it('posts both concurrency tokens to the governed POE replacement route', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { id: 'new-id', publicId: 'new-public', submissionKind: 'Opms', submissionId: 'submission-1', fileName: 'new.pdf', sizeInBytes: 100, uploadedByUserId: 'owner', uploadedAt: '2026-10-02T00:00:00Z', url: '', rowVersion: 'AAAAAAAAAAM=' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { id: 'new-id', publicId: 'new-public', submissionKind: 'Opms', submissionId: 'submission-1', fileName: 'new.pdf', sizeInBytes: 100, uploadedByUserPublicId: '11111111-1111-1111-1111-111111111111', uploadedAt: '2026-10-02T00:00:00Z', url: '', rowVersion: 'AAAAAAAAAAM=' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     await replaceOpmsSubmissionAttachment('submission-1', 'old-id', { replacementEvidencePublicId: 'new-public', reason: 'Corrected signed version', supersededRowVersion: 'AAAAAAAAAAE=', replacementRowVersion: 'AAAAAAAAAAI=' });
@@ -777,7 +777,7 @@ describe('versioned API routes', () => {
   });
 
   it('posts a reason to the legal-hold release route', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { id: 'file-1', submissionKind: 'Opms', submissionId: 'submission-1', fileName: 'proof.pdf', sizeInBytes: 100, uploadedByUserId: 'owner', uploadedAt: '2026-10-02T00:00:00Z', url: '' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { id: 'file-1', submissionKind: 'Opms', submissionId: 'submission-1', fileName: 'proof.pdf', sizeInBytes: 100, uploadedByUserPublicId: '11111111-1111-1111-1111-111111111111', uploadedAt: '2026-10-02T00:00:00Z', url: '' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     await releaseOpmsEvidenceLegalHold('submission-1', 'file-1', '9a98920c-78c5-4f38-9b3d-aa243d68d272', { reason: 'Matter concluded' });
@@ -786,7 +786,7 @@ describe('versioned API routes', () => {
   });
 
   it('posts approval evidence and concurrency token to the disposal route', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { id: 'file-1', submissionKind: 'Opms', submissionId: 'submission-1', fileName: 'proof.pdf', sizeInBytes: 100, uploadedByUserId: 'owner', uploadedAt: '2026-10-02T00:00:00Z', url: '', isActive: false } }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { id: 'file-1', submissionKind: 'Opms', submissionId: 'submission-1', fileName: 'proof.pdf', sizeInBytes: 100, uploadedByUserPublicId: '11111111-1111-1111-1111-111111111111', uploadedAt: '2026-10-02T00:00:00Z', url: '', isActive: false } }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     await requestOpmsEvidenceDisposal('submission-1', 'file-1', { approvalReference: 'COUNCIL-2026-42', reason: 'Retention period completed', rowVersion: 'AAAAAAAAAAE=' });

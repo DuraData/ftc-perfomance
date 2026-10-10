@@ -19,7 +19,7 @@ describe('FileUpload evidence scan state', () => {
     const onAssess = vi.fn();
     render(<FileUpload onAssess={onAssess} existingFiles={[{
       id: 'evidence-2', name: 'register.pdf', size: 256, type: 'application/pdf', progress: 100,
-      scanStatus: 'Clean', isQuarantined: false, url: '/content', assessments: [{ publicId: 'assessment-1', outcome: 'Accepted', comment: 'Verified against source register.', assessedByUserId: 'auditor', assessedByName: 'Internal Auditor', assessedAt: '2026-10-02T00:00:00Z', correlationId: 'trace-1' }],
+      scanStatus: 'Clean', isQuarantined: false, url: '/content', assessments: [{ publicId: 'assessment-1', outcome: 'Accepted', comment: 'Verified against source register.', assessedByUserPublicId: '11111111-1111-1111-1111-111111111111', assessedByName: 'Internal Auditor', assessedAt: '2026-10-02T00:00:00Z', correlationId: 'trace-1' }],
     }]} />);
 
     expect(screen.getByText(/Internal Auditor/)).toHaveTextContent('Accepted');
@@ -47,7 +47,7 @@ describe('FileUpload evidence scan state', () => {
     const onReleaseHold = vi.fn();
     render(<FileUpload onPlaceHold={onPlaceHold} onReleaseHold={onReleaseHold} existingFiles={[{
       id: 'evidence-3', name: 'contract.pdf', size: 200, type: 'application/pdf', progress: 100,
-      legalHolds: [{ holdId: 'hold-1', holdReference: 'CASE-2026-1', isActive: true, placedReason: 'Pending investigation', placedByUserId: 'legal', placedAt: '2026-10-01T00:00:00Z' }],
+      legalHolds: [{ holdId: 'hold-1', holdReference: 'CASE-2026-1', isActive: true, placedReason: 'Pending investigation', placedByUserPublicId: '22222222-2222-2222-2222-222222222222', placedAt: '2026-10-01T00:00:00Z' }],
     }]} />);
 
     expect(screen.getByText(/Active legal hold/)).toHaveTextContent('CASE-2026-1');
@@ -66,7 +66,7 @@ describe('FileUpload evidence scan state', () => {
     render(<FileUpload onDispose={onDispose} existingFiles={[{
       id: 'evidence-4', name: 'expired.pdf', size: 200, type: 'application/pdf', progress: 100,
       isActive: false, retainUntil: '2020-01-01T00:00:00Z', rowVersion: 'AAAAAAAAAAE=',
-      disposals: [{ disposalId: 'failed-1', status: 'Failed', approvalReference: 'COUNCIL-OLD', reason: 'Prior attempt', requestedByUserId: 'records', requestedAt: '2026-10-01T00:00:00Z', failedAt: '2026-10-01T00:01:00Z', detail: 'Storage unavailable' }],
+      disposals: [{ disposalId: 'failed-1', status: 'Failed', approvalReference: 'COUNCIL-OLD', reason: 'Prior attempt', requestedByUserPublicId: '33333333-3333-3333-3333-333333333333', requestedAt: '2026-10-01T00:00:00Z', failedAt: '2026-10-01T00:01:00Z', detail: 'Storage unavailable' }],
     }]} />);
 
     expect(screen.getByText(/COUNCIL-OLD/)).toBeInTheDocument();

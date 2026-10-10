@@ -188,9 +188,9 @@ describe('SubmissionWorkspace member security', () => {
         id: 'evidence-governance', publicId: 'public-governance', fileName: 'governed.pdf', fileSize: 10,
         fileType: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence',
         url: '/content/governance', scanStatus: 'Clean', isActive: false, retainUntil: '2020-01-01T00:00:00Z',
-        assessments: [{ publicId: 'assessment-1', outcome: 'Accepted', comment: 'Secret assessment note', assessedByUserId: 'secret-assessor-id', assessedByName: 'Secret Assessor', assessedAt: '2026-10-02T00:00:00Z', correlationId: 'secret-assessment-correlation' }],
-        legalHolds: [{ holdId: 'hold-1', holdReference: 'CASE-1', isActive: true, placedReason: 'Preservation', placedByUserId: 'secret-legal-id', placedByName: 'Secret Legal Actor', placedAt: '2026-10-03T00:00:00Z' }],
-        disposals: [{ disposalId: 'disposal-1', status: 'Failed', approvalReference: 'COUNCIL-1', reason: 'Retention elapsed', requestedByUserId: 'secret-disposal-id', requestedByName: 'Secret Disposal Actor', requestedAt: '2026-10-04T00:00:00Z', detail: 'Secret disposal failure' }],
+        assessments: [{ publicId: 'assessment-1', outcome: 'Accepted', comment: 'Secret assessment note', assessedByUserPublicId: '11111111-1111-1111-1111-111111111111', assessedByName: 'Secret Assessor', assessedAt: '2026-10-02T00:00:00Z', correlationId: 'secret-assessment-correlation' }],
+        legalHolds: [{ holdId: 'hold-1', holdReference: 'CASE-1', isActive: true, placedReason: 'Preservation', placedByUserPublicId: '22222222-2222-2222-2222-222222222222', placedByName: 'Secret Legal Actor', placedAt: '2026-10-03T00:00:00Z' }],
+        disposals: [{ disposalId: 'disposal-1', status: 'Failed', approvalReference: 'COUNCIL-1', reason: 'Retention elapsed', requestedByUserPublicId: '33333333-3333-3333-3333-333333333333', requestedByName: 'Secret Disposal Actor', requestedAt: '2026-10-04T00:00:00Z', detail: 'Secret disposal failure' }],
       }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
     });
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);

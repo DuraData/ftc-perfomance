@@ -277,7 +277,7 @@ public sealed class RegisterPaginationTests
         Assert.Equal(2, envelope.Data.TotalPages);
         var deniedMetadata = Assert.Single(envelope.Data.Items);
         Assert.Equal("evidence-2", deniedMetadata.Id);
-        Assert.Null(deniedMetadata.UploadedByUserId);
+        Assert.Null(deniedMetadata.UploadedByUserPublicId);
         Assert.Null(deniedMetadata.UploadedByName);
         Assert.Null(deniedMetadata.ScannerProvider);
         Assert.Null(deniedMetadata.ScannerReference);
@@ -291,7 +291,7 @@ public sealed class RegisterPaginationTests
         }, scanStatus: "Clean", quarantined: false, active: true);
         var refreshed = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<PoeFileResponse>>>(
             Assert.IsType<OkObjectResult>(refreshedResult.Result).Value).Data!.Items);
-        Assert.Equal(user.Id, refreshed.UploadedByUserId);
+        Assert.Equal(user.PublicId, refreshed.UploadedByUserPublicId);
         Assert.Equal(user.FullName, refreshed.UploadedByName);
         Assert.Equal("ProtectedScanner", refreshed.ScannerProvider);
         Assert.Equal("protected-reference-2", refreshed.ScannerReference);
@@ -345,6 +345,12 @@ public sealed class RegisterPaginationTests
             HoldId = holdId, Action = PoeLegalHoldAction.Placed, HoldReference = "CASE-1",
             Reason = "investigation", ActorUserId = actor.Id, ActorUser = actor
         });
+        evidence.LegalHoldEvents.Add(new PoeLegalHoldEvent
+        {
+            HoldId = holdId, Action = PoeLegalHoldAction.Released, HoldReference = "CASE-1",
+            Reason = "investigation closed", ActorUserId = actor.Id, ActorUser = actor,
+            OccurredAt = DateTime.UtcNow.AddMinutes(1)
+        });
         var disposalId = Guid.NewGuid();
         evidence.DisposalEvents.Add(new PoeDisposalEvent
         {
@@ -363,30 +369,39 @@ public sealed class RegisterPaginationTests
         var denied = evidence.ToResponse(http, PoeResponseMemberAccess.None);
         var deniedAssessment = Assert.Single(denied.Assessments);
         Assert.Null(deniedAssessment.Comment);
-        Assert.Null(deniedAssessment.AssessedByUserId);
+        Assert.Null(deniedAssessment.AssessedByUserPublicId);
         Assert.Null(deniedAssessment.AssessedByName);
         Assert.Null(deniedAssessment.CorrelationId);
-        Assert.Null(denied.ReplacementOf!.ReplacedByUserId);
+        Assert.Null(denied.ReplacementOf!.ReplacedByUserPublicId);
         Assert.Null(denied.ReplacementOf.ReplacedByName);
         Assert.Null(denied.ReplacementOf.CorrelationId);
-        Assert.Null(Assert.Single(denied.LegalHolds).PlacedByUserId);
+        Assert.Null(Assert.Single(denied.LegalHolds).PlacedByUserPublicId);
         var deniedDisposal = Assert.Single(denied.Disposals);
-        Assert.Null(deniedDisposal.RequestedByUserId);
+        Assert.Null(deniedDisposal.RequestedByUserPublicId);
         Assert.Null(deniedDisposal.RequestedByName);
         Assert.Null(deniedDisposal.Detail);
 
         var allowed = evidence.ToResponse(http, PoeResponseMemberAccess.Full);
         var allowedAssessment = Assert.Single(allowed.Assessments);
         Assert.Equal("protected assessment", allowedAssessment.Comment);
-        Assert.Equal(actor.Id, allowedAssessment.AssessedByUserId);
+        Assert.Equal(actor.PublicId, allowedAssessment.AssessedByUserPublicId);
         Assert.Equal(actor.FullName, allowedAssessment.AssessedByName);
         Assert.Equal("assessment-correlation", allowedAssessment.CorrelationId);
-        Assert.Equal(actor.Id, allowed.ReplacementOf!.ReplacedByUserId);
+        Assert.Equal(actor.PublicId, allowed.ReplacementOf!.ReplacedByUserPublicId);
         Assert.Equal("replacement-correlation", allowed.ReplacementOf.CorrelationId);
-        Assert.Equal(actor.Id, Assert.Single(allowed.LegalHolds).PlacedByUserId);
+        var allowedHold = Assert.Single(allowed.LegalHolds);
+        Assert.Equal(actor.PublicId, allowedHold.PlacedByUserPublicId);
+        Assert.Equal(actor.PublicId, allowedHold.ReleasedByUserPublicId);
         var allowedDisposal = Assert.Single(allowed.Disposals);
-        Assert.Equal(actor.Id, allowedDisposal.RequestedByUserId);
+        Assert.Equal(actor.PublicId, allowedDisposal.RequestedByUserPublicId);
         Assert.Equal("protected failure detail", allowedDisposal.Detail);
+
+        Assert.Null(typeof(PoeFileResponse).GetProperty("UploadedByUserId"));
+        Assert.Null(typeof(PoeEvidenceAssessmentResponse).GetProperty("AssessedByUserId"));
+        Assert.Null(typeof(PoeEvidenceReplacementResponse).GetProperty("ReplacedByUserId"));
+        Assert.Null(typeof(PoeLegalHoldResponse).GetProperty("PlacedByUserId"));
+        Assert.Null(typeof(PoeLegalHoldResponse).GetProperty("ReleasedByUserId"));
+        Assert.Null(typeof(PoeDisposalResponse).GetProperty("RequestedByUserId"));
     }
 
     [Fact]

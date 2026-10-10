@@ -838,7 +838,7 @@ export interface PoeEvidenceAssessmentDto {
   publicId: string;
   outcome: 'Accepted' | 'Rejected' | 'NeedsClarification';
   comment?: string | null;
-  assessedByUserId?: string | null;
+  assessedByUserPublicId?: string | null;
   assessedByName?: string | null;
   assessedAt: string;
   correlationId?: string | null;
@@ -851,7 +851,7 @@ export interface PoeEvidenceReplacementDto {
   replacementEvidencePublicId: string;
   replacementFileName: string;
   reason: string;
-  replacedByUserId?: string | null;
+  replacedByUserPublicId?: string | null;
   replacedByName?: string | null;
   replacedAt: string;
   correlationId?: string | null;
@@ -862,11 +862,11 @@ export interface PoeLegalHoldDto {
   holdReference: string;
   isActive: boolean;
   placedReason: string;
-  placedByUserId?: string | null;
+  placedByUserPublicId?: string | null;
   placedByName?: string | null;
   placedAt: string;
   releasedReason?: string | null;
-  releasedByUserId?: string | null;
+  releasedByUserPublicId?: string | null;
   releasedByName?: string | null;
   releasedAt?: string | null;
 }
@@ -876,7 +876,7 @@ export interface PoeDisposalDto {
   status: 'Pending' | 'Completed' | 'Failed';
   approvalReference: string;
   reason: string;
-  requestedByUserId?: string | null;
+  requestedByUserPublicId?: string | null;
   requestedByName?: string | null;
   requestedAt: string;
   completedAt?: string | null;
@@ -2883,7 +2883,7 @@ export interface PoeFileDto {
   fileName: string;
   contentType?: string | null;
   sizeInBytes: number;
-  uploadedByUserId?: string | null;
+  uploadedByUserPublicId?: string | null;
   uploadedByName?: string | null;
   uploadedAt: string;
   url: string;

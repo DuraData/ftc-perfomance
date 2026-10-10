@@ -1004,7 +1004,7 @@ function toAttachmentModel(dto: PoeFileDto): Attachment {
     fileName: dto.fileName,
     fileSize: dto.sizeInBytes,
     fileType: dto.contentType ?? 'application/octet-stream',
-    uploadedBy: toEmployeeReference(dto.uploadedByUserId, dto.uploadedByName),
+    uploadedBy: toEmployeeReference(dto.uploadedByUserPublicId, dto.uploadedByName),
     uploadedAt: dto.uploadedAt,
     documentType: 'evidence',
     url: dto.url,

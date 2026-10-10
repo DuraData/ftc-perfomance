@@ -3342,6 +3342,12 @@ IDP document list, upload and rescan responses no longer expose the uploader's A
 
 Contract reflection coverage rejects reintroduction of `UploadedByUserId`, while authorized and denied response assertions prove the stable public identity and fail-closed masking paths. The production IDP document register consumes only the public identity contract, renders the authorized name with public-ID fallback and still independently hides uploader payloads without the member grant. Focused coverage passes **16/16 backend** and **5/5 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.250 POE provenance public identity
+
+OPMS/IPMS POE responses no longer expose ASP.NET Identity primary keys for uploaders, assessment actors, replacement actors, legal-hold placement/release actors or disposal requesters. Their independently governed member permissions retain the established registry codes for backward-compatible administrator configuration, while authorized public responses now carry only stable user public IDs plus display names and denied members remain null. Internal foreign keys and append-only provenance relationships remain unchanged.
+
+The shared serializer uses the governed user relationships across bounded registers and every mutation response, so list, upload, rescan, assessment, replacement, legal-hold and disposal paths cannot diverge. Contract reflection tests reject every former raw-key property; authorized and denied assertions cover nested assessment, replacement, both legal-hold actor roles and disposal provenance. The SPA consumes the public-ID contract, uses names with public-ID fallback and independently suppresses hostile nested payloads when member grants are absent. Focused coverage passes **19/19 backend** and **69/69 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

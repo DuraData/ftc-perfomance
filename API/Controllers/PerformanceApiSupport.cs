@@ -618,7 +618,7 @@ public static class PerformanceApiSupport
             file.FileName,
             file.Blob.ContentType,
             file.Blob.SizeInBytes,
-            memberAccess.UploadedByUserId ? file.UploadedByUserId : null,
+            memberAccess.UploadedByUserId ? file.UploadedByUser?.PublicId : null,
             memberAccess.UploadedByName ? file.UploadedByUser?.FullName : null,
             file.UploadedAt,
             file.IsActive && !file.Blob.IsContentDeleted && file.Blob.ScanStatus == "Clean" && !file.Blob.IsQuarantined ? BuildProtectedFileUrl(context, file) : string.Empty)
@@ -636,7 +636,7 @@ public static class PerformanceApiSupport
             RetainUntil = file.RetainUntil,
             Assessments = file.Assessments.OrderBy(item => item.AssessedAt).Select(item => new PoeEvidenceAssessmentResponse(
                 item.PublicId, item.Outcome.ToString(), memberAccess.AssessmentComment ? item.Comment : null,
-                memberAccess.AssessedByUserId ? item.AssessedByUserId : null,
+                memberAccess.AssessedByUserId ? item.AssessedByUser?.PublicId : null,
                 memberAccess.AssessedByName ? item.AssessedByUser?.FullName : null,
                 item.AssessedAt, memberAccess.AssessmentCorrelationId ? item.CorrelationId : null)).ToArray(),
             RowVersion = Convert.ToBase64String(file.RowVersion),
@@ -652,7 +652,7 @@ public static class PerformanceApiSupport
     private static PoeEvidenceReplacementResponse ToReplacementResponse(PoeEvidenceReplacement item, PoeResponseMemberAccess memberAccess) => new(
         item.PublicId, item.SupersededPoeFile.PublicId, item.SupersededPoeFile.FileName,
         item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName, item.Reason,
-        memberAccess.ReplacedByUserId ? item.ReplacedByUserId : null,
+        memberAccess.ReplacedByUserId ? item.ReplacedByUser?.PublicId : null,
         memberAccess.ReplacedByName ? item.ReplacedByUser?.FullName : null,
         item.ReplacedAt, memberAccess.ReplacementCorrelationId ? item.CorrelationId : null);
     private static PoeLegalHoldResponse ToLegalHoldResponse(PoeLegalHoldEvent[] events, PoeResponseMemberAccess memberAccess)
@@ -660,10 +660,10 @@ public static class PerformanceApiSupport
         var placed = events.First(item => item.Action == PoeLegalHoldAction.Placed);
         var released = events.LastOrDefault(item => item.Action == PoeLegalHoldAction.Released);
         return new(placed.HoldId, placed.HoldReference, released == null, placed.Reason,
-            memberAccess.LegalHoldActorUserId ? placed.ActorUserId : null,
+            memberAccess.LegalHoldActorUserId ? placed.ActorUser?.PublicId : null,
             memberAccess.LegalHoldActorName ? placed.ActorUser?.FullName : null,
             placed.OccurredAt, released?.Reason,
-            memberAccess.LegalHoldActorUserId ? released?.ActorUserId : null,
+            memberAccess.LegalHoldActorUserId ? released?.ActorUser?.PublicId : null,
             memberAccess.LegalHoldActorName ? released?.ActorUser?.FullName : null,
             released?.OccurredAt);
     }
@@ -674,7 +674,7 @@ public static class PerformanceApiSupport
         var failed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Failed);
         var status = completed != null ? "Completed" : failed != null ? "Failed" : "Pending";
         return new(requested.DisposalId, status, requested.ApprovalReference, requested.Reason,
-            memberAccess.DisposalRequestedByUserId ? requested.ActorUserId : null,
+            memberAccess.DisposalRequestedByUserId ? requested.ActorUser?.PublicId : null,
             memberAccess.DisposalRequestedByName ? requested.ActorUser?.FullName : null,
             requested.OccurredAt, completed?.OccurredAt, failed?.OccurredAt,
             memberAccess.DisposalDetail ? completed?.Detail ?? failed?.Detail : null);
