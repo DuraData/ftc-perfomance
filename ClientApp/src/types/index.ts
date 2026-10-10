@@ -3486,7 +3486,9 @@ export interface IdpReportDocument {
   reportName: string;
   contentType: string;
   fileName: string;
-  content: number[];
+  contentBase64: string;
+  sizeInBytes: number;
+  sha256: string;
 }
 
 export interface CreateIdpPlanPayload {

@@ -996,4 +996,4 @@ public record IdpAlignmentMatrixItemResponse(
     string FrameworkReferenceCode,
     string FrameworkReferenceTitle);
 
-public record IdpReportDocumentResponse(string ReportName, string ContentType, string FileName, byte[] Content);
+public record IdpReportDocumentResponse(string ReportName, string ContentType, string FileName, string ContentBase64, long SizeInBytes, string Sha256);

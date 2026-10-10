@@ -1010,6 +1010,19 @@ export function IdpReportsPage() {
   const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [lastReport, setLastReport] = useState<IdpReportDocument | null>(null);
 
+  const downloadReport = (report: IdpReportDocument) => {
+    const binary = window.atob(report.contentBase64);
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: report.contentType }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = report.fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const generate = async (reportType: string, format: 'pdf' | 'excel' | 'word') => {
     if (!selectedPlanPublicId) {
       pushToast('error', 'Select an IDP plan first.');
@@ -1019,6 +1032,7 @@ export function IdpReportsPage() {
     const result = await getIdpReport(selectedPlanPublicId, reportType, format);
     if (result.success && result.data) {
       setLastReport(result.data);
+      downloadReport(result.data);
       pushToast('success', `${reportType} report generated (${format.toUpperCase()}).`);
       return;
     }
@@ -1047,7 +1061,9 @@ export function IdpReportsPage() {
               <p><span className="font-medium">Name:</span> {lastReport.reportName}</p>
               <p><span className="font-medium">File:</span> {lastReport.fileName}</p>
               <p><span className="font-medium">Type:</span> {lastReport.contentType}</p>
-              <p><span className="font-medium">Payload Size:</span> {lastReport.content.length} bytes</p>
+              <p><span className="font-medium">Payload Size:</span> {lastReport.sizeInBytes} bytes</p>
+              <p className="break-all"><span className="font-medium">SHA-256:</span> {lastReport.sha256}</p>
+              <Button size="sm" variant="outline" onClick={() => downloadReport(lastReport)}>Download Again</Button>
             </div>
           ) : (
             <p className="mt-3 text-sm text-secondary-500">No report generated in this session.</p>

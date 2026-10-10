@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { IdpAlignmentMatrixPage, IdpCommunityParticipationPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage } from './IdpWorkspace';
+import { IdpAlignmentMatrixPage, IdpCommunityParticipationPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage, IdpReportsPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
 const security = vi.hoisted(() => ({ canImport: vi.fn(() => true), canReadField: vi.fn(() => false), canEditField: vi.fn(() => false) }));
@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   stageIdpHierarchyImport: vi.fn(),
   commitIdpImport: vi.fn(),
   commitIdpHierarchyImport: vi.fn(),
+  getIdpReport: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
@@ -27,7 +28,6 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 vi.mock('../../api/api', () => ({
   ...api,
   createIdpComment: vi.fn(),
-  getIdpReport: vi.fn(),
   createIdpCommunitySession: vi.fn(),
 }));
 
@@ -100,6 +100,13 @@ describe('IDP plan lineage workspace', () => {
     });
     api.createIdpPlan.mockResolvedValue({ success: true, data: predecessor });
     api.createIdpPlanVersion.mockResolvedValue({ success: true, data: {} });
+    api.getIdpReport.mockResolvedValue({
+      success: true,
+      data: {
+        reportName: 'ANNUAL - IDP-2026', fileName: 'IDP-2026_annual.pdf', contentType: 'application/pdf',
+        contentBase64: 'JVBERi0xLjQ=', sizeInBytes: 8, sha256: 'abc123',
+      },
+    });
   });
 
   it('routes dashboard creation to the governed plan workspace without synthetic writes', async () => {
@@ -118,6 +125,25 @@ describe('IDP plan lineage workspace', () => {
     await waitFor(() => expect(api.getIdpDashboard).toHaveBeenCalledWith(predecessor.publicId));
     fireEvent.change(screen.getByLabelText('Dashboard plan search'), { target: { value: 'future plan' } });
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'future plan', sortBy: 'createdAt', sortDirection: 'desc' }), { timeout: 1500 });
+  });
+
+  it('downloads generated IDP reports from the governed Base64 document contract', async () => {
+    const createObjectUrl = vi.fn(() => 'blob:idp-report');
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectUrl });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectUrl });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    render(<IdpReportsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Annual PDF' }));
+
+    await waitFor(() => expect(api.getIdpReport).toHaveBeenCalledWith(predecessor.publicId, 'annual', 'pdf'));
+    expect(createObjectUrl).toHaveBeenCalledWith(expect.any(Blob));
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:idp-report');
+    expect(await screen.findByText('IDP-2026_annual.pdf')).toBeInTheDocument();
+    expect(screen.getByText('abc123')).toBeInTheDocument();
+    click.mockRestore();
   });
 
   it('fails closed against hostile annual-performance and budget dashboard payloads', async () => {

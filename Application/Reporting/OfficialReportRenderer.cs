@@ -42,6 +42,17 @@ public sealed record OfficialTabularReportRenderRequest(
     OfficialReportType ReportType,
     IReadOnlyList<OfficialReportDataRow> Rows);
 
+public sealed record TabularDocumentColumn(string Key, string Heading);
+
+public sealed record TabularDocumentRenderRequest(
+    string Municipality,
+    string FinancialYear,
+    string Period,
+    string Heading,
+    OfficialReportFormat Format,
+    IReadOnlyList<TabularDocumentColumn> Columns,
+    IReadOnlyList<IReadOnlyDictionary<string, string>> Rows);
+
 /// <summary>Renders every official format from one canonical report dataset.</summary>
 public static class OfficialReportRenderer
 {
@@ -76,6 +87,19 @@ public static class OfficialReportRenderer
         var columns = OfficialReportCatalog.ResolveColumns(request.ReportType, request.ColumnConfigurationJson)
             .Select(item => new Column(item.Key, item.Heading)).ToArray();
         return RenderCore(request.Municipality, request.FinancialYear, request.Period, request.HeadingTemplate, request.Format, columns, request.Rows);
+    }
+
+    public static OfficialReportRenderResult RenderTable(TabularDocumentRenderRequest request)
+    {
+        if (request.Columns.Count == 0) throw new ArgumentException("At least one report column is required.", nameof(request));
+        if (request.Columns.Any(column => string.IsNullOrWhiteSpace(column.Key) || string.IsNullOrWhiteSpace(column.Heading)))
+            throw new ArgumentException("Report column keys and headings are required.", nameof(request));
+        if (request.Columns.Select(column => column.Key).Distinct(StringComparer.OrdinalIgnoreCase).Count() != request.Columns.Count)
+            throw new ArgumentException("Report column keys must be unique.", nameof(request));
+
+        var columns = request.Columns.Select(column => new Column(column.Key, column.Heading)).ToArray();
+        var rows = request.Rows.Select(values => new OfficialReportDataRow(values)).ToArray();
+        return RenderCore(request.Municipality, request.FinancialYear, request.Period, request.Heading, request.Format, columns, rows);
     }
 
     private static OfficialReportRenderResult RenderCore(string municipality, string financialYear, string period, string headingTemplate, OfficialReportFormat format, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)

@@ -680,12 +680,34 @@ public class IdpControllerFunctionalityTests
             CreatedByUserId = user.Id
         };
 
-        context.IdpPlans.Add(plan);
+        var outcome = new IdpStrategicOutcome { IdpPlan = plan, Code = "SO1", Name = "Inclusive growth", SortOrder = 1 };
+        var objective = new IdpStrategicObjective
+        {
+            IdpStrategicOutcome = outcome, Code = "OBJ1", Name = "Reliable water", StartDate = DateTime.UtcNow.Date,
+            EndDate = DateTime.UtcNow.Date.AddYears(5), SortOrder = 1
+        };
+        var priority = new IdpDevelopmentPriority { IdpStrategicObjective = objective, PriorityCode = "PRI1", Name = "Water", SortOrder = 1 };
+        var programme = new IdpProgramme { IdpDevelopmentPriority = priority, ProgrammeCode = "PRG1", Name = "Water programme" };
+        var project = new IdpProject
+        {
+            IdpProgramme = programme, ProjectCode = "PROJ1", ProjectName = "Pipeline upgrade", Budget = 1250000,
+            StartDate = DateTime.UtcNow.Date, EndDate = DateTime.UtcNow.Date.AddYears(2), Status = IdpProjectStatus.InProgress
+        };
+        var kpi = new IdpKpi
+        {
+            IdpProject = project, KpiCode = "KPI1", KpiName = "Households connected", AnnualTarget = 250,
+            FiveYearTarget = 1250, ReportingFrequency = "Quarterly"
+        };
+
+        context.AddRange(plan, outcome, objective, priority, programme, project, kpi);
         await context.SaveChangesAsync();
 
         var workflow = new Mock<IWorkflowGovernanceService>();
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: access.Object);
 
         controller.GenerateReport(plan.Id, "annual", "pdf").Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
@@ -701,9 +723,48 @@ public class IdpControllerFunctionalityTests
         excelPayload.Data!.ContentType.Should().Be("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         wordPayload.Data!.ContentType.Should().Be("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 
-        pdfPayload.Data.Content.Should().NotBeEmpty();
-        excelPayload.Data.Content.Should().NotBeEmpty();
-        wordPayload.Data.Content.Should().NotBeEmpty();
+        var pdfBytes = Convert.FromBase64String(pdfPayload.Data.ContentBase64);
+        var excelBytes = Convert.FromBase64String(excelPayload.Data.ContentBase64);
+        var wordBytes = Convert.FromBase64String(wordPayload.Data.ContentBase64);
+        System.Text.Encoding.ASCII.GetString(pdfBytes, 0, 5).Should().Be("%PDF-");
+        excelBytes.Take(2).Should().Equal((byte)'P', (byte)'K');
+        wordBytes.Take(2).Should().Equal((byte)'P', (byte)'K');
+        pdfPayload.Data.SizeInBytes.Should().Be(pdfBytes.LongLength);
+        pdfPayload.Data.Sha256.Should().MatchRegex("^[0-9a-f]{64}$");
+
+        using (var archive = new System.IO.Compression.ZipArchive(new MemoryStream(excelBytes), System.IO.Compression.ZipArchiveMode.Read))
+        {
+            archive.GetEntry("[Content_Types].xml").Should().NotBeNull();
+            archive.GetEntry("xl/workbook.xml").Should().NotBeNull();
+            var worksheet = archive.GetEntry("xl/worksheets/sheet1.xml");
+            worksheet.Should().NotBeNull();
+            using var reader = new StreamReader(worksheet!.Open());
+            var xml = await reader.ReadToEndAsync();
+            xml.Should().Contain("KPI1 - Households connected").And.Contain("1250000.00").And.Contain("250");
+        }
+        using (var archive = new System.IO.Compression.ZipArchive(new MemoryStream(wordBytes), System.IO.Compression.ZipArchiveMode.Read))
+        {
+            archive.GetEntry("[Content_Types].xml").Should().NotBeNull();
+            archive.GetEntry("word/document.xml").Should().NotBeNull();
+        }
+
+        var deniedAccess = new Mock<IAccessControlService>();
+        deniedAccess.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        var deniedController = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: deniedAccess.Object);
+        var maskedExcel = await deniedController.GenerateReportByPublicId(plan.PublicId, "annual", "excel");
+        var maskedPayload = ((maskedExcel.Result as OkObjectResult)!.Value as ApiResponse<IdpReportDocumentResponse>)!;
+        using (var archive = new System.IO.Compression.ZipArchive(
+            new MemoryStream(Convert.FromBase64String(maskedPayload.Data!.ContentBase64)), System.IO.Compression.ZipArchiveMode.Read))
+        {
+            using var reader = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+            var xml = await reader.ReadToEndAsync();
+            xml.Should().Contain("KPI1 - Households connected");
+            xml.Should().NotContain(">1250000.00<").And.NotContain(">250<");
+        }
+
+        (await controller.GenerateReportByPublicId(plan.PublicId, "unsupported", "pdf")).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.GenerateReportByPublicId(plan.PublicId, "annual", "txt")).Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]

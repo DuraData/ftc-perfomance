@@ -1,5 +1,6 @@
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
+using FTCERP.Host.Application.Reporting;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -754,20 +755,113 @@ public class IdpController : ControllerBase
             return NotFound(new ApiResponse<IdpReportDocumentResponse>(false, null, "IDP plan not found"));
         }
 
+        var normalizedReportType = (reportType ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalizedReportType is not ("annual" or "five-year" or "ward-based" or "provincial-submission" or "national-submission"))
+            return BadRequest(new ApiResponse<IdpReportDocumentResponse>(false, null,
+                "ReportType must be annual, five-year, ward-based, provincial-submission, or national-submission."));
+
         var normalizedFormat = (format ?? "pdf").Trim().ToLowerInvariant();
-        var contentType = normalizedFormat switch
+        var documentFormat = normalizedFormat switch
         {
-            "xlsx" or "excel" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "docx" or "word" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            _ => "application/pdf"
+            "pdf" => OfficialReportFormat.Pdf,
+            "xlsx" or "excel" => OfficialReportFormat.Xlsx,
+            "docx" or "word" => OfficialReportFormat.Docx,
+            _ => (OfficialReportFormat?)null
         };
+        if (!documentFormat.HasValue)
+            return BadRequest(new ApiResponse<IdpReportDocumentResponse>(false, null, "Format must be pdf, xlsx/excel, or docx/word."));
 
-        var reportName = $"{reportType.ToUpperInvariant()} - {plan.PlanCode} ({DateTime.UtcNow:yyyy-MM-dd})";
-        var reportText = $"EPMS IDP REPORT\nName: {reportName}\nPlan: {plan.PlanTitle}\nMunicipality: {plan.MunicipalityName}\nGenerated UTC: {DateTime.UtcNow:O}";
-        var fileName = $"{plan.PlanCode}_{reportType}_{DateTime.UtcNow:yyyyMMddHHmmss}.{(normalizedFormat == "word" ? "docx" : normalizedFormat == "excel" ? "xlsx" : normalizedFormat)}";
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<IdpReportDocumentResponse>(false, null, "User not found"));
+        var canReadTarget = await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualTargetValue", SecurityOperation.Read, Scope());
+        var canReadBudget = await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectBudget", SecurityOperation.Read, Scope());
+        var columns = new[]
+        {
+            new TabularDocumentColumn("outcome", "Strategic Outcome"),
+            new TabularDocumentColumn("objective", "Strategic Objective"),
+            new TabularDocumentColumn("project", "Project"),
+            new TabularDocumentColumn("item", normalizedReportType == "ward-based" ? "Ward Input" : "KPI / Alignment"),
+            new TabularDocumentColumn("target", "Target / Reference"),
+            new TabularDocumentColumn("budget", "Budget"),
+            new TabularDocumentColumn("status", "Status")
+        };
+        var rows = await BuildIdpReportRows(plan.Id, normalizedReportType, canReadTarget, canReadBudget);
 
-        var response = new IdpReportDocumentResponse(reportName, contentType, fileName, System.Text.Encoding.UTF8.GetBytes(reportText));
+        var reportName = $"{normalizedReportType.ToUpperInvariant()} - {plan.PlanCode}";
+        var rendered = OfficialReportRenderer.RenderTable(new TabularDocumentRenderRequest(
+            plan.MunicipalityName,
+            $"{plan.StartFinancialYear}/{plan.EndFinancialYear}",
+            normalizedReportType,
+            $"{plan.MunicipalityName} · {plan.PlanTitle} · {normalizedReportType.ToUpperInvariant()}",
+            documentFormat.Value,
+            columns,
+            rows));
+        var safePlanCode = string.Concat(plan.PlanCode.Select(character => char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '_'));
+        var fileName = $"{safePlanCode}_{normalizedReportType}.{rendered.Extension}";
+
+        var response = new IdpReportDocumentResponse(reportName, rendered.ContentType, fileName,
+            Convert.ToBase64String(rendered.Content), rendered.Content.LongLength, rendered.Sha256);
         return Ok(new ApiResponse<IdpReportDocumentResponse>(true, response));
+    }
+
+    private async Task<IReadOnlyList<IReadOnlyDictionary<string, string>>> BuildIdpReportRows(
+        int planId, string reportType, bool canReadTarget, bool canReadBudget)
+    {
+        if (reportType == "ward-based")
+        {
+            var wardRows = await _context.IdpWardInputs.AsNoTracking()
+                .Where(item => item.IdpPlanId == planId)
+                .OrderBy(item => item.WardId)
+                .Select(item => new { item.WardId, item.WardPlanSummary, item.WardPriorities, item.WardProjects })
+                .ToArrayAsync();
+            return wardRows.Select(item => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["outcome"] = $"Ward {item.WardId}", ["objective"] = item.WardPriorities,
+                ["project"] = item.WardProjects, ["item"] = item.WardPlanSummary,
+                ["target"] = string.Empty, ["budget"] = string.Empty, ["status"] = "Captured"
+            }).ToArray();
+        }
+
+        if (reportType is "provincial-submission" or "national-submission")
+        {
+            var alignmentRows = await _context.IdpAlignmentLinks.AsNoTracking()
+                .Where(item => item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == planId)
+                .OrderBy(item => item.IdpStrategicObjective.IdpStrategicOutcome.SortOrder)
+                .ThenBy(item => item.IdpStrategicObjective.SortOrder).ThenBy(item => item.FrameworkReferenceCode)
+                .Select(item => new
+                {
+                    Outcome = item.IdpStrategicObjective.IdpStrategicOutcome.Code + " - " + item.IdpStrategicObjective.IdpStrategicOutcome.Name,
+                    Objective = item.IdpStrategicObjective.Code + " - " + item.IdpStrategicObjective.Name,
+                    Framework = item.FrameworkType.ToString(), item.FrameworkReferenceCode, item.FrameworkReferenceTitle
+                }).ToArrayAsync();
+            return alignmentRows.Select(item => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["outcome"] = item.Outcome, ["objective"] = item.Objective, ["project"] = item.Framework,
+                ["item"] = item.FrameworkReferenceTitle, ["target"] = item.FrameworkReferenceCode,
+                ["budget"] = string.Empty, ["status"] = "Aligned"
+            }).ToArray();
+        }
+
+        var kpiRows = await _context.IdpKpis.AsNoTracking()
+            .Where(item => item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == planId)
+            .OrderBy(item => item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.SortOrder)
+            .ThenBy(item => item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.SortOrder)
+            .ThenBy(item => item.KpiCode)
+            .Select(item => new
+            {
+                Outcome = item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.Code + " - " + item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.Name,
+                Objective = item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Code + " - " + item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.Name,
+                Project = item.IdpProject.ProjectCode + " - " + item.IdpProject.ProjectName,
+                Kpi = item.KpiCode + " - " + item.KpiName,
+                item.AnnualTarget, item.FiveYearTarget, item.IdpProject.Budget, Status = item.IdpProject.Status.ToString()
+            }).ToArrayAsync();
+        return kpiRows.Select(item => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["outcome"] = item.Outcome, ["objective"] = item.Objective, ["project"] = item.Project, ["item"] = item.Kpi,
+            ["target"] = canReadTarget ? (reportType == "five-year" ? item.FiveYearTarget : item.AnnualTarget).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+            ["budget"] = canReadBudget ? item.Budget.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+            ["status"] = item.Status
+        }).ToArray();
     }
 
     [HttpPost("outcomes")]
