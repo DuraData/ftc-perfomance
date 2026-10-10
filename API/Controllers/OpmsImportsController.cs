@@ -239,8 +239,7 @@ public sealed class OpmsImportsController(
                     OriginalOrderNumber = dto.OrderNumber, RevisedOrderNumber = dto.OrderNumber, TargetName = dto.TargetName,
                     KpiDescription = dto.KpiDescription, Baseline = dto.Baseline, Weight = dto.Weight,
                     KpiType = dto.KpiType, IndicatorType = dto.IndicatorType, FunctionalArea = dto.FunctionalArea,
-                    StandardClassification = dto.StandardClassification,
-                    TargetUnitType = dto.PeriodTargets.Single(x => x.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString(), CreatedAt = DateTime.UtcNow
+                    StandardClassification = dto.StandardClassification, CreatedAt = DateTime.UtcNow
                 };
                 var classification = await StrategicClassificationResolver.ResolveAsync(context, batch.SdbipLayer.MunicipalityFinancialYearId,
                     dto.ClassificationSelection);

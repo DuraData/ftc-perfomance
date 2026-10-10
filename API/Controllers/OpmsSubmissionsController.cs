@@ -138,6 +138,7 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.AuditorUser)
             .AsSplitQuery().ToListAsync();
         await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, items.Select(item => item.ReportingPeriod));
+        await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items.Select(item => item.OpmsTarget).ToArray());
         var responses = new List<OpmsSubmissionResponse>(items.Count);
         foreach (var item in items)
             responses.Add(await ToAuthorizedResponseAsync(item, user));
@@ -1070,7 +1071,10 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.SuggestionEditedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (submission != null)
+        {
             await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, [submission.ReportingPeriod]);
+            await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [submission.OpmsTarget]);
+        }
         return submission;
     }
 

@@ -443,7 +443,7 @@ public static class PerformanceApiSupport
             TargetFinancialYearName = submission.ReportingPeriod?.MunicipalityFinancialYear?.FinancialYear?.Name,
             TargetUnitOfMeasureName = submission.OpmsTarget.UnitOfMeasure?.Name,
             TargetUnitOfMeasureSymbol = submission.OpmsTarget.UnitOfMeasure?.Symbol,
-            TargetUnitType = submission.OpmsTarget.TargetUnitType,
+            TargetUnitType = EffectiveTargetUnitType(submission.OpmsTarget.CanonicalPeriodTargets, submission.ReportingPeriodId),
             SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
             WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
             SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
@@ -532,7 +532,7 @@ public static class PerformanceApiSupport
             TargetFinancialYearName = submission.ReportingPeriod?.MunicipalityFinancialYear?.FinancialYear?.Name,
             TargetUnitOfMeasureName = submission.IpmsTarget.UnitOfMeasure?.Name,
             TargetUnitOfMeasureSymbol = submission.IpmsTarget.UnitOfMeasure?.Symbol,
-            TargetUnitType = submission.IpmsTarget.TargetUnitType,
+            TargetUnitType = EffectiveTargetUnitType(submission.IpmsTarget.CanonicalPeriodTargets, submission.ReportingPeriodId),
             SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
             WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
             SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
@@ -548,6 +548,15 @@ public static class PerformanceApiSupport
             WithdrawnByUserPublicId = null,
             WithdrawnByName = null
         };
+
+    private static string? EffectiveTargetUnitType(
+        IReadOnlyList<PerformancePeriodTarget> periodTargets,
+        long? reportingPeriodId)
+    {
+        if (!reportingPeriodId.HasValue) return null;
+        var periodTarget = periodTargets.SingleOrDefault(item => item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive);
+        return periodTarget == null ? null : PerformanceRevisionResolver.EffectiveUnitKind(periodTarget).ToString();
+    }
 
     public static NotificationResponse ToResponse(this Notification notification) =>
         new(

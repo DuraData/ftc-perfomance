@@ -269,7 +269,6 @@ public class OpmsTargetsController : ControllerBase
             InternalReference = request.InternalReference,
             FmsLink = request.FmsLink,
             IsRevised = false,
-            TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString(),
             CreatedAt = DateTime.UtcNow
         };
         StrategicClassificationResolver.Apply(entity, strategicClassification);
@@ -370,7 +369,6 @@ public class OpmsTargetsController : ControllerBase
         entity.IdpReference = request.IdpReference;
         entity.InternalReference = request.InternalReference;
         entity.FmsLink = request.FmsLink;
-        entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
         StrategicClassificationResolver.Apply(entity, strategicClassification);
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);

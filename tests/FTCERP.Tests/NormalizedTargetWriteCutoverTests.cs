@@ -45,7 +45,9 @@ public sealed class NormalizedTargetWriteCutoverTests
         var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
         context.ChangeTracker.Clear();
-        Assert.Equal(0m, (await context.IpmsTargets.SingleAsync()).AnnualTarget);
+        var stored = await context.IpmsTargets.SingleAsync();
+        Assert.Equal(0m, stored.AnnualTarget);
+        Assert.Equal("absolute_count", stored.TargetUnitType);
         Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync(item => item.IpmsTargetId == response.Id));
     }
 
@@ -74,6 +76,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Null(stored.StrategicGoalId);
         Assert.Null(stored.StrategicObjectiveId);
         Assert.Equal(0m, stored.AnnualTarget);
+        Assert.Equal("absolute_count", stored.TargetUnitType);
         Assert.Null(stored.Q1Target);
         var normalized = await context.PerformancePeriodTargets.Include(item => item.ReportingPeriod).Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).OrderBy(item => item.ReportingPeriod.Sequence).ToArrayAsync();
         Assert.Equal(2, normalized.Length);

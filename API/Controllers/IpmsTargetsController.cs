@@ -248,7 +248,6 @@ public class IpmsTargetsController : ControllerBase
             IdpReference = request.IdpReference,
             InternalReference = request.InternalReference,
             IsRevised = false,
-            TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString(),
             CreatedAt = DateTime.UtcNow
         };
         StrategicClassificationResolver.Apply(entity, strategicClassification);
@@ -334,7 +333,6 @@ public class IpmsTargetsController : ControllerBase
         entity.FunctionalArea = request.FunctionalArea;
         entity.IdpReference = request.IdpReference;
         entity.InternalReference = request.InternalReference;
-        entity.TargetUnitType = periodPlan.Rows.Single(item => item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual).UnitKind.ToString();
         StrategicClassificationResolver.Apply(entity, strategicClassification);
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);

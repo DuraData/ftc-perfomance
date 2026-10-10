@@ -138,6 +138,7 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.AuditorUser)
             .AsSplitQuery().ToListAsync();
         await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, items.Select(item => item.ReportingPeriod));
+        await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items.Select(item => item.IpmsTarget).ToArray());
         var responses = new List<IpmsSubmissionResponse>(items.Count);
         foreach (var item in items)
             responses.Add(await ToAuthorizedResponseAsync(item, user));
@@ -1070,7 +1071,10 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.SuggestionEditedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (submission != null)
+        {
             await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, [submission.ReportingPeriod]);
+            await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [submission.IpmsTarget]);
+        }
         return submission;
     }
 

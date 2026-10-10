@@ -30,7 +30,28 @@ public sealed class RegisterPaginationTests
         target.Department = new Department { PublicId = departmentPublicId, Name = "Infrastructure" };
         target.Unit = new Unit { PublicId = unitPublicId, Name = "Roads" };
         target.UnitOfMeasure = new UnitOfMeasure { Name = "Kilometres", Symbol = "km" };
-        target.TargetUnitType = "absolute_count";
+        target.TargetUnitType = "retired-wrong-unit";
+        var reportingPeriod = new ReportingPeriod
+        {
+            Id = 42,
+            PeriodType = ReportingPeriodType.Annual,
+            MunicipalityFinancialYear = new MunicipalityFinancialYear
+            {
+                FinancialYear = new FinancialYear { Name = "2026/27" }
+            }
+        };
+        target.CanonicalPeriodTargets =
+        [
+            new PerformancePeriodTarget
+            {
+                ReportingPeriodId = reportingPeriod.Id,
+                ReportingPeriod = reportingPeriod,
+                UnitKind = PerformanceUnitKind.AbsoluteCount,
+                IsTargetRevised = true,
+                RevisedUnitKind = PerformanceUnitKind.PercentageBased,
+                IsActive = true
+            }
+        ];
         var submission = new OpmsSubmission
         {
             Id = "projection-submission",
@@ -38,13 +59,8 @@ public sealed class RegisterPaginationTests
             OpmsTarget = target,
             Quarter = "Q1",
             Status = "draft",
-            ReportingPeriod = new ReportingPeriod
-            {
-                MunicipalityFinancialYear = new MunicipalityFinancialYear
-                {
-                    FinancialYear = new FinancialYear { Name = "2026/27" }
-                }
-            }
+            ReportingPeriodId = reportingPeriod.Id,
+            ReportingPeriod = reportingPeriod
         };
 
         var response = submission.ToResponse();
@@ -56,7 +72,7 @@ public sealed class RegisterPaginationTests
         response.TargetFinancialYearName.Should().Be("2026/27");
         response.TargetUnitOfMeasureName.Should().Be("Kilometres");
         response.TargetUnitOfMeasureSymbol.Should().Be("km");
-        response.TargetUnitType.Should().Be("absolute_count");
+        response.TargetUnitType.Should().Be(nameof(PerformanceUnitKind.PercentageBased));
     }
 
     [Fact]
