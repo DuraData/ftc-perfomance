@@ -5,8 +5,9 @@ import { Button, Card, Badge } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
-import { changePassword, disableMfa, enableMfa, getAuthSessionsPage, getMfaStatus, getMyNotificationPreferences, revokeAllAuthSessions, revokeAuthSession, saveMyNotificationPreferences, setupMfa } from '../../api/api';
+import { changePassword, disableMfa, enableMfa, getAuthSessionsPage, getMfaStatus, getMyNotificationPreferences, revokeAllAuthSessions, revokeAuthSession, saveMyNotificationPreferences, setupMfa, updateMyProfile } from '../../api/api';
 import type { AuthSessionDto, MfaSetupDto, MfaStatusDto, NotificationPreferenceDto } from '../../types';
+import type { ThemePreference } from '../../context/AppContext';
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
@@ -32,21 +33,49 @@ function readStoredSettingsTab(): SettingsTabId {
 }
 
 function ProfileSettings() {
-  const { userProfile } = useApp();
+  const { userProfile, updateUserProfile, pushToast } = useApp();
+  const [firstName, setFirstName] = useState(userProfile?.firstName ?? '');
+  const [lastName, setLastName] = useState(userProfile?.lastName ?? '');
+  const [phoneNumber, setPhoneNumber] = useState(userProfile?.phoneNumber ?? '');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const initials = `${userProfile?.firstName?.[0] ?? ''}${userProfile?.lastName?.[0] ?? ''}`.toUpperCase();
   const fullName = userProfile?.fullName
     ?? [userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(' ');
+  useEffect(() => {
+    setFirstName(userProfile?.firstName ?? '');
+    setLastName(userProfile?.lastName ?? '');
+    setPhoneNumber(userProfile?.phoneNumber ?? '');
+  }, [userProfile]);
+  const reset = () => {
+    setFirstName(userProfile?.firstName ?? '');
+    setLastName(userProfile?.lastName ?? '');
+    setPhoneNumber(userProfile?.phoneNumber ?? '');
+    setMessage(null);
+  };
+  const save = async () => {
+    if (!firstName.trim() || !lastName.trim()) { setMessage('First name and last name are required.'); return; }
+    setBusy(true); setMessage(null);
+    const result = await updateMyProfile({ firstName: firstName.trim(), lastName: lastName.trim(), phoneNumber: phoneNumber.trim() || null });
+    if (!result.success || !result.data) setMessage(result.errors?.join(' ') || result.message || 'Profile could not be saved.');
+    else { updateUserProfile(result.data); pushToast('success', 'Profile saved'); setMessage(result.message ?? 'Profile saved.'); }
+    setBusy(false);
+  };
 
   return (
     <div className="space-y-3">
+      {message && <p role="status" className="rounded-lg border border-secondary-200 p-3 text-xs text-secondary-600">{message}</p>}
       <FormSection title="Personal">
         <FormRow cols={2}>
-          <Input label="First Name" defaultValue={userProfile?.firstName} />
-          <Input label="Last Name" defaultValue={userProfile?.lastName} />
+          <Input label="First Name" value={firstName} onChange={event => setFirstName(event.target.value)} required />
+          <Input label="Last Name" value={lastName} onChange={event => setLastName(event.target.value)} required />
         </FormRow>
         <FormRow cols={2}>
-          <Input label="Display Name" defaultValue={userProfile?.firstName && userProfile?.lastName ? `${userProfile.firstName} ${userProfile.lastName}` : ''} />
-          <Input label="Email" type="email" defaultValue={userProfile?.email} />
+          <Input label="Display Name" value={[firstName, lastName].filter(Boolean).join(' ')} disabled />
+          <Input label="Email" type="email" value={userProfile?.email ?? ''} disabled />
+        </FormRow>
+        <FormRow cols={2}>
+          <Input label="Phone Number" value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} />
         </FormRow>
       </FormSection>
       <FormSection title="Avatar">
@@ -56,9 +85,10 @@ function ProfileSettings() {
               {initials || 'U'}
             </span>
           </div>
-          <Button variant="outline" size="sm">Change</Button>
+          <p className="text-xs text-secondary-500">Initials are generated from the saved profile name.</p>
         </div>
       </FormSection>
+      <div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={reset} disabled={busy}>Cancel</Button><Button variant="primary" size="sm" icon={<Save className="h-4 w-4" />} onClick={() => void save()} disabled={busy || !firstName.trim() || !lastName.trim()}>Save profile</Button></div>
     </div>
   );
 }
@@ -106,21 +136,37 @@ function NotificationSettings() {
 }
 
 function AppearanceSettings() {
-  const { darkMode, toggleDarkMode } = useApp();
+  const { themePreference, setThemePreference, pushToast } = useApp();
+  const [dateFormat, setDateFormat] = useState(() => {
+    try { return localStorage.getItem('display_date_format') ?? 'dd/MM/yyyy'; } catch { return 'dd/MM/yyyy'; }
+  });
+  const [language, setLanguage] = useState(() => {
+    try { return localStorage.getItem('display_language') ?? 'en'; } catch { return 'en'; }
+  });
+  const selectTheme = (preference: ThemePreference) => setThemePreference(preference);
+  const save = () => {
+    try {
+      localStorage.setItem('display_date_format', dateFormat);
+      localStorage.setItem('display_language', language);
+      pushToast('success', 'Appearance preferences saved for this browser');
+    } catch {
+      pushToast('error', 'Appearance preferences could not be saved in this browser');
+    }
+  };
 
   return (
     <div className="space-y-3">
       <FormSection title="Theme">
         <div className="grid grid-cols-3 gap-2">
-          <button onClick={() => darkMode && toggleDarkMode()} className={`p-3 rounded-lg border-2 transition-all ${!darkMode ? 'border-primary-600 bg-primary-50' : 'border-secondary-200 hover:border-secondary-300'}`}>
+          <button type="button" aria-pressed={themePreference === 'light'} onClick={() => selectTheme('light')} className={`p-3 rounded-lg border-2 transition-all ${themePreference === 'light' ? 'border-primary-600 bg-primary-50' : 'border-secondary-200 hover:border-secondary-300'}`}>
             <div className="w-full h-8 bg-white rounded border border-secondary-200 mb-1 flex items-center justify-center"><span className="text-sm">☀️</span></div>
             <p className="text-xs font-medium">Light</p>
           </button>
-          <button onClick={() => !darkMode && toggleDarkMode()} className={`p-3 rounded-lg border-2 transition-all ${darkMode ? 'border-primary-600 bg-primary-50' : 'border-secondary-200 hover:border-secondary-300'}`}>
+          <button type="button" aria-pressed={themePreference === 'dark'} onClick={() => selectTheme('dark')} className={`p-3 rounded-lg border-2 transition-all ${themePreference === 'dark' ? 'border-primary-600 bg-primary-50' : 'border-secondary-200 hover:border-secondary-300'}`}>
             <div className="w-full h-8 bg-secondary-900 rounded border border-secondary-700 mb-1 flex items-center justify-center"><span className="text-sm">🌙</span></div>
             <p className="text-xs font-medium">Dark</p>
           </button>
-          <button className="p-3 rounded-lg border-2 border-secondary-200 hover:border-secondary-300 transition-all">
+          <button type="button" aria-pressed={themePreference === 'system'} onClick={() => selectTheme('system')} className={`p-3 rounded-lg border-2 transition-all ${themePreference === 'system' ? 'border-primary-600 bg-primary-50' : 'border-secondary-200 hover:border-secondary-300'}`}>
             <div className="w-full h-8 rounded border border-secondary-200 mb-1 flex items-center justify-center bg-gradient-to-r from-white to-secondary-900"><span className="text-sm">💻</span></div>
             <p className="text-xs font-medium">System</p>
           </button>
@@ -128,10 +174,12 @@ function AppearanceSettings() {
       </FormSection>
       <FormSection title="Display">
         <FormRow cols={2}>
-          <Select label="Date Format" options={[{ value: 'dd/MM/yyyy', label: 'DD/MM/YYYY' }, { value: 'MM/dd/yyyy', label: 'MM/DD/YYYY' }]} defaultValue="dd/MM/yyyy" />
-          <Select label="Language" options={[{ value: 'en', label: 'English' }]} defaultValue="en" />
+          <Select label="Date Format" options={[{ value: 'dd/MM/yyyy', label: 'DD/MM/YYYY' }, { value: 'MM/dd/yyyy', label: 'MM/DD/YYYY' }, { value: 'yyyy-MM-dd', label: 'YYYY-MM-DD' }]} value={dateFormat} onChange={event => setDateFormat(event.target.value)} />
+          <Select label="Language" options={[{ value: 'en', label: 'English' }]} value={language} onChange={event => setLanguage(event.target.value)} />
         </FormRow>
       </FormSection>
+      <p className="text-xs text-secondary-500">Theme, date format and language are stored for this browser.</p>
+      <div className="flex justify-end"><Button variant="primary" size="sm" icon={<Save className="h-4 w-4" />} onClick={save}>Save appearance</Button></div>
     </div>
   );
 }
@@ -319,10 +367,6 @@ export function Settings() {
         <Card>
           {renderTabContent()}
         </Card>
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm">Cancel</Button>
-          <Button variant="primary" size="sm" icon={<Save className="w-3.5 h-3.5" />}>Save</Button>
-        </div>
       </div>
     </AppShell>
   );

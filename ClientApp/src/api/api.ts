@@ -6,6 +6,7 @@ import type {
   AuditTrailEntryDto,
   LoginRequest,
   LoginResponse,
+  UserProfile,
   RegisterRequest,
   AdminUserDetail,
   AdminRole,
@@ -1176,6 +1177,10 @@ export async function login(credentials: LoginRequest): Promise<ApiResponse<Logi
     markSessionEstablished();
   }
   return result;
+}
+
+export async function updateMyProfile(payload: { firstName: string; lastName: string; phoneNumber?: string | null }): Promise<ApiResponse<UserProfile>> {
+  return put<UserProfile>('/auth/me/profile', payload);
 }
 
 export async function register(data: RegisterRequest): Promise<ApiResponse<boolean>> {

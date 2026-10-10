@@ -81,6 +81,43 @@ public sealed class AuthSessionTests
     }
 
     [Fact]
+    public async Task Self_profile_update_persists_editable_fields_without_changing_identity_and_is_audited()
+    {
+        await using var context = NewContext();
+        var user = User("profile-user");
+        user.FirstName = "Original";
+        user.LastName = "Person";
+        user.PhoneNumber = "0100000000";
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var userManager = IdpTestFixture.CreateUserManagerMock(user);
+        userManager.Setup(manager => manager.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager.Setup(manager => manager.UpdateAsync(user)).ReturnsAsync(IdentityResult.Success);
+        var controller = new AuthController(userManager.Object, null!, null!, null!, context,
+            Options.Create(new JwtSettings()), null!, null!, null!)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test"))
+                }
+            }
+        };
+
+        var response = await controller.UpdateMyProfile(new UpdateMyProfileRequest(" Updated ", " User ", " 0987654321 "));
+
+        var profile = Assert.IsType<ApiResponse<UserProfileResponse>>(Assert.IsType<OkObjectResult>(response.Result).Value).Data!;
+        profile.FirstName.Should().Be("Updated");
+        profile.LastName.Should().Be("User");
+        profile.PhoneNumber.Should().Be("0987654321");
+        profile.Email.Should().Be(user.Email);
+        profile.UserName.Should().Be(user.UserName);
+        userManager.Verify(manager => manager.UpdateAsync(user), Times.Once);
+        (await context.AuditTrails.SingleAsync(item => item.EntityId == user.Id && item.Action == "ProfileUpdate")).ChangedBy.Should().Be(user.Id);
+    }
+
+    [Fact]
     public async Task Password_only_login_requires_second_factor_when_mfa_is_enabled()
     {
         var user = User("mfa-login-user");

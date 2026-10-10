@@ -17,6 +17,8 @@ public record ResetPasswordRequest(string Email, string Token, string NewPasswor
 
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
+public record UpdateMyProfileRequest(string FirstName, string LastName, string? PhoneNumber);
+
 public record CreateUserRequest(string FirstName, string LastName, string Email, string Password, string? PhoneNumber);
 
 public record UpdateUserRequest(string FirstName, string LastName, string? PhoneNumber, bool IsActive);

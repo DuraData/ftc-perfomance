@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Settings } from './Settings';
 
-const api = vi.hoisted(() => ({ getAuthSessionsPage: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn(), changePassword: vi.fn(), getMyNotificationPreferences: vi.fn(), saveMyNotificationPreferences: vi.fn() }));
-const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn(), userProfile: null as null | { mustChangePassword: boolean }, authenticationGate: null as null | 'password_change' | 'mfa_enrollment' }));
+const api = vi.hoisted(() => ({ getAuthSessionsPage: vi.fn(), revokeAuthSession: vi.fn(), revokeAllAuthSessions: vi.fn(), getMfaStatus: vi.fn(), setupMfa: vi.fn(), enableMfa: vi.fn(), disableMfa: vi.fn(), changePassword: vi.fn(), getMyNotificationPreferences: vi.fn(), saveMyNotificationPreferences: vi.fn(), updateMyProfile: vi.fn() }));
+const app = vi.hoisted(() => ({ logout: vi.fn(), pushToast: vi.fn(), updateUserProfile: vi.fn(), setThemePreference: vi.fn(), themePreference: 'light' as 'light' | 'dark' | 'system', userProfile: null as null | { publicId?: string; userName?: string; firstName?: string; lastName?: string; fullName?: string; email?: string; phoneNumber?: string; isActive?: boolean; mustChangePassword: boolean }, authenticationGate: null as null | 'password_change' | 'mfa_enrollment' }));
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ ...app, darkMode: false, toggleDarkMode: vi.fn() }) }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -20,8 +20,38 @@ describe('Security session settings', () => {
     api.changePassword.mockResolvedValue({ success: true, data: true });
     api.getMyNotificationPreferences.mockResolvedValue({ success: true, data: { emailEnabled: true, smsEnabled: false, dailyDigestEnabled: true, weeklySummaryEnabled: false, rowVersion: 'AQ==' } });
     api.saveMyNotificationPreferences.mockImplementation(async (value) => ({ success: true, data: { ...value, rowVersion: 'Ag==' }, message: 'Optional preferences saved.' }));
+    api.updateMyProfile.mockImplementation(async (value) => ({ success: true, data: { publicId: 'user-1', userName: 'user@example.test', ...value, fullName: `${value.firstName} ${value.lastName}`, email: 'user@example.test', isActive: true, mustChangePassword: false }, message: 'Profile saved.' }));
     app.userProfile = null;
     app.authenticationGate = null;
+    app.themePreference = 'light';
+    localStorage.removeItem('display_date_format');
+    localStorage.removeItem('display_language');
+  });
+
+  it('persists editable self-profile fields while keeping identity fields read-only', async () => {
+    localStorage.setItem('settings_active_tab', 'profile');
+    app.userProfile = { publicId: 'user-1', userName: 'user@example.test', firstName: 'Test', lastName: 'User', fullName: 'Test User', email: 'user@example.test', phoneNumber: '0123456789', isActive: true, mustChangePassword: false };
+    render(<Settings />);
+    expect(screen.getByLabelText('Email')).toBeDisabled();
+    expect(screen.getByLabelText('Display Name')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Updated' } });
+    fireEvent.change(screen.getByLabelText('Phone Number'), { target: { value: '0987654321' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));
+    await waitFor(() => expect(api.updateMyProfile).toHaveBeenCalledWith({ firstName: 'Updated', lastName: 'User', phoneNumber: '0987654321' }));
+    expect(app.updateUserProfile).toHaveBeenCalledWith(expect.objectContaining({ firstName: 'Updated', phoneNumber: '0987654321' }));
+  });
+
+  it('applies all theme choices and persists browser display preferences', () => {
+    localStorage.setItem('settings_active_tab', 'appearance');
+    render(<Settings />);
+    fireEvent.click(screen.getByRole('button', { name: /Dark/ }));
+    fireEvent.click(screen.getByRole('button', { name: /System/ }));
+    expect(app.setThemePreference).toHaveBeenNthCalledWith(1, 'dark');
+    expect(app.setThemePreference).toHaveBeenNthCalledWith(2, 'system');
+    fireEvent.change(screen.getByLabelText('Date Format'), { target: { value: 'yyyy-MM-dd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save appearance' }));
+    expect(localStorage.getItem('display_date_format')).toBe('yyyy-MM-dd');
+    expect(localStorage.getItem('display_language')).toBe('en');
   });
 
   it('loads and persists notification preferences while explaining mandatory delivery', async () => {

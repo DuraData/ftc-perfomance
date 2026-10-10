@@ -453,6 +453,39 @@ public class AuthController : ControllerBase
         return Ok(new ApiResponse<UserProfileResponse>(true, profile));
     }
 
+    [Authorize]
+    [HttpPut("me/profile")]
+    public async Task<ActionResult<ApiResponse<UserProfileResponse>>> UpdateMyProfile(UpdateMyProfileRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var firstName = request.FirstName?.Trim() ?? string.Empty;
+        var lastName = request.LastName?.Trim() ?? string.Empty;
+        var phoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
+        if (firstName.Length is < 1 or > 100 || lastName.Length is < 1 or > 100)
+            return BadRequest(new ApiResponse<UserProfileResponse>(false, null, "First name and last name are required and may not exceed 100 characters."));
+        if (phoneNumber?.Length > 50)
+            return BadRequest(new ApiResponse<UserProfileResponse>(false, null, "Phone number may not exceed 50 characters."));
+
+        var before = new { user.FirstName, user.LastName, user.PhoneNumber };
+        user.FirstName = firstName;
+        user.LastName = lastName;
+        user.PhoneNumber = phoneNumber;
+        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedBy = user.Id;
+        var updated = await _userManager.UpdateAsync(user);
+        if (!updated.Succeeded)
+            return BadRequest(new ApiResponse<UserProfileResponse>(false, null, "Profile could not be updated.", updated.Errors.Select(error => error.Description).ToArray()));
+
+        AddAuthenticationAudit(user, "ProfileUpdate", new { Before = before, After = new { user.FirstName, user.LastName, user.PhoneNumber } });
+        await _context.SaveChangesAsync();
+        var profile = new UserProfileResponse(
+            user.PublicId, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
+            user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
+        return Ok(new ApiResponse<UserProfileResponse>(true, profile, "Profile saved."));
+    }
+
     private void SetSessionCookies(string accessToken, string refreshToken, DateTime accessExpiresAt)
     {
         var environment = GetHostEnvironment();

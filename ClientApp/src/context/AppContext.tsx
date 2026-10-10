@@ -20,6 +20,7 @@ import {
 } from '../api/api';
 
 type ToastType = 'success' | 'error' | 'info';
+export type ThemePreference = 'light' | 'dark' | 'system';
 interface ToastItem {
   id: string;
   type: ToastType;
@@ -29,6 +30,7 @@ interface ToastItem {
 
 interface AppContextType {
   userProfile: UserProfile | null;
+  updateUserProfile: (profile: UserProfile) => void;
   isAuthenticated: boolean;
   roles: string[];
   permissions: string[];
@@ -50,10 +52,12 @@ interface AppContextType {
   sidebarCollapsed: boolean;
   expandedSidebarGroups: string[];
   darkMode: boolean;
+  themePreference: ThemePreference;
   toggleSidebar: () => void;
   toggleSidebarGroup: (label: string) => void;
   expandSidebarGroup: (label: string) => void;
   toggleDarkMode: () => void;
+  setThemePreference: (preference: ThemePreference) => void;
   switchRole: (role: UserRole) => void;
   currentPath: string;
   setCurrentPath: (path: string) => void;
@@ -64,6 +68,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 type AuthenticationGate = 'password_change' | 'mfa_enrollment';
 const AUTHENTICATION_GATE_STORAGE_KEY = 'authentication_gate';
+const THEME_PREFERENCE_STORAGE_KEY = 'theme_preference';
 export const RESTRICTED_ACCOUNT_MENU: MenuItem[] = [{
   label: 'Account Security',
   path: '/settings',
@@ -82,6 +87,20 @@ function readAuthenticationGate(): AuthenticationGate | null {
     // A denied storage read must not grant normal application access.
   }
   return null;
+}
+
+function readThemePreference(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(THEME_PREFERENCE_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  } catch {
+    // ignore storage issues and retain the accessible light default
+  }
+  return 'light';
+}
+
+function systemPrefersDark() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -106,7 +125,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authenticationGate, setAuthenticationGate] = useState<AuthenticationGate | null>(() => readAuthenticationGate());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedSidebarGroups, setExpandedSidebarGroups] = useState<string[]>([]);
-  const [darkMode, setDarkMode] = useState(false);
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => readThemePreference());
+  const [darkMode, setDarkMode] = useState(() => {
+    const preference = readThemePreference();
+    return preference === 'dark' || (preference === 'system' && systemPrefersDark());
+  });
   const normalizePath = (path: string) => {
     if (path.startsWith('/admin/users')) return '/system-administration/users';
     if (path.startsWith('/admin/roles')) return '/system-administration/roles';
@@ -233,6 +256,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     safeSetItem('sidebar_collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const media = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    const applyTheme = () => {
+      const shouldUseDark = themePreference === 'dark' || (themePreference === 'system' && Boolean(media?.matches));
+      setDarkMode(shouldUseDark);
+      document.documentElement.classList.toggle('dark', shouldUseDark);
+    };
+    applyTheme();
+    try { localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, themePreference); } catch { /* ignore */ }
+    if (themePreference === 'system') media?.addEventListener?.('change', applyTheme);
+    return () => media?.removeEventListener?.('change', applyTheme);
+  }, [themePreference]);
 
   useEffect(() => {
     safeSetItem('sidebar_expanded_groups', JSON.stringify(expandedSidebarGroups));
@@ -382,13 +418,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 3000);
   }, []);
 
-  const toggleDarkMode = () => {
-    setDarkMode(prev => !prev);
-    if (!darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+  const setThemePreference = (preference: ThemePreference) => setThemePreferenceState(preference);
+  const toggleDarkMode = () => setThemePreferenceState(darkMode ? 'light' : 'dark');
+  const updateUserProfile = (profile: UserProfile) => {
+    setUserProfile(profile);
+    safeSetItem('user_profile', JSON.stringify(profile));
   };
 
   const switchRole = (role: UserRole) => {
@@ -400,6 +434,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         userProfile,
+        updateUserProfile,
         isAuthenticated: isAuthenticated() && !!userProfile,
         roles,
         permissions,
@@ -421,10 +456,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sidebarCollapsed,
         expandedSidebarGroups,
         darkMode,
+        themePreference,
         toggleSidebar,
         toggleSidebarGroup,
         expandSidebarGroup,
         toggleDarkMode,
+        setThemePreference,
         switchRole,
         currentPath,
         setCurrentPath,
