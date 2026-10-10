@@ -614,16 +614,21 @@ public sealed class RegisterPaginationTests
     public async Task Notification_delivery_members_are_masked_and_excluded_from_search_until_granted()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Id = 7, Code = "NOTIFY-7", Name = "Notification Municipality" };
         var actor = IdpTestFixture.CreateUser("notification-member-reader");
+        var recipient = IdpTestFixture.CreateUser("protected-recipient");
+        actor.Municipality = municipality;
+        recipient.Municipality = municipality;
         var row = NotificationEvent("Notification.MemberSecurity", "protected-record", 2, DateTime.UtcNow);
+        row.Municipality = municipality;
         row.LastError = "protected-queue-error";
         row.DeliveryAttempts.Add(new NotificationDeliveryAttempt
         {
-            RecipientUserId = "protected-recipient", Channel = "EMAIL", Status = "Failed", IdempotencyKey = "protected-delivery-key",
+            RecipientUserId = recipient.Id, Channel = "EMAIL", Status = "Failed", IdempotencyKey = "protected-delivery-key",
             Provider = "MailProvider", ProviderReference = "protected-provider-reference", Error = "protected-delivery-error",
             ResponseDetail = "protected-response-detail", AttemptCount = 2
         });
-        context.AddRange(actor, row);
+        context.AddRange(municipality, actor, recipient, row);
         await context.SaveChangesAsync();
 
         var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -644,7 +649,7 @@ public sealed class RegisterPaginationTests
         Assert.Null(denied.AggregateId);
         Assert.Null(denied.LastError);
         var deniedDelivery = Assert.Single(denied.Deliveries);
-        Assert.Null(deniedDelivery.RecipientUserId);
+        Assert.Null(deniedDelivery.RecipientUserPublicId);
         Assert.Null(deniedDelivery.ProviderReference);
         Assert.Null(deniedDelivery.Error);
         Assert.Null(deniedDelivery.ResponseDetail);
@@ -664,7 +669,8 @@ public sealed class RegisterPaginationTests
         Assert.Equal("protected-record", allowed.AggregateId);
         Assert.Equal("protected-queue-error", allowed.LastError);
         var allowedDelivery = Assert.Single(allowed.Deliveries);
-        Assert.Equal("protected-recipient", allowedDelivery.RecipientUserId);
+        Assert.Equal(recipient.PublicId, allowedDelivery.RecipientUserPublicId);
+        Assert.Null(typeof(NotificationDeliveryAttemptDto).GetProperty("RecipientUserId"));
         Assert.Equal("protected-provider-reference", allowedDelivery.ProviderReference);
         Assert.Equal("protected-delivery-error", allowedDelivery.Error);
         Assert.Equal("protected-response-detail", allowedDelivery.ResponseDetail);

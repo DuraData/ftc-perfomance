@@ -3360,6 +3360,12 @@ Login-audit and authentication-event page responses no longer expose ASP.NET Ide
 
 Authorized identity search now accepts an exact stable public ID and no longer searches raw internal keys. A raw Identity key produces no match after the corresponding member grant is enabled, while the public ID returns the expected tenant-owned event; contract reflection tests reject reintroduction of both former `UserId` response properties. The authentication administration UI consumes only the public-ID contract, and the login-audit register remains protected by the existing member-aware response. Focused coverage passes **13/13 backend** and **6/6 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.253 Notification-delivery recipient public identity
+
+Notification-delivery operation responses no longer expose the recipient's ASP.NET Identity primary key. The established `NOTIFICATION_DELIVERY.RecipientUserId.READ` permission remains backward-compatible for administrator configuration, while an authorized delivery attempt now returns only the recipient's stable public ID and a denied member remains null. Delivery persistence, idempotency keys and provider processing continue to use the required internal identity without changing the database schema.
+
+The bounded pending-event page and retry response resolve public identities only for recipients belonging to the selected municipality, and do not perform the identity lookup when the member permission is denied. Contract reflection rejects reintroduction of `RecipientUserId`; relational coverage proves denied masking and authorized public-ID serialization, while the operations UI consumes and renders only the public contract. Focused coverage passes **3/3 backend** and **2/2 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

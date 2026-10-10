@@ -43,8 +43,11 @@ public sealed class NotificationOperationsController(ApplicationDbContext contex
             .Include(item => item.DeliveryAttempts)
             .AsSplitQuery()
             .ToArrayAsync();
+        var recipientPublicIds = access.RecipientUserId
+            ? await LoadRecipientPublicIdsAsync(rows.SelectMany(item => item.DeliveryAttempts))
+            : new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         return Ok(new ApiResponse<PagedResponse<NotificationOutboxItemDto>>(true,
-            PagedResponse<NotificationOutboxItemDto>.Create(rows.Select(item => ToDto(item, access)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<NotificationOutboxItemDto>.Create(rows.Select(item => ToDto(item, access, recipientPublicIds)), request.Page, request.PageSize, totalCount)));
     }
 
     private static readonly HashSet<string> PendingSortFields = ["createdat", "availableat", "attemptcount", "eventtype"];
@@ -90,7 +93,10 @@ public sealed class NotificationOperationsController(ApplicationDbContext contex
         });
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<NotificationOutboxItemDto>(false, null, "The delivery event changed since it was loaded. Refresh and try again.")); }
-        return Ok(new ApiResponse<NotificationOutboxItemDto>(true, ToDto(row, access), "Delivery event queued for retry. Successful channel receipts remain idempotently preserved."));
+        var recipientPublicIds = access.RecipientUserId
+            ? await LoadRecipientPublicIdsAsync(row.DeliveryAttempts)
+            : new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        return Ok(new ApiResponse<NotificationOutboxItemDto>(true, ToDto(row, access, recipientPublicIds), "Delivery event queued for retry. Successful channel receipts remain idempotently preserved."));
     }
 
     private async Task<NotificationDeliveryMemberAccess?> GetMemberAccessAsync()
@@ -106,11 +112,23 @@ public sealed class NotificationOperationsController(ApplicationDbContext contex
             await Read("ProviderReference"), await Read("Error"), await Read("ResponseDetail"));
     }
 
-    private static NotificationOutboxItemDto ToDto(BusinessEventOutbox item, NotificationDeliveryMemberAccess access) => new(
+    private async Task<IReadOnlyDictionary<string, Guid>> LoadRecipientPublicIdsAsync(IEnumerable<NotificationDeliveryAttempt> deliveries)
+    {
+        if (!tenantContext.MunicipalityId.HasValue) return new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        var recipientIds = deliveries.Select(item => item.RecipientUserId).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToArray();
+        if (recipientIds.Length == 0) return new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        var users = await context.Users.AsNoTracking()
+            .Where(item => item.MunicipalityId == tenantContext.MunicipalityId.Value && recipientIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.PublicId })
+            .ToArrayAsync();
+        return users.ToDictionary(item => item.Id, item => item.PublicId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static NotificationOutboxItemDto ToDto(BusinessEventOutbox item, NotificationDeliveryMemberAccess access, IReadOnlyDictionary<string, Guid> recipientPublicIds) => new(
         item.PublicId, item.EventType, item.AggregateType, access.AggregateId ? item.AggregateId : null, item.OccurredAt, item.AvailableAt, item.AttemptCount,
         access.LastError ? item.LastError : null, item.AttemptCount >= 10, Convert.ToBase64String(item.RowVersion),
         item.DeliveryAttempts.OrderBy(value => value.Channel).ThenBy(value => value.RecipientUserId).Select(value => new NotificationDeliveryAttemptDto(
-            value.PublicId, access.RecipientUserId ? value.RecipientUserId : null, value.Channel, value.Status, value.AttemptCount, value.AttemptedAt, value.DeliveredAt,
+            value.PublicId, access.RecipientUserId && recipientPublicIds.TryGetValue(value.RecipientUserId, out var publicId) ? publicId : null, value.Channel, value.Status, value.AttemptCount, value.AttemptedAt, value.DeliveredAt,
             value.Provider, access.ProviderReference ? value.ProviderReference : null, access.Error ? value.Error : null,
             access.ResponseDetail ? value.ResponseDetail : null)).ToArray());
 
@@ -119,5 +137,5 @@ public sealed class NotificationOperationsController(ApplicationDbContext contex
 }
 
 public sealed record RetryNotificationOutboxRequest(string Reason, string RowVersion);
-public sealed record NotificationDeliveryAttemptDto(Guid PublicId, string? RecipientUserId, string Channel, string Status, int AttemptCount, DateTime AttemptedAt, DateTime? DeliveredAt, string? Provider, string? ProviderReference, string? Error, string? ResponseDetail);
+public sealed record NotificationDeliveryAttemptDto(Guid PublicId, Guid? RecipientUserPublicId, string Channel, string Status, int AttemptCount, DateTime AttemptedAt, DateTime? DeliveredAt, string? Provider, string? ProviderReference, string? Error, string? ResponseDetail);
 public sealed record NotificationOutboxItemDto(Guid PublicId, string EventType, string AggregateType, string? AggregateId, DateTime OccurredAt, DateTime AvailableAt, int AttemptCount, string? LastError, bool IsDeadLetter, string RowVersion, NotificationDeliveryAttemptDto[] Deliveries);

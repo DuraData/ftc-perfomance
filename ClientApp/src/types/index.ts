@@ -1822,7 +1822,7 @@ export interface StageRatingDto {
 
 export interface NotificationDeliveryAttemptDto {
   publicId: string;
-  recipientUserId?: string | null;
+  recipientUserPublicId?: string | null;
   channel: string;
   status: string;
   attemptCount: number;
