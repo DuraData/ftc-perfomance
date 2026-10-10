@@ -3435,7 +3435,7 @@ export interface IdpWardParticipation {
 }
 
 export interface IdpDashboard {
-  planId: number;
+  planPublicId: string;
   planTitle: string;
   outcomes: number;
   objectives: number;

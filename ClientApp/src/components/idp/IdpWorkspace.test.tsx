@@ -115,7 +115,7 @@ describe('IDP plan lineage workspace', () => {
     render(<IdpPlanningDashboardPage />);
 
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: undefined, sortBy: 'createdAt', sortDirection: 'desc' }));
-    await waitFor(() => expect(api.getIdpDashboard).toHaveBeenCalledWith(predecessor.id));
+    await waitFor(() => expect(api.getIdpDashboard).toHaveBeenCalledWith(predecessor.publicId));
     fireEvent.change(screen.getByLabelText('Dashboard plan search'), { target: { value: 'future plan' } });
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'future plan', sortBy: 'createdAt', sortDirection: 'desc' }), { timeout: 1500 });
   });
@@ -124,7 +124,7 @@ describe('IDP plan lineage workspace', () => {
     api.getIdpDashboard.mockResolvedValue({
       success: true,
       data: {
-        planId: predecessor.id, planTitle: predecessor.planTitle, outcomes: 1, objectives: 1, projects: 1, kpis: 1,
+        planPublicId: predecessor.publicId, planTitle: predecessor.planTitle, outcomes: 1, objectives: 1, projects: 1, kpis: 1,
         communitySessions: 0, risks: 0, plannedBudget: 9876543, approvedBudget: 8765432,
         actualExpenditure: 7654321, kpiAchievementRate: 91.23, topRiskTitles: [], wardParticipation: [], alignmentCount: 0,
       },

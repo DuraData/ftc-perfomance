@@ -2607,15 +2607,15 @@ export async function getAuditTrailsPage(query: RegisterPageQuery = {}, filter: 
 }
 
 export async function getIdpPlansPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IdpPlanSummary>>> {
-  return get<PagedResult<IdpPlanSummary>>(`/idp/plans/page${registerPageQuery(query)}`);
+  return get<PagedResult<IdpPlanSummary>>(`/v1/idp/plans/page${registerPageQuery(query)}`);
 }
 
 export async function createIdpPlan(payload: CreateIdpPlanPayload): Promise<ApiResponse<IdpPlanSummary>> {
-  return post<IdpPlanSummary>('/idp/plans', payload);
+  return post<IdpPlanSummary>('/v1/idp/plans', payload);
 }
 
-export async function createIdpPlanVersion(planId: number, payload: CreateIdpPlanVersionPayload): Promise<ApiResponse<IdpPlanVersion>> {
-  return post<IdpPlanVersion>(`/idp/plans/${planId}/versions`, payload);
+export async function createIdpPlanVersion(planPublicId: string, payload: CreateIdpPlanVersionPayload): Promise<ApiResponse<IdpPlanVersion>> {
+  return post<IdpPlanVersion>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/versions`, payload);
 }
 
 export async function getIdpPlanVersionsPage(
@@ -2684,8 +2684,8 @@ export async function commitIdpHierarchyImport(
   return post<IdpImportBatch>(`/v1/idp/imports/${batchPublicId}/commit-hierarchy`, payload);
 }
 
-export async function getIdpDashboard(planId: number): Promise<ApiResponse<IdpDashboard>> {
-  return get<IdpDashboard>(`/idp/plans/${planId}/dashboard`);
+export async function getIdpDashboard(planPublicId: string): Promise<ApiResponse<IdpDashboard>> {
+  return get<IdpDashboard>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/dashboard`);
 }
 
 export async function getIdpAlignmentMatrixPage(
@@ -2756,12 +2756,12 @@ export async function getIdpStakeholderEngagementsPage(planPublicId: string, que
   return get<PagedResult<IdpStakeholderEngagement>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/stakeholder-engagements/page${registerPageQuery(query)}`);
 }
 
-export async function getIdpReport(planId: number, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
-  return get<IdpReportDocument>(`/idp/plans/${planId}/reports/${reportType}?format=${format}`);
+export async function getIdpReport(planPublicId: string, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
+  return get<IdpReportDocument>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/reports/${encodeURIComponent(reportType)}?format=${format}`);
 }
 
-export async function requestIdpReport(planId: number, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
-  return getIdpReport(planId, reportType, format);
+export async function requestIdpReport(planPublicId: string, reportType: string, format: 'pdf' | 'excel' | 'word'): Promise<ApiResponse<IdpReportDocument>> {
+  return getIdpReport(planPublicId, reportType, format);
 }
 
 export async function getTidConfiguration(): Promise<ApiResponse<TidConfiguration>> {

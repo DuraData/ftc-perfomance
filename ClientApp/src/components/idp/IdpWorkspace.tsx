@@ -59,15 +59,15 @@ export function IdpPlanningDashboardPage() {
   const canReadPlannedBudget = canReadField('IDP_PROJECT', 'BudgetSnapshotPlanned');
   const canReadApprovedBudget = canReadField('IDP_PROJECT', 'BudgetSnapshotApproved');
   const canReadActualExpenditure = canReadField('IDP_PROJECT', 'BudgetSnapshotActual');
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = async (planId = selectedPlanId) => {
+  const load = async (planPublicId = selectedPlanPublicId) => {
     setBusy(true);
     try {
-      if (planId) {
-        const dashboardResult = await getIdpDashboard(planId);
+      if (planPublicId) {
+        const dashboardResult = await getIdpDashboard(planPublicId);
         setDashboard(dashboardResult.data ?? null);
       } else {
         setDashboard(null);
@@ -93,7 +93,7 @@ export function IdpPlanningDashboardPage() {
               Manage Plans and Versions
             </Button>
           ) : null}
-          <IdpPlanPicker label="Dashboard plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => { const planId = value ? Number(value) : null; setSelectedPlanId(planId); void load(planId); }} />
+          <IdpPlanPicker label="Dashboard plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); void load(value); }} />
         </div>
 
         {busy ? <Card><p className="text-sm text-secondary-500">Loading IDP dashboard...</p></Card> : null}
@@ -422,12 +422,12 @@ export function IdpPlanManagementPage() {
   };
 
   const submitVersion = async () => {
-    if (!selectedPlanId || !versionDraft.versionLabel.trim() || !versionDraft.effectiveFrom) {
+    if (!selectedPlan || !versionDraft.versionLabel.trim() || !versionDraft.effectiveFrom) {
       pushToast('error', 'Select a plan and provide a version label and effective date.');
       return;
     }
 
-    const result = await createIdpPlanVersion(selectedPlanId, {
+    const result = await createIdpPlanVersion(selectedPlan.publicId, {
       versionType: versionDraft.versionType,
       versionLabel: versionDraft.versionLabel.trim(),
       reviewYear: versionDraft.reviewYear.trim() || null,
@@ -801,9 +801,9 @@ export function IdpCommunityParticipationPage() {
   const canReadContactPerson = security.canReadField('IDP_STAKEHOLDER', 'ContactPerson');
   const canReadContactEmail = security.canReadField('IDP_STAKEHOLDER', 'ContactEmail');
 
-  const load = async (planId = selectedPlanId) => {
-    if (planId) {
-      const dashboardResult = await getIdpDashboard(planId);
+  const load = async (planPublicId = selectedPlanPublicId) => {
+    if (planPublicId) {
+      const dashboardResult = await getIdpDashboard(planPublicId);
       setDashboard(dashboardResult.data ?? null);
     } else {
       setDashboard(null);
@@ -842,7 +842,7 @@ export function IdpCommunityParticipationPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => { void load(); setStakeholderRevision(value => value + 1); }}>Refresh</Button>
             {!canManageParticipation ? <Badge variant="warning">Read Only</Badge> : null}
-            <IdpPlanPicker label="Participation plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={(value, plan) => { setSelectedPlanPublicId(value); setSelectedPlanId(plan?.id ?? null); setStakeholderPage(1); void load(plan?.id ?? null); }} />
+            <IdpPlanPicker label="Participation plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={(value, plan) => { setSelectedPlanPublicId(value); setSelectedPlanId(plan?.id ?? null); setStakeholderPage(1); void load(value); }} />
             {canManageParticipation ? (
               <Button
                 variant="primary"
@@ -1007,16 +1007,16 @@ export function IdpAlignmentMatrixPage() {
 
 export function IdpReportsPage() {
   const { pushToast } = useApp();
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [lastReport, setLastReport] = useState<IdpReportDocument | null>(null);
 
   const generate = async (reportType: string, format: 'pdf' | 'excel' | 'word') => {
-    if (!selectedPlanId) {
+    if (!selectedPlanPublicId) {
       pushToast('error', 'Select an IDP plan first.');
       return;
     }
 
-    const result = await getIdpReport(selectedPlanId, reportType, format);
+    const result = await getIdpReport(selectedPlanPublicId, reportType, format);
     if (result.success && result.data) {
       setLastReport(result.data);
       pushToast('success', `${reportType} report generated (${format.toUpperCase()}).`);
@@ -1031,7 +1031,7 @@ export function IdpReportsPage() {
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <IdpPlanPicker label="Report plan" value={selectedPlanId ? String(selectedPlanId) : ''} autoSelectFirst onChange={value => setSelectedPlanId(value ? Number(value) : null)} />
+            <IdpPlanPicker label="Report plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={setSelectedPlanPublicId} />
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('annual', 'pdf')}>Annual PDF</Button>
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('five-year', 'word')}>Five-Year Word</Button>
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('ward-based', 'excel')}>Ward Excel</Button>

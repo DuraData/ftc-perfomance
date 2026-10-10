@@ -53,14 +53,17 @@ public class IdpControllerFunctionalityTests
             "idp-reader",
             tenant);
 
-        var result = await controller.GetPlansPage(new PagedQueryRequest
+        var request = new PagedQueryRequest
         {
             Page = 2,
             PageSize = 10,
             Search = "Local plan",
             SortBy = "planCode",
             SortDirection = "asc"
-        });
+        };
+        controller.GetPlansPage(request).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var result = await controller.GetPlansPageV1(request);
 
         var page = Assert.IsType<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>>(
             Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
@@ -84,7 +87,7 @@ public class IdpControllerFunctionalityTests
             Mock.Of<IWorkflowGovernanceService>(),
             user.Id);
 
-        var result = await controller.GetPlansPage(new PagedQueryRequest { SortBy = "raw-sql" });
+        var result = await controller.GetPlansPageV1(new PagedQueryRequest { SortBy = "raw-sql" });
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         controller.GetPlans().Result.Should().BeOfType<ObjectResult>()
@@ -104,7 +107,9 @@ public class IdpControllerFunctionalityTests
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
 
         var request = new CreateIdpPlanRequest("Blue Hills", "Integrated Development Plan", "IDP-2026", 2026, 2031);
-        var actionResult = await controller.CreatePlan(request);
+        controller.CreatePlan(request).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var actionResult = await controller.CreatePlanV1(request);
 
         var ok = actionResult.Result.Should().BeOfType<OkObjectResult>().Subject;
         var payload = ok.Value.Should().BeOfType<ApiResponse<IdpPlanSummaryResponse>>().Subject;
@@ -145,11 +150,11 @@ public class IdpControllerFunctionalityTests
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
         var firstEffectiveFrom = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var firstAction = await controller.CreatePlan(new CreateIdpPlanRequest(
+        var firstAction = await controller.CreatePlanV1(new CreateIdpPlanRequest(
             "Blue Hills", "First cycle", "IDP-2026", 2026, 2031, EffectiveFrom: firstEffectiveFrom));
         var first = ((firstAction.Result as OkObjectResult)!.Value as ApiResponse<IdpPlanSummaryResponse>)!.Data!;
 
-        var secondAction = await controller.CreatePlan(new CreateIdpPlanRequest(
+        var secondAction = await controller.CreatePlanV1(new CreateIdpPlanRequest(
             "Blue Hills",
             "Second cycle",
             "IDP-2031",
@@ -193,7 +198,10 @@ public class IdpControllerFunctionalityTests
         var userManager = IdpTestFixture.CreateUserManagerMock(approver);
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, approver.Id);
 
-        var result = await controller.UpdatePlan(plan.Id, new UpdateIdpPlanRequest("Updated", 2027, 2032, "Approved"));
+        var request = new UpdateIdpPlanRequest("Updated", 2027, 2032, "Approved");
+        controller.UpdatePlan(plan.Id, request).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var result = await controller.UpdatePlanByPublicId(plan.PublicId, request);
 
         result.Result.Should().BeOfType<OkObjectResult>();
         var updated = await context.IdpPlans.SingleAsync();
@@ -244,7 +252,10 @@ public class IdpControllerFunctionalityTests
                 new AccessDecisionResult(code == "IDP_PLAN.VersionSummary.UPDATE", code == "IDP_PLAN.VersionSummary.UPDATE" ? "allowed" : "denied", [], [], []));
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: access.Object);
 
-        var action = await controller.CreatePlanVersion(plan.Id, new CreateIdpPlanVersionRequest("AnnualReview", "Annual Review", "2026/2027", "Changes"));
+        var request = new CreateIdpPlanVersionRequest("AnnualReview", "Annual Review", "2026/2027", "Changes");
+        controller.CreatePlanVersion(plan.Id, request).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var action = await controller.CreatePlanVersionByPublicId(plan.PublicId, request);
 
         action.Result.Should().BeOfType<OkObjectResult>();
 
@@ -285,10 +296,10 @@ public class IdpControllerFunctionalityTests
             workflow.Object,
             user.Id);
 
-        var rejected = await controller.UpdatePlan(plan.Id, new UpdateIdpPlanRequest("IDP", 2026, 2031, "Published"));
+        var rejected = await controller.UpdatePlanByPublicId(plan.PublicId, new UpdateIdpPlanRequest("IDP", 2026, 2031, "Published"));
         rejected.Result.Should().BeOfType<BadRequestObjectResult>();
 
-        var accepted = await controller.UpdatePlan(plan.Id, new UpdateIdpPlanRequest(
+        var accepted = await controller.UpdatePlanByPublicId(plan.PublicId, new UpdateIdpPlanRequest(
             "IDP", 2026, 2031, "Published", PublicationReference: "Council resolution 2026/17"));
         accepted.Result.Should().BeOfType<OkObjectResult>();
 
@@ -583,7 +594,9 @@ public class IdpControllerFunctionalityTests
                     or "IDP_PROJECT.BudgetSnapshotActual.READ", "test", [], [], []));
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: dashboardAccess.Object);
 
-        var action = await controller.GetDashboard(plan.Id);
+        controller.GetDashboard(plan.Id).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var action = await controller.GetDashboardByPublicId(plan.PublicId);
         var ok = action.Result.Should().BeOfType<OkObjectResult>().Subject;
         var payload = ok.Value.Should().BeOfType<ApiResponse<IdpDashboardResponse>>().Subject;
 
@@ -674,9 +687,11 @@ public class IdpControllerFunctionalityTests
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id);
 
-        var pdf = await controller.GenerateReport(plan.Id, "annual", "pdf");
-        var excel = await controller.GenerateReport(plan.Id, "annual", "excel");
-        var word = await controller.GenerateReport(plan.Id, "annual", "word");
+        controller.GenerateReport(plan.Id, "annual", "pdf").Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        var pdf = await controller.GenerateReportByPublicId(plan.PublicId, "annual", "pdf");
+        var excel = await controller.GenerateReportByPublicId(plan.PublicId, "annual", "excel");
+        var word = await controller.GenerateReportByPublicId(plan.PublicId, "annual", "word");
 
         var pdfPayload = ((pdf.Result as OkObjectResult)!.Value as ApiResponse<IdpReportDocumentResponse>)!;
         var excelPayload = ((excel.Result as OkObjectResult)!.Value as ApiResponse<IdpReportDocumentResponse>)!;

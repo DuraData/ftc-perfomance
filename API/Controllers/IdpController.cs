@@ -64,7 +64,16 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/page")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>>> GetPlansPage([FromQuery] PagedQueryRequest request)
+    public ActionResult<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>> GetPlansPage([FromQuery] PagedQueryRequest request)
+    {
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<PagedResponse<IdpPlanSummaryResponse>>(false, null,
+            "This unversioned plan register is retired. Use /api/v1/idp/plans/page."));
+    }
+
+    [HttpGet("~/api/v1/idp/plans/page")]
+    [Authorize(Policy = "Permission:IDP.Plan.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>>> GetPlansPageV1([FromQuery] PagedQueryRequest request)
     {
         if (request.NormalizedSortBy is not ("createdat" or "plancode" or "plantitle" or "status" or "effectivefrom" or "startfinancialyear"))
             return BadRequest(new ApiResponse<PagedResponse<IdpPlanSummaryResponse>>(false, null,
@@ -110,7 +119,16 @@ public class IdpController : ControllerBase
 
     [HttpPost("plans")]
     [Authorize(Policy = "Permission:IDP.Plan.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpPlanSummaryResponse>>> CreatePlan([FromBody] CreateIdpPlanRequest request)
+    public ActionResult<ApiResponse<IdpPlanSummaryResponse>> CreatePlan([FromBody] CreateIdpPlanRequest request)
+    {
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpPlanSummaryResponse>(false, null,
+            "This unversioned plan route is retired. Use POST /api/v1/idp/plans."));
+    }
+
+    [HttpPost("~/api/v1/idp/plans")]
+    [Authorize(Policy = "Permission:IDP.Plan.Manage")]
+    public async Task<ActionResult<ApiResponse<IdpPlanSummaryResponse>>> CreatePlanV1([FromBody] CreateIdpPlanRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
@@ -188,7 +206,17 @@ public class IdpController : ControllerBase
 
     [HttpPut("plans/{id:int}")]
     [Authorize(Policy = "Permission:IDP.Plan.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpPlanSummaryResponse>>> UpdatePlan(int id, [FromBody] UpdateIdpPlanRequest request)
+    public ActionResult<ApiResponse<IdpPlanSummaryResponse>> UpdatePlan(int id, [FromBody] UpdateIdpPlanRequest request)
+    {
+        _ = id;
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpPlanSummaryResponse>(false, null,
+            "This numeric-ID plan route is retired. Use PUT /api/v1/idp/plans/{planPublicId}."));
+    }
+
+    [HttpPut("~/api/v1/idp/plans/{planPublicId:guid}")]
+    [Authorize(Policy = "Permission:IDP.Plan.Manage")]
+    public async Task<ActionResult<ApiResponse<IdpPlanSummaryResponse>>> UpdatePlanByPublicId(Guid planPublicId, [FromBody] UpdateIdpPlanRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
@@ -196,7 +224,7 @@ public class IdpController : ControllerBase
             return Unauthorized(new ApiResponse<IdpPlanSummaryResponse>(false, null, "User not found"));
         }
 
-        var entity = await _context.IdpPlans.Include(plan => plan.PredecessorPlan).FirstOrDefaultAsync(plan => plan.Id == id);
+        var entity = await _context.IdpPlans.Include(plan => plan.PredecessorPlan).FirstOrDefaultAsync(plan => plan.PublicId == planPublicId);
         if (entity == null)
         {
             return NotFound(new ApiResponse<IdpPlanSummaryResponse>(false, null, "IDP plan not found"));
@@ -247,7 +275,17 @@ public class IdpController : ControllerBase
 
     [HttpPost("plans/{id:int}/versions")]
     [Authorize(Policy = "Permission:IDP.Version.Manage")]
-    public async Task<ActionResult<ApiResponse<IdpPlanVersionResponse>>> CreatePlanVersion(int id, [FromBody] CreateIdpPlanVersionRequest request)
+    public ActionResult<ApiResponse<IdpPlanVersionResponse>> CreatePlanVersion(int id, [FromBody] CreateIdpPlanVersionRequest request)
+    {
+        _ = id;
+        _ = request;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpPlanVersionResponse>(false, null,
+            "This numeric-ID version route is retired. Use POST /api/v1/idp/plans/{planPublicId}/versions."));
+    }
+
+    [HttpPost("~/api/v1/idp/plans/{planPublicId:guid}/versions")]
+    [Authorize(Policy = "Permission:IDP.Version.Manage")]
+    public async Task<ActionResult<ApiResponse<IdpPlanVersionResponse>>> CreatePlanVersionByPublicId(Guid planPublicId, [FromBody] CreateIdpPlanVersionRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
@@ -255,7 +293,7 @@ public class IdpController : ControllerBase
             return Unauthorized(new ApiResponse<IdpPlanVersionResponse>(false, null, "User not found"));
         }
 
-        var plan = await _context.IdpPlans.FirstOrDefaultAsync(item => item.Id == id);
+        var plan = await _context.IdpPlans.FirstOrDefaultAsync(item => item.PublicId == planPublicId);
         if (plan == null)
         {
             return NotFound(new ApiResponse<IdpPlanVersionResponse>(false, null, "IDP plan not found"));
@@ -274,7 +312,7 @@ public class IdpController : ControllerBase
         var effectiveFrom = request.EffectiveFrom ?? DateTime.UtcNow;
         if (effectiveFrom < plan.EffectiveFrom || plan.EffectiveTo.HasValue && effectiveFrom >= plan.EffectiveTo)
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "The version effective date must fall within the plan effective period."));
-        var previousActive = await _context.IdpPlanVersions.Where(item => item.IdpPlanId == id && item.IsActive).OrderByDescending(item => item.VersionNumber).ToListAsync();
+        var previousActive = await _context.IdpPlanVersions.Where(item => item.IdpPlanId == plan.Id && item.IsActive).OrderByDescending(item => item.VersionNumber).ToListAsync();
         var predecessor = previousActive.FirstOrDefault();
         if (predecessor != null && effectiveFrom <= predecessor.EffectiveFrom)
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "A successor version must become effective after its predecessor."));
@@ -282,7 +320,7 @@ public class IdpController : ControllerBase
         var nextVersion = plan.CurrentVersionNumber + 1;
         var entity = new IdpPlanVersion
         {
-            IdpPlanId = id,
+            IdpPlanId = plan.Id,
             PredecessorVersion = predecessor,
             VersionNumber = nextVersion,
             VersionType = versionType,
@@ -503,15 +541,25 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/dashboard")]
     [Authorize(Policy = "Permission:IDP.Dashboard.View")]
-    public async Task<ActionResult<ApiResponse<IdpDashboardResponse>>> GetDashboard(int id)
+    public ActionResult<ApiResponse<IdpDashboardResponse>> GetDashboard(int id)
+    {
+        _ = id;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpDashboardResponse>(false, null,
+            "This numeric-ID dashboard route is retired. Use GET /api/v1/idp/plans/{planPublicId}/dashboard."));
+    }
+
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/dashboard")]
+    [Authorize(Policy = "Permission:IDP.Dashboard.View")]
+    public async Task<ActionResult<ApiResponse<IdpDashboardResponse>>> GetDashboardByPublicId(Guid planPublicId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpDashboardResponse>(false, null, "User not found"));
-        var plan = await _context.IdpPlans.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+        var plan = await _context.IdpPlans.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == planPublicId);
         if (plan == null)
         {
             return NotFound(new ApiResponse<IdpDashboardResponse>(false, null, "IDP plan not found"));
         }
+        var id = plan.Id;
 
         var outcomes = await _context.IdpStrategicOutcomes.CountAsync(item => item.IdpPlanId == id);
 
@@ -595,7 +643,7 @@ public class IdpController : ControllerBase
             .CountAsync(item => item.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == id);
 
         var response = new IdpDashboardResponse(
-            id,
+            plan.PublicId,
             plan.PlanTitle,
             outcomes,
             objectiveIds.Length,
@@ -687,9 +735,20 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/reports/{reportType}")]
     [Authorize(Policy = "Permission:IDP.Reports.Generate")]
-    public async Task<ActionResult<ApiResponse<IdpReportDocumentResponse>>> GenerateReport(int id, string reportType, [FromQuery] string format = "pdf")
+    public ActionResult<ApiResponse<IdpReportDocumentResponse>> GenerateReport(int id, string reportType, [FromQuery] string format = "pdf")
     {
-        var plan = await _context.IdpPlans.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+        _ = id;
+        _ = reportType;
+        _ = format;
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpReportDocumentResponse>(false, null,
+            "This numeric-ID report route is retired. Use GET /api/v1/idp/plans/{planPublicId}/reports/{reportType}."));
+    }
+
+    [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/reports/{reportType}")]
+    [Authorize(Policy = "Permission:IDP.Reports.Generate")]
+    public async Task<ActionResult<ApiResponse<IdpReportDocumentResponse>>> GenerateReportByPublicId(Guid planPublicId, string reportType, [FromQuery] string format = "pdf")
+    {
+        var plan = await _context.IdpPlans.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == planPublicId);
         if (plan == null)
         {
             return NotFound(new ApiResponse<IdpReportDocumentResponse>(false, null, "IDP plan not found"));

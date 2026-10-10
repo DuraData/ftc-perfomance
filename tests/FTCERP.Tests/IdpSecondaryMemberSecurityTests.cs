@@ -25,7 +25,7 @@ public class IdpSecondaryMemberSecurityTests
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var controller = Controller(context, user, allowed);
 
-        var denied = Extract<IdpDashboardResponse>((await controller.GetDashboard(graph.Plan.Id)).Result!);
+        var denied = Extract<IdpDashboardResponse>((await controller.GetDashboardByPublicId(graph.Plan.PublicId)).Result!);
         denied.KpiAchievementRate.Should().BeNull();
         denied.PlannedBudget.Should().BeNull();
         denied.ApprovedBudget.Should().BeNull();
@@ -39,7 +39,7 @@ public class IdpSecondaryMemberSecurityTests
             "IDP_PROJECT.BudgetSnapshotActual.READ"
         ]);
 
-        var visible = Extract<IdpDashboardResponse>((await controller.GetDashboard(graph.Plan.Id)).Result!);
+        var visible = Extract<IdpDashboardResponse>((await controller.GetDashboardByPublicId(graph.Plan.PublicId)).Result!);
         visible.KpiAchievementRate.Should().Be(50);
         visible.PlannedBudget.Should().Be(1000);
         visible.ApprovedBudget.Should().Be(900);
@@ -134,11 +134,11 @@ public class IdpSecondaryMemberSecurityTests
         var request = new CreateIdpPlanVersionRequest(
             "AnnualReview", "Governed annual review", "2026/2027", "PROTECTED-VERSION-SUMMARY");
 
-        (await controller.CreatePlanVersion(graph.Plan.Id, request)).Result.Should().BeOfType<ForbidResult>();
+        (await controller.CreatePlanVersionByPublicId(graph.Plan.PublicId, request)).Result.Should().BeOfType<ForbidResult>();
         context.IdpPlanVersions.Should().BeEmpty();
 
         allowed.Add("IDP_PLAN.VersionSummary.UPDATE");
-        var maskedMutation = Extract<IdpPlanVersionResponse>((await controller.CreatePlanVersion(graph.Plan.Id, request)).Result!);
+        var maskedMutation = Extract<IdpPlanVersionResponse>((await controller.CreatePlanVersionByPublicId(graph.Plan.PublicId, request)).Result!);
         maskedMutation.SummaryOfChanges.Should().BeNull();
         maskedMutation.CreatedByUserPublicId.Should().BeNull();
         maskedMutation.CreatedByName.Should().BeNull();

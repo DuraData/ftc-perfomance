@@ -7,6 +7,7 @@ import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './a
 import { archiveIpmsTargetTemplate, archiveOpmsTargetTemplate } from './api';
 import { saveSecurityUserRoles } from './api';
 import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
+import { createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -164,7 +165,7 @@ describe('versioned API routes', () => {
     await getIdpStakeholderEngagementsPage('plan-public-id', { page: 2, pageSize: 25, search: 'forum', sortBy: 'stakeholderName', sortDirection: 'asc' });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/idp/plans/page?page=2&pageSize=25&search=five+year&sortBy=planCode&sortDirection=asc'),
+      expect.stringContaining('/v1/idp/plans/page?page=2&pageSize=25&search=five+year&sortBy=planCode&sortDirection=asc'),
       expect.objectContaining({ credentials: 'include' }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
@@ -187,6 +188,24 @@ describe('versioned API routes', () => {
       expect.stringContaining('/v1/idp/plans/plan-public-id/stakeholder-engagements/page?page=2&pageSize=25&search=forum&sortBy=stakeholderName&sortDirection=asc'),
       expect.objectContaining({ credentials: 'include' }),
     );
+  });
+
+  it('uses public ID routes for active IDP plan-level operations', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createIdpPlan({ municipalityName: '', planTitle: 'Five-year plan', planCode: 'IDP-2026', startFinancialYear: 2026, endFinancialYear: 2031 });
+    await createIdpPlanVersion('plan-public-id', {
+      versionType: 'AnnualReview', versionLabel: 'Annual review', reviewYear: '2026/2027', summaryOfChanges: 'Council-approved changes',
+      effectiveFrom: '2026-07-01T00:00:00Z', publicationReference: 'Resolution 42',
+    });
+    await getIdpDashboard('plan-public-id');
+    await getIdpReport('plan-public-id', 'annual performance', 'pdf');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans'), expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/plans/plan-public-id/versions'), expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/idp/plans/plan-public-id/dashboard'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/idp/plans/plan-public-id/reports/annual%20performance?format=pdf'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('transports bounded official-report job search, sorting, and pages', async () => {

@@ -969,7 +969,7 @@ public record IdpTaskResponse(
     string RowVersion);
 
 public record IdpDashboardResponse(
-    int PlanId,
+    Guid PlanPublicId,
     string PlanTitle,
     int Outcomes,
     int Objectives,
