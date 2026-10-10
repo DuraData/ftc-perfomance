@@ -12,6 +12,7 @@ type TargetPickerProps = {
   valueField?: 'id' | 'publicId';
   emptyLabel?: string;
   required?: boolean;
+  error?: string;
   disabled?: boolean;
   relatedOpmsTargetPublicId?: string;
 };
@@ -26,6 +27,7 @@ export function TargetPicker({
   valueField = 'id',
   emptyLabel = 'Select target',
   required,
+  error: validationError,
   disabled,
   relatedOpmsTargetPublicId,
 }: TargetPickerProps) {
@@ -108,6 +110,7 @@ export function TargetPicker({
         label={label}
         value={value}
         required={required}
+        error={validationError}
         disabled={disabled || isLoading}
         options={selectOptions}
         onChange={event => {

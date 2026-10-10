@@ -41,7 +41,7 @@ describe('AuthenticationAdministrationPage', () => {
   it('loads and saves editable municipality policy values', async () => {
     render(<AuthenticationAdministrationPage />);
     const passwordLength = await screen.findByLabelText('Minimum password length');
-    expect(passwordLength).toHaveValue(14);
+    await waitFor(() => expect(passwordLength).toHaveValue(14));
     fireEvent.change(passwordLength, { target: { value: '18' } });
     fireEvent.click(screen.getByRole('checkbox', { name: 'MFA for all local users' }));
     fireEvent.change(screen.getByLabelText(/Governance reason/, { selector: '#authentication-policy-reason' }), { target: { value: 'Approved security policy update' } });

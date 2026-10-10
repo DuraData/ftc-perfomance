@@ -12,6 +12,92 @@ namespace FTCERP.Tests;
 public sealed class RegisterPaginationTests
 {
     [Fact]
+    public void Terminal_configurable_workflow_projects_completed_submission_status()
+    {
+        var active = new SubmissionWorkflowInstance { State = WorkflowInstanceState.Active };
+        var completed = new SubmissionWorkflowInstance { State = WorkflowInstanceState.Completed };
+
+        PerformanceApiSupport.ResolveWorkflowStatus("verified", active).Should().Be("verified");
+        PerformanceApiSupport.ResolveWorkflowStatus("verified", completed).Should().Be("completed");
+    }
+
+    [Fact]
+    public void Submission_response_projects_governed_target_context_needed_by_the_workspace()
+    {
+        var departmentPublicId = Guid.NewGuid();
+        var unitPublicId = Guid.NewGuid();
+        var target = Target("projection-target", "KPI-PROJECTION", "Projection target", Guid.NewGuid());
+        target.Department = new Department { PublicId = departmentPublicId, Name = "Infrastructure" };
+        target.Unit = new Unit { PublicId = unitPublicId, Name = "Roads" };
+        target.UnitOfMeasure = new UnitOfMeasure { Name = "Kilometres", Symbol = "km" };
+        target.TargetUnitType = "absolute_count";
+        var submission = new OpmsSubmission
+        {
+            Id = "projection-submission",
+            OpmsTargetId = target.Id,
+            OpmsTarget = target,
+            Quarter = "Q1",
+            Status = "draft",
+            ReportingPeriod = new ReportingPeriod
+            {
+                MunicipalityFinancialYear = new MunicipalityFinancialYear
+                {
+                    FinancialYear = new FinancialYear { Name = "2026/27" }
+                }
+            }
+        };
+
+        var response = submission.ToResponse();
+
+        response.TargetDepartmentPublicId.Should().Be(departmentPublicId);
+        response.TargetDepartmentName.Should().Be("Infrastructure");
+        response.TargetUnitPublicId.Should().Be(unitPublicId);
+        response.TargetUnitName.Should().Be("Roads");
+        response.TargetFinancialYearName.Should().Be("2026/27");
+        response.TargetUnitOfMeasureName.Should().Be("Kilometres");
+        response.TargetUnitOfMeasureSymbol.Should().Be("km");
+        response.TargetUnitType.Should().Be("absolute_count");
+    }
+
+    [Fact]
+    public async Task Submission_create_rejects_missing_target_before_lookup_for_both_registers()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("submission-validation-user");
+        context.Add(user);
+        await context.SaveChangesAsync();
+        var dependencies = new
+        {
+            Access = Mock.Of<IAccessControlService>(),
+            Workflow = Mock.Of<IWorkflowGovernanceService>(),
+            Storage = Mock.Of<IEvidenceBlobStorage>(),
+            Values = Mock.Of<ISubmissionValueService>(),
+            ConfigurableWorkflow = Mock.Of<IConfigurableWorkflowService>(),
+            Windows = Mock.Of<IReportingWindowService>(),
+            Inspection = Mock.Of<IEvidenceInspectionService>(),
+            Scanner = Mock.Of<IEvidenceMalwareScanner>(),
+            Suggestions = Mock.Of<IPerformanceSuggestionService>()
+        };
+        var users = IdpTestFixture.CreateUserManagerMock(user).Object;
+        var opms = new OpmsSubmissionsController(context, users, dependencies.Access, dependencies.Workflow,
+            dependencies.Storage, dependencies.Values, dependencies.ConfigurableWorkflow, dependencies.Windows,
+            dependencies.Inspection, dependencies.Scanner, dependencies.Suggestions)
+        { ControllerContext = ControllerContext(user.Id) };
+        var ipms = new IpmsSubmissionsController(context, users, dependencies.Access, dependencies.Workflow,
+            dependencies.Storage, dependencies.Values, dependencies.ConfigurableWorkflow, dependencies.Windows,
+            dependencies.Inspection, dependencies.Scanner, dependencies.Suggestions)
+        { ControllerContext = ControllerContext(user.Id) };
+
+        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest("", "Q1", null, null, null, null, null, null));
+        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest("", "Q1", null, null, null, null, null, null));
+
+        opmsResult.Result.Should().BeOfType<BadRequestObjectResult>().Which.Value
+            .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Be("OPMS target is required.");
+        ipmsResult.Result.Should().BeOfType<BadRequestObjectResult>().Which.Value
+            .Should().BeOfType<ApiResponse<IpmsSubmissionResponse>>().Which.Message.Should().Be("IPMS target is required.");
+    }
+
+    [Fact]
     public async Task Submission_member_permissions_redact_fields_and_reject_direct_updates()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

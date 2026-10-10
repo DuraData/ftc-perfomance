@@ -1231,6 +1231,36 @@ export interface PerformanceDashboardDto {
   approvedSubmissions: number;
   pendingVerification: number;
   pendingApproval: number;
+  municipalityFinancialYearPublicId?: string | null;
+  financialYearCode?: string | null;
+  financialYearName?: string | null;
+  reportingPeriodPublicId?: string | null;
+  reportingPeriodCode?: string | null;
+  reportingPeriodName?: string | null;
+  reportingWindowState?: 'Open' | 'Closed' | 'Upcoming' | 'Not configured' | null;
+  reportingWindowOpensAt?: string | null;
+  reportingWindowClosesAt?: string | null;
+  ratingBreakdown?: Array<{ label: string; count: number }> | null;
+  teamBreakdown?: Array<{
+    departmentPublicId?: string | null;
+    departmentName: string;
+    targetCount: number;
+    achievedCount: number;
+    atRiskCount: number;
+  }> | null;
+  periodBreakdown?: Array<{
+    reportingPeriodPublicId: string;
+    code: string;
+    name: string;
+    sequence: number;
+    windowState: 'Open' | 'Closed' | 'Upcoming' | 'Not configured';
+    opensAt?: string | null;
+    closesAt?: string | null;
+    submissionCount: number;
+    achievedCount: number;
+    atRiskCount: number;
+    outstandingCount: number;
+  }> | null;
 }
 
 export type WorkflowQueueName =
@@ -2541,6 +2571,7 @@ export interface IpmsTargetDto {
   publicId: string;
   rowVersion: string;
   municipalityFinancialYearPublicId?: string | null;
+  municipalityFinancialYearName?: string | null;
   sourceTemplateId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetId?: string | null;
@@ -2614,6 +2645,14 @@ export interface OpmsSubmissionDto {
   opmsTargetId: string;
   targetName: string;
   targetIndicatorNumber: string;
+  targetDepartmentPublicId?: string | null;
+  targetDepartmentName?: string | null;
+  targetUnitPublicId?: string | null;
+  targetUnitName?: string | null;
+  targetFinancialYearName?: string | null;
+  targetUnitOfMeasureName?: string | null;
+  targetUnitOfMeasureSymbol?: string | null;
+  targetUnitType?: string | null;
   quarter: string;
   status: string;
   submitterStatus?: string | null;
@@ -2693,6 +2732,14 @@ export interface IpmsSubmissionDto {
   ipmsTargetId: string;
   targetName: string;
   targetIndicatorNumber: string;
+  targetDepartmentPublicId?: string | null;
+  targetDepartmentName?: string | null;
+  targetUnitPublicId?: string | null;
+  targetUnitName?: string | null;
+  targetFinancialYearName?: string | null;
+  targetUnitOfMeasureName?: string | null;
+  targetUnitOfMeasureSymbol?: string | null;
+  targetUnitType?: string | null;
   quarter: string;
   status: string;
   submitterStatus?: string | null;

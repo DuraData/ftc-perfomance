@@ -98,6 +98,115 @@ public sealed class PerformanceDashboardTests
             PendingApproval: 0), response.Data);
     }
 
+    [Fact]
+    public async Task Ipms_dashboard_uses_current_financial_year_reporting_window_and_governed_workflow_scope()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var now = DateTime.UtcNow;
+        var user = IdpTestFixture.CreateUser("ipms-current-context-user");
+        var municipality = new Municipality { Code = "DASH", Name = "Dashboard Municipality" };
+        var department = new Department { Municipality = municipality, Code = "CORP", Name = "Corporate Services" };
+        var financialYear = new FinancialYear
+        {
+            Code = "2026/27", Name = "2026/2027 Financial Year", StartDate = new(2026, 7, 1), EndDate = new(2027, 6, 30)
+        };
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            Municipality = municipality, FinancialYear = financialYear, IsCurrent = true, IsActive = true, EffectiveFrom = financialYear.StartDate
+        };
+        var q1 = new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalityYear, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1,
+            Sequence = 1, StartDate = financialYear.StartDate, EndDate = new(2026, 9, 30)
+        };
+        var q2 = new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalityYear, Code = "Q2", Name = "Quarter 2", PeriodType = ReportingPeriodType.Quarter2,
+            Sequence = 2, StartDate = new(2026, 10, 1), EndDate = new(2026, 12, 31)
+        };
+        context.AddRange(user, municipality, department, financialYear, municipalityYear, q1, q2);
+        await context.SaveChangesAsync();
+
+        var targets = new[] { IpmsTarget("achieved"), IpmsTarget("at-risk"), IpmsTarget("draft"), IpmsTarget("verification") };
+        foreach (var target in targets)
+        {
+            target.MunicipalityId = municipality.Id;
+            target.DepartmentId = department.Id;
+        }
+        context.IpmsTargets.AddRange(targets);
+        await context.SaveChangesAsync();
+        foreach (var target in targets)
+        {
+            context.PerformancePeriodTargets.AddRange(
+                new PerformancePeriodTarget { MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, IpmsTargetId = target.Id, TargetValue = "10", CreatedByUserId = user.Id },
+                new PerformancePeriodTarget { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, IpmsTargetId = target.Id, TargetValue = "20", CreatedByUserId = user.Id });
+        }
+
+        var achievedSubmission = IpmsSubmission("achieved-submission", "achieved", "completed");
+        achievedSubmission.MunicipalityId = municipality.Id;
+        achievedSubmission.ReportingPeriodId = q1.Id;
+        achievedSubmission.BaseState = SubmissionBaseStates.Submitted;
+        var atRiskSubmission = IpmsSubmission("at-risk-submission", "at-risk", "verify_rejected");
+        atRiskSubmission.MunicipalityId = municipality.Id;
+        atRiskSubmission.ReportingPeriodId = q1.Id;
+        atRiskSubmission.BaseState = SubmissionBaseStates.Submitted;
+        var draftSubmission = IpmsSubmission("draft-submission", "draft", "draft");
+        draftSubmission.MunicipalityId = municipality.Id;
+        draftSubmission.ReportingPeriodId = q1.Id;
+        var verificationSubmission = IpmsSubmission("verification-submission", "verification", "submitted");
+        verificationSubmission.MunicipalityId = municipality.Id;
+        verificationSubmission.ReportingPeriodId = q1.Id;
+        verificationSubmission.BaseState = SubmissionBaseStates.Submitted;
+        context.IpmsSubmissions.AddRange(achievedSubmission, atRiskSubmission, draftSubmission, verificationSubmission);
+
+        var workflow = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, SubmissionKind = SubmissionKind.Ipms,
+            Code = "IPMS-DASH", Name = "IPMS dashboard workflow", EffectiveFrom = now.AddDays(-30)
+        };
+        var verifyStage = new WorkflowStageDefinition
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, Code = "VERIFY", Name = "Verify", Sequence = 1,
+            RequiredActionCode = "IPMS_SUBMISSION.VERIFY", RequiredPermissionCode = "IPMS_SUBMISSION.VERIFY", IsTerminal = true
+        };
+        var workflowInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, CurrentStage = verifyStage, SubmissionKind = SubmissionKind.Ipms,
+            SubmissionId = verificationSubmission.Id, State = WorkflowInstanceState.Active
+        };
+        context.AddRange(
+            new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, SubmissionKind = SubmissionKind.Ipms, OpensAt = now.AddDays(-2), ClosesAt = now.AddDays(2) },
+            new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, SubmissionKind = SubmissionKind.Ipms, OpensAt = now.AddDays(30), ClosesAt = now.AddDays(60) },
+            workflow, verifyStage, workflowInstance);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_KPI.READ"))
+            .ReturnsAsync(Scope(targets.Select(item => item.Id).ToArray()));
+        access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ"))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+
+        var result = await Controller(context, access.Object, user.Id).GetIpms();
+
+        var response = Assert.IsType<ApiResponse<PerformanceDashboardResponse>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.Equal(municipalityYear.PublicId, response.MunicipalityFinancialYearPublicId);
+        Assert.Equal("2026/27", response.FinancialYearCode);
+        Assert.Equal(q1.PublicId, response.ReportingPeriodPublicId);
+        Assert.Equal("Open", response.ReportingWindowState);
+        Assert.Equal(4, response.TotalTargets);
+        Assert.Equal(1, response.CompletedTargets);
+        Assert.Equal(1, response.AtRiskTargets);
+        Assert.Equal(1, response.OutstandingTargets);
+        Assert.Equal(1, response.PendingVerification);
+        var team = Assert.Single(response.TeamBreakdown!);
+        Assert.Equal("Corporate Services", team.DepartmentName);
+        Assert.Equal((4, 1, 1), (team.TargetCount, team.AchievedCount, team.AtRiskCount));
+        Assert.Collection(response.PeriodBreakdown!,
+            period => Assert.Equal(("Q1", "Open", 4, 1), (period.Code, period.WindowState, period.SubmissionCount, period.OutstandingCount)),
+            period => Assert.Equal(("Q2", "Upcoming", 0, 4), (period.Code, period.WindowState, period.SubmissionCount, period.OutstandingCount)));
+    }
+
     private static PerformanceDashboardsController Controller(
         ApplicationDbContext context,
         IAccessControlService access,

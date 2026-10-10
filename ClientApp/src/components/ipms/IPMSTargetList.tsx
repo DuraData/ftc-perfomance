@@ -9,11 +9,27 @@ import {
   createIpmsTarget as createIpmsTargetApi,
   withdrawIpmsTarget as withdrawIpmsTargetApi,
   getIpmsTargetsPage as getIpmsTargetsPageApi,
+  type RegisterPageQuery,
 } from '../../api/api';
 import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../../types';
 import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 import { canonicalSaveRows } from '../../lib/performanceTargetContract';
+
+type DashboardTargetFilter = 'assigned' | 'achieved' | 'at-risk' | 'outstanding';
+
+function readDashboardScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+  const parameters = new URLSearchParams(window.location.search);
+  const filter = parameters.get('dashboardFilter');
+  const dashboardFilter = filter === 'assigned' || filter === 'achieved' || filter === 'at-risk' || filter === 'outstanding'
+    ? filter as DashboardTargetFilter
+    : undefined;
+  return {
+    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || undefined,
+    reportingPeriodPublicId: parameters.get('reportingPeriodPublicId') || undefined,
+    dashboardFilter,
+  };
+}
 
 function buildPayloadFromTarget(target: IPMSTarget): SaveIpmsTargetPayload {
   return {
@@ -78,10 +94,11 @@ export function IPMSTargetList() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [withdrawalTarget, setWithdrawalTarget] = useState<IPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
+  const [dashboardScope, setDashboardScope] = useState(readDashboardScope);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
-    const result = await getIpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection });
+    const result = await getIpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection, ...dashboardScope });
     if (result.success && result.data) {
       setIpmsTargets(result.data.items);
       setTotalCount(result.data.totalCount);
@@ -89,7 +106,7 @@ export function IPMSTargetList() {
       pushToast('error', result.message ?? 'Failed to load IPMS targets');
     }
     setIsLoading(false);
-  }, [page, pushToast, search, sortBy, sortDirection]);
+  }, [dashboardScope, page, pushToast, search, sortBy, sortDirection]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -270,7 +287,12 @@ export function IPMSTargetList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="primary">{totalCount} targets</Badge>
+            {dashboardScope.dashboardFilter ? <Badge variant="info">Dashboard filter: {dashboardScope.dashboardFilter}</Badge> : null}
             {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
+            {dashboardScope.dashboardFilter ? <Button size="sm" variant="ghost" onClick={() => {
+              window.history.replaceState({}, '', '/ipms/targets');
+              setDashboardScope({});
+            }}>Clear dashboard filter</Button> : null}
           </div>
           {canManageTargets ? (
             <div className="flex items-center gap-2">

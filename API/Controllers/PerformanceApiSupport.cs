@@ -9,6 +9,23 @@ namespace FTCERP.Host.API.Controllers;
 
 public static class PerformanceApiSupport
 {
+    internal static string ResolveWorkflowStatus(string requestedStatus, SubmissionWorkflowInstance? instance) =>
+        instance?.State == WorkflowInstanceState.Completed ? "completed" : requestedStatus;
+
+    internal static async Task HydrateFinancialYearsAsync(ApplicationDbContext context, IEnumerable<ReportingPeriod?> reportingPeriods)
+    {
+        var periods = reportingPeriods.Where(period => period != null).Cast<ReportingPeriod>().DistinctBy(period => period.Id).ToArray();
+        if (periods.Length == 0) return;
+
+        var municipalityFinancialYearIds = periods.Select(period => period.MunicipalityFinancialYearId).Distinct().ToArray();
+        var years = await context.MunicipalityFinancialYears
+            .Include(item => item.FinancialYear)
+            .Where(item => municipalityFinancialYearIds.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id);
+        foreach (var period in periods)
+            if (years.TryGetValue(period.MunicipalityFinancialYearId, out var year)) period.MunicipalityFinancialYear = year;
+    }
+
     public static IQueryable<PoeFile> IncludePoeGovernance(this IQueryable<PoeFile> query) => query
         .Include(item => item.Blob)
         .Include(item => item.UploadedByUser)
@@ -419,6 +436,14 @@ public static class PerformanceApiSupport
         {
             BaseState = submission.BaseState,
             ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
+            TargetDepartmentPublicId = submission.OpmsTarget.Department?.PublicId,
+            TargetDepartmentName = submission.OpmsTarget.Department?.Name,
+            TargetUnitPublicId = submission.OpmsTarget.Unit?.PublicId,
+            TargetUnitName = submission.OpmsTarget.Unit?.Name,
+            TargetFinancialYearName = submission.ReportingPeriod?.MunicipalityFinancialYear?.FinancialYear?.Name,
+            TargetUnitOfMeasureName = submission.OpmsTarget.UnitOfMeasure?.Name,
+            TargetUnitOfMeasureSymbol = submission.OpmsTarget.UnitOfMeasure?.Symbol,
+            TargetUnitType = submission.OpmsTarget.TargetUnitType,
             SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
             WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
             SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
@@ -500,6 +525,14 @@ public static class PerformanceApiSupport
         {
             BaseState = submission.BaseState,
             ReportingPeriodPublicId = submission.ReportingPeriod?.PublicId,
+            TargetDepartmentPublicId = submission.IpmsTarget.Department?.PublicId,
+            TargetDepartmentName = submission.IpmsTarget.Department?.Name,
+            TargetUnitPublicId = submission.IpmsTarget.Unit?.PublicId,
+            TargetUnitName = submission.IpmsTarget.Unit?.Name,
+            TargetFinancialYearName = submission.ReportingPeriod?.MunicipalityFinancialYear?.FinancialYear?.Name,
+            TargetUnitOfMeasureName = submission.IpmsTarget.UnitOfMeasure?.Name,
+            TargetUnitOfMeasureSymbol = submission.IpmsTarget.UnitOfMeasure?.Symbol,
+            TargetUnitType = submission.IpmsTarget.TargetUnitType,
             SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
             WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
             SuggestionGeneratedDate = submission.SuggestionGeneratedDate,

@@ -39,8 +39,8 @@ public sealed class PerformanceDashboardsController(
             Active = group.Count(item => !item.IsWithdrawn)
         }).SingleOrDefaultAsync();
         var submissionSummary = await Summarize(submissions);
-        var completed = await submissions.Where(item => item.Status == "approved").Select(item => item.OpmsTargetId).Distinct().CountAsync();
-        var overdue = await submissions.Where(item => item.DueDate < DateTime.UtcNow && item.Status != "approved").Select(item => item.OpmsTargetId).Distinct().CountAsync();
+        var completed = await submissions.Where(item => item.Status == "approved" || item.Status == "completed").Select(item => item.OpmsTargetId).Distinct().CountAsync();
+        var overdue = await submissions.Where(item => item.DueDate < DateTime.UtcNow && item.Status != "approved" && item.Status != "completed").Select(item => item.OpmsTargetId).Distinct().CountAsync();
 
         return Ok(new ApiResponse<PerformanceDashboardResponse>(true, new(
             targetSummary?.Total ?? 0,
@@ -58,32 +58,187 @@ public sealed class PerformanceDashboardsController(
     }
 
     [HttpGet("ipms")]
-    public async Task<ActionResult<ApiResponse<PerformanceDashboardResponse>>> GetIpms()
+    public async Task<ActionResult<ApiResponse<PerformanceDashboardResponse>>> GetIpms(
+        [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] Guid? reportingPeriodPublicId = null)
     {
         var user = await CurrentUser();
         if (user == null) return Unauthorized(new ApiResponse<PerformanceDashboardResponse>(false, null, "User not found"));
+
+        var selectedYear = municipalityFinancialYearPublicId.HasValue
+            ? await context.MunicipalityFinancialYears.AsNoTracking().Include(item => item.FinancialYear)
+                .SingleOrDefaultAsync(item => item.PublicId == municipalityFinancialYearPublicId.Value && item.IsActive)
+            : await context.MunicipalityFinancialYears.AsNoTracking().Include(item => item.FinancialYear)
+                .Where(item => item.IsActive && item.IsCurrent)
+                .OrderByDescending(item => item.EffectiveFrom)
+                .FirstOrDefaultAsync();
+        if (municipalityFinancialYearPublicId.HasValue && selectedYear == null)
+            return BadRequest(new ApiResponse<PerformanceDashboardResponse>(false, null, "The selected municipality financial year is not active or is outside the current municipality."));
+
+        var periods = selectedYear == null
+            ? []
+            : await context.ReportingPeriods.AsNoTracking()
+                .Where(item => item.MunicipalityFinancialYearId == selectedYear.Id && item.IsActive)
+                .OrderBy(item => item.Sequence)
+                .ToArrayAsync();
+        if (reportingPeriodPublicId.HasValue && periods.All(item => item.PublicId != reportingPeriodPublicId.Value))
+            return BadRequest(new ApiResponse<PerformanceDashboardResponse>(false, null, "The selected reporting period does not belong to the selected municipality financial year."));
+
+        var periodIds = periods.Select(item => item.Id).ToArray();
+        var windows = periodIds.Length == 0
+            ? []
+            : await context.ReportingWindows.AsNoTracking()
+                .Where(item => item.SubmissionKind == SubmissionKind.Ipms && periodIds.Contains(item.ReportingPeriodId))
+                .ToArrayAsync();
+        var now = DateTime.UtcNow;
+        var periodWindows = periods.Select(period => new PeriodWindow(
+            period,
+            windows.Where(window => window.ReportingPeriodId == period.Id).OrderByDescending(window => window.IsActive).ThenByDescending(window => window.OpensAt).FirstOrDefault()))
+            .ToArray();
+        var selectedPeriodWindow = reportingPeriodPublicId.HasValue
+            ? periodWindows.Single(item => item.Period.PublicId == reportingPeriodPublicId.Value)
+            : periodWindows.FirstOrDefault(item => WindowState(item.Window, now) == "Open")
+              ?? periodWindows.Where(item => WindowState(item.Window, now) == "Closed").OrderByDescending(item => item.Window?.ClosesAt ?? item.Period.EndDate).FirstOrDefault()
+              ?? periodWindows.Where(item => WindowState(item.Window, now) == "Upcoming").OrderBy(item => item.Window?.OpensAt ?? item.Period.StartDate).FirstOrDefault()
+              ?? periodWindows.FirstOrDefault();
 
         var targetScope = await accessControl.GetQueryScopeAsync(user, "IPMS_KPI.READ");
         var submissionScope = await accessControl.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ");
         var targets = context.IpmsTargets.AsNoTracking().AsQueryable();
         if (!targetScope.PermissionGranted) targets = targets.Where(_ => false);
         else if (!targetScope.Unrestricted) targets = ApplyTargetScope(targets, targetScope);
+        if (selectedYear != null)
+            targets = targets.Where(target => context.PerformancePeriodTargets.Any(periodTarget =>
+                periodTarget.IpmsTargetId == target.Id
+                && periodTarget.IsActive
+                && periodIds.Contains(periodTarget.ReportingPeriodId)));
+        var yearTargets = targets;
+        if (selectedPeriodWindow != null)
+            targets = targets.Where(target => context.PerformancePeriodTargets.Any(periodTarget =>
+                periodTarget.IpmsTargetId == target.Id
+                && periodTarget.IsActive
+                && periodTarget.ReportingPeriodId == selectedPeriodWindow.Period.Id));
 
-        var submissions = context.IpmsSubmissions.AsNoTracking().AsQueryable();
-        if (!submissionScope.PermissionGranted) submissions = submissions.Where(_ => false);
-        else if (!submissionScope.Unrestricted) submissions = ApplySubmissionScope(submissions, submissionScope);
-        submissions = submissions.Where(item => targets.Select(target => target.Id).Contains(item.IpmsTargetId));
+        var yearSubmissions = context.IpmsSubmissions.AsNoTracking().AsQueryable();
+        if (!submissionScope.PermissionGranted) yearSubmissions = yearSubmissions.Where(_ => false);
+        else if (!submissionScope.Unrestricted) yearSubmissions = ApplySubmissionScope(yearSubmissions, submissionScope);
+        yearSubmissions = yearSubmissions.Where(item => yearTargets.Select(target => target.Id).Contains(item.IpmsTargetId));
+        if (selectedYear != null)
+            yearSubmissions = yearSubmissions.Where(item => item.ReportingPeriodId.HasValue && periodIds.Contains(item.ReportingPeriodId.Value));
+        var selectedSubmissions = selectedPeriodWindow == null
+            ? yearSubmissions
+            : yearSubmissions.Where(item => item.ReportingPeriodId == selectedPeriodWindow.Period.Id
+                && targets.Select(target => target.Id).Contains(item.IpmsTargetId));
 
         var targetSummary = await targets.GroupBy(_ => 1).Select(group => new
         {
             Total = group.Count(),
             Active = group.Count(item => !item.IsWithdrawn)
         }).SingleOrDefaultAsync();
-        var submissionSummary = await Summarize(submissions);
-        var achieved = await submissions.Where(item => item.Status == "approved").Select(item => item.IpmsTargetId).Distinct().CountAsync();
-        var atRisk = await submissions.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.IpmsTargetId).Distinct().CountAsync();
-        var nonOutstanding = submissions.Where(item => item.Status != "draft" && item.Status != "submitted").Select(item => item.IpmsTargetId).Distinct();
-        var outstanding = await targets.CountAsync(item => !nonOutstanding.Contains(item.Id));
+        var submissionSummary = await Summarize(selectedSubmissions);
+        var achievedTargetIds = selectedSubmissions.Where(item => CompletedStatuses.Contains(item.Status))
+            .Select(item => item.IpmsTargetId).Distinct();
+        var atRiskTargetIds = selectedSubmissions.Where(item => AtRiskStatuses.Contains(item.Status))
+            .Select(item => item.IpmsTargetId).Distinct();
+        var achieved = await achievedTargetIds.CountAsync();
+        var atRisk = await atRiskTargetIds.CountAsync();
+        var nonOutstanding = selectedYear == null
+            ? selectedSubmissions.Where(item => item.Status != "draft" && item.Status != "submitted").Select(item => item.IpmsTargetId).Distinct()
+            : selectedSubmissions.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.IpmsTargetId).Distinct();
+        var outstanding = await targets.CountAsync(item => !item.IsWithdrawn && !nonOutstanding.Contains(item.Id));
+
+        var scopedSubmissionIds = selectedSubmissions.Select(item => item.Id);
+        var workflowInstances = context.SubmissionWorkflowInstances.AsNoTracking()
+            .Where(item => item.SubmissionKind == SubmissionKind.Ipms && scopedSubmissionIds.Contains(item.SubmissionId));
+        var workflowSubmissionIds = workflowInstances.Select(item => item.SubmissionId);
+        var pendingVerification = await workflowInstances.CountAsync(item => item.State != WorkflowInstanceState.Completed
+            && item.CurrentStage != null && item.CurrentStage.RequiredActionCode.Contains("VERIFY"));
+        pendingVerification += await selectedSubmissions.CountAsync(item => !workflowSubmissionIds.Contains(item.Id)
+            && (item.Status == "submitted" || item.Status == "pending_verification"));
+        var pendingApproval = await workflowInstances.CountAsync(item => item.State != WorkflowInstanceState.Completed
+            && item.CurrentStage != null && item.CurrentStage.RequiredActionCode.Contains("APPROV"));
+        pendingApproval += await selectedSubmissions.CountAsync(item => !workflowSubmissionIds.Contains(item.Id)
+            && (item.Status == "verified" || item.Status == "pending_approval"));
+
+        var ratingLabels = await (from rating in context.SubmissionStageRatings.AsNoTracking()
+            join instance in workflowInstances on rating.SubmissionWorkflowInstanceId equals instance.Id
+            select rating.LabelSnapshot).ToArrayAsync();
+        var ratingBreakdown = ratingLabels.GroupBy(label => label)
+            .Select(group => new PerformanceDashboardRatingBreakdownResponse(group.Key, group.Count()))
+            .OrderByDescending(item => item.Count).ThenBy(item => item.Label)
+            .ToArray();
+
+        var teamTotals = await targets.Where(item => !item.IsWithdrawn)
+            .GroupBy(item => new
+            {
+                PublicId = item.Department == null ? (Guid?)null : item.Department.PublicId,
+                Name = item.Department == null ? "Unassigned" : item.Department.Name
+            })
+            .Select(group => new { group.Key.PublicId, group.Key.Name, Count = group.Count() })
+            .OrderByDescending(item => item.Count).ThenBy(item => item.Name)
+            .ToArrayAsync();
+        var teamAchieved = await targets.Where(item => !item.IsWithdrawn && achievedTargetIds.Contains(item.Id))
+            .GroupBy(item => new
+            {
+                PublicId = item.Department == null ? (Guid?)null : item.Department.PublicId,
+                Name = item.Department == null ? "Unassigned" : item.Department.Name
+            })
+            .Select(group => new { group.Key.PublicId, group.Key.Name, Count = group.Count() })
+            .ToArrayAsync();
+        var teamAtRisk = await targets.Where(item => !item.IsWithdrawn && atRiskTargetIds.Contains(item.Id))
+            .GroupBy(item => new
+            {
+                PublicId = item.Department == null ? (Guid?)null : item.Department.PublicId,
+                Name = item.Department == null ? "Unassigned" : item.Department.Name
+            })
+            .Select(group => new { group.Key.PublicId, group.Key.Name, Count = group.Count() })
+            .ToArrayAsync();
+        var teamBreakdown = teamTotals.Select(item => new PerformanceDashboardTeamBreakdownResponse(
+            item.PublicId,
+            item.Name,
+            item.Count,
+            teamAchieved.SingleOrDefault(value => value.PublicId == item.PublicId && value.Name == item.Name)?.Count ?? 0,
+            teamAtRisk.SingleOrDefault(value => value.PublicId == item.PublicId && value.Name == item.Name)?.Count ?? 0))
+            .ToArray();
+
+        var periodTargetCounts = periodIds.Length == 0
+            ? []
+            : await context.PerformancePeriodTargets.AsNoTracking()
+                .Where(item => item.IpmsTargetId != null && item.IsActive && periodIds.Contains(item.ReportingPeriodId)
+                    && yearTargets.Where(target => !target.IsWithdrawn).Select(target => target.Id).Contains(item.IpmsTargetId))
+                .GroupBy(item => item.ReportingPeriodId)
+                .Select(group => new { ReportingPeriodId = group.Key, Count = group.Select(item => item.IpmsTargetId).Distinct().Count() })
+                .ToArrayAsync();
+        var periodSubmissionCounts = periodIds.Length == 0
+            ? []
+            : await yearSubmissions.Where(item => item.ReportingPeriodId.HasValue)
+                .GroupBy(item => item.ReportingPeriodId!.Value)
+                .Select(group => new
+                {
+                    ReportingPeriodId = group.Key,
+                    Count = group.Count(),
+                    Achieved = group.Where(item => CompletedStatuses.Contains(item.Status)).Select(item => item.IpmsTargetId).Distinct().Count(),
+                    AtRisk = group.Where(item => AtRiskStatuses.Contains(item.Status)).Select(item => item.IpmsTargetId).Distinct().Count(),
+                    NonOutstanding = group.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.IpmsTargetId).Distinct().Count()
+                })
+                .ToArrayAsync();
+        var periodBreakdown = periodWindows.Select(item =>
+        {
+            var targetCount = periodTargetCounts.SingleOrDefault(count => count.ReportingPeriodId == item.Period.Id)?.Count ?? 0;
+            var submissionCount = periodSubmissionCounts.SingleOrDefault(count => count.ReportingPeriodId == item.Period.Id);
+            return new PerformanceDashboardPeriodBreakdownResponse(
+                item.Period.PublicId,
+                item.Period.Code,
+                item.Period.Name,
+                item.Period.Sequence,
+                WindowState(item.Window, now),
+                item.Window?.OpensAt,
+                item.Window?.ClosesAt,
+                submissionCount?.Count ?? 0,
+                submissionCount?.Achieved ?? 0,
+                submissionCount?.AtRisk ?? 0,
+                Math.Max(0, targetCount - (submissionCount?.NonOutstanding ?? 0)));
+        }).ToArray();
 
         return Ok(new ApiResponse<PerformanceDashboardResponse>(true, new(
             targetSummary?.Total ?? 0,
@@ -96,8 +251,31 @@ public sealed class PerformanceDashboardsController(
             submissionSummary.Submitted,
             submissionSummary.Returned,
             submissionSummary.Approved,
-            submissionSummary.PendingVerification,
-            submissionSummary.PendingApproval)));
+            pendingVerification,
+            pendingApproval,
+            selectedYear?.PublicId,
+            selectedYear?.FinancialYear.Code,
+            selectedYear?.FinancialYear.Name,
+            selectedPeriodWindow?.Period.PublicId,
+            selectedPeriodWindow?.Period.Code,
+            selectedPeriodWindow?.Period.Name,
+            selectedPeriodWindow == null ? null : WindowState(selectedPeriodWindow.Window, now),
+            selectedPeriodWindow?.Window?.OpensAt,
+            selectedPeriodWindow?.Window?.ClosesAt,
+            selectedYear == null ? null : ratingBreakdown,
+            selectedYear == null ? null : teamBreakdown,
+            selectedYear == null ? null : periodBreakdown)));
+    }
+
+    private static readonly string[] CompletedStatuses = ["completed", "approved"];
+    private static readonly string[] AtRiskStatuses = ["returned_for_info", "rejected", "verify_rejected"];
+
+    private static string WindowState(ReportingWindow? window, DateTime now)
+    {
+        if (window == null) return "Not configured";
+        if (!window.IsActive || now > window.ClosesAt) return "Closed";
+        if (now < window.OpensAt) return "Upcoming";
+        return "Open";
     }
 
     private async Task<ApplicationUser?> CurrentUser()
@@ -143,7 +321,7 @@ public sealed class PerformanceDashboardsController(
             group.Count(item => item.Status == "draft"),
             group.Count(item => item.Status == "submitted"),
             group.Count(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
-            group.Count(item => item.Status == "approved"),
+            group.Count(item => item.Status == "approved" || item.Status == "completed"),
             group.Count(item => item.Status == "submitted" || item.Status == "pending_verification"),
             group.Count(item => item.Status == "verified" || item.Status == "pending_approval"),
             group.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.OpmsTargetId).Distinct().Count()))
@@ -154,7 +332,7 @@ public sealed class PerformanceDashboardsController(
             group.Count(item => item.Status == "draft"),
             group.Count(item => item.Status == "submitted"),
             group.Count(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
-            group.Count(item => item.Status == "approved"),
+            group.Count(item => item.Status == "approved" || item.Status == "completed"),
             group.Count(item => item.Status == "submitted" || item.Status == "pending_verification"),
             group.Count(item => item.Status == "verified" || item.Status == "pending_approval"),
             group.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.IpmsTargetId).Distinct().Count()))
@@ -164,4 +342,6 @@ public sealed class PerformanceDashboardsController(
     {
         public static SubmissionSummary Empty { get; } = new(0, 0, 0, 0, 0, 0, 0);
     }
+
+    private sealed record PeriodWindow(ReportingPeriod Period, ReportingWindow? Window);
 }

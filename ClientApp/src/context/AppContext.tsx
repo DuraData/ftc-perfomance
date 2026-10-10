@@ -103,6 +103,23 @@ function systemPrefersDark() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
+export function normalizeAppPath(path: string) {
+  const routePath = path.split(/[?#]/, 1)[0];
+  if (routePath.startsWith('/admin/users')) return '/system-administration/users';
+  if (routePath.startsWith('/admin/roles')) return '/system-administration/roles';
+  if (routePath.startsWith('/admin/permissions')) return '/system-administration/permissions';
+  if (routePath.startsWith('/admin/audit')) return '/system-administration/audit-logs';
+  if (routePath.startsWith('/system-administration/role-implementation-audit')) return '/system-administration/role-implementation-audit';
+  if (routePath.startsWith('/system-administration/role-permission-crud-audit')) return '/system-administration/role-permission-crud-audit';
+  return routePath;
+}
+
+export function resolveAppNavigation(path: string) {
+  const rawPath = path.split(/[?#]/, 1)[0];
+  const routePath = normalizeAppPath(rawPath);
+  return { routePath, location: `${routePath}${path.slice(rawPath.length)}` };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const safeSetItem = (key: string, value: string) => {
     try { localStorage.setItem(key, value); } catch { /* ignore */ }
@@ -130,17 +147,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const preference = readThemePreference();
     return preference === 'dark' || (preference === 'system' && systemPrefersDark());
   });
-  const normalizePath = (path: string) => {
-    if (path.startsWith('/admin/users')) return '/system-administration/users';
-    if (path.startsWith('/admin/roles')) return '/system-administration/roles';
-    if (path.startsWith('/admin/permissions')) return '/system-administration/permissions';
-    if (path.startsWith('/admin/audit')) return '/system-administration/audit-logs';
-    if (path.startsWith('/system-administration/role-implementation-audit')) return '/system-administration/role-implementation-audit';
-    if (path.startsWith('/system-administration/role-permission-crud-audit')) return '/system-administration/role-permission-crud-audit';
-    return path;
-  };
-
-  const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizePath(window.location.pathname || '/dashboard') : '/login');
+  const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizeAppPath(window.location.pathname || '/dashboard') : '/login');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const refreshTenantAccess = useCallback(async (municipalityId: number | null) => {
     setCurrentMunicipalityId(municipalityId);
@@ -248,7 +255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         setPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
         setMenuItems(storedMenu ? JSON.parse(storedMenu) as MenuItem[] : []);
-        setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
+        setCurrentPathState(normalizeAppPath(window.location.pathname || '/dashboard'));
       }
     }
   }, []);
@@ -275,16 +282,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [expandedSidebarGroups]);
 
   useEffect(() => {
-    const onPopState = () => setCurrentPathState(normalizePath(window.location.pathname || '/dashboard'));
+    const onPopState = () => setCurrentPathState(normalizeAppPath(window.location.pathname || '/dashboard'));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   const setCurrentPath = (path: string) => {
-    const nextPath = normalizePath(path);
-    if (nextPath === currentPath) return;
-    window.history.pushState({}, '', nextPath);
-    setCurrentPathState(nextPath);
+    const next = resolveAppNavigation(path);
+    if (next.routePath === currentPath && `${window.location.pathname}${window.location.search}${window.location.hash}` === next.location) return;
+    window.history.pushState({}, '', next.location);
+    setCurrentPathState(next.routePath);
   };
 
   const login = async (email: string, password: string, twoFactorCode?: string, recoveryCode?: string): Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'> => {

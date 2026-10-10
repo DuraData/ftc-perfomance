@@ -22,6 +22,13 @@ public sealed class PagedQueryRequest
 
     public Guid? DepartmentPublicId { get; init; }
 
+    public Guid? MunicipalityFinancialYearPublicId { get; init; }
+
+    public Guid? ReportingPeriodPublicId { get; init; }
+
+    [StringLength(30)]
+    public string? DashboardFilter { get; init; }
+
     [StringLength(20)]
     public string? Lifecycle { get; init; }
 
@@ -35,4 +42,5 @@ public sealed class PagedQueryRequest
     public string NormalizedSearch => Search?.Trim() ?? string.Empty;
     public string NormalizedSortBy => SortBy?.Trim().ToLowerInvariant() ?? "createdat";
     public string NormalizedLifecycle => Lifecycle?.Trim().ToLowerInvariant() ?? string.Empty;
+    public string NormalizedDashboardFilter => DashboardFilter?.Trim().ToLowerInvariant() ?? string.Empty;
 }

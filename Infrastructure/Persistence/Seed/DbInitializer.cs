@@ -180,9 +180,15 @@ public static class DbInitializer
         await context.SaveChangesAsync();
     }
 
-    private static async Task SeedDepartmentsAndUnitsAsync(ApplicationDbContext context)
+    internal static async Task SeedDepartmentsAndUnitsAsync(ApplicationDbContext context)
     {
-        var existingDepartments = await context.Departments.Include(d => d.Units).ToListAsync();
+        // These are legacy, platform-level demo records. Tenant-owned organization
+        // masters may legitimately reuse the same code, so they must never
+        // participate in the seed lookup or be rewritten during startup.
+        var existingDepartments = await context.Departments.IgnoreQueryFilters()
+            .Where(d => d.MunicipalityId == null)
+            .Include(d => d.Units)
+            .ToListAsync();
         var byCode = existingDepartments.ToDictionary(d => d.Code, StringComparer.OrdinalIgnoreCase);
 
         foreach (var departmentSeed in GetDepartmentSeeds())
@@ -207,7 +213,10 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
 
-        var departments = await context.Departments.Include(d => d.Units).ToListAsync();
+        var departments = await context.Departments.IgnoreQueryFilters()
+            .Where(d => d.MunicipalityId == null)
+            .Include(d => d.Units)
+            .ToListAsync();
         foreach (var departmentSeed in GetDepartmentSeeds())
         {
             var department = departments.Single(d => d.Code == departmentSeed.Code);
@@ -295,8 +304,8 @@ public static class DbInitializer
         var adminEmail = configuration["Admin:Email"];
         if (string.IsNullOrWhiteSpace(adminEmail))
             throw new InvalidOperationException("Admin:Email must be supplied through a local/deployment secret when controlled seeding is enabled.");
-        var omm = await context.Departments.FirstAsync(d => d.Code == "OMM");
-        var executiveUnit = await context.Units.FirstAsync(u => u.Code == "OMM-EXEC");
+        var omm = await context.Departments.IgnoreQueryFilters().FirstAsync(d => d.MunicipalityId == null && d.Code == "OMM");
+        var executiveUnit = await context.Units.IgnoreQueryFilters().FirstAsync(u => u.MunicipalityId == null && u.Code == "OMM-EXEC");
 
         var defaultUser = await userManager.FindByEmailAsync(adminEmail);
         if (defaultUser != null) return;
@@ -328,8 +337,12 @@ public static class DbInitializer
     private static async Task SeedDemoUsersAsync(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IConfiguration configuration)
     {
         var defaultPassword = GetRequiredSeedSecret(configuration, "DemoUsers:DefaultPassword");
-        var departments = await context.Departments.AsNoTracking().ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
-        var units = await context.Units.AsNoTracking().ToDictionaryAsync(u => u.Code, StringComparer.OrdinalIgnoreCase);
+        var departments = await context.Departments.IgnoreQueryFilters().AsNoTracking()
+            .Where(d => d.MunicipalityId == null)
+            .ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
+        var units = await context.Units.IgnoreQueryFilters().AsNoTracking()
+            .Where(u => u.MunicipalityId == null)
+            .ToDictionaryAsync(u => u.Code, StringComparer.OrdinalIgnoreCase);
         var validRoleNames = SecurityModel.OrderedRoles.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var seed in GetDemoUserSeeds())
@@ -1039,7 +1052,15 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // Seed Vote Numbers
-        var departments = await context.Departments.ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
+        var demoMunicipalityName = GetWardSeeds().Select(item => item.Municipality).Distinct(StringComparer.OrdinalIgnoreCase).Single();
+        var demoMunicipality = municipalities.SingleOrDefault(item =>
+            string.Equals(item.Code, demoMunicipalityName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.Name, demoMunicipalityName, StringComparison.OrdinalIgnoreCase));
+        var departments = demoMunicipality == null
+            ? new Dictionary<string, Department>(StringComparer.OrdinalIgnoreCase)
+            : await context.Departments.IgnoreQueryFilters().AsNoTracking()
+                .Where(d => d.MunicipalityId == demoMunicipality.Id)
+                .ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
         var currentVoteYears = (await context.MunicipalityFinancialYears.IgnoreQueryFilters().AsNoTracking()
                 .Where(item => item.IsActive && item.IsCurrent)
                 .Select(item => new { item.Id, item.MunicipalityId }).ToArrayAsync())
@@ -1088,7 +1109,9 @@ public static class DbInitializer
     {
         // Get all lookup data
         var periods = await context.Periods.ToDictionaryAsync(p => p.Code, StringComparer.OrdinalIgnoreCase);
-        var departments = await context.Departments.ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
+        var departments = await context.Departments.IgnoreQueryFilters()
+            .Where(d => d.MunicipalityId == null)
+            .ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
         var units = await context.Units.ToDictionaryAsync(u => $"{u.DepartmentId}-{u.Code}", StringComparer.OrdinalIgnoreCase);
         var goals = await context.StrategicGoals.ToDictionaryAsync(g => g.Code, StringComparer.OrdinalIgnoreCase);
         var objectives = await context.StrategicObjectives.ToDictionaryAsync(o => o.Code, StringComparer.OrdinalIgnoreCase);
@@ -1098,7 +1121,9 @@ public static class DbInitializer
         var users = await userManager.Users.ToDictionaryAsync(u => u.UserName!, StringComparer.OrdinalIgnoreCase);
 
         // Seed OPMS Targets
-        var existingOpmsTargets = await context.OpmsTargets.ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
+        var existingOpmsTargets = await context.OpmsTargets.IgnoreQueryFilters()
+            .Where(t => t.MunicipalityId == null)
+            .ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
         foreach (var targetSeed in GetOpmsTargetSeeds())
         {
             if (!existingOpmsTargets.TryGetValue(targetSeed.IndicatorNumber, out var target))

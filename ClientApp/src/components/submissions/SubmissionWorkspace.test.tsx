@@ -89,6 +89,50 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.getByText('Private corrective action')).toBeInTheDocument();
   });
 
+  it('renders an omitted draft actual as blank rather than a fabricated numeric zero', () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    render(<SubmissionWorkspace submission={{ ...submission, actual: 0, actualPerformance: undefined }} submissionType="OPMS" />);
+
+    const actualSummary = screen.getByText('Actual', { selector: 'p' }).parentElement;
+    expect(actualSummary).toHaveTextContent('Actual-');
+    expect(actualSummary).not.toHaveTextContent('0');
+  });
+
+  it('renders the canonical absolute variance without inventing a percentage unit', () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'Variance');
+    render(<SubmissionWorkspace submission={{ ...submission, variance: -2 }} submissionType="OPMS" />);
+
+    const varianceField = screen.getByText('Variance').parentElement;
+    expect(varianceField).toHaveTextContent('Variance-2');
+    expect(varianceField).not.toHaveTextContent('-2%');
+  });
+
+  it('shows only permitted actions that apply to the current workflow state', () => {
+    security.canExecute.mockReturnValue(true);
+    const submitted = { ...submission, status: 'submitted' } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={submitted} submissionType="OPMS" onWorkflowAction={vi.fn()} onExtendDueDate={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Verify' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Verify Reject' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Extend Due Date' })).toBeInTheDocument();
+    for (const action of ['Submit', 'Approve', 'Reject', 'Review', 'Audit', 'Save Score'])
+      expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
+    expect(screen.queryByText('Escalate')).not.toBeInTheDocument();
+    expect(screen.queryByText('Clear Review')).not.toBeInTheDocument();
+  });
+
+  it('hides workflow actions after a configurable workflow reaches completion', () => {
+    security.canExecute.mockReturnValue(true);
+    const completed = { ...submission, status: 'completed' } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={completed} submissionType="OPMS" onWorkflowAction={vi.fn()} />);
+
+    expect(screen.queryByText('Workflow Actions')).not.toBeInTheDocument();
+    for (const action of ['Submit', 'Verify', 'Verify Reject', 'Approve', 'Reject', 'Review', 'Audit', 'Save Score'])
+      expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
+  });
+
   it('loads evidence from the bounded register and navigates authoritative pages', async () => {
     api.getOpmsSubmissionAttachmentsPage
       .mockResolvedValueOnce({

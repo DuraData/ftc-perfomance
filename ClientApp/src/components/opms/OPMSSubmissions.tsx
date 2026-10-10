@@ -37,7 +37,49 @@ import {
   requestOpmsEvidenceDisposal,
   updateIpmsSubmission,
   updateOpmsSubmission,
+  type RegisterPageQuery,
 } from '../../api/api';
+
+type SubmissionSetupForm = {
+  targetId: string;
+  quarter: string;
+  actualPerformance: string;
+};
+
+type SubmissionSetupErrors = Partial<Record<'targetId' | 'quarter', string>>;
+
+function validateSubmissionSetup(form: SubmissionSetupForm): SubmissionSetupErrors {
+  const errors: SubmissionSetupErrors = {};
+  if (!form.targetId.trim()) errors.targetId = 'Select a target before creating the submission.';
+  if (!form.quarter.trim()) errors.quarter = 'Select a reporting period.';
+  return errors;
+}
+
+function formatOptionalDate(value?: string): string {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleDateString();
+}
+
+function formatVariance(value?: number | null): string {
+  if (value === undefined || value === null) return '-';
+  return `${value > 0 ? '+' : ''}${value}`;
+}
+
+type DashboardSubmissionFilter = 'draft' | 'submitted' | 'returned' | 'approved';
+
+function readIpmsDashboardScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+  const parameters = new URLSearchParams(window.location.search);
+  const filter = parameters.get('dashboardFilter');
+  const dashboardFilter = filter === 'draft' || filter === 'submitted' || filter === 'returned' || filter === 'approved'
+    ? filter as DashboardSubmissionFilter
+    : undefined;
+  return {
+    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || undefined,
+    reportingPeriodPublicId: parameters.get('reportingPeriodPublicId') || undefined,
+    dashboardFilter,
+  };
+}
 
 export function OPMSSubmissionsList() {
   const { pushToast } = useApp();
@@ -52,6 +94,8 @@ export function OPMSSubmissionsList() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formErrors, setFormErrors] = useState<SubmissionSetupErrors>({});
   const [form, setForm] = useState({
     targetId: '',
     quarter: 'Q1',
@@ -93,14 +137,15 @@ export function OPMSSubmissionsList() {
       quarter: 'Q1',
       actualPerformance: '',
     });
+    setFormErrors({});
   };
 
   const columns = [
     { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
     { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
-    { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600' : ''}>{new Date(row.dueDate).toLocaleDateString()}</span> },
-    { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
-    { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
+    { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={row.dueDate && new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600' : ''}>{formatOptionalDate(row.dueDate)}</span> },
+    { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actualPerformance?.trim() || '-' },
+    { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> },
     { id: 'status', sortKey: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
   ];
 
@@ -111,6 +156,11 @@ export function OPMSSubmissionsList() {
   );
 
   const handleCreateSubmission = async () => {
+    const validationErrors = validateSubmissionSetup(form);
+    setFormErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    setIsCreating(true);
     const result = await createOpmsSubmission({
       opmsTargetId: form.targetId,
       quarter: form.quarter,
@@ -118,6 +168,7 @@ export function OPMSSubmissionsList() {
       varianceReason: null,
       correctiveMeasure: null,
     });
+    setIsCreating(false);
 
     if (!result.success || !result.data) {
       pushToast('error', result.message ?? 'Failed to create submission');
@@ -135,7 +186,7 @@ export function OPMSSubmissionsList() {
     const result = await updateOpmsSubmission(submission.id, {
       opmsTargetId: submission.target.id,
       quarter: submission.quarter,
-      actualPerformance: submission.actualPerformance ?? String(submission.actual),
+      actualPerformance: submission.actualPerformance?.trim() || null,
       varianceReason: submission.varianceReason ?? null,
       correctiveMeasure: submission.correctiveMeasure ?? null,
     });
@@ -318,24 +369,32 @@ export function OPMSSubmissionsList() {
                       kind="opms"
                       label="Target"
                       value={form.targetId}
-                      onChange={(value) => setForm(prev => ({ ...prev, targetId: value }))}
+                      onChange={(value) => {
+                        setForm(prev => ({ ...prev, targetId: value }));
+                        setFormErrors(prev => ({ ...prev, targetId: undefined }));
+                      }}
                       required
+                      error={formErrors.targetId}
                     />
                     <Select
                       label="Quarter"
                       options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
                       value={form.quarter}
-                      onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
+                      onChange={(e) => {
+                        setForm(prev => ({ ...prev, quarter: e.target.value }));
+                        setFormErrors(prev => ({ ...prev, quarter: undefined }));
+                      }}
                       required
+                      error={formErrors.quarter}
                     />
                   </FormRow>
-                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} required />
+                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
                 </FormPanel>
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
               <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => { void handleCreateSubmission(); }}>Create</Button>
+              <Button variant="primary" size="sm" loading={isCreating} onClick={() => { void handleCreateSubmission(); }}>Create</Button>
             </div>
           </Modal>
         </div>
@@ -357,16 +416,19 @@ export function IPMSSubmissionsList() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formErrors, setFormErrors] = useState<SubmissionSetupErrors>({});
   const [form, setForm] = useState({
     targetId: '',
     quarter: 'Q1',
     actualPerformance: '',
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
+  const [dashboardScope, setDashboardScope] = useState(readIpmsDashboardScope);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const submissionsResult = await getIpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection });
+    const submissionsResult = await getIpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection, ...dashboardScope });
 
     if (submissionsResult.success && submissionsResult.data) {
       setIpmsSubmissions(submissionsResult.data.items);
@@ -376,7 +438,7 @@ export function IPMSSubmissionsList() {
     }
 
     setIsLoading(false);
-  }, [page, pushToast, search, sortBy, sortDirection]);
+  }, [dashboardScope, page, pushToast, search, sortBy, sortDirection]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -398,14 +460,15 @@ export function IPMSSubmissionsList() {
       quarter: 'Q1',
       actualPerformance: '',
     });
+    setFormErrors({});
   };
 
   const columns = [
     { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: IPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
     { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
-    { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
-    { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
-    { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
+    { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => formatOptionalDate(row.dueDate) },
+    { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actualPerformance?.trim() || '-' },
+    { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> },
     { id: 'status', sortKey: 'status', header: 'Status', accessor: (row: IPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
   ];
 
@@ -416,6 +479,11 @@ export function IPMSSubmissionsList() {
   );
 
   const handleCreateSubmission = async () => {
+    const validationErrors = validateSubmissionSetup(form);
+    setFormErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) return;
+
+    setIsCreating(true);
     const result = await createIpmsSubmission({
       ipmsTargetId: form.targetId,
       quarter: form.quarter,
@@ -423,6 +491,7 @@ export function IPMSSubmissionsList() {
       varianceReason: null,
       correctiveMeasure: null,
     });
+    setIsCreating(false);
 
     if (!result.success || !result.data) {
       pushToast('error', result.message ?? 'Failed to create submission');
@@ -440,7 +509,7 @@ export function IPMSSubmissionsList() {
     const result = await updateIpmsSubmission(submission.id, {
       ipmsTargetId: submission.target.id,
       quarter: submission.quarter,
-      actualPerformance: submission.actualPerformance ?? String(submission.actual),
+      actualPerformance: submission.actualPerformance?.trim() || null,
       varianceReason: submission.varianceReason ?? null,
       correctiveMeasure: submission.correctiveMeasure ?? null,
     });
@@ -579,7 +648,14 @@ export function IPMSSubmissionsList() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Badge variant="primary">{totalCount} submissions</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="primary">{totalCount} submissions</Badge>
+              {dashboardScope.dashboardFilter ? <Badge variant="info">Dashboard filter: {dashboardScope.dashboardFilter}</Badge> : null}
+              {dashboardScope.dashboardFilter ? <Button size="sm" variant="ghost" onClick={() => {
+                window.history.replaceState({}, '', '/ipms/submissions');
+                setDashboardScope({});
+              }}>Clear dashboard filter</Button> : null}
+            </div>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
               <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
@@ -623,24 +699,32 @@ export function IPMSSubmissionsList() {
                       kind="ipms"
                       label="Target"
                       value={form.targetId}
-                      onChange={(value) => setForm(prev => ({ ...prev, targetId: value }))}
+                      onChange={(value) => {
+                        setForm(prev => ({ ...prev, targetId: value }));
+                        setFormErrors(prev => ({ ...prev, targetId: undefined }));
+                      }}
                       required
+                      error={formErrors.targetId}
                     />
                     <Select
                       label="Quarter"
                       options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
                       value={form.quarter}
-                      onChange={(e) => setForm(prev => ({ ...prev, quarter: e.target.value }))}
+                      onChange={(e) => {
+                        setForm(prev => ({ ...prev, quarter: e.target.value }));
+                        setFormErrors(prev => ({ ...prev, quarter: undefined }));
+                      }}
                       required
+                      error={formErrors.quarter}
                     />
                   </FormRow>
-                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} required />
+                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
                 </FormPanel>
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
               <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => { void handleCreateSubmission(); }}>Create</Button>
+              <Button variant="primary" size="sm" loading={isCreating} onClick={() => { void handleCreateSubmission(); }}>Create</Button>
             </div>
           </Modal>
         </div>

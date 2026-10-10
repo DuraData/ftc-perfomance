@@ -93,6 +93,32 @@ public sealed class ConfigurableWorkflowTests
     }
 
     [Fact]
+    public async Task Workflow_AllowsGovernedRejectCounterpart_AndReturnsToConfiguredReworkStage()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var year = new MunicipalityFinancialYear { Id = 301, MunicipalityId = 7, FinancialYearId = 1, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var period = new ReportingPeriod { Id = 310, MunicipalityFinancialYearId = year.Id, Code = "Q1-REJECT", Name = "Quarter 1", StartDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) };
+        var definition = new WorkflowDefinition { Id = 320, MunicipalityId = 7, MunicipalityFinancialYearId = year.Id, SubmissionKind = SubmissionKind.Opms, Code = "REWORK", Name = "Rework", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 321, MunicipalityId = 7, Code = "SUBMIT", Name = "Submit", Sequence = 1, RequiredActionCode = "OPMS_SUBMISSION.SUBMIT", RequiredPermissionCode = "OPMS_SUBMISSION.SUBMIT" });
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 322, MunicipalityId = 7, Code = "VERIFY", Name = "Verify", Sequence = 2, RequiredActionCode = "OPMS_SUBMISSION.VERIFY", RequiredPermissionCode = "OPMS_SUBMISSION.VERIFY", RejectionStageCode = "SUBMIT", RequireDifferentActorFromSubmitter = true });
+        context.AddRange(year, period, definition);
+        await context.SaveChangesAsync();
+        var service = new ConfigurableWorkflowService(context);
+
+        (await service.PrepareActionAsync(SubmissionKind.Opms, "submission-rework", period.Id, "submitter", "submitter", "OPMS_SUBMISSION.SUBMIT", WorkflowActionOutcome.Submit, "Ready", null, "trace-submit")).Allowed.Should().BeTrue();
+        await context.SaveChangesAsync();
+        var rejected = await service.PrepareActionAsync(SubmissionKind.Opms, "submission-rework", period.Id, "submitter", "verifier", "OPMS_SUBMISSION.VERIFY_REJECT", WorkflowActionOutcome.Reject, "Evidence is incomplete", null, "trace-reject");
+
+        rejected.Allowed.Should().BeTrue();
+        rejected.Instance!.State.Should().Be(WorkflowInstanceState.Rework);
+        rejected.Instance.CurrentStageId.Should().Be(321);
+        rejected.Action!.ActionCode.Should().Be("OPMS_SUBMISSION.VERIFY_REJECT");
+        rejected.Action.ToStageId.Should().Be(321);
+        ConfigurableWorkflowService.IsActionAllowedAtStage("IPMS_SUBMISSION.APPROVE", "IPMS_SUBMISSION.REJECT", WorkflowActionOutcome.Reject).Should().BeTrue();
+        ConfigurableWorkflowService.IsActionAllowedAtStage("IPMS_SUBMISSION.VERIFY", "IPMS_SUBMISSION.APPROVE", WorkflowActionOutcome.Approve).Should().BeFalse();
+    }
+
+    [Fact]
     public void WorkflowComparison_ReportsAddedRemovedAndModifiedStages()
     {
         var from = new WorkflowDefinition();

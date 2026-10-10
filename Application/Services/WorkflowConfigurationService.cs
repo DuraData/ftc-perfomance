@@ -64,7 +64,7 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         var stage = instance.CurrentStage ?? stages.SingleOrDefault(x => x.Id == instance.CurrentStageId);
         if (stage == null) return new(false, "Current workflow stage is invalid.", instance, null);
         var bypass = outcome == WorkflowActionOutcome.Bypass;
-        if (!string.Equals(stage.RequiredActionCode, actionCode, StringComparison.OrdinalIgnoreCase) && !(bypass && stage.IsOptional && stage.AllowBypass))
+        if (!IsActionAllowedAtStage(stage.RequiredActionCode, actionCode, outcome) && !(bypass && stage.IsOptional && stage.AllowBypass))
             return new(false, $"Action '{actionCode}' is not valid at stage '{stage.Code}'.", instance, null);
         if (stage.RequireDifferentActorFromSubmitter && string.Equals(actorUserId, submitterUserId, StringComparison.OrdinalIgnoreCase) && outcome != WorkflowActionOutcome.Submit)
             return new(false, "Segregation of duties prevents the submitter from acting at this stage.", instance, null);
@@ -120,5 +120,22 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         instance.State = completed ? WorkflowInstanceState.Completed : outcome == WorkflowActionOutcome.Reject ? WorkflowInstanceState.Rework : WorkflowInstanceState.Active;
         if (completed) instance.CompletedAt = action.OccurredAt;
         return new(true, completed ? "Workflow completed." : $"Workflow advanced to '{next!.Code}'.", instance, action);
+    }
+
+    internal static bool IsActionAllowedAtStage(string requiredActionCode, string actionCode, WorkflowActionOutcome outcome)
+    {
+        if (string.Equals(requiredActionCode, actionCode, StringComparison.OrdinalIgnoreCase)) return true;
+        if (outcome != WorkflowActionOutcome.Reject) return false;
+
+        var separator = requiredActionCode.LastIndexOf('.');
+        if (separator < 0) return false;
+        var prefix = requiredActionCode[..(separator + 1)];
+        var requiredVerb = requiredActionCode[(separator + 1)..];
+        return requiredVerb.ToUpperInvariant() switch
+        {
+            "VERIFY" => string.Equals(actionCode, $"{prefix}VERIFY_REJECT", StringComparison.OrdinalIgnoreCase),
+            "APPROVE" => string.Equals(actionCode, $"{prefix}REJECT", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
     }
 }

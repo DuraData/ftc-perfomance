@@ -76,6 +76,10 @@ public class IpmsSubmissionsController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(false, null, "User not found"));
         if (!SubmissionSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(false, null, "SortBy must be createdAt, status, quarter, or indicatorNumber."));
+        if (!SubmissionDashboardFilters.Contains(request.NormalizedDashboardFilter))
+            return BadRequest(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(false, null, "DashboardFilter must be draft, submitted, returned, or approved."));
+        if (request.NormalizedDashboardFilter.Length > 0 && !request.ReportingPeriodPublicId.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(false, null, "ReportingPeriodPublicId is required for an IPMS dashboard drill-down."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ");
         if (!scope.PermissionGranted)
@@ -83,8 +87,33 @@ public class IpmsSubmissionsController : ControllerBase
         var query = _context.IpmsSubmissions.AsNoTracking().AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.IpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId.Value)) || (item.IpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.IpmsTarget.UnitId.Value)) || (item.IpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.IpmsTargetId) || scope.KpiIds.Contains(item.IpmsTargetId));
+        if (request.NormalizedDashboardFilter.Length > 0)
+        {
+            var targetScope = await _accessControlService.GetQueryScopeAsync(user, "IPMS_KPI.READ");
+            if (!targetScope.PermissionGranted) query = query.Where(_ => false);
+            else if (!targetScope.Unrestricted)
+                query = query.Where(item =>
+                    item.IpmsTarget.DepartmentId.HasValue && targetScope.DepartmentIds.Contains(item.IpmsTarget.DepartmentId.Value)
+                    || item.IpmsTarget.UnitId.HasValue && targetScope.UnitIds.Contains(item.IpmsTarget.UnitId.Value)
+                    || item.IpmsTarget.AssignedUserId != null && targetScope.OwnerUserIds.Contains(item.IpmsTarget.AssignedUserId)
+                    || targetScope.TargetIds.Contains(item.IpmsTargetId)
+                    || targetScope.KpiIds.Contains(item.IpmsTargetId));
+        }
         if (request.TargetPublicId.HasValue)
             query = query.Where(item => item.IpmsTarget.PublicId == request.TargetPublicId.Value);
+        if (request.MunicipalityFinancialYearPublicId.HasValue)
+            query = query.Where(item => item.ReportingPeriod != null
+                && item.ReportingPeriod.MunicipalityFinancialYear.PublicId == request.MunicipalityFinancialYearPublicId.Value);
+        if (request.ReportingPeriodPublicId.HasValue)
+            query = query.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId.Value);
+        query = request.NormalizedDashboardFilter switch
+        {
+            "draft" => query.Where(item => item.Status == "draft"),
+            "submitted" => query.Where(item => item.Status == "submitted"),
+            "returned" => query.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
+            "approved" => query.Where(item => item.Status == "approved" || item.Status == "completed"),
+            _ => query
+        };
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item =>
                 item.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
@@ -100,12 +129,15 @@ public class IpmsSubmissionsController : ControllerBase
         var items = await query.Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Department)
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Unit)
-            .Include(item => item.SubmittedByUser).Include(item => item.ReportingPeriod)
+            .Include(item => item.IpmsTarget).ThenInclude(target => target.UnitOfMeasure)
+            .Include(item => item.SubmittedByUser)
+            .Include(item => item.ReportingPeriod)
             .Include(item => item.VerifierUser)
             .Include(item => item.ApproverUser)
             .Include(item => item.PmsOfficerUser)
             .Include(item => item.AuditorUser)
             .AsSplitQuery().ToListAsync();
+        await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, items.Select(item => item.ReportingPeriod));
         var responses = new List<IpmsSubmissionResponse>(items.Count);
         foreach (var item in items)
             responses.Add(await ToAuthorizedResponseAsync(item, user));
@@ -114,6 +146,7 @@ public class IpmsSubmissionsController : ControllerBase
     }
 
     private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
+    private static readonly HashSet<string> SubmissionDashboardFilters = ["", "draft", "submitted", "returned", "approved"];
 
     private static IQueryable<IpmsSubmission> ApplySubmissionOrdering(IQueryable<IpmsSubmission> query, string sortBy, bool descending) =>
         (sortBy, descending) switch
@@ -152,6 +185,10 @@ public class IpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        if (string.IsNullOrWhiteSpace(request.IpmsTargetId))
+            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS target is required."));
+        if (string.IsNullOrWhiteSpace(request.Quarter))
+            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Reporting period is required."));
 
         var target = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.Id == request.IpmsTargetId);
         if (target == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS target not found"));
@@ -856,6 +893,7 @@ public class IpmsSubmissionsController : ControllerBase
 
     private async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> ApplyWorkflowAction(string id, string permissionCode, string status, string action, NotificationType notificationType, SubmissionWorkflowActionRequest request)
     {
+        var resultingStatus = status;
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
 
@@ -882,11 +920,12 @@ public class IpmsSubmissionsController : ControllerBase
             var outcome = status is "rejected" or "verify_rejected" ? WorkflowActionOutcome.Reject : status == "submitted" ? WorkflowActionOutcome.Submit : WorkflowActionOutcome.Approve;
             var transition = await _configurableWorkflow.PrepareActionAsync(SubmissionKind.Ipms, entity.Id, entity.ReportingPeriodId!.Value, entity.SubmittedByUserId ?? entity.CreatedBy ?? user.Id, user.Id, permissionCode, outcome, request.Comment, request.Score, HttpContext.TraceIdentifier);
             if (!transition.Allowed) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, transition.Reason));
-            _context.AuditTrails.Add(new AuditTrail { EntityName = "IpmsSubmission", EntityId = id, Action = permissionCode, NewValue = System.Text.Json.JsonSerializer.Serialize(new { status, request.Comment, request.Score, transition.Reason }), ChangedBy = user.Id, IpAddress = PerformanceApiSupport.GetIpAddress(HttpContext) });
+            resultingStatus = PerformanceApiSupport.ResolveWorkflowStatus(status, transition.Instance);
+            _context.AuditTrails.Add(new AuditTrail { EntityName = "IpmsSubmission", EntityId = id, Action = permissionCode, NewValue = System.Text.Json.JsonSerializer.Serialize(new { RequestedStatus = status, EffectiveStatus = resultingStatus, request.Comment, request.Score, transition.Reason }), ChangedBy = user.Id, IpAddress = PerformanceApiSupport.GetIpAddress(HttpContext) });
         }
 
         var before = await FindSubmissionAsync(id);
-        entity.Status = status;
+        entity.Status = resultingStatus;
         if (string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase)) entity.BaseState = SubmissionBaseStates.Submitted;
         else if (status is "rejected" or "verify_rejected") entity.BaseState = SubmissionBaseStates.InProgress;
         entity.UpdatedBy = user.Id;
@@ -1016,12 +1055,13 @@ public class IpmsSubmissionsController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
-    private Task<IpmsSubmission?> FindSubmissionAsync(string id)
+    private async Task<IpmsSubmission?> FindSubmissionAsync(string id)
     {
-        return _context.IpmsSubmissions
+        var submission = await _context.IpmsSubmissions
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Department)
-            .Include(item => item.ReportingPeriod)
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Unit)
+            .Include(item => item.IpmsTarget).ThenInclude(target => target.UnitOfMeasure)
+            .Include(item => item.ReportingPeriod)
             .Include(item => item.SubmittedByUser)
             .Include(item => item.VerifierUser)
             .Include(item => item.ApproverUser)
@@ -1029,6 +1069,9 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.AuditorUser)
             .Include(item => item.SuggestionEditedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
+        if (submission != null)
+            await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, [submission.ReportingPeriod]);
+        return submission;
     }
 
     private async Task<string?> ValidateMemberUpdatesAsync(ApplicationUser user, SaveIpmsSubmissionRequest request, IpmsSubmission? existing)

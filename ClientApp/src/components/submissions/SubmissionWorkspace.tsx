@@ -59,7 +59,6 @@ import { useSecurity } from '../../context/SecurityContext';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 
 type SubmissionRecord = OPMSSubmission | IPMSSubmission;
-type WorkspaceMode = 'review' | 'list';
 
 interface SubmissionWorkspaceProps {
   submission: SubmissionRecord;
@@ -67,7 +66,6 @@ interface SubmissionWorkspaceProps {
   titlePrefix?: string;
   subtitle?: string;
   onBack?: () => void;
-  mode?: WorkspaceMode;
   onSave?: (submission: SubmissionRecord) => void;
   onWithdraw?: (reason: string) => void;
   /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
@@ -148,14 +146,9 @@ function formatDateTime(value?: string) {
   });
 }
 
-function formatValue(value?: number, suffix?: string) {
-  if (value === undefined || value === null) return '-';
-  return `${value.toLocaleString()}${suffix ? ` ${suffix}` : ''}`;
-}
-
 function formatVariance(value?: number) {
   if (value === undefined || value === null) return '-';
-  return `${value > 0 ? '+' : ''}${value}%`;
+  return `${value > 0 ? '+' : ''}${value}`;
 }
 
 function getComments(submission: SubmissionRecord): SubmissionComment[] {
@@ -341,7 +334,6 @@ export function SubmissionWorkspace({
   titlePrefix = 'Workflow / Verification',
   subtitle,
   onBack,
-  mode = 'review',
   onSave,
   onWithdraw,
   onWorkflowAction,
@@ -528,7 +520,6 @@ export function SubmissionWorkspace({
   const score = getScore(currentSubmission);
   const variance = getVariance(currentSubmission);
   const actualExpenditure = getActualExpenditure(currentSubmission);
-  const targetUnit = currentSubmission.target.unitOfMeasure.symbol || currentSubmission.target.unitOfMeasure.name;
   const isConsolidationPeriod = currentSubmission.quarter === 'Mid-Year' || currentSubmission.quarter === 'Annual';
   const resourceCode = `${submissionType}_SUBMISSION`;
   const poeResourceCode = `${submissionType}_POE`;
@@ -547,6 +538,25 @@ export function SubmissionWorkspace({
   const canReadAuditorIdentity = security.canReadField(resourceCode, 'InternalAuditAssessedBy');
   const canReadAuditorObservation = security.canReadField(resourceCode, 'InternalAuditObservation');
   const canReadAuditorComment = security.canReadField(resourceCode, 'InternalAuditComment');
+  const canSubmit = ['draft', 'returned_for_info', 'verify_rejected', 'rejected'].includes(currentSubmission.status)
+    && security.canExecute(`${submissionType}_SUBMISSION.SUBMIT`);
+  const canVerify = ['submitted', 'pending_verification'].includes(currentSubmission.status)
+    && security.canExecute(`${submissionType}_SUBMISSION.VERIFY`);
+  const canVerifyReject = ['submitted', 'pending_verification'].includes(currentSubmission.status)
+    && security.canExecute(`${submissionType}_SUBMISSION.VERIFY_REJECT`);
+  const canApprove = ['verified', 'pending_approval'].includes(currentSubmission.status)
+    && security.canExecute(`${submissionType}_SUBMISSION.APPROVE`);
+  const canReject = ['verified', 'pending_approval'].includes(currentSubmission.status)
+    && security.canExecute(`${submissionType}_SUBMISSION.REJECT`);
+  const canReview = currentSubmission.status === 'approved'
+    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`);
+  const canAudit = currentSubmission.status === 'reviewed'
+    && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
+  const canScore = ['approved', 'reviewed'].includes(currentSubmission.status)
+    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`);
+  const canExtendDueDate = currentSubmission.status !== 'completed'
+    && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`);
+  const hasWorkflowAction = canSubmit || canVerify || canVerifyReject || canApprove || canReject || canReview || canAudit || canScore;
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
   const canReadVarianceReason = security.canReadField(resourceCode, 'VarianceReason');
@@ -803,7 +813,7 @@ export function SubmissionWorkspace({
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Actual</p>
               <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">
-                {canReadActual ? (currentSubmission.actualPerformance || formatValue(currentSubmission.actual, targetUnit)) : 'Restricted'}
+                {canReadActual ? (currentSubmission.actualPerformance?.trim() || '-') : 'Restricted'}
               </p>
             </div>
             <div>
@@ -1077,87 +1087,73 @@ export function SubmissionWorkspace({
         </Section>
       )}
 
-      {!currentSubmission.isDisabled && (onWorkflowAction || onExtendDueDate) && (
+      {!currentSubmission.isDisabled && ((onWorkflowAction && hasWorkflowAction) || (onExtendDueDate && canExtendDueDate)) && (
         <Section title="Workflow Actions" icon={<Check className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field
+            {hasWorkflowAction && <Field
               label="Workflow Comment"
               value={workflowComment}
               editable
               onChange={setWorkflowComment}
               wide
-            />
-            <Field
+            />}
+            {canScore && <Field
               label="Score"
               value={workflowScore}
               editable
               type="number"
               onChange={setWorkflowScore}
-            />
-            <Field
+            />}
+            {canExtendDueDate && <Field
               label="Extended Due Date"
               value={extendedDueDate}
               editable
               type="date"
               onChange={setExtendedDueDate}
-            />
-            <Field
+            />}
+            {canExtendDueDate && <Field
               label="Extension Reason"
               value={extensionReason}
               editable
               onChange={setExtensionReason}
-            />
+            />}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('submit')}>
+            {canSubmit && <Button variant="primary" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('submit')}>
               Submit
-            </Button>
-            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify')}>
+            </Button>}
+            {canVerify && <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify')}>
               Verify
-            </Button>
-            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify-reject')}>
+            </Button>}
+            {canVerifyReject && <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify-reject')}>
               Verify Reject
-            </Button>
-            <Button variant="success" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('approve')}>
+            </Button>}
+            {canApprove && <Button variant="success" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('approve')}>
               Approve
-            </Button>
-            <Button variant="error" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('reject')}>
+            </Button>}
+            {canReject && <Button variant="error" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('reject')}>
               Reject
-            </Button>
-            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('review')}>
+            </Button>}
+            {canReview && <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('review')}>
               Review
-            </Button>
-            <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('audit')}>
+            </Button>}
+            {canAudit && <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('audit')}>
               Audit
-            </Button>
-            <Button variant="outline" size="sm" disabled={workflowBusy || workflowScore.trim() === ''} onClick={() => triggerWorkflowAction('score')}>
+            </Button>}
+            {canScore && <Button variant="outline" size="sm" disabled={workflowBusy || workflowScore.trim() === ''} onClick={() => triggerWorkflowAction('score')}>
               Save Score
-            </Button>
-            <Button
+            </Button>}
+            {canExtendDueDate && <Button
               variant="outline"
               size="sm"
               disabled={workflowBusy || !extendedDueDate || !extensionReason.trim()}
               onClick={() => onExtendDueDate?.({ extendedDueDate, reason: extensionReason.trim() })}
             >
               Extend Due Date
-            </Button>
+            </Button>}
           </div>
         </Section>
       )}
-
-      <div className="flex flex-col justify-between gap-3 rounded-xl border border-secondary-200 bg-white px-4 py-3 dark:border-secondary-700 dark:bg-secondary-900 md:flex-row md:items-center">
-        <p className="text-sm text-secondary-500">
-          {mode === 'review' ? 'Moderate scores and clear the item for audit.' : 'Open the next submission to continue review.'}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" icon={<AlertTriangle className="h-4 w-4" />}>
-            Escalate
-          </Button>
-          <Button variant="success" size="sm" icon={<CheckCircle2 className="h-4 w-4" />}>
-            Clear Review
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

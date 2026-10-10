@@ -729,7 +729,17 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
   };
 }
 
-function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = ''): OPMSTarget {
+interface SubmissionTargetProjection {
+  departmentPublicId?: string | null;
+  departmentName?: string | null;
+  unitPublicId?: string | null;
+  unitName?: string | null;
+  financialYearName?: string | null;
+  unitOfMeasureName?: string | null;
+  unitOfMeasureSymbol?: string | null;
+}
+
+function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = '', projection?: SubmissionTargetProjection): OPMSTarget {
   return toOpmsTargetModel({
     id,
     publicId: id,
@@ -738,6 +748,13 @@ function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = 
     additionalAssigneePublicIds: [],
     voteNumberIds: [],
     indicatorNumber,
+    departmentPublicId: projection?.departmentPublicId,
+    departmentName: projection?.departmentName,
+    unitPublicId: projection?.unitPublicId,
+    unitName: projection?.unitName,
+    municipalityFinancialYearName: projection?.financialYearName,
+    kpiUnitOfMeasureName: projection?.unitOfMeasureName,
+    kpiUnitOfMeasureSymbol: projection?.unitOfMeasureSymbol,
     isIndicatorNumberRevised: false,
     originalOrderNumber: 1,
     revisedOrderNumber: 1,
@@ -759,12 +776,19 @@ function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = 
   });
 }
 
-function unresolvedIpmsTarget(id: string, targetName: string, indicatorNumber = ''): IPMSTarget {
+function unresolvedIpmsTarget(id: string, targetName: string, indicatorNumber = '', projection?: SubmissionTargetProjection): IPMSTarget {
   return toIpmsTargetModel({
     id,
     publicId: id,
     rowVersion: '',
     indicatorNumber,
+    departmentPublicId: projection?.departmentPublicId,
+    departmentName: projection?.departmentName,
+    unitPublicId: projection?.unitPublicId,
+    unitName: projection?.unitName,
+    municipalityFinancialYearName: projection?.financialYearName,
+    kpiUnitOfMeasureName: projection?.unitOfMeasureName,
+    kpiUnitOfMeasureSymbol: projection?.unitOfMeasureSymbol,
     isIndicatorNumberRevised: false,
     originalOrderNumber: 1,
     revisedOrderNumber: 1,
@@ -798,7 +822,15 @@ function numericActualProjection(value?: string | null): number {
 }
 
 function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
-  const target = unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName, dto.targetIndicatorNumber);
+  const target = unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName, dto.targetIndicatorNumber, {
+    departmentPublicId: dto.targetDepartmentPublicId,
+    departmentName: dto.targetDepartmentName,
+    unitPublicId: dto.targetUnitPublicId,
+    unitName: dto.targetUnitName,
+    financialYearName: dto.targetFinancialYearName,
+    unitOfMeasureName: dto.targetUnitOfMeasureName ?? dto.targetUnitType,
+    unitOfMeasureSymbol: dto.targetUnitOfMeasureSymbol,
+  });
   return {
     ...toSubmissionBaseState(dto),
     id: dto.id,
@@ -877,7 +909,15 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
 }
 
 function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
-  const target = unresolvedIpmsTarget(dto.ipmsTargetId, dto.targetName, dto.targetIndicatorNumber);
+  const target = unresolvedIpmsTarget(dto.ipmsTargetId, dto.targetName, dto.targetIndicatorNumber, {
+    departmentPublicId: dto.targetDepartmentPublicId,
+    departmentName: dto.targetDepartmentName,
+    unitPublicId: dto.targetUnitPublicId,
+    unitName: dto.targetUnitName,
+    financialYearName: dto.targetFinancialYearName,
+    unitOfMeasureName: dto.targetUnitOfMeasureName ?? dto.targetUnitType,
+    unitOfMeasureSymbol: dto.targetUnitOfMeasureSymbol,
+  });
   return {
     ...toSubmissionBaseState(dto),
     id: dto.id,
@@ -2177,8 +2217,12 @@ export async function getOpmsPerformanceDashboard(): Promise<ApiResponse<Perform
   return get<PerformanceDashboardDto>('/v1/performance-dashboards/opms');
 }
 
-export async function getIpmsPerformanceDashboard(): Promise<ApiResponse<PerformanceDashboardDto>> {
-  return get<PerformanceDashboardDto>('/v1/performance-dashboards/ipms');
+export async function getIpmsPerformanceDashboard(filters: { municipalityFinancialYearPublicId?: string; reportingPeriodPublicId?: string } = {}): Promise<ApiResponse<PerformanceDashboardDto>> {
+  const parameters = new URLSearchParams();
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.reportingPeriodPublicId) parameters.set('reportingPeriodPublicId', filters.reportingPeriodPublicId);
+  const query = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PerformanceDashboardDto>(`/v1/performance-dashboards/ipms${query}`);
 }
 
 export async function getWorkflowQueue(queue: WorkflowQueueName, page = 1, pageSize = 25): Promise<ApiResponse<WorkflowQueueDto>> {
@@ -2195,6 +2239,9 @@ export type RegisterPageQuery = {
   targetPublicId?: string;
   relatedOpmsTargetPublicId?: string;
   departmentPublicId?: string;
+  municipalityFinancialYearPublicId?: string;
+  reportingPeriodPublicId?: string;
+  dashboardFilter?: 'assigned' | 'achieved' | 'at-risk' | 'outstanding' | 'draft' | 'submitted' | 'returned' | 'approved';
   lifecycle?: 'active' | 'revised' | 'withdrawn';
   reportingPeriodType?: 1 | 2 | 3 | 4 | 5 | 6;
 };
@@ -2209,6 +2256,9 @@ function registerPageQuery(query: RegisterPageQuery): string {
   if (query.targetPublicId?.trim()) parameters.set('targetPublicId', query.targetPublicId.trim());
   if (query.relatedOpmsTargetPublicId?.trim()) parameters.set('relatedOpmsTargetPublicId', query.relatedOpmsTargetPublicId.trim());
   if (query.departmentPublicId?.trim()) parameters.set('departmentPublicId', query.departmentPublicId.trim());
+  if (query.municipalityFinancialYearPublicId?.trim()) parameters.set('municipalityFinancialYearPublicId', query.municipalityFinancialYearPublicId.trim());
+  if (query.reportingPeriodPublicId?.trim()) parameters.set('reportingPeriodPublicId', query.reportingPeriodPublicId.trim());
+  if (query.dashboardFilter) parameters.set('dashboardFilter', query.dashboardFilter);
   if (query.lifecycle) parameters.set('lifecycle', query.lifecycle);
   if (query.reportingPeriodType !== undefined) parameters.set('reportingPeriodType', String(query.reportingPeriodType));
   const value = parameters.toString();

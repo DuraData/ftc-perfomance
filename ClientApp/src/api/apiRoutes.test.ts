@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessionsPage, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpAlignmentMatrixPage, getIdpDocumentsPage, getIdpHierarchyPathsPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getIdpPlanVersionsPage, getIdpStakeholderEngagementsPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachmentsPage, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisionsPage, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistoryPage, getStrategicDocumentsPage, getStrategicDocumentTypesPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistoryPage, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, markNotificationRead, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
+import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessionsPage, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpAlignmentMatrixPage, getIdpDocumentsPage, getIdpHierarchyPathsPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getIdpPlanVersionsPage, getIdpStakeholderEngagementsPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsSubmissionsPage, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachmentsPage, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisionsPage, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getSdbipLayerMastersPage, getStrategicDocumentHistoryPage, getStrategicDocumentsPage, getStrategicDocumentTypesPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistoryPage, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, markNotificationRead, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
 import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
 import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
 import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
@@ -104,7 +104,7 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/audit/trails/page?page=3&pageSize=50&search=approve&sortBy=action&sortDirection=desc&entityName=OpmsSubmission'), expect.objectContaining({ credentials: 'include' }));
   });
 
-  it('transports bounded target-detail filters to submission and related-KPI pages', async () => {
+  it('transports bounded target-detail and dashboard drill-down filters to register pages', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,
       data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 },
@@ -113,9 +113,13 @@ describe('versioned API routes', () => {
 
     await getOpmsSubmissionsPage({ page: 1, pageSize: 100, targetPublicId: 'target-public-id' });
     await getIpmsTargetsPage({ page: 1, pageSize: 100, relatedOpmsTargetPublicId: 'target-public-id' });
+    await getIpmsTargetsPage({ page: 1, pageSize: 25, municipalityFinancialYearPublicId: 'year-public', reportingPeriodPublicId: 'period-public', dashboardFilter: 'achieved' });
+    await getIpmsSubmissionsPage({ page: 1, pageSize: 25, municipalityFinancialYearPublicId: 'year-public', reportingPeriodPublicId: 'period-public', dashboardFilter: 'approved' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/opms-submissions/page?page=1&pageSize=100&targetPublicId=target-public-id'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/ipms-targets/page?page=1&pageSize=100&relatedOpmsTargetPublicId=target-public-id'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/ipms-targets/page?page=1&pageSize=25&municipalityFinancialYearPublicId=year-public&reportingPeriodPublicId=period-public&dashboardFilter=achieved'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/ipms-submissions/page?page=1&pageSize=25&municipalityFinancialYearPublicId=year-public&reportingPeriodPublicId=period-public&dashboardFilter=approved'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('uses versioned IDP reconciliation routes and transports idempotency plus concurrency', async () => {
@@ -457,7 +461,7 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/masters/departments/page?page=2&pageSize=25&search=finance&sortBy=name&sortDirection=asc&active=true'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/masters/positions/page?page=1&pageSize=10&sortBy=grade&sortDirection=desc&departmentPublicId=department-id&unitPublicId=unit-id'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/masters/wards/page?page=3&pageSize=25&search=ward+12&sortBy=code&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/vote-numbers/page?page=1&pageSize=25&sortBy=amount&sortDirection=desc&departmentPublicId=department-id&active=false&municipalityFinancialYearPublicId=year-id'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/masters/vote-numbers/page?page=1&pageSize=25&sortBy=amount&sortDirection=desc&departmentPublicId=department-id&municipalityFinancialYearPublicId=year-id&active=false'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('uses governed ward and vote-number master routes', async () => {
@@ -523,10 +527,10 @@ describe('versioned API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await getOpmsPerformanceDashboard();
-    await getIpmsPerformanceDashboard();
+    await getIpmsPerformanceDashboard({ municipalityFinancialYearPublicId: 'year-public', reportingPeriodPublicId: 'period-public' });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/performance-dashboards/opms'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/performance-dashboards/ipms'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/performance-dashboards/ipms?municipalityFinancialYearPublicId=year-public&reportingPeriodPublicId=period-public'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('loads a bounded workflow queue through the versioned combined route', async () => {
@@ -639,7 +643,10 @@ describe('versioned API routes', () => {
     const page = {
       items: [{
         id: 'submission-live', rowVersion: 'Ag==', baseState: 'SUBMITTED', opmsTargetId: 'target-live',
-        targetName: 'Live KPI', quarter: 'Q1', status: 'submitted', actual: 4,
+        targetName: 'Live KPI', targetIndicatorNumber: 'LIVE-001', quarter: 'Q1', status: 'submitted', actualPerformance: '4',
+        targetDepartmentPublicId: 'department-live', targetDepartmentName: 'Live Water Services',
+        targetUnitPublicId: 'unit-live', targetUnitName: 'Bulk Water', targetFinancialYearName: '2026/27',
+        targetUnitOfMeasureName: 'Households', targetUnitOfMeasureSymbol: '#', targetUnitType: 'absolute_count',
         submittedByUserPublicId: 'submitter-live', submittedByName: 'Live Submitter',
         verifierUserPublicId: 'verifier-live', verifierName: 'Live Verifier', createdAt: '2026-08-01T00:00:00Z',
       }],
@@ -659,7 +666,14 @@ describe('versioned API routes', () => {
     const attachments = await getOpmsSubmissionAttachmentsPage('submission-live', { page: 2, pageSize: 25, search: ' evidence ', scanStatus: 'Clean', quarantined: false, active: true });
 
     expect(submissions.data?.items[0]).toMatchObject({
-      target: { id: 'target-live', targetName: 'Live KPI' },
+      target: {
+        id: 'target-live', targetName: 'Live KPI', indicatorNumber: 'LIVE-001',
+        department: { publicId: 'department-live', name: 'Live Water Services' },
+        unit: { publicId: 'unit-live', name: 'Bulk Water' },
+        period: { fiscalYear: '2026/27' },
+        unitOfMeasure: { name: 'Households', symbol: '#' },
+      },
+      actualPerformance: '4', actual: 4,
       submitter: { id: 'submitter-live', displayName: 'Live Submitter' },
       verifier: { id: 'verifier-live', displayName: 'Live Verifier' },
       attachments: [], comments: [], history: [],

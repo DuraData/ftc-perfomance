@@ -80,6 +80,54 @@ public sealed class ControlledSeedSecurityTests
     }
 
     [Fact]
+    public async Task Department_seed_is_idempotent_and_ignores_tenant_owned_code_collisions()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        var municipality = new Municipality { Code = "TENANT", Name = "Tenant Municipality" };
+        context.Municipalities.Add(municipality);
+        await context.SaveChangesAsync();
+        var tenantDepartment = new Department
+        {
+            MunicipalityId = municipality.Id,
+            Code = "ITS",
+            Name = "Administrator-owned Technical Directorate",
+            Description = "Must not be rewritten by startup seeding"
+        };
+        context.Departments.Add(tenantDepartment);
+        await context.SaveChangesAsync();
+        context.Units.Add(new Unit
+        {
+            MunicipalityId = municipality.Id,
+            DepartmentId = tenantDepartment.Id,
+            Code = "ITS-ROADS",
+            Name = "Administrator-owned Roads Unit"
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        await DbInitializer.SeedDepartmentsAndUnitsAsync(context);
+        await DbInitializer.SeedDepartmentsAndUnitsAsync(context);
+        context.ChangeTracker.Clear();
+
+        var tenantResult = await context.Departments.IgnoreQueryFilters()
+            .SingleAsync(item => item.MunicipalityId == municipality.Id && item.Code == "ITS");
+        tenantResult.Name.Should().Be("Administrator-owned Technical Directorate");
+        tenantResult.Description.Should().Be("Must not be rewritten by startup seeding");
+        (await context.Units.IgnoreQueryFilters()
+            .SingleAsync(item => item.MunicipalityId == municipality.Id && item.Code == "ITS-ROADS"))
+            .Name.Should().Be("Administrator-owned Roads Unit");
+        (await context.Departments.IgnoreQueryFilters()
+            .CountAsync(item => item.MunicipalityId == null && item.Code == "ITS")).Should().Be(1);
+        (await context.Units.IgnoreQueryFilters()
+            .CountAsync(item => item.MunicipalityId == null && item.Code == "ITS-ROADS")).Should().Be(1);
+    }
+
+    [Fact]
     public async Task Initial_role_permission_seed_never_replaces_existing_dynamic_configuration()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

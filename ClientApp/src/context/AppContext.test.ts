@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { normalizeAppPath, resolveAppNavigation } from './AppContext';
 
 describe('AppContext state management', () => {
   const mockUserProfile = {
@@ -23,18 +24,17 @@ describe('AppContext state management', () => {
   });
 
   it('normalizes legacy admin paths', () => {
-    const normalizePath = (path: string) => {
-      if (path.startsWith('/admin/users')) return '/system-administration/users';
-      if (path.startsWith('/admin/roles')) return '/system-administration/roles';
-      if (path.startsWith('/admin/permissions')) return '/system-administration/permissions';
-      if (path.startsWith('/admin/audit')) return '/system-administration/audit-logs';
-      return path;
-    };
+    expect(normalizeAppPath('/admin/users')).toBe('/system-administration/users');
+    expect(normalizeAppPath('/admin/users/new')).toBe('/system-administration/users');
+    expect(normalizeAppPath('/admin/roles')).toBe('/system-administration/roles');
+    expect(normalizeAppPath('/dashboard')).toBe('/dashboard');
+  });
 
-    expect(normalizePath('/admin/users')).toBe('/system-administration/users');
-    expect(normalizePath('/admin/users/new')).toBe('/system-administration/users');
-    expect(normalizePath('/admin/roles')).toBe('/system-administration/roles');
-    expect(normalizePath('/dashboard')).toBe('/dashboard');
+  it('preserves governed dashboard filters while resolving the client route', () => {
+    expect(resolveAppNavigation('/ipms/targets?reportingPeriodPublicId=period-1&dashboardFilter=achieved')).toEqual({
+      routePath: '/ipms/targets',
+      location: '/ipms/targets?reportingPeriodPublicId=period-1&dashboardFilter=achieved',
+    });
   });
 
   it('maintains permission and role state after login', () => {

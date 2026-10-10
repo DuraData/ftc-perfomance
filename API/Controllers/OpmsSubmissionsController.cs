@@ -100,6 +100,7 @@ public class OpmsSubmissionsController : ControllerBase
         var items = await query.Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Department)
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Unit)
+            .Include(item => item.OpmsTarget).ThenInclude(target => target.UnitOfMeasure)
             .Include(item => item.ReportingPeriod)
             .Include(item => item.SubmittedByUser)
             .Include(item => item.VerifierUser)
@@ -107,6 +108,7 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.PmsOfficerUser)
             .Include(item => item.AuditorUser)
             .AsSplitQuery().ToListAsync();
+        await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, items.Select(item => item.ReportingPeriod));
         var responses = new List<OpmsSubmissionResponse>(items.Count);
         foreach (var item in items)
             responses.Add(await ToAuthorizedResponseAsync(item, user));
@@ -153,6 +155,10 @@ public class OpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse>(false, null, "User not found"));
+        if (string.IsNullOrWhiteSpace(request.OpmsTargetId))
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS target is required."));
+        if (string.IsNullOrWhiteSpace(request.Quarter))
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Reporting period is required."));
 
         var target = await _context.OpmsTargets.FirstOrDefaultAsync(item => item.Id == request.OpmsTargetId);
         if (target == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS target not found"));
@@ -857,6 +863,7 @@ public class OpmsSubmissionsController : ControllerBase
 
     private async Task<ActionResult<ApiResponse<OpmsSubmissionResponse>>> ApplyWorkflowAction(string id, string permissionCode, string status, string action, NotificationType notificationType, SubmissionWorkflowActionRequest request)
     {
+        var resultingStatus = status;
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse>(false, null, "User not found"));
 
@@ -883,11 +890,12 @@ public class OpmsSubmissionsController : ControllerBase
             var outcome = status is "rejected" or "verify_rejected" ? WorkflowActionOutcome.Reject : status == "submitted" ? WorkflowActionOutcome.Submit : WorkflowActionOutcome.Approve;
             var transition = await _configurableWorkflow.PrepareActionAsync(SubmissionKind.Opms, entity.Id, entity.ReportingPeriodId!.Value, entity.SubmittedByUserId ?? entity.CreatedBy ?? user.Id, user.Id, permissionCode, outcome, request.Comment, request.Score, HttpContext.TraceIdentifier);
             if (!transition.Allowed) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, transition.Reason));
-            _context.AuditTrails.Add(new AuditTrail { EntityName = "OpmsSubmission", EntityId = id, Action = permissionCode, NewValue = System.Text.Json.JsonSerializer.Serialize(new { status, request.Comment, request.Score, transition.Reason }), ChangedBy = user.Id, IpAddress = PerformanceApiSupport.GetIpAddress(HttpContext) });
+            resultingStatus = PerformanceApiSupport.ResolveWorkflowStatus(status, transition.Instance);
+            _context.AuditTrails.Add(new AuditTrail { EntityName = "OpmsSubmission", EntityId = id, Action = permissionCode, NewValue = System.Text.Json.JsonSerializer.Serialize(new { RequestedStatus = status, EffectiveStatus = resultingStatus, request.Comment, request.Score, transition.Reason }), ChangedBy = user.Id, IpAddress = PerformanceApiSupport.GetIpAddress(HttpContext) });
         }
 
         var before = await FindSubmissionAsync(id);
-        entity.Status = status;
+        entity.Status = resultingStatus;
         if (string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase)) entity.BaseState = SubmissionBaseStates.Submitted;
         else if (status is "rejected" or "verify_rejected") entity.BaseState = SubmissionBaseStates.InProgress;
         entity.UpdatedBy = user.Id;
@@ -1017,12 +1025,13 @@ public class OpmsSubmissionsController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
-    private Task<OpmsSubmission?> FindSubmissionAsync(string id)
+    private async Task<OpmsSubmission?> FindSubmissionAsync(string id)
     {
-        return _context.OpmsSubmissions
+        var submission = await _context.OpmsSubmissions
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Department)
-            .Include(item => item.ReportingPeriod)
             .Include(item => item.OpmsTarget).ThenInclude(target => target.Unit)
+            .Include(item => item.OpmsTarget).ThenInclude(target => target.UnitOfMeasure)
+            .Include(item => item.ReportingPeriod)
             .Include(item => item.SubmittedByUser)
             .Include(item => item.VerifierUser)
             .Include(item => item.ApproverUser)
@@ -1030,6 +1039,9 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.AuditorUser)
             .Include(item => item.SuggestionEditedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
+        if (submission != null)
+            await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, [submission.ReportingPeriod]);
+        return submission;
     }
 
     private async Task<string?> ValidateMemberUpdatesAsync(ApplicationUser user, SaveOpmsSubmissionRequest request, OpmsSubmission? existing)

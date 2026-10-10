@@ -41,4 +41,13 @@ describe('TargetPicker', () => {
     fireEvent.change(screen.getByLabelText('OPMS target', { selector: 'select' }), { target: { value: 'target-1' } });
     expect(onChange).toHaveBeenCalledWith('target-1', expect.objectContaining({ publicId: 'public-1' }));
   });
+
+  it('exposes an accessible validation error on the governed selector', async () => {
+    render(<TargetPicker kind="opms" label="OPMS target" value="" onChange={vi.fn()} required error="Select a target." />);
+
+    const selector = await screen.findByRole('combobox', { name: /^OPMS target/ });
+    expect(selector).toHaveAttribute('aria-invalid', 'true');
+    expect(selector).toHaveAccessibleDescription('Select a target.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Select a target.');
+  });
 });

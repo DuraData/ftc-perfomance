@@ -462,6 +462,14 @@ public record OpmsSubmissionResponse(
 {
     public string BaseState { get; init; } = "IN_PROGRESS";
     public Guid? ReportingPeriodPublicId { get; init; }
+    public Guid? TargetDepartmentPublicId { get; init; }
+    public string? TargetDepartmentName { get; init; }
+    public Guid? TargetUnitPublicId { get; init; }
+    public string? TargetUnitName { get; init; }
+    public string? TargetFinancialYearName { get; init; }
+    public string? TargetUnitOfMeasureName { get; init; }
+    public string? TargetUnitOfMeasureSymbol { get; init; }
+    public string? TargetUnitType { get; init; }
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }
@@ -542,6 +550,14 @@ public record IpmsSubmissionResponse(
 {
     public string BaseState { get; init; } = "IN_PROGRESS";
     public Guid? ReportingPeriodPublicId { get; init; }
+    public Guid? TargetDepartmentPublicId { get; init; }
+    public string? TargetDepartmentName { get; init; }
+    public Guid? TargetUnitPublicId { get; init; }
+    public string? TargetUnitName { get; init; }
+    public string? TargetFinancialYearName { get; init; }
+    public string? TargetUnitOfMeasureName { get; init; }
+    public string? TargetUnitOfMeasureSymbol { get; init; }
+    public string? TargetUnitType { get; init; }
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }
