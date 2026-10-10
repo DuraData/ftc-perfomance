@@ -5,6 +5,7 @@ const pushToast = vi.hoisted(() => vi.fn());
 const api = vi.hoisted(() => ({
   createOpmsSubmission: vi.fn(),
   getOpmsSubmissionsPage: vi.fn(),
+  getOpmsTarget: vi.fn(),
   getOpmsTargetOptions: vi.fn(),
 }));
 
@@ -35,6 +36,12 @@ describe('OPMS submission creation validation', () => {
       },
     });
     api.createOpmsSubmission.mockResolvedValue({ success: false, message: 'Controlled test stop' });
+    api.getOpmsTarget.mockResolvedValue({
+      success: true,
+      data: {
+        periodTargets: [{ reportingPeriodPublicId: 'period-q1', periodCode: 'Q1', periodType: 1, isActive: true }],
+      },
+    });
   });
 
   it('blocks a missing target locally and keeps actual performance optional for an in-progress draft', async () => {
@@ -45,16 +52,18 @@ describe('OPMS submission creation validation', () => {
     expect(screen.getByText(/Optional while the submission remains in progress/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Select a target before creating the submission.');
+    expect(await screen.findByText('Select a target before creating the submission.')).toBeInTheDocument();
+    expect(screen.getByText('Select a reporting period.')).toBeInTheDocument();
     expect(api.createOpmsSubmission).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByRole('combobox', { name: /^Target/ }), { target: { value: 'target-1' } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.change(await screen.findByRole('combobox', { name: /Reporting period/ }), { target: { value: 'period-q1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(api.createOpmsSubmission).toHaveBeenCalledWith(expect.objectContaining({
       opmsTargetId: 'target-1',
-      quarter: 'Q1',
+      reportingPeriodPublicId: 'period-q1',
       actualPerformance: null,
     })));
   });

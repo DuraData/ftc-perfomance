@@ -260,7 +260,7 @@ public record SaveTargetPeriodValueRequest(
 
 public record SaveOpmsSubmissionRequest(
     string OpmsTargetId,
-    string Quarter,
+    Guid ReportingPeriodPublicId,
     string? ActualPerformance,
     decimal? ActualExpenditure,
     string? VarianceReason,
@@ -272,7 +272,7 @@ public record SaveOpmsSubmissionRequest(
 
 public record SaveIpmsSubmissionRequest(
     string IpmsTargetId,
-    string Quarter,
+    Guid ReportingPeriodPublicId,
     string? ActualPerformance,
     decimal? ActualExpenditure,
     string? VarianceReason,

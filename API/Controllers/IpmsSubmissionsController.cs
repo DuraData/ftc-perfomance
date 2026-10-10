@@ -122,7 +122,8 @@ public class IpmsSubmissionsController : ControllerBase
                     && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
                     && ((item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null && item.IpmsTarget.RevisedIndicatorNumber.Contains(request.NormalizedSearch))
                         || (item.IpmsTarget.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null && item.IpmsTarget.RevisedTargetName.Contains(request.NormalizedSearch))))
-                || item.Status.Contains(request.NormalizedSearch) || item.Quarter.Contains(request.NormalizedSearch));
+                || item.Status.Contains(request.NormalizedSearch)
+                || (item.ReportingPeriod != null && (item.ReportingPeriod.Code.Contains(request.NormalizedSearch) || item.ReportingPeriod.Name.Contains(request.NormalizedSearch))));
 
         var totalCount = await query.CountAsync();
         query = ApplySubmissionOrdering(query, request.NormalizedSortBy, request.Descending);
@@ -154,8 +155,8 @@ public class IpmsSubmissionsController : ControllerBase
         {
             ("status", false) => query.OrderBy(item => item.Status).ThenBy(item => item.PublicId),
             ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.PublicId),
-            ("quarter", false) => query.OrderBy(item => item.Quarter).ThenBy(item => item.PublicId),
-            ("quarter", true) => query.OrderByDescending(item => item.Quarter).ThenBy(item => item.PublicId),
+            ("quarter", false) => query.OrderBy(item => item.ReportingPeriod == null ? string.Empty : item.ReportingPeriod.Code).ThenBy(item => item.PublicId),
+            ("quarter", true) => query.OrderByDescending(item => item.ReportingPeriod == null ? string.Empty : item.ReportingPeriod.Code).ThenBy(item => item.PublicId),
             ("indicatornumber", false) => query.OrderBy(item => item.ReportingPeriod != null
                 && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
                 && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
@@ -188,7 +189,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
         if (string.IsNullOrWhiteSpace(request.IpmsTargetId))
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS target is required."));
-        if (string.IsNullOrWhiteSpace(request.Quarter))
+        if (request.ReportingPeriodPublicId == Guid.Empty)
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Reporting period is required."));
 
         var target = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.Id == request.IpmsTargetId);
@@ -200,7 +201,7 @@ public class IpmsSubmissionsController : ControllerBase
         var memberError = await ValidateMemberUpdatesAsync(user, request, null);
         if (memberError != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberError));
         SubmissionValueResolution resolved;
-        try { resolved = await _submissionValues.ResolveIpmsAsync(target.Id, request.Quarter, request.ActualPerformance, null); }
+        try { resolved = await _submissionValues.ResolveIpmsAsync(target.Id, request.ReportingPeriodPublicId, request.ActualPerformance, null); }
         catch (ArgumentException exception) { return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, exception.Message)); }
         catch (InvalidOperationException exception) { return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, exception.Message)); }
         var existingLogical = await _context.IpmsSubmissions.FirstOrDefaultAsync(item => item.IpmsTargetId == target.Id && item.ReportingPeriodId == resolved.Period.Id);
@@ -216,7 +217,6 @@ public class IpmsSubmissionsController : ControllerBase
             MunicipalityId = target.MunicipalityId,
             ReportingPeriodId = resolved.Period.Id,
             ReportingPeriod = resolved.Period,
-            Quarter = request.Quarter.Trim(),
             BaseState = SubmissionBaseStates.InProgress,
             Status = SubmissionBaseStates.InProgress,
             SubmitterStatus = "In Progress",
@@ -267,13 +267,12 @@ public class IpmsSubmissionsController : ControllerBase
         if (memberError != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberError));
         if (!string.Equals(request.IpmsTargetId, entity.IpmsTargetId, StringComparison.Ordinal)) return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be moved to another KPI."));
         SubmissionValueResolution resolved;
-        try { resolved = await _submissionValues.ResolveIpmsAsync(entity.IpmsTargetId, request.Quarter, request.ActualPerformance, null); }
+        try { resolved = await _submissionValues.ResolveIpmsAsync(entity.IpmsTargetId, request.ReportingPeriodPublicId, request.ActualPerformance, null); }
         catch (ArgumentException exception) { return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, exception.Message)); }
         catch (InvalidOperationException exception) { return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, exception.Message)); }
         if (entity.ReportingPeriodId.HasValue && entity.ReportingPeriodId != resolved.Period.Id) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be moved to another reporting period."));
 
         var before = await FindSubmissionAsync(id);
-        entity.Quarter = request.Quarter.Trim();
         entity.ReportingPeriodId = resolved.Period.Id;
         entity.ActualPerformance = resolved.Calculation?.CanonicalActual;
         entity.AchievementPercent = resolved.Calculation?.AchievementPercent;

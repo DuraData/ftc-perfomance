@@ -98,7 +98,7 @@ public sealed class WorkflowQueuesController(
             IndicatorNumber = item.ReportingPeriod != null
                 && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
                 && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber,
-            Quarter = item.Quarter,
+            Quarter = item.ReportingPeriod == null ? item.Quarter : item.ReportingPeriod.Code,
             DueDate = item.DueDate,
             Status = item.Status,
             SubmittedByUserId = item.SubmittedByUserId,
@@ -138,7 +138,7 @@ public sealed class WorkflowQueuesController(
             IndicatorNumber = item.ReportingPeriod != null
                 && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
                 && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber,
-            Quarter = item.Quarter,
+            Quarter = item.ReportingPeriod == null ? item.Quarter : item.ReportingPeriod.Code,
             DueDate = item.DueDate,
             Status = item.Status,
             SubmittedByUserId = item.SubmittedByUserId,

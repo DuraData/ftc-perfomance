@@ -22,7 +22,9 @@ import {
   extendIpmsSubmissionDueDate,
   extendOpmsSubmissionDueDate,
   getIpmsSubmissionsPage,
+  getIpmsTarget,
   getOpmsSubmissionsPage,
+  getOpmsTarget,
   uploadIpmsSubmissionAttachment,
   uploadOpmsSubmissionAttachment,
   rescanIpmsSubmissionAttachment,
@@ -42,17 +44,74 @@ import {
 
 type SubmissionSetupForm = {
   targetId: string;
-  quarter: string;
+  reportingPeriodPublicId: string;
   actualPerformance: string;
 };
 
-type SubmissionSetupErrors = Partial<Record<'targetId' | 'quarter', string>>;
+type SubmissionSetupErrors = Partial<Record<'targetId' | 'reportingPeriodPublicId', string>>;
 
 function validateSubmissionSetup(form: SubmissionSetupForm): SubmissionSetupErrors {
   const errors: SubmissionSetupErrors = {};
   if (!form.targetId.trim()) errors.targetId = 'Select a target before creating the submission.';
-  if (!form.quarter.trim()) errors.quarter = 'Select a reporting period.';
+  if (!form.reportingPeriodPublicId.trim()) errors.reportingPeriodPublicId = 'Select a reporting period.';
   return errors;
+}
+
+function SubmissionPeriodSelect({
+  kind,
+  targetId,
+  value,
+  onChange,
+  error,
+}: {
+  kind: 'opms' | 'ipms';
+  targetId: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  const [options, setOptions] = useState<{ value: string; label: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!targetId) {
+      setOptions([]);
+      setLoadError(undefined);
+      return () => { cancelled = true; };
+    }
+    const load = async () => {
+      setIsLoading(true);
+      setLoadError(undefined);
+      const result = kind === 'opms' ? await getOpmsTarget(targetId) : await getIpmsTarget(targetId);
+      if (cancelled) return;
+      if (!result.success || !result.data) {
+        setOptions([]);
+        setLoadError(result.message ?? 'Unable to load reporting periods for this target.');
+      } else {
+        setOptions(result.data.periodTargets
+          .filter(period => period.isActive)
+          .sort((left, right) => left.periodType - right.periodType)
+          .map(period => ({ value: period.reportingPeriodPublicId, label: period.periodCode })));
+      }
+      setIsLoading(false);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [kind, targetId]);
+
+  return (
+    <Select
+      label="Reporting period"
+      options={[{ value: '', label: targetId ? 'Select reporting period' : 'Select a target first' }, ...options]}
+      value={value}
+      onChange={event => onChange(event.target.value)}
+      disabled={!targetId || isLoading}
+      required
+      error={error ?? loadError}
+    />
+  );
 }
 
 function formatOptionalDate(value?: string): string {
@@ -98,7 +157,7 @@ export function OPMSSubmissionsList() {
   const [formErrors, setFormErrors] = useState<SubmissionSetupErrors>({});
   const [form, setForm] = useState({
     targetId: '',
-    quarter: 'Q1',
+    reportingPeriodPublicId: '',
     actualPerformance: '',
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
@@ -135,7 +194,7 @@ export function OPMSSubmissionsList() {
   const resetForm = () => {
     setForm({
       targetId: '',
-      quarter: 'Q1',
+      reportingPeriodPublicId: '',
       actualPerformance: '',
     });
     setFormErrors({});
@@ -164,7 +223,7 @@ export function OPMSSubmissionsList() {
     setIsCreating(true);
     const result = await createOpmsSubmission({
       opmsTargetId: form.targetId,
-      quarter: form.quarter,
+      reportingPeriodPublicId: form.reportingPeriodPublicId,
       actualPerformance: form.actualPerformance.trim() || null,
       varianceReason: null,
       correctiveMeasure: null,
@@ -186,7 +245,7 @@ export function OPMSSubmissionsList() {
   const persistSubmission = async (submission: OPMSSubmission) => {
     const result = await updateOpmsSubmission(submission.id, {
       opmsTargetId: submission.target.id,
-      quarter: submission.quarter,
+      reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
       actualPerformance: submission.actualPerformance?.trim() || null,
       varianceReason: submission.varianceReason ?? null,
       correctiveMeasure: submission.correctiveMeasure ?? null,
@@ -378,23 +437,16 @@ export function OPMSSubmissionsList() {
                       label="Target"
                       value={form.targetId}
                       onChange={(value) => {
-                        setForm(prev => ({ ...prev, targetId: value }));
-                        setFormErrors(prev => ({ ...prev, targetId: undefined }));
+                        setForm(prev => ({ ...prev, targetId: value, reportingPeriodPublicId: '' }));
+                        setFormErrors(prev => ({ ...prev, targetId: undefined, reportingPeriodPublicId: undefined }));
                       }}
                       required
                       error={formErrors.targetId}
                     />
-                    <Select
-                      label="Quarter"
-                      options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
-                      value={form.quarter}
-                      onChange={(e) => {
-                        setForm(prev => ({ ...prev, quarter: e.target.value }));
-                        setFormErrors(prev => ({ ...prev, quarter: undefined }));
-                      }}
-                      required
-                      error={formErrors.quarter}
-                    />
+                    <SubmissionPeriodSelect kind="opms" targetId={form.targetId} value={form.reportingPeriodPublicId} onChange={(value) => {
+                      setForm(prev => ({ ...prev, reportingPeriodPublicId: value }));
+                      setFormErrors(prev => ({ ...prev, reportingPeriodPublicId: undefined }));
+                    }} error={formErrors.reportingPeriodPublicId} />
                   </FormRow>
                   <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
                 </FormPanel>
@@ -428,7 +480,7 @@ export function IPMSSubmissionsList() {
   const [formErrors, setFormErrors] = useState<SubmissionSetupErrors>({});
   const [form, setForm] = useState({
     targetId: '',
-    quarter: 'Q1',
+    reportingPeriodPublicId: '',
     actualPerformance: '',
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
@@ -465,7 +517,7 @@ export function IPMSSubmissionsList() {
   const resetForm = () => {
     setForm({
       targetId: '',
-      quarter: 'Q1',
+      reportingPeriodPublicId: '',
       actualPerformance: '',
     });
     setFormErrors({});
@@ -494,7 +546,7 @@ export function IPMSSubmissionsList() {
     setIsCreating(true);
     const result = await createIpmsSubmission({
       ipmsTargetId: form.targetId,
-      quarter: form.quarter,
+      reportingPeriodPublicId: form.reportingPeriodPublicId,
       actualPerformance: form.actualPerformance.trim() || null,
       varianceReason: null,
       correctiveMeasure: null,
@@ -516,7 +568,7 @@ export function IPMSSubmissionsList() {
   const persistSubmission = async (submission: IPMSSubmission) => {
     const result = await updateIpmsSubmission(submission.id, {
       ipmsTargetId: submission.target.id,
-      quarter: submission.quarter,
+      reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
       actualPerformance: submission.actualPerformance?.trim() || null,
       varianceReason: submission.varianceReason ?? null,
       correctiveMeasure: submission.correctiveMeasure ?? null,
@@ -708,23 +760,16 @@ export function IPMSSubmissionsList() {
                       label="Target"
                       value={form.targetId}
                       onChange={(value) => {
-                        setForm(prev => ({ ...prev, targetId: value }));
-                        setFormErrors(prev => ({ ...prev, targetId: undefined }));
+                        setForm(prev => ({ ...prev, targetId: value, reportingPeriodPublicId: '' }));
+                        setFormErrors(prev => ({ ...prev, targetId: undefined, reportingPeriodPublicId: undefined }));
                       }}
                       required
                       error={formErrors.targetId}
                     />
-                    <Select
-                      label="Quarter"
-                      options={['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'].map(value => ({ value, label: value }))}
-                      value={form.quarter}
-                      onChange={(e) => {
-                        setForm(prev => ({ ...prev, quarter: e.target.value }));
-                        setFormErrors(prev => ({ ...prev, quarter: undefined }));
-                      }}
-                      required
-                      error={formErrors.quarter}
-                    />
+                    <SubmissionPeriodSelect kind="ipms" targetId={form.targetId} value={form.reportingPeriodPublicId} onChange={(value) => {
+                      setForm(prev => ({ ...prev, reportingPeriodPublicId: value }));
+                      setFormErrors(prev => ({ ...prev, reportingPeriodPublicId: undefined }));
+                    }} error={formErrors.reportingPeriodPublicId} />
                   </FormRow>
                   <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
                 </FormPanel>

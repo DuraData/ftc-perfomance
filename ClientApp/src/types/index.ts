@@ -3069,7 +3069,7 @@ export interface SaveTargetPeriodValuePayload {
 
 export interface SaveOpmsSubmissionPayload {
   opmsTargetId: string;
-  quarter: string;
+  reportingPeriodPublicId: string;
   actualPerformance?: string | null;
   actualExpenditure?: number | null;
   varianceReason?: string | null;
@@ -3082,7 +3082,7 @@ export interface SaveOpmsSubmissionPayload {
 
 export interface SaveIpmsSubmissionPayload {
   ipmsTargetId: string;
-  quarter: string;
+  reportingPeriodPublicId: string;
   actualPerformance?: string | null;
   actualExpenditure?: number | null;
   varianceReason?: string | null;

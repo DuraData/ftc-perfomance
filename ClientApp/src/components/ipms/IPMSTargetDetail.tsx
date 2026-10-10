@@ -501,7 +501,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
             void (async () => {
               const result = await updateIpmsSubmissionApi(submission.id, {
                 ipmsTargetId: submission.target.id,
-                quarter: submission.quarter,
+                reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
                 actualPerformance: submission.actualPerformance ?? String(submission.actual),
                 varianceReason: submission.varianceReason ?? null,
                 correctiveMeasure: submission.correctiveMeasure ?? null,

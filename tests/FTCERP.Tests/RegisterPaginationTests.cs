@@ -34,6 +34,7 @@ public sealed class RegisterPaginationTests
         var reportingPeriod = new ReportingPeriod
         {
             Id = 42,
+            Code = "ANNUAL",
             PeriodType = ReportingPeriodType.Annual,
             MunicipalityFinancialYear = new MunicipalityFinancialYear
             {
@@ -73,6 +74,7 @@ public sealed class RegisterPaginationTests
         response.TargetUnitOfMeasureName.Should().Be("Kilometres");
         response.TargetUnitOfMeasureSymbol.Should().Be("km");
         response.TargetUnitType.Should().Be(nameof(PerformanceUnitKind.PercentageBased));
+        response.Quarter.Should().Be("ANNUAL");
     }
 
     [Fact]
@@ -104,8 +106,8 @@ public sealed class RegisterPaginationTests
             dependencies.Inspection, dependencies.Scanner, dependencies.Suggestions)
         { ControllerContext = ControllerContext(user.Id) };
 
-        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest("", "Q1", null, null, null, null, null, null));
-        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest("", "Q1", null, null, null, null, null, null));
+        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest("", Guid.NewGuid(), null, null, null, null, null, null));
+        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest("", Guid.NewGuid(), null, null, null, null, null, null));
 
         opmsResult.Result.Should().BeOfType<BadRequestObjectResult>().Which.Value
             .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Be("OPMS target is required.");
@@ -153,7 +155,7 @@ public sealed class RegisterPaginationTests
         response.CorrectiveMeasure.Should().BeNull();
 
         var update = await controller.UpdateSubmission(submission.Id, new SaveOpmsSubmissionRequest(
-            target.Id, "Q1", "50", null, "Original reason", "Changed without permission", null, null));
+            target.Id, Guid.NewGuid(), "50", null, "Original reason", "Changed without permission", null, null));
         var denied = update.Result.Should().BeOfType<ObjectResult>().Subject;
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         denied.Value.Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Contain("Corrective Measure");
