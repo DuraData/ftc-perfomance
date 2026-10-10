@@ -3284,6 +3284,10 @@ The governed OPMS import path no longer mirrors a newly imported Annual value or
 
 OPMS/IPMS target create, edit and import paths no longer assign the retired KPI-level `TargetUnitType` compatibility field. Submission list/detail/create/edit/workflow responses now hydrate the target's normalized rows and resolve `TargetUnitType` from the submission's exact `ReportingPeriodId` through `PerformanceRevisionResolver.EffectiveUnitKind`, so a period-specific or approved revised unit cannot be replaced by a stale KPI-wide value. The regression deliberately gives the compatibility field a contradictory value and proves the response exposes the canonical period unit, while normalized OPMS and IPMS create tests prove a Percentage target does not overwrite the legacy field default. The only remaining production references are the explicit historical normalization console and reusable template catalogue; opt-in demonstration seed references are isolated from ordinary production startup.
 
+### 11.240 Production mock-data removal
+
+The final production-source mock catalogue, `ClientApp/src/data/mockData.ts`, had no remaining importers and has been removed. Governed production screens now obtain their data through the API-backed domain clients documented throughout this assessment; fixture values remain confined to test modules. A production-only ESLint boundary rejects imports from `mockData`, `mocks` or `fixtures` paths while excluding test/spec files, preventing the retired in-memory catalogue or an equivalent fixture dependency from silently returning to deployable code.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

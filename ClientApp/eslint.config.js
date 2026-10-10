@@ -29,5 +29,28 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
     },
-  }
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/**/*.spec.{ts,tsx}', 'src/test/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '**/mockData',
+                '**/mockData.*',
+                '**/mocks/**',
+                '**/fixtures/**',
+              ],
+              message:
+                'Production modules must load governed API data; mock and fixture modules are test-only.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
