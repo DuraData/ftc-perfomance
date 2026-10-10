@@ -95,6 +95,117 @@ public class IdpControllerFunctionalityTests
     }
 
     [Fact]
+    public void PlanAndCollaborationContracts_ExposeOnlyStablePublicIdentity()
+    {
+        typeof(IdpPlanSummaryResponse).GetProperty("Id").Should().BeNull();
+        typeof(IdpPlanVersionResponse).GetProperty("Id").Should().BeNull();
+        typeof(IdpPlanVersionResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpCommunitySessionResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpWardInputResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpCommentResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpCommentResponse).GetProperty("IdpPlanVersionId").Should().BeNull();
+        typeof(IdpTaskResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpTaskResponse).GetProperty("IdpPlanVersionId").Should().BeNull();
+        typeof(CreateIdpTaskRequest).GetProperty("AssignedToUserId").Should().BeNull();
+
+        typeof(IdpPlanVersionResponse).GetProperty("IdpPlanPublicId").Should().NotBeNull();
+        typeof(CreateIdpCommentRequest).GetProperty("IdpPlanVersionPublicId").Should().NotBeNull();
+        typeof(CreateIdpTaskRequest).GetProperty("AssignedToUserPublicId").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task PlanLinkedMutations_ResolvePublicIdsWithinTheSelectedTenantAndValidateVersionOwnership()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var actor = IdpTestFixture.CreateUser("idp-public-actor");
+        actor.MunicipalityId = 71;
+        var assignee = IdpTestFixture.CreateUser("idp-public-assignee");
+        assignee.MunicipalityId = 71;
+        IdpPlan localPlan;
+        IdpPlanVersion localVersion;
+        IdpPlan foreignPlan;
+        IdpPlanVersion foreignVersion;
+
+        await using (var setup = new ApplicationDbContext(options, IdpTestFixture.Tenant(null, "system", true)))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            setup.AddRange(
+                new Municipality { Id = 71, Code = "M71", Name = "Municipality 71" },
+                new Municipality { Id = 72, Code = "M72", Name = "Municipality 72" },
+                actor,
+                assignee);
+            localPlan = new IdpPlan
+            {
+                MunicipalityId = 71, MunicipalityName = "Municipality 71", PlanCode = "IDP-LOCAL",
+                PlanTitle = "Local IDP", StartFinancialYear = 2026, EndFinancialYear = 2031,
+                CreatedByUserId = actor.Id
+            };
+            foreignPlan = new IdpPlan
+            {
+                MunicipalityId = 72, MunicipalityName = "Municipality 72", PlanCode = "IDP-FOREIGN",
+                PlanTitle = "Foreign IDP", StartFinancialYear = 2026, EndFinancialYear = 2031,
+                CreatedByUserId = actor.Id
+            };
+            setup.IdpPlans.AddRange(localPlan, foreignPlan);
+            await setup.SaveChangesAsync();
+            localVersion = new IdpPlanVersion
+            {
+                IdpPlanId = localPlan.Id, VersionNumber = 1, VersionType = IdpVersionType.Original,
+                VersionLabel = "Local original", CreatedByUserId = actor.Id
+            };
+            foreignVersion = new IdpPlanVersion
+            {
+                IdpPlanId = foreignPlan.Id, VersionNumber = 1, VersionType = IdpVersionType.Original,
+                VersionLabel = "Foreign original", CreatedByUserId = actor.Id
+            };
+            setup.IdpPlanVersions.AddRange(localVersion, foreignVersion);
+            await setup.SaveChangesAsync();
+        }
+
+        var tenant = IdpTestFixture.Tenant(71, actor.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "test", [], [], []));
+        var workflow = new Mock<IWorkflowGovernanceService>();
+        var controller = IdpTestFixture.CreateController(
+            context,
+            IdpTestFixture.CreateUserManagerMock(actor).Object,
+            workflow.Object,
+            actor.Id,
+            tenant,
+            access.Object);
+
+        (await controller.CreateCommunitySession(new CreateIdpCommunitySessionRequest(
+            foreignPlan.PublicId, "PublicMeeting", DateTime.UtcNow, "Foreign venue", null, 10, null, null))).Result
+            .Should().BeOfType<NotFoundObjectResult>();
+        (await controller.CreateComment(new CreateIdpCommentRequest(
+            localPlan.PublicId, foreignVersion.PublicId, "IdpPlan", localPlan.PublicId.ToString(), "Invalid version"))).Result
+            .Should().BeOfType<NotFoundObjectResult>();
+        (await controller.CreateTask(new CreateIdpTaskRequest(
+            localPlan.PublicId, foreignVersion.PublicId, "Invalid task", "Invalid version", assignee.PublicId, DateTime.UtcNow.AddDays(1)))).Result
+            .Should().BeOfType<NotFoundObjectResult>();
+
+        var community = Extract<IdpCommunitySessionResponse>((await controller.CreateCommunitySession(
+            new CreateIdpCommunitySessionRequest(localPlan.PublicId, "PublicMeeting", DateTime.UtcNow, "Local venue", null, 25, null, null))).Result!);
+        community.IdpPlanPublicId.Should().Be(localPlan.PublicId);
+
+        var comment = Extract<IdpCommentResponse>((await controller.CreateComment(new CreateIdpCommentRequest(
+            localPlan.PublicId, localVersion.PublicId, "IdpPlan", localPlan.PublicId.ToString(), "Governed review"))).Result!);
+        comment.IdpPlanPublicId.Should().Be(localPlan.PublicId);
+        comment.IdpPlanVersionPublicId.Should().Be(localVersion.PublicId);
+
+        var task = Extract<IdpTaskResponse>((await controller.CreateTask(new CreateIdpTaskRequest(
+            localPlan.PublicId, localVersion.PublicId, "Governed task", "Review the governed plan", assignee.PublicId, DateTime.UtcNow.AddDays(2)))).Result!);
+        task.IdpPlanPublicId.Should().Be(localPlan.PublicId);
+        task.IdpPlanVersionPublicId.Should().Be(localVersion.PublicId);
+        task.AssignedToUserPublicId.Should().Be(assignee.PublicId);
+        task.AssignedToUserPublicId.ToString().Should().NotBe(assignee.Id);
+    }
+
+    [Fact]
     public async Task CreatePlan_ShouldCreatePlanAndInitialVersionAndAudit()
     {
         await using var context = IdpTestFixture.CreateContext();
@@ -802,11 +913,11 @@ public class IdpControllerFunctionalityTests
         var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, creator.Id, accessControl: taskAccess.Object);
 
         var createResult = await controller.CreateTask(new CreateIdpTaskRequest(
-            plan.Id,
+            plan.PublicId,
             null,
             "Review draft IDP",
             "Review and provide comments",
-            assignee.Id,
+            assignee.PublicId,
             DateTime.UtcNow.AddDays(7)));
 
         var createPayload = createResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
@@ -814,6 +925,9 @@ public class IdpControllerFunctionalityTests
         var task = await context.IdpTaskAssignments.SingleAsync();
         task.IsCompleted.Should().BeFalse();
         createPayload.PublicId.Should().Be(task.PublicId);
+        createPayload.IdpPlanPublicId.Should().Be(plan.PublicId);
+        createPayload.IdpPlanVersionPublicId.Should().BeNull();
+        createPayload.AssignedToUserPublicId.Should().Be(assignee.PublicId);
         createPayload.RowVersion.Should().Be(Convert.ToBase64String(task.RowVersion));
 
         workflow.Verify(w => w.CreateNotificationAsync(
@@ -905,7 +1019,7 @@ public class IdpControllerFunctionalityTests
             user.Id);
 
         var result = controller.CreateDocument(new CreateIdpDocumentRequest(
-            1, null, "Governance", "Unsafe metadata", "proof.pdf", "../../outside.pdf",
+            Guid.NewGuid(), null, "Governance", "Unsafe metadata", "proof.pdf", "../../outside.pdf",
             "application/pdf", 42, 1, true));
 
         var objectResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
@@ -1048,5 +1162,11 @@ public class IdpControllerFunctionalityTests
         (await controller.GetDocumentsPage(plan.PublicId, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetDocumentsPage(outsidePlan.PublicId, new PagedQueryRequest())).Result.Should().BeOfType<NotFoundObjectResult>();
         controller.GetDocuments(plan.PublicId).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+    }
+
+    private static T Extract<T>(ActionResult result) where T : class
+    {
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        return ok.Value.Should().BeOfType<ApiResponse<T>>().Subject.Data!;
     }
 }

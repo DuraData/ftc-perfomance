@@ -2740,11 +2740,11 @@ export async function downloadIdpDocument(document: IdpDocument): Promise<ApiRes
 }
 
 export async function createIdpComment(payload: CreateIdpCommentPayload): Promise<ApiResponse<boolean>> {
-  return mapResponse(await post<{ id: number }>('/idp/comments', payload), () => true);
+  return mapResponse(await post<{ publicId: string }>('/idp/comments', payload), () => true);
 }
 
 export async function createIdpCommunitySession(payload: CreateIdpCommunitySessionPayload): Promise<ApiResponse<boolean>> {
-  return mapResponse(await post<{ id: number }>('/idp/community-sessions', payload), () => true);
+  return mapResponse(await post<{ publicId: string }>('/idp/community-sessions', payload), () => true);
 }
 
 export async function getIdpStakeholderEngagementsPage(planPublicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IdpStakeholderEngagement>>> {

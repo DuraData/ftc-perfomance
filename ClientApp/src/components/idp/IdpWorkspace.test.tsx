@@ -19,20 +19,17 @@ const api = vi.hoisted(() => ({
   commitIdpImport: vi.fn(),
   commitIdpHierarchyImport: vi.fn(),
   getIdpReport: vi.fn(),
+  createIdpComment: vi.fn(),
+  createIdpCommunitySession: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../security/AccessControl', () => ({ useHasAnyPermission: () => true }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
-vi.mock('../../api/api', () => ({
-  ...api,
-  createIdpComment: vi.fn(),
-  createIdpCommunitySession: vi.fn(),
-}));
+vi.mock('../../api/api', () => api);
 
 const predecessor = {
-  id: 7,
   publicId: '1c80989a-060c-4b22-94f0-379d54aee8a6',
   municipalityName: 'Blue Hills',
   planTitle: 'Current IDP',
@@ -100,6 +97,8 @@ describe('IDP plan lineage workspace', () => {
     });
     api.createIdpPlan.mockResolvedValue({ success: true, data: predecessor });
     api.createIdpPlanVersion.mockResolvedValue({ success: true, data: {} });
+    api.createIdpComment.mockResolvedValue({ success: true, data: true });
+    api.createIdpCommunitySession.mockResolvedValue({ success: true, data: true });
     api.getIdpReport.mockResolvedValue({
       success: true,
       data: {
@@ -241,7 +240,7 @@ describe('IDP plan lineage workspace', () => {
       success: true,
       data: {
         items: [{
-          id: 91, publicId: 'version-public-id', idpPlanId: predecessor.id, predecessorVersionPublicId: null,
+          publicId: 'version-public-id', idpPlanPublicId: predecessor.publicId, predecessorVersionPublicId: null,
           versionNumber: 2, versionType: 'AnnualReview', versionLabel: 'Annual review', reviewYear: '2026/2027',
           summaryOfChanges: 'PROTECTED-VERSION-SUMMARY', isActive: true, createdAt: '2026-10-01T00:00:00Z',
           createdByUserPublicId: 'PROTECTED-VERSION-ACTOR-ID', createdByName: 'Protected Version Actor',
@@ -409,5 +408,43 @@ describe('IDP plan lineage workspace', () => {
     await waitFor(() => expect(api.getIdpStakeholderEngagementsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ search: 'residents' })), { timeout: 1500 });
     fireEvent.click(screen.getByRole('button', { name: 'Next stakeholders' }));
     await waitFor(() => expect(api.getIdpStakeholderEngagementsPage).toHaveBeenLastCalledWith(predecessor.publicId, expect.objectContaining({ page: 2, search: 'residents' })));
+  });
+
+  it('submits hierarchy collaboration with plan and version public IDs only', async () => {
+    api.getIdpPlanVersionsPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          publicId: 'version-public-id', idpPlanPublicId: predecessor.publicId, predecessorVersionPublicId: null,
+          versionNumber: 2, versionType: 'AnnualReview', versionLabel: 'Annual review', reviewYear: '2026/2027',
+          summaryOfChanges: null, isActive: true, createdAt: '2026-10-01T00:00:00Z',
+          effectiveFrom: '2026-10-01T00:00:00Z', effectiveTo: null, publishedAt: null,
+          publicationReference: null, rowVersion: 'AQID',
+        }],
+        page: 1, pageSize: 1, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    render(<IdpHierarchyPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Review Comment' }));
+
+    await waitFor(() => expect(api.createIdpComment).toHaveBeenCalledWith({
+      idpPlanPublicId: predecessor.publicId,
+      idpPlanVersionPublicId: 'version-public-id',
+      entityName: 'IdpHierarchy',
+      entityId: predecessor.publicId,
+      comment: 'Hierarchy review checkpoint captured from planning workspace',
+    }));
+  });
+
+  it('submits community participation with the selected plan public ID only', async () => {
+    render(<IdpCommunityParticipationPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Log Public Meeting' }));
+
+    await waitFor(() => expect(api.createIdpCommunitySession).toHaveBeenCalledWith(expect.objectContaining({
+      idpPlanPublicId: predecessor.publicId,
+      participationType: 'PublicMeeting',
+    })));
+    expect(api.createIdpCommunitySession.mock.calls[0][0]).not.toHaveProperty('idpPlanId');
   });
 });

@@ -8,21 +8,18 @@ type Props = {
   label: string;
   value: string;
   onChange: (value: string, plan?: IdpPlanSummary) => void;
-  valueField?: 'id' | 'publicId';
   emptyLabel?: string;
   autoSelectFirst?: boolean;
   disabled?: boolean;
   refreshKey?: string | number;
 };
 
-const optionValue = (plan: IdpPlanSummary, field: 'id' | 'publicId') => field === 'id' ? String(plan.id) : plan.publicId;
 const optionLabel = (plan: IdpPlanSummary) => `${plan.planCode} - ${plan.planTitle}`;
 
 export function IdpPlanPicker({
   label,
   value,
   onChange,
-  valueField = 'id',
   emptyLabel = 'Select an IDP plan',
   autoSelectFirst = false,
   disabled,
@@ -66,31 +63,31 @@ export function IdpPlanPicker({
   }, [page, refreshKey, search]);
 
   useEffect(() => {
-    const matching = items.find(item => optionValue(item, valueField) === value);
+    const matching = items.find(item => item.publicId === value);
     if (matching) setSelectedPlan(matching);
-  }, [items, value, valueField]);
+  }, [items, value]);
 
   useEffect(() => {
     if (!value && autoSelectFirst && items[0]) {
       const first = items[0];
       setSelectedPlan(first);
-      onChangeRef.current(optionValue(first, valueField), first);
+      onChangeRef.current(first.publicId, first);
     }
-  }, [autoSelectFirst, items, value, valueField]);
+  }, [autoSelectFirst, items, value]);
 
   const options = useMemo(() => {
-    const result = items.map(item => ({ value: optionValue(item, valueField), label: optionLabel(item) }));
+    const result = items.map(item => ({ value: item.publicId, label: optionLabel(item) }));
     if (value && !result.some(item => item.value === value)) {
       result.unshift({ value, label: selectedPlan ? optionLabel(selectedPlan) : 'Selected IDP plan' });
     }
     return [{ value: '', label: emptyLabel }, ...result];
-  }, [emptyLabel, items, selectedPlan, value, valueField]);
+  }, [emptyLabel, items, selectedPlan, value]);
 
   return <div className="min-w-72 space-y-2">
     <Input label={`${label} search`} value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search IDP plans" disabled={disabled} />
     <Select label={label} value={value} options={options} disabled={disabled || loading} onChange={event => {
       const next = event.target.value;
-      const plan = items.find(item => optionValue(item, valueField) === next) ?? (selectedPlan && optionValue(selectedPlan, valueField) === next ? selectedPlan : undefined);
+      const plan = items.find(item => item.publicId === next) ?? (selectedPlan?.publicId === next ? selectedPlan : undefined);
       if (plan) setSelectedPlan(plan);
       onChange(next, plan);
     }} />

@@ -3402,6 +3402,12 @@ The bounded user-scope history contract no longer publishes internal integer `De
 
 Relational coverage creates a real tenant-owned department/unit pair, associates it with a historical user scope, searches that bounded history through the department relationship, verifies both stable public identifiers, and uses reflection to reject reintroduction of the numeric response properties. Focused coverage passes **1/1 test**. Complete regression passes **615 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint and diff hygiene pass, with the previously verified production frontend build unchanged by this backend-only contract update.
 
+### 11.260 IDP plan, version and collaboration public identity
+
+The authoritative IDP plan and plan-version contracts no longer publish their internal integer primary or parent keys. Plan selection, version lists and all production IDP plan pickers now use the stable plan `PublicId`; version responses carry `IdpPlanPublicId`; and keyed React state and rendering no longer depend on database-generated IDs. Plan-version audit entries also use the version public identifier instead of persisting a numeric entity reference.
+
+Plan-linked community sessions, ward inputs, collaboration comments, tasks and the retired document-metadata compatibility request now accept stable plan and optional version public identifiers. The controller resolves those identifiers through the tenant-filtered model, verifies that a supplied version belongs to the exact selected plan and persists only the existing internal foreign keys. Task assignment accepts `AssignedToUserPublicId`, resolves the user internally and retains the established active exact-municipality assignment check. Mutation and task-completion responses expose only plan/version public IDs and governed public actor identity. Relational coverage proves cross-tenant plan rejection, cross-plan version rejection, exact public-ID persistence/projection and public assignee resolution; reflection rejects reintroduction of the retired numeric contract members. Focused verification passes **23/23 backend tests** and **23/23 frontend tests**. Complete regression passes **617 backend tests with 1 SQL Server-only skip and 0 failures** and **336/336 frontend tests across 75 files**; TypeScript, ESLint, the Release build, the 2,110-module production build, 78-chunk bundle budget and diff hygiene pass. This transport hardening introduces no schema migration or SQL-provider divergence.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -3623,12 +3629,12 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 599; Failed: 0; Skipped: 1; Total: 600.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 303; Failed: 0; Test files: 69/69.** Governed global/municipality-year and reporting-period RowVersion edit flows and target-library create/edit reference round trips pass alongside the authentication-gate recovery/restriction, unresolved-access loading, cookie/token bounding, Settings bootstrap, live dynamic HTTP permission-revocation, stable-public-identity, tenant-isolation, record/member/action security, bounded-transport, workflow, reporting, notification, IDP, TID, Circular 88, import, audit and hostile-payload suites. |
+| Backend test suite | **Passed: 617; Failed: 0; Skipped: 1; Total: 618.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 336; Failed: 0; Test files: 75/75.** Governed global/municipality-year and reporting-period RowVersion edit flows, target-library create/edit reference round trips and public-ID-only IDP plan/version/collaboration transport pass alongside the authentication-gate recovery/restriction, unresolved-access loading, cookie/token bounding, Settings bootstrap, live dynamic HTTP permission-revocation, stable-public-identity, tenant-isolation, record/member/action security, bounded-transport, workflow, reporting, notification, IDP, TID, Circular 88, import, audit and hostile-payload suites. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,110 modules transformed. |
-| Bundle budget | Passed with 79 JavaScript chunks; largest chunk 401.4 KiB locally and within the enforced clean-runner budget. |
+| Bundle budget | Passed with 78 JavaScript chunks; largest chunk 401.6 KiB locally and within the enforced clean-runner budget. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed; **0 warnings and 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |

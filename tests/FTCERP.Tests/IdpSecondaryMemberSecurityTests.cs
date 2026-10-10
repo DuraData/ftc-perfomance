@@ -85,7 +85,7 @@ public class IdpSecondaryMemberSecurityTests
         maskedBudget.ActualExpenditure.Should().BeNull();
         maskedBudget.SourceSystem.Should().BeNull();
 
-        var commentRequest = new CreateIdpCommentRequest(graph.Plan.Id, null, "IdpProject", graph.Project.PublicId.ToString(), "protected review comment");
+        var commentRequest = new CreateIdpCommentRequest(graph.Plan.PublicId, null, "IdpProject", graph.Project.PublicId.ToString(), "protected review comment");
         (await controller.CreateComment(commentRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpCollaborationComments.Should().BeEmpty();
         allowed.Add("IDP_PLAN.CollaborationComment.UPDATE");
@@ -96,7 +96,7 @@ public class IdpSecondaryMemberSecurityTests
         maskedComment.CommentedByUserPublicId.Should().BeNull();
         maskedComment.CommentedByName.Should().BeNull();
 
-        var taskRequest = new CreateIdpTaskRequest(graph.Plan.Id, null, "Protected task", "Protected task detail", assignee.Id, DateTime.UtcNow.AddDays(2));
+        var taskRequest = new CreateIdpTaskRequest(graph.Plan.PublicId, null, "Protected task", "Protected task detail", assignee.PublicId, DateTime.UtcNow.AddDays(2));
         (await controller.CreateTask(taskRequest)).Result.Should().BeOfType<ForbidResult>();
         context.IdpTaskAssignments.Should().BeEmpty();
         allowed.UnionWith(["IDP_PLAN.TaskContent.UPDATE", "IDP_PLAN.TaskAssignee.UPDATE"]);

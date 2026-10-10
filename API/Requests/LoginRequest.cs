@@ -495,7 +495,7 @@ public record CreateIdpAlignmentLinkRequest(
     string? Notes);
 
 public record CreateIdpCommunitySessionRequest(
-    int IdpPlanId,
+    Guid IdpPlanPublicId,
     string ParticipationType,
     DateTime SessionDate,
     string Venue,
@@ -512,7 +512,7 @@ public record CreateIdpCommunityNeedRequest(
     string? ProposedIntervention);
 
 public record CreateIdpWardInputRequest(
-    int IdpPlanId,
+    Guid IdpPlanPublicId,
     int WardId,
     string WardPlanSummary,
     string WardPriorities,
@@ -552,8 +552,8 @@ public record CreateIdpBudgetSnapshotRequest(
     string SourceSystem);
 
 public record CreateIdpDocumentRequest(
-    int IdpPlanId,
-    int? IdpPlanVersionId,
+    Guid IdpPlanPublicId,
+    Guid? IdpPlanVersionPublicId,
     string Category,
     string Title,
     string FileName,
@@ -564,18 +564,18 @@ public record CreateIdpDocumentRequest(
     bool IsApproved);
 
 public record CreateIdpCommentRequest(
-    int IdpPlanId,
-    int? IdpPlanVersionId,
+    Guid IdpPlanPublicId,
+    Guid? IdpPlanVersionPublicId,
     string EntityName,
     string EntityId,
     string Comment);
 
 public record CreateIdpTaskRequest(
-    int IdpPlanId,
-    int? IdpPlanVersionId,
+    Guid IdpPlanPublicId,
+    Guid? IdpPlanVersionPublicId,
     string Title,
     string Description,
-    string AssignedToUserId,
+    Guid AssignedToUserPublicId,
     DateTime DueDate);
 
 public record CompleteIdpTaskRequest(bool IsCompleted, string RowVersion, string Reason);

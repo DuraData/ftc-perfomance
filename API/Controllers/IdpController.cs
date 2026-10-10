@@ -349,15 +349,15 @@ public class IdpController : ControllerBase
 
         await _workflowGovernanceService.WriteAuditTrailAsync(
             "IdpPlanVersion",
-            entity.Id.ToString(),
+            entity.PublicId.ToString(),
             "Create",
             null,
-            ToVersionResponse(entity, IdpPlanVersionMemberAccess.Full),
+            ToVersionResponse(entity, plan.PublicId, IdpPlanVersionMemberAccess.Full),
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<IdpPlanVersionResponse>(true,
-            ToVersionResponse(entity, await GetPlanVersionMemberAccessAsync(user, versionScope))));
+            ToVersionResponse(entity, plan.PublicId, await GetPlanVersionMemberAccessAsync(user, versionScope))));
     }
 
     [HttpGet("plans/{id:int}/hierarchy")]
@@ -424,7 +424,7 @@ public class IdpController : ControllerBase
             .Take(request.PageSize)
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<IdpPlanVersionResponse>>(true,
-            PagedResponse<IdpPlanVersionResponse>.Create(rows.Select(version => ToVersionResponse(version, memberAccess)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<IdpPlanVersionResponse>.Create(rows.Select(version => ToVersionResponse(version, planPublicId, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/hierarchy-paths/page")]
@@ -1175,12 +1175,15 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "Invalid participation type"));
         }
 
-        var planExists = await _context.IdpPlans.AnyAsync(item => item.Id == request.IdpPlanId);
-        if (!planExists) return NotFound(new ApiResponse<IdpCommunitySessionResponse>(false, null, "IDP plan not found"));
+        var plan = await _context.IdpPlans.AsNoTracking()
+            .Where(item => item.PublicId == request.IdpPlanPublicId)
+            .Select(item => new { item.Id, item.PublicId })
+            .SingleOrDefaultAsync();
+        if (plan == null) return NotFound(new ApiResponse<IdpCommunitySessionResponse>(false, null, "IDP plan not found"));
 
         var entity = new IdpCommunitySession
         {
-            IdpPlanId = request.IdpPlanId,
+            IdpPlanId = plan.Id,
             ParticipationType = participationType,
             SessionDate = request.SessionDate,
             Venue = request.Venue.Trim(),
@@ -1194,9 +1197,9 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpCommunitySessions.Include(item => item.Ward).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null, ToCommunitySessionResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null, ToCommunitySessionResponse(entity, plan.PublicId));
 
-        return Ok(new ApiResponse<IdpCommunitySessionResponse>(true, ToCommunitySessionResponse(entity)));
+        return Ok(new ApiResponse<IdpCommunitySessionResponse>(true, ToCommunitySessionResponse(entity, plan.PublicId)));
     }
 
     [HttpPost("community-needs")]
@@ -1232,15 +1235,18 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpWardInputResponse>(false, null, "User not found"));
 
-        var planExists = await _context.IdpPlans.AnyAsync(item => item.Id == request.IdpPlanId);
-        if (!planExists) return NotFound(new ApiResponse<IdpWardInputResponse>(false, null, "IDP plan not found"));
+        var plan = await _context.IdpPlans.AsNoTracking()
+            .Where(item => item.PublicId == request.IdpPlanPublicId)
+            .Select(item => new { item.Id, item.PublicId })
+            .SingleOrDefaultAsync();
+        if (plan == null) return NotFound(new ApiResponse<IdpWardInputResponse>(false, null, "IDP plan not found"));
 
         var ward = await _context.Wards.AsNoTracking().FirstOrDefaultAsync(item => item.Id == request.WardId);
         if (ward == null) return NotFound(new ApiResponse<IdpWardInputResponse>(false, null, "Ward not found"));
 
         var entity = new IdpWardInput
         {
-            IdpPlanId = request.IdpPlanId,
+            IdpPlanId = plan.Id,
             WardId = request.WardId,
             WardPlanSummary = request.WardPlanSummary.Trim(),
             WardPriorities = request.WardPriorities.Trim(),
@@ -1249,9 +1255,9 @@ public class IdpController : ControllerBase
 
         _context.IdpWardInputs.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null, ToWardInputResponse(entity, ward.Name));
+        await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null, ToWardInputResponse(entity, plan.PublicId, ward.Name));
 
-        return Ok(new ApiResponse<IdpWardInputResponse>(true, ToWardInputResponse(entity, ward.Name)));
+        return Ok(new ApiResponse<IdpWardInputResponse>(true, ToWardInputResponse(entity, plan.PublicId, ward.Name)));
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/stakeholder-engagements/page")]
@@ -1650,17 +1656,27 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpCommentResponse>(false, null, "User not found"));
 
-        var plan = await _context.IdpPlans.AsNoTracking().Where(item => item.Id == request.IdpPlanId)
-            .Select(item => new { item.PublicId, item.MunicipalityId }).SingleOrDefaultAsync();
+        var plan = await _context.IdpPlans.AsNoTracking().Where(item => item.PublicId == request.IdpPlanPublicId)
+            .Select(item => new { item.Id, item.PublicId, item.MunicipalityId }).SingleOrDefaultAsync();
         if (plan == null) return NotFound(new ApiResponse<IdpCommentResponse>(false, null, "IDP plan not found"));
+        int? versionId = null;
+        if (request.IdpPlanVersionPublicId.HasValue)
+        {
+            versionId = await _context.IdpPlanVersions.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpPlanVersionPublicId.Value && item.IdpPlanId == plan.Id)
+                .Select(item => (int?)item.Id)
+                .SingleOrDefaultAsync();
+            if (!versionId.HasValue)
+                return NotFound(new ApiResponse<IdpCommentResponse>(false, null, "IDP plan version not found"));
+        }
         var scope = Scope(targetId: plan.PublicId);
         if (await MemberUpdateDenialAsync(user, "IDP_PLAN", scope, ["CollaborationComment"]) is not null)
             return Forbid();
 
         var entity = new IdpCollaborationComment
         {
-            IdpPlanId = request.IdpPlanId,
-            IdpPlanVersionId = request.IdpPlanVersionId,
+            IdpPlanId = plan.Id,
+            IdpPlanVersionId = versionId,
             EntityName = request.EntityName.Trim(),
             EntityId = request.EntityId.Trim(),
             Comment = request.Comment.Trim(),
@@ -1671,10 +1687,10 @@ public class IdpController : ControllerBase
         _context.IdpCollaborationComments.Add(entity);
         await _context.SaveChangesAsync();
         await WriteIdpAudit(user.Id, "IdpComment", entity.PublicId.ToString(), "Create", null,
-            ToCommentResponse(entity, user, IdpCollaborationMemberAccess.Full));
+            ToCommentResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, user, IdpCollaborationMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpCommentResponse>(true,
-            ToCommentResponse(entity, user, await GetCollaborationMemberAccessAsync(user, scope))));
+            ToCommentResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, user, await GetCollaborationMemberAccessAsync(user, scope))));
     }
 
     [HttpPost("tasks")]
@@ -1684,14 +1700,24 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpTaskResponse>(false, null, "User not found"));
 
-        var plan = await _context.IdpPlans.AsNoTracking().Where(item => item.Id == request.IdpPlanId)
-            .Select(item => new { item.PublicId, item.MunicipalityId }).SingleOrDefaultAsync();
+        var plan = await _context.IdpPlans.AsNoTracking().Where(item => item.PublicId == request.IdpPlanPublicId)
+            .Select(item => new { item.Id, item.PublicId, item.MunicipalityId }).SingleOrDefaultAsync();
         if (plan == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "IDP plan not found"));
+        int? versionId = null;
+        if (request.IdpPlanVersionPublicId.HasValue)
+        {
+            versionId = await _context.IdpPlanVersions.AsNoTracking()
+                .Where(item => item.PublicId == request.IdpPlanVersionPublicId.Value && item.IdpPlanId == plan.Id)
+                .Select(item => (int?)item.Id)
+                .SingleOrDefaultAsync();
+            if (!versionId.HasValue)
+                return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "IDP plan version not found"));
+        }
         var scope = Scope(targetId: plan.PublicId);
         if (await MemberUpdateDenialAsync(user, "IDP_PLAN", scope, ["TaskContent", "TaskAssignee"]) is not null)
             return Forbid();
 
-        var assignee = await _userManager.FindByIdAsync(request.AssignedToUserId);
+        var assignee = await _context.Users.SingleOrDefaultAsync(item => item.PublicId == request.AssignedToUserPublicId);
         if (assignee == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "Assignee not found"));
         if (plan.MunicipalityId.HasValue && assignee.MunicipalityId != plan.MunicipalityId.Value)
         {
@@ -1704,11 +1730,11 @@ public class IdpController : ControllerBase
 
         var entity = new IdpTaskAssignment
         {
-            IdpPlanId = request.IdpPlanId,
-            IdpPlanVersionId = request.IdpPlanVersionId,
+            IdpPlanId = plan.Id,
+            IdpPlanVersionId = versionId,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
-            AssignedToUserId = request.AssignedToUserId,
+            AssignedToUserId = assignee.Id,
             AssignedByUserId = user.Id,
             DueDate = request.DueDate,
             IsCompleted = false
@@ -1726,9 +1752,9 @@ public class IdpController : ControllerBase
             entity.PublicId.ToString());
 
         await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), "Create", null,
-            ToTaskResponse(entity, assignee, user, IdpCollaborationMemberAccess.Full));
+            ToTaskResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, assignee, user, IdpCollaborationMemberAccess.Full));
         return Ok(new ApiResponse<IdpTaskResponse>(true,
-            ToTaskResponse(entity, assignee, user, await GetCollaborationMemberAccessAsync(user, scope))));
+            ToTaskResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, assignee, user, await GetCollaborationMemberAccessAsync(user, scope))));
     }
 
     [HttpPatch("tasks/{id:long}/complete")]
@@ -1750,7 +1776,10 @@ public class IdpController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length is < 5 or > 500)
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A completion reason between 5 and 500 characters is required."));
 
-        var entity = await _context.IdpTaskAssignments.Include(item => item.IdpPlan).FirstOrDefaultAsync(item => item.PublicId == taskPublicId);
+        var entity = await _context.IdpTaskAssignments
+            .Include(item => item.IdpPlan)
+            .Include(item => item.IdpPlanVersion)
+            .FirstOrDefaultAsync(item => item.PublicId == taskPublicId);
         if (entity == null) return NotFound(new ApiResponse<IdpTaskResponse>(false, null, "Task not found"));
         if (string.IsNullOrWhiteSpace(request.RowVersion))
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
@@ -1763,7 +1792,7 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
         }
 
-        var before = ToTaskResponse(entity, null, null, IdpCollaborationMemberAccess.Full);
+        var before = ToTaskResponse(entity, entity.IdpPlan.PublicId, entity.IdpPlanVersion?.PublicId, null, null, IdpCollaborationMemberAccess.Full);
         entity.IsCompleted = request.IsCompleted;
         entity.CompletedAt = request.IsCompleted ? DateTime.UtcNow : null;
         try
@@ -1778,11 +1807,11 @@ public class IdpController : ControllerBase
         var assignee = await _userManager.FindByIdAsync(entity.AssignedToUserId);
         var assigner = await _userManager.FindByIdAsync(entity.AssignedByUserId);
 
-        var fullResponse = ToTaskResponse(entity, assignee, assigner, IdpCollaborationMemberAccess.Full);
+        var fullResponse = ToTaskResponse(entity, entity.IdpPlan.PublicId, entity.IdpPlanVersion?.PublicId, assignee, assigner, IdpCollaborationMemberAccess.Full);
         await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
             new { Task = before, Reason = request.Reason.Trim() }, fullResponse);
         var memberAccess = await GetCollaborationMemberAccessAsync(user, Scope(targetId: entity.IdpPlan.PublicId, taskId: entity.PublicId));
-        return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, assignee, assigner, memberAccess)));
+        return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, entity.IdpPlan.PublicId, entity.IdpPlanVersion?.PublicId, assignee, assigner, memberAccess)));
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()
@@ -1931,10 +1960,10 @@ public class IdpController : ControllerBase
     }
 
     private static IdpPlanSummaryResponse ToSummaryResponse(IdpPlan plan) =>
-        new(plan.Id, plan.PublicId, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt, Convert.ToBase64String(plan.RowVersion), plan.PlanFamilyId, plan.PredecessorPlan?.PublicId, plan.EffectiveFrom, plan.EffectiveTo, plan.PublishedAt, plan.PublicationReference);
+        new(plan.PublicId, plan.MunicipalityName, plan.PlanTitle, plan.PlanCode, plan.StartFinancialYear, plan.EndFinancialYear, plan.Status.ToString(), plan.CurrentVersionNumber, plan.CreatedAt, plan.ApprovedAt, Convert.ToBase64String(plan.RowVersion), plan.PlanFamilyId, plan.PredecessorPlan?.PublicId, plan.EffectiveFrom, plan.EffectiveTo, plan.PublishedAt, plan.PublicationReference);
 
-    private static IdpPlanVersionResponse ToVersionResponse(IdpPlanVersion version, IdpPlanVersionMemberAccess access) =>
-        new(version.Id, version.PublicId, version.IdpPlanId, version.PredecessorVersion?.PublicId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear,
+    private static IdpPlanVersionResponse ToVersionResponse(IdpPlanVersion version, Guid planPublicId, IdpPlanVersionMemberAccess access) =>
+        new(version.PublicId, planPublicId, version.PredecessorVersion?.PublicId, version.VersionNumber, version.VersionType.ToString(), version.VersionLabel, version.ReviewYear,
             access.Summary ? version.SummaryOfChanges : null, version.IsActive, version.CreatedAt,
             access.Creator ? version.CreatedByUser?.PublicId : null, access.Creator ? version.CreatedByUser?.FullName : null,
             version.EffectiveFrom, version.EffectiveTo, version.PublishedAt, version.PublicationReference, Convert.ToBase64String(version.RowVersion));
@@ -2047,14 +2076,14 @@ public class IdpController : ControllerBase
     private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link) =>
         new(link.PublicId, link.IdpStrategicObjectiveId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
 
-    private static IdpCommunitySessionResponse ToCommunitySessionResponse(IdpCommunitySession session) =>
-        new(session.PublicId, session.IdpPlanId, session.ParticipationType.ToString(), session.SessionDate, session.Venue, session.WardId, session.Ward?.Name, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath, Convert.ToBase64String(session.RowVersion));
+    private static IdpCommunitySessionResponse ToCommunitySessionResponse(IdpCommunitySession session, Guid planPublicId) =>
+        new(session.PublicId, planPublicId, session.ParticipationType.ToString(), session.SessionDate, session.Venue, session.WardId, session.Ward?.Name, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath, Convert.ToBase64String(session.RowVersion));
 
     private static IdpCommunityNeedResponse ToCommunityNeedResponse(IdpCommunityNeed need) =>
         new(need.PublicId, need.IdpCommunitySessionId, need.IssueCategory, need.Description, need.PriorityLevel, need.ProposedIntervention, Convert.ToBase64String(need.RowVersion));
 
-    private static IdpWardInputResponse ToWardInputResponse(IdpWardInput wardInput, string wardName) =>
-        new(wardInput.PublicId, wardInput.IdpPlanId, wardInput.WardId, wardName, wardInput.WardPlanSummary, wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
+    private static IdpWardInputResponse ToWardInputResponse(IdpWardInput wardInput, Guid planPublicId, string wardName) =>
+        new(wardInput.PublicId, planPublicId, wardInput.WardId, wardName, wardInput.WardPlanSummary, wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
 
     private static IdpStakeholderEngagementResponse ToStakeholderResponse(IdpStakeholderEngagement stakeholder) =>
         new(stakeholder.PublicId, stakeholder.IdpCommunitySessionId, stakeholder.StakeholderType, stakeholder.StakeholderName, stakeholder.ContactPerson, stakeholder.ContactEmail, stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
@@ -2115,8 +2144,8 @@ public class IdpController : ControllerBase
             Convert.ToBase64String(document.RowVersion ?? []));
     }
 
-    private static IdpCommentResponse ToCommentResponse(IdpCollaborationComment comment, ApplicationUser? commentedBy, IdpCollaborationMemberAccess access) =>
-        new(comment.PublicId, comment.IdpPlanId, comment.IdpPlanVersionId,
+    private static IdpCommentResponse ToCommentResponse(IdpCollaborationComment comment, Guid planPublicId, Guid? planVersionPublicId, ApplicationUser? commentedBy, IdpCollaborationMemberAccess access) =>
+        new(comment.PublicId, planPublicId, planVersionPublicId,
             access.Comment ? comment.EntityName : null,
             access.Comment ? comment.EntityId : null,
             access.Comment ? comment.Comment : null,
@@ -2124,8 +2153,8 @@ public class IdpController : ControllerBase
             access.CommentActor ? commentedBy?.FullName : null,
             comment.CommentedAt);
 
-    private static IdpTaskResponse ToTaskResponse(IdpTaskAssignment task, ApplicationUser? assignedTo, ApplicationUser? assignedBy, IdpCollaborationMemberAccess access) =>
-        new(task.PublicId, task.IdpPlanId, task.IdpPlanVersionId,
+    private static IdpTaskResponse ToTaskResponse(IdpTaskAssignment task, Guid planPublicId, Guid? planVersionPublicId, ApplicationUser? assignedTo, ApplicationUser? assignedBy, IdpCollaborationMemberAccess access) =>
+        new(task.PublicId, planPublicId, planVersionPublicId,
             access.TaskContent ? task.Title : null,
             access.TaskContent ? task.Description : null,
             access.TaskAssignee ? assignedTo?.PublicId : null,

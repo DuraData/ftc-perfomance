@@ -637,7 +637,6 @@ public record AuditTrailEntryResponse(
     string? SessionId);
 
 public record IdpPlanSummaryResponse(
-    int Id,
     Guid PublicId,
     string MunicipalityName,
     string PlanTitle,
@@ -657,9 +656,8 @@ public record IdpPlanSummaryResponse(
     string? PublicationReference);
 
 public record IdpPlanVersionResponse(
-    int Id,
     Guid PublicId,
-    int IdpPlanId,
+    Guid IdpPlanPublicId,
     Guid? PredecessorVersionPublicId,
     int VersionNumber,
     string VersionType,
@@ -863,7 +861,7 @@ public record IdpAlignmentLinkResponse(
 
 public record IdpCommunitySessionResponse(
     Guid PublicId,
-    int IdpPlanId,
+    Guid IdpPlanPublicId,
     string ParticipationType,
     DateTime SessionDate,
     string Venue,
@@ -876,7 +874,7 @@ public record IdpCommunitySessionResponse(
 
 public record IdpCommunityNeedResponse(Guid PublicId, int IdpCommunitySessionId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
 
-public record IdpWardInputResponse(Guid PublicId, int IdpPlanId, int WardId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
+public record IdpWardInputResponse(Guid PublicId, Guid IdpPlanPublicId, int WardId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
 
 public record IdpStakeholderEngagementResponse(
     Guid PublicId,
@@ -952,8 +950,8 @@ public record IdpDocumentResponse(
 
 public record IdpCommentResponse(
     Guid PublicId,
-    int IdpPlanId,
-    int? IdpPlanVersionId,
+    Guid IdpPlanPublicId,
+    Guid? IdpPlanVersionPublicId,
     string? EntityName,
     string? EntityId,
     string? Comment,
@@ -963,8 +961,8 @@ public record IdpCommentResponse(
 
 public record IdpTaskResponse(
     Guid PublicId,
-    int IdpPlanId,
-    int? IdpPlanVersionId,
+    Guid IdpPlanPublicId,
+    Guid? IdpPlanVersionPublicId,
     string? Title,
     string? Description,
     Guid? AssignedToUserPublicId,

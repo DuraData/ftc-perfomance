@@ -5,7 +5,6 @@ const api = vi.hoisted(() => ({ getIdpPlansPage: vi.fn() }));
 vi.mock('../../api/api', () => api);
 
 const plan = (id: number) => ({
-  id,
   publicId: `plan-public-${id}`,
   municipalityName: 'Blue Hills',
   planTitle: `Plan ${id}`,
@@ -31,13 +30,13 @@ describe('IdpPlanPicker', () => {
 
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: undefined, sortBy: 'createdAt', sortDirection: 'desc' }));
     await screen.findByRole('option', { name: 'IDP-1 - Plan 1' });
-    fireEvent.change(screen.getByLabelText('IDP plan'), { target: { value: '1' } });
-    expect(onChange).toHaveBeenCalledWith('1', expect.objectContaining({ id: 1 }));
-    rerender(<IdpPlanPicker label="IDP plan" value="1" onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('IDP plan'), { target: { value: 'plan-public-1' } });
+    expect(onChange).toHaveBeenCalledWith('plan-public-1', expect.objectContaining({ publicId: 'plan-public-1' }));
+    rerender(<IdpPlanPicker label="IDP plan" value="plan-public-1" onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Next plans' }));
     await waitFor(() => expect(api.getIdpPlansPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: undefined, sortBy: 'createdAt', sortDirection: 'desc' }));
-    expect(screen.getByLabelText('IDP plan')).toHaveValue('1');
+    expect(screen.getByLabelText('IDP plan')).toHaveValue('plan-public-1');
     expect(screen.getByRole('option', { name: 'IDP-1 - Plan 1' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('IDP plan search'), { target: { value: 'specific plan' } });

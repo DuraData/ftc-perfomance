@@ -3098,7 +3098,6 @@ export interface DueDateExtensionPayload {
 }
 
 export interface IdpPlanSummary {
-  id: number;
   publicId: string;
   municipalityName: string;
   planTitle: string;
@@ -3119,9 +3118,8 @@ export interface IdpPlanSummary {
 }
 
 export interface IdpPlanVersion {
-  id: number;
   publicId: string;
-  idpPlanId: number;
+  idpPlanPublicId: string;
   predecessorVersionPublicId?: string | null;
   versionNumber: number;
   versionType: string;
@@ -3504,15 +3502,15 @@ export interface CreateIdpPlanVersionPayload {
 }
 
 export interface CreateIdpCommentPayload {
-  idpPlanId: number;
-  idpPlanVersionId?: number | null;
+  idpPlanPublicId: string;
+  idpPlanVersionPublicId?: string | null;
   entityName: string;
   entityId: string;
   comment: string;
 }
 
 export interface CreateIdpCommunitySessionPayload {
-  idpPlanId: number;
+  idpPlanPublicId: string;
   participationType: string;
   sessionDate: string;
   venue: string;

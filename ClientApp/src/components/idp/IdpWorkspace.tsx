@@ -93,7 +93,7 @@ export function IdpPlanningDashboardPage() {
               Manage Plans and Versions
             </Button>
           ) : null}
-          <IdpPlanPicker label="Dashboard plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); void load(value); }} />
+          <IdpPlanPicker label="Dashboard plan" value={selectedPlanPublicId} autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); void load(value); }} />
         </div>
 
         {busy ? <Card><p className="text-sm text-secondary-500">Loading IDP dashboard...</p></Card> : null}
@@ -198,7 +198,7 @@ export function IdpPlanManagementPage() {
   const [versionSearchInput, setVersionSearchInput] = useState('');
   const [versionSearch, setVersionSearch] = useState('');
   const [versionRevision, setVersionRevision] = useState(0);
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [importMode, setImportMode] = useState<'KPI' | 'HIERARCHY'>(canImportHierarchy ? 'HIERARCHY' : 'KPI');
   const [importRows, setImportRows] = useState<Array<IdpKpiImportRowPayload | IdpHierarchyImportRowPayload>>([]);
   const [importFileName, setImportFileName] = useState('');
@@ -249,10 +249,10 @@ export function IdpPlanManagementPage() {
     setPlans(loadedPlans);
     setPlanTotalCount(plansResult.data?.totalCount ?? 0);
     setPlanTotalPages(plansResult.data?.totalPages ?? 0);
-    const planId = loadedPlans.some(plan => plan.id === selectedPlanId) ? selectedPlanId : loadedPlans[0]?.id ?? null;
-    setSelectedPlanId(planId);
+    const planPublicId = loadedPlans.some(plan => plan.publicId === selectedPlanPublicId) ? selectedPlanPublicId : loadedPlans[0]?.publicId ?? '';
+    setSelectedPlanPublicId(planPublicId);
 
-    if (!planId) {
+    if (!planPublicId) {
       setVersions([]);
       setVersionTotalCount(0);
       setVersionTotalPages(0);
@@ -265,14 +265,14 @@ export function IdpPlanManagementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planPage, planSearch, planSortBy, planSortDirection]);
 
-  const selectPlan = (planId: number) => {
-    setSelectedPlanId(planId);
+  const selectPlan = (planPublicId: string) => {
+    setSelectedPlanPublicId(planPublicId);
     setVersionPage(1);
     setImportHistoryPage(1);
     setImportBatch(null);
   };
 
-  const selectedPlan = plans.find(plan => plan.id === selectedPlanId) ?? null;
+  const selectedPlan = plans.find(plan => plan.publicId === selectedPlanPublicId) ?? null;
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -464,7 +464,7 @@ export function IdpPlanManagementPage() {
               <label className="text-xs text-secondary-600">Plan code<input aria-label="Plan code" className={fieldClass} value={planDraft.planCode} onChange={event => setPlanDraft({ ...planDraft, planCode: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Start financial year<input aria-label="Start financial year" type="number" className={fieldClass} value={planDraft.startFinancialYear} onChange={event => setPlanDraft({ ...planDraft, startFinancialYear: Number(event.target.value) })} /></label>
               <label className="text-xs text-secondary-600">End financial year<input aria-label="End financial year" type="number" className={fieldClass} value={planDraft.endFinancialYear} onChange={event => setPlanDraft({ ...planDraft, endFinancialYear: Number(event.target.value) })} /></label>
-              <IdpPlanPicker label="Predecessor plan" value={planDraft.predecessorPlanPublicId} valueField="publicId" emptyLabel="New plan family" onChange={value => setPlanDraft(current => ({ ...current, predecessorPlanPublicId: value }))} />
+              <IdpPlanPicker label="Predecessor plan" value={planDraft.predecessorPlanPublicId} emptyLabel="New plan family" onChange={value => setPlanDraft(current => ({ ...current, predecessorPlanPublicId: value }))} />
               <label className="text-xs text-secondary-600">Effective from<input aria-label="Plan effective from" type="date" className={fieldClass} value={planDraft.effectiveFrom} onChange={event => setPlanDraft({ ...planDraft, effectiveFrom: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Effective to<input aria-label="Plan effective to" type="date" className={fieldClass} value={planDraft.effectiveTo} onChange={event => setPlanDraft({ ...planDraft, effectiveTo: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Publication reference<input aria-label="Plan publication reference" className={fieldClass} value={planDraft.publicationReference} onChange={event => setPlanDraft({ ...planDraft, publicationReference: event.target.value })} /></label>
@@ -487,9 +487,9 @@ export function IdpPlanManagementPage() {
             <div className="mt-3 space-y-2">
               {plans.map(plan => (
                 <button
-                  key={plan.id}
-                  onClick={() => selectPlan(plan.id)}
-                  className={`w-full rounded border px-3 py-2 text-left ${selectedPlanId === plan.id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}
+                  key={plan.publicId}
+                  onClick={() => selectPlan(plan.publicId)}
+                  className={`w-full rounded border px-3 py-2 text-left ${selectedPlanPublicId === plan.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}
                 >
                   <p className="font-medium text-secondary-900 dark:text-secondary-100">{plan.planCode} - {plan.planTitle}</p>
                   <p className="text-xs text-secondary-500">{plan.startFinancialYear}/{plan.startFinancialYear + 1} to {plan.endFinancialYear}/{plan.endFinancialYear + 1} | Status: {plan.status}</p>
@@ -514,7 +514,7 @@ export function IdpPlanManagementPage() {
                 <label className="text-xs text-secondary-600">Effective from<input aria-label="Version effective from" type="date" className={fieldClass} value={versionDraft.effectiveFrom} onChange={event => setVersionDraft({ ...versionDraft, effectiveFrom: event.target.value })} /></label>
                 <label className="text-xs text-secondary-600">Publication reference<input aria-label="Version publication reference" className={fieldClass} value={versionDraft.publicationReference} onChange={event => setVersionDraft({ ...versionDraft, publicationReference: event.target.value })} /></label>
                 {canEditVersionSummary ? <label className="text-xs text-secondary-600 md:col-span-2">Summary of changes<textarea aria-label="Summary of changes" className={fieldClass} rows={3} value={versionDraft.summaryOfChanges} onChange={event => setVersionDraft({ ...versionDraft, summaryOfChanges: event.target.value })} /></label> : null}
-                <div className="md:col-span-2"><Button variant="outline" disabled={!selectedPlanId} onClick={() => void submitVersion()}>Create Version</Button></div>
+                <div className="md:col-span-2"><Button variant="outline" disabled={!selectedPlanPublicId} onClick={() => void submitVersion()}>Create Version</Button></div>
               </div>
             ) : null}
             <div className="mt-3">
@@ -522,7 +522,7 @@ export function IdpPlanManagementPage() {
             </div>
             <div className="mt-3 space-y-2">
               {versions.map(version => (
-                <div key={version.id} className="rounded border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
+                <div key={version.publicId} className="rounded border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
                   <p className="font-medium text-secondary-900 dark:text-secondary-100">v{version.versionNumber} - {version.versionLabel}</p>
                   <p className="text-xs text-secondary-500">Type: {version.versionType} | Review Year: {version.reviewYear ?? 'N/A'} | Active: {version.isActive ? 'Yes' : 'No'}</p>
                   <p className="text-xs text-secondary-500">Effective: {new Date(version.effectiveFrom).toLocaleDateString()} | Predecessor: {version.predecessorVersionPublicId ?? 'Original'} | Publication: {version.publicationReference ?? 'Not published'}</p>
@@ -659,7 +659,7 @@ export function IdpHierarchyPage() {
     || canReadProgrammeApproved || canReadProgrammeActual || canReadProjectBudget || canReadProjectFunding;
   const [selectedPlan, setSelectedPlan] = useState<IdpPlanSummary | null>(null);
   const [pathRows, setPathRows] = useState<IdpHierarchyPath[]>([]);
-  const [activeVersionId, setActiveVersionId] = useState<number | null>(null);
+  const [activeVersionPublicId, setActiveVersionPublicId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -680,7 +680,7 @@ export function IdpHierarchyPage() {
   useEffect(() => {
     if (!selectedPlan) {
       setPathRows([]);
-      setActiveVersionId(null);
+      setActiveVersionPublicId(null);
       setTotalCount(0);
       setTotalPages(0);
       return;
@@ -692,7 +692,7 @@ export function IdpHierarchyPage() {
       setPathRows(pathsResult.data?.items ?? []);
       setTotalCount(pathsResult.data?.totalCount ?? 0);
       setTotalPages(pathsResult.data?.totalPages ?? 0);
-      setActiveVersionId(versionsResult.data?.items[0]?.id ?? null);
+      setActiveVersionPublicId(versionsResult.data?.items[0]?.publicId ?? null);
     });
   }, [page, refreshKey, search, selectedPlan, sortBy, sortDirection]);
 
@@ -703,15 +703,15 @@ export function IdpHierarchyPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => setRefreshKey(value => value + 1)}>Refresh</Button>
             {!canManageHierarchy ? <Badge variant="warning">Read Only</Badge> : null}
-            <IdpPlanPicker label="Hierarchy plan" value={selectedPlan?.publicId ?? ''} valueField="publicId" autoSelectFirst onChange={(_value, plan) => { setSelectedPlan(plan ?? null); setPage(1); }} />
+            <IdpPlanPicker label="Hierarchy plan" value={selectedPlan?.publicId ?? ''} autoSelectFirst onChange={(_value, plan) => { setSelectedPlan(plan ?? null); setPage(1); }} />
             {canManageHierarchy ? (
               <Button
                 variant="outline"
                 onClick={async () => {
                   if (!selectedPlan) return;
                   const result = await createIdpComment({
-                    idpPlanId: selectedPlan.id,
-                    idpPlanVersionId: activeVersionId,
+                    idpPlanPublicId: selectedPlan.publicId,
+                    idpPlanVersionPublicId: activeVersionPublicId,
                     entityName: 'IdpHierarchy',
                     entityId: selectedPlan.publicId,
                     comment: 'Hierarchy review checkpoint captured from planning workspace',
@@ -787,7 +787,6 @@ export function IdpCommunityParticipationPage() {
   const { pushToast } = useApp();
   const security = useSecurity();
   const canManageParticipation = useHasAnyPermission(['IDP.Participation.Manage']);
-  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
   const [stakeholders, setStakeholders] = useState<IdpStakeholderEngagement[]>([]);
@@ -842,19 +841,19 @@ export function IdpCommunityParticipationPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => { void load(); setStakeholderRevision(value => value + 1); }}>Refresh</Button>
             {!canManageParticipation ? <Badge variant="warning">Read Only</Badge> : null}
-            <IdpPlanPicker label="Participation plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={(value, plan) => { setSelectedPlanPublicId(value); setSelectedPlanId(plan?.id ?? null); setStakeholderPage(1); void load(value); }} />
+            <IdpPlanPicker label="Participation plan" value={selectedPlanPublicId} autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); setStakeholderPage(1); void load(value); }} />
             {canManageParticipation ? (
               <Button
                 variant="primary"
                 onClick={async () => {
-                  if (!selectedPlanId) {
+                  if (!selectedPlanPublicId) {
                     pushToast('error', 'Select an IDP plan before logging participation.');
                     return;
                   }
 
                   const now = new Date();
                   const result = await createIdpCommunitySession({
-                    idpPlanId: selectedPlanId,
+                    idpPlanPublicId: selectedPlanPublicId,
                     participationType: 'PublicMeeting',
                     sessionDate: now.toISOString(),
                     venue: 'Municipal Hall',
@@ -964,7 +963,7 @@ export function IdpAlignmentMatrixPage() {
       <div className="space-y-4">
         <Card>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_12rem_12rem_10rem_auto] xl:items-end">
-            <IdpPlanPicker label="Alignment plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); setPage(1); }} />
+            <IdpPlanPicker label="Alignment plan" value={selectedPlanPublicId} autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); setPage(1); }} />
             <label className="text-xs text-secondary-600">Search matrix<input aria-label="Search IDP alignment matrix" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
             <label className="text-xs text-secondary-600">Framework<select aria-label="Filter IDP alignment framework" className={fieldClass} value={frameworkType} onChange={event => { setFrameworkType(event.target.value); setPage(1); }}><option value="">All frameworks</option><option value="NationalDevelopmentPlan">NDP</option><option value="ProvincialGrowthStrategy">PGDS</option><option value="DistrictDevelopmentModel">DDM</option><option value="SectorPlan">Sector plan</option><option value="MunicipalGoal">Municipal goal</option><option value="Circular88">Circular 88</option><option value="TreasuryTid">Treasury TID</option></select></label>
             <label className="text-xs text-secondary-600">Sort<select aria-label="Sort IDP alignment matrix" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }}><option value="objective">Objective</option><option value="outcome">Outcome</option><option value="framework">Framework</option><option value="reference">Reference</option></select></label>
@@ -1045,7 +1044,7 @@ export function IdpReportsPage() {
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-center gap-2">
-            <IdpPlanPicker label="Report plan" value={selectedPlanPublicId} valueField="publicId" autoSelectFirst onChange={setSelectedPlanPublicId} />
+            <IdpPlanPicker label="Report plan" value={selectedPlanPublicId} autoSelectFirst onChange={setSelectedPlanPublicId} />
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('annual', 'pdf')}>Annual PDF</Button>
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('five-year', 'word')}>Five-Year Word</Button>
             <Button variant="outline" icon={<FileText className="h-4 w-4" />} onClick={() => void generate('ward-based', 'excel')}>Ward Excel</Button>

@@ -115,7 +115,7 @@ export function IdpDocumentsPage() {
       {!canRead ? <Card><p className="text-sm text-secondary-600">You do not have permission to read IDP documents.</p></Card> : <>
         <Card>
           <div className="grid gap-3 lg:grid-cols-2">
-            <IdpPlanPicker label="Document plan" value={planPublicId} valueField="publicId" autoSelectFirst onChange={value => { setPlanPublicId(value); setPage(1); }} />
+            <IdpPlanPicker label="Document plan" value={planPublicId} autoSelectFirst onChange={value => { setPlanPublicId(value); setPage(1); }} />
             <form className="grid gap-3 sm:grid-cols-2" onSubmit={event => { event.preventDefault(); setPage(1); setSearch(searchInput.trim()); }}>
               <label className="text-xs text-secondary-600 sm:col-span-2">Search documents<input aria-label="Search IDP documents" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Title or file name" /></label>
               <Button type="submit" variant="outline">Apply search</Button>
