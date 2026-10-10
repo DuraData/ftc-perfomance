@@ -448,7 +448,7 @@ public sealed class WorkflowConfigurationControllerTests
             new PagedQueryRequest { PageSize = 10, SortBy = "occurredAt" })).Result
             .Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
-        maskedActions.Items.Should().OnlyContain(item => item.ActorUserId == null && item.Comment == null && item.RatingValue == null);
+        maskedActions.Items.Should().OnlyContain(item => item.ActorUserPublicId == null && item.ActorName == null && item.Comment == null && item.RatingValue == null);
         var deniedActionSearch = (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
             new PagedQueryRequest { Search = "match-comment-20", SortBy = "occurredAt" })).Result
             .Should().BeOfType<OkObjectResult>().Subject.Value
@@ -463,7 +463,7 @@ public sealed class WorkflowConfigurationControllerTests
             .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
         maskedRatings.Items.Should().OnlyContain(item => item.RatingValuePublicId == null && item.Value == null
             && item.Label == null && item.AchievementPercent == null && item.Comment == null
-            && item.RatedByUserId == null && item.RatedByName == null);
+            && item.RatedByUserPublicId == null && item.RatedByName == null);
         var deniedRatingSearch = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
             new PagedQueryRequest { Search = "match-label-20", SortBy = "ratedAt" })).Result
             .Should().BeOfType<OkObjectResult>().Subject.Value
@@ -481,12 +481,37 @@ public sealed class WorkflowConfigurationControllerTests
             new PagedQueryRequest { Search = "match-comment-20", SortBy = "actor" })).Result
             .Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
-        grantedActions.Items.Should().ContainSingle(item => item.Comment == "match-comment-20" && item.ActorUserId == user.Id);
+        grantedActions.Items.Should().ContainSingle(item => item.Comment == "match-comment-20"
+            && item.ActorUserPublicId == user.PublicId && item.ActorName == user.FullName);
         var grantedRatings = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
             new PagedQueryRequest { Search = "match-label-20", SortBy = "value" })).Result
             .Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
-        grantedRatings.Items.Should().ContainSingle(item => item.Label == "match-label-20" && item.RatedByUserId == user.Id);
+        grantedRatings.Items.Should().ContainSingle(item => item.Label == "match-label-20"
+            && item.RatedByUserPublicId == user.PublicId && item.RatedByName == user.FullName);
+
+        var publicActorActions = (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = user.PublicId.ToString(), SortBy = "actor" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        publicActorActions.TotalCount.Should().Be(21);
+        var publicActorRatings = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = user.PublicId.ToString(), SortBy = "actor" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
+        publicActorRatings.TotalCount.Should().Be(21);
+        var rawActorActions = (await restrictedController.HistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = user.Id, SortBy = "actor" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        rawActorActions.TotalCount.Should().Be(0);
+        var rawActorRatings = (await restrictedController.RatingHistoryPage(SubmissionKind.Opms, submission.Id,
+            new PagedQueryRequest { Search = user.Id, SortBy = "actor" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<StageRatingDto>>>().Subject.Data!;
+        rawActorRatings.TotalCount.Should().Be(0);
+        typeof(WorkflowActionDto).GetProperty("ActorUserId").Should().BeNull();
+        typeof(StageRatingDto).GetProperty("RatedByUserId").Should().BeNull();
 
         (await controller.HistoryPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.RatingHistoryPage(SubmissionKind.Opms, submission.Id, new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();

@@ -1815,7 +1815,7 @@ export interface StageRatingDto {
   label?: string | null;
   achievementPercent?: number | null;
   comment?: string | null;
-  ratedByUserId?: string | null;
+  ratedByUserPublicId?: string | null;
   ratedByName?: string | null;
   ratedAt: string;
 }

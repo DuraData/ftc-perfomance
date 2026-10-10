@@ -3318,6 +3318,12 @@ OPMS and IPMS KPI withdrawal reasons and withdrawal actors are now independently
 
 Legacy target-view and target-delete mappings additively receive the corresponding read and update grants without replacing administrator-configured security data. The OPMS/IPMS target registers independently hide the withdrawal control unless both the action and reason-update grants are effective. Automated evidence proves fail-closed reason/actor masking, authorized stable public identity, absence of the raw Identity-key contract, denied action-only withdrawal, preserved success/concurrency behavior and permission-aware UI rendering. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **333/333 frontend tests across 75 files**; TypeScript, ESLint, the 2,110-module production build and bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.246 Workflow action and stage-rating public actor identity
+
+The bounded OPMS/IPMS workflow-action and stage-rating ledgers no longer return ASP.NET Identity primary keys. When the exact record-scoped actor member is readable, action rows now expose the actor's stable public ID and display name, while rating rows expose the stable public ID independently from the existing display-name member. Denied members remain null. The mutation response follows the same contract, so a successful direct workflow action cannot leak the internal actor key.
+
+Actor search and sorting now operate on public IDs and authorized names rather than internal Identity keys. Searching with a raw internal key returns no rows even when actor access is granted, closing a query-inference path; public-ID search, authorized name search and deterministic public-ID sorting remain available. Contract reflection tests reject reintroduction of the former raw-key properties, while the SPA rating history consumes only the public identity contract and still independently suppresses hostile actor payloads without a member grant. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **333/333 frontend tests across 75 files**; TypeScript, ESLint, the 2,110-module production build and bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

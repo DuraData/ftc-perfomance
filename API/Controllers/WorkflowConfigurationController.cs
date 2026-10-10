@@ -422,7 +422,7 @@ public sealed class WorkflowConfigurationController(
         context.AuditTrails.Add(new AuditTrail { EntityName = kind + "Submission", EntityId = submissionId, Action = request.ActionCode.Trim(), NewValue = JsonSerializer.Serialize(new { request.Outcome, request.Comment, request.RatingValue, transition.Reason }), ChangedBy = user.Id, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
         await context.SaveChangesAsync();
         var members = await ReadWorkflowMembersAsync(user, kind, scope);
-        return Ok(new ApiResponse<WorkflowActionDto>(true, ToDto(transition.Action, members), transition.Reason));
+        return Ok(new ApiResponse<WorkflowActionDto>(true, ToDto(transition.Action, members, user), transition.Reason));
     }
 
     [HttpGet("submissions/{kind}/{submissionId}/actions/page")]
@@ -446,16 +446,24 @@ public sealed class WorkflowConfigurationController(
             return Ok(new ApiResponse<PagedResponse<WorkflowActionDto>>(true, PagedResponse<WorkflowActionDto>.Empty(request.Page, request.PageSize)));
 
         var query = context.SubmissionWorkflowActions.AsNoTracking()
+            .Include(x => x.ActorUser)
             .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id);
         if (request.NormalizedSearch.Length > 0)
+        {
+            var actorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedActorPublicId)
+                ? parsedActorPublicId
+                : (Guid?)null;
             query = query.Where(x => x.ActionCode.Contains(request.NormalizedSearch)
-                || (members.ActionActorUserId && x.ActorUserId.Contains(request.NormalizedSearch))
+                || (members.ActionActorUserId && ((actorPublicId.HasValue && x.ActorUser.PublicId == actorPublicId.Value)
+                    || x.ActorUser.FirstName.Contains(request.NormalizedSearch)
+                    || x.ActorUser.LastName.Contains(request.NormalizedSearch)))
                 || (members.ActionComment && x.Comment != null && x.Comment.Contains(request.NormalizedSearch)));
+        }
         var totalCount = await query.CountAsync();
         var rows = await ApplyWorkflowActionOrdering(query, request.NormalizedSortBy, request.Descending)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<WorkflowActionDto>>(true,
-            PagedResponse<WorkflowActionDto>.Create(rows.Select(x => ToDto(x, members)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<WorkflowActionDto>.Create(rows.Select(x => ToDto(x, members, x.ActorUser)), request.Page, request.PageSize, totalCount)));
     }
 
     [HttpGet("submissions/{kind}/{submissionId}/actions")]
@@ -496,13 +504,18 @@ public sealed class WorkflowConfigurationController(
         var query = context.SubmissionStageRatings.AsNoTracking()
             .Where(x => x.SubmissionWorkflowInstanceId == access.Instance.Id);
         if (request.NormalizedSearch.Length > 0)
+        {
+            var actorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedActorPublicId)
+                ? parsedActorPublicId
+                : (Guid?)null;
             query = query.Where(x => x.WorkflowStageDefinition.Code.Contains(request.NormalizedSearch)
                 || x.RatingScheme.Code.Contains(request.NormalizedSearch)
                 || (members.StageRatingValue && x.LabelSnapshot.Contains(request.NormalizedSearch))
-                || (members.StageRatingRatedByUserId && x.RatedByUserId.Contains(request.NormalizedSearch))
+                || (members.StageRatingRatedByUserId && actorPublicId.HasValue && x.RatedByUser.PublicId == actorPublicId.Value)
                 || (members.StageRatingRatedByName && (x.RatedByUser.FirstName.Contains(request.NormalizedSearch)
                     || x.RatedByUser.LastName.Contains(request.NormalizedSearch)))
                 || (members.StageRatingComment && x.Comment != null && x.Comment.Contains(request.NormalizedSearch)));
+        }
         var totalCount = await query.CountAsync();
         var rows = await ApplyStageRatingOrdering(query, request.NormalizedSortBy, request.Descending)
             .Include(x => x.SubmissionWorkflowAction)
@@ -593,8 +606,8 @@ public sealed class WorkflowConfigurationController(
             ("sequence", true) => query.OrderByDescending(x => x.Sequence).ThenByDescending(x => x.Id),
             ("actioncode", false) => query.OrderBy(x => x.ActionCode).ThenBy(x => x.Id),
             ("actioncode", true) => query.OrderByDescending(x => x.ActionCode).ThenByDescending(x => x.Id),
-            ("actor", false) => query.OrderBy(x => x.ActorUserId).ThenBy(x => x.Id),
-            ("actor", true) => query.OrderByDescending(x => x.ActorUserId).ThenByDescending(x => x.Id),
+            ("actor", false) => query.OrderBy(x => x.ActorUser.PublicId).ThenBy(x => x.Id),
+            ("actor", true) => query.OrderByDescending(x => x.ActorUser.PublicId).ThenByDescending(x => x.Id),
             (_, false) => query.OrderBy(x => x.OccurredAt).ThenBy(x => x.Id),
             _ => query.OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.Id)
         };
@@ -608,8 +621,8 @@ public sealed class WorkflowConfigurationController(
             ("ratingscheme", true) => query.OrderByDescending(x => x.RatingScheme.Code).ThenByDescending(x => x.Id),
             ("value", false) => query.OrderBy(x => x.Value).ThenBy(x => x.Id),
             ("value", true) => query.OrderByDescending(x => x.Value).ThenByDescending(x => x.Id),
-            ("actor", false) => query.OrderBy(x => x.RatedByUserId).ThenBy(x => x.Id),
-            ("actor", true) => query.OrderByDescending(x => x.RatedByUserId).ThenByDescending(x => x.Id),
+            ("actor", false) => query.OrderBy(x => x.RatedByUser.PublicId).ThenBy(x => x.Id),
+            ("actor", true) => query.OrderByDescending(x => x.RatedByUser.PublicId).ThenByDescending(x => x.Id),
             (_, false) => query.OrderBy(x => x.RatedAt).ThenBy(x => x.Id),
             _ => query.OrderByDescending(x => x.RatedAt).ThenByDescending(x => x.Id)
         };
@@ -882,9 +895,10 @@ public sealed class WorkflowConfigurationController(
             await Read("StageRatingValue"), await Read("StageRatingAchievementPercent"), await Read("StageRatingComment"),
             await Read("StageRatingRatedByUserId"), await Read("StageRatingRatedByName"));
     }
-    private static WorkflowActionDto ToDto(SubmissionWorkflowAction x, WorkflowMemberAccess members) => new(
+    private static WorkflowActionDto ToDto(SubmissionWorkflowAction x, WorkflowMemberAccess members, ApplicationUser actor) => new(
         x.PublicId, x.Sequence, x.ActionCode, x.Outcome,
-        members.ActionActorUserId ? x.ActorUserId : null,
+        members.ActionActorUserId ? actor.PublicId : null,
+        members.ActionActorUserId ? actor.FullName : null,
         members.ActionComment ? x.Comment : null,
         members.ActionRatingValue ? x.RatingValue : null,
         x.OccurredAt);
@@ -895,7 +909,7 @@ public sealed class WorkflowConfigurationController(
         members.StageRatingValue ? x.LabelSnapshot : null,
         members.StageRatingAchievementPercent ? x.AchievementPercent : null,
         members.StageRatingComment ? x.Comment : null,
-        members.StageRatingRatedByUserId ? x.RatedByUserId : null,
+        members.StageRatingRatedByUserId ? x.RatedByUser.PublicId : null,
         members.StageRatingRatedByName ? x.RatedByUser.FullName : null,
         x.RatedAt);
     private async Task<RfiMemberAccess> ReadRfiMembersAsync(ApplicationUser user, SubmissionKind kind, AccessScopeContext scope)
@@ -976,8 +990,8 @@ public sealed record SaveRatingSchemeRequest(string Code, string Name, IReadOnly
 public sealed record RatingValueDto(Guid PublicId, decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
 public sealed record RatingSchemeDto(Guid PublicId, string Code, string Name, bool IsActive, string RowVersion, RatingValueDto[] Values);
 public sealed record WorkflowActionRequest(string ActionCode, WorkflowActionOutcome Outcome, string? Comment, decimal? RatingValue);
-public sealed record WorkflowActionDto(Guid PublicId, int Sequence, string ActionCode, WorkflowActionOutcome Outcome, string? ActorUserId, string? Comment, decimal? RatingValue, DateTime OccurredAt);
-public sealed record StageRatingDto(Guid PublicId, Guid WorkflowActionPublicId, string StageCode, Guid RatingSchemePublicId, string RatingSchemeCode, Guid? RatingValuePublicId, decimal? Value, string? Label, decimal? AchievementPercent, string? Comment, string? RatedByUserId, string? RatedByName, DateTime RatedAt);
+public sealed record WorkflowActionDto(Guid PublicId, int Sequence, string ActionCode, WorkflowActionOutcome Outcome, Guid? ActorUserPublicId, string? ActorName, string? Comment, decimal? RatingValue, DateTime OccurredAt);
+public sealed record StageRatingDto(Guid PublicId, Guid WorkflowActionPublicId, string StageCode, Guid RatingSchemePublicId, string RatingSchemeCode, Guid? RatingValuePublicId, decimal? Value, string? Label, decimal? AchievementPercent, string? Comment, Guid? RatedByUserPublicId, string? RatedByName, DateTime RatedAt);
 public sealed record RaisePerformanceRfiRequest(string Question, DateTime ResponseDueAt, IReadOnlyCollection<Guid>? EvidencePublicIds = null);
 public sealed record RespondPerformanceRfiRequest(string Response, string RowVersion, IReadOnlyCollection<Guid>? EvidencePublicIds = null);
 public sealed record ClosePerformanceRfiRequest(string? Comment, string RowVersion);

@@ -13,7 +13,7 @@ describe('StageRatingHistory', () => {
     api.getSubmissionStageRatingsPage.mockResolvedValue({ success: true, data: { items: [{
       publicId: 'rating-1', workflowActionPublicId: 'action-1', stageCode: 'PMS_REVIEW',
       ratingSchemePublicId: 'scheme-1', ratingSchemeCode: 'FIVE_POINT', ratingValuePublicId: 'value-4',
-      value: 4, label: 'Exceeded', comment: 'Evidence supports the score', ratedByUserId: 'reviewer',
+      value: 4, label: 'Exceeded', comment: 'Evidence supports the score', ratedByUserPublicId: '00000000-0000-0000-0000-000000000001',
       ratedByName: 'PMS Reviewer', ratedAt: '2026-10-02T08:00:00Z',
     }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 } });
 
@@ -34,7 +34,7 @@ describe('StageRatingHistory', () => {
       publicId: 'hostile-rating', workflowActionPublicId: 'hostile-action', stageCode: 'INTERNAL_AUDIT',
       ratingSchemePublicId: 'scheme-secret', ratingSchemeCode: 'AUDIT_SCHEME', ratingValuePublicId: 'value-secret',
       value: 1, label: 'Secret rating label', achievementPercent: 12, comment: 'Secret audit comment',
-      ratedByUserId: 'secret-auditor', ratedByName: 'Secret Auditor', ratedAt: '2026-10-02T08:00:00Z',
+      ratedByUserPublicId: '00000000-0000-0000-0000-000000000002', ratedByName: 'Secret Auditor', ratedAt: '2026-10-02T08:00:00Z',
     }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
 
     render(<StageRatingHistory kind={1} submissionId="submission-1" />);
@@ -43,7 +43,7 @@ describe('StageRatingHistory', () => {
     expect(screen.getByText(/AUDIT_SCHEME/)).toBeInTheDocument();
     expect(screen.queryByText('Secret rating label')).not.toBeInTheDocument();
     expect(screen.queryByText('Secret audit comment')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Secret Auditor|secret-auditor/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Secret Auditor|00000000-0000-0000-0000-000000000002/)).not.toBeInTheDocument();
     expect(screen.queryByText('1')).not.toBeInTheDocument();
     expect(screen.queryByText(/Achievement: 12%/)).not.toBeInTheDocument();
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_WORKFLOW', 'StageRatingValue');
