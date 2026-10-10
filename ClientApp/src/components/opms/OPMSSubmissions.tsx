@@ -68,7 +68,7 @@ function formatVariance(value?: number | null): string {
 
 type DashboardSubmissionFilter = 'draft' | 'submitted' | 'returned' | 'approved';
 
-function readIpmsDashboardScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+function readDashboardSubmissionScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
   const parameters = new URLSearchParams(window.location.search);
   const filter = parameters.get('dashboardFilter');
   const dashboardFilter = filter === 'draft' || filter === 'submitted' || filter === 'returned' || filter === 'approved'
@@ -102,10 +102,11 @@ export function OPMSSubmissionsList() {
     actualPerformance: '',
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
+  const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const submissionsResult = await getOpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection });
+    const submissionsResult = await getOpmsSubmissionsPage({ page, pageSize: 25, search, sortBy, sortDirection, ...dashboardScope });
 
     if (submissionsResult.success && submissionsResult.data) {
       setOpmsSubmissions(submissionsResult.data.items);
@@ -115,7 +116,7 @@ export function OPMSSubmissionsList() {
     }
 
     setIsLoading(false);
-  }, [page, pushToast, search, sortBy, sortDirection]);
+  }, [dashboardScope, page, pushToast, search, sortBy, sortDirection]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -325,7 +326,14 @@ export function OPMSSubmissionsList() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Badge variant="primary">{totalCount} submissions</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="primary">{totalCount} submissions</Badge>
+              {dashboardScope.dashboardFilter ? <Badge variant="info">Dashboard filter: {dashboardScope.dashboardFilter}</Badge> : null}
+              {dashboardScope.dashboardFilter ? <Button size="sm" variant="ghost" onClick={() => {
+                window.history.replaceState({}, '', '/opms/submissions');
+                setDashboardScope({});
+              }}>Clear dashboard filter</Button> : null}
+            </div>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
               <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
@@ -424,7 +432,7 @@ export function IPMSSubmissionsList() {
     actualPerformance: '',
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
-  const [dashboardScope, setDashboardScope] = useState(readIpmsDashboardScope);
+  const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);

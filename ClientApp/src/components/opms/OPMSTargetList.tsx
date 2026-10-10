@@ -10,11 +10,27 @@ import {
   createOpmsTarget as createOpmsTargetApi,
   withdrawOpmsTarget as withdrawOpmsTargetApi,
   getOpmsTargetsPage as getOpmsTargetsPageApi,
+  type RegisterPageQuery,
 } from '../../api/api';
 import type { OPMSTarget, OpmsTargetTemplate, SaveOpmsTargetPayload } from '../../types';
 import { OpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 import { canonicalSaveRows } from '../../lib/performanceTargetContract';
+
+type DashboardTargetFilter = 'assigned' | 'achieved' | 'at-risk' | 'outstanding';
+
+function readDashboardScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+  const parameters = new URLSearchParams(window.location.search);
+  const filter = parameters.get('dashboardFilter');
+  const dashboardFilter = filter === 'assigned' || filter === 'achieved' || filter === 'at-risk' || filter === 'outstanding'
+    ? filter as DashboardTargetFilter
+    : undefined;
+  return {
+    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || undefined,
+    reportingPeriodPublicId: parameters.get('reportingPeriodPublicId') || undefined,
+    dashboardFilter,
+  };
+}
 
 function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
   return {
@@ -122,11 +138,12 @@ export function OPMSTargetList() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [withdrawalTarget, setWithdrawalTarget] = useState<OPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
+  const [dashboardScope, setDashboardScope] = useState(readDashboardScope);
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);
     const lifecycle = filters.status === 'active' || filters.status === 'revised' || filters.status === 'withdrawn' ? filters.status : undefined;
-    const result = await getOpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection, departmentPublicId: filters.department || undefined, lifecycle });
+    const result = await getOpmsTargetsPageApi({ page, pageSize: 25, search, sortBy, sortDirection, departmentPublicId: filters.department || undefined, lifecycle, ...dashboardScope });
     if (result.success && result.data) {
       setOpmsTargets(result.data.items);
       setTotalCount(result.data.totalCount);
@@ -134,7 +151,7 @@ export function OPMSTargetList() {
       pushToast('error', result.message ?? 'Failed to load OPMS targets');
     }
     setIsLoading(false);
-  }, [filters.department, filters.status, page, pushToast, search, sortBy, sortDirection]);
+  }, [dashboardScope, filters.department, filters.status, page, pushToast, search, sortBy, sortDirection]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -329,7 +346,12 @@ export function OPMSTargetList() {
             <Badge variant="primary">
               {`${totalCount} targets`}
             </Badge>
+            {dashboardScope.dashboardFilter ? <Badge variant="info">Dashboard filter: {dashboardScope.dashboardFilter}</Badge> : null}
             {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
+            {dashboardScope.dashboardFilter ? <Button size="sm" variant="ghost" onClick={() => {
+              window.history.replaceState({}, '', '/opms/targets');
+              setDashboardScope({});
+            }}>Clear dashboard filter</Button> : null}
           </div>
           {canManageTargets ? (
             <div className="flex items-center gap-2">

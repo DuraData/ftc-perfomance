@@ -2213,8 +2213,12 @@ export async function duplicateIpmsTargetTemplate(id: string): Promise<ApiRespon
   return mapResponse(response, toIpmsTemplateModel);
 }
 
-export async function getOpmsPerformanceDashboard(): Promise<ApiResponse<PerformanceDashboardDto>> {
-  return get<PerformanceDashboardDto>('/v1/performance-dashboards/opms');
+export async function getOpmsPerformanceDashboard(filters: { municipalityFinancialYearPublicId?: string; reportingPeriodPublicId?: string } = {}): Promise<ApiResponse<PerformanceDashboardDto>> {
+  const parameters = new URLSearchParams();
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.reportingPeriodPublicId) parameters.set('reportingPeriodPublicId', filters.reportingPeriodPublicId);
+  const query = parameters.size ? `?${parameters.toString()}` : '';
+  return get<PerformanceDashboardDto>(`/v1/performance-dashboards/opms${query}`);
 }
 
 export async function getIpmsPerformanceDashboard(filters: { municipalityFinancialYearPublicId?: string; reportingPeriodPublicId?: string } = {}): Promise<ApiResponse<PerformanceDashboardDto>> {

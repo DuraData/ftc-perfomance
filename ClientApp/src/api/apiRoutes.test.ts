@@ -526,10 +526,10 @@ describe('versioned API routes', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await getOpmsPerformanceDashboard();
+    await getOpmsPerformanceDashboard({ municipalityFinancialYearPublicId: 'opms-year-public', reportingPeriodPublicId: 'opms-period-public' });
     await getIpmsPerformanceDashboard({ municipalityFinancialYearPublicId: 'year-public', reportingPeriodPublicId: 'period-public' });
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/performance-dashboards/opms'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/performance-dashboards/opms?municipalityFinancialYearPublicId=opms-year-public&reportingPeriodPublicId=opms-period-public'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/performance-dashboards/ipms?municipalityFinancialYearPublicId=year-public&reportingPeriodPublicId=period-public'), expect.objectContaining({ credentials: 'include' }));
   });
 

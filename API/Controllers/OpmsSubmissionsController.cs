@@ -76,6 +76,10 @@ public class OpmsSubmissionsController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "User not found"));
         if (!SubmissionSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "SortBy must be createdAt, status, quarter, or indicatorNumber."));
+        if (!SubmissionDashboardFilters.Contains(request.NormalizedDashboardFilter))
+            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "DashboardFilter must be draft, submitted, returned, or approved."));
+        if (request.NormalizedDashboardFilter.Length > 0 && !request.ReportingPeriodPublicId.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "ReportingPeriodPublicId is required for an OPMS dashboard drill-down."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ");
         if (!scope.PermissionGranted)
@@ -83,8 +87,33 @@ public class OpmsSubmissionsController : ControllerBase
         var query = _context.OpmsSubmissions.AsNoTracking().AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.OpmsTarget.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId.Value)) || (item.OpmsTarget.UnitId.HasValue && scope.UnitIds.Contains(item.OpmsTarget.UnitId.Value)) || (item.OpmsTarget.AssignedUserId != null && scope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)) || scope.TargetIds.Contains(item.OpmsTargetId) || scope.KpiIds.Contains(item.OpmsTargetId));
+        if (request.NormalizedDashboardFilter.Length > 0)
+        {
+            var targetScope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
+            if (!targetScope.PermissionGranted) query = query.Where(_ => false);
+            else if (!targetScope.Unrestricted)
+                query = query.Where(item =>
+                    item.OpmsTarget.DepartmentId.HasValue && targetScope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId.Value)
+                    || item.OpmsTarget.UnitId.HasValue && targetScope.UnitIds.Contains(item.OpmsTarget.UnitId.Value)
+                    || item.OpmsTarget.AssignedUserId != null && targetScope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)
+                    || targetScope.TargetIds.Contains(item.OpmsTargetId)
+                    || targetScope.KpiIds.Contains(item.OpmsTargetId));
+        }
         if (request.TargetPublicId.HasValue)
             query = query.Where(item => item.OpmsTarget.PublicId == request.TargetPublicId.Value);
+        if (request.MunicipalityFinancialYearPublicId.HasValue)
+            query = query.Where(item => item.ReportingPeriod != null
+                && item.ReportingPeriod.MunicipalityFinancialYear.PublicId == request.MunicipalityFinancialYearPublicId.Value);
+        if (request.ReportingPeriodPublicId.HasValue)
+            query = query.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId.Value);
+        query = request.NormalizedDashboardFilter switch
+        {
+            "draft" => query.Where(item => item.Status == "draft"),
+            "submitted" => query.Where(item => item.Status == "submitted"),
+            "returned" => query.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
+            "approved" => query.Where(item => item.Status == "approved" || item.Status == "completed"),
+            _ => query
+        };
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item =>
                 item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
@@ -117,6 +146,7 @@ public class OpmsSubmissionsController : ControllerBase
     }
 
     private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
+    private static readonly HashSet<string> SubmissionDashboardFilters = ["", "draft", "submitted", "returned", "approved"];
 
     private static IQueryable<OpmsSubmission> ApplySubmissionOrdering(IQueryable<OpmsSubmission> query, string sortBy, bool descending) =>
         (sortBy, descending) switch

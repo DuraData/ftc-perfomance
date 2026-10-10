@@ -55,6 +55,10 @@ public class OpmsTargetsController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "ReportingPeriodType is required for effectiveOrder sorting."));
         if (!TargetLifecycleFilters.Contains(request.NormalizedLifecycle))
             return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "Lifecycle must be active, revised, or withdrawn."));
+        if (!TargetDashboardFilters.Contains(request.NormalizedDashboardFilter))
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "DashboardFilter must be assigned, achieved, at-risk, or outstanding."));
+        if (request.NormalizedDashboardFilter.Length > 0 && !request.ReportingPeriodPublicId.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "ReportingPeriodPublicId is required for an OPMS dashboard drill-down."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
         if (!scope.PermissionGranted)
@@ -63,6 +67,37 @@ public class OpmsTargetsController : ControllerBase
         var query = _context.OpmsTargets.AsNoTracking().AsQueryable();
         if (!scope.Unrestricted)
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        if (request.MunicipalityFinancialYearPublicId.HasValue)
+            query = query.Where(item => _context.PerformancePeriodTargets.Any(periodTarget => periodTarget.OpmsTargetId == item.Id
+                && periodTarget.IsActive
+                && periodTarget.ReportingPeriod.MunicipalityFinancialYear.PublicId == request.MunicipalityFinancialYearPublicId.Value));
+        if (request.ReportingPeriodPublicId.HasValue)
+            query = query.Where(item => _context.PerformancePeriodTargets.Any(periodTarget => periodTarget.OpmsTargetId == item.Id
+                && periodTarget.IsActive
+                && periodTarget.ReportingPeriod.PublicId == request.ReportingPeriodPublicId.Value));
+        if (request.NormalizedDashboardFilter.Length > 0 && request.NormalizedDashboardFilter != "assigned")
+        {
+            var submissionScope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ");
+            var scopedSubmissions = _context.OpmsSubmissions.AsNoTracking().AsQueryable();
+            if (!submissionScope.PermissionGranted) scopedSubmissions = scopedSubmissions.Where(_ => false);
+            else if (!submissionScope.Unrestricted)
+                scopedSubmissions = scopedSubmissions.Where(item =>
+                    item.OpmsTarget.DepartmentId.HasValue && submissionScope.DepartmentIds.Contains(item.OpmsTarget.DepartmentId.Value)
+                    || item.OpmsTarget.UnitId.HasValue && submissionScope.UnitIds.Contains(item.OpmsTarget.UnitId.Value)
+                    || item.OpmsTarget.AssignedUserId != null && submissionScope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)
+                    || submissionScope.TargetIds.Contains(item.OpmsTargetId)
+                    || submissionScope.KpiIds.Contains(item.OpmsTargetId));
+            scopedSubmissions = scopedSubmissions.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId!.Value);
+            var matchedTargetIds = request.NormalizedDashboardFilter switch
+            {
+                "achieved" => scopedSubmissions.Where(item => item.Status == "completed" || item.Status == "approved").Select(item => item.OpmsTargetId).Distinct(),
+                "at-risk" => scopedSubmissions.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.OpmsTargetId).Distinct(),
+                _ => scopedSubmissions.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.OpmsTargetId).Distinct()
+            };
+            query = request.NormalizedDashboardFilter == "outstanding"
+                ? query.Where(item => !item.IsWithdrawn && !matchedTargetIds.Contains(item.Id))
+                : query.Where(item => matchedTargetIds.Contains(item.Id));
+        }
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || (item.RevisedIndicatorNumber != null && item.RevisedIndicatorNumber.Contains(request.NormalizedSearch)) || item.TargetName.Contains(request.NormalizedSearch) || (item.RevisedTargetName != null && item.RevisedTargetName.Contains(request.NormalizedSearch)) || item.KpiDescription.Contains(request.NormalizedSearch) || (item.RevisedKpiDescription != null && item.RevisedKpiDescription.Contains(request.NormalizedSearch)));
         if (request.DepartmentPublicId.HasValue)
@@ -96,6 +131,7 @@ public class OpmsTargetsController : ControllerBase
 
     private static readonly HashSet<string> TargetSortFields = ["createdat", "indicatornumber", "targetname", "effectiveorder"];
     private static readonly HashSet<string> TargetLifecycleFilters = ["", "active", "revised", "withdrawn"];
+    private static readonly HashSet<string> TargetDashboardFilters = ["", "assigned", "achieved", "at-risk", "outstanding"];
 
     private static IQueryable<OpmsTarget> ApplyTargetOrdering(IQueryable<OpmsTarget> query, string sortBy, bool descending, ReportingPeriodType? periodType) =>
         (sortBy, descending) switch
