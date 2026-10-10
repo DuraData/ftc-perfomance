@@ -420,14 +420,19 @@ public sealed class OfficialReportJobsController(
         item.ReportTemplate.PublicId, item.ReportTemplate.Name, item.ReportTemplate.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
         item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.Department?.PublicId, item.Department?.Name, item.Unit?.PublicId, item.Unit?.Name,
         item.Code, item.Name, item.Cadence, item.Interval, item.NextRunAt, item.EffectiveTo, item.RecipientKind, access.ScheduleRecipientValues ? Split(item.RecipientValuesCsv) : [], Split(item.ChannelsCsv), item.IsMandatory,
-        item.IsCurrent, item.IsActive, item.ApprovalReference, item.Reason, access.ScheduleCreatedBy ? item.CreatedByUser.UserName ?? item.CreatedByUser.Email ?? item.CreatedByUser.Id : null, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
+        item.IsCurrent, item.IsActive, item.ApprovalReference, item.Reason, access.ScheduleCreatedBy ? item.CreatedByUser.PublicId : null, access.ScheduleCreatedBy ? DisplayName(item.CreatedByUser) : null, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
     private static OfficialReportJobResponse Map(OfficialReportJob item, OfficialReportJobMemberAccess access) => new(item.PublicId, item.OfficialReportSchedule?.PublicId, item.OfficialReportSchedule?.Name, item.State,
         item.ReportTemplate.PublicId, item.ReportTemplate.Name, item.ReportTemplate.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
         item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.Department?.PublicId, item.Department?.Name, item.Unit?.PublicId, item.Unit?.Name,
         item.ScheduledFor, item.AvailableAt, item.AttemptCount, item.StartedAt, item.CompletedAt, access.JobLastError ? item.LastError : null,
-        access.JobRequestedBy ? item.RequestedByUser.UserName ?? item.RequestedByUser.Email ?? item.RequestedByUser.Id : null, item.RequestedAt,
+        access.JobRequestedBy ? item.RequestedByUser.PublicId : null, access.JobRequestedBy ? DisplayName(item.RequestedByUser) : null, item.RequestedAt,
         item.OfficialReportGeneration?.PublicId, item.OfficialReportGeneration?.FileName, access.JobDistributionOutboxPublicId ? item.DistributionOutbox?.PublicId : null,
         access.JobRecipientUserIds ? Split(item.RecipientUserIdsCsv) : [], Split(item.ChannelsCsv), item.IsMandatoryDistribution, access.JobRetryReason ? item.RetryReason : null, Convert.ToBase64String(item.RowVersion));
+    private static string? DisplayName(ApplicationUser user)
+    {
+        var value = $"{user.FirstName} {user.LastName}".Trim();
+        return value.Length > 0 ? value : null;
+    }
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
     private ObjectResult ForbidResponse<T>(string message) => StatusCode(StatusCodes.Status403Forbidden, Fail<T>(message));
 }

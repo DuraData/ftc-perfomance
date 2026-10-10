@@ -150,7 +150,8 @@ public sealed class OfficialReportJobTests
 
         var deniedJobs = ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "requestedAt" }));
         deniedJobs.Items.Should().ContainSingle();
-        deniedJobs.Items[0].RequestedBy.Should().BeNull();
+        deniedJobs.Items[0].RequestedByUserPublicId.Should().BeNull();
+        deniedJobs.Items[0].RequestedByName.Should().BeNull();
         deniedJobs.Items[0].LastError.Should().BeNull();
         deniedJobs.Items[0].DistributionOutboxPublicId.Should().BeNull();
         deniedJobs.Items[0].RecipientUserIds.Should().BeEmpty();
@@ -161,12 +162,14 @@ public sealed class OfficialReportJobTests
         var deniedSchedules = ExtractSchedulePage(await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "code" }));
         deniedSchedules.Items.Should().ContainSingle();
         deniedSchedules.Items[0].RecipientValues.Should().BeEmpty();
-        deniedSchedules.Items[0].CreatedBy.Should().BeNull();
+        deniedSchedules.Items[0].CreatedByUserPublicId.Should().BeNull();
+        deniedSchedules.Items[0].CreatedByName.Should().BeNull();
 
         foreach (var code in memberCodes) allowedMembers.Add(code);
 
         var grantedJobs = ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { SortBy = "requestedAt" }));
-        grantedJobs.Items[0].RequestedBy.Should().Be("report-scheduler");
+        grantedJobs.Items[0].RequestedByUserPublicId.Should().Be(seeded.User.PublicId);
+        grantedJobs.Items[0].RequestedByName.Should().Be("Report Scheduler");
         grantedJobs.Items[0].LastError.Should().Be("SENSITIVE-PROVIDER-ERROR");
         grantedJobs.Items[0].DistributionOutboxPublicId.Should().Be(outbox.PublicId);
         grantedJobs.Items[0].RecipientUserIds.Should().Equal("recipient-alpha", "recipient-beta");
@@ -176,7 +179,10 @@ public sealed class OfficialReportJobTests
 
         var grantedSchedules = ExtractSchedulePage(await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "code" }));
         grantedSchedules.Items[0].RecipientValues.Should().Equal(seeded.User.Id);
-        grantedSchedules.Items[0].CreatedBy.Should().Be("report-scheduler");
+        grantedSchedules.Items[0].CreatedByUserPublicId.Should().Be(seeded.User.PublicId);
+        grantedSchedules.Items[0].CreatedByName.Should().Be("Report Scheduler");
+        typeof(OfficialReportJobResponse).GetProperty("RequestedBy").Should().BeNull();
+        typeof(OfficialReportScheduleResponse).GetProperty("CreatedBy").Should().BeNull();
     }
 
     [Fact]
@@ -329,7 +335,8 @@ public sealed class OfficialReportJobTests
         var response = Assert.IsType<ApiResponse<OfficialReportScheduleResponse>>(
             Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         response.RecipientValues.Should().BeEmpty();
-        response.CreatedBy.Should().BeNull();
+        response.CreatedByUserPublicId.Should().BeNull();
+        response.CreatedByName.Should().BeNull();
         var versions = await context.OfficialReportSchedules.OrderBy(item => item.VersionNumber).ToArrayAsync();
         versions.Should().HaveCount(2);
         versions[0].IsCurrent.Should().BeFalse();
@@ -442,7 +449,7 @@ public sealed class OfficialReportJobTests
         context.Add(schedule); await context.SaveChangesAsync();
         return (new ApplicationUser
         {
-            Id = user.Id, UserName = user.UserName, NormalizedUserName = user.NormalizedUserName, Email = user.Email,
+            Id = user.Id, PublicId = user.PublicId, UserName = user.UserName, NormalizedUserName = user.NormalizedUserName, Email = user.Email,
             NormalizedEmail = user.NormalizedEmail, FirstName = user.FirstName, LastName = user.LastName,
             MunicipalityId = municipality.Id, IsActive = true
         }, schedule);

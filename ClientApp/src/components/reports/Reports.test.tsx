@@ -171,7 +171,7 @@ describe('Reports', () => {
           publicId: 'job-sensitive', state: 5, templatePublicId: 'template-1', templateName: 'Quarterly report', reportType: 1,
           municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1',
           scheduledFor: '2026-10-01T09:00:00Z', availableAt: '2026-10-01T09:00:00Z', attemptCount: 2,
-          lastError: 'SENSITIVE-JOB-ERROR', requestedBy: 'requester-secret', requestedAt: '2026-10-01T09:00:00Z',
+          lastError: 'SENSITIVE-JOB-ERROR', requestedByUserPublicId: 'requester-secret', requestedByName: 'Requester secret', requestedAt: '2026-10-01T09:00:00Z',
           fileName: 'quarterly.pdf', distributionOutboxPublicId: 'distribution-secret', recipientUserIds: ['recipient-secret'],
           channels: ['EMAIL'], isMandatoryDistribution: true, retryReason: 'retry-secret', rowVersion: 'AQ=='
         }],
@@ -187,7 +187,7 @@ describe('Reports', () => {
           municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1',
           code: 'SENSITIVE-SCHEDULE', name: 'Governed delivery', cadence: 1, interval: 1, nextRunAt: '2026-10-02T09:00:00Z',
           recipientKind: 1, recipientValues: ['schedule-recipient-secret'], channels: ['EMAIL'], isMandatory: true,
-          isCurrent: true, isActive: true, approvalReference: 'Council-1', reason: 'Approved', createdBy: 'schedule-creator-secret',
+          isCurrent: true, isActive: true, approvalReference: 'Council-1', reason: 'Approved', createdByUserPublicId: 'schedule-creator-secret', createdByName: 'Schedule creator secret',
           createdAt: '2026-10-01T09:00:00Z', rowVersion: 'AQ=='
         }],
         page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
@@ -197,12 +197,14 @@ describe('Reports', () => {
     const rendered = render(<Reports />);
     expect(await screen.findByText('Governed delivery')).toBeInTheDocument();
     expect(screen.queryByText(/requester-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Requester secret/)).not.toBeInTheDocument();
     expect(screen.queryByText('SENSITIVE-JOB-ERROR')).not.toBeInTheDocument();
     expect(screen.queryByText(/distribution queued/)).not.toBeInTheDocument();
     expect(screen.queryByText(/recipient-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/retry-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/schedule-recipient-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/schedule-creator-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Schedule creator secret/)).not.toBeInTheDocument();
 
     app.permissions = [...app.permissions,
       'OPMS_REPORT.JobRequestedBy.READ', 'OPMS_REPORT.JobLastError.READ',
@@ -211,13 +213,13 @@ describe('Reports', () => {
       'OPMS_REPORT.ScheduleCreatedBy.READ'];
     rendered.rerender(<Reports />);
 
-    expect(await screen.findByText(/requester-secret/)).toBeInTheDocument();
+    expect(await screen.findByText(/Requester secret/)).toBeInTheDocument();
     expect(screen.getByText('SENSITIVE-JOB-ERROR')).toBeInTheDocument();
     expect(screen.getByText(/distribution queued/)).toBeInTheDocument();
     expect(screen.getByText('Recipients: recipient-secret')).toBeInTheDocument();
     expect(screen.getByText(/retry-secret/)).toBeInTheDocument();
     expect(screen.getByText(/schedule-recipient-secret/)).toBeInTheDocument();
-    expect(screen.getByText(/schedule-creator-secret/)).toBeInTheDocument();
+    expect(screen.getByText(/Schedule creator secret/)).toBeInTheDocument();
   });
 
   it('keeps generation template choices independent from the bounded administration register', async () => {

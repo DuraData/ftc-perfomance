@@ -3366,6 +3366,12 @@ Notification-delivery operation responses no longer expose the recipient's ASP.N
 
 The bounded pending-event page and retry response resolve public identities only for recipients belonging to the selected municipality, and do not perform the identity lookup when the member permission is denied. Contract reflection rejects reintroduction of `RecipientUserId`; relational coverage proves denied masking and authorized public-ID serialization, while the operations UI consumes and renders only the public contract. Focused coverage passes **3/3 backend** and **2/2 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.254 Official-report actor public identity
+
+Official-report schedule and durable-job responses no longer expose or fall back to ASP.NET Identity primary keys for schedule creators and job requesters. Their established `ScheduleCreatedBy` and `JobRequestedBy` member permissions remain backward-compatible, while authorized contracts now return stable public user IDs plus optional display names and denied members remain null. Internal foreign keys, report scopes, durable execution and audit provenance are unchanged.
+
+Both bounded administration registers and every schedule/job mutation response use the same public actor contract. Contract reflection rejects reintroduction of `CreatedBy` and `RequestedBy`; relational coverage proves denied masking and exact persisted public identity, while the reports workspace renders the authorized name with public-ID fallback and suppresses hostile identity payloads without the corresponding grant. Focused coverage passes **9/9 backend** and **8/8 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

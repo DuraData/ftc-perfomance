@@ -2174,7 +2174,8 @@ export interface OfficialReportScheduleDto {
   isActive: boolean;
   approvalReference: string;
   reason: string;
-  createdBy?: string | null;
+  createdByUserPublicId?: string | null;
+  createdByName?: string | null;
   createdAt: string;
   rowVersion: string;
 }
@@ -2201,7 +2202,8 @@ export interface OfficialReportJobDto {
   startedAt?: string | null;
   completedAt?: string | null;
   lastError?: string | null;
-  requestedBy?: string | null;
+  requestedByUserPublicId?: string | null;
+  requestedByName?: string | null;
   requestedAt: string;
   generationPublicId?: string | null;
   fileName?: string | null;
