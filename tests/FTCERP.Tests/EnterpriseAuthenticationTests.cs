@@ -286,9 +286,11 @@ public sealed class EnterpriseAuthenticationTests
         });
         await context.SaveChangesAsync();
 
+        var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync(new AccessDecisionResult(false, "denied", [], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowedCodes.Contains(code), allowedCodes.Contains(code) ? "allowed" : "denied", [], [], []));
         var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id), new EnterpriseProviderRegistry([Provider()]), access.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = Http(actor.Id) }
@@ -311,8 +313,18 @@ public sealed class EnterpriseAuthenticationTests
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(Assert.IsType<OkObjectResult>(eventResult.Result).Value).Data!.TotalCount);
         var eventPageResult = await controller.GetEventsPage(new PagedQueryRequest());
         var protectedEvent = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(Assert.IsType<OkObjectResult>(eventPageResult.Result).Value).Data!.Items);
-        Assert.Null(protectedEvent.UserId);
+        Assert.Null(protectedEvent.UserPublicId);
         Assert.Null(protectedEvent.IpAddress);
+
+        allowedCodes.Add("AUTHENTICATION.EventUserId.READ");
+        var rawKeySearch = await controller.GetEventsPage(new PagedQueryRequest { Search = linked.Id });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(
+            Assert.IsType<OkObjectResult>(rawKeySearch.Result).Value).Data!.TotalCount);
+        var publicIdSearch = await controller.GetEventsPage(new PagedQueryRequest { Search = linked.PublicId.ToString() });
+        var publicEvent = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<AuthenticationEventDto>>>(
+            Assert.IsType<OkObjectResult>(publicIdSearch.Result).Value).Data!.Items);
+        Assert.Equal(linked.PublicId, publicEvent.UserPublicId);
+        Assert.Null(typeof(AuthenticationEventDto).GetProperty("UserId"));
 
         var write = await controller.Provision(new ProvisionUserAuthenticatorRequest(linked.PublicId, "ENTRA", linked.Email!, null, null, "Governed link"), default);
         Assert.IsType<ForbidResult>(write.Result);

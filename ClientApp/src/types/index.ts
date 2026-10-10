@@ -2358,7 +2358,7 @@ export interface UserPermissions {
 
 export interface LoginAuditLog {
   publicId: string;
-  userId?: string | null;
+  userPublicId?: string | null;
   email?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
@@ -3789,4 +3789,4 @@ export interface EnterpriseSignInOptions { municipalityCode: string; municipalit
 export interface AuthenticationPolicyConfiguration { publicId: string; minimumPasswordLength: number; maximumFailedAttempts: number; lockoutMinutes: number; requireMfaForPrivilegedLocalUsers: boolean; requireMfaForAllLocalUsers: boolean; requireFirstLoginPasswordChange: boolean; sessionIdleTimeoutMinutes: number; sessionAbsoluteTimeoutHours: number; maximumConcurrentSessions: number; rowVersion: string }
 export interface AuthenticationConfiguration { publicId: string; configurationFamilyPublicId: string; versionNumber: number; isCurrent: boolean; mode: 1 | 2 | 3 | 4; providerRegistrationCode?: string | null; displayName: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; rowVersion: string; policy?: AuthenticationPolicyConfiguration | null }
 export interface UserAuthenticator { publicId: string; userPublicId: string; userEmail?: string | null; providerRegistrationCode: string; expectedEmail?: string | null; issuer?: string | null; subject?: string | null; isActive: boolean; linkedAt?: string | null; lastAuthenticatedAt?: string | null; rowVersion: string }
-export interface AuthenticationEvent { publicId: string; userId?: string | null; providerCode: string; eventType: string; success: boolean; failureCode?: string | null; occurredAt: string; ipAddress?: string | null; correlationId: string }
+export interface AuthenticationEvent { publicId: string; userPublicId?: string | null; providerCode: string; eventType: string; success: boolean; failureCode?: string | null; occurredAt: string; ipAddress?: string | null; correlationId: string }

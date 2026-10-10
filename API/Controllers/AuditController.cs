@@ -54,8 +54,9 @@ public class AuditController : ControllerBase
         if (request.NormalizedSearch.Length > 0)
         {
             var search = request.NormalizedSearch;
+            var userPublicId = Guid.TryParse(search, out var parsedUserPublicId) ? parsedUserPublicId : (Guid?)null;
             query = query.Where(item => canReadEmail && item.Email.Contains(search)
-                || canReadUserId && item.UserId != null && item.UserId.Contains(search)
+                || canReadUserId && userPublicId.HasValue && item.User != null && item.User.PublicId == userPublicId.Value
                 || canReadIpAddress && item.IpAddress != null && item.IpAddress.Contains(search)
                 || canReadFailureReason && item.FailureReason != null && item.FailureReason.Contains(search)
                 || canReadUserAgent && item.UserAgent != null && item.UserAgent.Contains(search));
@@ -73,7 +74,7 @@ public class AuditController : ControllerBase
         };
         var rows = await query.Skip(request.Offset).Take(request.PageSize)
             .Select(item => new LoginAuditLogResponse(item.PublicId,
-                canReadUserId ? item.UserId : null,
+                canReadUserId && item.User != null ? item.User.PublicId : null,
                 canReadEmail ? item.Email : null,
                 canReadIpAddress ? item.IpAddress : null,
                 canReadUserAgent ? item.UserAgent : null,

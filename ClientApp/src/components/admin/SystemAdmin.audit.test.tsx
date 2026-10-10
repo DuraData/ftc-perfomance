@@ -21,7 +21,7 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security })
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
 const login = {
-  publicId: '22222222-2222-2222-2222-222222222222', userId: 'user-a', email: 'anna@example.test', ipAddress: '127.0.0.1', userAgent: 'test',
+  publicId: '22222222-2222-2222-2222-222222222222', userPublicId: '33333333-3333-3333-3333-333333333333', email: 'anna@example.test', ipAddress: '127.0.0.1', userAgent: 'test',
   success: false, failureReason: 'Account locked', loggedAt: '2026-01-03T00:00:00Z',
 };
 const trail = {

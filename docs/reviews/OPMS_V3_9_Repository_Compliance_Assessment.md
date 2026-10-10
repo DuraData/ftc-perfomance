@@ -3354,6 +3354,12 @@ Internal Audit assessment summaries and bounded reassessment history no longer e
 
 Authorized assessor search now evaluates stable public IDs and names through the user relationship instead of matching internal keys. A raw internal key produces no result after the member grant is enabled, while public-ID search remains available; contract reflection rejects reintroduction of `AssessedByUserId`. The production assessment panel consumes only the public identity contract and preserves member-permission suppression. Focused coverage passes **9/9 backend** and **3/3 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.252 Login and authentication-event public identity
+
+Login-audit and authentication-event page responses no longer expose ASP.NET Identity primary keys for the linked user. Their established independently governed member permissions remain backward-compatible in the security registry, while authorized public responses now return only the user's stable public ID and denied members remain null. The relational models retain their internal user foreign keys, and both bounded queries resolve the public identity through the governed user relationship.
+
+Authorized identity search now accepts an exact stable public ID and no longer searches raw internal keys. A raw Identity key produces no match after the corresponding member grant is enabled, while the public ID returns the expected tenant-owned event; contract reflection tests reject reintroduction of both former `UserId` response properties. The authentication administration UI consumes only the public-ID contract, and the login-audit register remains protected by the existing member-aware response. Focused coverage passes **13/13 backend** and **6/6 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

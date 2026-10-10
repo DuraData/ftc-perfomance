@@ -31,7 +31,7 @@ describe('AuthenticationAdministrationPage', () => {
       effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
       policy: { minimumPasswordLength: 14, maximumFailedAttempts: 4, sessionIdleTimeoutMinutes: 20 },
     }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
-    api.getAuthenticationEventsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'event-1', providerCode: 'ENTRA', eventType: 'ExternalSignIn', success: true, occurredAt: '2026-10-01T09:00:00Z', correlationId: 'trace-1' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
+    api.getAuthenticationEventsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'event-1', userPublicId: '44444444-4444-4444-4444-444444444444', providerCode: 'ENTRA', eventType: 'ExternalSignIn', success: true, occurredAt: '2026-10-01T09:00:00Z', correlationId: 'trace-1' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
     api.getAuthenticationProviders.mockResolvedValue({ success: true, data: [] });
     api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
     api.getUserAuthenticatorsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'authenticator-1', userPublicId: 'user-public-1', userEmail: 'person@example.test', providerRegistrationCode: 'ENTRA', expectedEmail: 'person@example.test', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
@@ -58,6 +58,7 @@ describe('AuthenticationAdministrationPage', () => {
 
     expect(await screen.findByText('31 enterprise identities')).toBeInTheDocument();
     expect(await screen.findByText('31 authentication events')).toBeInTheDocument();
+    expect(screen.getByText('44444444-4444-4444-4444-444444444444')).toBeInTheDocument();
     expect(api.getUserAuthenticatorsPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25, sortBy: 'email' }));
     expect(api.getAuthenticationEventsPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25, sortBy: 'occurredAt' }));
 

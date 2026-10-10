@@ -106,7 +106,7 @@ public sealed class AuditPaginationTests
         var deniedResult = await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "createdAt" });
         var deniedItem = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(
             Assert.IsType<OkObjectResult>(deniedResult.Result).Value).Data!.Items);
-        Assert.Null(deniedItem.UserId);
+        Assert.Null(deniedItem.UserPublicId);
         Assert.Null(deniedItem.Email);
         Assert.Null(deniedItem.IpAddress);
         Assert.Null(deniedItem.UserAgent);
@@ -127,6 +127,16 @@ public sealed class AuditPaginationTests
         Assert.Equal("127.0.0.1", allowedItem.IpAddress);
         Assert.Equal("Account locked", allowedItem.FailureReason);
         Assert.Null(allowedItem.UserAgent);
+
+        allowedCodes.Add("LOGIN_AUDIT.UserId.READ");
+        var rawKeySearch = await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "createdAt", Search = actor.Id });
+        Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(
+            Assert.IsType<OkObjectResult>(rawKeySearch.Result).Value).Data!.TotalCount);
+        var publicIdSearch = await controller.GetLoginLogsPage(new PagedQueryRequest { SortBy = "createdAt", Search = actor.PublicId.ToString() });
+        var publicIdentity = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(
+            Assert.IsType<OkObjectResult>(publicIdSearch.Result).Value).Data!.Items);
+        Assert.Equal(actor.PublicId, publicIdentity.UserPublicId);
+        Assert.Null(typeof(LoginAuditLogResponse).GetProperty("UserId"));
     }
 
     [Fact]

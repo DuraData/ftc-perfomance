@@ -321,9 +321,10 @@ public sealed class AuthenticationAdministrationController(
         if (request.NormalizedSearch.Length > 0)
         {
             var term = request.NormalizedSearch;
+            var userPublicId = Guid.TryParse(term, out var parsedUserPublicId) ? parsedUserPublicId : (Guid?)null;
             query = query.Where(item => item.ProviderCode.Contains(term)
                 || item.EventType.Contains(term)
-                || canReadEventUser && item.UserId != null && item.UserId.Contains(term)
+                || canReadEventUser && userPublicId.HasValue && item.User != null && item.User.PublicId == userPublicId.Value
                 || item.FailureCode != null && item.FailureCode.Contains(term)
                 || canReadEventIp && item.IpAddress != null && item.IpAddress.Contains(term)
                 || item.CorrelationId.Contains(term));
@@ -341,7 +342,7 @@ public sealed class AuthenticationAdministrationController(
             (_, false) => query.OrderBy(item => item.OccurredAt).ThenBy(item => item.Id),
             _ => query.OrderByDescending(item => item.OccurredAt).ThenByDescending(item => item.Id)
         };
-        var rows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync(cancellationToken);
+        var rows = await query.Include(item => item.User).Skip(request.Offset).Take(request.PageSize).ToArrayAsync(cancellationToken);
         return Ok(new ApiResponse<PagedResponse<AuthenticationEventDto>>(true,
             PagedResponse<AuthenticationEventDto>.Create(rows.Select(item => ToDto(item, canReadEventUser, canReadEventIp)), request.Page, request.PageSize, totalCount)));
     }
@@ -403,7 +404,7 @@ public sealed class AuthenticationAdministrationController(
             includeExpectedEmail ? item.ExpectedEmail : null, includeIssuer ? item.Issuer : null, includeSubject ? item.Subject : null,
             item.IsActive, item.LinkedAt, item.LastAuthenticatedAt, Convert.ToBase64String(item.RowVersion));
     private static AuthenticationEventDto ToDto(AuthenticationEvent item, bool includeUserId, bool includeIpAddress) =>
-        new(item.PublicId, includeUserId ? item.UserId : null, item.ProviderCode, item.EventType, item.Success, item.FailureCode,
+        new(item.PublicId, includeUserId ? item.User?.PublicId : null, item.ProviderCode, item.EventType, item.Success, item.FailureCode,
             item.OccurredAt, includeIpAddress ? item.IpAddress : null, item.CorrelationId);
 
     private async Task<UserAuthenticatorDto> ToAuthorizedDtoAsync(UserAuthenticator item, ApplicationUser user, long municipalityId) =>
@@ -431,7 +432,7 @@ public sealed record AuthenticationConfigurationDto(Guid PublicId, Guid Configur
     DateTime? EffectiveTo, string RowVersion, AuthenticationPolicyDto? Policy);
 public sealed record AuthenticationPolicyDto(Guid PublicId, int MinimumPasswordLength, int MaximumFailedAttempts, int LockoutMinutes, bool RequireMfaForPrivilegedLocalUsers, bool RequireMfaForAllLocalUsers, bool RequireFirstLoginPasswordChange, int SessionIdleTimeoutMinutes, int SessionAbsoluteTimeoutHours, int MaximumConcurrentSessions, string RowVersion);
 public sealed record UserAuthenticatorDto(Guid PublicId, Guid UserPublicId, string? UserEmail, string ProviderRegistrationCode, string? ExpectedEmail, string? Issuer, string? Subject, bool IsActive, DateTime? LinkedAt, DateTime? LastAuthenticatedAt, string RowVersion);
-public sealed record AuthenticationEventDto(Guid PublicId, string? UserId, string ProviderCode, string EventType, bool Success, string? FailureCode, DateTime OccurredAt, string? IpAddress, string CorrelationId);
+public sealed record AuthenticationEventDto(Guid PublicId, Guid? UserPublicId, string ProviderCode, string EventType, bool Success, string? FailureCode, DateTime OccurredAt, string? IpAddress, string CorrelationId);
 public sealed record AuthenticationPolicyRequest(int MinimumPasswordLength, int MaximumFailedAttempts, int LockoutMinutes, bool RequireMfaForPrivilegedLocalUsers, bool RequireMfaForAllLocalUsers, bool RequireFirstLoginPasswordChange, int SessionIdleTimeoutMinutes, int SessionAbsoluteTimeoutHours, int MaximumConcurrentSessions, string? RowVersion);
 public sealed record SaveAuthenticationConfigurationRequest(AuthenticationMode Mode, string? ProviderRegistrationCode, string DisplayName, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, AuthenticationPolicyRequest Policy, string Reason, string? RowVersion);
 public sealed record ProvisionUserAuthenticatorRequest(Guid UserPublicId, string ProviderRegistrationCode, string ExpectedEmail, string? Issuer, string? Subject, string Reason);
