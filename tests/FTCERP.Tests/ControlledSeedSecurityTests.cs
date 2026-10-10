@@ -167,6 +167,75 @@ public sealed class ControlledSeedSecurityTests
         (await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email")).IsSensitive.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Security_catalogue_seed_registers_opms_dashboard_and_migrates_legacy_and_modern_opms_grants()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        await DbInitializer.SeedPermissionsAsync(context);
+        var legacyPermission = await context.Permissions.SingleAsync(item => item.Code == "OPMS.View");
+        var role = new ApplicationRole
+        {
+            Id = "opms-viewer",
+            Name = "OPMS Viewer",
+            NormalizedName = "OPMS VIEWER",
+            RoleCode = "OPMS_VIEWER"
+        };
+        context.Roles.Add(role);
+        await context.SaveChangesAsync();
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = role.Id,
+            PermissionId = legacyPermission.Id,
+            IsAllowed = true,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+        context.ChangeTracker.Clear();
+
+        var navigation = await context.SecurityNavigationItems.SingleAsync(item => item.Code == "NAV.SDBIP.DASHBOARD");
+        navigation.Route.Should().Be("/opms/dashboard");
+        navigation.RequiredPermissionCode.Should().Be("NAV.SDBIP.DASHBOARD");
+        (await context.SecurityNavigationItems.SingleAsync(item => item.Id == navigation.ParentId)).Code.Should().Be("NAV.SDBIP");
+
+        var permission = await context.Permissions.SingleAsync(item => item.Code == "NAV.SDBIP.DASHBOARD");
+        permission.Kind.Should().Be(SecurityPermissionKind.Navigation);
+        permission.NavigationCode.Should().Be("NAV.SDBIP.DASHBOARD");
+        (await context.RolePermissions.SingleAsync(item => item.RoleId == role.Id && item.PermissionId == permission.Id)).IsAllowed.Should().BeTrue();
+
+        var registerPermission = await context.Permissions.SingleAsync(item => item.Code == "NAV.SDBIP.REGISTER");
+        var modernRole = new ApplicationRole
+        {
+            Id = "modern-opms-viewer",
+            Name = "Modern OPMS Viewer",
+            NormalizedName = "MODERN OPMS VIEWER",
+            RoleCode = "MODERN_OPMS_VIEWER"
+        };
+        context.Roles.Add(modernRole);
+        await context.SaveChangesAsync();
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = modernRole.Id,
+            PermissionId = registerPermission.Id,
+            IsAllowed = true,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+        (await context.SecurityNavigationItems.CountAsync(item => item.Code == "NAV.SDBIP.DASHBOARD")).Should().Be(1);
+        (await context.RolePermissions.CountAsync(item => item.RoleId == role.Id && item.PermissionId == permission.Id)).Should().Be(1);
+        (await context.RolePermissions.SingleAsync(item => item.RoleId == modernRole.Id && item.PermissionId == permission.Id)).IsAllowed.Should().BeTrue();
+    }
+
     private sealed class SystemTenantContext : ITenantContext
     {
         public long? MunicipalityId => null;
