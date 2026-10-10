@@ -88,11 +88,13 @@ describe('target library registers', () => {
     render(<OPMSTargetTemplateFormPage templateId="opms-public-id" />);
 
     expect(await screen.findByText('Edit Mode')).toBeInTheDocument();
-    expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('15');
-    expect(screen.getByLabelText('Strategic Goal')).toHaveValue('11');
-    expect(screen.getByLabelText('Strategic Objective')).toHaveValue('12');
-    expect(screen.getByLabelText('Budget Source')).toHaveValue('13');
-    expect(screen.getByLabelText('Budget Type')).toHaveValue('14');
+    await waitFor(() => {
+      expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('15');
+      expect(screen.getByLabelText('Strategic Goal')).toHaveValue('11');
+      expect(screen.getByLabelText('Strategic Objective')).toHaveValue('12');
+      expect(screen.getByLabelText('Budget Source')).toHaveValue('13');
+      expect(screen.getByLabelText('Budget Type')).toHaveValue('14');
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
 
     await waitFor(() => expect(api.updateOpmsTargetTemplate).toHaveBeenCalledWith(
@@ -129,7 +131,7 @@ describe('target library registers', () => {
     render(<IPMSTargetTemplateFormPage templateId="ipms-public-id" />);
 
     expect(await screen.findByText('Edit Mode')).toBeInTheDocument();
-    expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('16');
+    await waitFor(() => expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('16'));
     fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
     await waitFor(() => expect(api.updateIpmsTargetTemplate).toHaveBeenCalledWith(
       '2',
