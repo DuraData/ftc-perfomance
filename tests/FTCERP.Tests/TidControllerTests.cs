@@ -124,14 +124,19 @@ public class TidControllerTests
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], [setup.Municipality.Id]));
         var controller = Controller(context, setup.User, setup.Municipality.Id, storage: storage, inspection: inspection, scanner: scanner, access: access);
         var tid = Payload(await controller.CreateVersion(setup.Target.PublicId, Request("Definition", new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc))));
-        tid.CreatedByUserId.Should().BeNull();
+        tid.CreatedByUserPublicId.Should().BeNull();
+        tid.CreatedByName.Should().BeNull();
         var hiddenCreatorSearch = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
             new PagedQueryRequest { Search = setup.User.Id, PageSize = 10 }));
         hiddenCreatorSearch.TotalCount.Should().Be(0);
         allowedCodes.Add("TID.CreatedByUserId.READ");
         var visibleCreatorSearch = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
+            new PagedQueryRequest { Search = setup.User.PublicId.ToString(), PageSize = 10 }));
+        visibleCreatorSearch.Items.Should().ContainSingle().Which.CreatedByUserPublicId.Should().Be(setup.User.PublicId);
+        visibleCreatorSearch.Items.Single().CreatedByName.Should().Be(setup.User.FullName);
+        var rawCreatorSearch = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
             new PagedQueryRequest { Search = setup.User.Id, PageSize = 10 }));
-        visibleCreatorSearch.Items.Should().ContainSingle().Which.CreatedByUserId.Should().Be(setup.User.Id);
+        rawCreatorSearch.TotalCount.Should().Be(0);
         var bytes = "%PDF-source"u8.ToArray();
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "source.pdf") { Headers = new HeaderDictionary(), ContentType = "application/pdf" };
 
@@ -139,7 +144,7 @@ public class TidControllerTests
         document.ScanStatus.Should().Be("ThreatDetected");
         document.IsQuarantined.Should().BeTrue();
         document.ContentUrl.Should().Contain(tid.PublicId.ToString());
-        document.UploadedByUserId.Should().BeNull();
+        document.UploadedByUserPublicId.Should().BeNull();
         document.UploadedByName.Should().BeNull();
         document.ScannerProvider.Should().BeNull();
         document.ScannerReference.Should().BeNull();
@@ -153,11 +158,13 @@ public class TidControllerTests
         var history = Payload(await controller.GetHistoryPage(setup.Target.PublicId,
             new PagedQueryRequest { Page = 1, PageSize = 10, SortBy = "versionNumber" }));
         var visibleDocument = history.Items.Single().SourceDocuments.Single();
-        visibleDocument.UploadedByUserId.Should().Be(setup.User.Id);
+        visibleDocument.UploadedByUserPublicId.Should().Be(setup.User.PublicId);
         visibleDocument.UploadedByName.Should().Be(setup.User.FullName);
         visibleDocument.ScannerProvider.Should().Be("test-scanner");
         visibleDocument.ScannerReference.Should().Be("scan-1");
         visibleDocument.ScanDetail.Should().Be("Threat");
+        typeof(TidVersionResponse).GetProperty("CreatedByUserId").Should().BeNull();
+        typeof(TidSourceDocumentResponse).GetProperty("UploadedByUserId").Should().BeNull();
 
         (await controller.DownloadSourceDocument(tid.PublicId, document.PublicId)).Should().BeOfType<NotFoundResult>();
         var rescanned = Payload(await controller.RescanSourceDocument(tid.PublicId, document.PublicId));

@@ -24,7 +24,7 @@ const version = {
   calculationMethod: 'Numerator divided by denominator', numeratorDescription: 'Served households', denominatorDescription: 'All households',
   limitations: null, assumptions: null, verificationMethod: 'Reconcile', responsibleEmployeePublicId: null, responsibleEmployeeName: null,
   notes: null, effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isCurrent: true, createdAt: '2026-07-01T00:00:00Z',
-  createdByUserId: 'owner', rowVersion: 'Ag==', sourceDocuments: [],
+  createdByUserPublicId: '00000000-0000-0000-0000-000000000001', createdByName: 'Protected Owner', rowVersion: 'Ag==', sourceDocuments: [],
 };
 const item = { targetPublicId: 'target-1', indicatorNumber: 'KPI-1', targetName: 'Water access', departmentName: 'Infrastructure', unitName: null, tidRequired: true, currentVersion: version };
 
@@ -92,7 +92,7 @@ describe('TID workspace', () => {
     const protectedDocument = {
       publicId: 'source-1', title: 'Protected methodology', fileName: 'source.pdf', contentType: 'application/pdf', sizeInBytes: 100,
       sha256: 'a'.repeat(64), scanStatus: 'ThreatDetected', isQuarantined: true, uploadedAt: '2026-07-01T01:00:00Z',
-      uploadedByUserId: 'owner', uploadedByName: 'Protected Owner', scannerProvider: 'ProtectedScanner',
+      uploadedByUserPublicId: '00000000-0000-0000-0000-000000000001', uploadedByName: 'Protected Owner', scannerProvider: 'ProtectedScanner',
       scannerReference: 'protected-reference', scanDetail: 'protected-detail', contentUrl: '/api/v1/tids/tid-1/documents/source-1/content',
     };
     api.getTidHistoryPage.mockResolvedValue({ success: true, data: { items: [{ ...version, sourceDocuments: [protectedDocument] }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });

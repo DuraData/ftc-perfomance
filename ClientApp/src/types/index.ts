@@ -3557,7 +3557,7 @@ export interface TidSourceDocument {
   scanStatus: string;
   isQuarantined: boolean;
   uploadedAt: string;
-  uploadedByUserId?: string | null;
+  uploadedByUserPublicId?: string | null;
   uploadedByName?: string | null;
   scannerProvider?: string | null;
   scannerReference?: string | null;
@@ -3587,7 +3587,8 @@ export interface TidVersion {
   effectiveTo?: string | null;
   isCurrent: boolean;
   createdAt: string;
-  createdByUserId?: string | null;
+  createdByUserPublicId?: string | null;
+  createdByName?: string | null;
   rowVersion: string;
   sourceDocuments: TidSourceDocument[];
 }

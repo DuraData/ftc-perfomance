@@ -40,7 +40,8 @@ public record TidVersionResponse(
     DateTime? EffectiveTo,
     bool IsCurrent,
     DateTime CreatedAt,
-    string? CreatedByUserId,
+    Guid? CreatedByUserPublicId,
+    string? CreatedByName,
     string RowVersion,
     TidSourceDocumentResponse[] SourceDocuments);
 
@@ -54,7 +55,7 @@ public record TidSourceDocumentResponse(
     string ScanStatus,
     bool IsQuarantined,
     DateTime UploadedAt,
-    string? UploadedByUserId,
+    Guid? UploadedByUserPublicId,
     string? UploadedByName,
     string? ScannerProvider,
     string? ScannerReference,

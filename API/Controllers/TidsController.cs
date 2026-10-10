@@ -129,6 +129,7 @@ public class TidsController : ControllerBase
         var tids = await context.TechnicalIndicatorDescriptions.AsNoTracking()
             .Include(item => item.OpmsTarget)
             .Include(item => item.ResponsibleEmployee)
+            .Include(item => item.CreatedByUser)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.UploadedByUser)
             .Where(item => targetIds.Contains(item.OpmsTargetId) && item.IsCurrent)
@@ -188,11 +189,16 @@ public class TidsController : ControllerBase
             .Include(item => item.OpmsTarget)
             .Include(item => item.PreviousVersion)
             .Include(item => item.ResponsibleEmployee)
+            .Include(item => item.CreatedByUser)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.Blob)
             .Include(item => item.SourceDocuments).ThenInclude(item => item.UploadedByUser)
             .Where(item => item.OpmsTargetId == target.Id);
         var memberAccess = await GetMemberAccessAsync(user, target);
         if (request.NormalizedSearch.Length > 0)
+        {
+            var creatorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedCreatorPublicId)
+                ? parsedCreatorPublicId
+                : (Guid?)null;
             query = query.Where(item => item.IndicatorDefinition.Contains(request.NormalizedSearch)
                 || item.Purpose.Contains(request.NormalizedSearch)
                 || item.DataSource.Contains(request.NormalizedSearch)
@@ -200,9 +206,12 @@ public class TidsController : ControllerBase
                 || item.CalculationMethod.Contains(request.NormalizedSearch)
                 || item.VerificationMethod.Contains(request.NormalizedSearch)
                 || (item.Notes != null && item.Notes.Contains(request.NormalizedSearch))
-                || (memberAccess.CreatedByUserId && item.CreatedByUserId.Contains(request.NormalizedSearch))
+                || (memberAccess.CreatedByUserId && ((creatorPublicId.HasValue && item.CreatedByUser.PublicId == creatorPublicId.Value)
+                    || item.CreatedByUser.FirstName.Contains(request.NormalizedSearch)
+                    || item.CreatedByUser.LastName.Contains(request.NormalizedSearch)))
                 || (item.ResponsibleEmployee != null && (item.ResponsibleEmployee.FirstName.Contains(request.NormalizedSearch)
                     || item.ResponsibleEmployee.LastName.Contains(request.NormalizedSearch))));
+        }
         var totalCount = await query.CountAsync();
         var ordered = (sortBy, request.Descending) switch
         {
@@ -283,7 +292,8 @@ public class TidsController : ControllerBase
                 ResponsibleEmployeeId = employee?.Id,
                 Notes = normalized.Notes,
                 EffectiveFrom = normalized.EffectiveFrom,
-                CreatedByUserId = user.Id
+                CreatedByUserId = user.Id,
+                CreatedByUser = user
             };
             context.TechnicalIndicatorDescriptions.Add(entity);
             workflow.QueueAuditTrail("TechnicalIndicatorDescription", entity.PublicId.ToString(), "CreateVersion", null,
@@ -537,14 +547,15 @@ public class TidsController : ControllerBase
         item.NumeratorDescription, item.DenominatorDescription, item.Limitations, item.Assumptions, item.VerificationMethod,
         item.ResponsibleEmployee?.PublicId, item.ResponsibleEmployee == null ? null : $"{item.ResponsibleEmployee.FirstName} {item.ResponsibleEmployee.LastName}".Trim(),
         item.Notes, item.EffectiveFrom, item.EffectiveTo, item.IsCurrent, item.CreatedAt,
-        memberAccess.CreatedByUserId ? item.CreatedByUserId : null,
+        memberAccess.CreatedByUserId ? item.CreatedByUser.PublicId : null,
+        memberAccess.CreatedByUserId ? item.CreatedByUser.FullName : null,
         Convert.ToBase64String(item.RowVersion), item.SourceDocuments.OrderByDescending(document => document.UploadedAt)
             .Select(document => ToResponse(document, memberAccess.SourceDocument)).ToArray());
 
     private static TidSourceDocumentResponse ToResponse(TidSourceDocument item, DocumentMetadataMemberAccess memberAccess) => new(
         item.PublicId, item.Title, item.FileName, item.Blob.ContentType, item.Blob.SizeInBytes, item.Blob.Sha256,
         item.Blob.ScanStatus, item.Blob.IsQuarantined, item.UploadedAt,
-        memberAccess.UploadedByUserId ? item.UploadedByUserId : null,
+        memberAccess.UploadedByUserId ? item.UploadedByUser.PublicId : null,
         memberAccess.UploadedByName ? item.UploadedByUser?.FullName : null,
         memberAccess.ScannerProvider ? item.Blob.ScannerProvider : null,
         memberAccess.ScannerReference ? item.Blob.ScannerReference : null,
