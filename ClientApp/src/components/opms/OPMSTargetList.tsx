@@ -222,7 +222,7 @@ export function OPMSTargetList() {
     {
       id: 'period',
       header: 'Period',
-      accessor: (row: OPMSTarget) => row.period.fiscalYear,
+      accessor: (row: OPMSTarget) => row.period.fiscalYear || row.period.name,
       sortable: true,
     },
     {

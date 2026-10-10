@@ -44,7 +44,7 @@ interface TargetDetailProps {
   targetId?: string;
 }
 
-function GeneralInfoTab({ target }: { target: OPMSTarget }) {
+export function GeneralInfoTab({ target }: { target: OPMSTarget }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Basic Information">
@@ -150,45 +150,45 @@ function GeneralInfoTab({ target }: { target: OPMSTarget }) {
   );
 }
 
-function StrategyTab({ target }: { target: OPMSTarget }) {
+function strategicLabel(code: string | undefined, name: string | undefined) {
+  return code ? `${code} · ${name ?? ''}` : name ?? '';
+}
+
+export function StrategyTab({ target }: { target: OPMSTarget }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Strategic Alignment">
         <FormRow cols={2}>
-          <Input label="National KPA" defaultValue={target.nationalKPA} />
-          <Input label="Municipal KPA" defaultValue={target.municipalKPA} />
+          <Input label="National KPA" defaultValue={target.nationalKPA} readOnly />
+          <Input label="Municipal KPA" defaultValue={target.municipalKPA} readOnly />
         </FormRow>
         <FormRow cols={2}>
-          <Select
-            label="Strategic Goal"
-            options={[{ value: target.strategicGoal.id, label: target.strategicGoal.name }]}
-            defaultValue={target.strategicGoal.id}
-          />
-          <Select
-            label="Strategic Objective"
-            options={[{ value: target.strategicObjective.id, label: target.strategicObjective.name }]}
-            defaultValue={target.strategicObjective.id}
-          />
+          <Input label="Back-to-Basics Pillar" defaultValue={target.backToBasicsPillar ?? ''} readOnly />
+          <Input label="Strategic Goal" defaultValue={strategicLabel(target.strategicGoal.code || target.strategicGoalCode, target.strategicGoal.name)} readOnly />
         </FormRow>
         <FormRow cols={2}>
-          <Input label="Performance Objective" defaultValue={target.performanceObjective} />
-          <Input label="Functional Area" defaultValue={target.functionalArea} />
+          <Input label="Strategic Intervention" defaultValue={target.strategicIntervention ?? ''} readOnly />
+          <Input label="Strategic Objective" defaultValue={strategicLabel(target.strategicObjective.code || target.strategicObjectiveCode, target.strategicObjective.name)} readOnly />
+        </FormRow>
+        <FormRow cols={2}>
+          <Input label="Performance Objective" defaultValue={strategicLabel(target.performanceObjectiveCode, target.performanceObjective)} readOnly />
+          <Input label="Functional Area" defaultValue={target.functionalArea} readOnly />
         </FormRow>
       </FormSection>
 
       <FormSection title="References">
         <FormRow cols={3}>
-          <Input label="IDP Reference" defaultValue={target.idpReference} />
-          <Input label="Internal Reference" defaultValue={target.internalReference} />
-          <Input label="FMS Link" defaultValue={target.fmsLink} />
+          <Input label="IDP Reference" defaultValue={target.idpReference} readOnly />
+          <Input label="Internal Reference" defaultValue={target.internalReference} readOnly />
+          <Input label="FMS Link" defaultValue={target.fmsLink} readOnly />
         </FormRow>
-        <Input label="Standard Classification" defaultValue={target.standardClassification} />
+        <Input label="Standard Classification" defaultValue={target.standardClassification} readOnly />
       </FormSection>
     </div>
   );
 }
 
-function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
+export function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
   const quarters = [
     { id: 'q1', label: 'Q1 (Jul-Sep)', targetValue: target.q1Target, description: target.q1Description, budget: target.q1Budget },
     { id: 'q2', label: 'Q2 (Oct-Dec)', targetValue: target.q2Target, description: target.q2Description, budget: target.q2Budget },
@@ -229,8 +229,8 @@ function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
             <p className="text-xs text-secondary-500">Baseline</p>
           </Card>
           <Card className="p-3 text-center">
-            <p className="text-lg font-bold text-primary-600">{(((target.annualTarget - target.baseline) / Math.max(target.baseline, 1)) * 100).toFixed(1)}%</p>
-            <p className="text-xs text-secondary-500">Improvement</p>
+            <p className="text-lg font-bold text-primary-600">{target.baseline === 0 ? 'Not calculable' : `${(((target.annualTarget - target.baseline) / target.baseline) * 100).toFixed(1)}%`}</p>
+            <p className="text-xs text-secondary-500">Improvement from baseline</p>
           </Card>
         </div>
       </FormSection>

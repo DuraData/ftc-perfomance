@@ -297,13 +297,14 @@ function parseJsonArray<T>(value?: string | null, fallback: T[] = []): T[] {
 
 const NOT_SUPPLIED = 'Not supplied by API';
 
-function toPeriodReference(id?: number | null): Period {
+function toPeriodReference(id?: number | null, name?: string | null): Period {
+  const governedName = normalizeOptionalString(name);
   return {
     id: id === null || id === undefined ? '' : String(id),
-    name: id === null || id === undefined ? NOT_SUPPLIED : `Reporting period ${id}`,
+    name: governedName ?? (id === null || id === undefined ? NOT_SUPPLIED : `Reporting period ${id}`),
     startDate: '',
     endDate: '',
-    fiscalYear: '',
+    fiscalYear: governedName ?? '',
     isActive: true,
   };
 }
@@ -351,11 +352,11 @@ function toEmployeeReference(id?: string | null, name?: string | null): Employee
   };
 }
 
-function toStrategicGoalReference(id?: number | null, name?: string | null): StrategicGoal {
+function toStrategicGoalReference(id?: number | null, name?: string | null, code?: string | null): StrategicGoal {
   return {
     id: id === null || id === undefined ? '' : String(id),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
-    code: '',
+    code: normalizeOptionalString(code) ?? '',
     isActive: true,
   };
 }
@@ -364,11 +365,12 @@ function toStrategicObjectiveReference(
   id: number | null | undefined,
   name: string | null | undefined,
   strategicGoal: StrategicGoal,
+  code?: string | null,
 ): StrategicObjective {
   return {
     id: id === null || id === undefined ? '' : String(id),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
-    code: '',
+    code: normalizeOptionalString(code) ?? '',
     strategicGoal,
     isActive: true,
   };
@@ -521,7 +523,7 @@ function numericTarget(value?: string | null): number {
 
 function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
   const department = toDepartmentReference(dto.departmentId, dto.departmentName, dto.departmentPublicId);
-  const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
+  const strategicGoal = toStrategicGoalReference(dto.strategicGoalId, dto.strategicGoalName, dto.strategicGoalCode);
   const periods = dto.periodTargets ?? [];
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
   const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
@@ -531,10 +533,11 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
     municipalityFinancialYearPublicId: dto.municipalityFinancialYearPublicId ?? undefined,
+    municipalityFinancialYearName: dto.municipalityFinancialYearName ?? undefined,
     sdbipLayer: dto.sdbipLayerPublicId ? { publicId: dto.sdbipLayerPublicId, code: dto.sdbipLayerCode ?? '', name: dto.sdbipLayerName ?? '' } : undefined,
     sourceTemplateId: dto.sourceTemplateId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
-    period: toPeriodReference(dto.periodId),
+    period: toPeriodReference(dto.periodId, dto.municipalityFinancialYearName),
     department,
     unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
     assignedTo: toEmployeeReference(dto.assignedUserPublicId, dto.assignedUserName),
@@ -542,7 +545,8 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     wardIds: dto.wardIds,
     additionalAssignees: dto.additionalAssigneePublicIds.map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
     additionalAssigneePublicIds: dto.additionalAssigneePublicIds,
-    voteNumbers: dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
+    voteNumbers: dto.voteNumbers?.map(item => ({ id: item.publicId || String(item.id), number: item.number, name: item.name, department, amount: item.amount, description: item.code, isActive: true }))
+      ?? dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
     voteNumberIds: dto.voteNumberIds,
     indicatorNumber: dto.indicatorNumber,
     isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
@@ -556,13 +560,19 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     backToBasicsPillarPublicId: dto.backToBasicsPillarPublicId ?? undefined,
     backToBasicsPillar: dto.backToBasicsPillar ?? undefined,
     strategicGoalPublicId: dto.strategicGoalPublicId ?? undefined,
+    strategicGoalCode: dto.strategicGoalCode ?? undefined,
+    strategicGoalName: dto.strategicGoalName ?? undefined,
     strategicInterventionPublicId: dto.strategicInterventionPublicId ?? undefined,
     strategicIntervention: dto.strategicIntervention ?? undefined,
     strategicObjectivePublicId: dto.strategicObjectivePublicId ?? undefined,
+    strategicObjectiveCode: dto.strategicObjectiveCode ?? undefined,
+    strategicObjectiveName: dto.strategicObjectiveName ?? undefined,
     performanceObjectivePublicId: dto.performanceObjectivePublicId ?? undefined,
+    performanceObjectiveCode: dto.performanceObjectiveCode ?? undefined,
+    performanceObjectiveName: dto.performanceObjectiveName ?? undefined,
     strategicGoal,
-    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
-    performanceObjective: dto.performanceObjective,
+    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, dto.strategicObjectiveName, strategicGoal, dto.strategicObjectiveCode),
+    performanceObjective: dto.performanceObjectiveName ?? dto.performanceObjective,
     targetName: dto.targetName,
     isTargetNameRevised: dto.isTargetNameRevised,
     revisedTargetName: dto.revisedTargetName ?? undefined,
@@ -609,13 +619,13 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     q3Target: numericTarget(q3?.targetValue),
     q3Description: q3?.description ?? '',
     q3Budget: q3?.budgetValue ?? 0,
-    q3RevisedTarget: 0,
+    q3RevisedTarget: q3?.isTargetRevised ? numericTarget(q3.targetValue) : undefined,
     q4Target: numericTarget(q4?.targetValue),
     q4Description: q4?.description ?? '',
     q4Budget: q4?.budgetValue ?? 0,
-    q4RevisedTarget: 0,
-    revisedAnnualTarget: 0,
-    revisedAnnualBudget: 0,
+    q4RevisedTarget: q4?.isTargetRevised ? numericTarget(q4.targetValue) : undefined,
+    revisedAnnualTarget: annual?.isTargetRevised ? numericTarget(annual.targetValue) : undefined,
+    revisedAnnualBudget: annual?.isBudgetRevised ? annual.budgetValue ?? undefined : undefined,
     submissions: [],
     relatedIPMSTargets: [],
     attachments: [],

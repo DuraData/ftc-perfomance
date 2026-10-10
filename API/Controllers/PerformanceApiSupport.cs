@@ -202,6 +202,7 @@ public static class PerformanceApiSupport
             WithdrawnByUserId = target.WithdrawnByUserId,
             SdbipLayerPublicId = target.SdbipLayer?.PublicId,
             MunicipalityFinancialYearPublicId = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.PublicId,
+            MunicipalityFinancialYearName = target.CanonicalPeriodTargets.FirstOrDefault()?.ReportingPeriod.MunicipalityFinancialYear.FinancialYear.Name,
             SdbipLayerCode = target.SdbipLayer?.Code,
             SdbipLayerName = target.SdbipLayer?.Name,
             DepartmentPublicId = target.Department?.PublicId,
@@ -210,9 +211,15 @@ public static class PerformanceApiSupport
             MunicipalKpaPublicId = target.MunicipalKpaReference?.PublicId,
             BackToBasicsPillarPublicId = target.BackToBasicsPillarReference?.PublicId,
             StrategicGoalPublicId = target.StrategicGoalMaster?.PublicId,
+            StrategicGoalCode = target.StrategicGoalMaster?.Code,
+            StrategicGoalName = target.StrategicGoalMaster?.Name,
             StrategicInterventionPublicId = target.StrategicInterventionReference?.PublicId,
             StrategicObjectivePublicId = target.StrategicObjectiveMaster?.PublicId,
+            StrategicObjectiveCode = target.StrategicObjectiveMaster?.Code,
+            StrategicObjectiveName = target.StrategicObjectiveMaster?.Name,
             PerformanceObjectivePublicId = target.PerformanceObjectiveReference?.PublicId,
+            PerformanceObjectiveCode = target.PerformanceObjectiveReference?.Code,
+            PerformanceObjectiveName = target.PerformanceObjectiveReference?.Name,
             BackToBasicsPillar = target.BackToBasicsPillarReference?.Name,
             StrategicIntervention = target.StrategicInterventionReference?.Name,
             BudgetTypePublicId = target.BudgetTypeMaster?.PublicId,
@@ -225,7 +232,12 @@ public static class PerformanceApiSupport
             StandardClassificationPublicId = target.StandardClassificationMaster?.PublicId,
             KpiUnitOfMeasurePublicId = target.KpiUnitOfMeasureMaster?.PublicId,
             KpiUnitOfMeasureName = target.KpiUnitOfMeasureMaster?.Name,
-            KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol
+            KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol,
+            VoteNumbers = target.VoteNumbers
+                .Where(item => item.VoteNumber != null)
+                .OrderBy(item => item.VoteNumber.Number)
+                .Select(item => new OpmsTargetVoteNumberResponse(item.VoteNumber.Id, item.VoteNumber.PublicId, item.VoteNumber.Code, item.VoteNumber.Number, item.VoteNumber.Name, item.VoteNumber.Amount))
+                .ToArray()
         };
 
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType) =>

@@ -376,15 +376,22 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   publicId?: string;
   rowVersion?: string;
   municipalityFinancialYearPublicId?: string;
+  municipalityFinancialYearName?: string;
   nationalKpaPublicId?: string;
   municipalKpaPublicId?: string;
   backToBasicsPillarPublicId?: string;
   backToBasicsPillar?: string;
   strategicGoalPublicId?: string;
+  strategicGoalCode?: string;
+  strategicGoalName?: string;
   strategicInterventionPublicId?: string;
   strategicIntervention?: string;
   strategicObjectivePublicId?: string;
+  strategicObjectiveCode?: string;
+  strategicObjectiveName?: string;
   performanceObjectivePublicId?: string;
+  performanceObjectiveCode?: string;
+  performanceObjectiveName?: string;
   sdbipLayer?: { publicId: string; code: string; name: string };
   PriorYearOpmsId?: string;
   sourceTemplateId?: string;
@@ -2447,6 +2454,7 @@ export interface OpmsTargetDto {
   publicId: string;
   rowVersion: string;
   municipalityFinancialYearPublicId?: string | null;
+  municipalityFinancialYearName?: string | null;
   sdbipLayerPublicId?: string | null;
   sdbipLayerCode?: string | null;
   sdbipLayerName?: string | null;
@@ -2476,10 +2484,16 @@ export interface OpmsTargetDto {
   backToBasicsPillarPublicId?: string | null;
   backToBasicsPillar?: string | null;
   strategicGoalPublicId?: string | null;
+  strategicGoalCode?: string | null;
+  strategicGoalName?: string | null;
   strategicInterventionPublicId?: string | null;
   strategicIntervention?: string | null;
   strategicObjectivePublicId?: string | null;
+  strategicObjectiveCode?: string | null;
+  strategicObjectiveName?: string | null;
   performanceObjectivePublicId?: string | null;
+  performanceObjectiveCode?: string | null;
+  performanceObjectiveName?: string | null;
   strategicGoalId?: number | null;
   strategicObjectiveId?: number | null;
   performanceObjective: string;
@@ -2518,6 +2532,7 @@ export interface OpmsTargetDto {
   withdrawnAt?: string | null;
   withdrawnByUserId?: string | null;
   periodTargets: PerformancePeriodTargetDto[];
+  voteNumbers?: Array<{ id: number; publicId: string; code: string; number: string; name: string; amount: number }>;
   createdAt: string;
 }
 

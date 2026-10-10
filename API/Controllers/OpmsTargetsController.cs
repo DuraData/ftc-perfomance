@@ -80,7 +80,7 @@ public class OpmsTargetsController : ControllerBase
         var items = await query
             .Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.SdbipLayer).Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
-            .Include(item => item.Wards).Include(item => item.AdditionalAssignees).ThenInclude(item => item.User).Include(item => item.VoteNumbers)
+            .Include(item => item.Wards).Include(item => item.AdditionalAssignees).ThenInclude(item => item.User).Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.NationalKpaReference).Include(item => item.MunicipalKpaReference).Include(item => item.BackToBasicsPillarReference)
             .Include(item => item.StrategicGoalMaster).Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
@@ -267,7 +267,7 @@ public class OpmsTargetsController : ControllerBase
         var entity = await _context.OpmsTargets
             .Include(item => item.Wards)
             .Include(item => item.AdditionalAssignees).ThenInclude(item => item.User)
-            .Include(item => item.VoteNumbers)
+            .Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.GovernedBudgetSources)
             .Include(item => item.SdbipLayer)
             .FirstOrDefaultAsync(item => item.Id == id);
@@ -630,7 +630,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.AssignedUser)
             .Include(item => item.Wards)
             .Include(item => item.AdditionalAssignees).ThenInclude(item => item.User)
-            .Include(item => item.VoteNumbers)
+            .Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.NationalKpaReference)
             .Include(item => item.MunicipalKpaReference)
             .Include(item => item.BackToBasicsPillarReference)

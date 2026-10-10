@@ -39,7 +39,7 @@ internal static class TargetPeriodCutover
     {
         if (targets.Count == 0) return;
         var ids = targets.Select(item => item.Id).ToArray();
-        var rows = await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).ThenInclude(item => item.MunicipalityFinancialYear)
+        var rows = await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).ThenInclude(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).Include(item => item.RevisedOpmsUnit)
             .Where(item => item.OpmsTargetId != null && ids.Contains(item.OpmsTargetId) && item.IsActive)
             .ToArrayAsync();

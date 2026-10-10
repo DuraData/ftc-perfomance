@@ -248,6 +248,7 @@ public record OpmsTargetResponse(
     public string? WithdrawnByUserId { get; init; }
     public Guid? SdbipLayerPublicId { get; init; }
     public Guid? MunicipalityFinancialYearPublicId { get; init; }
+    public string? MunicipalityFinancialYearName { get; init; }
     public string? SdbipLayerCode { get; init; }
     public string? SdbipLayerName { get; init; }
     public Guid? DepartmentPublicId { get; init; }
@@ -256,9 +257,15 @@ public record OpmsTargetResponse(
     public Guid? MunicipalKpaPublicId { get; init; }
     public Guid? BackToBasicsPillarPublicId { get; init; }
     public Guid? StrategicGoalPublicId { get; init; }
+    public string? StrategicGoalCode { get; init; }
+    public string? StrategicGoalName { get; init; }
     public Guid? StrategicInterventionPublicId { get; init; }
     public Guid? StrategicObjectivePublicId { get; init; }
+    public string? StrategicObjectiveCode { get; init; }
+    public string? StrategicObjectiveName { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
+    public string? PerformanceObjectiveCode { get; init; }
+    public string? PerformanceObjectiveName { get; init; }
     public string? BackToBasicsPillar { get; init; }
     public string? StrategicIntervention { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
@@ -271,9 +278,11 @@ public record OpmsTargetResponse(
     public Guid? KpiUnitOfMeasurePublicId { get; init; }
     public string? KpiUnitOfMeasureName { get; init; }
     public string? KpiUnitOfMeasureSymbol { get; init; }
+    public OpmsTargetVoteNumberResponse[] VoteNumbers { get; init; } = [];
 }
 
 public sealed record KpiBudgetSourceResponse(Guid PublicId, Guid BudgetSourcePublicId, string Code, string Name, decimal? Amount);
+public sealed record OpmsTargetVoteNumberResponse(int Id, Guid PublicId, string Code, string Number, string Name, decimal Amount);
 
 public record IpmsTargetResponse(
     string Id,
