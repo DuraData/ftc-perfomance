@@ -766,8 +766,6 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
     defaultPoeRequirements: '',
     isActive: true,
     version: '1',
-    createdBy: '',
-    createdDate: '',
     quarterlyTargets: quarterOptions.map(quarter => ({ quarter, target: '', description: '', budget: '' })),
   });
 
@@ -807,8 +805,6 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
         defaultPoeRequirements: '',
         isActive: true,
         version: '1',
-        createdBy: 'System Administrator',
-        createdDate: new Date().toISOString().slice(0, 10),
         quarterlyTargets: quarterOptions.map(quarter => ({ quarter, target: '', description: '', budget: '' })),
       });
       return;
@@ -848,8 +844,6 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
       defaultPoeRequirements: template.defaultPoeRequirements ?? '',
       isActive: template.isActive,
       version: String(template.version),
-      createdBy: template.createdBy,
-      createdDate: template.createdDate.slice(0, 10),
       quarterlyTargets: quarterOptions.map(quarter => {
         const current = template.defaultQuarterlyTargets.find(item => item.quarter === quarter);
         return {
@@ -888,8 +882,6 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
     functionalArea: '',
     isActive: true,
     version: '1',
-    createdBy: '',
-    createdDate: '',
   });
 
   useEffect(() => {
@@ -916,8 +908,6 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
         functionalArea: '',
         isActive: true,
         version: '1',
-        createdBy: 'System Administrator',
-        createdDate: new Date().toISOString().slice(0, 10),
       });
       return;
     }
@@ -944,8 +934,6 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
       functionalArea: template.functionalArea ?? '',
       isActive: template.isActive,
       version: String(template.version),
-      createdBy: template.createdBy,
-      createdDate: template.createdDate.slice(0, 10),
     });
   }, [lookups, template]);
 
@@ -1330,7 +1318,6 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
           <DetailItem label="IDP Reference" value={template.idpReference} />
           <DetailItem label="Internal Reference" value={template.internalReference} />
           <DetailItem label="FMS Link" value={template.fmsLink} />
-          <DetailItem label="Created By" value={template.createdBy} />
           <DetailItem label="Created Date" value={formatDate(template.createdDate)} />
         </div>
 
@@ -1463,11 +1450,8 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
           </FormPanel>
 
           <FormPanel title="Lifecycle" description="Versioning and default template status." icon={<Eye className="h-5 w-5" />}>
-            <FormRow cols={2}>
-              <Input label="Version" required type="number" value={form.version} onChange={(event) => setForm(prev => ({ ...prev, version: event.target.value }))} />
-              <Input label="Created By" required value={form.createdBy} onChange={(event) => setForm(prev => ({ ...prev, createdBy: event.target.value }))} />
-            </FormRow>
-            <Input label="Created Date" required type="date" value={form.createdDate} onChange={(event) => setForm(prev => ({ ...prev, createdDate: event.target.value }))} />
+            <Input label="Version" required type="number" value={form.version} onChange={(event) => setForm(prev => ({ ...prev, version: event.target.value }))} />
+            <p className="text-sm text-secondary-500 dark:text-secondary-400">Creator identity and creation time are assigned by the server and retained in the audit trail.</p>
             <Checkbox label="Is Active" checked={form.isActive} onChange={(event) => setForm(prev => ({ ...prev, isActive: event.target.checked }))} />
           </FormPanel>
         </div>
@@ -2063,11 +2047,8 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
           </FormPanel>
 
           <FormPanel title="Lifecycle" description="Versioning and default status for the reusable IPMS template." icon={<Eye className="h-5 w-5" />}>
-            <FormRow cols={2}>
-              <Input label="Version" required type="number" value={form.version} onChange={(event) => setForm(prev => ({ ...prev, version: event.target.value }))} />
-              <Input label="Created By" required value={form.createdBy} onChange={(event) => setForm(prev => ({ ...prev, createdBy: event.target.value }))} />
-            </FormRow>
-            <Input label="Created Date" required type="date" value={form.createdDate} onChange={(event) => setForm(prev => ({ ...prev, createdDate: event.target.value }))} />
+            <Input label="Version" required type="number" value={form.version} onChange={(event) => setForm(prev => ({ ...prev, version: event.target.value }))} />
+            <p className="text-sm text-secondary-500 dark:text-secondary-400">Creator identity and creation time are assigned by the server and retained in the audit trail.</p>
             <Checkbox label="Is Active" checked={form.isActive} onChange={(event) => setForm(prev => ({ ...prev, isActive: event.target.checked }))} />
             <Checkbox label="Linked OPMS Target Required" checked={form.linkedOpmsTargetRequired} onChange={(event) => setForm(prev => ({ ...prev, linkedOpmsTargetRequired: event.target.checked }))} />
           </FormPanel>

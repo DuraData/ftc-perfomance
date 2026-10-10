@@ -162,7 +162,6 @@ public record OpmsTargetTemplateResponse(
     bool IsActive,
     bool IsArchived,
     int Version,
-    string? CreatedBy,
     DateTime CreatedDate,
     string RowVersion);
 
@@ -189,7 +188,6 @@ public record IpmsTargetTemplateResponse(
     bool IsActive,
     bool IsArchived,
     int Version,
-    string? CreatedBy,
     DateTime CreatedDate,
     string RowVersion);
 

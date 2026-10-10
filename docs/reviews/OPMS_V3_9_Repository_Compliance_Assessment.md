@@ -3384,6 +3384,12 @@ OPMS and IPMS submission response contracts no longer define the legacy `Created
 
 The shared response serializer, both authorized controller projections, frontend wire DTOs, domain models and API adapters now omit the raw actor fields. Contract reflection rejects their reintroduction on both framework responses, and the existing relational serialization scenario continues proving that an internal actor key is absent even when all governed projection members are exercised. Focused backend coverage passes **11/11 tests**. Complete regression passes **614 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the 2,110-module production build, 78-chunk bundle budget and diff hygiene pass. This is a contract hardening change with no migration or deployment-provider divergence.
 
+### 11.257 Target-library creator-contract retirement
+
+The reusable OPMS and IPMS target-library response contracts no longer expose the legacy `CreatedBy` string that could contain a private ASP.NET Identity key. Internal template and version entities continue retaining creator provenance for governed auditing and compatibility reconciliation, while the public API now returns only non-sensitive creation time and the established stable template identity/concurrency contract. Reflection coverage rejects reintroduction of the raw property on either response type.
+
+The SPA wire DTOs, domain models and adapters no longer accept or synthesize creator strings. The OPMS detail view no longer renders the unsafe value, and both create/edit forms remove the misleading editable creator and creation-date controls that were never accepted by the save contracts; the lifecycle panels now state that the server assigns those values and retains them in the audit trail. Focused verification passes **8/8 backend tests** and **4/4 frontend tests**. Complete regression passes **615 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the 2,110-module production build, 78-chunk bundle budget and diff hygiene pass. No schema migration or provider-specific behavior is introduced.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

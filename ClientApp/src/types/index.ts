@@ -943,7 +943,6 @@ export interface OpmsTargetTemplate {
   isActive: boolean;
   isArchived?: boolean;
   version: number;
-  createdBy: string;
   createdDate: string;
 }
 
@@ -973,7 +972,6 @@ export interface IpmsTargetTemplate {
   isActive: boolean;
   isArchived?: boolean;
   version: number;
-  createdBy: string;
   createdDate: string;
 }
 
@@ -982,7 +980,6 @@ export interface OpmsTargetTemplateVersion {
   templateId: string;
   version: number;
   snapshot: OpmsTargetTemplate;
-  createdBy: string;
   createdDate: string;
 }
 
@@ -991,7 +988,6 @@ export interface IpmsTargetTemplateVersion {
   templateId: string;
   version: number;
   snapshot: IpmsTargetTemplate;
-  createdBy: string;
   createdDate: string;
 }
 
@@ -2445,7 +2441,6 @@ export interface OpmsTargetTemplateDto {
   isActive: boolean;
   isArchived: boolean;
   version: number;
-  createdBy?: string | null;
   createdDate: string;
   rowVersion: string;
 }
@@ -2473,7 +2468,6 @@ export interface IpmsTargetTemplateDto {
   isActive: boolean;
   isArchived: boolean;
   version: number;
-  createdBy?: string | null;
   createdDate: string;
   rowVersion: string;
 }

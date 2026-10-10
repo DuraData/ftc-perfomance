@@ -79,7 +79,6 @@ describe('target library registers', () => {
       weight: 15,
       indicatorType: 'Quantitative',
       defaultQuarterlyTargets: [],
-      createdBy: 'tester',
       createdDate: '2026-10-10T00:00:00Z',
     };
     api.getOpmsTargetTemplate.mockResolvedValue({ success: true, data: editable });
@@ -88,6 +87,9 @@ describe('target library registers', () => {
     render(<OPMSTargetTemplateFormPage templateId="opms-public-id" />);
 
     expect(await screen.findByText('Edit Mode')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Created By/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Created Date/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Creator identity and creation time are assigned by the server/i)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('15');
       expect(screen.getByLabelText('Strategic Goal')).toHaveValue('11');
@@ -122,7 +124,6 @@ describe('target library registers', () => {
       weight: 20,
       defaultTaskTemplates: [],
       linkedOpmsTargetRequired: false,
-      createdBy: 'tester',
       createdDate: '2026-10-10T00:00:00Z',
     };
     api.getIpmsTargetTemplate.mockResolvedValue({ success: true, data: editable });
@@ -131,6 +132,9 @@ describe('target library registers', () => {
     render(<IPMSTargetTemplateFormPage templateId="ipms-public-id" />);
 
     expect(await screen.findByText('Edit Mode')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Created By/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Created Date/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Creator identity and creation time are assigned by the server/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('16'));
     fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
     await waitFor(() => expect(api.updateIpmsTargetTemplate).toHaveBeenCalledWith(

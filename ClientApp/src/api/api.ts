@@ -469,7 +469,6 @@ function toOpmsTemplateModel(dto: OpmsTargetTemplateDto): OpmsTargetTemplate {
     isActive: dto.isActive,
     isArchived: dto.isArchived,
     version: dto.version,
-    createdBy: dto.createdBy ?? 'System',
     createdDate: dto.createdDate,
   };
 }
@@ -500,7 +499,6 @@ function toIpmsTemplateModel(dto: IpmsTargetTemplateDto): IpmsTargetTemplate {
     isActive: dto.isActive,
     isArchived: dto.isArchived,
     version: dto.version,
-    createdBy: dto.createdBy ?? 'System',
     createdDate: dto.createdDate,
   };
 }

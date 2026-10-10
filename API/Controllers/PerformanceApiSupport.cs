@@ -131,7 +131,6 @@ public static class PerformanceApiSupport
             template.IsActive,
             template.IsArchived,
             template.Version,
-            template.CreatedBy,
             template.CreatedDate,
             Convert.ToBase64String(template.RowVersion));
 
@@ -159,7 +158,6 @@ public static class PerformanceApiSupport
             template.IsActive,
             template.IsArchived,
             template.Version,
-            template.CreatedBy,
             template.CreatedDate,
             Convert.ToBase64String(template.RowVersion));
 

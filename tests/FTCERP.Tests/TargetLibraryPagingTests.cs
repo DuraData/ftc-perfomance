@@ -16,6 +16,13 @@ namespace FTCERP.Tests;
 public sealed class TargetLibraryPagingTests
 {
     [Fact]
+    public void Public_target_library_contracts_do_not_expose_private_creator_keys()
+    {
+        typeof(OpmsTargetTemplateResponse).GetProperty("CreatedBy").Should().BeNull();
+        typeof(IpmsTargetTemplateResponse).GetProperty("CreatedBy").Should().BeNull();
+    }
+
+    [Fact]
     public async Task Opms_library_page_applies_all_filters_before_authoritative_count_and_stable_page()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
