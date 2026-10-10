@@ -16,7 +16,7 @@ const app = vi.hoisted(() => ({
   tenantContextSearch: '',
   setTenantContextPage: vi.fn(),
   setTenantContextSearch: vi.fn(),
-  currentMunicipalityId: null,
+  currentMunicipalityId: null as number | null,
   switchMunicipality: vi.fn(),
 }));
 const api = vi.hoisted(() => ({ getNotifications: vi.fn(), markNotificationRead: vi.fn() }));
@@ -30,6 +30,7 @@ describe('TopBar notification feed', () => {
     app.tenantContextPage = 1;
     app.tenantContextTotalPages = 0;
     app.tenantContextTotalCount = 0;
+    app.currentMunicipalityId = null;
     app.authenticationGate = null;
     vi.clearAllMocks();
   });
@@ -76,6 +77,26 @@ describe('TopBar notification feed', () => {
     await waitFor(() => expect(app.setTenantContextSearch).toHaveBeenCalledWith('seventh'));
     fireEvent.click(screen.getByRole('button', { name: 'Next municipality contexts' }));
     expect(app.setTenantContextPage).toHaveBeenCalledWith(2);
+  });
+
+  it('exposes municipality selection from the narrow-layout menu', async () => {
+    app.tenantContexts = [
+      { id: 7, publicId: 'municipality-7', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true },
+      { id: 8, publicId: 'municipality-8', code: 'MUN-008', name: 'Eighth Municipality', isCurrent: false },
+    ];
+    app.tenantContextTotalCount = 2;
+    app.currentMunicipalityId = 7;
+    app.switchMunicipality.mockResolvedValue(true);
+    api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
+
+    render(<TopBar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose municipality context' }));
+    const narrowSelector = screen.getByRole('dialog', { name: 'Municipality context selector' });
+    fireEvent.change(narrowSelector.querySelector('select')!, { target: { value: '8' } });
+
+    await waitFor(() => expect(app.switchMunicipality).toHaveBeenCalledWith(8));
+    expect(app.pushToast).toHaveBeenCalledWith('success', 'Municipality context changed');
+    expect(screen.queryByRole('dialog', { name: 'Municipality context selector' })).not.toBeInTheDocument();
   });
 
   it('does not request or expose notifications while account security remediation is required', () => {

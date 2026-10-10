@@ -22,6 +22,8 @@ import type { MenuItem } from '../../types';
 
 interface SidebarProps {
   className?: string;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -41,7 +43,7 @@ const iconMap: Record<string, React.ReactNode> = {
   'map': <Map className="w-5 h-5" />,
 };
 
-export function Sidebar({ className = '' }: SidebarProps) {
+export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: SidebarProps) {
   const {
     sidebarCollapsed,
     toggleSidebar,
@@ -54,6 +56,7 @@ export function Sidebar({ className = '' }: SidebarProps) {
     menuItems,
     logout,
   } = useApp();
+  const compact = sidebarCollapsed && !mobileOpen;
 
   useEffect(() => {
     if (currentPath.startsWith('/admin/') || currentPath.startsWith('/system-administration/')) {
@@ -82,6 +85,7 @@ export function Sidebar({ className = '' }: SidebarProps) {
     } else if (item.path) {
       setCurrentPath(item.path);
     }
+    onMobileClose?.();
   };
 
   const isPathActive = (path?: string) => {
@@ -128,7 +132,7 @@ export function Sidebar({ className = '' }: SidebarProps) {
           <span className={depth > 0 ? 'text-secondary-500 dark:text-secondary-400' : ''}>
             {getIcon(item.label, item.icon, depth)}
           </span>
-          {!sidebarCollapsed && (
+          {!compact && (
             <>
               <span className="flex-1 text-sm font-medium">{item.label}</span>
               {hasChildren && (
@@ -143,7 +147,7 @@ export function Sidebar({ className = '' }: SidebarProps) {
             </>
           )}
         </button>
-        {!sidebarCollapsed && hasChildren && isExpanded && (
+        {!compact && hasChildren && isExpanded && (
           <div className="mt-1 space-y-1">
             {item.children!.map(child => renderNavItem(child, depth + 1))}
           </div>
@@ -154,12 +158,12 @@ export function Sidebar({ className = '' }: SidebarProps) {
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-full overflow-hidden bg-white dark:bg-secondary-900 border-r border-secondary-200 dark:border-secondary-700 transition-[width] duration-300 z-30 flex flex-col ${className}`}
-      style={{ width: sidebarCollapsed ? 64 : 256 }}
+      aria-label="Primary navigation"
+      className={`fixed left-0 top-0 z-30 flex h-full w-64 flex-col overflow-hidden border-r border-secondary-200 bg-white transition-[width,transform] duration-300 dark:border-secondary-700 dark:bg-secondary-900 ${mobileOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'} ${sidebarCollapsed ? 'md:w-16' : 'md:w-64'} md:visible md:translate-x-0 ${className}`}
     >
       {/* Logo */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-secondary-200 dark:border-secondary-700">
-        {!sidebarCollapsed && (
+        {!compact && (
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
               <Target className="w-5 h-5 text-white" />
@@ -167,10 +171,10 @@ export function Sidebar({ className = '' }: SidebarProps) {
             <span className="font-bold text-lg text-secondary-900 dark:text-white">PMS</span>
           </div>
         )}
-        <button
-          onClick={toggleSidebar}
-          className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
-        >
+        <button type="button" aria-label="Close navigation" onClick={onMobileClose} className="rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:hidden">
+          <Menu className="w-5 h-5 text-secondary-500" />
+        </button>
+        <button type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} onClick={toggleSidebar} className="hidden rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:block">
           <Menu className="w-5 h-5 text-secondary-500" />
         </button>
       </div>
@@ -183,7 +187,7 @@ export function Sidebar({ className = '' }: SidebarProps) {
       {/* User section */}
       {userProfile && (
         <div className="p-3 border-t border-secondary-200 dark:border-secondary-700">
-          {!sidebarCollapsed ? (
+          {!compact ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center overflow-hidden">

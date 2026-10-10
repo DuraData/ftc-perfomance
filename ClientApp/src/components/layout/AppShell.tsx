@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useApp } from '../../context/AppContext';
@@ -11,6 +11,7 @@ interface AppShellProps {
 
 export function AppShell({ children, title, subtitle }: AppShellProps) {
   const { sidebarCollapsed, toasts } = useApp();
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-secondary-50 dark:bg-secondary-950">
@@ -20,10 +21,13 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
       >
         Skip to main content
       </a>
-      <Sidebar />
-      <div className="transition-[margin-left] duration-300" style={{ marginLeft: sidebarCollapsed ? 64 : 256 }}>
-        <TopBar title={title} subtitle={subtitle} />
-        <main id="main-content" tabIndex={-1} className="p-6 focus:outline-none">
+      {mobileNavigationOpen && (
+        <button type="button" aria-label="Close navigation" className="fixed inset-0 z-20 bg-secondary-950/50 md:hidden" onClick={() => setMobileNavigationOpen(false)} />
+      )}
+      <Sidebar mobileOpen={mobileNavigationOpen} onMobileClose={() => setMobileNavigationOpen(false)} />
+      <div className={`transition-[margin-left] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+        <TopBar title={title} subtitle={subtitle} onOpenNavigation={() => setMobileNavigationOpen(true)} />
+        <main id="main-content" tabIndex={-1} className="p-4 focus:outline-none sm:p-6">
           {children}
         </main>
       </div>

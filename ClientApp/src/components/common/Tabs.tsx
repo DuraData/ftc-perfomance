@@ -59,8 +59,8 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 
   if (variant === 'underline') {
     return (
-      <div className="border-b border-secondary-200 dark:border-secondary-700">
-        <div className="flex gap-0.5">
+      <div className="max-w-full overflow-x-auto border-b border-secondary-200 dark:border-secondary-700">
+        <div className="flex min-w-max gap-0.5">
           {tabs.map(tab => (
             <button
               key={tab.id}

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
+  Menu,
   Bell,
   Moon,
   Sun,
   ChevronDown,
+  Building2,
   User,
   Settings,
   LogOut,
@@ -17,11 +19,12 @@ import { Button } from '../ui';
 interface TopBarProps {
   title?: string;
   subtitle?: string;
+  onOpenNavigation?: () => void;
 }
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
-export function TopBar({ title, subtitle }: TopBarProps) {
+export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
   const {
     userProfile,
     authenticationGate,
@@ -42,6 +45,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showTenantMenu, setShowTenantMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<NotificationDto[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -101,31 +105,51 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
   const toggleNotifications = () => {
     setShowUserMenu(false);
+    setShowTenantMenu(false);
     setShowNotifications(prev => !prev);
   };
 
   const toggleUserMenu = () => {
     setShowNotifications(false);
+    setShowTenantMenu(false);
     setShowUserMenu(prev => !prev);
   };
 
+  const changeMunicipality = async (municipalityId: number, closeMenu = false) => {
+    if (!municipalityId) return;
+    const success = await switchMunicipality(municipalityId);
+    if (success) {
+      pushToast('success', 'Municipality context changed');
+      if (closeMenu) setShowTenantMenu(false);
+    } else {
+      pushToast('error', 'Unable to change municipality context');
+    }
+  };
+
+  const hasTenantContexts = tenantContexts.length > 0 || tenantContextTotalCount > 0 || tenantContextSearch.length > 0;
+
   return (
-    <header className="h-16 bg-white dark:bg-secondary-900 border-b border-secondary-200 dark:border-secondary-700 flex items-center justify-between px-6">
+    <header className="h-16 bg-white dark:bg-secondary-900 border-b border-secondary-200 dark:border-secondary-700 flex items-center justify-between gap-2 px-3 sm:px-6">
       {/* Left section - Title */}
-      <div className="flex items-center gap-4">
+      <div className="min-w-0 flex items-center gap-4">
+        {onOpenNavigation && (
+          <button type="button" aria-label="Open navigation" onClick={onOpenNavigation} className="shrink-0 rounded-lg p-2 text-secondary-500 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800 md:hidden">
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
         {title && (
-          <div>
-            <h1 className="text-lg font-semibold text-secondary-900 dark:text-white">{title}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-secondary-900 dark:text-white sm:text-lg">{title}</h1>
             {subtitle && (
-              <p className="text-sm text-secondary-500 dark:text-secondary-400">{subtitle}</p>
+              <p className="hidden truncate text-sm text-secondary-500 dark:text-secondary-400 sm:block">{subtitle}</p>
             )}
           </div>
         )}
       </div>
 
       {/* Right section */}
-      <div className="flex items-center gap-4">
-        {(tenantContexts.length > 0 || tenantContextTotalCount > 0 || tenantContextSearch.length > 0) && (
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3 lg:gap-4">
+        {hasTenantContexts && (
           <div className="hidden lg:flex items-center gap-1 text-xs text-secondary-500 dark:text-secondary-400">
             <label className="sr-only" htmlFor="municipality-context-search">Search municipality contexts</label>
             <input id="municipality-context-search" aria-label="Search municipality contexts" value={tenantSearchInput} onChange={event => setTenantSearchInput(event.target.value)} placeholder="Find municipality" className="w-36 rounded-lg border border-secondary-200 bg-white px-2 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100" />
@@ -134,14 +158,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
               id="municipality-context"
               aria-label="Municipality context"
               value={currentMunicipalityId ?? ''}
-              onChange={(event) => {
-                const municipalityId = Number(event.target.value);
-                if (!municipalityId) return;
-                void switchMunicipality(municipalityId).then(success => {
-                  if (success) pushToast('success', 'Municipality context changed');
-                  else pushToast('error', 'Unable to change municipality context');
-                });
-              }}
+              onChange={(event) => { void changeMunicipality(Number(event.target.value)); }}
               className="max-w-56 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100"
             >
               {tenantContexts.length > 1 && <option value="">Select municipality</option>}
@@ -152,8 +169,50 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             {tenantContextTotalPages > 1 && <><button type="button" aria-label="Previous municipality contexts" disabled={tenantContextPage <= 1} onClick={() => setTenantContextPage(Math.max(1, tenantContextPage - 1))} className="rounded border px-2 py-1 disabled:opacity-40">‹</button><span aria-label="Municipality context page">{tenantContextPage}/{tenantContextTotalPages}</span><button type="button" aria-label="Next municipality contexts" disabled={tenantContextPage >= tenantContextTotalPages} onClick={() => setTenantContextPage(Math.min(tenantContextTotalPages, tenantContextPage + 1))} className="rounded border px-2 py-1 disabled:opacity-40">›</button></>}
           </div>
         )}
+        {hasTenantContexts && (
+          <div className="relative lg:hidden">
+            <button
+              type="button"
+              aria-label="Choose municipality context"
+              aria-expanded={showTenantMenu}
+              onClick={() => {
+                setShowNotifications(false);
+                setShowUserMenu(false);
+                setShowTenantMenu(current => !current);
+              }}
+              className="rounded-lg p-2 text-secondary-500 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800"
+            >
+              <Building2 className="h-5 w-5" />
+            </button>
+            {showTenantMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowTenantMenu(false)} />
+                <div role="dialog" aria-label="Municipality context selector" className="fixed left-3 right-3 top-16 z-20 mt-1 w-auto space-y-3 rounded-lg border border-secondary-200 bg-white p-3 shadow-lg dark:border-secondary-700 dark:bg-secondary-800">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-secondary-600 dark:text-secondary-300" htmlFor="mobile-municipality-context-search">Find municipality</label>
+                    <input id="mobile-municipality-context-search" aria-label="Search municipality contexts on narrow screens" value={tenantSearchInput} onChange={event => setTenantSearchInput(event.target.value)} placeholder="Code or name" className="w-full rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-secondary-600 dark:text-secondary-300" htmlFor="mobile-municipality-context">Municipality context</label>
+                    <select id="mobile-municipality-context" aria-label="Municipality context on narrow screens" value={currentMunicipalityId ?? ''} onChange={(event) => { void changeMunicipality(Number(event.target.value), true); }} className="w-full rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100">
+                      {tenantContexts.length > 1 && <option value="">Select municipality</option>}
+                      {tenantContexts.map(context => <option key={context.id} value={context.id}>{context.code} — {context.name}</option>)}
+                    </select>
+                  </div>
+                  {tenantContextTotalPages > 1 && (
+                    <div className="flex items-center justify-between text-xs text-secondary-500 dark:text-secondary-400">
+                      <button type="button" aria-label="Previous municipality contexts on narrow screens" disabled={tenantContextPage <= 1} onClick={() => setTenantContextPage(Math.max(1, tenantContextPage - 1))} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button>
+                      <span aria-label="Municipality context page on narrow screens">{tenantContextPage}/{tenantContextTotalPages}</span>
+                      <button type="button" aria-label="Next municipality contexts on narrow screens" disabled={tenantContextPage >= tenantContextTotalPages} onClick={() => setTenantContextPage(Math.min(tenantContextTotalPages, tenantContextPage + 1))} className="rounded border px-3 py-1 disabled:opacity-40">Next</button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {/* Search */}
-        {authenticationGate === null && <div className="relative">
+        {authenticationGate === null && <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />
           <input
             type="text"
@@ -265,7 +324,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           <div className="relative">
             <button
               onClick={toggleUserMenu}
-              className="flex items-center gap-3 px-3 py-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
+              className="flex items-center gap-2 rounded-lg px-1 py-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 sm:gap-3 sm:px-3"
             >
               <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center overflow-hidden">
                 <span className="text-xs font-medium text-primary-700 dark:text-primary-300">
