@@ -3410,7 +3410,7 @@ export interface IdpDocument {
 }
 
 export interface IdpWardParticipation {
-  wardId: number;
+  wardPublicId: string;
   wardName: string;
   meetingCount: number;
   participantsCount: number;
@@ -3508,7 +3508,7 @@ export interface CreateIdpCommunitySessionPayload {
   participationType: string;
   sessionDate: string;
   venue: string;
-  wardId?: number | null;
+  wardPublicId?: string | null;
   participantsCount: number;
   attendanceRegisterPath?: string | null;
   minutesPath?: string | null;

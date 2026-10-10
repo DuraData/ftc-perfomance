@@ -860,16 +860,16 @@ public record IdpCommunitySessionResponse(
     string ParticipationType,
     DateTime SessionDate,
     string Venue,
-    int? WardId,
+    Guid? WardPublicId,
     string? WardName,
     int ParticipantsCount,
     string? AttendanceRegisterPath,
     string? MinutesPath,
     string RowVersion);
 
-public record IdpCommunityNeedResponse(Guid PublicId, int IdpCommunitySessionId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
+public record IdpCommunityNeedResponse(Guid PublicId, Guid IdpCommunitySessionPublicId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
 
-public record IdpWardInputResponse(Guid PublicId, Guid IdpPlanPublicId, int WardId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
+public record IdpWardInputResponse(Guid PublicId, Guid IdpPlanPublicId, Guid WardPublicId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
 
 public record IdpStakeholderEngagementResponse(
     Guid PublicId,
@@ -986,7 +986,7 @@ public record IdpDashboardResponse(
     IdpWardParticipationResponse[] WardParticipation,
     int AlignmentCount);
 
-public record IdpWardParticipationResponse(int WardId, string WardName, int MeetingCount, int ParticipantsCount, int NeedsCaptured);
+public record IdpWardParticipationResponse(Guid WardPublicId, string WardName, int MeetingCount, int ParticipantsCount, int NeedsCaptured);
 
 public record IdpAlignmentMatrixItemResponse(
     string StrategicOutcomeCode,

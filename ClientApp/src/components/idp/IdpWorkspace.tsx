@@ -151,7 +151,7 @@ export function IdpPlanningDashboardPage() {
                 </div>
                 <div className="mt-3 space-y-2">
                   {dashboard.wardParticipation.slice(0, 5).map(ward => (
-                    <div key={ward.wardId} className="rounded border border-secondary-200 px-2 py-1 text-sm dark:border-secondary-700">
+                    <div key={ward.wardPublicId} className="rounded border border-secondary-200 px-2 py-1 text-sm dark:border-secondary-700">
                       <p className="font-medium text-secondary-900 dark:text-secondary-100">{ward.wardName}</p>
                       <p className="text-xs text-secondary-500">Meetings: {ward.meetingCount} | Participants: {ward.participantsCount} | Needs: {ward.needsCaptured}</p>
                     </div>
@@ -857,7 +857,7 @@ export function IdpCommunityParticipationPage() {
                     participationType: 'PublicMeeting',
                     sessionDate: now.toISOString(),
                     venue: 'Municipal Hall',
-                    wardId: null,
+                    wardPublicId: null,
                     participantsCount: 120,
                     attendanceRegisterPath: '/documents/idp/public-meeting-attendance.pdf',
                     minutesPath: '/documents/idp/public-meeting-minutes.pdf',
@@ -881,7 +881,7 @@ export function IdpCommunityParticipationPage() {
           <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Ward Participation Overview</h3>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {(dashboard?.wardParticipation ?? []).map(item => (
-              <div key={item.wardId} className="rounded border border-secondary-200 p-3 dark:border-secondary-700">
+              <div key={item.wardPublicId} className="rounded border border-secondary-200 p-3 dark:border-secondary-700">
                 <p className="font-medium text-secondary-900 dark:text-secondary-100">{item.wardName}</p>
                 <p className="text-xs text-secondary-500">Meetings: {item.meetingCount} | Participants: {item.participantsCount} | Needs captured: {item.needsCaptured}</p>
               </div>

@@ -101,16 +101,30 @@ public class IdpControllerFunctionalityTests
         typeof(IdpPlanVersionResponse).GetProperty("Id").Should().BeNull();
         typeof(IdpPlanVersionResponse).GetProperty("IdpPlanId").Should().BeNull();
         typeof(IdpCommunitySessionResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpCommunitySessionResponse).GetProperty("WardId").Should().BeNull();
         typeof(IdpWardInputResponse).GetProperty("IdpPlanId").Should().BeNull();
+        typeof(IdpWardInputResponse).GetProperty("WardId").Should().BeNull();
+        typeof(IdpCommunityNeedResponse).GetProperty("IdpCommunitySessionId").Should().BeNull();
+        typeof(IdpWardParticipationResponse).GetProperty("WardId").Should().BeNull();
         typeof(IdpCommentResponse).GetProperty("IdpPlanId").Should().BeNull();
         typeof(IdpCommentResponse).GetProperty("IdpPlanVersionId").Should().BeNull();
         typeof(IdpTaskResponse).GetProperty("IdpPlanId").Should().BeNull();
         typeof(IdpTaskResponse).GetProperty("IdpPlanVersionId").Should().BeNull();
         typeof(CreateIdpTaskRequest).GetProperty("AssignedToUserId").Should().BeNull();
+        typeof(CreateIdpCommunitySessionRequest).GetProperty("WardId").Should().BeNull();
+        typeof(CreateIdpCommunityNeedRequest).GetProperty("IdpCommunitySessionId").Should().BeNull();
+        typeof(CreateIdpWardInputRequest).GetProperty("WardId").Should().BeNull();
 
         typeof(IdpPlanVersionResponse).GetProperty("IdpPlanPublicId").Should().NotBeNull();
         typeof(CreateIdpCommentRequest).GetProperty("IdpPlanVersionPublicId").Should().NotBeNull();
         typeof(CreateIdpTaskRequest).GetProperty("AssignedToUserPublicId").Should().NotBeNull();
+        typeof(IdpCommunitySessionResponse).GetProperty("WardPublicId").Should().NotBeNull();
+        typeof(IdpCommunityNeedResponse).GetProperty("IdpCommunitySessionPublicId").Should().NotBeNull();
+        typeof(IdpWardInputResponse).GetProperty("WardPublicId").Should().NotBeNull();
+        typeof(IdpWardParticipationResponse).GetProperty("WardPublicId").Should().NotBeNull();
+        typeof(CreateIdpCommunitySessionRequest).GetProperty("WardPublicId").Should().NotBeNull();
+        typeof(CreateIdpCommunityNeedRequest).GetProperty("IdpCommunitySessionPublicId").Should().NotBeNull();
+        typeof(CreateIdpWardInputRequest).GetProperty("WardPublicId").Should().NotBeNull();
 
         var stableHierarchyContracts = new (Type Type, string[] Forbidden, string[] Required)[]
         {
@@ -294,6 +308,16 @@ public class IdpControllerFunctionalityTests
         IdpPlanVersion localVersion;
         IdpPlan foreignPlan;
         IdpPlanVersion foreignVersion;
+        var localWard = new Ward
+        {
+            MunicipalityId = 71, Code = "W71", Name = "Ward 71", LegacyMunicipality = "Municipality 71",
+            IsActive = true
+        };
+        var foreignWard = new Ward
+        {
+            MunicipalityId = 72, Code = "W72", Name = "Ward 72", LegacyMunicipality = "Municipality 72",
+            IsActive = true
+        };
 
         await using (var setup = new ApplicationDbContext(options, IdpTestFixture.Tenant(null, "system", true)))
         {
@@ -302,7 +326,9 @@ public class IdpControllerFunctionalityTests
                 new Municipality { Id = 71, Code = "M71", Name = "Municipality 71" },
                 new Municipality { Id = 72, Code = "M72", Name = "Municipality 72" },
                 actor,
-                assignee);
+                assignee,
+                localWard,
+                foreignWard);
             localPlan = new IdpPlan
             {
                 MunicipalityId = 71, MunicipalityName = "Municipality 71", PlanCode = "IDP-LOCAL",
@@ -354,10 +380,23 @@ public class IdpControllerFunctionalityTests
         (await controller.CreateTask(new CreateIdpTaskRequest(
             localPlan.PublicId, foreignVersion.PublicId, "Invalid task", "Invalid version", assignee.PublicId, DateTime.UtcNow.AddDays(1)))).Result
             .Should().BeOfType<NotFoundObjectResult>();
+        (await controller.CreateCommunitySession(new CreateIdpCommunitySessionRequest(
+            localPlan.PublicId, "PublicMeeting", DateTime.UtcNow, "Wrong ward", foreignWard.PublicId, 10, null, null))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
 
         var community = Extract<IdpCommunitySessionResponse>((await controller.CreateCommunitySession(
-            new CreateIdpCommunitySessionRequest(localPlan.PublicId, "PublicMeeting", DateTime.UtcNow, "Local venue", null, 25, null, null))).Result!);
+            new CreateIdpCommunitySessionRequest(localPlan.PublicId, "PublicMeeting", DateTime.UtcNow, "Local venue", localWard.PublicId, 25, null, null))).Result!);
         community.IdpPlanPublicId.Should().Be(localPlan.PublicId);
+        community.WardPublicId.Should().Be(localWard.PublicId);
+
+        var communityNeed = Extract<IdpCommunityNeedResponse>((await controller.CreateCommunityNeed(
+            new CreateIdpCommunityNeedRequest(community.PublicId, "Water", "Improve water access", "High", "Upgrade network"))).Result!);
+        communityNeed.IdpCommunitySessionPublicId.Should().Be(community.PublicId);
+
+        var wardInput = Extract<IdpWardInputResponse>((await controller.CreateWardInput(new CreateIdpWardInputRequest(
+            localPlan.PublicId, localWard.PublicId, "Ward plan", "Water", "Network upgrade"))).Result!);
+        wardInput.IdpPlanPublicId.Should().Be(localPlan.PublicId);
+        wardInput.WardPublicId.Should().Be(localWard.PublicId);
 
         var comment = Extract<IdpCommentResponse>((await controller.CreateComment(new CreateIdpCommentRequest(
             localPlan.PublicId, localVersion.PublicId, "IdpPlan", localPlan.PublicId.ToString(), "Governed review"))).Result!);
@@ -370,6 +409,13 @@ public class IdpControllerFunctionalityTests
         task.IdpPlanVersionPublicId.Should().Be(localVersion.PublicId);
         task.AssignedToUserPublicId.Should().Be(assignee.PublicId);
         task.AssignedToUserPublicId.ToString().Should().NotBe(assignee.Id);
+
+        var persistedSession = await context.IdpCommunitySessions.SingleAsync(item => item.PublicId == community.PublicId);
+        var persistedNeed = await context.IdpCommunityNeeds.SingleAsync(item => item.PublicId == communityNeed.PublicId);
+        var persistedWardInput = await context.IdpWardInputs.SingleAsync(item => item.PublicId == wardInput.PublicId);
+        persistedSession.WardId.Should().Be(localWard.Id);
+        persistedNeed.IdpCommunitySessionId.Should().Be(persistedSession.Id);
+        persistedWardInput.WardId.Should().Be(localWard.Id);
     }
 
     [Fact]
@@ -888,7 +934,7 @@ public class IdpControllerFunctionalityTests
         payload.Data.Risks.Should().Be(1);
         payload.Data.TopRiskTitles.Should().Contain("Funding Risk");
         payload.Data.KpiAchievementRate.Should().Be(50);
-        payload.Data.WardParticipation.Should().ContainSingle();
+        payload.Data.WardParticipation.Should().ContainSingle().Which.WardPublicId.Should().Be(ward.PublicId);
         payload.Data.AlignmentCount.Should().Be(1);
     }
 

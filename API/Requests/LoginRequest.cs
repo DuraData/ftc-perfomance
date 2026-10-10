@@ -499,13 +499,13 @@ public record CreateIdpCommunitySessionRequest(
     string ParticipationType,
     DateTime SessionDate,
     string Venue,
-    int? WardId,
+    Guid? WardPublicId,
     int ParticipantsCount,
     string? AttendanceRegisterPath,
     string? MinutesPath);
 
 public record CreateIdpCommunityNeedRequest(
-    int IdpCommunitySessionId,
+    Guid IdpCommunitySessionPublicId,
     string IssueCategory,
     string Description,
     string PriorityLevel,
@@ -513,7 +513,7 @@ public record CreateIdpCommunityNeedRequest(
 
 public record CreateIdpWardInputRequest(
     Guid IdpPlanPublicId,
-    int WardId,
+    Guid WardPublicId,
     string WardPlanSummary,
     string WardPriorities,
     string WardProjects);

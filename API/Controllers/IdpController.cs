@@ -615,7 +615,7 @@ public class IdpController : ControllerBase
             .Select(item => new
             {
                 item.Id,
-                item.WardId,
+                WardPublicId = item.Ward!.PublicId,
                 WardName = item.Ward != null ? item.Ward.Name : "Unknown Ward",
                 item.ParticipantsCount
             })
@@ -630,9 +630,9 @@ public class IdpController : ControllerBase
             .ToDictionaryAsync(item => item.SessionId, item => item.Count);
 
         var wardParticipation = sessions
-            .GroupBy(item => new { item.WardId, item.WardName })
+            .GroupBy(item => new { item.WardPublicId, item.WardName })
             .Select(group => new IdpWardParticipationResponse(
-                group.Key.WardId ?? 0,
+                group.Key.WardPublicId,
                 group.Key.WardName,
                 group.Count(),
                 group.Sum(item => item.ParticipantsCount),
@@ -812,11 +812,12 @@ public class IdpController : ControllerBase
             var wardRows = await _context.IdpWardInputs.AsNoTracking()
                 .Where(item => item.IdpPlanId == planId)
                 .OrderBy(item => item.WardId)
-                .Select(item => new { item.WardId, item.WardPlanSummary, item.WardPriorities, item.WardProjects })
+                .Select(item => new { WardCode = item.Ward.Code, WardName = item.Ward.Name,
+                    item.WardPlanSummary, item.WardPriorities, item.WardProjects })
                 .ToArrayAsync();
             return wardRows.Select(item => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["outcome"] = $"Ward {item.WardId}", ["objective"] = item.WardPriorities,
+                ["outcome"] = $"{item.WardCode} - {item.WardName}", ["objective"] = item.WardPriorities,
                 ["project"] = item.WardProjects, ["item"] = item.WardPlanSummary,
                 ["target"] = string.Empty, ["budget"] = string.Empty, ["status"] = "Captured"
             }).ToArray();
@@ -1251,9 +1252,27 @@ public class IdpController : ControllerBase
 
         var plan = await _context.IdpPlans.AsNoTracking()
             .Where(item => item.PublicId == request.IdpPlanPublicId)
-            .Select(item => new { item.Id, item.PublicId })
+            .Select(item => new { item.Id, item.PublicId, item.MunicipalityId })
             .SingleOrDefaultAsync();
         if (plan == null) return NotFound(new ApiResponse<IdpCommunitySessionResponse>(false, null, "IDP plan not found"));
+
+        int? wardId = null;
+        Guid? wardPublicId = null;
+        string? wardName = null;
+        if (request.WardPublicId.HasValue)
+        {
+            if (!plan.MunicipalityId.HasValue)
+                return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "The IDP plan must be assigned to a municipality before a ward can be selected."));
+            var ward = await _context.Wards.AsNoTracking()
+                .Where(item => item.PublicId == request.WardPublicId.Value && item.IsActive
+                    && item.MunicipalityId == plan.MunicipalityId.Value)
+                .Select(item => new { item.Id, item.PublicId, item.Name }).SingleOrDefaultAsync();
+            if (ward == null)
+                return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "Ward was not found in the selected municipality."));
+            wardId = ward.Id;
+            wardPublicId = ward.PublicId;
+            wardName = ward.Name;
+        }
 
         var entity = new IdpCommunitySession
         {
@@ -1261,7 +1280,7 @@ public class IdpController : ControllerBase
             ParticipationType = participationType,
             SessionDate = request.SessionDate,
             Venue = request.Venue.Trim(),
-            WardId = request.WardId,
+            WardId = wardId,
             ParticipantsCount = request.ParticipantsCount,
             AttendanceRegisterPath = request.AttendanceRegisterPath,
             MinutesPath = request.MinutesPath
@@ -1270,10 +1289,11 @@ public class IdpController : ControllerBase
         _context.IdpCommunitySessions.Add(entity);
         await _context.SaveChangesAsync();
 
-        entity = await _context.IdpCommunitySessions.Include(item => item.Ward).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null, ToCommunitySessionResponse(entity, plan.PublicId));
+        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null,
+            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName));
 
-        return Ok(new ApiResponse<IdpCommunitySessionResponse>(true, ToCommunitySessionResponse(entity, plan.PublicId)));
+        return Ok(new ApiResponse<IdpCommunitySessionResponse>(true,
+            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName)));
     }
 
     [HttpPost("community-needs")]
@@ -1283,12 +1303,14 @@ public class IdpController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpCommunityNeedResponse>(false, null, "User not found"));
 
-        var sessionExists = await _context.IdpCommunitySessions.AnyAsync(item => item.Id == request.IdpCommunitySessionId);
-        if (!sessionExists) return NotFound(new ApiResponse<IdpCommunityNeedResponse>(false, null, "Community session not found"));
+        var session = await _context.IdpCommunitySessions.AsNoTracking()
+            .Where(item => item.PublicId == request.IdpCommunitySessionPublicId)
+            .Select(item => new { item.Id, item.PublicId }).SingleOrDefaultAsync();
+        if (session == null) return NotFound(new ApiResponse<IdpCommunityNeedResponse>(false, null, "Community session not found"));
 
         var entity = new IdpCommunityNeed
         {
-            IdpCommunitySessionId = request.IdpCommunitySessionId,
+            IdpCommunitySessionId = session.Id,
             IssueCategory = request.IssueCategory.Trim(),
             Description = request.Description.Trim(),
             PriorityLevel = request.PriorityLevel.Trim(),
@@ -1297,9 +1319,10 @@ public class IdpController : ControllerBase
 
         _context.IdpCommunityNeeds.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpCommunityNeed", entity.PublicId.ToString(), "Create", null, ToCommunityNeedResponse(entity));
+        await WriteIdpAudit(user.Id, "IdpCommunityNeed", entity.PublicId.ToString(), "Create", null,
+            ToCommunityNeedResponse(entity, session.PublicId));
 
-        return Ok(new ApiResponse<IdpCommunityNeedResponse>(true, ToCommunityNeedResponse(entity)));
+        return Ok(new ApiResponse<IdpCommunityNeedResponse>(true, ToCommunityNeedResponse(entity, session.PublicId)));
     }
 
     [HttpPost("ward-inputs")]
@@ -1311,17 +1334,20 @@ public class IdpController : ControllerBase
 
         var plan = await _context.IdpPlans.AsNoTracking()
             .Where(item => item.PublicId == request.IdpPlanPublicId)
-            .Select(item => new { item.Id, item.PublicId })
+            .Select(item => new { item.Id, item.PublicId, item.MunicipalityId })
             .SingleOrDefaultAsync();
         if (plan == null) return NotFound(new ApiResponse<IdpWardInputResponse>(false, null, "IDP plan not found"));
+        if (!plan.MunicipalityId.HasValue)
+            return BadRequest(new ApiResponse<IdpWardInputResponse>(false, null, "The IDP plan must be assigned to a municipality before ward input can be captured."));
 
-        var ward = await _context.Wards.AsNoTracking().FirstOrDefaultAsync(item => item.Id == request.WardId);
+        var ward = await _context.Wards.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == request.WardPublicId
+            && item.IsActive && item.MunicipalityId == plan.MunicipalityId.Value);
         if (ward == null) return NotFound(new ApiResponse<IdpWardInputResponse>(false, null, "Ward not found"));
 
         var entity = new IdpWardInput
         {
             IdpPlanId = plan.Id,
-            WardId = request.WardId,
+            WardId = ward.Id,
             WardPlanSummary = request.WardPlanSummary.Trim(),
             WardPriorities = request.WardPriorities.Trim(),
             WardProjects = request.WardProjects.Trim()
@@ -1329,9 +1355,11 @@ public class IdpController : ControllerBase
 
         _context.IdpWardInputs.Add(entity);
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null, ToWardInputResponse(entity, plan.PublicId, ward.Name));
+        await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null,
+            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name));
 
-        return Ok(new ApiResponse<IdpWardInputResponse>(true, ToWardInputResponse(entity, plan.PublicId, ward.Name)));
+        return Ok(new ApiResponse<IdpWardInputResponse>(true,
+            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name)));
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/stakeholder-engagements/page")]
@@ -2193,14 +2221,20 @@ public class IdpController : ControllerBase
     private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link, Guid objectivePublicId) =>
         new(link.PublicId, objectivePublicId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
 
-    private static IdpCommunitySessionResponse ToCommunitySessionResponse(IdpCommunitySession session, Guid planPublicId) =>
-        new(session.PublicId, planPublicId, session.ParticipationType.ToString(), session.SessionDate, session.Venue, session.WardId, session.Ward?.Name, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath, Convert.ToBase64String(session.RowVersion));
+    private static IdpCommunitySessionResponse ToCommunitySessionResponse(
+        IdpCommunitySession session, Guid planPublicId, Guid? wardPublicId, string? wardName) =>
+        new(session.PublicId, planPublicId, session.ParticipationType.ToString(), session.SessionDate, session.Venue,
+            wardPublicId, wardName, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath,
+            Convert.ToBase64String(session.RowVersion));
 
-    private static IdpCommunityNeedResponse ToCommunityNeedResponse(IdpCommunityNeed need) =>
-        new(need.PublicId, need.IdpCommunitySessionId, need.IssueCategory, need.Description, need.PriorityLevel, need.ProposedIntervention, Convert.ToBase64String(need.RowVersion));
+    private static IdpCommunityNeedResponse ToCommunityNeedResponse(IdpCommunityNeed need, Guid sessionPublicId) =>
+        new(need.PublicId, sessionPublicId, need.IssueCategory, need.Description, need.PriorityLevel,
+            need.ProposedIntervention, Convert.ToBase64String(need.RowVersion));
 
-    private static IdpWardInputResponse ToWardInputResponse(IdpWardInput wardInput, Guid planPublicId, string wardName) =>
-        new(wardInput.PublicId, planPublicId, wardInput.WardId, wardName, wardInput.WardPlanSummary, wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
+    private static IdpWardInputResponse ToWardInputResponse(
+        IdpWardInput wardInput, Guid planPublicId, Guid wardPublicId, string wardName) =>
+        new(wardInput.PublicId, planPublicId, wardPublicId, wardName, wardInput.WardPlanSummary,
+            wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
 
     private static IdpStakeholderEngagementResponse ToStakeholderResponse(IdpStakeholderEngagement stakeholder) =>
         new(stakeholder.PublicId, stakeholder.IdpCommunitySessionId, stakeholder.StakeholderType, stakeholder.StakeholderName, stakeholder.ContactPerson, stakeholder.ContactEmail, stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));

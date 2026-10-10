@@ -446,5 +446,7 @@ describe('IDP plan lineage workspace', () => {
       participationType: 'PublicMeeting',
     })));
     expect(api.createIdpCommunitySession.mock.calls[0][0]).not.toHaveProperty('idpPlanId');
+    expect(api.createIdpCommunitySession.mock.calls[0][0]).not.toHaveProperty('wardId');
+    expect(api.createIdpCommunitySession.mock.calls[0][0]).toHaveProperty('wardPublicId', null);
   });
 });
