@@ -1018,7 +1018,7 @@ public class IdpControllerFunctionalityTests
         page.Items[0].IdpPlanPublicId.Should().Be(plan.PublicId);
         page.Items[0].EvidenceBlobPublicId.Should().Be(clean.Blob.PublicId);
         page.Items[0].IsContentDeleted.Should().BeFalse();
-        page.Items[0].UploadedByUserId.Should().BeNull();
+        page.Items[0].UploadedByUserPublicId.Should().BeNull();
         page.Items[0].UploadedByName.Should().BeNull();
         page.Items[0].ScannerProvider.Should().BeNull();
         page.Items[0].ScannerReference.Should().BeNull();
@@ -1030,11 +1030,12 @@ public class IdpControllerFunctionalityTests
             new PagedQueryRequest { Page = 1, PageSize = 1, Search = "plan", SortBy = "title", SortDirection = "asc" });
         var refreshed = refreshedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<PagedResponse<IdpDocumentResponse>>>().Subject.Data!.Items.Single();
-        refreshed.UploadedByUserId.Should().Be(user.Id);
+        refreshed.UploadedByUserPublicId.Should().Be(user.PublicId);
         refreshed.UploadedByName.Should().Be(user.FullName);
         refreshed.ScannerProvider.Should().Be("ProtectedScanner");
         refreshed.ScannerReference.Should().Be("protected-reference");
         refreshed.ScanDetail.Should().Be("protected-detail");
+        typeof(IdpDocumentResponse).GetProperty("UploadedByUserId").Should().BeNull();
 
         var quarantineResult = await controller.GetDocumentsPage(plan.PublicId,
             new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "scanStatus" },

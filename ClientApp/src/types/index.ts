@@ -3413,7 +3413,7 @@ export interface IdpDocument {
   versionNumber: number;
   isApproved: boolean;
   uploadedAt: string;
-  uploadedByUserId?: string | null;
+  uploadedByUserPublicId?: string | null;
   uploadedByName?: string | null;
   sha256: string;
   signatureVerified: boolean;

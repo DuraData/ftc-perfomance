@@ -941,7 +941,7 @@ public record IdpDocumentResponse(
     int VersionNumber,
     bool IsApproved,
     DateTime UploadedAt,
-    string? UploadedByUserId,
+    Guid? UploadedByUserPublicId,
     string? UploadedByName,
     string Sha256,
     bool SignatureVerified,

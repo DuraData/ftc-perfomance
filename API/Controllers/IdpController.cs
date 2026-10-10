@@ -2099,7 +2099,7 @@ public class IdpController : ControllerBase
             document.VersionNumber,
             document.IsApproved,
             document.UploadedAt,
-            memberAccess.UploadedByUserId ? document.UploadedByUserId : null,
+            memberAccess.UploadedByUserId ? document.UploadedByUser?.PublicId : null,
             memberAccess.UploadedByName ? document.UploadedByUser?.FullName : null,
             document.Blob.Sha256,
             document.Blob.SignatureVerified,

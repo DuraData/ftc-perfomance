@@ -30,7 +30,7 @@ const document = {
   publicId: 'document-public-id', idpPlanPublicId: plan.publicId, planVersionNumber: 2, category: 'Policy', title: 'Approved IDP policy',
   fileName: 'approved.pdf', downloadUrl: 'https://opms.test/api/v1/idp/plans/plan-public-id/documents/document-public-id/content',
   contentType: 'application/pdf', sizeInBytes: 2048, versionNumber: 1, isApproved: false, uploadedAt: '2026-10-01T10:00:00Z',
-  uploadedByUserId: 'owner', uploadedByName: 'Document Owner', sha256: 'a'.repeat(64), signatureVerified: true, scanStatus: 'Clean',
+  uploadedByUserPublicId: '11111111-1111-1111-1111-111111111111', uploadedByName: 'Document Owner', sha256: 'a'.repeat(64), signatureVerified: true, scanStatus: 'Clean',
   isQuarantined: false, scannerProvider: 'test', scannerReference: 'scan-1', scanDetail: null, scannedAt: '2026-10-01T10:00:01Z',
   retainUntil: '2033-10-01T10:00:00Z', evidenceBlobPublicId: 'blob-public-id', isContentDeleted: false, rowVersion: 'Ag==',
 };
@@ -112,5 +112,16 @@ describe('IDP document register', () => {
     expect(screen.queryByRole('button', { name: 'Upload and scan' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Rescan' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  });
+
+  it('uses the stable uploader public ID when an authorized display name is unavailable', async () => {
+    api.getIdpDocumentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ ...document, uploadedByName: null }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+
+    render(<IdpDocumentsPage />);
+
+    expect(await screen.findByText('11111111-1111-1111-1111-111111111111')).toBeInTheDocument();
   });
 });

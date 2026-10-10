@@ -3336,6 +3336,12 @@ Technical Indicator Description version creators and source-document uploaders n
 
 Creator search now evaluates authorized public IDs and names instead of internal keys. A raw internal key produces no version-history match after the member grant is enabled, while public-ID search remains available. Contract reflection tests reject reintroduction of the former raw-key fields. The production TID workspace renders authorized names with public-ID fallback and continues to suppress creator/uploader data without the matching grants. Focused coverage passes **6/6 backend** and **6/6 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **333/333 frontend tests across 75 files**; TypeScript, ESLint, the 2,110-module production build and bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
 
+### 11.249 IDP document uploader public identity
+
+IDP document list, upload and rescan responses no longer expose the uploader's ASP.NET Identity primary key. The existing independently governed uploader member permission remains backward-compatible in the security registry, but the public contract now returns only the user's stable public ID plus authorized display name; denied uploader members remain null. Persistence retains the required internal foreign key and the bounded plan-scoped query continues to hydrate the governed user relationship.
+
+Contract reflection coverage rejects reintroduction of `UploadedByUserId`, while authorized and denied response assertions prove the stable public identity and fail-closed masking paths. The production IDP document register consumes only the public identity contract, renders the authorized name with public-ID fallback and still independently hides uploader payloads without the member grant. Focused coverage passes **16/16 backend** and **5/5 frontend** tests. Complete regression passes **613 backend tests with 1 SQL Server-only skip and 0 failures** and **334/334 frontend tests across 75 files**; TypeScript, ESLint, the integrated 2,110-module production build and 78-chunk bundle budget pass. Visual acceptance remains unclaimed because saved localhost browser-control permission is unavailable.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
