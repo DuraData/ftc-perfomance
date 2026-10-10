@@ -58,6 +58,13 @@ public sealed class OpmsImportControllerTests
         target.StrategicInterventionId.Should().Be(setup.StrategicIntervention.Id);
         target.StrategicObjectiveMasterId.Should().Be(setup.StrategicObjective.Id);
         target.PerformanceObjectiveId.Should().Be(setup.PerformanceObjective.Id);
+        target.AnnualTarget.Should().Be(0m, "new imports must not mirror the canonical annual value into the retired wide column");
+        target.AnnualTargetDescription.Should().BeEmpty("new imports must not write retired wide target descriptions");
+        target.Q1Target.Should().BeNull();
+        target.Q2Target.Should().BeNull();
+        target.MidTermTarget.Should().BeNull();
+        target.Q3Target.Should().BeNull();
+        target.Q4Target.Should().BeNull();
         var canonical = await context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).SingleAsync();
         canonical.OpmsTargetId.Should().Be(target.Id); canonical.ReportingPeriod.PeriodType.Should().Be(ReportingPeriodType.Annual);
         canonical.UnitKind.Should().Be(PerformanceUnitKind.AbsoluteCount); canonical.TargetValue.Should().Be("100");
