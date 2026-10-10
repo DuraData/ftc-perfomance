@@ -93,7 +93,7 @@ public sealed class OfficialReportJobsController(
             .Include(item => item.ReportingPeriod).Include(item => item.Department).Include(item => item.Unit)
             .Include(item => item.RequestedByUser).Include(item => item.OfficialReportGeneration).Include(item => item.DistributionOutbox)
             .Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
-        var responses = new List<OfficialReportJobResponse>(rows.Length);
+        var visibleRows = new List<(OfficialReportJob Row, OfficialReportJobMemberAccess Access)>(rows.Length);
         var memberAccessCache = new Dictionary<(int?, int?, string, long), OfficialReportJobMemberAccess>();
         foreach (var row in rows)
         {
@@ -103,8 +103,12 @@ public sealed class OfficialReportJobsController(
                 memberAccess = await GetMemberAccessAsync(user, kind, row.DepartmentId, row.UnitId, row.RequestedByUserId, row.MunicipalityId);
                 memberAccessCache[key] = memberAccess;
             }
-            responses.Add(Map(row, memberAccess));
+            visibleRows.Add((row, memberAccess));
         }
+        var recipientPublicIds = await LoadRecipientPublicIdsAsync(visibleRows
+            .Where(item => item.Access.JobRecipientUserIds)
+            .SelectMany(item => Split(item.Row.RecipientUserIdsCsv)));
+        var responses = visibleRows.Select(item => Map(item.Row, item.Access, recipientPublicIds)).ToArray();
         return Ok(new ApiResponse<PagedResponse<OfficialReportJobResponse>>(true,
             PagedResponse<OfficialReportJobResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
@@ -138,7 +142,7 @@ public sealed class OfficialReportJobsController(
         await context.SaveChangesAsync();
         await LoadJob(job);
         var memberAccess = await GetMemberAccessAsync(user, template.SubmissionKind, job.DepartmentId, job.UnitId, job.RequestedByUserId, job.MunicipalityId);
-        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess), "Official report generation was queued."));
+        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess, EmptyRecipientPublicIds), "Official report generation was queued."));
     }
 
     [HttpGet("schedules")]
@@ -197,7 +201,7 @@ public sealed class OfficialReportJobsController(
             _ => query.OrderBy(item => item.Code).ThenByDescending(item => item.VersionNumber).ThenBy(item => item.Id)
         };
         var rows = await query.IncludeAll().Skip(request.Offset).Take(request.PageSize).AsSplitQuery().ToArrayAsync();
-        var responses = new List<OfficialReportScheduleResponse>(rows.Length);
+        var visibleRows = new List<(OfficialReportSchedule Row, OfficialReportJobMemberAccess Access)>(rows.Length);
         var memberAccessCache = new Dictionary<(int?, int?, string, long), OfficialReportJobMemberAccess>();
         foreach (var row in rows)
         {
@@ -207,8 +211,12 @@ public sealed class OfficialReportJobsController(
                 memberAccess = await GetMemberAccessAsync(user, kind, row.DepartmentId, row.UnitId, row.CreatedByUserId, row.MunicipalityId);
                 memberAccessCache[key] = memberAccess;
             }
-            responses.Add(Map(row, memberAccess));
+            visibleRows.Add((row, memberAccess));
         }
+        var recipientPublicIds = await LoadRecipientPublicIdsAsync(visibleRows
+            .Where(item => item.Access.ScheduleRecipientValues && item.Row.RecipientKind == OfficialReportRecipientKind.User)
+            .SelectMany(item => Split(item.Row.RecipientValuesCsv)));
+        var responses = visibleRows.Select(item => Map(item.Row, item.Access, recipientPublicIds)).ToArray();
         return Ok(new ApiResponse<PagedResponse<OfficialReportScheduleResponse>>(true,
             PagedResponse<OfficialReportScheduleResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
@@ -225,8 +233,8 @@ public sealed class OfficialReportJobsController(
         if (!template.IsCurrent) return Conflict(Fail<OfficialReportScheduleResponse>("Only the current template can be scheduled."));
         if (!await Granted(user, ConfigurePermission(template.SubmissionKind)) || !await HasReportResourceAccess(user, template.SubmissionKind, "GENERATE"))
             return ForbidResponse<OfficialReportScheduleResponse>("Schedule administration requires report CONFIGURE and GENERATE plus KPI and submission READ permission.");
-        var validation = await ValidateSchedule(request);
-        if (validation != null) return BadRequest(Fail<OfficialReportScheduleResponse>(validation));
+        var (storedRecipientValues, validationError) = await ValidateSchedule(request);
+        if (validationError != null) return BadRequest(Fail<OfficialReportScheduleResponse>(validationError));
 
         OfficialReportSchedule? previous = null;
         var family = Guid.NewGuid();
@@ -253,7 +261,7 @@ public sealed class OfficialReportJobsController(
             DepartmentId = selection.Department?.Id, UnitId = selection.Unit?.Id, Code = request.Code.Trim().ToUpperInvariant(), Name = request.Name.Trim(),
             Cadence = request.Cadence, Interval = request.Interval, NextRunAt = request.IsActive ? request.NextRunAt!.Value.ToUniversalTime() : request.NextRunAt?.ToUniversalTime(),
             EffectiveTo = request.EffectiveTo?.ToUniversalTime(), RecipientKind = request.RecipientKind,
-            RecipientValuesCsv = string.Join(',', request.RecipientValues.Select(item => item.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)),
+            RecipientValuesCsv = string.Join(',', storedRecipientValues),
             ChannelsCsv = string.Join(',', request.Channels.Select(item => item.Trim().ToUpperInvariant()).Distinct(StringComparer.OrdinalIgnoreCase)),
             IsMandatory = request.IsMandatory, IsActive = request.IsActive, ApprovalReference = request.ApprovalReference.Trim(), Reason = request.Reason.Trim(), CreatedByUserId = user.Id
         };
@@ -268,7 +276,10 @@ public sealed class OfficialReportJobsController(
         await context.Entry(entity).Reference(item => item.Unit).LoadAsync();
         await context.Entry(entity).Reference(item => item.CreatedByUser).LoadAsync();
         var memberAccess = await GetMemberAccessAsync(user, template.SubmissionKind, entity.DepartmentId, entity.UnitId, entity.CreatedByUserId, entity.MunicipalityId);
-        return Ok(new ApiResponse<OfficialReportScheduleResponse>(true, Map(entity, memberAccess)));
+        var recipientPublicIds = memberAccess.ScheduleRecipientValues && entity.RecipientKind == OfficialReportRecipientKind.User
+            ? await LoadRecipientPublicIdsAsync(Split(entity.RecipientValuesCsv))
+            : EmptyRecipientPublicIds;
+        return Ok(new ApiResponse<OfficialReportScheduleResponse>(true, Map(entity, memberAccess, recipientPublicIds)));
     }
 
     [HttpPost("schedules/{publicId:guid}/run")]
@@ -291,7 +302,10 @@ public sealed class OfficialReportJobsController(
         await context.SaveChangesAsync();
         await LoadJob(job);
         var memberAccess = await GetMemberAccessAsync(user, schedule.ReportTemplate.SubmissionKind, job.DepartmentId, job.UnitId, job.RequestedByUserId, job.MunicipalityId);
-        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess), "Scheduled report generation was queued."));
+        var recipientPublicIds = memberAccess.JobRecipientUserIds
+            ? await LoadRecipientPublicIdsAsync(Split(job.RecipientUserIdsCsv))
+            : EmptyRecipientPublicIds;
+        return Accepted(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess, recipientPublicIds), "Scheduled report generation was queued."));
     }
 
     [HttpPost("jobs/{publicId:guid}/retry")]
@@ -310,7 +324,10 @@ public sealed class OfficialReportJobsController(
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<OfficialReportJobResponse>("The job changed; refresh before retrying.")); }
         await LoadJob(job);
         var memberAccess = await GetMemberAccessAsync(user, job.ReportTemplate.SubmissionKind, job.DepartmentId, job.UnitId, job.RequestedByUserId, job.MunicipalityId);
-        return Ok(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess), "Official report job queued for retry."));
+        var recipientPublicIds = memberAccess.JobRecipientUserIds
+            ? await LoadRecipientPublicIdsAsync(Split(job.RecipientUserIdsCsv))
+            : EmptyRecipientPublicIds;
+        return Ok(new ApiResponse<OfficialReportJobResponse>(true, Map(job, memberAccess, recipientPublicIds), "Official report job queued for retry."));
     }
 
     private async Task<(OfficialReportTemplate? Template, MunicipalityFinancialYear? Year, ReportingPeriod? Period, Department? Department, Unit? Unit, string? Error)> ResolveSelection(Guid templateId, Guid yearId, Guid periodId, Guid? departmentId, Guid? unitId, bool allowHistoricTemplate = false)
@@ -336,21 +353,33 @@ public sealed class OfficialReportJobsController(
         return (template, year, period, department, unit, null);
     }
 
-    private async Task<string?> ValidateSchedule(SaveOfficialReportScheduleRequest request)
+    private async Task<(string[] StoredRecipientValues, string? Error)> ValidateSchedule(SaveOfficialReportScheduleRequest request)
     {
-        if (request.Code.Trim().Length is < 1 or > 80 || request.Name.Trim().Length is < 1 or > 240) return "Schedule code and name are required and must fit their configured limits.";
-        if (!Enum.IsDefined(request.Cadence) || request.Interval is < 1 or > 365) return "Select a supported cadence and an interval from 1 to 365.";
-        if (!Enum.IsDefined(request.RecipientKind) || request.RecipientValues.Count == 0) return "Select a supported recipient type and at least one recipient value.";
-        if (request.IsActive && !request.NextRunAt.HasValue) return "An active schedule requires its next UTC run time.";
-        if (request.EffectiveTo.HasValue && request.NextRunAt.HasValue && request.EffectiveTo < request.NextRunAt) return "Effective-to cannot precede the next run.";
-        if (request.ApprovalReference.Trim().Length is < 1 or > 240 || request.Reason.Trim().Length is < 5 or > 1000) return "Approval reference and a reason of 5-1000 characters are required.";
+        if (request.Code.Trim().Length is < 1 or > 80 || request.Name.Trim().Length is < 1 or > 240) return ([], "Schedule code and name are required and must fit their configured limits.");
+        if (!Enum.IsDefined(request.Cadence) || request.Interval is < 1 or > 365) return ([], "Select a supported cadence and an interval from 1 to 365.");
+        if (!Enum.IsDefined(request.RecipientKind) || request.RecipientValues.Count == 0) return ([], "Select a supported recipient type and at least one recipient value.");
+        if (request.IsActive && !request.NextRunAt.HasValue) return ([], "An active schedule requires its next UTC run time.");
+        if (request.EffectiveTo.HasValue && request.NextRunAt.HasValue && request.EffectiveTo < request.NextRunAt) return ([], "Effective-to cannot precede the next run.");
+        if (request.ApprovalReference.Trim().Length is < 1 or > 240 || request.Reason.Trim().Length is < 5 or > 1000) return ([], "Approval reference and a reason of 5-1000 characters are required.");
         var channels = request.Channels.Select(item => item.Trim().ToUpperInvariant()).Distinct().ToArray();
-        if (channels.Length == 0 || channels.Any(item => item is not ("IN_APP" or "EMAIL" or "SMS"))) return "Channels must contain IN_APP, EMAIL or SMS.";
+        if (channels.Length == 0 || channels.Any(item => item is not ("IN_APP" or "EMAIL" or "SMS"))) return ([], "Channels must contain IN_APP, EMAIL or SMS.");
         var values = request.RecipientValues.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (values.Length == 0) return "At least one recipient value is required.";
-        if (request.RecipientKind == OfficialReportRecipientKind.User && await context.Users.CountAsync(item => item.IsActive && values.Contains(item.Id)) != values.Length) return "Every recipient user must be active and belong to this municipality.";
-        if (request.RecipientKind == OfficialReportRecipientKind.Role && await context.Roles.CountAsync(item => values.Contains(item.RoleCode)) != values.Length) return "Every recipient role code must exist.";
-        return null;
+        if (values.Length == 0) return ([], "At least one recipient value is required.");
+        if (request.RecipientKind == OfficialReportRecipientKind.User)
+        {
+            if (tenantContext.MunicipalityId is not > 0 || values.Any(value => !Guid.TryParse(value, out _)))
+                return ([], "Every recipient user must be identified by a valid public ID.");
+            var publicIds = values.Select(Guid.Parse).Distinct().ToArray();
+            var users = await context.Users.AsNoTracking()
+                .Where(item => item.MunicipalityId == tenantContext.MunicipalityId.Value && item.IsActive && publicIds.Contains(item.PublicId))
+                .Select(item => new { item.Id, item.PublicId })
+                .ToArrayAsync();
+            if (users.Length != publicIds.Length) return ([], "Every recipient user must be active and belong to this municipality.");
+            var internalIds = users.ToDictionary(item => item.PublicId, item => item.Id);
+            return (publicIds.Select(publicId => internalIds[publicId]).ToArray(), null);
+        }
+        if (await context.Roles.CountAsync(item => values.Contains(item.RoleCode)) != values.Length) return ([], "Every recipient role code must exist.");
+        return (values, null);
     }
 
     private async Task<string[]> ResolveRecipients(OfficialReportSchedule schedule)
@@ -360,6 +389,17 @@ public sealed class OfficialReportJobsController(
             return await context.Users.Where(item => item.IsActive && values.Contains(item.Id)).Select(item => item.Id).Distinct().ToArrayAsync();
         var now = DateTime.UtcNow;
         return await context.SecurityUserRoleAssignments.Where(item => item.IsActive && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now) && item.User.IsActive && values.Contains(item.Role.RoleCode)).Select(item => item.UserId).Distinct().ToArrayAsync();
+    }
+
+    private async Task<IReadOnlyDictionary<string, Guid>> LoadRecipientPublicIdsAsync(IEnumerable<string> internalUserIds)
+    {
+        var userIds = internalUserIds.Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.Ordinal).ToArray();
+        if (tenantContext.MunicipalityId is not > 0 || userIds.Length == 0) return EmptyRecipientPublicIds;
+        var users = await context.Users.AsNoTracking()
+            .Where(item => item.MunicipalityId == tenantContext.MunicipalityId.Value && userIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.PublicId })
+            .ToArrayAsync();
+        return users.ToDictionary(item => item.Id, item => item.PublicId, StringComparer.Ordinal);
     }
 
     private OfficialReportJob NewJob(OfficialReportTemplate template, MunicipalityFinancialYear year, ReportingPeriod period, Department? department, Unit? unit, string userId, DateTime scheduledFor, OfficialReportSchedule? schedule, OfficialReportGeneration? previous = null) => new()
@@ -415,19 +455,33 @@ public sealed class OfficialReportJobsController(
         _ => null
     };
     private static string[] Split(string value) => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    private static readonly IReadOnlyDictionary<string, Guid> EmptyRecipientPublicIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
+    private static string[] PublicRecipientValues(OfficialReportSchedule item, OfficialReportJobMemberAccess access, IReadOnlyDictionary<string, Guid> recipientPublicIds)
+    {
+        if (!access.ScheduleRecipientValues) return [];
+        if (item.RecipientKind == OfficialReportRecipientKind.Role) return Split(item.RecipientValuesCsv);
+        return Split(item.RecipientValuesCsv)
+            .Where(recipientPublicIds.ContainsKey)
+            .Select(userId => recipientPublicIds[userId].ToString())
+            .ToArray();
+    }
+    private static Guid[] PublicRecipientIds(OfficialReportJob item, OfficialReportJobMemberAccess access, IReadOnlyDictionary<string, Guid> recipientPublicIds) =>
+        !access.JobRecipientUserIds
+            ? []
+            : Split(item.RecipientUserIdsCsv).Where(recipientPublicIds.ContainsKey).Select(userId => recipientPublicIds[userId]).ToArray();
     private static bool TryRowVersion(string? value, out byte[] bytes) { try { bytes = Convert.FromBase64String(value ?? ""); return bytes.Length > 0; } catch (FormatException) { bytes = []; return false; } }
-    private static OfficialReportScheduleResponse Map(OfficialReportSchedule item, OfficialReportJobMemberAccess access) => new(item.PublicId, item.ScheduleFamilyPublicId, item.VersionNumber, item.PreviousVersion?.PublicId,
+    private static OfficialReportScheduleResponse Map(OfficialReportSchedule item, OfficialReportJobMemberAccess access, IReadOnlyDictionary<string, Guid> recipientPublicIds) => new(item.PublicId, item.ScheduleFamilyPublicId, item.VersionNumber, item.PreviousVersion?.PublicId,
         item.ReportTemplate.PublicId, item.ReportTemplate.Name, item.ReportTemplate.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
         item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.Department?.PublicId, item.Department?.Name, item.Unit?.PublicId, item.Unit?.Name,
-        item.Code, item.Name, item.Cadence, item.Interval, item.NextRunAt, item.EffectiveTo, item.RecipientKind, access.ScheduleRecipientValues ? Split(item.RecipientValuesCsv) : [], Split(item.ChannelsCsv), item.IsMandatory,
+        item.Code, item.Name, item.Cadence, item.Interval, item.NextRunAt, item.EffectiveTo, item.RecipientKind, PublicRecipientValues(item, access, recipientPublicIds), Split(item.ChannelsCsv), item.IsMandatory,
         item.IsCurrent, item.IsActive, item.ApprovalReference, item.Reason, access.ScheduleCreatedBy ? item.CreatedByUser.PublicId : null, access.ScheduleCreatedBy ? DisplayName(item.CreatedByUser) : null, item.CreatedAt, Convert.ToBase64String(item.RowVersion));
-    private static OfficialReportJobResponse Map(OfficialReportJob item, OfficialReportJobMemberAccess access) => new(item.PublicId, item.OfficialReportSchedule?.PublicId, item.OfficialReportSchedule?.Name, item.State,
+    private static OfficialReportJobResponse Map(OfficialReportJob item, OfficialReportJobMemberAccess access, IReadOnlyDictionary<string, Guid> recipientPublicIds) => new(item.PublicId, item.OfficialReportSchedule?.PublicId, item.OfficialReportSchedule?.Name, item.State,
         item.ReportTemplate.PublicId, item.ReportTemplate.Name, item.ReportTemplate.ReportType, item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear.FinancialYear.Code,
         item.ReportingPeriod.PublicId, item.ReportingPeriod.Code, item.Department?.PublicId, item.Department?.Name, item.Unit?.PublicId, item.Unit?.Name,
         item.ScheduledFor, item.AvailableAt, item.AttemptCount, item.StartedAt, item.CompletedAt, access.JobLastError ? item.LastError : null,
         access.JobRequestedBy ? item.RequestedByUser.PublicId : null, access.JobRequestedBy ? DisplayName(item.RequestedByUser) : null, item.RequestedAt,
         item.OfficialReportGeneration?.PublicId, item.OfficialReportGeneration?.FileName, access.JobDistributionOutboxPublicId ? item.DistributionOutbox?.PublicId : null,
-        access.JobRecipientUserIds ? Split(item.RecipientUserIdsCsv) : [], Split(item.ChannelsCsv), item.IsMandatoryDistribution, access.JobRetryReason ? item.RetryReason : null, Convert.ToBase64String(item.RowVersion));
+        PublicRecipientIds(item, access, recipientPublicIds), Split(item.ChannelsCsv), item.IsMandatoryDistribution, access.JobRetryReason ? item.RetryReason : null, Convert.ToBase64String(item.RowVersion));
     private static string? DisplayName(ApplicationUser user)
     {
         var value = $"{user.FirstName} {user.LastName}".Trim();

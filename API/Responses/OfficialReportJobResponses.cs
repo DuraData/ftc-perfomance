@@ -18,4 +18,4 @@ public sealed record OfficialReportJobResponse(
     Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName,
     DateTime ScheduledFor, DateTime AvailableAt, int AttemptCount, DateTime? StartedAt, DateTime? CompletedAt, string? LastError,
     Guid? RequestedByUserPublicId, string? RequestedByName, DateTime RequestedAt, Guid? GenerationPublicId, string? FileName, Guid? DistributionOutboxPublicId,
-    string[] RecipientUserIds, string[] Channels, bool IsMandatoryDistribution, string? RetryReason, string RowVersion);
+    Guid[] RecipientUserPublicIds, string[] Channels, bool IsMandatoryDistribution, string? RetryReason, string RowVersion);

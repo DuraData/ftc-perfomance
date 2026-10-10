@@ -2208,7 +2208,7 @@ export interface OfficialReportJobDto {
   generationPublicId?: string | null;
   fileName?: string | null;
   distributionOutboxPublicId?: string | null;
-  recipientUserIds: string[];
+  recipientUserPublicIds: string[];
   channels: string[];
   isMandatoryDistribution: boolean;
   retryReason?: string | null;

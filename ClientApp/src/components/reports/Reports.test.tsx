@@ -172,7 +172,7 @@ describe('Reports', () => {
           municipalityFinancialYearPublicId: 'year-1', financialYearCode: '2026/27', reportingPeriodPublicId: 'period-1', reportingPeriodCode: 'Q1',
           scheduledFor: '2026-10-01T09:00:00Z', availableAt: '2026-10-01T09:00:00Z', attemptCount: 2,
           lastError: 'SENSITIVE-JOB-ERROR', requestedByUserPublicId: 'requester-secret', requestedByName: 'Requester secret', requestedAt: '2026-10-01T09:00:00Z',
-          fileName: 'quarterly.pdf', distributionOutboxPublicId: 'distribution-secret', recipientUserIds: ['recipient-secret'],
+          fileName: 'quarterly.pdf', distributionOutboxPublicId: 'distribution-secret', recipientUserPublicIds: ['recipient-public-id'],
           channels: ['EMAIL'], isMandatoryDistribution: true, retryReason: 'retry-secret', rowVersion: 'AQ=='
         }],
         page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
@@ -200,7 +200,7 @@ describe('Reports', () => {
     expect(screen.queryByText(/Requester secret/)).not.toBeInTheDocument();
     expect(screen.queryByText('SENSITIVE-JOB-ERROR')).not.toBeInTheDocument();
     expect(screen.queryByText(/distribution queued/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/recipient-secret/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recipient-public-id/)).not.toBeInTheDocument();
     expect(screen.queryByText(/retry-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/schedule-recipient-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/schedule-creator-secret/)).not.toBeInTheDocument();
@@ -216,7 +216,7 @@ describe('Reports', () => {
     expect(await screen.findByText(/Requester secret/)).toBeInTheDocument();
     expect(screen.getByText('SENSITIVE-JOB-ERROR')).toBeInTheDocument();
     expect(screen.getByText(/distribution queued/)).toBeInTheDocument();
-    expect(screen.getByText('Recipients: recipient-secret')).toBeInTheDocument();
+    expect(screen.getByText('Recipients: recipient-public-id')).toBeInTheDocument();
     expect(screen.getByText(/retry-secret/)).toBeInTheDocument();
     expect(screen.getByText(/schedule-recipient-secret/)).toBeInTheDocument();
     expect(screen.getByText(/Schedule creator secret/)).toBeInTheDocument();

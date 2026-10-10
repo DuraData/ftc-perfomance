@@ -98,6 +98,20 @@ public sealed class OfficialReportJobTests
         };
         context.BusinessEventOutbox.Add(outbox);
         await context.SaveChangesAsync();
+        var recipientAlpha = new ApplicationUser
+        {
+            Id = "recipient-alpha", UserName = "recipient-alpha", NormalizedUserName = "RECIPIENT-ALPHA",
+            Email = "recipient-alpha@example.test", NormalizedEmail = "RECIPIENT-ALPHA@EXAMPLE.TEST",
+            FirstName = "Recipient", LastName = "Alpha", MunicipalityId = seeded.Schedule.MunicipalityId, IsActive = true
+        };
+        var recipientBeta = new ApplicationUser
+        {
+            Id = "recipient-beta", UserName = "recipient-beta", NormalizedUserName = "RECIPIENT-BETA",
+            Email = "recipient-beta@example.test", NormalizedEmail = "RECIPIENT-BETA@EXAMPLE.TEST",
+            FirstName = "Recipient", LastName = "Beta", MunicipalityId = seeded.Schedule.MunicipalityId, IsActive = true
+        };
+        context.Users.AddRange(recipientAlpha, recipientBeta);
+        await context.SaveChangesAsync();
         context.OfficialReportJobs.Add(new OfficialReportJob
         {
             MunicipalityId = tenant.MunicipalityId!.Value,
@@ -154,7 +168,7 @@ public sealed class OfficialReportJobTests
         deniedJobs.Items[0].RequestedByName.Should().BeNull();
         deniedJobs.Items[0].LastError.Should().BeNull();
         deniedJobs.Items[0].DistributionOutboxPublicId.Should().BeNull();
-        deniedJobs.Items[0].RecipientUserIds.Should().BeEmpty();
+        deniedJobs.Items[0].RecipientUserPublicIds.Should().BeEmpty();
         deniedJobs.Items[0].RetryReason.Should().BeNull();
         ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "Scheduler", SortBy = "requestedAt" })).TotalCount.Should().Be(0);
         ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "SENSITIVE-PROVIDER-ERROR", SortBy = "requestedAt" })).TotalCount.Should().Be(0);
@@ -172,16 +186,17 @@ public sealed class OfficialReportJobTests
         grantedJobs.Items[0].RequestedByName.Should().Be("Report Scheduler");
         grantedJobs.Items[0].LastError.Should().Be("SENSITIVE-PROVIDER-ERROR");
         grantedJobs.Items[0].DistributionOutboxPublicId.Should().Be(outbox.PublicId);
-        grantedJobs.Items[0].RecipientUserIds.Should().Equal("recipient-alpha", "recipient-beta");
+        grantedJobs.Items[0].RecipientUserPublicIds.Should().Equal(recipientAlpha.PublicId, recipientBeta.PublicId);
         grantedJobs.Items[0].RetryReason.Should().Be("SENSITIVE-RETRY-REASON");
         ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "Scheduler", SortBy = "requestedAt" })).TotalCount.Should().Be(1);
         ExtractPage(await controller.JobsPage(SubmissionKind.Opms, new PagedQueryRequest { Search = "SENSITIVE-PROVIDER-ERROR", SortBy = "requestedAt" })).TotalCount.Should().Be(1);
 
         var grantedSchedules = ExtractSchedulePage(await controller.SchedulesPage(SubmissionKind.Opms, false, new PagedQueryRequest { SortBy = "code" }));
-        grantedSchedules.Items[0].RecipientValues.Should().Equal(seeded.User.Id);
+        grantedSchedules.Items[0].RecipientValues.Should().Equal(seeded.User.PublicId.ToString());
         grantedSchedules.Items[0].CreatedByUserPublicId.Should().Be(seeded.User.PublicId);
         grantedSchedules.Items[0].CreatedByName.Should().Be("Report Scheduler");
         typeof(OfficialReportJobResponse).GetProperty("RequestedBy").Should().BeNull();
+        typeof(OfficialReportJobResponse).GetProperty("RecipientUserIds").Should().BeNull();
         typeof(OfficialReportScheduleResponse).GetProperty("CreatedBy").Should().BeNull();
     }
 
@@ -328,7 +343,7 @@ public sealed class OfficialReportJobTests
         };
         var request = new SaveOfficialReportScheduleRequest(schedule.PublicId, Convert.ToBase64String(schedule.RowVersion), schedule.ReportTemplate.PublicId,
             schedule.MunicipalityFinancialYear.PublicId, schedule.ReportingPeriod.PublicId, null, null, schedule.Code, "Revised distribution",
-            OfficialReportScheduleCadence.Weekly, 2, DateTime.UtcNow.AddDays(1), null, OfficialReportRecipientKind.User, [seeded.User.Id], ["IN_APP", "EMAIL"], true, true, "Council-2026-2", "Approved revised cadence");
+            OfficialReportScheduleCadence.Weekly, 2, DateTime.UtcNow.AddDays(1), null, OfficialReportRecipientKind.User, [seeded.User.PublicId.ToString()], ["IN_APP", "EMAIL"], true, true, "Council-2026-2", "Approved revised cadence");
 
         var result = await controller.SaveSchedule(request);
 
@@ -344,7 +359,44 @@ public sealed class OfficialReportJobTests
         versions[1].IsCurrent.Should().BeTrue();
         versions[1].VersionNumber.Should().Be(2);
         versions[1].PreviousVersionId.Should().Be(versions[0].Id);
+        versions[1].RecipientValuesCsv.Should().Be(seeded.User.Id);
         versions[1].ChannelsCsv.Should().Be("IN_APP,EMAIL");
+    }
+
+    [Fact]
+    public async Task ScheduleWrite_RejectsRawAndForeignTenantUserIdentifiers()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var seeded = await SeedDueSchedule(options);
+        await SeedForeignSchedule(options);
+        Guid foreignUserPublicId;
+        await using (var systemContext = new ApplicationDbContext(options, new SystemTenantContext()))
+            foreignUserPublicId = await systemContext.Users.IgnoreQueryFilters()
+                .Where(item => item.Id == "foreign-report-scheduler")
+                .Select(item => item.PublicId)
+                .SingleAsync();
+
+        var tenant = new FixedTenantContext(seeded.Schedule.MunicipalityId, seeded.User.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var schedule = await context.OfficialReportSchedules.Include(item => item.ReportTemplate)
+            .Include(item => item.MunicipalityFinancialYear).Include(item => item.ReportingPeriod).SingleAsync();
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        var controller = new OfficialReportJobsController(context, IdpTestFixture.CreateUserManagerMock(seeded.User).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seeded.User.Id) } }
+        };
+        var request = new SaveOfficialReportScheduleRequest(null, null, schedule.ReportTemplate.PublicId,
+            schedule.MunicipalityFinancialYear.PublicId, schedule.ReportingPeriod.PublicId, null, null, "NEW-DISTRIBUTION", "New distribution",
+            OfficialReportScheduleCadence.Weekly, 1, DateTime.UtcNow.AddDays(1), null, OfficialReportRecipientKind.User,
+            [seeded.User.Id], ["IN_APP"], true, true, "Council-2026", "Approved distribution");
+
+        (await controller.SaveSchedule(request)).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await controller.SaveSchedule(request with { RecipientValues = [foreignUserPublicId.ToString()] })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await context.OfficialReportSchedules.CountAsync()).Should().Be(1);
     }
 
     [Fact]
