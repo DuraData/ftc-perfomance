@@ -44,6 +44,7 @@ import type {
   DueDateExtensionPayload,
   PerformanceSuggestionResult,
   PerformanceSuggestionEvent,
+  DueDateExtensionHistoryEntry,
   TemplateQuarterlyTarget,
   Quarter,
   SubmissionStatus,
@@ -2406,6 +2407,9 @@ function consolidationHistoryPageQuery(query: ConsolidationHistoryPageQuery): st
 export const getOpmsConsolidationHistoryPage = (id: string, query: ConsolidationHistoryPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceSuggestionEvent>>> =>
   get<PagedResult<PerformanceSuggestionEvent>>(`/v1/opms-submissions/${encodeURIComponent(id)}/consolidation-history/page${consolidationHistoryPageQuery(query)}`);
 
+export const getOpmsDueDateExtensionHistoryPage = (id: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<DueDateExtensionHistoryEntry>>> =>
+  get<PagedResult<DueDateExtensionHistoryEntry>>(`/v1/opms-submissions/${encodeURIComponent(id)}/due-date-extensions/page${registerPageQuery(query)}`);
+
 export async function applyOpmsSubmissionWorkflowAction(
   id: string,
   action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
@@ -2513,6 +2517,9 @@ export const saveIpmsConsolidatedActual = (id: string, payload: { actualPerforma
 
 export const getIpmsConsolidationHistoryPage = (id: string, query: ConsolidationHistoryPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceSuggestionEvent>>> =>
   get<PagedResult<PerformanceSuggestionEvent>>(`/v1/ipms-submissions/${encodeURIComponent(id)}/consolidation-history/page${consolidationHistoryPageQuery(query)}`);
+
+export const getIpmsDueDateExtensionHistoryPage = (id: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<DueDateExtensionHistoryEntry>>> =>
+  get<PagedResult<DueDateExtensionHistoryEntry>>(`/v1/ipms-submissions/${encodeURIComponent(id)}/due-date-extensions/page${registerPageQuery(query)}`);
 
 export async function applyIpmsSubmissionWorkflowAction(
   id: string,

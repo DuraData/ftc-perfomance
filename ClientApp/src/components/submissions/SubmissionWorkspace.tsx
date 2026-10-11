@@ -26,6 +26,7 @@ import type {
   SubmissionComment,
   SubmissionStatus,
   PerformanceSuggestionEvent,
+  DueDateExtensionHistoryEntry,
 } from '../../types';
 import {
   generateIpmsConsolidationSuggestion,
@@ -33,9 +34,11 @@ import {
   assessIpmsSubmissionAttachment,
   assessOpmsSubmissionAttachment,
   getIpmsConsolidationHistoryPage,
+  getIpmsDueDateExtensionHistoryPage,
   getIpmsSubmission,
   getIpmsSubmissionAttachmentsPage,
   getOpmsConsolidationHistoryPage,
+  getOpmsDueDateExtensionHistoryPage,
   getOpmsSubmission,
   getOpmsSubmissionAttachmentsPage,
   placeIpmsEvidenceLegalHold,
@@ -370,6 +373,14 @@ export function SubmissionWorkspace({
   const [consolidationHistoryBusy, setConsolidationHistoryBusy] = useState(false);
   const [consolidationHistoryError, setConsolidationHistoryError] = useState('');
   const [consolidationHistoryRevision, setConsolidationHistoryRevision] = useState(0);
+  const [dueDateExtensionHistory, setDueDateExtensionHistory] = useState<DueDateExtensionHistoryEntry[]>([]);
+  const [dueDateExtensionPage, setDueDateExtensionPage] = useState(1);
+  const [dueDateExtensionTotalCount, setDueDateExtensionTotalCount] = useState(0);
+  const [dueDateExtensionTotalPages, setDueDateExtensionTotalPages] = useState(0);
+  const [dueDateExtensionSearchInput, setDueDateExtensionSearchInput] = useState('');
+  const [dueDateExtensionSearch, setDueDateExtensionSearch] = useState('');
+  const [dueDateExtensionBusy, setDueDateExtensionBusy] = useState(false);
+  const [dueDateExtensionError, setDueDateExtensionError] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [evidencePage, setEvidencePage] = useState(1);
   const [evidenceTotalCount, setEvidenceTotalCount] = useState(0);
@@ -400,6 +411,13 @@ export function SubmissionWorkspace({
     setConsolidationHistorySearch('');
     setConsolidationHistoryEventType('');
     setConsolidationHistoryError('');
+    setDueDateExtensionHistory([]);
+    setDueDateExtensionPage(1);
+    setDueDateExtensionTotalCount(0);
+    setDueDateExtensionTotalPages(0);
+    setDueDateExtensionSearchInput('');
+    setDueDateExtensionSearch('');
+    setDueDateExtensionError('');
     setAttachments([]);
     setEvidencePage(1);
     setEvidenceSearchInput('');
@@ -509,6 +527,60 @@ export function SubmissionWorkspace({
     return () => { active = false; };
   }, [consolidationHistoryRevision, loadConsolidationHistory]);
 
+  useEffect(() => {
+    const normalized = dueDateExtensionSearchInput.trim();
+    if (normalized === dueDateExtensionSearch) return;
+    const timeout = window.setTimeout(() => {
+      setDueDateExtensionPage(1);
+      setDueDateExtensionSearch(normalized);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [dueDateExtensionSearch, dueDateExtensionSearchInput]);
+
+  const loadDueDateExtensionHistory = useCallback(async () => {
+    if (activeTab !== 'comments') return;
+    setDueDateExtensionBusy(true);
+    setDueDateExtensionError('');
+    const query = {
+      page: dueDateExtensionPage,
+      pageSize: 10,
+      search: dueDateExtensionSearch,
+      sortBy: 'approvedAt',
+      sortDirection: 'desc' as const,
+    };
+    const response = submissionType === 'OPMS'
+      ? await getOpmsDueDateExtensionHistoryPage(submission.id, query)
+      : await getIpmsDueDateExtensionHistoryPage(submission.id, query);
+    if (response.success && response.data) {
+      setDueDateExtensionHistory(response.data.items);
+      setDueDateExtensionTotalCount(response.data.totalCount);
+      setDueDateExtensionTotalPages(response.data.totalPages);
+    } else {
+      setDueDateExtensionHistory([]);
+      setDueDateExtensionTotalCount(0);
+      setDueDateExtensionTotalPages(0);
+      setDueDateExtensionError(response.message ?? 'Due-date extension history could not be loaded.');
+    }
+    setDueDateExtensionBusy(false);
+  }, [activeTab, dueDateExtensionPage, dueDateExtensionSearch, submission.id, submissionType]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        if (active) await loadDueDateExtensionHistory();
+      } catch {
+        if (active) {
+          setDueDateExtensionHistory([]);
+          setDueDateExtensionError('Due-date extension history could not be loaded.');
+          setDueDateExtensionBusy(false);
+        }
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [loadDueDateExtensionHistory]);
+
   const currentSubmission = draftSubmission;
   const tabs = useMemo(
     () => [
@@ -534,6 +606,8 @@ export function SubmissionWorkspace({
   const canEditWorkflowComment = security.canEditField(workflowResourceCode, 'ActionComment');
   const canEditWorkflowRating = security.canEditField(workflowResourceCode, 'ActionRatingValue');
   const canReadDueDate = security.canReadField(resourceCode, 'DueDate');
+  const canReadDueDateExtensionReason = security.canReadField(resourceCode, 'DueDateExtensionReason');
+  const canReadDueDateExtensionActor = security.canReadField(resourceCode, 'DueDateExtensionActor');
   const canWithdraw = security.canExecute(`${submissionType}_SUBMISSION.WITHDRAW`)
     && security.canEditField(resourceCode, 'WithdrawalReason');
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
@@ -1092,6 +1166,48 @@ export function SubmissionWorkspace({
 
       {activeTab === 'comments' && (
         <Section title="Comments & History" icon={<MessageSquare className="h-4 w-4" />}>
+          <div className="mb-6 space-y-3 rounded-lg border border-secondary-200 p-4 dark:border-secondary-700">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-secondary-900 dark:text-white">Due-date extension history</h4>
+                <p className="text-xs text-secondary-500">{dueDateExtensionTotalCount} immutable extension{dueDateExtensionTotalCount === 1 ? '' : 's'}</p>
+              </div>
+              {(canReadDueDateExtensionReason || canReadDueDateExtensionActor) && (
+                <input
+                  aria-label="Search due-date extension history"
+                  className="min-h-10 rounded-lg border border-secondary-200 bg-white px-3 text-sm dark:border-secondary-700 dark:bg-secondary-800"
+                  placeholder="Search permitted history"
+                  value={dueDateExtensionSearchInput}
+                  onChange={event => setDueDateExtensionSearchInput(event.target.value)}
+                />
+              )}
+            </div>
+            {dueDateExtensionError && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-700">{dueDateExtensionError}</div>}
+            {dueDateExtensionBusy && <p className="text-sm text-secondary-500">Loading due-date extension history…</p>}
+            {dueDateExtensionHistory.map(extension => (
+              <div key={`${extension.approvedAt}-${extension.extendedDueDate ?? 'restricted'}-${extension.approvedByUserPublicId ?? 'restricted'}`} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm dark:border-secondary-700">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span className="font-medium">Due date extended</span>
+                  <span className="text-secondary-500">{formatDateTime(extension.approvedAt)}</span>
+                </div>
+                <p className="mt-1 text-secondary-600 dark:text-secondary-300">
+                  Original {canReadDueDate ? formatDate(extension.originalDueDate ?? undefined) : 'Restricted'} · Extended {canReadDueDate ? formatDate(extension.extendedDueDate ?? undefined) : 'Restricted'}
+                </p>
+                {canReadDueDateExtensionReason && extension.reason && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Reason: {extension.reason}</p>}
+                {canReadDueDateExtensionActor && (extension.approvedByName || extension.approvedByUserPublicId) && <p className="mt-1 text-secondary-600 dark:text-secondary-300">Approved by: {extension.approvedByName || extension.approvedByUserPublicId}</p>}
+              </div>
+            ))}
+            {!dueDateExtensionBusy && !dueDateExtensionError && dueDateExtensionHistory.length === 0 && (
+              <p className="text-sm text-secondary-500">No due-date extensions match the current filters.</p>
+            )}
+            {dueDateExtensionTotalPages > 1 && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <Button variant="outline" size="sm" aria-label="Previous due-date extension history" disabled={dueDateExtensionPage <= 1 || dueDateExtensionBusy} onClick={() => setDueDateExtensionPage(page => Math.max(1, page - 1))}>Previous</Button>
+                <span>Page {dueDateExtensionPage} of {dueDateExtensionTotalPages}</span>
+                <Button variant="outline" size="sm" aria-label="Next due-date extension history" disabled={dueDateExtensionPage >= dueDateExtensionTotalPages || dueDateExtensionBusy} onClick={() => setDueDateExtensionPage(page => page + 1)}>Next</Button>
+              </div>
+            )}
+          </div>
           {comments.length === 0 ? (
             <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
               No comments or workflow history recorded yet.

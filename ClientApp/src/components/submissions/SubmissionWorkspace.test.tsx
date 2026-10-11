@@ -10,12 +10,16 @@ const security = vi.hoisted(() => ({
 }));
 
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
+vi.mock('../workflow/PerformanceRfiWorkspace', () => ({ PerformanceRfiWorkspace: () => null }));
+vi.mock('../workflow/StageRatingHistory', () => ({ StageRatingHistory: () => null }));
 
 const api = vi.hoisted(() => ({
   getOpmsSubmissionAttachmentsPage: vi.fn(),
   getIpmsSubmissionAttachmentsPage: vi.fn(),
   getOpmsConsolidationHistoryPage: vi.fn(),
   getIpmsConsolidationHistoryPage: vi.fn(),
+  getOpmsDueDateExtensionHistoryPage: vi.fn(),
+  getIpmsDueDateExtensionHistoryPage: vi.fn(),
   saveOpmsConsolidatedActual: vi.fn(),
   saveIpmsConsolidatedActual: vi.fn(),
 }));
@@ -65,6 +69,14 @@ describe('SubmissionWorkspace member security', () => {
       data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
     });
     api.getIpmsConsolidationHistoryPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
+    });
+    api.getOpmsDueDateExtensionHistoryPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
+    });
+    api.getIpmsDueDateExtensionHistoryPage.mockResolvedValue({
       success: true,
       data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
     });
@@ -148,6 +160,58 @@ describe('SubmissionWorkspace member security', () => {
 
     expect(screen.getByRole('button', { name: 'Extend Due Date' })).toBeInTheDocument();
     expect(screen.getByLabelText('Extension Reason')).toBeInTheDocument();
+  });
+
+  it('loads bounded due-date extension history and renders only independently readable members', async () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) =>
+      ['DueDate', 'DueDateExtensionReason', 'DueDateExtensionActor'].includes(member));
+    api.getOpmsDueDateExtensionHistoryPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{
+          originalDueDate: '2026-10-31T00:00:00Z',
+          extendedDueDate: '2026-11-05T00:00:00Z',
+          reason: 'Council-approved extension',
+          approvedByUserPublicId: 'approver-public-id',
+          approvedByName: 'Visible Approver',
+          approvedAt: '2026-10-20T08:00:00Z',
+        }],
+        page: 1, pageSize: 10, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Comments & History' }));
+
+    await waitFor(() => expect(screen.getByText('1 immutable extension')).toBeInTheDocument());
+    expect(screen.getByText(/Council-approved extension/)).toBeInTheDocument();
+    expect(screen.getByText(/Visible Approver/)).toBeInTheDocument();
+    expect(screen.getAllByText(/31 Oct 2026/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Search due-date extension history')).toBeInTheDocument();
+    expect(api.getOpmsDueDateExtensionHistoryPage).toHaveBeenCalledWith('7', expect.objectContaining({
+      page: 1, pageSize: 10, sortBy: 'approvedAt', sortDirection: 'desc',
+    }));
+  });
+
+  it('does not render or make searchable masked due-date extension reason and actor values', async () => {
+    api.getOpmsDueDateExtensionHistoryPage.mockResolvedValue({
+      success: true,
+      data: {
+        items: [{ approvedAt: '2026-10-20T08:00:00Z' }],
+        page: 1, pageSize: 10, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Comments & History' }));
+
+    await waitFor(() => expect(screen.getByText('1 immutable extension')).toBeInTheDocument());
+    expect(screen.getByText(/Original Restricted · Extended Restricted/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Search due-date extension history')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Reason:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Approved by:/)).not.toBeInTheDocument();
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'DueDateExtensionReason');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'DueDateExtensionActor');
   });
 
   it('submits workflow comments and ratings only when their exact member updates are granted', () => {

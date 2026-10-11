@@ -429,6 +429,70 @@ public class IpmsSubmissionsController : ControllerBase
             PagedResponse<PerformanceSuggestionEventResponse>.Create(events, request.Page, request.PageSize, totalCount)));
     }
 
+    [HttpGet("{id:guid}/due-date-extensions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>>> GetDueDateExtensionsPage(
+        string id,
+        [FromQuery] PagedQueryRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized(new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "IPMS submission not found"));
+        var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
+        if (entity == null) return NotFound(new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "IPMS submission not found"));
+        var scope = BuildScope(entity);
+        var entityDecision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.READ", scope);
+        if (!entityDecision.Allowed)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, entityDecision.Reason));
+        var memberAccess = await GetDueDateExtensionMemberAccessAsync(user, scope);
+        if (request.NormalizedSortBy is not ("createdat" or "approvedat" or "originalduedate" or "extendedduedate" or "reason" or "actor"))
+            return BadRequest(new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "SortBy must be approvedAt, originalDueDate, extendedDueDate, reason, or actor."));
+        if (request.NormalizedSortBy is "originalduedate" or "extendedduedate" && !memberAccess.DueDate)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "Due-date sorting requires member read permission."));
+        if (request.NormalizedSortBy == "reason" && !memberAccess.Reason)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "Extension-reason sorting requires member read permission."));
+        if (request.NormalizedSortBy == "actor" && !memberAccess.Actor)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(false, null, "Extension-actor sorting requires member read permission."));
+
+        var query = _context.DueDateExtensions.AsNoTracking()
+            .Include(item => item.ApprovedByUser)
+            .Where(item => item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var actorPublicId = Guid.TryParse(request.NormalizedSearch, out var parsedActorPublicId) ? parsedActorPublicId : (Guid?)null;
+            query = query.Where(item =>
+                (memberAccess.Reason && item.Reason.Contains(request.NormalizedSearch))
+                || (memberAccess.Actor && ((actorPublicId.HasValue && item.ApprovedByUser.PublicId == actorPublicId.Value)
+                    || item.ApprovedByUser.FirstName.Contains(request.NormalizedSearch)
+                    || item.ApprovedByUser.LastName.Contains(request.NormalizedSearch))));
+        }
+
+        var totalCount = await query.CountAsync();
+        var ordered = (request.NormalizedSortBy, request.Descending) switch
+        {
+            ("originalduedate", false) => query.OrderBy(item => item.OriginalDueDate).ThenBy(item => item.Id),
+            ("originalduedate", true) => query.OrderByDescending(item => item.OriginalDueDate).ThenByDescending(item => item.Id),
+            ("extendedduedate", false) => query.OrderBy(item => item.ExtendedDueDate).ThenBy(item => item.Id),
+            ("extendedduedate", true) => query.OrderByDescending(item => item.ExtendedDueDate).ThenByDescending(item => item.Id),
+            ("reason", false) => query.OrderBy(item => item.Reason).ThenBy(item => item.Id),
+            ("reason", true) => query.OrderByDescending(item => item.Reason).ThenByDescending(item => item.Id),
+            ("actor", false) => query.OrderBy(item => item.ApprovedByUser.FirstName).ThenBy(item => item.ApprovedByUser.LastName).ThenBy(item => item.Id),
+            ("actor", true) => query.OrderByDescending(item => item.ApprovedByUser.FirstName).ThenByDescending(item => item.ApprovedByUser.LastName).ThenByDescending(item => item.Id),
+            (_, false) => query.OrderBy(item => item.ApprovedAt).ThenBy(item => item.Id),
+            _ => query.OrderByDescending(item => item.ApprovedAt).ThenByDescending(item => item.Id)
+        };
+        var rows = await ordered.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var response = rows.Select(item => new DueDateExtensionHistoryResponse(
+            memberAccess.DueDate ? item.OriginalDueDate : null,
+            memberAccess.DueDate ? item.ExtendedDueDate : null,
+            memberAccess.Reason ? item.Reason : null,
+            memberAccess.Actor ? item.ApprovedByUser.PublicId : null,
+            memberAccess.Actor ? item.ApprovedByUser.FullName : null,
+            item.ApprovedAt)).ToArray();
+        return Ok(new ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>(true,
+            PagedResponse<DueDateExtensionHistoryResponse>.Create(response, request.Page, request.PageSize, totalCount)));
+    }
+
     [HttpDelete("{id:guid}")]
     public ActionResult<ApiResponse<bool>> DeleteSubmission(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed submissions are never deleted. Use POST /api/v1/ipms-submissions/{id}/withdraw with a reason and RowVersion."));
@@ -1405,6 +1469,17 @@ public class IpmsSubmissionsController : ControllerBase
 
         return (await CanReadAsync("SuggestionActor"), await CanReadAsync("SuggestionReason"),
             await CanReadAsync("SuggestionCorrelationId"));
+    }
+
+    private async Task<(bool DueDate, bool Reason, bool Actor)> GetDueDateExtensionMemberAccessAsync(
+        ApplicationUser user,
+        AccessScopeContext scope)
+    {
+        async Task<bool> CanReadAsync(string memberCode) =>
+            (await _accessControlService.CheckPermissionAsync(user, $"IPMS_SUBMISSION.{memberCode}.READ", scope)).Allowed;
+
+        return (await CanReadAsync("DueDate"), await CanReadAsync("DueDateExtensionReason"),
+            await CanReadAsync("DueDateExtensionActor"));
     }
 
     private static IpmsSubmissionResponse ToAuthorizedResponse(IpmsSubmission submission, HashSet<string> permissions)

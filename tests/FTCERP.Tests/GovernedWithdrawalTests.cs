@@ -129,6 +129,129 @@ public sealed class GovernedWithdrawalTests
     }
 
     [Fact]
+    public async Task Due_date_extension_history_is_bounded_kind_scoped_and_masks_searches_sorts_and_fields_by_member_access()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "DUE-HISTORY", Name = "Due Date History Municipality" };
+        var user = IdpTestFixture.CreateUser("due-history-user");
+        user.FirstName = "History";
+        user.LastName = "Approver";
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        user.MunicipalityId = municipality.Id;
+        var target = new OpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-HISTORY-OPMS",
+            TargetName = "Due history", KpiDescription = "Due history", AnnualTargetDescription = "One"
+        };
+        var submission = new OpmsSubmission
+        {
+            MunicipalityId = municipality.Id, OpmsTarget = target, Quarter = "Q1",
+            DueDate = DateTime.UtcNow.Date.AddDays(10), BaseState = SubmissionBaseStates.InProgress,
+            Status = "submitted", CreatedBy = user.Id
+        };
+        var ipmsTarget = new IpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-HISTORY-IPMS",
+            TargetName = "IPMS due history", KpiDescription = "IPMS due history", AnnualTargetDescription = "One"
+        };
+        var ipmsSubmission = new IpmsSubmission
+        {
+            MunicipalityId = municipality.Id, IpmsTarget = ipmsTarget, Quarter = "Q1",
+            DueDate = DateTime.UtcNow.Date.AddDays(12), BaseState = SubmissionBaseStates.InProgress,
+            Status = "submitted", CreatedBy = user.Id
+        };
+        context.AddRange(target, submission, ipmsTarget, ipmsSubmission);
+        await context.SaveChangesAsync();
+        var firstApprovedAt = DateTime.UtcNow.AddMinutes(-2);
+        context.DueDateExtensions.AddRange(
+            new DueDateExtension
+            {
+                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
+                OriginalDueDate = submission.DueDate!.Value, ExtendedDueDate = submission.DueDate.Value.AddDays(2),
+                Reason = "Protected first reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt
+            },
+            new DueDateExtension
+            {
+                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
+                OriginalDueDate = submission.DueDate.Value.AddDays(2), ExtendedDueDate = submission.DueDate.Value.AddDays(4),
+                Reason = "Protected second reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(1)
+            },
+            new DueDateExtension
+            {
+                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Ipms, SubmissionId = submission.Id,
+                OriginalDueDate = submission.DueDate.Value, ExtendedDueDate = submission.DueDate.Value.AddDays(9),
+                Reason = "Wrong submission kind", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(2)
+            },
+            new DueDateExtension
+            {
+                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Ipms, SubmissionId = ipmsSubmission.Id,
+                OriginalDueDate = ipmsSubmission.DueDate!.Value, ExtendedDueDate = ipmsSubmission.DueDate.Value.AddDays(3),
+                Reason = "Protected IPMS reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(3)
+            });
+        await context.SaveChangesAsync();
+
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(
+                It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(grants.Contains(code) && scope?.MunicipalityId == municipality.Id,
+                    grants.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        var controller = SubmissionController(context, user, access.Object, Mock.Of<IWorkflowGovernanceService>());
+
+        var masked = (await controller.GetDueDateExtensionsPage(submission.PublicId.ToString(),
+                new PagedQueryRequest { Page = 1, PageSize = 1 })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>>().Subject.Data!;
+        masked.TotalCount.Should().Be(2, "the IPMS history row must not cross the submission-kind boundary");
+        masked.Items.Should().ContainSingle();
+        masked.Items[0].OriginalDueDate.Should().BeNull();
+        masked.Items[0].ExtendedDueDate.Should().BeNull();
+        masked.Items[0].Reason.Should().BeNull();
+        masked.Items[0].ApprovedByUserPublicId.Should().BeNull();
+        masked.Items[0].ApprovedByName.Should().BeNull();
+
+        var hiddenSearch = (await controller.GetDueDateExtensionsPage(submission.PublicId.ToString(),
+                new PagedQueryRequest { Search = "Protected first" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>>().Subject.Data!;
+        hiddenSearch.TotalCount.Should().Be(0, "search must not infer protected reason or actor values");
+        (await controller.GetDueDateExtensionsPage(submission.PublicId.ToString(),
+                new PagedQueryRequest { SortBy = "reason" })).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        grants.Add("OPMS_SUBMISSION.DueDateExtensionReason.READ");
+        var reasonVisible = (await controller.GetDueDateExtensionsPage(submission.PublicId.ToString(),
+                new PagedQueryRequest { Search = "second", SortBy = "reason", SortDirection = "asc" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>>().Subject.Data!;
+        reasonVisible.Items.Should().ContainSingle().Which.Reason.Should().Be("Protected second reason");
+        reasonVisible.Items[0].ApprovedByName.Should().BeNull();
+
+        grants.UnionWith(["OPMS_SUBMISSION.DueDate.READ", "OPMS_SUBMISSION.DueDateExtensionActor.READ"]);
+        var fullyVisible = (await controller.GetDueDateExtensionsPage(submission.PublicId.ToString(),
+                new PagedQueryRequest { Search = "Approver", SortBy = "actor", SortDirection = "asc" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>>().Subject.Data!;
+        fullyVisible.TotalCount.Should().Be(2);
+        fullyVisible.Items.Should().OnlyContain(item => item.OriginalDueDate.HasValue && item.ExtendedDueDate.HasValue
+            && item.ApprovedByUserPublicId == user.PublicId && item.ApprovedByName == "History Approver");
+
+        grants.UnionWith([
+            "IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.DueDate.READ",
+            "IPMS_SUBMISSION.DueDateExtensionReason.READ", "IPMS_SUBMISSION.DueDateExtensionActor.READ"
+        ]);
+        var ipmsController = IpmsSubmissionController(context, user, access.Object, Mock.Of<IWorkflowGovernanceService>());
+        var ipmsVisible = (await ipmsController.GetDueDateExtensionsPage(ipmsSubmission.PublicId.ToString(),
+                new PagedQueryRequest { Search = "IPMS", SortBy = "extendedDueDate", SortDirection = "asc" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<DueDateExtensionHistoryResponse>>>().Subject.Data!;
+        ipmsVisible.Items.Should().ContainSingle().Which.Reason.Should().Be("Protected IPMS reason");
+        ipmsVisible.Items[0].ApprovedByUserPublicId.Should().Be(user.PublicId);
+    }
+
+    [Fact]
     public async Task Submission_withdrawal_requires_scoped_reason_update_and_masks_the_update_response()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

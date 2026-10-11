@@ -580,6 +580,14 @@ public sealed record PerformanceSuggestionEventResponse(
     DateTime OccurredAt,
     string? CorrelationId);
 
+public sealed record DueDateExtensionHistoryResponse(
+    DateTime? OriginalDueDate,
+    DateTime? ExtendedDueDate,
+    string? Reason,
+    Guid? ApprovedByUserPublicId,
+    string? ApprovedByName,
+    DateTime ApprovedAt);
+
 public record NotificationResponse(
     Guid PublicId,
     Guid RecipientUserPublicId,

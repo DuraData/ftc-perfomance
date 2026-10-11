@@ -2790,6 +2790,15 @@ export interface PerformanceSuggestionEvent {
   correlationId?: string | null;
 }
 
+export interface DueDateExtensionHistoryEntry {
+  originalDueDate?: string | null;
+  extendedDueDate?: string | null;
+  reason?: string | null;
+  approvedByUserPublicId?: string | null;
+  approvedByName?: string | null;
+  approvedAt: string;
+}
+
 export interface NotificationPageResult extends PagedResult<NotificationDto> {
   unreadCount: number;
 }
