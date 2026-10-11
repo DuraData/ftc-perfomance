@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Controllers;
+using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 
 namespace FTCERP.Tests;
@@ -64,5 +65,36 @@ public sealed class OpmsTargetResponseProjectionTests
         Assert.Null(maskedVote.Amount);
         Assert.Equal("VOTE-01", maskedVote.Code);
         Assert.Equal("Roads Capital Programme", maskedVote.Name);
+    }
+
+    [Fact]
+    public void Live_kpi_projection_masks_sensitive_references_and_budget_amounts_without_hiding_source_identity()
+    {
+        var source = new GovernedBudgetSource { PublicId = Guid.NewGuid(), Code = "OWN", Name = "Own revenue" };
+        var opms = new OpmsTarget
+        {
+            PublicId = Guid.NewGuid(), IndicatorNumber = "OPMS-SEC", TargetName = "Protected OPMS KPI", KpiDescription = "Description",
+            InternalReference = "INTERNAL-SECRET", FmsLink = "FMS-SECRET"
+        };
+        opms.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { PublicId = Guid.NewGuid(), BudgetSource = source, BudgetSourceId = 1, Amount = 250m });
+        var ipms = new IpmsTarget
+        {
+            PublicId = Guid.NewGuid(), IndicatorNumber = "IPMS-SEC", TargetName = "Protected IPMS KPI", KpiDescription = "Description",
+            InternalReference = "EMPLOYEE-SECRET"
+        };
+        ipms.GovernedBudgetSources.Add(new IpmsKpiBudgetSource { PublicId = Guid.NewGuid(), BudgetSource = source, BudgetSourceId = 1, Amount = 125m });
+
+        var opmsResponse = opms.ToResponse(PeriodTargetMemberAccess.Full, KpiLifecycleMemberAccess.Full,
+            VoteNumberMemberAccess.Full, KpiSensitiveMemberAccess.None);
+        var ipmsResponse = ipms.ToResponse(null, PeriodTargetMemberAccess.Full, KpiLifecycleMemberAccess.Full,
+            KpiSensitiveMemberAccess.None);
+
+        Assert.Null(opmsResponse.InternalReference);
+        Assert.Null(opmsResponse.FmsLink);
+        Assert.Null(Assert.Single(opmsResponse.BudgetSources).Amount);
+        Assert.Equal("OWN", Assert.Single(opmsResponse.BudgetSources).Code);
+        Assert.Null(ipmsResponse.InternalReference);
+        Assert.Null(Assert.Single(ipmsResponse.BudgetSources).Amount);
+        Assert.Equal("Own revenue", Assert.Single(ipmsResponse.BudgetSources).Name);
     }
 }

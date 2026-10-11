@@ -172,7 +172,7 @@ public static class PerformanceApiSupport
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess) =>
         target.ToResponse(memberAccess, KpiLifecycleMemberAccess.Full);
 
-    public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, VoteNumberMemberAccess? voteAccess = null) =>
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, VoteNumberMemberAccess? voteAccess = null, KpiSensitiveMemberAccess? sensitiveAccess = null) =>
         new(
             target.PublicId,
             null,
@@ -209,8 +209,8 @@ public static class PerformanceApiSupport
             target.FunctionalArea,
             target.StandardClassification,
             target.IdpReference,
-            target.InternalReference,
-            target.FmsLink,
+            (sensitiveAccess ?? KpiSensitiveMemberAccess.Full).InternalReference ? target.InternalReference : null,
+            (sensitiveAccess ?? KpiSensitiveMemberAccess.Full).FmsLink ? target.FmsLink : null,
             target.IsRevised,
             target.IsWithdrawn,
             lifecycleAccess.WithdrawalReason ? target.ReasonForWithdrawal : null,
@@ -242,7 +242,8 @@ public static class PerformanceApiSupport
             StrategicIntervention = target.StrategicInterventionReference?.Name,
             BudgetTypeName = target.BudgetTypeMaster?.Name,
             BudgetSources = target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.DisplayOrder).ThenBy(item => item.BudgetSource.Name)
-                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray(),
+                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name,
+                    (sensitiveAccess ?? KpiSensitiveMemberAccess.Full).BudgetSourceAmounts ? item.Amount : null)).ToArray(),
             KpiTypePublicId = target.KpiTypeMaster?.PublicId,
             IndicatorTypePublicId = target.IndicatorTypeMaster?.PublicId,
             FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId,
@@ -265,8 +266,8 @@ public static class PerformanceApiSupport
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess) =>
         target.ToResponse(periodType, memberAccess, KpiLifecycleMemberAccess.Full);
 
-    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, VoteNumberMemberAccess? voteAccess = null) =>
-        !periodType.HasValue ? target.ToResponse(memberAccess, lifecycleAccess, voteAccess) : target.ToResponse(memberAccess, lifecycleAccess, voteAccess) with
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, VoteNumberMemberAccess? voteAccess = null, KpiSensitiveMemberAccess? sensitiveAccess = null) =>
+        !periodType.HasValue ? target.ToResponse(memberAccess, lifecycleAccess, voteAccess, sensitiveAccess) : target.ToResponse(memberAccess, lifecycleAccess, voteAccess, sensitiveAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),
@@ -279,7 +280,7 @@ public static class PerformanceApiSupport
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess) =>
         target.ToResponse(supervisorPublicId, memberAccess, KpiLifecycleMemberAccess.Full);
 
-    public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, KpiSensitiveMemberAccess? sensitiveAccess = null) =>
         new(
             target.PublicId,
             null,
@@ -309,7 +310,7 @@ public static class PerformanceApiSupport
             target.IndicatorType,
             target.FunctionalArea,
             target.IdpReference,
-            target.InternalReference,
+            (sensitiveAccess ?? KpiSensitiveMemberAccess.Full).InternalReference ? target.InternalReference : null,
             target.IsRevised,
             target.CanonicalPeriodTargets.Select(item => ToResponse(item, memberAccess)).ToArray(),
             target.CreatedAt)
@@ -335,7 +336,8 @@ public static class PerformanceApiSupport
             StrategicIntervention = target.StrategicInterventionReference?.Name,
             BudgetTypeName = target.BudgetTypeMaster?.Name,
             BudgetSources = target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.DisplayOrder).ThenBy(item => item.BudgetSource.Name)
-                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name, item.Amount)).ToArray(),
+                .Select(item => new KpiBudgetSourceResponse(item.PublicId, item.BudgetSource.PublicId, item.BudgetSource.Code ?? string.Empty, item.BudgetSource.Name,
+                    (sensitiveAccess ?? KpiSensitiveMemberAccess.Full).BudgetSourceAmounts ? item.Amount : null)).ToArray(),
             KpiTypePublicId = target.KpiTypeMaster?.PublicId,
             IndicatorTypePublicId = target.IndicatorTypeMaster?.PublicId,
             FunctionalAreaPublicId = target.FunctionalAreaMaster?.PublicId,
@@ -349,8 +351,8 @@ public static class PerformanceApiSupport
     public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess) =>
         target.ToResponse(periodType, supervisorPublicId, memberAccess, KpiLifecycleMemberAccess.Full);
 
-    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
-        !periodType.HasValue ? target.ToResponse(supervisorPublicId, memberAccess, lifecycleAccess) : target.ToResponse(supervisorPublicId, memberAccess, lifecycleAccess) with
+    public static IpmsTargetResponse ToResponse(this IpmsTarget target, ReportingPeriodType? periodType, Guid? supervisorPublicId, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, KpiSensitiveMemberAccess? sensitiveAccess = null) =>
+        !periodType.HasValue ? target.ToResponse(supervisorPublicId, memberAccess, lifecycleAccess, sensitiveAccess) : target.ToResponse(supervisorPublicId, memberAccess, lifecycleAccess, sensitiveAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),

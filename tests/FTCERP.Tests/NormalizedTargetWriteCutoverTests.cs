@@ -254,6 +254,95 @@ public sealed class NormalizedTargetWriteCutoverTests
     }
 
     [Fact]
+    public async Task Opms_sensitive_members_are_masked_and_preserved_when_their_dynamic_grants_are_removed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await Controller(context, seed.User, seed.Municipality.Id)
+            .CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
+        var source = new GovernedBudgetSource { MunicipalityId = seed.Municipality.Id, Code = "OWN", Name = "Own revenue" };
+        context.GovernedBudgetSources.Add(source);
+        await context.SaveChangesAsync();
+        var entity = await context.OpmsTargets.SingleAsync(item => item.PublicId == created.PublicId);
+        entity.InternalReference = "INTERNAL-SECRET";
+        entity.FmsLink = "FMS-SECRET";
+        entity.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 125.50m });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_KPI.InternalReference.READ", "OPMS_KPI.FmsLink.READ", "OPMS_KPI.BudgetSourceAmounts.READ",
+            "OPMS_KPI.InternalReference.UPDATE", "OPMS_KPI.FmsLink.UPDATE", "OPMS_KPI.BudgetSourceAmounts.UPDATE"
+        };
+        var controller = Controller(context, seed.User, seed.Municipality.Id, denied);
+        var request = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            InternalReference = "HOSTILE-REPLACEMENT",
+            FmsLink = "HOSTILE-FMS",
+            InternalReferenceSpecified = false,
+            FmsLinkSpecified = false,
+            BudgetSourceAmountsSpecified = false,
+            BudgetSources = [new SaveKpiBudgetSourceRequest(source.PublicId, 999m)]
+        };
+
+        var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.UpdateTarget(created.PublicId, request)).Result).Value).Data!;
+
+        Assert.Null(response.InternalReference);
+        Assert.Null(response.FmsLink);
+        Assert.Null(Assert.Single(response.BudgetSources).Amount);
+        context.ChangeTracker.Clear();
+        var stored = await context.OpmsTargets.Include(item => item.GovernedBudgetSources).SingleAsync(item => item.PublicId == created.PublicId);
+        Assert.Equal("INTERNAL-SECRET", stored.InternalReference);
+        Assert.Equal("FMS-SECRET", stored.FmsLink);
+        Assert.Equal(125.50m, Assert.Single(stored.GovernedBudgetSources, item => item.IsActive).Amount);
+
+        var forbidden = await controller.UpdateTarget(created.PublicId, request with { InternalReferenceSpecified = true });
+        Assert.IsType<ForbidResult>(forbidden.Result);
+    }
+
+    [Fact]
+    public async Task Ipms_sensitive_members_are_masked_and_preserved_when_their_dynamic_grants_are_removed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var created = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await IpmsController(context, seed.User, seed.Municipality.Id)
+            .CreateTarget(IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications))).Result).Value).Data!;
+        var source = new GovernedBudgetSource { MunicipalityId = seed.Municipality.Id, Code = "GRANT", Name = "Conditional grant" };
+        context.GovernedBudgetSources.Add(source);
+        await context.SaveChangesAsync();
+        var entity = await context.IpmsTargets.SingleAsync(item => item.PublicId == created.PublicId);
+        entity.InternalReference = "EMPLOYEE-SECRET";
+        entity.GovernedBudgetSources.Add(new IpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 75m });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IPMS_KPI.InternalReference.READ", "IPMS_KPI.BudgetSourceAmounts.READ",
+            "IPMS_KPI.InternalReference.UPDATE", "IPMS_KPI.BudgetSourceAmounts.UPDATE"
+        };
+        var controller = IpmsController(context, seed.User, seed.Municipality.Id, denied);
+        var request = IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with
+        {
+            InternalReference = "HOSTILE-REPLACEMENT",
+            InternalReferenceSpecified = false,
+            BudgetSourceAmountsSpecified = false,
+            BudgetSources = [new SaveKpiBudgetSourceRequest(source.PublicId, 999m)]
+        };
+
+        var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.UpdateTarget(created.PublicId, request)).Result).Value).Data!;
+
+        Assert.Null(response.InternalReference);
+        Assert.Null(Assert.Single(response.BudgetSources).Amount);
+        context.ChangeTracker.Clear();
+        var stored = await context.IpmsTargets.Include(item => item.GovernedBudgetSources).SingleAsync(item => item.PublicId == created.PublicId);
+        Assert.Equal("EMPLOYEE-SECRET", stored.InternalReference);
+        Assert.Equal(75m, Assert.Single(stored.GovernedBudgetSources, item => item.IsActive).Amount);
+
+        var forbidden = await controller.UpdateTarget(created.PublicId, request with { BudgetSourceAmountsSpecified = true });
+        Assert.IsType<ForbidResult>(forbidden.Result);
+    }
+
+    [Fact]
     public async Task Create_fails_closed_when_governed_municipality_year_is_not_configured()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -386,11 +475,13 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Contains("selected municipality", Assert.IsType<ApiResponse<OpmsTargetResponse>>(foreignWardBadRequest.Value).Message);
     }
 
-    private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId)
+    private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId, ISet<string>? deniedPermissions = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => deniedPermissions?.Contains(code) == true
+                ? new AccessDecisionResult(false, "Denied", [], [code], [])
+                : new AccessDecisionResult(true, "Allowed", [code], [], []));
         var workflow = new Mock<IWorkflowGovernanceService>();
         workflow.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
@@ -415,11 +506,13 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Equal(expectedTemplate, template);
     }
 
-    private static IpmsTargetsController IpmsController(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId)
+    private static IpmsTargetsController IpmsController(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId, ISet<string>? deniedPermissions = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => deniedPermissions?.Contains(code) == true
+                ? new AccessDecisionResult(false, "Denied", [], [code], [])
+                : new AccessDecisionResult(true, "Allowed", [code], [], []));
         var workflow = new Mock<IWorkflowGovernanceService>();
         workflow.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
             .Returns(Task.CompletedTask);

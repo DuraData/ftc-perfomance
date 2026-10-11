@@ -2930,6 +2930,7 @@ export interface SaveOpmsTargetPayload {
   baselineDescription?: string | null;
   budgetTypePublicId?: string | null;
   budgetSources: Array<{ budgetSourcePublicId: string; amount?: number | null }>;
+  budgetSourceAmountsSpecified?: boolean;
   kpiUnitOfMeasurePublicId: string;
   weight: number;
   kpiType: string;
@@ -2943,6 +2944,8 @@ export interface SaveOpmsTargetPayload {
   idpReference?: string | null;
   internalReference?: string | null;
   fmsLink?: string | null;
+  internalReferenceSpecified?: boolean;
+  fmsLinkSpecified?: boolean;
   isRevised: boolean;
   periodTargets: SaveTargetPeriodValuePayload[];
 }
@@ -2973,6 +2976,7 @@ export interface SaveIpmsTargetPayload {
   baseline: number;
   budgetTypePublicId?: string | null;
   budgetSources: Array<{ budgetSourcePublicId: string; amount?: number | null }>;
+  budgetSourceAmountsSpecified?: boolean;
   kpiUnitOfMeasurePublicId: string;
   weight: number;
   kpiType: string;
@@ -2983,6 +2987,7 @@ export interface SaveIpmsTargetPayload {
   functionalAreaPublicId?: string | null;
   idpReference?: string | null;
   internalReference?: string | null;
+  internalReferenceSpecified?: boolean;
   isRevised: boolean;
   periodTargets: SaveTargetPeriodValuePayload[];
 }

@@ -9,6 +9,7 @@ import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { StrategicClassificationPicker } from '../common/StrategicClassificationPicker';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
 import {
   createIpmsTarget,
@@ -801,7 +802,15 @@ function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState, config
   ].filter((item): item is SaveTargetPeriodValuePayload => item !== null);
 }
 
-export function buildOpmsPayload(form: OpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveOpmsTargetPayload {
+export interface KpiSensitiveFormAccess {
+  internalReference: boolean;
+  fmsLink: boolean;
+  budgetSourceAmounts: boolean;
+}
+
+const fullSensitiveFormAccess: KpiSensitiveFormAccess = { internalReference: true, fmsLink: true, budgetSourceAmounts: true };
+
+export function buildOpmsPayload(form: OpmsFormState, configuration?: PerformanceConfigurationCatalogueDto, access: KpiSensitiveFormAccess = fullSensitiveFormAccess): SaveOpmsTargetPayload {
   return {
     sdbipLayerPublicId: form.sdbipLayerPublicId || null,
     sourceTemplatePublicId: form.sourceTemplateId || null,
@@ -829,7 +838,8 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
     baseline: Number(form.baseline || 0),
     baselineDescription: form.baselineDescription || null,
     budgetTypePublicId: form.budgetTypePublicId || null,
-    budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount === '' ? null : Number(item.amount) })),
+    budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: access.budgetSourceAmounts && item.amount !== '' ? Number(item.amount) : null })),
+    budgetSourceAmountsSpecified: access.budgetSourceAmounts,
     kpiUnitOfMeasurePublicId: form.kpiUnitOfMeasurePublicId,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
@@ -841,14 +851,16 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
     standardClassification: form.standardClassification || null,
     standardClassificationPublicId: form.standardClassificationPublicId || null,
     idpReference: form.idpReference || null,
-    internalReference: form.internalReference || null,
-    fmsLink: form.fmsLink || null,
+    internalReference: access.internalReference ? form.internalReference || null : null,
+    fmsLink: access.fmsLink ? form.fmsLink || null : null,
+    internalReferenceSpecified: access.internalReference,
+    fmsLinkSpecified: access.fmsLink,
     isRevised: form.isRevised,
     periodTargets: buildCanonicalPeriodTargets(form, configuration),
   };
 }
 
-export function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveIpmsTargetPayload {
+export function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto, access: KpiSensitiveFormAccess = fullSensitiveFormAccess): SaveIpmsTargetPayload {
   return {
     sourceTemplatePublicId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
@@ -873,7 +885,8 @@ export function buildIpmsPayload(form: IpmsFormState, configuration?: Performanc
     kpiDescription: form.kpiDescription,
     baseline: Number(form.baseline || 0),
     budgetTypePublicId: form.budgetTypePublicId || null,
-    budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount === '' ? null : Number(item.amount) })),
+    budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: access.budgetSourceAmounts && item.amount !== '' ? Number(item.amount) : null })),
+    budgetSourceAmountsSpecified: access.budgetSourceAmounts,
     kpiUnitOfMeasurePublicId: form.kpiUnitOfMeasurePublicId,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType,
@@ -883,7 +896,8 @@ export function buildIpmsPayload(form: IpmsFormState, configuration?: Performanc
     functionalArea: form.functionalArea || null,
     functionalAreaPublicId: form.functionalAreaPublicId || null,
     idpReference: form.idpReference || null,
-    internalReference: form.internalReference || null,
+    internalReference: access.internalReference ? form.internalReference || null : null,
+    internalReferenceSpecified: access.internalReference,
     isRevised: form.isRevised,
     periodTargets: buildCanonicalPeriodTargets(form, configuration),
   };
@@ -1048,18 +1062,20 @@ function configuredUnitOptions(configuration?: PerformanceConfigurationCatalogue
   }));
 }
 
-function BudgetSourceEditor({ targetKind, municipalityFinancialYearPublicId, value, selectedLabels, onChange }: {
+function BudgetSourceEditor({ targetKind, municipalityFinancialYearPublicId, value, selectedLabels, canReadAmounts = true, canEditAmounts = true, onChange }: {
   targetKind: 'opms' | 'ipms';
   municipalityFinancialYearPublicId: string;
   value: Array<{ budgetSourcePublicId: string; amount: string }>;
   selectedLabels?: Record<string, string>;
+  canReadAmounts?: boolean;
+  canEditAmounts?: boolean;
   onChange: (value: Array<{ budgetSourcePublicId: string; amount: string }>) => void;
 }) {
   return <div className="space-y-2">
     <div className="flex items-center justify-between"><p className="text-sm font-medium">Budget Sources</p><Button size="sm" variant="outline" onClick={() => onChange([...value, { budgetSourcePublicId: '', amount: '' }])}>Add source</Button></div>
-    {value.map((item, index) => <div key={`${index}-${item.budgetSourcePublicId}`} className="grid gap-2 md:grid-cols-[1fr_0.55fr_auto]">
+    {value.map((item, index) => <div key={`${index}-${item.budgetSourcePublicId}`} className={`grid gap-2 ${canReadAmounts ? 'md:grid-cols-[1fr_0.55fr_auto]' : 'md:grid-cols-[1fr_auto]'}`}>
       <StrategicClassificationPicker targetKind={targetKind} classificationKind="budget-sources" municipalityFinancialYearPublicId={municipalityFinancialYearPublicId} label={`Budget Source ${index + 1}`} value={item.budgetSourcePublicId} selectedLabel={selectedLabels?.[item.budgetSourcePublicId]} onChange={next => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, budgetSourcePublicId: next } : row))} />
-      <Input label="Amount (optional)" type="number" min="0" step="0.01" value={item.amount} onChange={event => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />
+      {canReadAmounts && <Input label="Amount (optional)" type="number" min="0" step="0.01" value={item.amount} readOnly={!canEditAmounts} onChange={event => onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row))} />}
       <div className="self-end"><Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, rowIndex) => rowIndex !== index))}>Remove</Button></div>
     </div>)}
     {!value.length && <p className="text-xs text-secondary-500">No budget source selected.</p>}
@@ -1111,6 +1127,7 @@ export function resolvePerformanceTemplateHints<T extends {
 
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const security = useSecurity();
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<OpmsFormState>(createDefaultOpmsFormState());
   const [existingTarget, setExistingTarget] = useState<OPMSTarget | null>(null);
@@ -1127,6 +1144,11 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { catalogue, catalogueError } = useStrategicTemplateLookup('opms', form.municipalityFinancialYearPublicId, form);
   const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
   const performanceUnitOptions = configuredUnitOptions(configuration);
+  const sensitiveEditAccess: KpiSensitiveFormAccess = {
+    internalReference: security.canEditField('OPMS_KPI', 'InternalReference'),
+    fmsLink: security.canEditField('OPMS_KPI', 'FmsLink'),
+    budgetSourceAmounts: security.canEditField('OPMS_KPI', 'BudgetSourceAmounts'),
+  };
   useEffect(() => {
     if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
   }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.standardClassificationHint, form.unitOfMeasureHint]);
@@ -1207,7 +1229,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     }
 
     setValidationErrors([]);
-    const payload = buildOpmsPayload(form, configuration);
+    const payload = buildOpmsPayload(form, configuration, sensitiveEditAccess);
     const result = targetId
       ? await updateOpmsTarget(targetId, payload)
       : await createOpmsTarget(payload);
@@ -1480,12 +1502,12 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 
           <FormPanel title="Budget And References" description="Capture budget linkage, identifiers, and external references." icon={<Building2 className="h-5 w-5" />}>
             <StrategicClassificationPicker targetKind="opms" classificationKind="budget-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Budget Type" value={form.budgetTypePublicId} selectedLabel={existingTarget?.budgetTypeName} onChange={value => setForm(prev => ({ ...prev, budgetTypePublicId: value }))} />
-            <BudgetSourceEditor targetKind="opms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
+            <BudgetSourceEditor targetKind="opms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} canReadAmounts={security.canReadField('OPMS_KPI', 'BudgetSourceAmounts')} canEditAmounts={sensitiveEditAccess.budgetSourceAmounts} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
-              <Input label="Internal Reference" value={form.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />
+              {security.canReadField('OPMS_KPI', 'InternalReference') && <Input label="Internal Reference" value={form.internalReference} readOnly={!sensitiveEditAccess.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />}
             </FormRow>
-            <Input label="FMS Link" value={form.fmsLink} onChange={(event) => setForm(prev => ({ ...prev, fmsLink: event.target.value }))} />
+            {security.canReadField('OPMS_KPI', 'FmsLink') && <Input label="FMS Link" value={form.fmsLink} readOnly={!sensitiveEditAccess.fmsLink} onChange={(event) => setForm(prev => ({ ...prev, fmsLink: event.target.value }))} />}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Department</p>
@@ -1711,11 +1733,17 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 
 export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const security = useSecurity();
   const referenceData = usePerformanceReferenceData(true);
   const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
   const { catalogue, catalogueError } = useStrategicTemplateLookup('ipms', form.municipalityFinancialYearPublicId, form);
   const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
   const performanceUnitOptions = configuredUnitOptions(configuration);
+  const sensitiveEditAccess: KpiSensitiveFormAccess = {
+    internalReference: security.canEditField('IPMS_KPI', 'InternalReference'),
+    fmsLink: false,
+    budgetSourceAmounts: security.canEditField('IPMS_KPI', 'BudgetSourceAmounts'),
+  };
   useEffect(() => {
     if (catalogue) setForm(current => resolvePerformanceTemplateHints(resolveBudgetTemplateHints(current, catalogue), catalogue));
   }, [catalogue, form.budgetSourceHint, form.budgetTypeHint, form.functionalAreaHint, form.indicatorTypeHint, form.kpiTypeHint, form.unitOfMeasureHint]);
@@ -1776,7 +1804,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     }
 
     setValidationErrors([]);
-    const payload = buildIpmsPayload(form, configuration);
+    const payload = buildIpmsPayload(form, configuration, sensitiveEditAccess);
     const result = targetId
       ? await updateIpmsTarget(targetId, payload)
       : await createIpmsTarget(payload);
@@ -1934,13 +1962,13 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             <FormRow cols={2}>
               <StrategicClassificationPicker targetKind="ipms" classificationKind="budget-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Budget Type" value={form.budgetTypePublicId} selectedLabel={existingTarget?.budgetTypeName} onChange={value => setForm(prev => ({ ...prev, budgetTypePublicId: value }))} />
             </FormRow>
-            <BudgetSourceEditor targetKind="ipms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
+            <BudgetSourceEditor targetKind="ipms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} canReadAmounts={security.canReadField('IPMS_KPI', 'BudgetSourceAmounts')} canEditAmounts={sensitiveEditAccess.budgetSourceAmounts} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
           </FormPanel>
 
           <FormPanel title="References And Review" description="Maintain linkage and quick review context on the same page." icon={<Building2 className="h-5 w-5" />}>
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
-              <Input label="Internal Reference" value={form.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />
+              {security.canReadField('IPMS_KPI', 'InternalReference') && <Input label="Internal Reference" value={form.internalReference} readOnly={!sensitiveEditAccess.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />}
             </FormRow>
             <Checkbox label="Target Revised" checked={form.isRevised} onChange={(event) => setForm(prev => ({ ...prev, isRevised: event.target.checked }))} />
             <div className="grid gap-3 sm:grid-cols-2">

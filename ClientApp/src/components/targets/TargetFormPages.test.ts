@@ -2,6 +2,23 @@ import { buildIpmsPayload, buildOpmsPayload, getTargetUnitLabel, resolvePerforma
 import type { PerformanceConfigurationCatalogueDto } from '../../types';
 
 describe('TargetFormPages helpers', () => {
+  it('omits protected live KPI values and sends preservation flags when member updates are denied', () => {
+    const opms = buildOpmsPayload({
+      municipalityFinancialYearPublicId: 'year', wardIds: '', additionalAssigneeIds: '', voteNumberIds: '',
+      internalReference: 'INTERNAL-SECRET', fmsLink: 'FMS-SECRET',
+      budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '125.50' }],
+    } as never, undefined, { internalReference: false, fmsLink: false, budgetSourceAmounts: false });
+    const ipms = buildIpmsPayload({
+      municipalityFinancialYearPublicId: 'year', internalReference: 'EMPLOYEE-SECRET',
+      budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '75' }],
+    } as never, undefined, { internalReference: false, fmsLink: false, budgetSourceAmounts: false });
+
+    expect(opms).toMatchObject({ internalReference: null, fmsLink: null, internalReferenceSpecified: false, fmsLinkSpecified: false, budgetSourceAmountsSpecified: false });
+    expect(opms.budgetSources).toEqual([{ budgetSourcePublicId: 'source-1', amount: null }]);
+    expect(ipms).toMatchObject({ internalReference: null, internalReferenceSpecified: false, budgetSourceAmountsSpecified: false });
+    expect(ipms.budgetSources).toEqual([{ budgetSourcePublicId: 'source-1', amount: null }]);
+  });
+
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
     const payload = buildOpmsPayload({ municipalityFinancialYearPublicId: 'year-public-id', sourceTemplateId: 'template-public-id', departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: 'ward-1, ward-2,ward-2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: 'vote-10,vote-11', nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1', budgetTypePublicId: 'type-1', budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '125.50' }, { budgetSourcePublicId: 'source-2', amount: '' }], kpiUnitOfMeasurePublicId: 'unit-master-1' } as never);
     expect(payload).not.toHaveProperty('departmentId');

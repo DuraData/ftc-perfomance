@@ -382,6 +382,12 @@ public sealed record VoteNumberMemberAccess(bool Number, bool Amount)
     public static VoteNumberMemberAccess None { get; } = new(false, false);
 }
 
+public sealed record KpiSensitiveMemberAccess(bool InternalReference, bool FmsLink, bool BudgetSourceAmounts)
+{
+    public static KpiSensitiveMemberAccess Full { get; } = new(true, true, true);
+    public static KpiSensitiveMemberAccess None { get; } = new(false, false, false);
+}
+
 public sealed record KpiLifecycleMemberAccess(bool WithdrawalReason, bool WithdrawalActor)
 {
     public static KpiLifecycleMemberAccess Full { get; } = new(true, true);

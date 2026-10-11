@@ -163,6 +163,9 @@ public sealed record SaveOpmsTargetRequest
     public string? IdpReference { get; init; }
     public string? InternalReference { get; init; }
     public string? FmsLink { get; init; }
+    public bool InternalReferenceSpecified { get; init; } = true;
+    public bool FmsLinkSpecified { get; init; } = true;
+    public bool BudgetSourceAmountsSpecified { get; init; } = true;
     public bool IsRevised { get; init; }
     public SaveTargetPeriodValueRequest[] PeriodTargets { get; init; } = [];
 }
@@ -206,6 +209,8 @@ public sealed record SaveIpmsTargetRequest
     public string? FunctionalArea { get; init; }
     public string? IdpReference { get; init; }
     public string? InternalReference { get; init; }
+    public bool InternalReferenceSpecified { get; init; } = true;
+    public bool BudgetSourceAmountsSpecified { get; init; } = true;
     public bool IsRevised { get; init; }
     public SaveTargetPeriodValueRequest[] PeriodTargets { get; init; } = [];
 }

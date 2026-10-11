@@ -19,6 +19,7 @@ import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
 import { FileUpload } from '../common/FileUpload';
 import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import {
   assessOpmsSubmissionAttachment,
@@ -154,7 +155,7 @@ function strategicLabel(code: string | undefined, name: string | undefined) {
   return code ? `${code} · ${name ?? ''}` : name ?? '';
 }
 
-export function StrategyTab({ target }: { target: OPMSTarget }) {
+export function StrategyTab({ target, canReadInternalReference = true, canReadFmsLink = true }: { target: OPMSTarget; canReadInternalReference?: boolean; canReadFmsLink?: boolean }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Strategic Alignment">
@@ -179,8 +180,8 @@ export function StrategyTab({ target }: { target: OPMSTarget }) {
       <FormSection title="References">
         <FormRow cols={3}>
           <Input label="IDP Reference" defaultValue={target.idpReference} readOnly />
-          <Input label="Internal Reference" defaultValue={target.internalReference} readOnly />
-          <Input label="FMS Link" defaultValue={target.fmsLink} readOnly />
+          {canReadInternalReference && <Input label="Internal Reference" defaultValue={target.internalReference} readOnly />}
+          {canReadFmsLink && <Input label="FMS Link" defaultValue={target.fmsLink} readOnly />}
         </FormRow>
         <Input label="Standard Classification" defaultValue={target.standardClassification} readOnly />
       </FormSection>
@@ -238,12 +239,12 @@ export function QuarterlyTargetsTab({ target }: { target: OPMSTarget }) {
   );
 }
 
-function BudgetTab({ target }: { target: OPMSTarget }) {
+function BudgetTab({ target, canReadAmounts = true }: { target: OPMSTarget; canReadAmounts?: boolean }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Budget Information">
         <Select label="Budget Type" options={target.budgetTypePublicId ? [{ value: target.budgetTypePublicId, label: target.budgetTypeName ?? target.budgetType.name }] : []} defaultValue={target.budgetTypePublicId} placeholder="No Budget Type" />
-        <div className="mt-3 grid gap-2 md:grid-cols-2">{(target.budgetSources ?? []).map(source => <Card key={source.publicId} className="p-3"><p className="font-medium">{source.code ? `${source.code} · ` : ''}{source.name}</p><p className="text-xs text-secondary-500">{source.amount == null ? 'No source amount specified' : `Amount: ${source.amount.toLocaleString()}`}</p></Card>)}{!(target.budgetSources ?? []).length && <p className="text-sm text-secondary-500">No budget sources selected.</p>}</div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">{(target.budgetSources ?? []).map(source => <Card key={source.publicId} className="p-3"><p className="font-medium">{source.code ? `${source.code} · ` : ''}{source.name}</p>{canReadAmounts && <p className="text-xs text-secondary-500">{source.amount == null ? 'No source amount specified' : `Amount: ${source.amount.toLocaleString()}`}</p>}</Card>)}{!(target.budgetSources ?? []).length && <p className="text-sm text-secondary-500">No budget sources selected.</p>}</div>
       </FormSection>
 
       <FormSection title="Quarterly Budget Allocation">
@@ -512,6 +513,7 @@ function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { e
 
 export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const { setCurrentPath } = useApp();
+  const security = useSecurity();
   const [activeTab, setActiveTab] = useState('general');
   const [target, setTarget] = useState<OPMSTarget | null>(null);
   const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
@@ -610,9 +612,9 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'general': return <GeneralInfoTab target={target} />;
-      case 'strategy': return <StrategyTab target={target} />;
+      case 'strategy': return <StrategyTab target={target} canReadInternalReference={security.canReadField('OPMS_KPI', 'InternalReference')} canReadFmsLink={security.canReadField('OPMS_KPI', 'FmsLink')} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
-      case 'budget': return <BudgetTab target={target} />;
+      case 'budget': return <BudgetTab target={target} canReadAmounts={security.canReadField('OPMS_KPI', 'BudgetSourceAmounts')} />;
       case 'ordering': return <KpiOrderingEditor kind="opms" targetId={target.id} originalOrderNumber={target.originalOrderNumber} revisedOrderNumber={target.revisedOrderNumber} rowVersion={target.rowVersion ?? ''} onUpdated={value => setTarget(current => current ? { ...current, ...value } : current)} />;
       case 'revisions': return <KpiDefinitionRevisionEditor kind="opms" target={target} onUpdated={value => setTarget(value as OPMSTarget)} />;
       case 'submissions': return (

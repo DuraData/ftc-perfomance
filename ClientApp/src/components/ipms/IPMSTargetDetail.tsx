@@ -15,6 +15,7 @@ import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
 import { FileUpload } from '../common/FileUpload';
 import { DataTable } from '../common/DataTable';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
 import {
   assessIpmsSubmissionAttachment,
@@ -39,7 +40,7 @@ interface TargetDetailProps {
   targetId?: string;
 }
 
-export function GeneralInfoTab({ target }: { target: IPMSTarget }) {
+export function GeneralInfoTab({ target, canReadBudgetSourceAmounts = true }: { target: IPMSTarget; canReadBudgetSourceAmounts?: boolean }) {
   return (
     <div className="space-y-4 pointer-events-none opacity-80">
       <FormSection title="Basic Information">
@@ -143,7 +144,7 @@ export function GeneralInfoTab({ target }: { target: IPMSTarget }) {
 
       <FormSection title="Budget Information">
         <Input label="Budget Type" value={target.budgetTypeName ?? ''} placeholder="No Budget Type" disabled />
-        <div className="mt-3 grid gap-2 md:grid-cols-2">{(target.budgetSources ?? []).map(source => <Card key={source.publicId} className="p-3"><p className="font-medium">{source.code ? `${source.code} · ` : ''}{source.name}</p><p className="text-xs text-secondary-500">{source.amount == null ? 'No source amount specified' : `Amount: ${source.amount.toLocaleString()}`}</p></Card>)}{!(target.budgetSources ?? []).length && <p className="text-sm text-secondary-500">No budget sources selected.</p>}</div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">{(target.budgetSources ?? []).map(source => <Card key={source.publicId} className="p-3"><p className="font-medium">{source.code ? `${source.code} · ` : ''}{source.name}</p>{canReadBudgetSourceAmounts && <p className="text-xs text-secondary-500">{source.amount == null ? 'No source amount specified' : `Amount: ${source.amount.toLocaleString()}`}</p>}</Card>)}{!(target.budgetSources ?? []).length && <p className="text-sm text-secondary-500">No budget sources selected.</p>}</div>
       </FormSection>
 
     </div>
@@ -405,6 +406,7 @@ function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { e
 
 export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const { setCurrentPath } = useApp();
+  const security = useSecurity();
   const [activeTab, setActiveTab] = useState('general');
   const [target, setTarget] = useState<IPMSTarget | null>(null);
   const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
@@ -485,7 +487,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'general': return <GeneralInfoTab target={target} />;
+      case 'general': return <GeneralInfoTab target={target} canReadBudgetSourceAmounts={security.canReadField('IPMS_KPI', 'BudgetSourceAmounts')} />;
       case 'strategy': return <StrategyTab target={target} />;
       case 'quarterly': return <QuarterlyTargetsTab target={target} />;
       case 'ordering': return <KpiOrderingEditor kind="ipms" targetId={target.id} originalOrderNumber={target.originalOrderNumber} revisedOrderNumber={target.revisedOrderNumber} rowVersion={target.rowVersion ?? ''} onUpdated={value => setTarget(current => current ? { ...current, ...value } : current)} />;
@@ -525,7 +527,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       );
       case 'attachments': return <AttachmentsTab target={target} />;
       case 'history': return <HistoryTab entries={auditEntries} page={auditPage} totalPages={auditMeta.totalPages} totalCount={auditMeta.totalCount} onPageChange={page => void loadAuditPage(page)} />;
-      default: return <GeneralInfoTab target={target} />;
+      default: return <GeneralInfoTab target={target} canReadBudgetSourceAmounts={security.canReadField('IPMS_KPI', 'BudgetSourceAmounts')} />;
     }
   };
 

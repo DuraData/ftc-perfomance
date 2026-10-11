@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/api', async importOriginal => ({ ...(await importOriginal<typeof import('../../api/api')>()), ...api }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ setCurrentPath: vi.fn() }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canReadField: () => true }) }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../common/Tabs', () => ({ Tabs: ({ tabs, onChange }: { tabs: Array<{ id: string; label: string; badge?: number }>; onChange: (id: string) => void }) => <div>{tabs.map(tab => <button key={tab.id} type="button" onClick={() => onChange(tab.id)}>{tab.label} {tab.badge ?? ''}</button>)}</div> }));
 
@@ -67,6 +68,18 @@ describe('OPMS target relational tabs', () => {
     expect(screen.getByLabelText('Strategic Objective')).toHaveValue('SO-ROADS · Improve Road and Stormwater Infrastructure');
     expect(screen.getByLabelText('Performance Objective')).toHaveValue('PO-ROADS · Resurface Priority Road Kilometres');
     expect(screen.queryByDisplayValue('Not supplied by API')).not.toBeInTheDocument();
+  });
+
+  it('does not render protected live KPI references when their member reads are denied', () => {
+    render(<StrategyTab target={{
+      ...liveTarget, strategicGoal: { id: '', name: 'Goal', isActive: true },
+      strategicObjective: { id: '', name: 'Objective', strategicGoal: {} as never, isActive: true },
+      internalReference: 'INTERNAL-SECRET', fmsLink: 'FMS-SECRET',
+    } as OPMSTarget} canReadInternalReference={false} canReadFmsLink={false} />);
+
+    expect(screen.queryByLabelText('Internal Reference')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('FMS Link')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('INTERNAL-SECRET')).not.toBeInTheDocument();
   });
 
   it('does not invent a percentage improvement when the baseline is zero', () => {

@@ -216,6 +216,32 @@ public sealed class ControlledSeedSecurityTests
     }
 
     [Fact]
+    public async Task Security_catalogue_registers_live_kpi_reference_and_budget_amount_members_idempotently()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
+
+        var expected = new[]
+        {
+            ("OPMS_KPI", "InternalReference"), ("OPMS_KPI", "FmsLink"), ("OPMS_KPI", "BudgetSourceAmounts"),
+            ("IPMS_KPI", "InternalReference"), ("IPMS_KPI", "BudgetSourceAmounts")
+        };
+        foreach (var (resource, member) in expected)
+        {
+            var definition = await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == resource && item.MemberCode == member);
+            definition.IsSensitive.Should().BeTrue();
+            (await context.Permissions.CountAsync(item => item.Code == $"{resource}.{member}.READ")).Should().Be(1);
+            (await context.Permissions.CountAsync(item => item.Code == $"{resource}.{member}.UPDATE")).Should().Be(1);
+        }
+    }
+
+    [Fact]
     public async Task Security_catalogue_seed_registers_opms_dashboard_and_migrates_legacy_and_modern_opms_grants()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

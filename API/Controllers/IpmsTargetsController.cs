@@ -205,6 +205,7 @@ public class IpmsTargetsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
         var memberScope = new AccessScopeContext(organization.DepartmentId, organization.UnitId, user.Id, MunicipalityId: _tenantContext.MunicipalityId);
         if (!await CanUpdatePeriodTargetMembersAsync(user, memberScope)) return Forbid();
+        if (!await CanUpdateSensitiveMembersAsync(user, memberScope, request)) return Forbid();
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
@@ -214,7 +215,7 @@ public class IpmsTargetsController : ControllerBase
         var strategicClassification = await StrategicClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, strategicSelection);
         if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, strategicClassification.Error));
         var budgetClassification = await BudgetClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
-            request.BudgetTypePublicId, request.BudgetSources);
+            request.BudgetTypePublicId, PrepareBudgetSourceAmounts(request.BudgetSources, request.BudgetSourceAmountsSpecified));
         if (!budgetClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, budgetClassification.Error));
         var performanceClassification = await PerformanceClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
             request.KpiTypePublicId, request.IndicatorTypePublicId, request.FunctionalAreaPublicId, null, false);
@@ -253,7 +254,7 @@ public class IpmsTargetsController : ControllerBase
             IndicatorType = request.IndicatorType,
             FunctionalArea = request.FunctionalArea,
             IdpReference = request.IdpReference,
-            InternalReference = request.InternalReference,
+            InternalReference = request.InternalReferenceSpecified ? request.InternalReference : null,
             IsRevised = false,
             CreatedAt = DateTime.UtcNow
         };
@@ -290,6 +291,7 @@ public class IpmsTargetsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
         if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
+        if (!await CanUpdateSensitiveMembersAsync(user, BuildScope(entity), request)) return Forbid();
         var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, null, null, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
@@ -301,9 +303,11 @@ public class IpmsTargetsController : ControllerBase
             entity.StrategicInterventionId, entity.StrategicObjectiveMasterId, entity.PerformanceObjectiveId);
         if (!strategicClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, strategicClassification.Error));
         var budgetClassification = await BudgetClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
-            request.BudgetTypePublicId, request.BudgetSources, entity.BudgetTypeMasterId,
+            request.BudgetTypePublicId, PrepareBudgetSourceAmounts(request.BudgetSources, request.BudgetSourceAmountsSpecified), entity.BudgetTypeMasterId,
             entity.GovernedBudgetSources.Where(item => item.IsActive).Select(item => item.BudgetSourceId).ToArray());
         if (!budgetClassification.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, budgetClassification.Error));
+        if (!request.BudgetSourceAmountsSpecified)
+            budgetClassification = PreserveBudgetSourceAmounts(budgetClassification, entity.GovernedBudgetSources);
         var performanceClassification = await PerformanceClassificationResolver.ResolveAsync(_context, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
             request.KpiTypePublicId, request.IndicatorTypePublicId, request.FunctionalAreaPublicId, null, false,
             entity.KpiTypeMasterId, entity.IndicatorTypeMasterId, entity.FunctionalAreaMasterId);
@@ -340,7 +344,7 @@ public class IpmsTargetsController : ControllerBase
         entity.IndicatorType = request.IndicatorType;
         entity.FunctionalArea = request.FunctionalArea;
         entity.IdpReference = request.IdpReference;
-        entity.InternalReference = request.InternalReference;
+        if (request.InternalReferenceSpecified) entity.InternalReference = request.InternalReference;
         StrategicClassificationResolver.Apply(entity, strategicClassification);
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
@@ -734,11 +738,13 @@ public class IpmsTargetsController : ControllerBase
         var responses = new List<IpmsTargetResponse>(targets.Count);
         foreach (var item in targets)
         {
-            var memberAccess = user == null ? PeriodTargetMemberAccess.None : await GetPeriodTargetMemberAccessAsync(user, BuildScope(item));
-            var lifecycleAccess = user == null ? KpiLifecycleMemberAccess.None : await GetLifecycleMemberAccessAsync(user, BuildScope(item));
+            var scope = BuildScope(item);
+            var memberAccess = user == null ? PeriodTargetMemberAccess.None : await GetPeriodTargetMemberAccessAsync(user, scope);
+            var lifecycleAccess = user == null ? KpiLifecycleMemberAccess.None : await GetLifecycleMemberAccessAsync(user, scope);
+            var sensitiveAccess = user == null ? KpiSensitiveMemberAccess.None : await GetSensitiveMemberAccessAsync(user, scope);
             var response = item.ToResponse(periodType,
                 item.SupervisorId != null && publicIds.TryGetValue(item.SupervisorId, out var publicId) ? publicId : null,
-                memberAccess, lifecycleAccess);
+                memberAccess, lifecycleAccess, sensitiveAccess);
             response = response with
             {
                 SourceTemplatePublicId = int.TryParse(item.SourceTemplateId, out var sourceTemplateId)
@@ -777,7 +783,28 @@ public class IpmsTargetsController : ControllerBase
         && (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodBudgetValue.UPDATE", scope))?.Allowed == true
         && (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true;
 
+    private async Task<bool> CanUpdateSensitiveMembersAsync(ApplicationUser user, AccessScopeContext scope, SaveIpmsTargetRequest request) =>
+        (!request.InternalReferenceSpecified || (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.InternalReference.UPDATE", scope))?.Allowed == true)
+        && (!request.BudgetSourceAmountsSpecified || (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.BudgetSourceAmounts.UPDATE", scope))?.Allowed == true);
+
     private async Task<KpiLifecycleMemberAccess> GetLifecycleMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
         (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.WithdrawalReason.READ", scope))?.Allowed == true,
         (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.WithdrawalActor.READ", scope))?.Allowed == true);
+
+    private async Task<KpiSensitiveMemberAccess> GetSensitiveMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.InternalReference.READ", scope))?.Allowed == true,
+        false,
+        (await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.BudgetSourceAmounts.READ", scope))?.Allowed == true);
+
+    private static SaveKpiBudgetSourceRequest[] PrepareBudgetSourceAmounts(IEnumerable<SaveKpiBudgetSourceRequest> sources, bool amountsSpecified) =>
+        sources.Select(item => amountsSpecified ? item : item with { Amount = null }).ToArray();
+
+    private static ResolvedBudgetClassification PreserveBudgetSourceAmounts(ResolvedBudgetClassification value, IEnumerable<IpmsKpiBudgetSource> existing) =>
+        value with
+        {
+            BudgetSources = value.BudgetSources.Select(item => item with
+            {
+                Amount = existing.FirstOrDefault(link => link.IsActive && link.BudgetSourceId == item.Source.Id)?.Amount
+            }).ToArray()
+        };
 }

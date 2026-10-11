@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/api', async importOriginal => ({ ...(await importOriginal<typeof import('../../api/api')>()), ...api }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ setCurrentPath: vi.fn() }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canReadField: () => true }) }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../common/Tabs', () => ({ Tabs: ({ tabs, onChange }: { tabs: Array<{ id: string; label: string; badge?: number }>; onChange: (id: string) => void }) => <div>{tabs.map(tab => <button key={tab.id} type="button" onClick={() => onChange(tab.id)}>{tab.label} {tab.badge ?? ''}</button>)}</div> }));
 
@@ -38,6 +39,20 @@ describe('IPMS target detail', () => {
     expect(screen.getByDisplayValue('Live Budget Unit')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Live Employee')).toBeInTheDocument();
     expect(screen.getByDisplayValue('IPMS-LIVE-1')).toBeInTheDocument();
+  });
+
+  it('does not render protected budget-source amounts when the member read is denied', () => {
+    const target = {
+      period: { id: 'period', name: 'Quarter 1' }, department: { id: 'department', name: 'Finance' }, unit: null,
+      assignedTo: null, indicatorNumber: 'IPMS-1', targetName: 'KPI', kpiDescription: 'Description', targetUnitType: 'percentage',
+      unitOfMeasure: { id: 'uom', name: 'Percent' }, kpiType: 'Quantitative', indicatorType: 'Output', weight: 10,
+      budgetSources: [{ publicId: 'link-1', budgetSourcePublicId: 'source-1', code: 'OWN', name: 'Own revenue', amount: 500 }],
+    } as unknown as IPMSTarget;
+
+    render(<GeneralInfoTab target={target} canReadBudgetSourceAmounts={false} />);
+
+    expect(screen.getByText('OWN · Own revenue')).toBeInTheDocument();
+    expect(screen.queryByText('Amount: 500')).not.toBeInTheDocument();
   });
 
   it('pages the target submission ledger with its authoritative total', async () => {
