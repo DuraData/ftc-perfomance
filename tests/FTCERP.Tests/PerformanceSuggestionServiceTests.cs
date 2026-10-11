@@ -115,6 +115,61 @@ public sealed class PerformanceSuggestionServiceTests
     }
 
     [Fact]
+    public async Task Legacy_review_and_audit_projection_inputs_require_each_exact_member_update()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: true);
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_WORKFLOW.PMS_REVIEW", "IPMS_WORKFLOW.INTERNAL_AUDIT"
+        };
+        var access = ProjectionAccess(seed.User, permissions);
+        var yearId = await context.ReportingPeriods.Where(item => item.Id == seed.OpmsDestination.ReportingPeriodId)
+            .Select(item => item.MunicipalityFinancialYearId).SingleAsync();
+        var municipalityId = seed.OpmsDestination.MunicipalityId!.Value;
+        context.WorkflowDefinitions.AddRange(
+            new WorkflowDefinition { MunicipalityId = municipalityId, MunicipalityFinancialYearId = yearId, SubmissionKind = SubmissionKind.Opms, Code = "MEMBER-OPMS", Name = "OPMS member workflow", IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new WorkflowDefinition { MunicipalityId = municipalityId, MunicipalityFinancialYearId = yearId, SubmissionKind = SubmissionKind.Ipms, Code = "MEMBER-IPMS", Name = "IPMS member workflow", IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        await context.SaveChangesAsync();
+        var workflow = new Mock<IConfigurableWorkflowService>();
+        workflow.Setup(service => service.PrepareActionAsync(
+                It.IsAny<SubmissionKind>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<WorkflowActionOutcome>(), It.IsAny<string?>(), It.IsAny<decimal?>(), It.IsAny<string?>()))
+            .ReturnsAsync(new WorkflowTransitionResult(true, "Allowed", new SubmissionWorkflowInstance { State = WorkflowInstanceState.Completed }, null));
+        var opms = CreateController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>(), workflow.Object);
+        var ipms = CreateIpmsController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>(), workflow.Object);
+        var dueAt = DateTime.UtcNow.AddDays(5);
+
+        var review = new SubmissionWorkflowActionRequest(null, Recommendation: "Protected PMS recommendation",
+            ResponseDueDate: dueAt, RfiComment: "Protected PMS RFI");
+        (await opms.Review(seed.OpmsDestination.PublicId.ToString(), review)).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        permissions.Add("OPMS_SUBMISSION.PmsRecommendation.UPDATE");
+        (await opms.Review(seed.OpmsDestination.PublicId.ToString(), review)).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        permissions.Add("OPMS_SUBMISSION.PmsRfi.UPDATE");
+        (await opms.Review(seed.OpmsDestination.PublicId.ToString(), review)).Result
+            .Should().BeOfType<OkObjectResult>();
+
+        var audit = new SubmissionWorkflowActionRequest(null, Recommendation: "Protected audit recommendation",
+            ResponseDueDate: dueAt);
+        (await ipms.Audit(seed.IpmsDestination!.PublicId.ToString(), audit)).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        permissions.Add("IPMS_SUBMISSION.InternalAuditRecommendation.UPDATE");
+        (await ipms.Audit(seed.IpmsDestination.PublicId.ToString(), audit)).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        permissions.Add("IPMS_SUBMISSION.InternalAuditRfi.UPDATE");
+        (await ipms.Audit(seed.IpmsDestination.PublicId.ToString(), audit)).Result
+            .Should().BeOfType<OkObjectResult>();
+
+        seed.OpmsDestination.PmsRecommendation.Should().Be("Protected PMS recommendation");
+        seed.OpmsDestination.PmsRfiComment.Should().Be("Protected PMS RFI");
+        seed.OpmsDestination.PmsResponseDueDate.Should().Be(dueAt);
+        seed.IpmsDestination.AuditorRecommendation.Should().Be("Protected audit recommendation");
+        seed.IpmsDestination.AuditorResponseDueDate.Should().Be(dueAt);
+    }
+
+    [Fact]
     public async Task Consolidation_governance_members_are_masked_non_inferable_public_and_dynamically_granted()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -317,7 +372,8 @@ public sealed class PerformanceSuggestionServiceTests
         ApplicationDbContext context,
         ApplicationUser user,
         IAccessControlService access,
-        IPerformanceSuggestionService suggestions)
+        IPerformanceSuggestionService suggestions,
+        IConfigurableWorkflowService? workflow = null)
     {
         var controller = new OpmsSubmissionsController(
             context,
@@ -326,7 +382,7 @@ public sealed class PerformanceSuggestionServiceTests
             Mock.Of<IWorkflowGovernanceService>(),
             Mock.Of<IEvidenceBlobStorage>(),
             Mock.Of<ISubmissionValueService>(),
-            Mock.Of<IConfigurableWorkflowService>(),
+            workflow ?? Mock.Of<IConfigurableWorkflowService>(),
             Mock.Of<IReportingWindowService>(),
             Mock.Of<IEvidenceInspectionService>(),
             Mock.Of<IEvidenceMalwareScanner>(),
@@ -344,7 +400,8 @@ public sealed class PerformanceSuggestionServiceTests
         ApplicationDbContext context,
         ApplicationUser user,
         IAccessControlService access,
-        IPerformanceSuggestionService suggestions)
+        IPerformanceSuggestionService suggestions,
+        IConfigurableWorkflowService? workflow = null)
     {
         return new IpmsSubmissionsController(
             context,
@@ -353,7 +410,7 @@ public sealed class PerformanceSuggestionServiceTests
             Mock.Of<IWorkflowGovernanceService>(),
             Mock.Of<IEvidenceBlobStorage>(),
             Mock.Of<ISubmissionValueService>(),
-            Mock.Of<IConfigurableWorkflowService>(),
+            workflow ?? Mock.Of<IConfigurableWorkflowService>(),
             Mock.Of<IReportingWindowService>(),
             Mock.Of<IEvidenceInspectionService>(),
             Mock.Of<IEvidenceMalwareScanner>(),

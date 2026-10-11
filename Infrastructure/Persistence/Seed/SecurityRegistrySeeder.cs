@@ -158,9 +158,9 @@ public static class SecurityRegistrySeeder
             Member("OPMS_SUBMISSION", "ApproverScore", "Approval Score", sensitive: true, systemManaged: true),
             Member("OPMS_SUBMISSION", "PmsIdentity", "PMS Review Actor Identity", sensitive: true, systemManaged: true),
             Member("OPMS_SUBMISSION", "PmsComment", "PMS Review Comment", sensitive: true, systemManaged: true),
-            Member("OPMS_SUBMISSION", "PmsRecommendation", "PMS Recommendation", sensitive: true, systemManaged: true),
+            Member("OPMS_SUBMISSION", "PmsRecommendation", "PMS Recommendation", sensitive: true),
             Member("OPMS_SUBMISSION", "PmsScore", "PMS Review Score", sensitive: true, systemManaged: true),
-            Member("OPMS_SUBMISSION", "PmsRfi", "PMS RFI Comment and Due Date", sensitive: true, systemManaged: true),
+            Member("OPMS_SUBMISSION", "PmsRfi", "PMS RFI Comment and Due Date", sensitive: true),
             Member("OPMS_SUBMISSION", "WithdrawalReason", "Withdrawal Governance Reason", sensitive: true),
             Member("OPMS_SUBMISSION", "WithdrawalActor", "Withdrawal Actor Identity", sensitive: true, systemManaged: true),
             Member("OPMS_SUBMISSION", "SuggestionActor", "Consolidation Suggestion Actor", sensitive: true, systemManaged: true),
@@ -172,7 +172,7 @@ public static class SecurityRegistrySeeder
             Member("OPMS_SUBMISSION", "InternalAuditRecommendation", "Internal Audit Recommendation", sensitive: true),
             Member("OPMS_SUBMISSION", "InternalAuditScore", "Internal Audit Score", sensitive: true),
             Member("OPMS_SUBMISSION", "InternalAuditAssessedBy", "Internal Audit Assessor Identity", sensitive: true, systemManaged: true),
-            Member("OPMS_SUBMISSION", "InternalAuditRfi", "Internal Audit RFI Identity", sensitive: true, systemManaged: true),
+            Member("OPMS_SUBMISSION", "InternalAuditRfi", "Internal Audit RFI Identity", sensitive: true),
             Member("OPMS_KPI", "RevisionOriginalValue", "Revision Original Value", sensitive: true, systemManaged: true),
             Member("OPMS_KPI", "RevisionRevisedValue", "Revision Revised Value", sensitive: true, systemManaged: true),
             Member("OPMS_KPI", "RevisionReason", "Revision Governance Reason", sensitive: true, systemManaged: true),
@@ -209,9 +209,9 @@ public static class SecurityRegistrySeeder
             Member("IPMS_SUBMISSION", "ApproverScore", "Approval Score", sensitive: true, systemManaged: true),
             Member("IPMS_SUBMISSION", "PmsIdentity", "PMS Review Actor Identity", sensitive: true, systemManaged: true),
             Member("IPMS_SUBMISSION", "PmsComment", "PMS Review Comment", sensitive: true, systemManaged: true),
-            Member("IPMS_SUBMISSION", "PmsRecommendation", "PMS Recommendation", sensitive: true, systemManaged: true),
+            Member("IPMS_SUBMISSION", "PmsRecommendation", "PMS Recommendation", sensitive: true),
             Member("IPMS_SUBMISSION", "PmsScore", "PMS Review Score", sensitive: true, systemManaged: true),
-            Member("IPMS_SUBMISSION", "PmsRfi", "PMS RFI Comment and Due Date", sensitive: true, systemManaged: true),
+            Member("IPMS_SUBMISSION", "PmsRfi", "PMS RFI Comment and Due Date", sensitive: true),
             Member("IPMS_SUBMISSION", "WithdrawalReason", "Withdrawal Governance Reason", sensitive: true),
             Member("IPMS_SUBMISSION", "WithdrawalActor", "Withdrawal Actor Identity", sensitive: true, systemManaged: true),
             Member("IPMS_SUBMISSION", "SuggestionActor", "Consolidation Suggestion Actor", sensitive: true, systemManaged: true),
@@ -223,7 +223,7 @@ public static class SecurityRegistrySeeder
             Member("IPMS_SUBMISSION", "InternalAuditRecommendation", "Internal Audit Recommendation", sensitive: true),
             Member("IPMS_SUBMISSION", "InternalAuditScore", "Internal Audit Score", sensitive: true),
             Member("IPMS_SUBMISSION", "InternalAuditAssessedBy", "Internal Audit Assessor Identity", sensitive: true, systemManaged: true),
-            Member("IPMS_SUBMISSION", "InternalAuditRfi", "Internal Audit RFI Identity", sensitive: true, systemManaged: true),
+            Member("IPMS_SUBMISSION", "InternalAuditRfi", "Internal Audit RFI Identity", sensitive: true),
             Member("IPMS_KPI", "RevisionOriginalValue", "Revision Original Value", sensitive: true, systemManaged: true),
             Member("IPMS_KPI", "RevisionRevisedValue", "Revision Revised Value", sensitive: true, systemManaged: true),
             Member("IPMS_KPI", "RevisionReason", "Revision Governance Reason", sensitive: true, systemManaged: true),
@@ -652,6 +652,10 @@ public static class SecurityRegistrySeeder
                      "IPMS.Submissions.Audit"
                  })
             mappings[legacyAction] = [.. mappings[legacyAction], "IPMS_WORKFLOW.ActionComment.UPDATE", "IPMS_WORKFLOW.ActionRatingValue.UPDATE"];
+        mappings["OPMS.Submissions.Review"] = [.. mappings["OPMS.Submissions.Review"], "OPMS_SUBMISSION.PmsRecommendation.UPDATE", "OPMS_SUBMISSION.PmsRfi.UPDATE"];
+        mappings["OPMS.Submissions.Audit"] = [.. mappings["OPMS.Submissions.Audit"], "OPMS_SUBMISSION.InternalAuditRecommendation.UPDATE", "OPMS_SUBMISSION.InternalAuditRfi.UPDATE"];
+        mappings["IPMS.Submissions.Review"] = [.. mappings["IPMS.Submissions.Review"], "IPMS_SUBMISSION.PmsRecommendation.UPDATE", "IPMS_SUBMISSION.PmsRfi.UPDATE"];
+        mappings["IPMS.Submissions.Audit"] = [.. mappings["IPMS.Submissions.Audit"], "IPMS_SUBMISSION.InternalAuditRecommendation.UPDATE", "IPMS_SUBMISSION.InternalAuditRfi.UPDATE"];
         mappings["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW", "IDP_INDICATOR.AnnualTargetValue.READ", "IDP_INDICATOR.AnnualActualValue.READ", "IDP_PROJECT.BudgetSnapshotPlanned.READ", "IDP_PROJECT.BudgetSnapshotApproved.READ", "IDP_PROJECT.BudgetSnapshotActual.READ"];
         mappings["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT", "IDP_INDICATOR.AnnualTargetValue.READ", "IDP_INDICATOR.AnnualTargetValue.UPDATE", "IDP_INDICATOR.AnnualActualValue.READ", "IDP_INDICATOR.AnnualActualValue.UPDATE", "IDP_INDICATOR.AnnualProgressComment.READ", "IDP_INDICATOR.AnnualProgressComment.UPDATE", "IDP_PLAN.ImportClientRequestId.READ", "IDP_PLAN.ImportSourceFileName.READ", "IDP_PLAN.ImportSourceHash.READ", "IDP_PLAN.ImportActor.READ", "IDP_PLAN.ImportRowPayload.READ", "IDP_PLAN.ImportErrorDetail.READ"];
         mappings["IDP.Budget.View"] = ["IDP_PROJECT.READ", "IDP_PROJECT.BudgetSnapshotPlanned.READ", "IDP_PROJECT.BudgetSnapshotPlanned.UPDATE", "IDP_PROJECT.BudgetSnapshotApproved.READ", "IDP_PROJECT.BudgetSnapshotApproved.UPDATE", "IDP_PROJECT.BudgetSnapshotActual.READ", "IDP_PROJECT.BudgetSnapshotActual.UPDATE", "IDP_PROJECT.BudgetSnapshotSource.READ", "IDP_PROJECT.BudgetSnapshotSource.UPDATE"];

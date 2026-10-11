@@ -904,7 +904,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_WORKFLOW.PMS_REVIEW", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
-        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), request.Comment, request.Score);
+        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), "score", request);
         if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberDenial));
 
         _context.SubmissionScores.Add(new SubmissionScore
@@ -985,7 +985,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
-        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), request.Comment, request.Score);
+        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), status, request);
         if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberDenial));
         if (string.Equals(permissionCode, "IPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(entity.ActualPerformance))
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Authoritative actual performance is required before submission."));
@@ -1304,17 +1304,43 @@ public class IpmsSubmissionsController : ControllerBase
         return null;
     }
 
-    private async Task<string?> WorkflowActionMemberPermissionDenialAsync(ApplicationUser user, AccessScopeContext scope, string? comment, decimal? rating)
+    private async Task<string?> WorkflowActionMemberPermissionDenialAsync(ApplicationUser user, AccessScopeContext scope, string status, SubmissionWorkflowActionRequest request)
     {
-        if (!string.IsNullOrWhiteSpace(comment))
+        if (!string.IsNullOrWhiteSpace(request.Comment))
         {
             var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_WORKFLOW.ActionComment.UPDATE", scope);
             if (!decision.Allowed) return decision.Reason;
         }
-        if (rating.HasValue)
+        if (request.Score.HasValue)
         {
             var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_WORKFLOW.ActionRatingValue.UPDATE", scope);
             if (!decision.Allowed) return decision.Reason;
+        }
+        if (string.Equals(status, "reviewed", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(request.Recommendation))
+            {
+                var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.PmsRecommendation.UPDATE", scope);
+                if (!decision.Allowed) return decision.Reason;
+            }
+            if (!string.IsNullOrWhiteSpace(request.RfiComment) || request.ResponseDueDate.HasValue)
+            {
+                var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.PmsRfi.UPDATE", scope);
+                if (!decision.Allowed) return decision.Reason;
+            }
+        }
+        if (string.Equals(status, "audited", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(request.Recommendation))
+            {
+                var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.InternalAuditRecommendation.UPDATE", scope);
+                if (!decision.Allowed) return decision.Reason;
+            }
+            if (request.ResponseDueDate.HasValue)
+            {
+                var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.InternalAuditRfi.UPDATE", scope);
+                if (!decision.Allowed) return decision.Reason;
+            }
         }
         return null;
     }
