@@ -23,7 +23,8 @@ const api = vi.hoisted(() => ({
   getWardMastersPage: vi.fn(),
   getVoteNumberMastersPage: vi.fn(),
 }));
-const app = vi.hoisted(() => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'] as string[] }));
+const liveReportPermissions = ['OPMS_KPI.READ', 'OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.ActualPerformance.READ', 'OPMS_SUBMISSION.Variance.READ'];
+const app = vi.hoisted(() => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE', 'OPMS_KPI.READ', 'OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.ActualPerformance.READ', 'OPMS_SUBMISSION.Variance.READ'] as string[] }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -42,7 +43,8 @@ vi.mock('../../context/AppContext', () => ({
 
 describe('Reports', () => {
   beforeEach(() => {
-    app.permissions = ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE'];
+    vi.clearAllMocks();
+    app.permissions = ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE', ...liveReportPermissions];
     api.getReportingPeriodMastersPage.mockResolvedValue({
       success: true,
       data: { items: [{ publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
@@ -82,6 +84,19 @@ describe('Reports', () => {
     expect(screen.getByRole('button', { name: /Export CSV/i })).toBeEnabled();
     expect(await screen.findByText('Official generation history')).toBeInTheDocument();
     expect(screen.getByText('Quarterly report')).toBeInTheDocument();
+  });
+
+  it('does not request or export live performance data when a protected source member is denied', async () => {
+    app.permissions = app.permissions.filter(permission => permission !== 'OPMS_SUBMISSION.ActualPerformance.READ');
+
+    render(<Reports />);
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/Actual Performance/);
+    expect(api.getPerformanceReportSummary).not.toHaveBeenCalled();
+    const exportButton = screen.getByRole('button', { name: /Export CSV/i });
+    expect(exportButton).toBeDisabled();
+    fireEvent.click(exportButton);
+    expect(api.downloadPerformanceReportCsv).not.toHaveBeenCalled();
   });
 
   it('loads the durable report-job ledger through authoritative server paging and search', async () => {

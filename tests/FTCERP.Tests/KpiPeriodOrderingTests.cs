@@ -560,7 +560,7 @@ public sealed class KpiPeriodOrderingTests
     private static PerformanceReportsController ReportController(ApplicationDbContext context, long municipalityId, ApplicationUser user)
     {
         var access = new Mock<IAccessControlService>();
-        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_REPORT.EXPORT"))
+        access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>()))
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
         return new PerformanceReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, new TenantContext(municipalityId, user.Id), Mock.Of<IWorkflowGovernanceService>())
         {

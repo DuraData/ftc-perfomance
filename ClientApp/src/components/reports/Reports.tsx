@@ -94,19 +94,28 @@ export function Reports() {
   const canReadJobRetryReason = canReadReportMember('JOBRETRYREASON');
   const canReadGenerationDataVersion = canReadReportMember('GENERATIONDATAVERSIONREFERENCE');
   const canReadGenerationActor = canReadReportMember('GENERATIONGENERATEDBY');
-  const canExport = permissionSet.has(kind === 1 ? 'OPMS_REPORT.EXPORT' : 'IPMS_REPORT.EXPORT') || permissionSet.has('REPORTS.EXPORT');
+  const sourceResource = kind === 1 ? 'OPMS' : 'IPMS';
+  const hasPerformanceSourcePermissions = [
+    `${sourceResource}_KPI.READ`,
+    `${sourceResource}_SUBMISSION.READ`,
+    `${sourceResource}_SUBMISSION.ACTUALPERFORMANCE.READ`,
+    `${sourceResource}_SUBMISSION.VARIANCE.READ`,
+  ].every(permission => permissionSet.has(permission));
+  const canLoadSummary = permissionSet.has(`${reportResource}.GENERATE`) && hasPerformanceSourcePermissions;
+  const canExport = permissionSet.has(`${reportResource}.EXPORT`) && hasPerformanceSourcePermissions;
   const canReadOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.READ' : 'IPMS_REPORT.READ') || permissionSet.has('REPORTS.VIEW');
   const canGenerateOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.GENERATE' : 'IPMS_REPORT.GENERATE') || permissionSet.has('REPORTS.GENERATE');
   const canConfigureOfficial = permissionSet.has(kind === 1 ? 'OPMS_REPORT.CONFIGURE' : 'IPMS_REPORT.CONFIGURE');
   const selectedTemplate = templateOptions.find(template => template.publicId === templateId);
 
   const load = useCallback(async () => {
+    if (!canLoadSummary) { setSummary(null); return; }
     setBusy(true); setError(null);
     const summaryResult = await getPerformanceReportSummary(kind, periodId || undefined);
     if (!summaryResult.success || !summaryResult.data) { setSummary(null); setError(summaryResult.message ?? 'Report could not be generated.'); }
     else setSummary(summaryResult.data);
     setBusy(false);
-  }, [kind, periodId]);
+  }, [canLoadSummary, kind, periodId]);
 
   const loadTemplateOptions = useCallback(async () => {
     if (!canReadOfficial) { setTemplateOptions([]); setTemplateId(''); return; }
@@ -330,6 +339,8 @@ export function Reports() {
         </Card>}
 
         {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-300">{error}</div>}
+
+        {!canLoadSummary && <div role="status" className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-700 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">Live performance analytics require report generation plus KPI, submission, Actual Performance, and Variance read permissions.</div>}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {metrics.map(metric => <Card key={metric.label} className="p-4"><Badge variant={metric.tone}>{metric.label}</Badge><p className="mt-3 text-2xl font-bold text-secondary-900 dark:text-white">{metric.value}</p></Card>)}
