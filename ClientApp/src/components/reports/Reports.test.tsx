@@ -220,6 +220,7 @@ describe('Reports', () => {
     expect(screen.queryByText(/schedule-recipient-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/schedule-creator-secret/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Schedule creator secret/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Retry reason')).not.toBeInTheDocument();
 
     app.permissions = [...app.permissions,
       'OPMS_REPORT.JobRequestedBy.READ', 'OPMS_REPORT.JobLastError.READ',
@@ -235,6 +236,11 @@ describe('Reports', () => {
     expect(screen.getByText(/retry-secret/)).toBeInTheDocument();
     expect(screen.getByText(/schedule-recipient-secret/)).toBeInTheDocument();
     expect(screen.getByText(/Schedule creator secret/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Retry reason')).not.toBeInTheDocument();
+
+    app.permissions = [...app.permissions, 'OPMS_REPORT.JobRetryReason.UPDATE'];
+    rendered.rerender(<Reports />);
+    expect(await screen.findByLabelText('Retry reason')).toBeInTheDocument();
   });
 
   it('keeps generation template choices independent from the bounded administration register', async () => {

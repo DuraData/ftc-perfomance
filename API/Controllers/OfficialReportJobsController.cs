@@ -316,6 +316,9 @@ public sealed class OfficialReportJobsController(
         var job = await context.OfficialReportJobs.Include(item => item.ReportTemplate).SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (job == null) return NotFound(Fail<OfficialReportJobResponse>("Official report job was not found."));
         if (!await Granted(user, ConfigurePermission(job.ReportTemplate.SubmissionKind))) return ForbidResponse<OfficialReportJobResponse>("Retrying failed report jobs is denied.");
+        var retryScope = new AccessScopeContext(job.DepartmentId, job.UnitId, job.RequestedByUserId, MunicipalityId: job.MunicipalityId);
+        var retryReasonDecision = await accessControl.CheckPermissionAsync(user, $"{ReportResource(job.ReportTemplate.SubmissionKind)}.JobRetryReason.UPDATE", retryScope);
+        if (!retryReasonDecision.Allowed) return ForbidResponse<OfficialReportJobResponse>(retryReasonDecision.Reason);
         if (job.State != OfficialReportJobState.Failed) return Conflict(Fail<OfficialReportJobResponse>("Only failed jobs can be retried."));
         if (request.Reason.Trim().Length is < 5 or > 1000 || !TryRowVersion(request.RowVersion, out var rowVersion)) return BadRequest(Fail<OfficialReportJobResponse>("A retry reason of 5-1000 characters and valid RowVersion are required."));
         context.Entry(job).Property(item => item.RowVersion).OriginalValue = rowVersion;

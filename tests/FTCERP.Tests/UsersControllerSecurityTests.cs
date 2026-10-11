@@ -258,8 +258,10 @@ public sealed class UsersControllerSecurityTests
                     "ScheduleCreatedBy", "ScheduleRecipientValues"
                 },
                 reportMembers.Select(item => item.MemberCode));
-            Assert.All(reportMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
-            Assert.Equal(11, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
+            Assert.All(reportMembers, item => Assert.True(item.IsSensitive));
+            reportMembers.Single(item => item.MemberCode == "JobRetryReason").IsSystemManaged.Should().BeFalse();
+            reportMembers.Where(item => item.MemberCode != "JobRetryReason").Should().OnlyContain(item => item.IsSystemManaged);
+            Assert.Equal(12, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
             Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
         }
 

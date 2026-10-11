@@ -200,6 +200,79 @@ public sealed class OfficialReportJobTests
         typeof(OfficialReportScheduleResponse).GetProperty("CreatedBy").Should().BeNull();
     }
 
+    [Theory]
+    [InlineData(SubmissionKind.Opms, "OPMS_REPORT")]
+    [InlineData(SubmissionKind.Ipms, "IPMS_REPORT")]
+    public async Task Retry_requires_scoped_reason_update_and_masks_reason_without_read(SubmissionKind kind, string resource)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var seeded = await SeedDueSchedule(options, kind: kind);
+        var tenant = new FixedTenantContext(seeded.Schedule.MunicipalityId, seeded.User.Id);
+        await using var context = new ApplicationDbContext(options, tenant);
+        var schedule = await context.OfficialReportSchedules.SingleAsync();
+        var job = new OfficialReportJob
+        {
+            MunicipalityId = schedule.MunicipalityId,
+            OfficialReportScheduleId = schedule.Id,
+            ReportTemplateId = schedule.ReportTemplateId,
+            MunicipalityFinancialYearId = schedule.MunicipalityFinancialYearId,
+            ReportingPeriodId = schedule.ReportingPeriodId,
+            State = OfficialReportJobState.Failed,
+            ScheduledFor = DateTime.UtcNow.AddMinutes(-5),
+            AvailableAt = DateTime.UtcNow.AddMinutes(-5),
+            AttemptCount = 1,
+            LastError = "Provider unavailable",
+            RequestedByUserId = seeded.User.Id,
+            RequestedAt = DateTime.UtcNow.AddMinutes(-5),
+            ChannelsCsv = "IN_APP"
+        };
+        context.OfficialReportJobs.Add(job);
+        await context.SaveChangesAsync();
+
+        var basePermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            $"{resource}.READ", $"{resource}.CONFIGURE",
+            kind == SubmissionKind.Opms ? "OPMS_KPI.READ" : "IPMS_KPI.READ",
+            kind == SubmissionKind.Opms ? "OPMS_SUBMISSION.READ" : "IPMS_SUBMISSION.READ"
+        };
+        var memberPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string permission) => basePermissions.Contains(permission)
+                ? new AccessQueryScopeResult(true, true, [], [], [], [], [], [])
+                : new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string permission, AccessScopeContext? scope) =>
+                new AccessDecisionResult(memberPermissions.Contains(permission) && scope?.MunicipalityId == tenant.MunicipalityId,
+                    "test decision", [], [], []));
+        var controller = new OfficialReportJobsController(context, IdpTestFixture.CreateUserManagerMock(seeded.User).Object, access.Object, tenant, Mock.Of<IWorkflowGovernanceService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seeded.User.Id) } }
+        };
+        var request = new RetryOfficialReportJobRequest("Approved retry after provider recovery", Convert.ToBase64String(job.RowVersion));
+
+        var denied = await controller.Retry(job.PublicId, request);
+
+        Assert.IsType<ObjectResult>(denied.Result).StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        job.State.Should().Be(OfficialReportJobState.Failed);
+        job.RetryReason.Should().BeNull();
+
+        memberPermissions.Add($"{resource}.JobRetryReason.UPDATE");
+        var retried = await controller.Retry(job.PublicId, request);
+        var response = Assert.IsType<ApiResponse<OfficialReportJobResponse>>(Assert.IsType<OkObjectResult>(retried.Result).Value).Data!;
+
+        response.RetryReason.Should().BeNull();
+        job.State.Should().Be(OfficialReportJobState.Queued);
+        job.RetryReason.Should().Be("Approved retry after provider recovery");
+
+        memberPermissions.Add($"{resource}.JobRetryReason.READ");
+        var page = ExtractPage(await controller.JobsPage(kind, new PagedQueryRequest { SortBy = "requestedAt" }));
+        page.Items.Should().ContainSingle();
+        page.Items[0].RetryReason.Should().Be("Approved retry after provider recovery");
+    }
+
     [Fact]
     public async Task JobsPage_RejectsUnknownSort()
     {
@@ -470,7 +543,7 @@ public sealed class OfficialReportJobTests
         (await verification.OfficialReportGenerations.IgnoreQueryFilters().CountAsync()).Should().Be(0);
     }
 
-    private static async Task<(ApplicationUser User, OfficialReportSchedule Schedule)> SeedDueSchedule(DbContextOptions<ApplicationDbContext> options, string? recipientUserId = null)
+    private static async Task<(ApplicationUser User, OfficialReportSchedule Schedule)> SeedDueSchedule(DbContextOptions<ApplicationDbContext> options, string? recipientUserId = null, SubmissionKind kind = SubmissionKind.Opms)
     {
         await using var context = new ApplicationDbContext(options, new SystemTenantContext());
         await context.Database.EnsureCreatedAsync();
@@ -485,7 +558,7 @@ public sealed class OfficialReportJobTests
         context.Add(period); await context.SaveChangesAsync();
         var template = new OfficialReportTemplate
         {
-            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, SubmissionKind = SubmissionKind.Opms,
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, SubmissionKind = kind,
             ReportType = OfficialReportType.QuarterlyPerformance, Code = "QUARTERLY", Name = "Quarterly report", Format = OfficialReportFormat.Csv,
             ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.QuarterlyPerformance), EffectiveFrom = DateTime.UtcNow.AddDays(-1),
             ApprovalReference = "Council-2026", Reason = "Approved", CreatedByUserId = user.Id
