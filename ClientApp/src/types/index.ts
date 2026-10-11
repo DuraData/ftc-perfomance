@@ -1409,14 +1409,6 @@ export interface MfaEnableDto {
   recoveryCodes: string[];
 }
 
-export interface RegisterRequest {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-  phoneNumber?: string;
-}
-
 export interface AdminRole {
   publicId: string;
   name: string;

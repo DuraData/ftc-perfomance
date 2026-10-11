@@ -2,12 +2,14 @@ using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.Swagger;
 
 namespace FTCERP.Tests;
@@ -94,7 +96,8 @@ public sealed class LegacySecurityEndpointRetirementTests
             "FTCERP.Host.API.Requests.UpdateDepartmentRequest",
             "FTCERP.Host.API.Requests.CreateUnitRequest",
             "FTCERP.Host.API.Requests.UpdateUnitRequest",
-            "FTCERP.Host.API.Requests.CreateIdpStakeholderEngagementRequest"
+            "FTCERP.Host.API.Requests.CreateIdpStakeholderEngagementRequest",
+            "FTCERP.Host.API.Requests.RegisterRequest"
         };
 
         foreach (var contract in removedContracts)
@@ -140,6 +143,9 @@ public sealed class LegacySecurityEndpointRetirementTests
         }
         Assert.Null(typeof(IdpController).GetMethod(nameof(IdpController.UpdatePlanByPublicId))!
             .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true).SingleOrDefault());
+        Assert.True(typeof(AuthController).GetMethod(nameof(AuthController.Register))!
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
 
         foreach (var controllerType in new[] { typeof(OpmsTargetLibraryController), typeof(IpmsTargetLibraryController) })
         {
@@ -151,6 +157,19 @@ public sealed class LegacySecurityEndpointRetirementTests
                     .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
             }
         }
+    }
+
+    [Fact]
+    public void Retired_registration_cannot_create_a_user_or_assign_a_default_role()
+    {
+        var controller = new AuthController(null!, null!, null!, null!, null!, Options.Create(new JwtSettings()), null!, null!, null!);
+
+        var result = Assert.IsType<ObjectResult>(controller.Register().Result);
+
+        Assert.Equal(StatusCodes.Status410Gone, result.StatusCode);
+        var response = Assert.IsType<ApiResponse<bool>>(result.Value);
+        Assert.False(response.Success);
+        Assert.Contains("dynamic security administration", response.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -168,7 +187,8 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/idp/plans/{id}/hierarchy", "/api/idp/plans/{id}/dashboard",
                      "/api/idp/plans/{id}/alignment-matrix", "/api/idp/plans/{id}/reports/{reportType}",
                      "/api/idp/stakeholder-engagements", "/api/idp/tasks/{id}/complete",
-                     "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}"
+                     "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
+                     "/api/Auth/register"
                  })
         {
             Assert.False(paths.ContainsKey(retiredPath), $"Retired private-key path remained in OpenAPI: {retiredPath}");

@@ -9,8 +9,6 @@ public record EnableMfaRequest(string Code);
 
 public record DisableMfaRequest(string Password, string? Code = null, string? RecoveryCode = null);
 
-public record RegisterRequest(string FirstName, string LastName, string Email, string Password, string? PhoneNumber);
-
 public record ForgotPasswordRequest(string Email);
 
 public record ResetPasswordRequest(string Email, string Token, string NewPassword);

@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **632 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **338 frontend tests pass** across 75 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **633 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **338 frontend tests pass** across 75 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -56,7 +56,7 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
 | Frontend unit tests | 338/338 passed across 75 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 632 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
+| Backend tests via ordinary `dotnet test` | 633 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
@@ -130,7 +130,7 @@ Material V3.9 conflicts are present:
 - browser access and refresh tokens are stored in `localStorage` (`ClientApp/src/api/api.ts:75-92`) rather than secure HttpOnly sessions/cookies;
 - refresh tokens are stored in raw form and rotation does not revoke the prior token (`Infrastructure/Auth/JwtService.cs:64-74`; `API/Controllers/AuthController.cs:106-135`);
 - login calls use `lockoutOnFailure: false`, and failed-login auditing is absent (`API/Controllers/AuthController.cs:42-80`);
-- public registration creates an active, email-confirmed Submitter (`API/Controllers/AuthController.cs:82-104`);
+- the former authentication registration route is a hidden HTTP 410 tombstone; canonical `POST /api/users` creates an unassigned, default-deny tenant user, and effective roles are assigned separately through audited dynamic security administration;
 - a public demo-user endpoint reveals configured demo credentials (`API/Controllers/AuthController.cs:154-158`);
 - password minimum length is only six and non-alphanumeric characters are optional (`Program.cs:48-55`);
 - no rate limiter, request throttling, or explicit account-lockout policy is configured;
@@ -3513,6 +3513,16 @@ The retired permission, role-permission, direct user-override, department, unit 
 End-to-end OpenAPI generation exposed and closed a separate API-description defect: direct `[FromForm] IFormFile` action parameters caused `/swagger/v1/swagger.json` to fail with HTTP 500. OPMS/IPMS POE, IDP document and TID source-document uploads now bind typed multipart form models. This preserves the browser `FormData` field names and controller validation while allowing the complete OpenAPI document to generate. The generated-document test asserts that fifteen retired private-key paths are absent and five representative public-ID paths remain present; reflection tests also reject eighteen removed private contracts and require discovery suppression only on retired actions.
 
 Focused verification passes **33/33 backend retirement, IDP, TID and generated-OpenAPI tests**. Complete regression passes **632 backend tests with 1 SQL Server-only skip and 0 failures** and **338/338 frontend tests across 75 files**; accessibility automation passes **2/2**, TypeScript and ESLint pass, the Release build completes with **0 warnings and 0 errors**, the production build transforms **2,110 modules into 78 JavaScript chunks**, the bundle budget passes with a largest chunk of **401.5 KiB**, and diff hygiene passes. This transport/API-description correction adds no schema migration or provider-specific persistence behavior. Native SQL Server and fresh interactive browser acceptance remain separate release gates.
+
+GitHub Actions run **38109234068** independently passed the public-API-discovery module on both controlled branches in **5m43s**, including restore, backend build/test, migration and recovery checks, dependency and secret audits, frontend type-check/lint/test/accessibility/build, and the bundle budget.
+
+### 11.275 Retired default-role registration and dynamic assignment cutover
+
+The authenticated `/api/Auth/register` compatibility route previously created an active, email-confirmed tenant user and silently assigned the seeded `Submitter` role through both ASP.NET Identity and `SecurityUserRoleAssignment`. That behavior contradicted central default-deny evaluation, database-authored roles and separately governed effective role assignments. The route is now a hidden HTTP 410 tombstone directing callers to canonical `POST /api/users` and dynamic security administration. Its backend request contract, unused SPA transport and client request type are removed, so no live registration call can assign a compiled role name.
+
+Canonical user creation remains tenant-bound and member-protected, writes an audit record, sets first-login password remediation and returns the user with no role. Role assignment remains a distinct audited operation using persisted role public identities, effective dates, municipality/department/unit scopes and RowVersion protection. Seeded baseline/demo role names remain only in controlled initial configuration and demo-data setup; runtime authorization continues to evaluate persisted active/effective grants and explicit DENY precedence.
+
+Regression coverage proves the tombstone returns HTTP 410 without invoking user, role or persistence dependencies; rejects the removed `RegisterRequest` CLR contract; requires the action to be hidden from API discovery; and verifies the generated OpenAPI document excludes the registration path. Focused retirement verification passes **5/5**. Complete regression passes **633 backend tests with 1 SQL Server-only skip and 0 failures** and **338/338 frontend tests across 75 files**; accessibility automation passes **2/2**, TypeScript and ESLint pass, the Release build completes with **0 warnings and 0 errors**, the production build transforms **2,110 modules into 78 JavaScript chunks**, and the bundle budget passes with a largest chunk of **401.5 KiB**. No schema migration or provider-specific behavior is introduced. Fresh interactive browser verification remains separate and is not claimed for this non-visual contract retirement.
 
 ### 12.1 Final verdict
 

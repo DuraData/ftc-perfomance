@@ -114,48 +114,10 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [Authorize(Policy = "Permission:Admin.Users.Manage")]
-    public async Task<ActionResult<ApiResponse<bool>>> Register([FromBody] RegisterRequest request)
-    {
-        if (!_tenantContext.MunicipalityId.HasValue || _tenantContext.MunicipalityId <= 0)
-            return BadRequest(new ApiResponse<bool>(false, false, "Select a municipality context before creating a user."));
-        var authenticationPolicy = await _authenticationPolicies.ResolveAsync(_tenantContext.MunicipalityId);
-        var user = new ApplicationUser
-        {
-            MunicipalityId = _tenantContext.MunicipalityId,
-            FirstName = request.FirstName,
-            LastName = request.LastName,
-            Email = request.Email,
-            UserName = request.Email,
-            PhoneNumber = request.PhoneNumber,
-            IsActive = true,
-            MustChangePassword = authenticationPolicy.RequireFirstLoginPasswordChange,
-            EmailConfirmed = true
-        };
-
-        var result = await _userManager.CreateAsync(user, request.Password);
-        if (!result.Succeeded)
-            return BadRequest(new ApiResponse<bool>(false, false, "Failed to register user", result.Errors.Select(e => e.Description).ToArray()));
-
-        await _userManager.AddToRoleAsync(user, SecurityModel.Submitter);
-        var defaultRole = await _context.Roles.FirstOrDefaultAsync(role => role.Name == SecurityModel.Submitter && role.IsActive
-            && (role.MunicipalityId == null || role.MunicipalityId == _tenantContext.MunicipalityId));
-        if (defaultRole != null)
-        {
-            _context.SecurityUserRoleAssignments.Add(new SecurityUserRoleAssignment
-            {
-                UserId = user.Id,
-                RoleId = defaultRole.Id,
-                MunicipalityId = _tenantContext.MunicipalityId,
-                EffectiveFrom = DateTime.UtcNow,
-                AssignedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "BOOTSTRAP",
-                AssignedAt = DateTime.UtcNow,
-                IsActive = true
-            });
-            await _context.SaveChangesAsync();
-        }
-
-        return Ok(new ApiResponse<bool>(true, true, "User registered successfully"));
-    }
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<bool>> Register() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false,
+            "This default-role registration route is retired. Use POST /api/users, then assign effective roles through dynamic security administration."));
 
     [HttpPost("/api/v1/auth/password/forgot")]
     [EnableRateLimiting("authentication")]

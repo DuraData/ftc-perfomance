@@ -7,7 +7,6 @@ import type {
   LoginRequest,
   LoginResponse,
   UserProfile,
-  RegisterRequest,
   AdminUserDetail,
   AdminRole,
   AdminPermission,
@@ -1226,13 +1225,6 @@ export async function login(credentials: LoginRequest): Promise<ApiResponse<Logi
 
 export async function updateMyProfile(payload: { firstName: string; lastName: string; phoneNumber?: string | null }): Promise<ApiResponse<UserProfile>> {
   return put<UserProfile>('/auth/me/profile', payload);
-}
-
-export async function register(data: RegisterRequest): Promise<ApiResponse<boolean>> {
-  return await fetchApi<boolean>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
 }
 
 export async function logout() {
