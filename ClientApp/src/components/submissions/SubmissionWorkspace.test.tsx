@@ -186,7 +186,10 @@ describe('SubmissionWorkspace member security', () => {
     await waitFor(() => expect(screen.getByText('1 immutable extension')).toBeInTheDocument());
     expect(screen.getByText(/Council-approved extension/)).toBeInTheDocument();
     expect(screen.getByText(/Visible Approver/)).toBeInTheDocument();
-    expect(screen.getAllByText(/31 Oct 2026/).length).toBeGreaterThan(0);
+    expect(screen.getByText((_, element) =>
+      element?.textContent?.startsWith('Original ') === true
+      && element.textContent.includes(' · Extended ')
+      && !element.textContent.includes('Restricted'))).toBeInTheDocument();
     expect(screen.getByLabelText('Search due-date extension history')).toBeInTheDocument();
     expect(api.getOpmsDueDateExtensionHistoryPage).toHaveBeenCalledWith('7', expect.objectContaining({
       page: 1, pageSize: 10, sortBy: 'approvedAt', sortDirection: 'desc',
