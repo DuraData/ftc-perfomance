@@ -88,10 +88,10 @@ public static class PerformanceApiSupport
 
     public static string? GetIpAddress(HttpContext context) => context.Connection.RemoteIpAddress?.ToString();
 
-    public static string BuildProtectedFileUrl(HttpContext context, PoeFile file)
+    public static string BuildProtectedFileUrl(HttpContext context, PoeFile file, Guid submissionPublicId)
     {
         var kind = file.SubmissionKind == SubmissionKind.Opms ? "opms-submissions" : "ipms-submissions";
-        return $"{context.Request.Scheme}://{context.Request.Host}/api/{kind}/{file.SubmissionId}/attachments/{file.Id}/content";
+        return $"{context.Request.Scheme}://{context.Request.Host}/api/v1/{kind}/{submissionPublicId}/attachments/{file.Id}/content";
     }
 
     public static OpmsTargetTemplateResponse ToResponse(this OpmsTargetTemplate template) =>
@@ -374,7 +374,7 @@ public static class PerformanceApiSupport
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>
         new(
-            submission.Id,
+            submission.PublicId,
             submission.OpmsTarget.PublicId,
             PerformanceRevisionResolver.EffectiveTargetName(submission.OpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             PerformanceRevisionResolver.EffectiveIndicatorNumber(submission.OpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
@@ -461,7 +461,7 @@ public static class PerformanceApiSupport
 
     public static IpmsSubmissionResponse ToResponse(this IpmsSubmission submission) =>
         new(
-            submission.Id,
+            submission.PublicId,
             submission.IpmsTarget.PublicId,
             PerformanceRevisionResolver.EffectiveTargetName(submission.IpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             PerformanceRevisionResolver.EffectiveIndicatorNumber(submission.IpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
@@ -567,20 +567,20 @@ public static class PerformanceApiSupport
             notification.IsRead,
             notification.CreatedAt);
 
-    public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context, PoeResponseMemberAccess? memberAccess = null)
+    public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context, Guid submissionPublicId, PoeResponseMemberAccess? memberAccess = null)
     {
         memberAccess ??= PoeResponseMemberAccess.None;
         return new(
             file.Id,
             file.SubmissionKind.ToString(),
-            file.SubmissionId,
+            submissionPublicId,
             file.FileName,
             file.Blob.ContentType,
             file.Blob.SizeInBytes,
             memberAccess.UploadedByUserId ? file.UploadedByUser?.PublicId : null,
             memberAccess.UploadedByName ? file.UploadedByUser?.FullName : null,
             file.UploadedAt,
-            file.IsActive && !file.Blob.IsContentDeleted && file.Blob.ScanStatus == "Clean" && !file.Blob.IsQuarantined ? BuildProtectedFileUrl(context, file) : string.Empty)
+            file.IsActive && !file.Blob.IsContentDeleted && file.Blob.ScanStatus == "Clean" && !file.Blob.IsQuarantined ? BuildProtectedFileUrl(context, file, submissionPublicId) : string.Empty)
         {
             PublicId = file.PublicId,
             EvidenceBlobPublicId = file.Blob.PublicId,

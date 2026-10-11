@@ -393,7 +393,7 @@ public sealed record KpiLifecycleMemberAccess(bool WithdrawalReason, bool Withdr
 }
 
 public record OpmsSubmissionResponse(
-    string Id,
+    Guid PublicId,
     Guid OpmsTargetPublicId,
     string TargetName,
     string TargetIndicatorNumber,
@@ -479,7 +479,7 @@ public record OpmsSubmissionResponse(
 }
 
 public record IpmsSubmissionResponse(
-    string Id,
+    Guid PublicId,
     Guid IpmsTargetPublicId,
     string TargetName,
     string TargetIndicatorNumber,

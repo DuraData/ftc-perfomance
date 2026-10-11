@@ -48,10 +48,8 @@ public sealed class WorkflowQueuesController(
             var verifierAllowed = memberAccess[memberCodes[1]].Allowed;
             var approverAllowed = memberAccess[memberCodes[2]].Allowed;
             responseRows.Add(new WorkflowQueueItemResponse(
-                item.Id,
                 item.PublicId,
                 item.Kind,
-                item.TargetId,
                 item.TargetPublicId,
                 item.TargetName,
                 item.IndicatorNumber,

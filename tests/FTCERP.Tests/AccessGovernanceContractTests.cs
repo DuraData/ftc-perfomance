@@ -5,6 +5,7 @@ using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using System.Reflection;
 
 namespace FTCERP.Tests;
 
@@ -164,6 +165,27 @@ public sealed class AccessGovernanceContractTests
         Assert.Equal(task.PublicId, projected.Tasks[resolved.TaskId!]);
     }
 
+    [Fact]
+    public void Submission_http_contracts_expose_public_identity_and_constrain_every_submission_key_route()
+    {
+        foreach (var responseType in new[] { typeof(OpmsSubmissionResponse), typeof(IpmsSubmissionResponse) })
+        {
+            Assert.Equal(typeof(Guid), responseType.GetProperty("PublicId")?.PropertyType);
+            Assert.Null(responseType.GetProperty("Id"));
+        }
+
+        Assert.Null(typeof(WorkflowQueueItemResponse).GetProperty("Id"));
+        Assert.Null(typeof(WorkflowQueueItemResponse).GetProperty("TargetId"));
+        Assert.Equal(typeof(Guid), typeof(WorkflowQueueItemResponse).GetProperty("PublicId")?.PropertyType);
+        Assert.Equal(typeof(Guid), typeof(PoeFileResponse).GetProperty("SubmissionPublicId")?.PropertyType);
+        Assert.Null(typeof(PoeFileResponse).GetProperty("SubmissionId"));
+
+        AssertGuidRoutes(typeof(OpmsSubmissionsController), "{id", "{id:guid}");
+        AssertGuidRoutes(typeof(IpmsSubmissionsController), "{id", "{id:guid}");
+        AssertGuidRoutes(typeof(WorkflowConfigurationController), "{submissionId", "{submissionId:guid}");
+        AssertGuidRoutes(typeof(InternalAuditAssessmentsController), "{submissionId", "{submissionId:guid}");
+    }
+
     private static void AssertGone(ActionResult? result)
     {
         var objectResult = Assert.IsType<ObjectResult>(result);
@@ -177,5 +199,17 @@ public sealed class AccessGovernanceContractTests
             Assert.DoesNotContain(retired, properties.Keys);
         foreach (var publicName in new[] { "TargetPublicId", "KpiPublicId", "ProjectPublicId", "TaskPublicId" })
             Assert.Equal(typeof(Guid?), properties[publicName]);
+    }
+
+    private static void AssertGuidRoutes(Type controllerType, string marker, string constrainedMarker)
+    {
+        var templates = controllerType.GetMethods()
+            .Where(method => method.GetCustomAttribute<ApiExplorerSettingsAttribute>()?.IgnoreApi != true)
+            .SelectMany(method => method.GetCustomAttributes<HttpMethodAttribute>())
+            .Select(attribute => attribute.Template)
+            .Where(template => template?.Contains(marker, StringComparison.Ordinal) == true)
+            .ToArray();
+        Assert.NotEmpty(templates);
+        Assert.All(templates, template => Assert.Contains(constrainedMarker, template, StringComparison.Ordinal));
     }
 }

@@ -167,11 +167,13 @@ public class IpmsSubmissionsController : ControllerBase
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
         };
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> GetSubmission(string id)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
 
         var item = await FindSubmissionAsync(id);
         if (item == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
@@ -181,6 +183,25 @@ public class IpmsSubmissionsController : ControllerBase
 
         return Ok(new ApiResponse<IpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(item, user)));
     }
+
+    [HttpGet("{legacyId}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<IpmsSubmissionResponse>> GetLegacySubmission(string legacyId) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsSubmissionResponse>(false, null,
+            "The private IPMS submission-key route is retired. Use the submission PublicId."));
+
+    [HttpPut("{legacyId}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<IpmsSubmissionResponse>> UpdateLegacySubmission(string legacyId) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsSubmissionResponse>(false, null,
+            "The private IPMS submission-key route is retired. Use the submission PublicId."));
+
+    [AcceptVerbs("GET", "POST", "PUT", "DELETE")]
+    [Route("{legacyId}/{**legacyPath}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> RejectLegacySubmissionRoute(string legacyId, string? legacyPath) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "Private IPMS submission-key routes are retired. Use the submission PublicId."));
 
     [HttpPost]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> CreateSubmission([FromBody] SaveIpmsSubmissionRequest request)
@@ -246,11 +267,13 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<IpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(created, user)));
     }
 
-    [HttpPut("{id}")]
+    [HttpPut("{id:guid}")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> UpdateSubmission(string id, [FromBody] SaveIpmsSubmissionRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
@@ -292,11 +315,13 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<IpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(after, user)));
     }
 
-    [HttpPost("{id}/consolidation-suggestion")]
+    [HttpPost("{id:guid}/consolidation-suggestion")]
     public async Task<ActionResult<ApiResponse<PerformanceSuggestionResult>>> GenerateConsolidationSuggestion(string id)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PerformanceSuggestionResult>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PerformanceSuggestionResult>(false, null, "IPMS submission not found"));
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<PerformanceSuggestionResult>(false, null, "IPMS submission not found"));
         if (!CanMutateInProgressSubmission(user.Id, entity.BaseState, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
@@ -311,11 +336,13 @@ public class IpmsSubmissionsController : ControllerBase
             : UnprocessableEntity(new ApiResponse<PerformanceSuggestionResult>(false, result, result.Explanation));
     }
 
-    [HttpPut("{id}/consolidated-actual")]
+    [HttpPut("{id:guid}/consolidated-actual")]
     public async Task<ActionResult<ApiResponse<PerformanceSuggestionResult>>> SaveConsolidatedActual(string id, [FromBody] SaveConsolidatedActualRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PerformanceSuggestionResult>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PerformanceSuggestionResult>(false, null, "IPMS submission not found"));
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<PerformanceSuggestionResult>(false, null, "IPMS submission not found"));
         if (!CanMutateInProgressSubmission(user.Id, entity.BaseState, entity.SubmittedByUserId, entity.IpmsTarget.AssignedUserId, out var mutationReason))
@@ -330,12 +357,12 @@ public class IpmsSubmissionsController : ControllerBase
             : Ok(new ApiResponse<PerformanceSuggestionResult>(true, result));
     }
 
-    [HttpGet("{id}/consolidation-history")]
+    [HttpGet("{id:guid}/consolidation-history")]
     public ActionResult<ApiResponse<PerformanceSuggestionEventResponse[]>> GetConsolidationHistory(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<PerformanceSuggestionEventResponse[]>(false, null,
             $"This unbounded consolidation history route is retired. Use /api/v1/ipms-submissions/{id}/consolidation-history/page."));
 
-    [HttpGet("{id}/consolidation-history/page")]
+    [HttpGet("{id:guid}/consolidation-history/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>>> GetConsolidationHistoryPage(
         string id,
         [FromQuery] PagedQueryRequest request,
@@ -343,6 +370,8 @@ public class IpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "IPMS submission not found"));
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<PagedResponse<PerformanceSuggestionEventResponse>>(false, null, "IPMS submission not found"));
         var denial = await ConsolidationPermissionDenialAsync(user, entity, update: false);
@@ -393,15 +422,17 @@ public class IpmsSubmissionsController : ControllerBase
             PagedResponse<PerformanceSuggestionEventResponse>.Create(events, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:guid}")]
     public ActionResult<ApiResponse<bool>> DeleteSubmission(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed submissions are never deleted. Use POST /api/v1/ipms-submissions/{id}/withdraw with a reason and RowVersion."));
 
-    [HttpPost("{id}/withdraw")]
+    [HttpPost("{id:guid}/withdraw")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> WithdrawSubmission(string id, [FromBody] WithdrawGovernedRecordRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
         var reason = request.Reason?.Trim();
         if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawal reason between 1 and 1000 characters is required."));
@@ -468,12 +499,12 @@ public class IpmsSubmissionsController : ControllerBase
         catch (FormatException) { return false; }
     }
 
-    [HttpGet("{id}/attachments")]
+    [HttpGet("{id:guid}/attachments")]
     public ActionResult<ApiResponse<PoeFileResponse[]>> GetAttachments(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<PoeFileResponse[]>(false, null,
             $"This unbounded evidence route is retired. Use /api/v1/ipms-submissions/{id}/attachments/page."));
 
-    [HttpGet("{id}/attachments/page")]
+    [HttpGet("{id:guid}/attachments/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<PoeFileResponse>>>> GetAttachmentsPage(
         string id,
         [FromQuery] PagedQueryRequest request,
@@ -483,6 +514,8 @@ public class IpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PagedResponse<PoeFileResponse>>(false, null, "IPMS submission not found"));
 
         var submission = await _context.IpmsSubmissions
             .AsNoTracking()
@@ -524,10 +557,10 @@ public class IpmsSubmissionsController : ControllerBase
         var memberAccess = await GetPoeMemberAccessAsync(user, scope);
 
         return Ok(new ApiResponse<PagedResponse<PoeFileResponse>>(true,
-            PagedResponse<PoeFileResponse>.Create(files.Select(item => item.ToResponse(HttpContext, memberAccess)), request.Page, request.PageSize, totalCount)));
+            PagedResponse<PoeFileResponse>.Create(files.Select(item => item.ToResponse(HttpContext, submission.PublicId, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpPost("{id}/attachments")]
+    [HttpPost("{id:guid}/attachments")]
     [RequestSizeLimit(MaximumEvidenceBytes)]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> UploadAttachment(string id, [FromForm] IFormFile file)
     {
@@ -539,6 +572,8 @@ public class IpmsSubmissionsController : ControllerBase
 
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
 
         var submission = await _context.IpmsSubmissions
             .Include(item => item.IpmsTarget)
@@ -585,16 +620,18 @@ public class IpmsSubmissionsController : ControllerBase
         }
 
         var created = await _context.PoeFiles.IncludePoeGovernance().FirstAsync(item => item.Id == entity.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", entity.Id, "Upload", null, created.ToResponse(HttpContext, PoeResponseMemberAccess.Full), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", entity.Id, "Upload", null, created.ToResponse(HttpContext, submission.PublicId, PoeResponseMemberAccess.Full), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await _workflowGovernanceService.CreateWorkflowNotificationsAsync(GetRelevantUserIds(submission), NotificationType.Submission, "IPMS evidence uploaded", $"A POE file was uploaded for IPMS submission '{id}'.", "IpmsSubmission", id);
-        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(created, user, BuildScope(submission))));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(created, user, BuildScope(submission), submission.PublicId)));
     }
 
-    [HttpGet("{id}/attachments/{attachmentId}/content")]
+    [HttpGet("{id:guid}/attachments/{attachmentId}/content")]
     public async Task<IActionResult> DownloadAttachment(string id, string attachmentId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound();
         var submission = await _context.IpmsSubmissions.AsNoTracking().Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound();
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.READ", BuildScope(submission));
@@ -606,11 +643,13 @@ public class IpmsSubmissionsController : ControllerBase
         return File(stored.Content, evidence.Blob.ContentType ?? "application/octet-stream", evidence.FileName, enableRangeProcessing: true);
     }
 
-    [HttpPost("{id}/attachments/{attachmentId}/rescan")]
+    [HttpPost("{id:guid}/attachments/{attachmentId}/rescan")]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> RescanAttachment(string id, string attachmentId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.UPLOAD", BuildScope(submission));
@@ -628,15 +667,17 @@ public class IpmsSubmissionsController : ControllerBase
         evidence.Blob.ScanStatus = scan.Status; evidence.Blob.IsQuarantined = !scan.IsClean; evidence.Blob.ScannerProvider = scan.Provider; evidence.Blob.ScannerReference = scan.ProviderReference; evidence.Blob.ScanDetail = scan.Detail; evidence.Blob.ScannedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "MalwareRescan", before, new { evidence.Blob.ScanStatus, evidence.Blob.IsQuarantined, evidence.Blob.ScannerReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), scan.IsClean ? "Evidence released after a clean scan." : "Evidence remains quarantined."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), scan.IsClean ? "Evidence released after a clean scan." : "Evidence remains quarantined."));
     }
 
-    [HttpPost("{id}/attachments/{attachmentId}/assessments")]
+    [HttpPost("{id:guid}/attachments/{attachmentId}/assessments")]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> AssessAttachment(string id, string attachmentId, AssessPoeRequest request)
     {
         var comment = request.Comment?.Trim();
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.ASSESS", BuildScope(submission));
@@ -650,14 +691,16 @@ public class IpmsSubmissionsController : ControllerBase
         evidence.Assessments.Add(assessment);
         await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "Assess:" + request.Outcome, null, new { assessment.PublicId, assessment.Outcome, assessment.Comment, assessment.AssessedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Evidence assessment recorded."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Evidence assessment recorded."));
     }
 
-    [HttpPost("{id}/attachments/{attachmentId}/replace")]
+    [HttpPost("{id:guid}/attachments/{attachmentId}/replace")]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> ReplaceAttachment(string id, string attachmentId, ReplacePoeRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be replaced on a withdrawn IPMS submission."));
@@ -678,16 +721,18 @@ public class IpmsSubmissionsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before replacement could be recorded")); }
         catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "One of these evidence records already participates in a replacement")); }
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", superseded.Id, "Replace", new { superseded.PublicId, superseded.FileName }, new { ledger.PublicId, ReplacementPublicId = replacement.PublicId, ledger.Reason, ledger.ReplacedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(superseded, user, BuildScope(submission)), "Evidence replacement recorded; the prior record remains retained in immutable history."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(superseded, user, BuildScope(submission), submission.PublicId), "Evidence replacement recorded; the prior record remains retained in immutable history."));
     }
 
-    [HttpPost("{id}/attachments/{attachmentId}/legal-holds")]
+    [HttpPost("{id:guid}/attachments/{attachmentId}/legal-holds")]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> PlaceLegalHold(string id, string attachmentId, PlacePoeLegalHoldRequest request)
     {
         var error = PoeLegalHoldPolicy.ValidateText(request.HoldReference, request.Reason);
         if (error != null) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, error));
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.PLACE_HOLD", BuildScope(submission));
@@ -700,16 +745,18 @@ public class IpmsSubmissionsController : ControllerBase
         var hold = new PoeLegalHoldEvent { HoldId = Guid.NewGuid(), MunicipalityId = submission.MunicipalityId!.Value, PoeFileId = evidence.Id, PoeFile = evidence, Action = PoeLegalHoldAction.Placed, HoldReference = request.HoldReference.Trim(), Reason = request.Reason.Trim(), ActorUserId = user.Id, ActorUser = user, OccurredAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
         evidence.LegalHoldEvents.Add(hold); _context.PoeLegalHoldEvents.Add(hold); await _context.SaveChangesAsync();
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "LegalHoldPlaced", null, new { hold.HoldId, hold.HoldReference, hold.Reason, hold.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Legal hold placed."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Legal hold placed."));
     }
 
-    [HttpPost("{id}/attachments/{attachmentId}/legal-holds/{holdId:guid}/release")]
+    [HttpPost("{id:guid}/attachments/{attachmentId}/legal-holds/{holdId:guid}/release")]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> ReleaseLegalHold(string id, string attachmentId, Guid holdId, ReleasePoeLegalHoldRequest request)
     {
         var error = PoeLegalHoldPolicy.ValidateReleaseReason(request.Reason);
         if (error != null) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, error));
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.RELEASE_HOLD", BuildScope(submission));
@@ -723,14 +770,16 @@ public class IpmsSubmissionsController : ControllerBase
         evidence.LegalHoldEvents.Add(release); _context.PoeLegalHoldEvents.Add(release);
         try { await _context.SaveChangesAsync(); } catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Legal hold was released concurrently")); }
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "LegalHoldReleased", new { holdId, placed.HoldReference }, new { release.Reason, release.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Legal hold released."));
+        return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Legal hold released."));
     }
 
-    [HttpPost("{id}/attachments/{attachmentId}/disposals")]
+    [HttpPost("{id:guid}/attachments/{attachmentId}/disposals")]
     public async Task<ActionResult<ApiResponse<PoeFileResponse>>> RequestDisposal(string id, string attachmentId, RequestPoeDisposalRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.DISPOSE", BuildScope(submission));
@@ -746,7 +795,7 @@ public class IpmsSubmissionsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before disposal could be requested")); }
         catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "A disposal request was recorded concurrently")); }
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "DisposalRequested", null, new { disposal.DisposalId, disposal.ApprovalReference, disposal.Reason, disposal.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        return Accepted(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission)), "Evidence disposal was queued for controlled storage processing."));
+        return Accepted(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Evidence disposal was queued for controlled storage processing."));
     }
 
     private bool TrySetPoeRowVersion(PoeFile file, string value)
@@ -761,11 +810,13 @@ public class IpmsSubmissionsController : ControllerBase
         catch (FormatException) { return false; }
     }
 
-    [HttpDelete("{id}/attachments/{attachmentId}")]
+    [HttpDelete("{id:guid}/attachments/{attachmentId}")]
     public async Task<ActionResult<ApiResponse<bool>>> DeleteAttachment(string id, string attachmentId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<bool>(false, false, "IPMS submission not found"));
 
         var submission = await _context.IpmsSubmissions
             .Include(item => item.IpmsTarget)
@@ -784,41 +835,43 @@ public class IpmsSubmissionsController : ControllerBase
         return Conflict(new ApiResponse<bool>(false, false, "Evidence is an auditable record and cannot be hard-deleted; use the governed replacement workflow"));
     }
 
-    [HttpPost("{id}/submit")]
+    [HttpPost("{id:guid}/submit")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Submit(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.SUBMIT", "submitted", "Submit", NotificationType.Submission, request);
 
-    [HttpPost("{id}/verify")]
+    [HttpPost("{id:guid}/verify")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Verify(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.VERIFY", "verified", "Verify", NotificationType.Approval, request);
 
-    [HttpPost("{id}/verify-reject")]
+    [HttpPost("{id:guid}/verify-reject")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> VerifyReject(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.VERIFY_REJECT", "verify_rejected", "VerifyReject", NotificationType.VerifyRejection, request);
 
-    [HttpPost("{id}/approve")]
+    [HttpPost("{id:guid}/approve")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Approve(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.APPROVE", "approved", "Approve", NotificationType.Approval, request);
 
-    [HttpPost("{id}/reject")]
+    [HttpPost("{id:guid}/reject")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Reject(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.REJECT", "rejected", "Reject", NotificationType.Rejection, request);
 
-    [HttpPost("{id}/review")]
+    [HttpPost("{id:guid}/review")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Review(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_WORKFLOW.PMS_REVIEW", "reviewed", "Review", NotificationType.Rfi, request);
 
-    [HttpPost("{id}/audit")]
+    [HttpPost("{id:guid}/audit")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Audit(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_WORKFLOW.INTERNAL_AUDIT", "audited", "Audit", NotificationType.InternalAuditRfi, request);
 
-    [HttpPost("{id}/score")]
+    [HttpPost("{id:guid}/score")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Score(string id, [FromBody] SubmissionWorkflowActionRequest request)
     {
         if (request.Score == null) return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Score is required"));
 
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
@@ -848,11 +901,13 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<IpmsSubmissionResponse>(true, response.ToResponse()));
     }
 
-    [HttpPost("{id}/extend-due-date")]
+    [HttpPost("{id:guid}/extend-due-date")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> ExtendDueDate(string id, [FromBody] DueDateExtensionRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
@@ -896,6 +951,8 @@ public class IpmsSubmissionsController : ControllerBase
         var resultingStatus = status;
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
+        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
+        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
 
         var entity = await _context.IpmsSubmissions
             .Include(item => item.IpmsTarget)
@@ -1055,6 +1112,15 @@ public class IpmsSubmissionsController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
+    private async Task<string?> ResolveSubmissionIdAsync(string publicId)
+    {
+        if (!Guid.TryParse(publicId, out var parsed)) return null;
+        return await _context.IpmsSubmissions.AsNoTracking()
+            .Where(item => item.PublicId == parsed)
+            .Select(item => item.Id)
+            .SingleOrDefaultAsync();
+    }
+
     private async Task<IpmsSubmission?> FindSubmissionAsync(string id)
     {
         var submission = await _context.IpmsSubmissions
@@ -1171,8 +1237,8 @@ public class IpmsSubmissionsController : ControllerBase
         "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason"
     ];
 
-    private async Task<PoeFileResponse> ToAuthorizedPoeResponseAsync(PoeFile file, ApplicationUser user, AccessScopeContext scope)
-        => file.ToResponse(HttpContext, await GetPoeMemberAccessAsync(user, scope));
+    private async Task<PoeFileResponse> ToAuthorizedPoeResponseAsync(PoeFile file, ApplicationUser user, AccessScopeContext scope, Guid submissionPublicId)
+        => file.ToResponse(HttpContext, submissionPublicId, await GetPoeMemberAccessAsync(user, scope));
 
     private async Task<PoeResponseMemberAccess> GetPoeMemberAccessAsync(ApplicationUser user, AccessScopeContext scope)
     {

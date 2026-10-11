@@ -107,7 +107,7 @@ public sealed class PerformanceSuggestionServiceTests
         var suggestions = new Mock<IPerformanceSuggestionService>();
         var controller = CreateController(context, seed.User, access.Object, suggestions.Object);
 
-        var action = await controller.GenerateConsolidationSuggestion(seed.OpmsDestination.Id);
+        var action = await controller.GenerateConsolidationSuggestion(seed.OpmsDestination.PublicId.ToString());
 
         var denied = action.Result.Should().BeOfType<ObjectResult>().Subject;
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
@@ -136,7 +136,7 @@ public sealed class PerformanceSuggestionServiceTests
             .ReturnsAsync(() => new EffectiveAccessResult([], permissions.ToArray(), [], [], [], []));
         var controller = CreateController(context, seed.User, access.Object, service);
 
-        var hidden = Payload(await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest
+        var hidden = Payload(await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(), new PagedQueryRequest
         {
             Page = 1, PageSize = 10, SortBy = "occurredAt", SortDirection = "desc"
         }));
@@ -146,14 +146,14 @@ public sealed class PerformanceSuggestionServiceTests
 
         foreach (var search in new[] { "Reviewed source evidence", "edited-correlation", seed.User.PublicId.ToString(), seed.User.FirstName })
         {
-            var hiddenSearch = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+            var hiddenSearch = Payload(await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(),
                 new PagedQueryRequest { Search = search, PageSize = 10 }));
             hiddenSearch.TotalCount.Should().Be(0);
         }
-        (await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest { SortBy = "actor" })).Result
+        (await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(), new PagedQueryRequest { SortBy = "actor" })).Result
             .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
 
-        var hiddenSubmission = Payload(await controller.GetSubmission(destination.Id));
+        var hiddenSubmission = Payload(await controller.GetSubmission(destination.PublicId.ToString()));
         hiddenSubmission.SuggestionEditReason.Should().BeNull();
         hiddenSubmission.SuggestionEditedByUserPublicId.Should().BeNull();
         hiddenSubmission.SuggestionEditedByName.Should().BeNull();
@@ -162,7 +162,7 @@ public sealed class PerformanceSuggestionServiceTests
         permissions.Add("OPMS_SUBMISSION.SuggestionReason.READ");
         permissions.Add("OPMS_SUBMISSION.SuggestionCorrelationId.READ");
 
-        var result = await controller.GetConsolidationHistoryPage(destination.Id, new PagedQueryRequest
+        var result = await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(), new PagedQueryRequest
         {
             Page = 1, PageSize = 1, Search = "evidence", SortBy = "occurredAt", SortDirection = "desc"
         }, eventType: "Edited");
@@ -181,16 +181,16 @@ public sealed class PerformanceSuggestionServiceTests
 
         foreach (var search in new[] { "edited-correlation", seed.User.PublicId.ToString(), seed.User.FirstName })
         {
-            var visibleSearch = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+            var visibleSearch = Payload(await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(),
                 new PagedQueryRequest { Search = search, PageSize = 10 }));
             visibleSearch.TotalCount.Should().BeGreaterThan(0);
         }
-        var visibleSubmission = Payload(await controller.GetSubmission(destination.Id));
+        var visibleSubmission = Payload(await controller.GetSubmission(destination.PublicId.ToString()));
         visibleSubmission.SuggestionEditReason.Should().Be("Reviewed source evidence");
         visibleSubmission.SuggestionEditedByUserPublicId.Should().Be(seed.User.PublicId);
         visibleSubmission.SuggestionEditedByName.Should().Be(seed.User.FullName);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetConsolidationHistory(destination.Id).Result).StatusCode);
-        Assert.IsType<BadRequestObjectResult>((await controller.GetConsolidationHistoryPage(destination.Id,
+        Assert.IsType<BadRequestObjectResult>((await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(),
             new PagedQueryRequest { SortBy = "unsafe" })).Result);
     }
 
@@ -215,18 +215,18 @@ public sealed class PerformanceSuggestionServiceTests
                 Decision(permissions.Contains(permission), permissions.Contains(permission) ? "Allowed" : "Denied"));
         var controller = CreateIpmsController(context, seed.User, access.Object, service);
 
-        var hidden = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+        var hidden = Payload(await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(),
             new PagedQueryRequest { PageSize = 10 }));
         hidden.Items.Should().OnlyContain(item => item.ActorUserPublicId == null && item.ActorName == null
             && item.Reason == null && item.CorrelationId == null);
-        Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+        Payload(await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(),
             new PagedQueryRequest { Search = "IPMS governance reason", PageSize = 10 })).TotalCount.Should().Be(0);
 
         permissions.Add("IPMS_SUBMISSION.SuggestionActor.READ");
         permissions.Add("IPMS_SUBMISSION.SuggestionReason.READ");
         permissions.Add("IPMS_SUBMISSION.SuggestionCorrelationId.READ");
 
-        var visible = Payload(await controller.GetConsolidationHistoryPage(destination.Id,
+        var visible = Payload(await controller.GetConsolidationHistoryPage(destination.PublicId.ToString(),
             new PagedQueryRequest { Search = "IPMS governance reason", PageSize = 10 }));
         var edited = visible.Items.Should().ContainSingle().Subject;
         edited.ActorUserPublicId.Should().Be(seed.User.PublicId);
@@ -247,7 +247,7 @@ public sealed class PerformanceSuggestionServiceTests
         var access = ProjectionAccess(seed.User, permissions);
         var controller = CreateController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>());
 
-        var hidden = Payload(await controller.GetSubmission(seed.OpmsDestination.Id));
+        var hidden = Payload(await controller.GetSubmission(seed.OpmsDestination.PublicId.ToString()));
         hidden.SubmittedByUserPublicId.Should().BeNull();
         hidden.VerifierComments.Should().BeNull();
         hidden.ApproverComments.Should().BeNull();
@@ -260,7 +260,7 @@ public sealed class PerformanceSuggestionServiceTests
         foreach (var member in ProjectionMembers)
             permissions.Add($"OPMS_SUBMISSION.{member}.READ");
 
-        var visible = Payload(await controller.GetSubmission(seed.OpmsDestination.Id));
+        var visible = Payload(await controller.GetSubmission(seed.OpmsDestination.PublicId.ToString()));
         visible.SubmittedByUserPublicId.Should().Be(seed.User.PublicId);
         visible.VerifierUserPublicId.Should().Be(seed.User.PublicId);
         visible.ApproverUserPublicId.Should().Be(seed.User.PublicId);
@@ -288,7 +288,7 @@ public sealed class PerformanceSuggestionServiceTests
         var access = ProjectionAccess(seed.User, permissions);
         var controller = CreateIpmsController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>());
 
-        var hidden = Payload(await controller.GetSubmission(seed.IpmsDestination!.Id));
+        var hidden = Payload(await controller.GetSubmission(seed.IpmsDestination!.PublicId.ToString()));
         hidden.VerifierUserPublicId.Should().BeNull();
         hidden.VerifierComments.Should().BeNull();
         hidden.WithdrawalReason.Should().BeNull();
@@ -296,7 +296,7 @@ public sealed class PerformanceSuggestionServiceTests
         foreach (var member in ProjectionMembers)
             permissions.Add($"IPMS_SUBMISSION.{member}.READ");
 
-        var visible = Payload(await controller.GetSubmission(seed.IpmsDestination.Id));
+        var visible = Payload(await controller.GetSubmission(seed.IpmsDestination.PublicId.ToString()));
         visible.VerifierUserPublicId.Should().Be(seed.User.PublicId);
         visible.VerifierComments.Should().Be("Verification secret");
         visible.PmsRecommendation.Should().Be("PMS recommendation secret");

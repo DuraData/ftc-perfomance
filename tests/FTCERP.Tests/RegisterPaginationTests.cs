@@ -147,14 +147,14 @@ public sealed class RegisterPaginationTests
             ControllerContext = ControllerContext(user.Id)
         };
 
-        var read = await controller.GetSubmission(submission.Id);
+        var read = await controller.GetSubmission(submission.PublicId.ToString());
 
         var response = Assert.IsType<ApiResponse<OpmsSubmissionResponse>>(Assert.IsType<OkObjectResult>(read.Result).Value).Data!;
         response.Variance.Should().Be(5);
         response.VarianceReason.Should().BeNull();
         response.CorrectiveMeasure.Should().BeNull();
 
-        var update = await controller.UpdateSubmission(submission.Id, new SaveOpmsSubmissionRequest(
+        var update = await controller.UpdateSubmission(submission.PublicId.ToString(), new SaveOpmsSubmissionRequest(
             target.PublicId, Guid.NewGuid(), "50", null, "Original reason", "Changed without permission", null, null));
         var denied = update.Result.Should().BeOfType<ObjectResult>().Subject;
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
@@ -267,7 +267,7 @@ public sealed class RegisterPaginationTests
             ControllerContext = ControllerContext(user.Id)
         };
 
-        var result = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest
+        var result = await controller.GetAttachmentsPage(submission.PublicId.ToString(), new PagedQueryRequest
         {
             Page = 1, PageSize = 1, Search = "water", SortBy = "uploadedAt", SortDirection = "desc"
         }, scanStatus: "Clean", quarantined: false, active: true);
@@ -285,7 +285,7 @@ public sealed class RegisterPaginationTests
 
         foreach (var member in new[] { "UploadedByUserId", "UploadedByName", "ScannerProvider", "ScannerReference", "ScanDetail" })
             allowedCodes.Add($"OPMS_POE.{member}.READ");
-        var refreshedResult = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest
+        var refreshedResult = await controller.GetAttachmentsPage(submission.PublicId.ToString(), new PagedQueryRequest
         {
             Page = 1, PageSize = 1, Search = "water", SortBy = "uploadedAt", SortDirection = "desc"
         }, scanStatus: "Clean", quarantined: false, active: true);
@@ -308,7 +308,7 @@ public sealed class RegisterPaginationTests
         var retired = Assert.IsType<ObjectResult>(controller.GetAttachments(submission.Id).Result);
         Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);
 
-        var invalidSort = await controller.GetAttachmentsPage(submission.Id, new PagedQueryRequest { SortBy = "unsafe" });
+        var invalidSort = await controller.GetAttachmentsPage(submission.PublicId.ToString(), new PagedQueryRequest { SortBy = "unsafe" });
         Assert.IsType<BadRequestObjectResult>(invalidSort.Result);
     }
 
@@ -365,8 +365,9 @@ public sealed class RegisterPaginationTests
         var http = new DefaultHttpContext();
         http.Request.Scheme = "https";
         http.Request.Host = new HostString("opms.local");
+        var submissionPublicId = Guid.NewGuid();
 
-        var denied = evidence.ToResponse(http, PoeResponseMemberAccess.None);
+        var denied = evidence.ToResponse(http, submissionPublicId, PoeResponseMemberAccess.None);
         var deniedAssessment = Assert.Single(denied.Assessments);
         Assert.Null(deniedAssessment.Comment);
         Assert.Null(deniedAssessment.AssessedByUserPublicId);
@@ -381,7 +382,7 @@ public sealed class RegisterPaginationTests
         Assert.Null(deniedDisposal.RequestedByName);
         Assert.Null(deniedDisposal.Detail);
 
-        var allowed = evidence.ToResponse(http, PoeResponseMemberAccess.Full);
+        var allowed = evidence.ToResponse(http, submissionPublicId, PoeResponseMemberAccess.Full);
         var allowedAssessment = Assert.Single(allowed.Assessments);
         Assert.Equal("protected assessment", allowedAssessment.Comment);
         Assert.Equal(actor.PublicId, allowedAssessment.AssessedByUserPublicId);

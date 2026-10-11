@@ -42,13 +42,13 @@ public sealed class InternalAuditAssessmentTests
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.SatisfactoryNotSatisfactory);
         var controller = Controller(context, seed, allowed: true);
 
-        var adverseResult = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var adverseResult = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.NotSatisfactory, "Invoices do not reconcile; upload the signed reconciliation.", null, null, null, null, DateTime.UtcNow.AddDays(3), null));
         var adverse = Data<InternalAuditAssessmentDto>(adverseResult.Result!);
         adverse.RfiPublicId.Should().NotBeNull();
         (await context.PerformanceRfis.SingleAsync()).ResponseDueAt.Should().BeAfter(DateTime.UtcNow);
 
-        var reassessmentResult = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var reassessmentResult = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Satisfactory, "The signed reconciliation now supports the reported actual.", null, null, null, null, null, adverse.PublicId));
         var reassessment = Data<InternalAuditAssessmentDto>(reassessmentResult.Result!);
 
@@ -66,10 +66,10 @@ public sealed class InternalAuditAssessmentTests
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.SatisfactoryNotSatisfactory);
         var controller = Controller(context, seed, allowed: true);
 
-        var detailedFields = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var detailedFields = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Satisfactory, "Supported.", "Extra comment", null, null, null, null, null));
         detailedFields.Result.Should().BeOfType<BadRequestObjectResult>();
-        var missingDueDate = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var missingDueDate = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.NotSatisfactory, "Support is missing.", null, null, null, null, null, null));
         missingDueDate.Result.Should().BeOfType<BadRequestObjectResult>();
         context.InternalAuditAssessments.Should().BeEmpty();
@@ -82,7 +82,7 @@ public sealed class InternalAuditAssessmentTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.Detailed);
 
-        var result = await Controller(context, seed, allowed: false).Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var result = await Controller(context, seed, allowed: false).Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Achieved, "Evidence supports the reported performance.", null, null, null, 4, null, null));
 
         result.Result.Should().BeOfType<ForbidResult>();
@@ -107,10 +107,10 @@ public sealed class InternalAuditAssessmentTests
         await context.SaveChangesAsync();
         var controller = Controller(context, seed, allowed: true);
 
-        var invalid = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var invalid = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Achieved, "The evidence supports achievement.", null, null, null, 3, null, null));
         invalid.Result.Should().BeOfType<BadRequestObjectResult>();
-        var valid = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var valid = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Achieved, "The evidence supports achievement.", null, null, null, 4, null, null));
 
         valid.Result.Should().BeOfType<OkObjectResult>();
@@ -124,7 +124,7 @@ public sealed class InternalAuditAssessmentTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.Detailed);
-        await Controller(context, seed, allowed: true).Assess(SubmissionKind.Opms, seed.Submission.Id,
+        await Controller(context, seed, allowed: true).Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Achieved, "Evidence supports the reported performance.", null, null, null, 4, null, null));
         var assessment = await context.InternalAuditAssessments.SingleAsync();
         assessment.DetailedObservation = "Changed";
@@ -211,16 +211,16 @@ public sealed class InternalAuditAssessmentTests
         await context.SaveChangesAsync();
         var controller = Controller(context, seed, allowed: true);
 
-        var result = await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.Id,
+        var result = await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "assessedAt", SortDirection = "asc" });
         var page = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<PagedResponse<InternalAuditAssessmentDto>>>().Subject.Data!;
         page.TotalCount.Should().Be(11);
         page.Items.Select(item => item.DetailedObservation).Should().Equal("match assessment 03", "match assessment 04", "match assessment 05");
-        (await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { SortBy = "unsafe" }))
+        (await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.PublicId.ToString(), new PagedQueryRequest { SortBy = "unsafe" }))
             .Result.Should().BeOfType<BadRequestObjectResult>();
 
-        var bootstrap = Data<InternalAuditSubmissionDto>((await controller.Submission(SubmissionKind.Opms, seed.Submission.Id)).Result!);
+        var bootstrap = Data<InternalAuditSubmissionDto>((await controller.Submission(SubmissionKind.Opms, seed.Submission.PublicId.ToString())).Result!);
         bootstrap.LatestAssessment.Should().NotBeNull();
         bootstrap.LatestAssessment!.DetailedObservation.Should().Be("outside history search");
     }
@@ -250,7 +250,7 @@ public sealed class InternalAuditAssessmentTests
         var controller = Controller(context, seed, permissions.Contains);
 
         var masked = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
-            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest())).Result!);
+            SubmissionKind.Opms, seed.Submission.PublicId.ToString(), new PagedQueryRequest())).Result!);
         masked.Items.Should().ContainSingle();
         masked.Items[0].DetailedObservation.Should().BeNull();
         masked.Items[0].Comment.Should().BeNull();
@@ -263,9 +263,9 @@ public sealed class InternalAuditAssessmentTests
         masked.Items[0].RfiResponseDueAt.Should().BeNull();
 
         var hiddenSearch = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
-            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = "secret" })).Result!);
+            SubmissionKind.Opms, seed.Submission.PublicId.ToString(), new PagedQueryRequest { Search = "secret" })).Result!);
         hiddenSearch.TotalCount.Should().Be(0);
-        (await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.Id,
+        (await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new PagedQueryRequest { SortBy = "assessedBy" })).Result.Should().BeOfType<ForbidResult>();
 
         permissions.UnionWith(new[]
@@ -276,7 +276,7 @@ public sealed class InternalAuditAssessmentTests
             "OPMS_SUBMISSION.InternalAuditRfi.READ"
         });
         var visible = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
-            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = "secret" })).Result!);
+            SubmissionKind.Opms, seed.Submission.PublicId.ToString(), new PagedQueryRequest { Search = "secret" })).Result!);
         visible.TotalCount.Should().Be(1);
         visible.Items[0].DetailedObservation.Should().Be("secret observation");
         visible.Items[0].Findings.Should().Be("secret finding");
@@ -285,19 +285,19 @@ public sealed class InternalAuditAssessmentTests
         visible.Items[0].RfiResponseDueAt.Should().Be(rfi.ResponseDueAt);
 
         var rawKeySearch = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
-            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = seed.User.Id })).Result!);
+            SubmissionKind.Opms, seed.Submission.PublicId.ToString(), new PagedQueryRequest { Search = seed.User.Id })).Result!);
         rawKeySearch.TotalCount.Should().Be(0);
         var publicIdSearch = Data<PagedResponse<InternalAuditAssessmentDto>>((await controller.AssessmentsPage(
-            SubmissionKind.Opms, seed.Submission.Id, new PagedQueryRequest { Search = seed.User.PublicId.ToString() })).Result!);
+            SubmissionKind.Opms, seed.Submission.PublicId.ToString(), new PagedQueryRequest { Search = seed.User.PublicId.ToString() })).Result!);
         publicIdSearch.TotalCount.Should().Be(1);
         typeof(InternalAuditAssessmentDto).GetProperty("AssessedByUserId").Should().BeNull();
 
         permissions.Add("OPMS_WORKFLOW.INTERNAL_AUDIT");
-        var deniedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var deniedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Achieved, "new protected observation", null, null, null, null, null, null));
         deniedWrite.Result.Should().BeOfType<ForbidResult>();
         permissions.Add("OPMS_SUBMISSION.InternalAuditObservation.UPDATE");
-        var allowedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.Id,
+        var allowedWrite = await controller.Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
             new(InternalAuditAssessmentOutcome.Achieved, "new protected observation", null, null, null, null, null,
                 (await context.InternalAuditAssessments.OrderByDescending(item => item.AssessedAt).FirstAsync()).PublicId));
         allowedWrite.Result.Should().BeOfType<OkObjectResult>();

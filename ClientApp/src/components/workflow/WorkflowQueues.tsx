@@ -94,7 +94,7 @@ function QueuePagination({ page, totalPages, onChange }: { page: number; totalPa
 }
 
 async function loadSubmissionDetail(item: WorkflowQueueItemDto): Promise<SubmissionDetail | null> {
-  const result = item.kind === 'opms' ? await getOpmsSubmission(item.id) : await getIpmsSubmission(item.id);
+  const result = item.kind === 'opms' ? await getOpmsSubmission(item.publicId) : await getIpmsSubmission(item.publicId);
   return result.success ? result.data ?? null : null;
 }
 
@@ -161,7 +161,7 @@ export function WorkflowQueues() {
     {!isLoading && !loadError && <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">{queues.map(queue => <QueueCard key={queue.id} {...queue} onClick={() => { setPage(1); setSelectedQueue(queue.id === selectedQueue ? null : queue.id); }} />)}</div>}
     {selectedQueue && currentQueue && !loadError && <Card>
       <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{currentQueue.title}</h3><Button variant="ghost" size="sm" onClick={() => { setPage(1); setSelectedQueue(null); }}>Close</Button></div>
-      <DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.id}`} />
+      <DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} />
       <QueuePagination page={page} totalPages={totalPages} onChange={setPage} />
     </Card>}
     <SubmissionDetailModal submission={selectedSubmission} kind={selectedItem?.kind ?? null} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={selectedQueue === 'auditor' && selectedItem?.kind === 'opms'} />
@@ -227,7 +227,7 @@ export function MyWorkQueue() {
   ];
   return <AppShell title="My Work Queue" subtitle="Your submissions and workflow statuses"><div className="space-y-4">
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{summary.map(item => <Card key={item.label} className="p-3"><p className="text-lg font-bold text-secondary-900 dark:text-white">{item.value}</p><p className="text-xs text-secondary-500">{item.label}</p></Card>)}</div>
-    {loadError ? <EmptyState icon={<FileText className="h-6 w-6" />} title="Work queue unavailable" description={loadError} /> : <Card><DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.id}`} /><QueuePagination page={page} totalPages={totalPages} onChange={setPage} /></Card>}
+    {loadError ? <EmptyState icon={<FileText className="h-6 w-6" />} title="Work queue unavailable" description={loadError} /> : <Card><DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} /><QueuePagination page={page} totalPages={totalPages} onChange={setPage} /></Card>}
     <SubmissionDetailModal submission={selectedSubmission} kind={selectedKind} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedKind(null); }} />
   </div></AppShell>;
 }

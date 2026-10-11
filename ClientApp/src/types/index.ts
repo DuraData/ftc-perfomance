@@ -1294,10 +1294,8 @@ export interface WorkflowQueueCountsDto {
 }
 
 export interface WorkflowQueueItemDto {
-  id: string;
   publicId: string;
   kind: 'opms' | 'ipms';
-  targetId: string;
   targetPublicId: string;
   targetName: string;
   indicatorNumber: string;
@@ -2616,7 +2614,7 @@ export interface IpmsTargetDto {
 }
 
 export interface OpmsSubmissionDto {
-  id: string;
+  publicId: string;
   rowVersion: string;
   baseState: string;
   opmsTargetPublicId: string;
@@ -2701,7 +2699,7 @@ export interface OpmsSubmissionDto {
 }
 
 export interface IpmsSubmissionDto {
-  id: string;
+  publicId: string;
   rowVersion: string;
   baseState: string;
   ipmsTargetPublicId: string;
@@ -2849,7 +2847,7 @@ export interface PoeFileDto {
   publicId?: string;
   evidenceBlobPublicId?: string;
   submissionKind: string;
-  submissionId: string;
+  submissionPublicId: string;
   fileName: string;
   contentType?: string | null;
   sizeInBytes: number;

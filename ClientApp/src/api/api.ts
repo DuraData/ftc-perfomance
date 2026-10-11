@@ -832,7 +832,7 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
   });
   return {
     ...toSubmissionBaseState(dto),
-    id: dto.id,
+    id: dto.publicId,
     rowVersion: dto.rowVersion,
     target,
     quarter: coerceQuarter(dto.quarter),
@@ -917,7 +917,7 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
   });
   return {
     ...toSubmissionBaseState(dto),
-    id: dto.id,
+    id: dto.publicId,
     rowVersion: dto.rowVersion,
     target,
     quarter: coerceQuarter(dto.quarter),

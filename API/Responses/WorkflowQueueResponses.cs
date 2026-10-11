@@ -20,10 +20,8 @@ public sealed record WorkflowQueueCountsResponse(
 }
 
 public sealed record WorkflowQueueItemResponse(
-    string Id,
     Guid PublicId,
     string Kind,
-    string TargetId,
     Guid TargetPublicId,
     string TargetName,
     string IndicatorNumber,

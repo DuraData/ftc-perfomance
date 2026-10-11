@@ -126,10 +126,12 @@ public sealed class InternalAuditAssessmentsController(
         return Ok(new ApiResponse<InternalAuditConfigurationDto>(true, ToDto(entity)));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}")]
     public async Task<ActionResult<ApiResponse<InternalAuditSubmissionDto>>> Submission(SubmissionKind kind, string submissionId)
     {
         if (!HasTenant()) return TenantRequired<InternalAuditSubmissionDto>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<InternalAuditSubmissionDto>("Submission not found."));
         var loaded = await LoadSubmission(kind, submissionId);
         if (loaded == null) return NotFound(Fail<InternalAuditSubmissionDto>("Submission not found."));
         var user = await CurrentUser();
@@ -144,11 +146,13 @@ public sealed class InternalAuditAssessmentsController(
         return Ok(new ApiResponse<InternalAuditSubmissionDto>(true, new(ToDto(configuration), latestAssessment)));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}/assessments/page")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/assessments/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<InternalAuditAssessmentDto>>>> AssessmentsPage(
         SubmissionKind kind, string submissionId, [FromQuery] PagedQueryRequest request)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<InternalAuditAssessmentDto>>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<PagedResponse<InternalAuditAssessmentDto>>("Submission not found."));
         var loaded = await LoadSubmission(kind, submissionId);
         if (loaded == null) return NotFound(Fail<PagedResponse<InternalAuditAssessmentDto>>("Submission not found."));
         var user = await CurrentUser();
@@ -191,10 +195,12 @@ public sealed class InternalAuditAssessmentsController(
             PagedResponse<InternalAuditAssessmentDto>.Create(rows.Select(item => ToDto(item, memberAccess)), request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpPost("submissions/{kind}/{submissionId}/assessments")]
+    [HttpPost("submissions/{kind}/{submissionId:guid}/assessments")]
     public async Task<ActionResult<ApiResponse<InternalAuditAssessmentDto>>> Assess(SubmissionKind kind, string submissionId, SaveInternalAuditAssessmentRequest request)
     {
         if (!HasTenant()) return TenantRequired<InternalAuditAssessmentDto>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<InternalAuditAssessmentDto>("Submission not found."));
         var loaded = await LoadSubmission(kind, submissionId);
         if (loaded == null) return NotFound(Fail<InternalAuditAssessmentDto>("Submission not found."));
         if (loaded.Instance == null) return Conflict(Fail<InternalAuditAssessmentDto>("The submission has no configured workflow instance."));
@@ -329,6 +335,17 @@ public sealed class InternalAuditAssessmentsController(
             .Where(item => item.SubmissionWorkflowInstanceId == instanceId)
             .OrderByDescending(item => item.AssessedAt).ThenByDescending(item => item.Id).FirstOrDefaultAsync();
         return row == null ? null : ToDto(row, memberAccess);
+    }
+
+    private async Task<string?> ResolveSubmissionIdAsync(SubmissionKind kind, string publicId)
+    {
+        if (!Guid.TryParse(publicId, out var parsed)) return null;
+        return kind switch
+        {
+            SubmissionKind.Opms => await context.OpmsSubmissions.AsNoTracking().Where(item => item.PublicId == parsed).Select(item => item.Id).SingleOrDefaultAsync(),
+            SubmissionKind.Ipms => await context.IpmsSubmissions.AsNoTracking().Where(item => item.PublicId == parsed).Select(item => item.Id).SingleOrDefaultAsync(),
+            _ => null
+        };
     }
 
     private async Task<SubmissionAccess?> LoadSubmission(SubmissionKind kind, string submissionId)

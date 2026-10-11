@@ -25,6 +25,9 @@ public sealed class WorkflowQueueTests
             IpmsSubmission("own-approved", "ipms-approved", "approved", user.Id, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc)),
             IpmsSubmission("outside-approved", "ipms-outside", "approved", other.Id, new DateTime(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc)));
         await context.SaveChangesAsync();
+        var verificationPublicId = await context.OpmsSubmissions.Where(item => item.Id == "verify").Select(item => item.PublicId).SingleAsync();
+        var approvedPublicId = await context.IpmsSubmissions.Where(item => item.Id == "own-approved").Select(item => item.PublicId).SingleAsync();
+        var outsideApprovedPublicId = await context.IpmsSubmissions.Where(item => item.Id == "outside-approved").Select(item => item.PublicId).SingleAsync();
 
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ"))
@@ -50,7 +53,7 @@ public sealed class WorkflowQueueTests
         Assert.Equal(1, verification.Page.TotalCount);
         Assert.Equal(1, verification.Page.TotalPages);
         var verificationItem = Assert.Single(verification.Page.Items);
-        Assert.Equal("verify", verificationItem.Id);
+        Assert.Equal(verificationPublicId, verificationItem.PublicId);
         Assert.Equal("opms", verificationItem.Kind);
         Assert.Null(verificationItem.SubmittedByUserPublicId);
         Assert.Null(verificationItem.SubmittedByName);
@@ -72,10 +75,10 @@ public sealed class WorkflowQueueTests
         var approved = Assert.IsType<ApiResponse<WorkflowQueueResponse>>(
             Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
         var approvedItem = Assert.Single(approved.Page.Items);
-        Assert.Equal("own-approved", approvedItem.Id);
+        Assert.Equal(approvedPublicId, approvedItem.PublicId);
         Assert.Equal("ipms", approvedItem.Kind);
         Assert.Equal(user.PublicId, approvedItem.SubmittedByUserPublicId);
-        Assert.DoesNotContain(approved.Page.Items, item => item.Id.StartsWith("outside", StringComparison.Ordinal));
+        Assert.DoesNotContain(approved.Page.Items, item => item.PublicId == outsideApprovedPublicId);
     }
 
     private static AccessQueryScopeResult Scope(string[] targetIds) =>

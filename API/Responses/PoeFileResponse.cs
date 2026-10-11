@@ -3,7 +3,7 @@ namespace FTCERP.Host.API.Responses;
 public record PoeFileResponse(
     string Id,
     string SubmissionKind,
-    string SubmissionId,
+    Guid SubmissionPublicId,
     string FileName,
     string? ContentType,
     long SizeInBytes,

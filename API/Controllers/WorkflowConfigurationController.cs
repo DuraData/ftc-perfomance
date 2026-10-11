@@ -388,11 +388,13 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<RatingSchemeDto>(true, ToDto(entity)));
     }
 
-    [HttpPost("submissions/{kind}/{submissionId}/actions")]
+    [HttpPost("submissions/{kind}/{submissionId:guid}/actions")]
     public async Task<ActionResult<ApiResponse<WorkflowActionDto>>> Act(SubmissionKind kind, string submissionId, WorkflowActionRequest request)
     {
         if (!HasTenant()) return TenantRequired<WorkflowActionDto>();
         if (kind is not (SubmissionKind.Opms or SubmissionKind.Ipms)) return BadRequest(Fail<WorkflowActionDto>("Unsupported submission type."));
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<WorkflowActionDto>("Submission not found."));
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<WorkflowActionDto>("User not found."));
         long? periodId; string? submitter; int? department; int? unit; string? owner;
@@ -425,13 +427,15 @@ public sealed class WorkflowConfigurationController(
         return Ok(new ApiResponse<WorkflowActionDto>(true, ToDto(transition.Action, members, user), transition.Reason));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}/actions/page")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/actions/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<WorkflowActionDto>>>> HistoryPage(
         SubmissionKind kind,
         string submissionId,
         [FromQuery] PagedQueryRequest request)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<WorkflowActionDto>>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<PagedResponse<WorkflowActionDto>>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<PagedResponse<WorkflowActionDto>>("Submission not found."));
         var user = await CurrentUser();
@@ -466,10 +470,12 @@ public sealed class WorkflowConfigurationController(
             PagedResponse<WorkflowActionDto>.Create(rows.Select(x => ToDto(x, members, x.ActorUser)), request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}/actions")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/actions")]
     public async Task<ActionResult<ApiResponse<WorkflowActionDto[]>>> History(SubmissionKind kind, string submissionId)
     {
         if (!HasTenant()) return TenantRequired<WorkflowActionDto[]>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<WorkflowActionDto[]>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<WorkflowActionDto[]>("Submission not found."));
         var user = await CurrentUser();
@@ -480,13 +486,15 @@ public sealed class WorkflowConfigurationController(
             Fail<WorkflowActionDto[]>("This unbounded route is retired. Use the /actions/page endpoint."));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}/ratings/page")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/ratings/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<StageRatingDto>>>> RatingHistoryPage(
         SubmissionKind kind,
         string submissionId,
         [FromQuery] PagedQueryRequest request)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<StageRatingDto>>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<PagedResponse<StageRatingDto>>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<PagedResponse<StageRatingDto>>("Submission not found."));
         var user = await CurrentUser();
@@ -528,10 +536,12 @@ public sealed class WorkflowConfigurationController(
             PagedResponse<StageRatingDto>.Create(rows.Select(x => ToDto(x, members)), request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}/ratings")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/ratings")]
     public async Task<ActionResult<ApiResponse<StageRatingDto[]>>> RatingHistory(SubmissionKind kind, string submissionId)
     {
         if (!HasTenant()) return TenantRequired<StageRatingDto[]>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<StageRatingDto[]>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<StageRatingDto[]>("Submission not found."));
         var user = await CurrentUser();
@@ -627,7 +637,7 @@ public sealed class WorkflowConfigurationController(
             _ => query.OrderByDescending(x => x.RatedAt).ThenByDescending(x => x.Id)
         };
 
-    [HttpGet("submissions/{kind}/{submissionId}/rfis/page")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/rfis/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<PerformanceRfiDto>>>> GetRfisPage(
         SubmissionKind kind,
         string submissionId,
@@ -635,6 +645,8 @@ public sealed class WorkflowConfigurationController(
         [FromQuery] string? status = null)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<PerformanceRfiDto>>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<PagedResponse<PerformanceRfiDto>>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<PagedResponse<PerformanceRfiDto>>("Submission not found."));
         var user = await CurrentUser();
@@ -688,10 +700,12 @@ public sealed class WorkflowConfigurationController(
             PagedResponse<PerformanceRfiDto>.Create(dtos, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpGet("submissions/{kind}/{submissionId}/rfis")]
+    [HttpGet("submissions/{kind}/{submissionId:guid}/rfis")]
     public async Task<ActionResult<ApiResponse<PerformanceRfiDto[]>>> GetRfis(SubmissionKind kind, string submissionId)
     {
         if (!HasTenant()) return TenantRequired<PerformanceRfiDto[]>();
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<PerformanceRfiDto[]>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<PerformanceRfiDto[]>("Submission not found."));
         var user = await CurrentUser();
@@ -717,11 +731,13 @@ public sealed class WorkflowConfigurationController(
             _ => query.OrderByDescending(x => x.RaisedAt).ThenByDescending(x => x.Id)
         };
 
-    [HttpPost("submissions/{kind}/{submissionId}/rfis")]
+    [HttpPost("submissions/{kind}/{submissionId:guid}/rfis")]
     public async Task<ActionResult<ApiResponse<PerformanceRfiDto>>> RaiseRfi(SubmissionKind kind, string submissionId, RaisePerformanceRfiRequest request)
     {
         if (!HasTenant()) return TenantRequired<PerformanceRfiDto>();
         if (string.IsNullOrWhiteSpace(request.Question) || request.ResponseDueAt <= DateTime.UtcNow) return BadRequest(Fail<PerformanceRfiDto>("Question and a future response due time are required."));
+        submissionId = await ResolveSubmissionIdAsync(kind, submissionId) ?? string.Empty;
+        if (submissionId.Length == 0) return NotFound(Fail<PerformanceRfiDto>("Submission not found."));
         var access = await LoadSubmissionAccess(kind, submissionId);
         if (access == null) return NotFound(Fail<PerformanceRfiDto>("Submission not found."));
         if (access.Instance == null) return Conflict(Fail<PerformanceRfiDto>("The submission has no configured workflow instance."));
@@ -792,6 +808,16 @@ public sealed class WorkflowConfigurationController(
     }
 
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }
+    private async Task<string?> ResolveSubmissionIdAsync(SubmissionKind kind, string publicId)
+    {
+        if (!Guid.TryParse(publicId, out var parsed)) return null;
+        return kind switch
+        {
+            SubmissionKind.Opms => await context.OpmsSubmissions.AsNoTracking().Where(x => x.PublicId == parsed).Select(x => x.Id).SingleOrDefaultAsync(),
+            SubmissionKind.Ipms => await context.IpmsSubmissions.AsNoTracking().Where(x => x.PublicId == parsed).Select(x => x.Id).SingleOrDefaultAsync(),
+            _ => null
+        };
+    }
     private async Task<SubmissionAccess?> LoadSubmissionAccess(SubmissionKind kind, string submissionId)
     {
         if (kind is not (SubmissionKind.Opms or SubmissionKind.Ipms)) return null;
@@ -931,6 +957,22 @@ public sealed class WorkflowConfigurationController(
         if (members.EvidenceLinkedByRead) foreach (var id in rows.SelectMany(x => x.EvidenceLinks).Select(x => x.LinkedByUserId)) userIds.Add(id);
         var users = userIds.Count == 0 ? [] : await context.Users.AsNoTracking().Where(x => userIds.Contains(x.Id))
             .Select(x => new { x.Id, x.PublicId, x.FirstName, x.LastName }).ToArrayAsync();
+        var evidenceFiles = rows.SelectMany(x => x.EvidenceLinks).Select(x => x.PoeFile).ToArray();
+        var opmsSubmissionIds = evidenceFiles.Where(x => x.SubmissionKind == SubmissionKind.Opms)
+            .Select(x => x.SubmissionId).Distinct(StringComparer.Ordinal).ToArray();
+        var ipmsSubmissionIds = evidenceFiles.Where(x => x.SubmissionKind == SubmissionKind.Ipms)
+            .Select(x => x.SubmissionId).Distinct(StringComparer.Ordinal).ToArray();
+        var opmsSubmissionPublicIds = opmsSubmissionIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
+            : await context.OpmsSubmissions.AsNoTracking().Where(x => opmsSubmissionIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.PublicId, StringComparer.Ordinal);
+        var ipmsSubmissionPublicIds = ipmsSubmissionIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.Ordinal)
+            : await context.IpmsSubmissions.AsNoTracking().Where(x => ipmsSubmissionIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.PublicId, StringComparer.Ordinal);
+        Guid SubmissionPublicId(PoeFile file) => file.SubmissionKind == SubmissionKind.Opms
+            ? opmsSubmissionPublicIds.GetValueOrDefault(file.SubmissionId)
+            : ipmsSubmissionPublicIds.GetValueOrDefault(file.SubmissionId);
         (Guid? PublicId, string? Name) Identity(string? id, bool readable)
         {
             if (!readable || string.IsNullOrWhiteSpace(id)) return (null, null);
@@ -957,7 +999,9 @@ public sealed class WorkflowConfigurationController(
                         members.EvidenceMetadataRead ? link.PoeFile.Blob.SizeInBytes : null,
                         members.EvidenceMetadataRead ? link.PoeFile.Blob.Sha256 : null,
                         linkedBy.PublicId, linkedBy.Name, link.LinkedAt,
-                        members.EvidenceMetadataRead ? link.PoeFile.ToResponse(HttpContext).Url : null);
+                        members.EvidenceMetadataRead && SubmissionPublicId(link.PoeFile) != Guid.Empty
+                            ? link.PoeFile.ToResponse(HttpContext, SubmissionPublicId(link.PoeFile)).Url
+                            : null);
                 }).ToArray());
         }).ToArray();
     }

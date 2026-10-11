@@ -62,7 +62,7 @@ describe('WorkflowQueues', () => {
 
     apiMocks.getOpmsSubmission.mockResolvedValue({ success: false });
     fireEvent.click(screen.getByText('Live Water KPI'));
-    await waitFor(() => expect(apiMocks.getOpmsSubmission).toHaveBeenCalledWith('submission-live'));
+    await waitFor(() => expect(apiMocks.getOpmsSubmission).toHaveBeenCalledWith('submission-public'));
   });
 
   it('loads personal returned work through the bounded combined queue', async () => {

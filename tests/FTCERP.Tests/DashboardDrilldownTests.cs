@@ -50,6 +50,8 @@ public sealed class DashboardDrilldownTests
                 Quarter = "Q1", Status = "draft", BaseState = SubmissionBaseStates.InProgress
             });
         await context.SaveChangesAsync();
+        var completedSubmissionPublicId = await context.IpmsSubmissions
+            .Where(item => item.Id == "drill-completed").Select(item => item.PublicId).SingleAsync();
 
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_KPI.READ"))
@@ -91,7 +93,7 @@ public sealed class DashboardDrilldownTests
 
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
-        Assert.Equal("drill-completed", Assert.Single(approvedPage.Items).Id);
+        Assert.Equal(completedSubmissionPublicId, Assert.Single(approvedPage.Items).PublicId);
 
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
@@ -157,6 +159,8 @@ public sealed class DashboardDrilldownTests
                 Quarter = "Q1", Status = "draft", BaseState = SubmissionBaseStates.InProgress
             });
         await context.SaveChangesAsync();
+        var completedSubmissionPublicId = await context.OpmsSubmissions
+            .Where(item => item.Id == "opms-drill-completed").Select(item => item.PublicId).SingleAsync();
 
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
@@ -198,7 +202,7 @@ public sealed class DashboardDrilldownTests
 
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
-        Assert.Equal("opms-drill-completed", Assert.Single(approvedPage.Items).Id);
+        Assert.Equal(completedSubmissionPublicId, Assert.Single(approvedPage.Items).PublicId);
 
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
