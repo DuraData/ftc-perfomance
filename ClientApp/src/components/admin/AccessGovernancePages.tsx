@@ -158,14 +158,12 @@ export function PermissionSimulationPage() {
     const response = await simulateAccess({
       userPublicId: form.userPublicId,
       permissionCode: form.permissionCode,
-      departmentId: null,
       departmentPublicId: form.departmentId || null,
-      unitId: null,
       unitPublicId: form.unitId || null,
-      targetId: form.targetId || null,
-      kpiId: form.kpiId || null,
-      projectId: form.projectId || null,
-      taskId: form.taskId || null,
+      targetPublicId: form.targetId || null,
+      kpiPublicId: form.kpiId || null,
+      projectPublicId: form.projectId || null,
+      taskPublicId: form.taskId || null,
     });
     if (response.success && response.data) {
       setResult(response.data);
@@ -205,10 +203,10 @@ export function PermissionSimulationPage() {
             </div>
             <OrganizationMasterPicker kind="department" label="Department" value={form.departmentId} emptyLabel="Any permitted department" onChange={value => setForm(prev => ({ ...prev, departmentId: value, unitId: '' }))} />
             <OrganizationMasterPicker kind="unit" label="Unit" value={form.unitId} departmentPublicId={form.departmentId || undefined} emptyLabel="Any permitted unit" onChange={value => setForm(prev => ({ ...prev, unitId: value }))} />
-            <Input label="Target Id" value={form.targetId} onChange={(event) => setForm(prev => ({ ...prev, targetId: event.target.value }))} />
-            <Input label="KPI Id" value={form.kpiId} onChange={(event) => setForm(prev => ({ ...prev, kpiId: event.target.value }))} />
-            <Input label="Project Id" value={form.projectId} onChange={(event) => setForm(prev => ({ ...prev, projectId: event.target.value }))} />
-            <Input label="Task Id" value={form.taskId} onChange={(event) => setForm(prev => ({ ...prev, taskId: event.target.value }))} />
+            <Input label="Target Public ID" value={form.targetId} onChange={(event) => setForm(prev => ({ ...prev, targetId: event.target.value }))} />
+            <Input label="KPI Public ID" value={form.kpiId} onChange={(event) => setForm(prev => ({ ...prev, kpiId: event.target.value }))} />
+            <Input label="Project Public ID" value={form.projectId} onChange={(event) => setForm(prev => ({ ...prev, projectId: event.target.value }))} />
+            <Input label="Task Public ID" value={form.taskId} onChange={(event) => setForm(prev => ({ ...prev, taskId: event.target.value }))} />
           </div>
           {error && <p className="text-sm text-error-600 dark:text-error-400">{error}</p>}
           <div className="flex justify-end">

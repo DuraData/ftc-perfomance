@@ -127,7 +127,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
 
         using (var checkRequest = JsonContent(new { permissionCode = "OPMS_KPI.READ" }))
         {
-            var check = await _client.PostAsync("/api/access/check", checkRequest);
+            var check = await _client.PostAsync("/api/v1/access/check", checkRequest);
             check.StatusCode.Should().Be(HttpStatusCode.OK);
             using var checkJson = JsonDocument.Parse(await check.Content.ReadAsStringAsync());
             checkJson.RootElement.GetProperty("data").GetBoolean().Should().BeFalse();

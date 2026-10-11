@@ -74,6 +74,29 @@ describe('PermissionSimulationPage', () => {
     await waitFor(() => expect(api.getSecurityPermissionDefinitionsPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submission', sortBy: 'code', sortDirection: 'asc' }));
   });
 
+  it('submits public-only scope identifiers to the versioned permission simulator client', async () => {
+    api.simulateAccess.mockResolvedValue({ success: true, data: { allowed: true, reason: 'Allowed', effectivePermissions: [], matchedScopes: [], matchedAssignments: [] } });
+    render(<PermissionSimulationPage />);
+
+    await screen.findByRole('option', { name: 'Governed User 1 (Reviewer)' });
+    fireEvent.change(screen.getByLabelText('User'), { target: { value: 'user-public-1' } });
+    fireEvent.change(screen.getByLabelText('Permission'), { target: { value: 'SIMULATION.PAGE_1' } });
+    fireEvent.change(screen.getByLabelText('Target Public ID'), { target: { value: '11111111-1111-1111-1111-111111111111' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run Simulation' }));
+
+    await waitFor(() => expect(api.simulateAccess).toHaveBeenCalledWith(expect.objectContaining({
+      userPublicId: 'user-public-1',
+      permissionCode: 'SIMULATION.PAGE_1',
+      targetPublicId: '11111111-1111-1111-1111-111111111111',
+      departmentPublicId: null,
+      unitPublicId: null,
+    })));
+    const payload = api.simulateAccess.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('departmentId');
+    expect(payload).not.toHaveProperty('unitId');
+    expect(payload).not.toHaveProperty('targetId');
+  });
+
   it('searches and pages the dynamic role access matrix', async () => {
     render(<RoleAccessMatrixPage />);
 

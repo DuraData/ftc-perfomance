@@ -1295,7 +1295,7 @@ export async function getMyMenu(): Promise<ApiResponse<MenuItem[]>> {
 }
 
 export async function getMyPermissions(): Promise<ApiResponse<string[]>> {
-  return get<string[]>('/access/my-permissions');
+  return get<string[]>('/v1/access/my-permissions');
 }
 
 export async function getMyTenantContextsPage(query: RegisterPageQuery = {}, municipalityId?: number): Promise<ApiResponse<PagedResult<TenantContextDto>>> {
@@ -2099,27 +2099,26 @@ export async function getRoleImplementationAudit(): Promise<ApiResponse<RoleImpl
 }
 
 export async function getRoleAccessMatrixPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RoleAccessMatrixRow>>> {
-  return get<PagedResult<RoleAccessMatrixRow>>(`/access/role-access-matrix/page${registerPageQuery(query)}`);
+  return get<PagedResult<RoleAccessMatrixRow>>(`/v1/access/role-access-matrix/page${registerPageQuery(query)}`);
 }
 
 export async function getSystemCoverageAudit(): Promise<ApiResponse<SystemCoverageAuditRow[]>> {
-  return get<SystemCoverageAuditRow[]>('/access/system-coverage-audit');
+  return get<SystemCoverageAuditRow[]>('/v1/access/system-coverage-audit');
 }
 
 export async function simulateAccess(payload: {
   userPublicId: string;
-  role?: string;
-  departmentId?: number | null;
   departmentPublicId?: string | null;
-  unitId?: number | null;
   unitPublicId?: string | null;
-  targetId?: string | null;
-  kpiId?: string | null;
-  projectId?: string | null;
-  taskId?: string | null;
+  ownerUserPublicId?: string | null;
+  delegatorUserPublicId?: string | null;
+  targetPublicId?: string | null;
+  kpiPublicId?: string | null;
+  projectPublicId?: string | null;
+  taskPublicId?: string | null;
   permissionCode: string;
 }): Promise<ApiResponse<AccessSimulationResult>> {
-  return post<AccessSimulationResult>('/access/simulate', payload);
+  return post<AccessSimulationResult>('/v1/access/simulate', payload);
 }
 
 export type TargetLibraryPageQuery = RegisterPageQuery & {

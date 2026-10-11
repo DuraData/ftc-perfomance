@@ -67,21 +67,16 @@ public record UpdatePermissionRequest(string Module, string Feature, string Acti
 public record CheckPermissionRequest(string PermissionCode);
 
 public record SimulateAccessRequest(
-    Guid? UserPublicId,
-    string? Role,
-    int? DepartmentId,
-    int? UnitId,
+    Guid UserPublicId,
+    Guid? DepartmentPublicId,
+    Guid? UnitPublicId,
     Guid? OwnerUserPublicId,
     Guid? DelegatorUserPublicId,
-    string? TargetId,
-    string? KpiId,
-    string? ProjectId,
-    string? TaskId,
-    string PermissionCode)
-{
-    public Guid? DepartmentPublicId { get; init; }
-    public Guid? UnitPublicId { get; init; }
-}
+    Guid? TargetPublicId,
+    Guid? KpiPublicId,
+    Guid? ProjectPublicId,
+    Guid? TaskPublicId,
+    string PermissionCode);
 
 public record SaveOpmsTargetTemplateRequest(
     string TemplateCode,

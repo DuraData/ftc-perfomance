@@ -57,11 +57,11 @@ describe('versioned API routes', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { allowed: true, reason: 'Allowed', effectivePermissions: [], matchedScopes: [], matchedAssignments: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await simulateAccess({ userPublicId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' });
+    await simulateAccess({ userPublicId: 'user-1', permissionCode: 'OPMS.Target.View', departmentPublicId: 'department-public-id', unitPublicId: 'unit-public-id', targetPublicId: 'target-public-id' });
 
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/access/simulate'), expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/access/simulate'), expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ userPublicId: 'user-1', permissionCode: 'OPMS.Target.View', departmentId: null, departmentPublicId: 'department-public-id', unitId: null, unitPublicId: 'unit-public-id' }),
+      body: JSON.stringify({ userPublicId: 'user-1', permissionCode: 'OPMS.Target.View', departmentPublicId: 'department-public-id', unitPublicId: 'unit-public-id', targetPublicId: 'target-public-id' }),
     }));
   });
 
@@ -91,7 +91,7 @@ describe('versioned API routes', () => {
 
     await getRoleAccessMatrixPage({ page: 2, pageSize: 25, search: 'reviewer', sortBy: 'code', sortDirection: 'asc' });
 
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/access/role-access-matrix/page?page=2&pageSize=25&search=reviewer&sortBy=code&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/access/role-access-matrix/page?page=2&pageSize=25&search=reviewer&sortBy=code&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
   });
 
   it('transports bounded audit administration search, sorting, filters, and pages', async () => {
