@@ -791,6 +791,11 @@ public class IdpController : ControllerBase
             new TabularDocumentColumn("budget", "Budget"),
             new TabularDocumentColumn("status", "Status")
         };
+        var wardAccess = await GetParticipationMemberAccessAsync(user, Scope(targetId: plan.PublicId));
+        if (normalizedReportType == "ward-based"
+            && (!await CanAccessPermissionAsync(user, "IDP_PARTICIPATION.READ", Scope(targetId: plan.PublicId))
+                || !wardAccess.WardPlanSummary || !wardAccess.WardPriorities || !wardAccess.WardProjects))
+            return Forbid();
         var rows = await BuildIdpReportRows(plan.Id, normalizedReportType, canReadTarget, canReadBudget);
 
         var reportName = $"{normalizedReportType.ToUpperInvariant()} - {plan.PlanCode}";
@@ -1246,6 +1251,13 @@ public class IdpController : ControllerBase
 
     [HttpPost("community-sessions")]
     [Authorize(Policy = "Permission:IDP.Participation.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> CreateCommunitySessionLegacy() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "This unversioned route is retired. Use POST /api/v1/idp/community-sessions."));
+
+    [HttpPost("~/api/v1/idp/community-sessions")]
+    [Authorize(Policy = "Permission:IDP_PARTICIPATION.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpCommunitySessionResponse>>> CreateCommunitySession([FromBody] CreateIdpCommunitySessionRequest request)
     {
         var user = await GetCurrentUserAsync();
@@ -1255,12 +1267,24 @@ public class IdpController : ControllerBase
         {
             return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "Invalid participation type"));
         }
+        if (string.IsNullOrWhiteSpace(request.Venue) || request.Venue.Trim().Length > 300)
+            return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "Venue is required and cannot exceed 300 characters."));
+        if (request.ParticipantsCount < 0)
+            return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "ParticipantsCount cannot be negative."));
+        if (request.AttendanceRegisterPath?.Trim().Length > 2048 || request.MinutesPath?.Trim().Length > 2048)
+            return BadRequest(new ApiResponse<IdpCommunitySessionResponse>(false, null, "Document references cannot exceed 2048 characters."));
 
         var plan = await _context.IdpPlans.AsNoTracking()
             .Where(item => item.PublicId == request.IdpPlanPublicId)
             .Select(item => new { item.Id, item.PublicId, item.MunicipalityId })
             .SingleOrDefaultAsync();
         if (plan == null) return NotFound(new ApiResponse<IdpCommunitySessionResponse>(false, null, "IDP plan not found"));
+        var scope = Scope(targetId: plan.PublicId);
+        var protectedMembers = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.AttendanceRegisterPath)) protectedMembers.Add("AttendanceRegisterPath");
+        if (!string.IsNullOrWhiteSpace(request.MinutesPath)) protectedMembers.Add("MinutesPath");
+        if (await MemberUpdateDenialAsync(user, "IDP_PARTICIPATION", scope, protectedMembers) is not null)
+            return Forbid();
 
         int? wardId = null;
         Guid? wardPublicId = null;
@@ -1288,31 +1312,50 @@ public class IdpController : ControllerBase
             Venue = request.Venue.Trim(),
             WardId = wardId,
             ParticipantsCount = request.ParticipantsCount,
-            AttendanceRegisterPath = request.AttendanceRegisterPath,
-            MinutesPath = request.MinutesPath
+            AttendanceRegisterPath = NormalizeOptional(request.AttendanceRegisterPath),
+            MinutesPath = NormalizeOptional(request.MinutesPath)
         };
 
         _context.IdpCommunitySessions.Add(entity);
         await _context.SaveChangesAsync();
 
         await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null,
-            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName));
+            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName, IdpParticipationMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpCommunitySessionResponse>(true,
-            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName)));
+            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName,
+                await GetParticipationMemberAccessAsync(user, scope))));
     }
 
     [HttpPost("community-needs")]
     [Authorize(Policy = "Permission:IDP.Participation.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> CreateCommunityNeedLegacy() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "This unversioned route is retired. Use POST /api/v1/idp/community-needs."));
+
+    [HttpPost("~/api/v1/idp/community-needs")]
+    [Authorize(Policy = "Permission:IDP_PARTICIPATION.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpCommunityNeedResponse>>> CreateCommunityNeed([FromBody] CreateIdpCommunityNeedRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpCommunityNeedResponse>(false, null, "User not found"));
+        if (string.IsNullOrWhiteSpace(request.IssueCategory) || request.IssueCategory.Trim().Length > 200
+            || string.IsNullOrWhiteSpace(request.Description) || request.Description.Trim().Length > 4000
+            || string.IsNullOrWhiteSpace(request.PriorityLevel) || request.PriorityLevel.Trim().Length > 100
+            || request.ProposedIntervention?.Trim().Length > 4000)
+            return BadRequest(new ApiResponse<IdpCommunityNeedResponse>(false, null,
+                "Issue category, description and priority are required and participation narrative lengths must be valid."));
 
         var session = await _context.IdpCommunitySessions.AsNoTracking()
             .Where(item => item.PublicId == request.IdpCommunitySessionPublicId)
-            .Select(item => new { item.Id, item.PublicId }).SingleOrDefaultAsync();
+            .Select(item => new { item.Id, item.PublicId, PlanPublicId = item.IdpPlan.PublicId }).SingleOrDefaultAsync();
         if (session == null) return NotFound(new ApiResponse<IdpCommunityNeedResponse>(false, null, "Community session not found"));
+        var scope = Scope(targetId: session.PlanPublicId);
+        var protectedMembers = new List<string> { "CommunityNeedDescription" };
+        if (!string.IsNullOrWhiteSpace(request.ProposedIntervention)) protectedMembers.Add("ProposedIntervention");
+        if (await MemberUpdateDenialAsync(user, "IDP_PARTICIPATION", scope, protectedMembers) is not null)
+            return Forbid();
 
         var entity = new IdpCommunityNeed
         {
@@ -1320,23 +1363,36 @@ public class IdpController : ControllerBase
             IssueCategory = request.IssueCategory.Trim(),
             Description = request.Description.Trim(),
             PriorityLevel = request.PriorityLevel.Trim(),
-            ProposedIntervention = request.ProposedIntervention
+            ProposedIntervention = NormalizeOptional(request.ProposedIntervention)
         };
 
         _context.IdpCommunityNeeds.Add(entity);
         await _context.SaveChangesAsync();
         await WriteIdpAudit(user.Id, "IdpCommunityNeed", entity.PublicId.ToString(), "Create", null,
-            ToCommunityNeedResponse(entity, session.PublicId));
+            ToCommunityNeedResponse(entity, session.PublicId, IdpParticipationMemberAccess.Full));
 
-        return Ok(new ApiResponse<IdpCommunityNeedResponse>(true, ToCommunityNeedResponse(entity, session.PublicId)));
+        return Ok(new ApiResponse<IdpCommunityNeedResponse>(true, ToCommunityNeedResponse(entity, session.PublicId,
+            await GetParticipationMemberAccessAsync(user, scope))));
     }
 
     [HttpPost("ward-inputs")]
     [Authorize(Policy = "Permission:IDP.Participation.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> CreateWardInputLegacy() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "This unversioned route is retired. Use POST /api/v1/idp/ward-inputs."));
+
+    [HttpPost("~/api/v1/idp/ward-inputs")]
+    [Authorize(Policy = "Permission:IDP_PARTICIPATION.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpWardInputResponse>>> CreateWardInput([FromBody] CreateIdpWardInputRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpWardInputResponse>(false, null, "User not found"));
+        if (string.IsNullOrWhiteSpace(request.WardPlanSummary) || request.WardPlanSummary.Trim().Length > 8000
+            || string.IsNullOrWhiteSpace(request.WardPriorities) || request.WardPriorities.Trim().Length > 8000
+            || string.IsNullOrWhiteSpace(request.WardProjects) || request.WardProjects.Trim().Length > 8000)
+            return BadRequest(new ApiResponse<IdpWardInputResponse>(false, null,
+                "Ward plan summary, priorities and projects are required and cannot exceed 8000 characters each."));
 
         var plan = await _context.IdpPlans.AsNoTracking()
             .Where(item => item.PublicId == request.IdpPlanPublicId)
@@ -1345,6 +1401,10 @@ public class IdpController : ControllerBase
         if (plan == null) return NotFound(new ApiResponse<IdpWardInputResponse>(false, null, "IDP plan not found"));
         if (!plan.MunicipalityId.HasValue)
             return BadRequest(new ApiResponse<IdpWardInputResponse>(false, null, "The IDP plan must be assigned to a municipality before ward input can be captured."));
+        var scope = Scope(targetId: plan.PublicId);
+        if (await MemberUpdateDenialAsync(user, "IDP_PARTICIPATION", scope,
+                ["WardPlanSummary", "WardPriorities", "WardProjects"]) is not null)
+            return Forbid();
 
         var ward = await _context.Wards.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == request.WardPublicId
             && item.IsActive && item.MunicipalityId == plan.MunicipalityId.Value);
@@ -1362,10 +1422,11 @@ public class IdpController : ControllerBase
         _context.IdpWardInputs.Add(entity);
         await _context.SaveChangesAsync();
         await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null,
-            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name));
+            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name, IdpParticipationMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpWardInputResponse>(true,
-            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name)));
+            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name,
+                await GetParticipationMemberAccessAsync(user, scope))));
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/stakeholder-engagements/page")]
@@ -1382,6 +1443,7 @@ public class IdpController : ControllerBase
 
         var canReadContactPerson = await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Read);
         var canReadContactEmail = await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Read);
+        var canReadKeyInput = await CanAccessStakeholderMemberAsync(user, "KeyInput", SecurityOperation.Read);
         if ((request.NormalizedSortBy == "contactperson" && !canReadContactPerson)
             || (request.NormalizedSortBy == "contactemail" && !canReadContactEmail))
             return Forbid();
@@ -1396,7 +1458,7 @@ public class IdpController : ControllerBase
             var term = request.NormalizedSearch;
             query = query.Where(item => item.StakeholderType.Contains(term)
                 || item.StakeholderName.Contains(term)
-                || item.KeyInput != null && item.KeyInput.Contains(term)
+                || canReadKeyInput && item.KeyInput != null && item.KeyInput.Contains(term)
                 || canReadContactPerson && item.ContactPerson != null && item.ContactPerson.Contains(term)
                 || canReadContactEmail && item.ContactEmail != null && item.ContactEmail.Contains(term));
         }
@@ -1418,7 +1480,7 @@ public class IdpController : ControllerBase
         var rows = await query.Include(item => item.IdpCommunitySession)
             .Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         var response = PagedResponse<IdpStakeholderEngagementPageItemResponse>.Create(rows.Select(item =>
-            ToStakeholderPageResponse(item, canReadContactPerson, canReadContactEmail)), request.Page, request.PageSize, totalCount);
+            ToStakeholderPageResponse(item, canReadContactPerson, canReadContactEmail, canReadKeyInput)), request.Page, request.PageSize, totalCount);
         return Ok(new ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>(true, response));
     }
 
@@ -1440,7 +1502,9 @@ public class IdpController : ControllerBase
         if ((!string.IsNullOrWhiteSpace(request.ContactPerson)
                 && !await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Update))
             || (!string.IsNullOrWhiteSpace(request.ContactEmail)
-                && !await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Update)))
+                && !await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Update))
+            || (!string.IsNullOrWhiteSpace(request.KeyInput)
+                && !await CanAccessStakeholderMemberAsync(user, "KeyInput", SecurityOperation.Update)))
             return Forbid();
 
         var session = await _context.IdpCommunitySessions.FirstOrDefaultAsync(item => item.PublicId == sessionPublicId);
@@ -1464,8 +1528,9 @@ public class IdpController : ControllerBase
 
         var canReadContactPerson = await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Read);
         var canReadContactEmail = await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Read);
+        var canReadKeyInput = await CanAccessStakeholderMemberAsync(user, "KeyInput", SecurityOperation.Read);
         return Ok(new ApiResponse<IdpStakeholderEngagementPageItemResponse>(true,
-            ToStakeholderPageResponse(entity, canReadContactPerson, canReadContactEmail)));
+            ToStakeholderPageResponse(entity, canReadContactPerson, canReadContactEmail, canReadKeyInput)));
     }
 
     [HttpPost("risk-links")]
@@ -2008,6 +2073,12 @@ public class IdpController : ControllerBase
         return await CanAccessMemberAsync(user, "IDP_STAKEHOLDER", memberCode, operation, Scope());
     }
 
+    private async Task<bool> CanAccessPermissionAsync(ApplicationUser user, string permissionCode, AccessScopeContext scope)
+    {
+        if (_accessControl == null) return false;
+        return (await _accessControl.CheckPermissionAsync(user, permissionCode, scope)).Allowed;
+    }
+
     private AccessScopeContext Scope(Guid? targetId = null, Guid? kpiId = null, Guid? projectId = null, Guid? taskId = null) =>
         new(TargetId: targetId?.ToString(), KpiId: kpiId?.ToString(), ProjectId: projectId?.ToString(),
             TaskId: taskId?.ToString(), MunicipalityId: _tenantContext?.MunicipalityId);
@@ -2081,6 +2152,16 @@ public class IdpController : ControllerBase
         new(
             await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectBudget", SecurityOperation.Read, scope ?? Scope()),
             await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectFundingSource", SecurityOperation.Read, scope ?? Scope()));
+
+    private async Task<IdpParticipationMemberAccess> GetParticipationMemberAccessAsync(ApplicationUser user, AccessScopeContext? scope = null) =>
+        new(
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "AttendanceRegisterPath", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "MinutesPath", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "CommunityNeedDescription", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "ProposedIntervention", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "WardPlanSummary", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "WardPriorities", SecurityOperation.Read, scope ?? Scope()),
+            await CanAccessMemberAsync(user, "IDP_PARTICIPATION", "WardProjects", SecurityOperation.Read, scope ?? Scope()));
 
     private async Task<DocumentMetadataMemberAccess> GetDocumentMemberAccessAsync(ApplicationUser user, long municipalityId)
     {
@@ -2228,29 +2309,35 @@ public class IdpController : ControllerBase
         new(link.PublicId, objectivePublicId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
 
     private static IdpCommunitySessionResponse ToCommunitySessionResponse(
-        IdpCommunitySession session, Guid planPublicId, Guid? wardPublicId, string? wardName) =>
+        IdpCommunitySession session, Guid planPublicId, Guid? wardPublicId, string? wardName, IdpParticipationMemberAccess access) =>
         new(session.PublicId, planPublicId, session.ParticipationType.ToString(), session.SessionDate, session.Venue,
-            wardPublicId, wardName, session.ParticipantsCount, session.AttendanceRegisterPath, session.MinutesPath,
+            wardPublicId, wardName, session.ParticipantsCount,
+            access.AttendanceRegisterPath ? session.AttendanceRegisterPath : null,
+            access.MinutesPath ? session.MinutesPath : null,
             Convert.ToBase64String(session.RowVersion));
 
-    private static IdpCommunityNeedResponse ToCommunityNeedResponse(IdpCommunityNeed need, Guid sessionPublicId) =>
-        new(need.PublicId, sessionPublicId, need.IssueCategory, need.Description, need.PriorityLevel,
-            need.ProposedIntervention, Convert.ToBase64String(need.RowVersion));
+    private static IdpCommunityNeedResponse ToCommunityNeedResponse(IdpCommunityNeed need, Guid sessionPublicId, IdpParticipationMemberAccess access) =>
+        new(need.PublicId, sessionPublicId, need.IssueCategory,
+            access.CommunityNeedDescription ? need.Description : null, need.PriorityLevel,
+            access.ProposedIntervention ? need.ProposedIntervention : null, Convert.ToBase64String(need.RowVersion));
 
     private static IdpWardInputResponse ToWardInputResponse(
-        IdpWardInput wardInput, Guid planPublicId, Guid wardPublicId, string wardName) =>
-        new(wardInput.PublicId, planPublicId, wardPublicId, wardName, wardInput.WardPlanSummary,
-            wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
+        IdpWardInput wardInput, Guid planPublicId, Guid wardPublicId, string wardName, IdpParticipationMemberAccess access) =>
+        new(wardInput.PublicId, planPublicId, wardPublicId, wardName,
+            access.WardPlanSummary ? wardInput.WardPlanSummary : null,
+            access.WardPriorities ? wardInput.WardPriorities : null,
+            access.WardProjects ? wardInput.WardProjects : null, Convert.ToBase64String(wardInput.RowVersion));
 
     private static IdpStakeholderEngagementPageItemResponse ToStakeholderPageResponse(
         IdpStakeholderEngagement stakeholder,
         bool includeContactPerson,
-        bool includeContactEmail) =>
+        bool includeContactEmail,
+        bool includeKeyInput) =>
         new(stakeholder.PublicId, stakeholder.IdpCommunitySession.PublicId, stakeholder.IdpCommunitySession.SessionDate,
             stakeholder.IdpCommunitySession.Venue, stakeholder.StakeholderType, stakeholder.StakeholderName,
             includeContactPerson ? stakeholder.ContactPerson : null,
             includeContactEmail ? stakeholder.ContactEmail : null,
-            stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
+            includeKeyInput ? stakeholder.KeyInput : null, Convert.ToBase64String(stakeholder.RowVersion));
 
     private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk, Guid? objectivePublicId, Guid? projectPublicId, Guid? kpiPublicId) =>
         new(risk.PublicId, objectivePublicId, projectPublicId, kpiPublicId, risk.RiskReference, risk.RiskTitle,
@@ -2351,6 +2438,18 @@ public class IdpController : ControllerBase
     private sealed record IdpProjectMemberAccess(bool Budget, bool FundingSource)
     {
         public static IdpProjectMemberAccess Full { get; } = new(true, true);
+    }
+
+    private sealed record IdpParticipationMemberAccess(
+        bool AttendanceRegisterPath,
+        bool MinutesPath,
+        bool CommunityNeedDescription,
+        bool ProposedIntervention,
+        bool WardPlanSummary,
+        bool WardPriorities,
+        bool WardProjects)
+    {
+        public static IdpParticipationMemberAccess Full { get; } = new(true, true, true, true, true, true, true);
     }
 
     private sealed class IdpHierarchyPathRow

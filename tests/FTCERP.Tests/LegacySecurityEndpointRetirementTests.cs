@@ -217,7 +217,8 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/roles/{id}/permissions", "/api/idp/plans/{id}", "/api/idp/plans/{id}/versions",
                      "/api/idp/plans/{id}/hierarchy", "/api/idp/plans/{id}/dashboard",
                      "/api/idp/plans/{id}/alignment-matrix", "/api/idp/plans/{id}/reports/{reportType}",
-                     "/api/idp/stakeholder-engagements", "/api/idp/tasks/{id}/complete",
+                     "/api/idp/stakeholder-engagements", "/api/idp/community-sessions", "/api/idp/community-needs",
+                     "/api/idp/ward-inputs", "/api/idp/tasks/{id}/complete",
                      "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
                      "/api/opms-targets", "/api/ipms-targets", "/api/opms-submissions", "/api/ipms-submissions",
                      "/api/opms-target-library", "/api/ipms-target-library", "/api/notifications",
@@ -231,6 +232,7 @@ public sealed class LegacySecurityEndpointRetirementTests
         foreach (var publicPath in new[]
                  {
                      "/api/roles/{publicId}", "/api/v1/idp/plans/{planPublicId}",
+                     "/api/v1/idp/community-sessions", "/api/v1/idp/community-needs", "/api/v1/idp/ward-inputs",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
                      "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",
                      "/api/v1/opms-targets/{id}", "/api/v1/ipms-targets/{id}",

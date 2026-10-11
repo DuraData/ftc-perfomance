@@ -2731,7 +2731,7 @@ export async function createIdpComment(payload: CreateIdpCommentPayload): Promis
 }
 
 export async function createIdpCommunitySession(payload: CreateIdpCommunitySessionPayload): Promise<ApiResponse<boolean>> {
-  return mapResponse(await post<{ publicId: string }>('/idp/community-sessions', payload), () => true);
+  return mapResponse(await post<{ publicId: string }>('/v1/idp/community-sessions', payload), () => true);
 }
 
 export async function getIdpStakeholderEngagementsPage(planPublicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<IdpStakeholderEngagement>>> {

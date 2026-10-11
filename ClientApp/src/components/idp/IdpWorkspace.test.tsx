@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IdpAlignmentMatrixPage, IdpCommunityParticipationPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage, IdpReportsPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
-const security = vi.hoisted(() => ({ canImport: vi.fn(() => true), canReadField: vi.fn(() => false), canEditField: vi.fn(() => false) }));
+const security = vi.hoisted(() => ({ canCreate: vi.fn(() => true), canImport: vi.fn(() => true), canReadField: vi.fn(() => false), canEditField: vi.fn(() => false) }));
 const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
@@ -27,6 +27,7 @@ vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../security/AccessControl', () => ({ useHasAnyPermission: () => true }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock('../common/OrganizationMasterPicker', () => ({ OrganizationMasterPicker: ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) => <label>{label}<select aria-label={label} value={value} onChange={event => onChange(event.target.value)}><option value="">No ward</option><option value="ward-public-id">Ward 1</option></select></label> }));
 vi.mock('../../api/api', () => api);
 
 const predecessor = {
@@ -52,6 +53,7 @@ const predecessor = {
 describe('IDP plan lineage workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.canCreate.mockReturnValue(true);
     security.canImport.mockReturnValue(true);
     security.canReadField.mockReturnValue(false);
     security.canEditField.mockReturnValue(false);
@@ -437,16 +439,42 @@ describe('IDP plan lineage workspace', () => {
     }));
   });
 
-  it('submits community participation with the selected plan public ID only', async () => {
+  it('submits user-entered community participation with stable public IDs and no synthetic document paths', async () => {
     render(<IdpCommunityParticipationPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Log Public Meeting' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New Participation Session' }));
+    fireEvent.change(screen.getByLabelText(/Session date and time/), { target: { value: '2026-10-11T09:30' } });
+    fireEvent.change(screen.getByLabelText(/Venue/), { target: { value: 'Ward 1 Community Hall' } });
+    fireEvent.change(screen.getByLabelText(/Participants/), { target: { value: '37' } });
+    fireEvent.change(screen.getByLabelText('Ward'), { target: { value: 'ward-public-id' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Participation Session' }));
 
-    await waitFor(() => expect(api.createIdpCommunitySession).toHaveBeenCalledWith(expect.objectContaining({
+    await waitFor(() => expect(api.createIdpCommunitySession).toHaveBeenCalledWith({
       idpPlanPublicId: predecessor.publicId,
       participationType: 'PublicMeeting',
-    })));
+      sessionDate: expect.stringMatching(/^2026-10-11T/),
+      venue: 'Ward 1 Community Hall',
+      wardPublicId: 'ward-public-id',
+      participantsCount: 37,
+      attendanceRegisterPath: null,
+      minutesPath: null,
+    }));
     expect(api.createIdpCommunitySession.mock.calls[0][0]).not.toHaveProperty('idpPlanId');
     expect(api.createIdpCommunitySession.mock.calls[0][0]).not.toHaveProperty('wardId');
-    expect(api.createIdpCommunitySession.mock.calls[0][0]).toHaveProperty('wardPublicId', null);
+  });
+
+  it('does not render denied stakeholder key input', async () => {
+    security.canReadField.mockReturnValue(false);
+    render(<IdpCommunityParticipationPage />);
+    expect(await screen.findByText('Residents Association')).toBeInTheDocument();
+    expect(screen.queryByText('Water reliability')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Key input' })).not.toBeInTheDocument();
+  });
+
+  it('hides participation creation when the canonical resource create grant is denied', async () => {
+    security.canCreate.mockImplementation((resource: string) => resource !== 'IDP_PARTICIPATION');
+    render(<IdpCommunityParticipationPage />);
+    expect(await screen.findByText('Read Only')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Participation Session' })).not.toBeInTheDocument();
+    expect(security.canCreate).toHaveBeenCalledWith('IDP_PARTICIPATION');
   });
 });

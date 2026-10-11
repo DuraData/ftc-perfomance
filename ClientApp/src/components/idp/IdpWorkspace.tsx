@@ -40,6 +40,7 @@ import type {
 import { idpHierarchyCsvTemplate, idpKpiCsvTemplate, parseIdpHierarchyCsv, parseIdpKpiCsv } from './idpImportCsv';
 import { IdpPlanPicker } from './IdpPlanPicker';
 import { Input, Select } from '../common/Form';
+import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 
 function metricCard(title: string, value: string | number, caption?: string) {
   return (
@@ -786,7 +787,7 @@ export function IdpHierarchyPage() {
 export function IdpCommunityParticipationPage() {
   const { pushToast } = useApp();
   const security = useSecurity();
-  const canManageParticipation = useHasAnyPermission(['IDP.Participation.Manage']);
+  const canManageParticipation = security.canCreate('IDP_PARTICIPATION');
   const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [dashboard, setDashboard] = useState<IdpDashboard | null>(null);
   const [stakeholders, setStakeholders] = useState<IdpStakeholderEngagement[]>([]);
@@ -797,8 +798,14 @@ export function IdpCommunityParticipationPage() {
   const [stakeholderSearch, setStakeholderSearch] = useState('');
   const [stakeholderSort, setStakeholderSort] = useState('sessionDate');
   const [stakeholderRevision, setStakeholderRevision] = useState(0);
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [sessionForm, setSessionForm] = useState({
+    participationType: 'PublicMeeting', sessionDate: '', venue: '', wardPublicId: '', participantsCount: '1',
+  });
+  const [savingSession, setSavingSession] = useState(false);
   const canReadContactPerson = security.canReadField('IDP_STAKEHOLDER', 'ContactPerson');
   const canReadContactEmail = security.canReadField('IDP_STAKEHOLDER', 'ContactEmail');
+  const canReadKeyInput = security.canReadField('IDP_STAKEHOLDER', 'KeyInput');
 
   const load = async (planPublicId = selectedPlanPublicId) => {
     if (planPublicId) {
@@ -842,40 +849,61 @@ export function IdpCommunityParticipationPage() {
             <Button variant="outline" onClick={() => { void load(); setStakeholderRevision(value => value + 1); }}>Refresh</Button>
             {!canManageParticipation ? <Badge variant="warning">Read Only</Badge> : null}
             <IdpPlanPicker label="Participation plan" value={selectedPlanPublicId} autoSelectFirst onChange={value => { setSelectedPlanPublicId(value); setStakeholderPage(1); void load(value); }} />
-            {canManageParticipation ? (
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  if (!selectedPlanPublicId) {
-                    pushToast('error', 'Select an IDP plan before logging participation.');
-                    return;
-                  }
-
-                  const now = new Date();
-                  const result = await createIdpCommunitySession({
-                    idpPlanPublicId: selectedPlanPublicId,
-                    participationType: 'PublicMeeting',
-                    sessionDate: now.toISOString(),
-                    venue: 'Municipal Hall',
-                    wardPublicId: null,
-                    participantsCount: 120,
-                    attendanceRegisterPath: '/documents/idp/public-meeting-attendance.pdf',
-                    minutesPath: '/documents/idp/public-meeting-minutes.pdf',
-                  });
-
-                  if (result.success) {
-                    pushToast('success', 'Community participation session logged.');
-                    await load();
-                  } else {
-                    pushToast('error', result.message ?? 'Failed to log participation session.');
-                  }
-                }}
-              >
-                Log Public Meeting
-              </Button>
-            ) : null}
+            {canManageParticipation ? <Button variant="primary" onClick={() => setShowSessionForm(value => !value)}>{showSessionForm ? 'Cancel New Session' : 'New Participation Session'}</Button> : null}
           </div>
         </Card>
+
+        {canManageParticipation && showSessionForm ? <Card>
+          <form className="space-y-3" onSubmit={async event => {
+            event.preventDefault();
+            if (!selectedPlanPublicId) {
+              pushToast('error', 'Select an IDP plan before logging participation.');
+              return;
+            }
+            const participantsCount = Number(sessionForm.participantsCount);
+            if (!sessionForm.sessionDate || !sessionForm.venue.trim() || !Number.isInteger(participantsCount) || participantsCount < 0) {
+              pushToast('error', 'Provide the session date, venue, and a non-negative whole participant count.');
+              return;
+            }
+            setSavingSession(true);
+            const result = await createIdpCommunitySession({
+              idpPlanPublicId: selectedPlanPublicId,
+              participationType: sessionForm.participationType,
+              sessionDate: new Date(sessionForm.sessionDate).toISOString(),
+              venue: sessionForm.venue.trim(),
+              wardPublicId: sessionForm.wardPublicId || null,
+              participantsCount,
+              attendanceRegisterPath: null,
+              minutesPath: null,
+            });
+            setSavingSession(false);
+            if (result.success) {
+              pushToast('success', 'Community participation session logged.');
+              setSessionForm({ participationType: 'PublicMeeting', sessionDate: '', venue: '', wardPublicId: '', participantsCount: '1' });
+              setShowSessionForm(false);
+              await load();
+            } else {
+              pushToast('error', result.message ?? 'Failed to log participation session.');
+            }
+          }}>
+            <h3 className="text-base font-semibold text-secondary-900 dark:text-white">New Participation Session</h3>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <Select label="Participation type" required value={sessionForm.participationType} options={[
+                { value: 'PublicMeeting', label: 'Public meeting' },
+                { value: 'WardCommittee', label: 'Ward committee' },
+                { value: 'StakeholderEngagement', label: 'Stakeholder engagement' },
+                { value: 'Survey', label: 'Survey' },
+                { value: 'FocusGroup', label: 'Focus group' },
+              ]} onChange={event => setSessionForm(current => ({ ...current, participationType: event.target.value }))} />
+              <Input label="Session date and time" type="datetime-local" required value={sessionForm.sessionDate} onChange={event => setSessionForm(current => ({ ...current, sessionDate: event.target.value }))} />
+              <Input label="Venue" required maxLength={300} value={sessionForm.venue} onChange={event => setSessionForm(current => ({ ...current, venue: event.target.value }))} />
+              <Input label="Participants" type="number" required min={0} step={1} value={sessionForm.participantsCount} onChange={event => setSessionForm(current => ({ ...current, participantsCount: event.target.value }))} />
+            </div>
+            <OrganizationMasterPicker kind="ward" label="Ward" value={sessionForm.wardPublicId} emptyLabel="Municipality-wide / no ward" onChange={value => setSessionForm(current => ({ ...current, wardPublicId: value }))} />
+            <p className="text-xs text-secondary-500">Attendance registers and minutes must be added through governed document capture; this form does not accept unverified file paths.</p>
+            <div className="flex justify-end"><Button type="submit" variant="primary" disabled={savingSession}>{savingSession ? 'Saving…' : 'Save Participation Session'}</Button></div>
+          </form>
+        </Card> : null}
 
         <Card>
           <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Ward Participation Overview</h3>
@@ -903,8 +931,8 @@ export function IdpCommunityParticipationPage() {
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700"><tr><th className="px-2 py-2">Session</th><th className="px-2 py-2">Stakeholder</th><th className="px-2 py-2">Type</th>{canReadContactPerson ? <th className="px-2 py-2">Contact person</th> : null}{canReadContactEmail ? <th className="px-2 py-2">Contact email</th> : null}<th className="px-2 py-2">Key input</th></tr></thead>
-              <tbody>{stakeholders.map(item => <tr key={item.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-2">{new Date(item.sessionDate).toLocaleDateString()} · {item.venue}</td><td className="px-2 py-2">{item.stakeholderName}</td><td className="px-2 py-2">{item.stakeholderType}</td>{canReadContactPerson ? <td className="px-2 py-2">{item.contactPerson ?? '-'}</td> : null}{canReadContactEmail ? <td className="px-2 py-2">{item.contactEmail ?? '-'}</td> : null}<td className="px-2 py-2">{item.keyInput ?? '-'}</td></tr>)}</tbody>
+              <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700"><tr><th className="px-2 py-2">Session</th><th className="px-2 py-2">Stakeholder</th><th className="px-2 py-2">Type</th>{canReadContactPerson ? <th className="px-2 py-2">Contact person</th> : null}{canReadContactEmail ? <th className="px-2 py-2">Contact email</th> : null}{canReadKeyInput ? <th className="px-2 py-2">Key input</th> : null}</tr></thead>
+              <tbody>{stakeholders.map(item => <tr key={item.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-2">{new Date(item.sessionDate).toLocaleDateString()} · {item.venue}</td><td className="px-2 py-2">{item.stakeholderName}</td><td className="px-2 py-2">{item.stakeholderType}</td>{canReadContactPerson ? <td className="px-2 py-2">{item.contactPerson ?? '-'}</td> : null}{canReadContactEmail ? <td className="px-2 py-2">{item.contactEmail ?? '-'}</td> : null}{canReadKeyInput ? <td className="px-2 py-2">{item.keyInput ?? '-'}</td> : null}</tr>)}</tbody>
             </table>
             {!stakeholders.length ? <p className="p-3 text-sm text-secondary-500">No stakeholder engagements match the current filters.</p> : null}
           </div>

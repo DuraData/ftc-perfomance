@@ -7,7 +7,7 @@ import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './a
 import { archiveIpmsTargetTemplate, archiveOpmsTargetTemplate } from './api';
 import { saveSecurityUserRoles } from './api';
 import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
-import { createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
+import { createIdpCommunitySession, createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -201,8 +201,10 @@ describe('versioned API routes', () => {
     });
     await getIdpDashboard('plan-public-id');
     await getIdpReport('plan-public-id', 'annual performance', 'pdf');
+    await createIdpCommunitySession({ idpPlanPublicId: 'plan-public-id', participationType: 'PublicMeeting', sessionDate: '2026-10-11T08:00:00Z', venue: 'Ward Hall', wardPublicId: 'ward-public-id', participantsCount: 20 });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/idp/plans'), expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/idp/community-sessions'), expect.objectContaining({ method: 'POST' }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/idp/plans/plan-public-id/versions'), expect.objectContaining({ method: 'POST' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/idp/plans/plan-public-id/dashboard'), expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/idp/plans/plan-public-id/reports/annual%20performance?format=pdf'), expect.objectContaining({ credentials: 'include' }));

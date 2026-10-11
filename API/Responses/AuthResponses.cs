@@ -839,9 +839,9 @@ public record IdpCommunitySessionResponse(
     string? MinutesPath,
     string RowVersion);
 
-public record IdpCommunityNeedResponse(Guid PublicId, Guid IdpCommunitySessionPublicId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
+public record IdpCommunityNeedResponse(Guid PublicId, Guid IdpCommunitySessionPublicId, string IssueCategory, string? Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
 
-public record IdpWardInputResponse(Guid PublicId, Guid IdpPlanPublicId, Guid WardPublicId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
+public record IdpWardInputResponse(Guid PublicId, Guid IdpPlanPublicId, Guid WardPublicId, string WardName, string? WardPlanSummary, string? WardPriorities, string? WardProjects, string RowVersion);
 
 public record IdpStakeholderEngagementPageItemResponse(
     Guid PublicId,

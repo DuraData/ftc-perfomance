@@ -152,10 +152,20 @@ public sealed class UsersControllerSecurityTests
             .Where(item => item.ResourceCode == "IDP_STAKEHOLDER")
             .OrderBy(item => item.MemberCode)
             .ToArrayAsync();
-        stakeholderMembers.Select(item => item.MemberCode).Should().Equal("ContactEmail", "ContactPerson");
+        stakeholderMembers.Select(item => item.MemberCode).Should().Equal("ContactEmail", "ContactPerson", "KeyInput");
         Assert.All(stakeholderMembers, item => Assert.True(item.IsSensitive));
-        Assert.Equal(4, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_STAKEHOLDER" && item.MemberCode != null));
+        Assert.Equal(6, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_STAKEHOLDER" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_STAKEHOLDER")).SupportsFieldSecurity);
+        var participationMembers = await context.SecurityMemberDefinitions
+            .Where(item => item.ResourceCode == "IDP_PARTICIPATION")
+            .OrderBy(item => item.MemberCode)
+            .ToArrayAsync();
+        participationMembers.Select(item => item.MemberCode).Should().Equal(
+            "AttendanceRegisterPath", "CommunityNeedDescription", "MinutesPath", "ProposedIntervention",
+            "WardPlanSummary", "WardPriorities", "WardProjects");
+        Assert.All(participationMembers, item => { Assert.True(item.IsSensitive); Assert.False(item.IsSystemManaged); });
+        Assert.Equal(14, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PARTICIPATION" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_PARTICIPATION")).SupportsFieldSecurity);
         var loginAuditMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "LOGIN_AUDIT")
             .OrderBy(item => item.MemberCode)

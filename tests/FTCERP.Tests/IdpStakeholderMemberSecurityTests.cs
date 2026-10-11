@@ -44,6 +44,7 @@ public sealed class IdpStakeholderMemberSecurityTests
         var protectedItem = Assert.Single(page.Items);
         Assert.Null(protectedItem.ContactPerson);
         Assert.Null(protectedItem.ContactEmail);
+        Assert.Null(protectedItem.KeyInput);
         Assert.Equal(session.PublicId, protectedItem.CommunitySessionPublicId);
 
         var hiddenSearch = await controller.GetStakeholderEngagementsPage(plan.PublicId,
@@ -76,7 +77,7 @@ public sealed class IdpStakeholderMemberSecurityTests
 
         var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "IDP_STAKEHOLDER.ContactPerson.UPDATE", "IDP_STAKEHOLDER.ContactEmail.UPDATE"
+            "IDP_STAKEHOLDER.ContactPerson.UPDATE", "IDP_STAKEHOLDER.ContactEmail.UPDATE", "IDP_STAKEHOLDER.KeyInput.UPDATE"
         };
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
@@ -98,10 +99,12 @@ public sealed class IdpStakeholderMemberSecurityTests
 
         allowedCodes.Add("IDP_STAKEHOLDER.ContactPerson.READ");
         allowedCodes.Add("IDP_STAKEHOLDER.ContactEmail.READ");
+        allowedCodes.Add("IDP_STAKEHOLDER.KeyInput.READ");
         var refreshedResult = await controller.GetStakeholderEngagementsPage(plan.PublicId, new PagedQueryRequest { SortBy = "contactEmail" });
         var refreshed = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<IdpStakeholderEngagementPageItemResponse>>>(
             Assert.IsType<OkObjectResult>(refreshedResult.Result).Value).Data!.Items);
         Assert.Equal("Nandi Molefe", refreshed.ContactPerson);
         Assert.Equal("nandi@example.test", refreshed.ContactEmail);
+        Assert.Equal("Skills development", refreshed.KeyInput);
     }
 }

@@ -40,6 +40,7 @@ public static class SecurityRegistrySeeder
             Resource("IDP_DOCUMENT", "IDP Document", true, true, true, false, true, true),
             Resource("IDP_PROJECT", "IDP Project", true, true, true, false, true, true),
             Resource("IDP_INDICATOR", "IDP Indicator", true, true, true, false, true, true),
+            Resource("IDP_PARTICIPATION", "IDP Community Participation", true, true, true, false, true, true),
             Resource("IDP_STAKEHOLDER", "IDP Stakeholder Engagement", true, true, true, false, true, true),
             Resource("TID", "Technical Indicator Definition", true, true, true, false, true, true),
             Resource("STRATEGIC_DOCUMENT", "Strategic Document", true, true, true, false, true, true),
@@ -359,6 +360,13 @@ public static class SecurityRegistrySeeder
             Member("IDP_PROJECT", "ProgrammeActualExpenditure", "Programme Actual Expenditure", sensitive: true),
             Member("IDP_PROJECT", "ProjectBudget", "Project Budget", sensitive: true),
             Member("IDP_PROJECT", "ProjectFundingSource", "Project Funding Source", sensitive: true),
+            Member("IDP_PARTICIPATION", "AttendanceRegisterPath", "Community Session Attendance Register Reference", sensitive: true),
+            Member("IDP_PARTICIPATION", "MinutesPath", "Community Session Minutes Reference", sensitive: true),
+            Member("IDP_PARTICIPATION", "CommunityNeedDescription", "Community Need Description", sensitive: true),
+            Member("IDP_PARTICIPATION", "ProposedIntervention", "Community Need Proposed Intervention", sensitive: true),
+            Member("IDP_PARTICIPATION", "WardPlanSummary", "Ward Plan Summary", sensitive: true),
+            Member("IDP_PARTICIPATION", "WardPriorities", "Ward Priorities", sensitive: true),
+            Member("IDP_PARTICIPATION", "WardProjects", "Ward Projects", sensitive: true),
             Member("TID", "SourceUploadedByUserId", "Source Document Uploader Identity", sensitive: true, systemManaged: true),
             Member("TID", "SourceUploadedByName", "Source Document Uploader Name", sensitive: true, systemManaged: true),
             Member("TID", "SourceScannerProvider", "Source Document Scanner Provider", sensitive: true, systemManaged: true),
@@ -390,6 +398,7 @@ public static class SecurityRegistrySeeder
             Member("AUTHENTICATION", "EventIpAddress", "Authentication Event IP Address", sensitive: true, systemManaged: true),
             Member("IDP_STAKEHOLDER", "ContactPerson", "Stakeholder Contact Person", sensitive: true),
             Member("IDP_STAKEHOLDER", "ContactEmail", "Stakeholder Contact Email", sensitive: true),
+            Member("IDP_STAKEHOLDER", "KeyInput", "Stakeholder Key Input", sensitive: true),
             Member("LOGIN_AUDIT", "UserId", "Login User Identity", sensitive: true, systemManaged: true),
             Member("LOGIN_AUDIT", "Email", "Login Email Address", sensitive: true, systemManaged: true),
             Member("LOGIN_AUDIT", "IpAddress", "Login IP Address", sensitive: true, systemManaged: true),
@@ -628,6 +637,22 @@ public static class SecurityRegistrySeeder
         mappings["IDP.Project.Manage"] = ["IDP_PROJECT.CREATE", "IDP_PROJECT.READ", "IDP_PROJECT.UPDATE",
             "IDP_PROJECT.ProjectBudget.READ", "IDP_PROJECT.ProjectBudget.UPDATE",
             "IDP_PROJECT.ProjectFundingSource.READ", "IDP_PROJECT.ProjectFundingSource.UPDATE"];
+        var participationReadMembers = new[]
+        {
+            "IDP_PARTICIPATION.AttendanceRegisterPath.READ", "IDP_PARTICIPATION.MinutesPath.READ",
+            "IDP_PARTICIPATION.CommunityNeedDescription.READ", "IDP_PARTICIPATION.ProposedIntervention.READ",
+            "IDP_PARTICIPATION.WardPlanSummary.READ", "IDP_PARTICIPATION.WardPriorities.READ",
+            "IDP_PARTICIPATION.WardProjects.READ", "IDP_STAKEHOLDER.KeyInput.READ"
+        };
+        mappings["IDP.Participation.View"] = [.. mappings["IDP.Participation.View"], "IDP_PARTICIPATION.READ", .. participationReadMembers];
+        mappings["IDP.Participation.Manage"] = [.. mappings["IDP.Participation.Manage"],
+            "IDP_PARTICIPATION.CREATE", "IDP_PARTICIPATION.READ", "IDP_PARTICIPATION.UPDATE",
+            "IDP_PARTICIPATION.AttendanceRegisterPath.UPDATE", "IDP_PARTICIPATION.MinutesPath.UPDATE",
+            "IDP_PARTICIPATION.CommunityNeedDescription.UPDATE", "IDP_PARTICIPATION.ProposedIntervention.UPDATE",
+            "IDP_PARTICIPATION.WardPlanSummary.UPDATE", "IDP_PARTICIPATION.WardPriorities.UPDATE",
+            "IDP_PARTICIPATION.WardProjects.UPDATE", "IDP_STAKEHOLDER.KeyInput.UPDATE", .. participationReadMembers];
+        mappings["IDP.Reports.Generate"] = [.. mappings["IDP.Reports.Generate"], "IDP_PARTICIPATION.READ",
+            "IDP_PARTICIPATION.WardPlanSummary.READ", "IDP_PARTICIPATION.WardPriorities.READ", "IDP_PARTICIPATION.WardProjects.READ"];
         mappings["C88_INDICATOR.READ"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.MappingReason.READ"];
         mappings["C88_INDICATOR.UPDATE"] = ["C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.PlanMissingDataExplanation.UPDATE"];
         mappings["C88_INDICATOR.MANAGE_MAPPING"] = ["C88_INDICATOR.MappingReason.READ", "C88_INDICATOR.MappingReason.UPDATE"];
