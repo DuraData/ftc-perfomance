@@ -133,7 +133,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         context.StrategicDocumentTypes.Add(entity);
         workflow.QueueAuditTrail(nameof(StrategicDocumentType), entity.PublicId.ToString(), "Create", null,
             new { entity.Code, entity.Name, entity.AllowsExternalLinks, entity.IsActive, entity.DisplayOrder, Reason = normalized.Reason },
-            session.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            session.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext), normalized.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicDocumentTypeResponse>("A strategic-document type with this code already exists.")); }
         return Ok(new ApiResponse<StrategicDocumentTypeResponse>(true, ToResponse(entity)));
@@ -160,7 +160,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         entity.DisplayOrder = request.DisplayOrder;
         workflow.QueueAuditTrail(nameof(StrategicDocumentType), entity.PublicId.ToString(), "Update", before,
             new { entity.Code, entity.Name, entity.Description, entity.AllowsExternalLinks, entity.IsActive, entity.DisplayOrder, Reason = normalized.Reason },
-            session.User!.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            session.User!.Id, PerformanceApiSupport.GetIpAddress(HttpContext), normalized.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicDocumentTypeResponse>("The document type changed before this update. Reload and retry.")); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicDocumentTypeResponse>("A strategic-document type with this code already exists.")); }

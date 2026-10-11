@@ -7,7 +7,7 @@ public class StrategicDocumentsControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await SeedAsync(context);
-        var workflow = new Mock<IWorkflowGovernanceService>();
+        var workflow = new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(setup.Municipality.Id, false));
         var controller = Controller(context, setup.User, setup.Municipality.Id, workflow: workflow);
 
         var created = Payload(await controller.CreateType(new SaveStrategicDocumentTypeRequest(
@@ -21,10 +21,41 @@ public class StrategicDocumentsControllerTests
         var stale = await controller.UpdateType(created.PublicId, new SaveStrategicDocumentTypeRequest(
             "policy", "Stale", null, true, true, 5, created.RowVersion, "Stale type edit"));
         stale.Result.Should().BeOfType<ConflictObjectResult>();
-        workflow.Verify(service => service.QueueAuditTrail(nameof(StrategicDocumentType), created.PublicId.ToString(), "Create",
-            null, It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
-        workflow.Verify(service => service.QueueAuditTrail(nameof(StrategicDocumentType), created.PublicId.ToString(), "Update",
-            It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Exactly(2));
+        var audits = await context.AuditTrails.AsNoTracking()
+            .Where(item => item.EntityName == nameof(StrategicDocumentType) && item.EntityId == created.PublicId.ToString())
+            .OrderBy(item => item.Id)
+            .ToArrayAsync();
+        audits.Select(item => item.Action).Should().Equal("Create", "Update");
+        audits.Select(item => item.Reason).Should().Equal("Create controlled type", "Refine type");
+    }
+
+    [Fact]
+    public async Task ControlledTypes_RejectUnauditedRewritesAndHardDeletesAtPersistenceBoundary()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+
+        setup.Type.Name = "Unaudited rewrite";
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        var deletion = await context.StrategicDocumentTypes.SingleAsync(item => item.PublicId == setup.Type.PublicId);
+        context.StrategicDocumentTypes.Remove(deletion);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*cannot be hard deleted*");
+
+        context.ChangeTracker.Clear();
+        var governed = await context.StrategicDocumentTypes.SingleAsync(item => item.PublicId == setup.Type.PublicId);
+        var before = new { governed.Code, governed.Name, governed.IsActive };
+        governed.Name = "Governed rewrite";
+        new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(setup.Municipality.Id, false))
+            .QueueAuditTrail(nameof(StrategicDocumentType), governed.PublicId.ToString(), "Update", before,
+                new { governed.Code, governed.Name, governed.IsActive }, setup.User.Id, null, "Correct controlled type");
+        await context.SaveChangesAsync();
+
+        (await context.StrategicDocumentTypes.AsNoTracking().SingleAsync(item => item.PublicId == setup.Type.PublicId))
+            .Name.Should().Be("Governed rewrite");
     }
 
     [Fact]
@@ -338,7 +369,7 @@ public class StrategicDocumentsControllerTests
         ApplicationDbContext context,
         ApplicationUser user,
         long municipalityId,
-        Mock<IWorkflowGovernanceService>? workflow = null,
+        IWorkflowGovernanceService? workflow = null,
         Mock<IEvidenceBlobStorage>? storage = null,
         Mock<IEvidenceInspectionService>? inspection = null,
         Mock<IEvidenceMalwareScanner>? scanner = null,
@@ -357,7 +388,7 @@ public class StrategicDocumentsControllerTests
         inspection ??= new Mock<IEvidenceInspectionService>();
         scanner ??= new Mock<IEvidenceMalwareScanner>();
         return new StrategicDocumentsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            (workflow ?? new Mock<IWorkflowGovernanceService>()).Object, new FixedTenantContext(municipalityId, false),
+            workflow ?? new Mock<IWorkflowGovernanceService>().Object, new FixedTenantContext(municipalityId, false),
             storage.Object, inspection.Object, scanner.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }

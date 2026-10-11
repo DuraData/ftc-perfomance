@@ -2307,6 +2307,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             RequireGovernanceAudit(nameof(Ward), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         foreach (var entry in ChangeTracker.Entries<VoteNumber>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(VoteNumber), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        if (ChangeTracker.Entries<StrategicDocumentType>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-document type history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<StrategicDocumentType>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(StrategicDocumentType), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         var strategicMasterEntries = ChangeTracker.Entries()
             .Where(entry => entry.Entity is StrategicPlanningMasterBase)
             .ToArray();
