@@ -383,11 +383,11 @@ public sealed class OrganizationMastersControllerTests
     {
         var tenant = new TenantContext(74, "org-admin");
         using var context = NewContext(tenant);
-        var departments = new DepartmentsController(context);
-        var units = new UnitsController(context);
+        var departments = new DepartmentsController();
+        var units = new UnitsController();
         var departmentCollection = departments.GetDepartments();
         var departmentDetail = departments.GetDepartment(1);
-        var departmentMutation = departments.UpdateDepartment(1, new FTCERP.Host.API.Requests.UpdateDepartmentRequest("FIN", "Finance", null));
+        var departmentMutation = departments.UpdateDepartment(1);
         var unitCollection = units.GetUnits();
         var unitDetail = units.GetUnit(1);
         var unitMutation = units.DeleteUnit(1);

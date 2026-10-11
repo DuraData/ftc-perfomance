@@ -2,6 +2,11 @@ using FTCERP.Host.Domain.Entities;
 
 namespace FTCERP.Host.API.Requests;
 
+public sealed class UploadPoeRequest
+{
+    public IFormFile File { get; set; } = null!;
+}
+
 public sealed record AssessPoeRequest(PoeAssessmentOutcome Outcome, string? Comment);
 public sealed record ReplacePoeRequest(Guid ReplacementEvidencePublicId, string Reason, string SupersededRowVersion, string ReplacementRowVersion);
 public sealed record PlacePoeLegalHoldRequest(string HoldReference, string Reason);

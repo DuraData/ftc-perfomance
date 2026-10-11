@@ -23,16 +23,6 @@ public record CreateUserRequest(string FirstName, string LastName, string Email,
 
 public record UpdateUserRequest(string FirstName, string LastName, string? PhoneNumber, bool IsActive);
 
-public record CreateRoleRequest(string Name, string? Description);
-
-public record UpdateRoleRequest(string Name, string? Description);
-
-public record UpdateRolePermissionsRequest(int[] PermissionIds);
-
-public record UpdateUserPermissionOverridesRequest(UpdateUserPermissionOverrideItem[] Overrides);
-
-public record UpdateUserPermissionOverrideItem(int PermissionId, bool IsAllowed, string? Reason);
-
 public record AssignUserRolesRequest(Guid[] RolePublicIds);
 
 public record UserScopeItemRequest(
@@ -58,18 +48,6 @@ public record UserAssignmentItemRequest(
     Guid? TaskPublicId);
 
 public record UpdateUserAssignmentsRequest(UserAssignmentItemRequest[] Assignments, string RowVersion, string Reason);
-
-public record CreateDepartmentRequest(string Code, string Name, string? Description);
-
-public record UpdateDepartmentRequest(string Code, string Name, string? Description);
-
-public record CreateUnitRequest(int DepartmentId, string Code, string Name);
-
-public record UpdateUnitRequest(int DepartmentId, string Code, string Name);
-
-public record CreatePermissionRequest(string Module, string Feature, string Action, string Code, string? Description, bool IsActive);
-
-public record UpdatePermissionRequest(string Module, string Feature, string Action, string Code, string? Description, bool IsActive);
 
 public record CheckPermissionRequest(string PermissionCode);
 
@@ -506,14 +484,6 @@ public record CreateIdpWardInputRequest(
     string WardPriorities,
     string WardProjects);
 
-public record CreateIdpStakeholderEngagementRequest(
-    int IdpCommunitySessionId,
-    string StakeholderType,
-    string StakeholderName,
-    string? ContactPerson,
-    string? ContactEmail,
-    string? KeyInput);
-
 public record CreateIdpStakeholderEngagementV1Request(
     string StakeholderType,
     string StakeholderName,
@@ -550,6 +520,14 @@ public record CreateIdpDocumentRequest(
     long SizeInBytes,
     int VersionNumber,
     bool IsApproved);
+
+public sealed class UploadIdpDocumentRequest
+{
+    public IFormFile File { get; set; } = null!;
+    public string Category { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public int? PlanVersionNumber { get; set; }
+}
 
 public record CreateIdpCommentRequest(
     Guid IdpPlanPublicId,

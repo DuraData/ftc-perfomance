@@ -1,5 +1,11 @@
 namespace FTCERP.Host.API.Requests;
 
+public sealed class UploadTidSourceDocumentRequest
+{
+    public IFormFile File { get; set; } = null!;
+    public string Title { get; set; } = string.Empty;
+}
+
 public record UpdateTidConfigurationRequest(
     bool TidEnabled,
     bool AllKpisRequired,

@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **630 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **338 frontend tests pass** across 75 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **632 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **338 frontend tests pass** across 75 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -56,11 +56,11 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
 | Frontend unit tests | 338/338 passed across 75 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 630 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
+| Backend tests via ordinary `dotnet test` | 632 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
-| Production builds | Passed | The Release host build has 0 warnings/errors; Vite transforms 2,110 modules into 77 JavaScript chunks. |
+| Production builds | Passed | The Release host build has 0 warnings/errors; Vite transforms 2,110 modules into 78 JavaScript chunks. |
 | Bundle budget | Passed | The largest JavaScript chunk is 401.5 KiB against the enforced 450 KiB limit. |
 | CI workflow | Implemented and most recent pushed run passed | The repository-enforced workflow builds and tests both applications and runs migration, dependency, secret and bundle checks; each new push is inspected separately. |
 
@@ -3504,6 +3504,16 @@ OPMS and IPMS target-template forms now select strategic goals, strategic object
 
 Focused verification passes **1/1 backend retirement test** and **7/7 frontend template/picker tests**, including exact-name public-ID recovery for legacy OPMS/IPMS templates. Complete regression passes **630 backend tests with 1 SQL Server-only skip and 0 failures** and **338/338 frontend tests across 75 files**; accessibility automation passes **2/2**, TypeScript and ESLint pass, the Release build completes with **0 warnings and 0 errors**, the production build transforms **2,110 modules into 78 JavaScript chunks**, the bundle budget passes with a largest chunk of **401.5 KiB**, and diff hygiene passes. No schema migration or provider-specific behavior is introduced. Fresh interactive browser verification remains an unclaimed acceptance gate.
 
+GitHub Actions run **38108055763** independently passed the retired-catalogue and governed-template-selector module on both controlled branches in **5m55s**, including restore, backend build/test, migration and recovery checks, dependency and secret audits, frontend type-check/lint/test/accessibility/build, and the bundle budget.
+
+### 11.274 Public API discovery and retired private-key contract removal
+
+The retired permission, role-permission, direct user-override, department, unit and IDP stakeholder contracts no longer publish or retain database-generated integer identifiers. Their dead request/response CLR types have been removed, the compatibility endpoints retain HTTP 410 guidance for old callers, and the retired controllers/actions are excluded from API discovery. The active role detail, security administration, organization-master, IDP plan/version/dashboard/report/task/stakeholder and OPMS/IPMS target-library routes remain discoverable through stable public identifiers. Numeric IDP plan/task routes and all eight integer target-library detail/mutation routes are now explicitly hidden from the published contract while preserving their retirement responses.
+
+End-to-end OpenAPI generation exposed and closed a separate API-description defect: direct `[FromForm] IFormFile` action parameters caused `/swagger/v1/swagger.json` to fail with HTTP 500. OPMS/IPMS POE, IDP document and TID source-document uploads now bind typed multipart form models. This preserves the browser `FormData` field names and controller validation while allowing the complete OpenAPI document to generate. The generated-document test asserts that fifteen retired private-key paths are absent and five representative public-ID paths remain present; reflection tests also reject eighteen removed private contracts and require discovery suppression only on retired actions.
+
+Focused verification passes **33/33 backend retirement, IDP, TID and generated-OpenAPI tests**. Complete regression passes **632 backend tests with 1 SQL Server-only skip and 0 failures** and **338/338 frontend tests across 75 files**; accessibility automation passes **2/2**, TypeScript and ESLint pass, the Release build completes with **0 warnings and 0 errors**, the production build transforms **2,110 modules into 78 JavaScript chunks**, the bundle budget passes with a largest chunk of **401.5 KiB**, and diff hygiene passes. This transport/API-description correction adds no schema migration or provider-specific persistence behavior. Native SQL Server and fresh interactive browser acceptance remain separate release gates.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -3720,13 +3730,15 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 - Protected Department, Unit, Position, Ward and Vote Number history at the persistence boundary by rejecting hard deletion and every rewrite without matching same-transaction reasoned before/after audit evidence.
 - Protected all twelve governed strategic-planning, budget and performance-classification master families from hard deletion and unaudited rewriting through one concrete-entity-aware persistence boundary, with 24 adversarial relational bypass checks.
 - Protected National KPA and Back-to-Basics global definitions plus their tenant-specific availability overrides from hard deletion and unaudited rewriting, preserving separate contextual and municipality-owned audit semantics.
+- Removed retired private-key security, organization and IDP stakeholder request/response contracts from the host assembly, excluded numeric/legacy compatibility actions from API discovery while preserving HTTP 410 behavior, and added generated-document guards for representative public-ID routes.
+- Replaced direct multipart `IFormFile` action parameters with typed form contracts across OPMS/IPMS POE, IDP documents and TID source documents, restoring successful complete Swagger/OpenAPI generation without changing browser field names.
 
 ### 12.5 Final test and build evidence
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 627; Failed: 0; Skipped: 1; Total: 628.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 337; Failed: 0; Test files: 75/75.** Governed global/municipality-year and reporting-period RowVersion edit flows, public-ID-only OPMS/IPMS target writes, target-library create/edit reference round trips and public-ID-only IDP plan/version/collaboration transport pass alongside the authentication-gate recovery/restriction, unresolved-access loading, cookie/token bounding, Settings bootstrap, live dynamic HTTP permission-revocation, stable-public-identity, tenant-isolation, record/member/action security, bounded-transport, workflow, reporting, notification, IDP, TID, Circular 88, import, audit and hostile-payload suites. |
+| Backend test suite | **Passed: 632; Failed: 0; Skipped: 1; Total: 633.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. Generated OpenAPI, retired private-key route suppression and typed multipart upload discovery are included. |
+| Frontend Vitest suite | **Passed: 338; Failed: 0; Test files: 75/75.** Governed global/municipality-year and reporting-period RowVersion edit flows, public-ID-only OPMS/IPMS target writes, target-library create/edit reference round trips and public-ID-only IDP plan/version/collaboration transport pass alongside the authentication-gate recovery/restriction, unresolved-access loading, cookie/token bounding, Settings bootstrap, live dynamic HTTP permission-revocation, stable-public-identity, tenant-isolation, record/member/action security, bounded-transport, workflow, reporting, notification, IDP, TID, Circular 88, import, audit and hostile-payload suites. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,110 modules transformed. |

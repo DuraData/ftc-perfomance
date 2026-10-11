@@ -7,6 +7,8 @@ using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Swashbuckle.AspNetCore.Swagger;
 
 namespace FTCERP.Tests;
 
@@ -36,10 +38,10 @@ public sealed class LegacySecurityEndpointRetirementTests
         AssertGone(controller.GetRolePermissions("role-a").Result);
         AssertGone(controller.GetRolePermissions("role-b").Result);
 
-        AssertGone((await controller.CreateRole(new CreateRoleRequest("Bypass", null))).Result);
-        AssertGone((await controller.UpdateRole("role-a", new UpdateRoleRequest("Bypass", null))).Result);
+        AssertGone((await controller.CreateRole()).Result);
+        AssertGone((await controller.UpdateRole("role-a")).Result);
         AssertGone((await controller.DeleteRole("role-a")).Result);
-        AssertGone((await controller.SetRolePermissions("role-a", new UpdateRolePermissionsRequest([]))).Result);
+        AssertGone((await controller.SetRolePermissions("role-a")).Result);
         Assert.Equal(2, await context.Roles.CountAsync());
         Assert.Equal("Tenant A Role", (await context.Roles.SingleAsync(item => item.Id == "role-a")).Name);
     }
@@ -53,18 +55,134 @@ public sealed class LegacySecurityEndpointRetirementTests
         var secondPermission = new Permission { Module = "Resource", Feature = "ROLE", Action = "Read", Code = "ROLE.READ", Description = "Read roles" };
         context.Permissions.AddRange(permission, secondPermission);
         await context.SaveChangesAsync();
-        var controller = new PermissionsController(context);
+        var controller = new PermissionsController();
 
         AssertGone(controller.GetPermissions().Result);
         AssertGone(controller.GetGrouped().Result);
-        AssertGone(controller.GetPermissionsPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "USER", SortBy = "code", SortDirection = "asc" }).Result);
-        AssertGone((await controller.CreatePermission(new CreatePermissionRequest("Unsafe", "Unsafe", "Grant", "UNSAFE.GRANT", null, true))).Result);
-        AssertGone((await controller.UpdatePermission(permission.Id, new UpdatePermissionRequest("Unsafe", "Unsafe", "Grant", "UNSAFE.GRANT", null, true))).Result);
-        AssertGone((await controller.DeletePermission(permission.Id)).Result);
+        AssertGone(controller.GetPermissionsPage().Result);
+        AssertGone(controller.CreatePermission().Result);
+        AssertGone(controller.UpdatePermission(permission.Id).Result);
+        AssertGone(controller.DeletePermission(permission.Id).Result);
 
         var stored = await context.Permissions.SingleAsync(item => item.Id == permission.Id);
         Assert.Equal("USER.READ", stored.Code);
         Assert.True(stored.IsActive);
+    }
+
+    [Fact]
+    public void Retired_private_key_security_contracts_are_absent_and_hidden_from_api_discovery()
+    {
+        var assembly = typeof(PermissionsController).Assembly;
+        var removedContracts = new[]
+        {
+            "FTCERP.Host.API.Responses.PermissionResponse",
+            "FTCERP.Host.API.Responses.RolePermissionResponse",
+            "FTCERP.Host.API.Responses.UserPermissionOverrideResponse",
+            "FTCERP.Host.API.Responses.UserPermissionsResponse",
+            "FTCERP.Host.API.Responses.PermissionGroupResponse",
+            "FTCERP.Host.API.Responses.DepartmentResponse",
+            "FTCERP.Host.API.Responses.UnitResponse",
+            "FTCERP.Host.API.Responses.IdpStakeholderEngagementResponse",
+            "FTCERP.Host.API.Requests.UpdateRolePermissionsRequest",
+            "FTCERP.Host.API.Requests.UpdateUserPermissionOverridesRequest",
+            "FTCERP.Host.API.Requests.UpdateUserPermissionOverrideItem",
+            "FTCERP.Host.API.Requests.CreateRoleRequest",
+            "FTCERP.Host.API.Requests.UpdateRoleRequest",
+            "FTCERP.Host.API.Requests.CreatePermissionRequest",
+            "FTCERP.Host.API.Requests.UpdatePermissionRequest",
+            "FTCERP.Host.API.Requests.CreateDepartmentRequest",
+            "FTCERP.Host.API.Requests.UpdateDepartmentRequest",
+            "FTCERP.Host.API.Requests.CreateUnitRequest",
+            "FTCERP.Host.API.Requests.UpdateUnitRequest",
+            "FTCERP.Host.API.Requests.CreateIdpStakeholderEngagementRequest"
+        };
+
+        foreach (var contract in removedContracts)
+        {
+            Assert.Null(assembly.GetType(contract));
+        }
+
+        Assert.True(typeof(PermissionsController).GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(DepartmentsController).GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(UnitsController).GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.Null(typeof(RolesController).GetMethod(nameof(RolesController.GetRole))!
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true).SingleOrDefault());
+        foreach (var action in new[]
+                 {
+                     nameof(RolesController.GetRoles), nameof(RolesController.CreateRole), nameof(RolesController.UpdateRole),
+                     nameof(RolesController.DeleteRole), nameof(RolesController.GetRolePermissions), nameof(RolesController.SetRolePermissions)
+                 })
+        {
+            Assert.True(typeof(RolesController).GetMethod(action)!
+                .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        }
+        foreach (var action in new[] { nameof(UsersController.GetUserPermissions), nameof(UsersController.SetUserPermissionOverrides) })
+        {
+            Assert.True(typeof(UsersController).GetMethod(action)!
+                .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        }
+
+        foreach (var action in new[]
+                 {
+                     nameof(IdpController.UpdatePlan), nameof(IdpController.CreatePlanVersion), nameof(IdpController.GetHierarchy),
+                     nameof(IdpController.GetDashboard), nameof(IdpController.GetAlignmentMatrix), nameof(IdpController.GenerateReport),
+                     nameof(IdpController.CreateStakeholderEngagement), nameof(IdpController.CompleteTask)
+                 })
+        {
+            Assert.True(typeof(IdpController).GetMethod(action)!
+                .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        }
+        Assert.Null(typeof(IdpController).GetMethod(nameof(IdpController.UpdatePlanByPublicId))!
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true).SingleOrDefault());
+
+        foreach (var controllerType in new[] { typeof(OpmsTargetLibraryController), typeof(IpmsTargetLibraryController) })
+        {
+            foreach (var action in new[] { "GetTemplate", "UpdateTemplate", "ArchiveTemplate", "DuplicateTemplate" })
+            {
+                var numericAction = controllerType.GetMethods().Single(method => method.Name == action
+                    && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(int)));
+                Assert.True(numericAction.GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                    .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+            }
+        }
+    }
+
+    [Fact]
+    public void Generated_openapi_document_excludes_retired_private_key_routes_and_keeps_public_id_routes()
+    {
+        using var factory = new TenantApplicationFactory("swagger-user");
+        _ = factory.CreateClient();
+        var document = factory.Services.GetRequiredService<ISwaggerProvider>().GetSwagger("v1");
+        var paths = document.Paths;
+
+        foreach (var retiredPath in new[]
+                 {
+                     "/api/permissions", "/api/permissions/page", "/api/departments/{id}", "/api/units/{id}",
+                     "/api/roles/{id}/permissions", "/api/idp/plans/{id}", "/api/idp/plans/{id}/versions",
+                     "/api/idp/plans/{id}/hierarchy", "/api/idp/plans/{id}/dashboard",
+                     "/api/idp/plans/{id}/alignment-matrix", "/api/idp/plans/{id}/reports/{reportType}",
+                     "/api/idp/stakeholder-engagements", "/api/idp/tasks/{id}/complete",
+                     "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}"
+                 })
+        {
+            Assert.False(paths.ContainsKey(retiredPath), $"Retired private-key path remained in OpenAPI: {retiredPath}");
+        }
+
+        foreach (var publicPath in new[]
+                 {
+                     "/api/roles/{publicId}", "/api/v1/idp/plans/{planPublicId}",
+                     "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
+                     "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}"
+                 })
+        {
+            Assert.True(paths.ContainsKey(publicPath), $"Public-ID path missing from OpenAPI: {publicPath}");
+        }
     }
 
     private static ApplicationRole Role(string id, long municipalityId, string code, string name) => new()

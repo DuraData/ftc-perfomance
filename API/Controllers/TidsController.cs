@@ -322,8 +322,10 @@ public class TidsController : ControllerBase
     [HttpPost("{tidPublicId:guid}/documents")]
     [RequestSizeLimit(MaximumDocumentBytes)]
     public async Task<ActionResult<ApiResponse<TidSourceDocumentResponse>>> UploadSourceDocument(
-        Guid tidPublicId, [FromForm] IFormFile file, [FromForm] string title)
+        Guid tidPublicId, [FromForm] UploadTidSourceDocumentRequest request)
     {
+        var file = request.File;
+        var title = request.Title;
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<TidSourceDocumentResponse>(false, null, "User not found."));
         if (file == null || file.Length == 0) return BadRequest(new ApiResponse<TidSourceDocumentResponse>(false, null, "File is required."));

@@ -562,8 +562,9 @@ public class IpmsSubmissionsController : ControllerBase
 
     [HttpPost("{id:guid}/attachments")]
     [RequestSizeLimit(MaximumEvidenceBytes)]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> UploadAttachment(string id, [FromForm] IFormFile file)
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> UploadAttachment(string id, [FromForm] UploadPoeRequest request)
     {
+        var file = request.File;
         if (file == null || file.Length == 0) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, "File is required"));
         if (file.Length > MaximumEvidenceBytes) return StatusCode(StatusCodes.Status413PayloadTooLarge, new ApiResponse<PoeFileResponse>(false, null, "File exceeds the 25 MB evidence limit"));
         var extension = Path.GetExtension(file.FileName);

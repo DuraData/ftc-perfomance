@@ -58,8 +58,7 @@ public sealed class IdpStakeholderMemberSecurityTests
             new CreateIdpStakeholderEngagementV1Request("Civil Society", "Residents Association", "Private Contact",
                 "private@example.test", "Service reliability"));
         Assert.IsType<ForbidResult>(deniedWrite.Result);
-        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.CreateStakeholderEngagement(
-            new CreateIdpStakeholderEngagementRequest(session.Id, "Civil Society", "Residents Association", null, null, null)).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.CreateStakeholderEngagement().Result).StatusCode);
     }
 
     [Fact]

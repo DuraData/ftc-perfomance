@@ -24,8 +24,6 @@ public record UserProfileResponse(Guid PublicId, string UserName, string FirstNa
 
 public record RoleResponse(Guid PublicId, string Name, string? Description, bool IsSystemRole, bool IsActive);
 
-public record PermissionResponse(int Id, string Module, string Feature, string Action, string Code, string? Description, bool IsActive);
-
 public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider, string? Code = null);
 
 public record LoginAuditLogResponse(Guid PublicId, Guid? UserPublicId, string? Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
@@ -39,23 +37,6 @@ public record UserDetailResponse(UserResponse User, RoleResponse[] Roles);
 
 public record DemoUserResponse(string Role, string FullName, string Department, string Position, string Email, string UserName, string Password);
 
-public record RolePermissionResponse(int PermissionId, string Code, bool IsAllowed);
-
-public record UserPermissionOverrideResponse(int PermissionId, string Code, bool IsAllowed, string? Reason);
-
-public record UserPermissionsResponse(string[] FromRoles, UserPermissionOverrideResponse[] Overrides, string[] Effective);
-
-public record PermissionGroupResponse(string Module, string Feature, PermissionResponse[] Permissions);
-
-public record DepartmentResponse(int Id, string Code, string Name, string? Description)
-{
-    public Guid PublicId { get; init; }
-}
-
-public record UnitResponse(int Id, int DepartmentId, string DepartmentName, string Code, string Name)
-{
-    public Guid PublicId { get; init; }
-}
 
 public record UserScopeResponse(
     Guid PublicId,
@@ -852,16 +833,6 @@ public record IdpCommunitySessionResponse(
 public record IdpCommunityNeedResponse(Guid PublicId, Guid IdpCommunitySessionPublicId, string IssueCategory, string Description, string PriorityLevel, string? ProposedIntervention, string RowVersion);
 
 public record IdpWardInputResponse(Guid PublicId, Guid IdpPlanPublicId, Guid WardPublicId, string WardName, string WardPlanSummary, string WardPriorities, string WardProjects, string RowVersion);
-
-public record IdpStakeholderEngagementResponse(
-    Guid PublicId,
-    int IdpCommunitySessionId,
-    string StakeholderType,
-    string StakeholderName,
-    string? ContactPerson,
-    string? ContactEmail,
-    string? KeyInput,
-    string RowVersion);
 
 public record IdpStakeholderEngagementPageItemResponse(
     Guid PublicId,

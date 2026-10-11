@@ -732,8 +732,7 @@ public sealed class UsersControllerSecurityTests
 
         var read = Assert.IsType<ObjectResult>(controller.GetUserPermissions(target.PublicId).Result);
         Assert.Equal(StatusCodes.Status410Gone, read.StatusCode);
-        var write = Assert.IsType<ObjectResult>((await controller.SetUserPermissionOverrides(target.PublicId,
-            new UpdateUserPermissionOverridesRequest([]))).Result);
+        var write = Assert.IsType<ObjectResult>((await controller.SetUserPermissionOverrides(target.PublicId)).Result);
         Assert.Equal(StatusCodes.Status410Gone, write.StatusCode);
     }
 

@@ -96,6 +96,7 @@ public class IpmsTargetLibraryController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IpmsTargetTemplateResponse>> GetTemplate(int id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsTargetTemplateResponse>(false, null,
             "Integer template identifiers are retired. Use GET /api/v1/ipms-target-library/{publicId}."));
@@ -135,6 +136,7 @@ public class IpmsTargetLibraryController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IpmsTargetTemplateResponse>> UpdateTemplate(int id, [FromBody] SaveIpmsTargetTemplateRequest request) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsTargetTemplateResponse>(false, null,
             "Integer template identifiers are retired. Use PUT /api/v1/ipms-target-library/{publicId} with RowVersion."));
@@ -169,6 +171,7 @@ public class IpmsTargetLibraryController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<bool>> ArchiveTemplate(int id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false,
             "Integer archive routes are retired. Use POST /api/v1/ipms-target-library/{publicId}/archive with RowVersion."));
@@ -199,6 +202,7 @@ public class IpmsTargetLibraryController : ControllerBase
     }
 
     [HttpPost("{id:int}/duplicate")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IpmsTargetTemplateResponse>> DuplicateTemplate(int id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsTargetTemplateResponse>(false, null,
             "Integer template identifiers are retired. Use POST /api/v1/ipms-target-library/{publicId}/duplicate."));

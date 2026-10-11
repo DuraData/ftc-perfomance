@@ -24,6 +24,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<RoleResponse[]>> GetRoles() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse[]>(false, null,
             "This unbounded legacy route is retired. Use /api/v1/security/roles/page."));
@@ -37,7 +38,8 @@ public class RolesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ApiResponse<RoleResponse>>> CreateRole([FromBody] CreateRoleRequest request)
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> CreateRole()
     {
         await Task.CompletedTask;
         return StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse>(false, null,
@@ -45,7 +47,8 @@ public class RolesController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<ApiResponse<RoleResponse>>> UpdateRole(string id, [FromBody] UpdateRoleRequest request)
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public async Task<ActionResult<ApiResponse<RoleResponse>>> UpdateRole(string id)
     {
         await Task.CompletedTask;
         return StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleResponse>(false, null,
@@ -53,6 +56,7 @@ public class RolesController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public async Task<ActionResult<ApiResponse<bool>>> DeleteRole(string id)
     {
         await Task.CompletedTask;
@@ -61,12 +65,14 @@ public class RolesController : ControllerBase
     }
 
     [HttpGet("{id}/permissions")]
-    public ActionResult<ApiResponse<RolePermissionResponse[]>> GetRolePermissions(string id) =>
-        StatusCode(StatusCodes.Status410Gone, new ApiResponse<RolePermissionResponse[]>(false, null,
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> GetRolePermissions(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
             "This legacy role-permission collection is retired. Use /api/v1/security/roles/{roleId}/permissions with /api/v1/security/permissions/page."));
 
     [HttpPut("{id}/permissions")]
-    public async Task<ActionResult<ApiResponse<bool>>> SetRolePermissions(string id, [FromBody] UpdateRolePermissionsRequest request)
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public async Task<ActionResult<ApiResponse<bool>>> SetRolePermissions(string id)
     {
         await Task.CompletedTask;
         return StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Use PUT /api/v1/security/roles/{roleId}/permissions with RowVersion. The legacy mutation contract is disabled."));

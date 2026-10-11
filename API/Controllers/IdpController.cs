@@ -207,6 +207,7 @@ public class IdpController : ControllerBase
 
     [HttpPut("plans/{id:int}")]
     [Authorize(Policy = "Permission:IDP.Plan.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpPlanSummaryResponse>> UpdatePlan(int id, [FromBody] UpdateIdpPlanRequest request)
     {
         _ = id;
@@ -276,6 +277,7 @@ public class IdpController : ControllerBase
 
     [HttpPost("plans/{id:int}/versions")]
     [Authorize(Policy = "Permission:IDP.Version.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpPlanVersionResponse>> CreatePlanVersion(int id, [FromBody] CreateIdpPlanVersionRequest request)
     {
         _ = id;
@@ -362,6 +364,7 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/hierarchy")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<object>> GetHierarchy(int id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
             "This unbounded numeric-ID hierarchy route is retired. Use /api/v1/idp/plans/{planPublicId}/hierarchy-paths/page and /api/v1/idp/plans/{planPublicId}/versions/page."));
@@ -542,6 +545,7 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/dashboard")]
     [Authorize(Policy = "Permission:IDP.Dashboard.View")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpDashboardResponse>> GetDashboard(int id)
     {
         _ = id;
@@ -665,6 +669,7 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/alignment-matrix")]
     [Authorize(Policy = "Permission:IDP.Alignment.View")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpAlignmentMatrixItemResponse[]>> GetAlignmentMatrix(int id)
     {
         _ = id;
@@ -736,6 +741,7 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans/{id:int}/reports/{reportType}")]
     [Authorize(Policy = "Permission:IDP.Reports.Generate")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpReportDocumentResponse>> GenerateReport(int id, string reportType, [FromQuery] string format = "pdf")
     {
         _ = id;
@@ -1418,12 +1424,10 @@ public class IdpController : ControllerBase
 
     [HttpPost("stakeholder-engagements")]
     [Authorize(Policy = "Permission:IDP.Participation.Manage")]
-    public ActionResult<ApiResponse<IdpStakeholderEngagementResponse>> CreateStakeholderEngagement([FromBody] CreateIdpStakeholderEngagementRequest request)
-    {
-        _ = request;
-        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpStakeholderEngagementResponse>(false, null,
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> CreateStakeholderEngagement() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
             "This numeric-session route is retired. Use POST /api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements."));
-    }
 
     [HttpPost("~/api/v1/idp/community-sessions/{sessionPublicId:guid}/stakeholder-engagements")]
     [Authorize(Policy = "Permission:IDP_STAKEHOLDER.CREATE")]
@@ -1691,11 +1695,12 @@ public class IdpController : ControllerBase
     [RequestSizeLimit(MaximumDocumentBytes)]
     public async Task<ActionResult<ApiResponse<IdpDocumentResponse>>> UploadDocument(
         Guid planPublicId,
-        [FromForm] IFormFile file,
-        [FromForm] string category,
-        [FromForm] string title,
-        [FromForm] int? planVersionNumber = null)
+        [FromForm] UploadIdpDocumentRequest request)
     {
+        var file = request.File;
+        var category = request.Category;
+        var title = request.Title;
+        var planVersionNumber = request.PlanVersionNumber;
         if (_evidenceStorage == null || _evidenceInspection == null || _malwareScanner == null)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<IdpDocumentResponse>(false, null, "Governed document storage is unavailable."));
         if (file == null || file.Length == 0)
@@ -1936,6 +1941,7 @@ public class IdpController : ControllerBase
 
     [HttpPatch("tasks/{id:long}/complete")]
     [Authorize(Policy = "Permission:IDP.Collaboration.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpTaskResponse>> CompleteTask(long id, [FromBody] CompleteIdpTaskRequest request)
     {
         _ = id;
@@ -2235,9 +2241,6 @@ public class IdpController : ControllerBase
         IdpWardInput wardInput, Guid planPublicId, Guid wardPublicId, string wardName) =>
         new(wardInput.PublicId, planPublicId, wardPublicId, wardName, wardInput.WardPlanSummary,
             wardInput.WardPriorities, wardInput.WardProjects, Convert.ToBase64String(wardInput.RowVersion));
-
-    private static IdpStakeholderEngagementResponse ToStakeholderResponse(IdpStakeholderEngagement stakeholder) =>
-        new(stakeholder.PublicId, stakeholder.IdpCommunitySessionId, stakeholder.StakeholderType, stakeholder.StakeholderName, stakeholder.ContactPerson, stakeholder.ContactEmail, stakeholder.KeyInput, Convert.ToBase64String(stakeholder.RowVersion));
 
     private static IdpStakeholderEngagementPageItemResponse ToStakeholderPageResponse(
         IdpStakeholderEngagement stakeholder,

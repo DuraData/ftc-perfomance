@@ -140,7 +140,8 @@ public class TidControllerTests
         var bytes = "%PDF-source"u8.ToArray();
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "source.pdf") { Headers = new HeaderDictionary(), ContentType = "application/pdf" };
 
-        var document = Payload(await controller.UploadSourceDocument(tid.PublicId, file, "Approved source methodology"));
+        var document = Payload(await controller.UploadSourceDocument(tid.PublicId,
+            new UploadTidSourceDocumentRequest { File = file, Title = "Approved source methodology" }));
         document.ScanStatus.Should().Be("ThreatDetected");
         document.IsQuarantined.Should().BeTrue();
         document.ContentUrl.Should().Contain(tid.PublicId.ToString());

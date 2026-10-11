@@ -688,14 +688,16 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{publicId:guid}/permissions")]
-    public ActionResult<ApiResponse<UserPermissionsResponse>> GetUserPermissions(Guid publicId)
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> GetUserPermissions(Guid publicId)
     {
-        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<UserPermissionsResponse>(false, null,
+        return StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
             "This legacy user-permission projection is retired. Use /api/v1/security/effective-permissions/{userPublicId}; effective access is derived from tenant-scoped role assignments."));
     }
 
     [HttpPut("{publicId:guid}/permission-overrides")]
-    public async Task<ActionResult<ApiResponse<bool>>> SetUserPermissionOverrides(Guid publicId, [FromBody] UpdateUserPermissionOverridesRequest request)
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public async Task<ActionResult<ApiResponse<bool>>> SetUserPermissionOverrides(Guid publicId)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
