@@ -5,7 +5,7 @@ import { canAccessPath } from '../components/security/AccessControl';
 import { login as apiLogin, getMyMenu, getMyPermissions, getMyTenantContextsPage } from '../api/api';
 
 vi.mock('../api/api', () => ({
-  getCurrentMunicipalityId: vi.fn(() => null),
+  getCurrentMunicipalityPublicId: vi.fn(() => null),
   getMyMenu: vi.fn(),
   getMyPermissions: vi.fn(),
   getMyTenantContextsPage: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('../api/api', () => ({
   completeEnterpriseLogin: vi.fn(),
   isAuthenticated: vi.fn(() => true),
   logout: vi.fn(),
-  setCurrentMunicipalityId: vi.fn(),
+  setCurrentMunicipalityPublicId: vi.fn(),
 }));
 
 const requiredUser = {

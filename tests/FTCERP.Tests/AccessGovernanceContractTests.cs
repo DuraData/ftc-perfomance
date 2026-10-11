@@ -190,6 +190,16 @@ public sealed class AccessGovernanceContractTests
         AssertGuidRoutes(typeof(IpmsSubmissionsController), "{attachmentId", "{attachmentId:guid}");
     }
 
+    [Fact]
+    public void Tenant_and_organization_directory_contracts_expose_public_identity_only()
+    {
+        AssertPublicIdentityOnly(typeof(TenantContextDto));
+        AssertPublicIdentityOnly(typeof(WardMasterDto));
+        AssertPublicIdentityOnly(typeof(VoteNumberMasterDto));
+        Assert.Equal("X-Municipality-Public-Id", TenantResolutionMiddleware.HeaderName);
+        Assert.Equal("X-Municipality-Id", TenantResolutionMiddleware.LegacyHeaderName);
+    }
+
     private static void AssertGone(ActionResult? result)
     {
         var objectResult = Assert.IsType<ObjectResult>(result);
@@ -203,6 +213,12 @@ public sealed class AccessGovernanceContractTests
             Assert.DoesNotContain(retired, properties.Keys);
         foreach (var publicName in new[] { "TargetPublicId", "KpiPublicId", "ProjectPublicId", "TaskPublicId" })
             Assert.Equal(typeof(Guid?), properties[publicName]);
+    }
+
+    private static void AssertPublicIdentityOnly(Type contract)
+    {
+        Assert.Equal(typeof(Guid), contract.GetProperty("PublicId")?.PropertyType);
+        Assert.Null(contract.GetProperty("Id"));
     }
 
     private static void AssertGuidRoutes(Type controllerType, string marker, string constrainedMarker)

@@ -8,7 +8,7 @@ import type {
   TenantContextDto,
 } from '../types';
 import {
-  getCurrentMunicipalityId,
+  getCurrentMunicipalityPublicId,
   getMyMenu,
   getMyPermissions,
   getMyTenantContextsPage,
@@ -16,7 +16,7 @@ import {
   completeEnterpriseLogin,
   isAuthenticated,
   logout as apiLogout,
-  setCurrentMunicipalityId,
+  setCurrentMunicipalityPublicId,
 } from '../api/api';
 
 type ToastType = 'success' | 'error' | 'info';
@@ -44,8 +44,8 @@ interface AppContextType {
   tenantContextSearch: string;
   setTenantContextPage: (page: number) => void;
   setTenantContextSearch: (search: string) => void;
-  currentMunicipalityId: number | null;
-  switchMunicipality: (municipalityId: number) => Promise<boolean>;
+  currentMunicipalityPublicId: string | null;
+  switchMunicipality: (municipalityPublicId: string) => Promise<boolean>;
   login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'>;
   resumeEnterpriseLogin: () => Promise<'success' | 'failed'>;
   logout: (notifyServer?: boolean) => void;
@@ -138,7 +138,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tenantContextTotalPages, setTenantContextTotalPages] = useState(0);
   const [tenantContextTotalCount, setTenantContextTotalCount] = useState(0);
   const [tenantContextSearch, setTenantContextSearchState] = useState('');
-  const [currentMunicipalityIdState, setCurrentMunicipalityIdState] = useState<number | null>(getCurrentMunicipalityId());
+  const [currentMunicipalityPublicIdState, setCurrentMunicipalityPublicIdState] = useState<string | null>(getCurrentMunicipalityPublicId());
   const [authenticationGate, setAuthenticationGate] = useState<AuthenticationGate | null>(() => readAuthenticationGate());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedSidebarGroups, setExpandedSidebarGroups] = useState<string[]>([]);
@@ -149,9 +149,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizeAppPath(window.location.pathname || '/dashboard') : '/login');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const refreshTenantAccess = useCallback(async (municipalityId: number | null) => {
-    setCurrentMunicipalityId(municipalityId);
-    setCurrentMunicipalityIdState(municipalityId);
+  const refreshTenantAccess = useCallback(async (municipalityPublicId: string | null) => {
+    setCurrentMunicipalityPublicId(municipalityPublicId);
+    setCurrentMunicipalityPublicIdState(municipalityPublicId);
     const [permissionsResult, menuResult] = await Promise.all([getMyPermissions(), getMyMenu()]);
     if (!permissionsResult.success || !permissionsResult.data || !menuResult.success || !menuResult.data) {
       setPermissions([]);
@@ -180,20 +180,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let contexts = result.data.items;
     setTenantContextTotalPages(result.data.totalPages);
     setTenantContextTotalCount(result.data.totalCount);
-    const storedId = getCurrentMunicipalityId();
-    if (storedId && !contexts.some(item => item.id === storedId)) {
-      const exact = await getMyTenantContextsPage({ page: 1, pageSize: 1, sortBy: 'name', sortDirection: 'asc' }, storedId);
+    const storedPublicId = getCurrentMunicipalityPublicId();
+    if (storedPublicId && !contexts.some(item => item.publicId === storedPublicId)) {
+      const exact = await getMyTenantContextsPage({ page: 1, pageSize: 1, sortBy: 'name', sortDirection: 'asc' }, storedPublicId);
       const selected = exact.data?.items[0];
       if (selected) contexts = [selected, ...contexts];
     }
     setTenantContexts(contexts);
-    const selectedId = contexts.some(item => item.id === storedId)
-      ? storedId
-      : !search && result.data.totalCount === 1 ? result.data.items[0]?.id ?? null : null;
-    if (selectedId === null) {
+    const selectedPublicId = contexts.some(item => item.publicId === storedPublicId)
+      ? storedPublicId
+      : !search && result.data.totalCount === 1 ? result.data.items[0]?.publicId ?? null : null;
+    if (selectedPublicId === null) {
       return refreshTenantAccess(null);
     }
-    return refreshTenantAccess(selectedId);
+    return refreshTenantAccess(selectedPublicId);
   }, [refreshTenantAccess]);
 
   const setTenantContextSearch = useCallback((search: string) => {
@@ -207,9 +207,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [authenticationGate, loadTenantContexts, tenantContextPage, tenantContextSearch, userProfile]);
 
-  const switchMunicipality = useCallback(async (municipalityId: number) => {
-    if (!tenantContexts.some(item => item.id === municipalityId)) return false;
-    return refreshTenantAccess(municipalityId);
+  const switchMunicipality = useCallback(async (municipalityPublicId: string) => {
+    if (!tenantContexts.some(item => item.publicId === municipalityPublicId)) return false;
+    return refreshTenantAccess(municipalityPublicId);
   }, [refreshTenantAccess, tenantContexts]);
 
   useEffect(() => {
@@ -301,8 +301,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccessReady(false);
       setUserProfile(data.user);
       setRoles(data.roles ?? []);
-      setCurrentMunicipalityId(null);
-      setCurrentMunicipalityIdState(null);
+      setCurrentMunicipalityPublicId(null);
+      setCurrentMunicipalityPublicIdState(null);
       setPermissions([]);
       setMenuItems([]);
       safeSetItem('user_profile', JSON.stringify(data.user));
@@ -346,8 +346,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAccessReady(false);
     setUserProfile(data.user);
     setRoles(data.roles ?? []);
-    setCurrentMunicipalityId(null);
-    setCurrentMunicipalityIdState(null);
+    setCurrentMunicipalityPublicId(null);
+    setCurrentMunicipalityPublicIdState(null);
     setPermissions([]);
     setMenuItems([]);
     safeSetItem('user_profile', JSON.stringify(data.user));
@@ -388,8 +388,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTenantContextTotalCount(0);
     setTenantContextSearchState('');
     setAuthenticationGate(null);
-    setCurrentMunicipalityIdState(null);
-    setCurrentMunicipalityId(null);
+    setCurrentMunicipalityPublicIdState(null);
+    setCurrentMunicipalityPublicId(null);
     safeRemoveItem('user_profile');
     safeRemoveItem('roles');
     safeRemoveItem('permissions');
@@ -455,7 +455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         tenantContextSearch,
         setTenantContextPage,
         setTenantContextSearch,
-        currentMunicipalityId: currentMunicipalityIdState,
+        currentMunicipalityPublicId: currentMunicipalityPublicIdState,
         switchMunicipality,
         login,
         resumeEnterpriseLogin,

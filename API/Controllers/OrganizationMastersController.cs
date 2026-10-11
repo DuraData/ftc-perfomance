@@ -232,7 +232,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         var total = await query.CountAsync();
         query = OrderWards(query, request.NormalizedSortBy, request.Descending);
         var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
-            new WardMasterDto(item.PublicId, item.Id, item.Code, item.Name, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+            new WardMasterDto(item.PublicId, item.Code, item.Name, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<WardMasterDto>>(true, PagedResponse<WardMasterDto>.Create(rows, request.Page, request.PageSize, total)));
     }
 
@@ -296,7 +296,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         var total = await query.CountAsync();
         query = OrderVoteNumbers(query, request.NormalizedSortBy, request.Descending);
         var rows = await query.Skip(request.Offset).Take(request.PageSize).Select(item =>
-            new VoteNumberMasterDto(item.PublicId, item.Id, item.Department.PublicId, item.Department.Name, item.MunicipalityFinancialYear == null ? null : item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear == null ? null : item.MunicipalityFinancialYear.FinancialYear.Code, item.Code, item.Number, item.Name, item.Amount, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
+            new VoteNumberMasterDto(item.PublicId, item.Department.PublicId, item.Department.Name, item.MunicipalityFinancialYear == null ? null : item.MunicipalityFinancialYear.PublicId, item.MunicipalityFinancialYear == null ? null : item.MunicipalityFinancialYear.FinancialYear.Code, item.Code, item.Number, item.Name, item.Amount, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion))).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<VoteNumberMasterDto>>(true, PagedResponse<VoteNumberMasterDto>.Create(rows, request.Page, request.PageSize, total)));
     }
 
@@ -482,15 +482,15 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
     private static DepartmentMasterDto ToDto(Department x) => new(x.PublicId, x.Code, x.Name, x.Description, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static UnitMasterDto ToDto(Unit x) => new(x.PublicId, x.Department.PublicId, x.Department.Name, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
     private static PositionMasterDto ToDto(Position x) => new(x.PublicId, x.Department.PublicId, x.Department.Name, x.Unit?.PublicId, x.Unit?.Name, x.Code, x.Name, x.Grade, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
-    private static WardMasterDto ToDto(Ward x) => new(x.PublicId, x.Id, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
-    private static VoteNumberMasterDto ToDto(VoteNumber x) => new(x.PublicId, x.Id, x.Department.PublicId, x.Department.Name, x.MunicipalityFinancialYear?.PublicId, x.MunicipalityFinancialYear?.FinancialYear.Code, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
+    private static WardMasterDto ToDto(Ward x) => new(x.PublicId, x.Code, x.Name, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
+    private static VoteNumberMasterDto ToDto(VoteNumber x) => new(x.PublicId, x.Department.PublicId, x.Department.Name, x.MunicipalityFinancialYear?.PublicId, x.MunicipalityFinancialYear?.FinancialYear.Code, x.Code, x.Number, x.Name, x.Amount, x.IsActive, x.EffectiveFrom, x.EffectiveTo, Convert.ToBase64String(x.RowVersion));
 }
 
 public sealed record DepartmentMasterDto(Guid PublicId, string Code, string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record UnitMasterDto(Guid PublicId, Guid DepartmentPublicId, string DepartmentName, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record PositionMasterDto(Guid PublicId, Guid DepartmentPublicId, string DepartmentName, Guid? UnitPublicId, string? UnitName, string Code, string Name, string? Grade, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record WardMasterDto(Guid PublicId, int Id, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record VoteNumberMasterDto(Guid PublicId, int Id, Guid DepartmentPublicId, string DepartmentName, Guid? MunicipalityFinancialYearPublicId, string? FinancialYearCode, string Code, string Number, string Name, decimal Amount, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record WardMasterDto(Guid PublicId, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record VoteNumberMasterDto(Guid PublicId, Guid DepartmentPublicId, string DepartmentName, Guid? MunicipalityFinancialYearPublicId, string? FinancialYearCode, string Code, string Number, string Name, decimal Amount, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record SaveDepartmentMasterRequest(string Code, string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
 public sealed record SaveUnitMasterRequest(Guid DepartmentPublicId, string Code, string Name, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);
 public sealed record SavePositionMasterRequest(Guid DepartmentPublicId, Guid? UnitPublicId, string Code, string Name, string? Grade, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string Reason, string? RowVersion = null);

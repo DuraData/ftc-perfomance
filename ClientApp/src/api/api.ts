@@ -172,25 +172,26 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const SESSION_MARKER_KEY = 'auth_session';
-const TENANT_STORAGE_KEY = 'municipality_context_id';
+const TENANT_STORAGE_KEY = 'municipality_context_public_id';
+const LEGACY_TENANT_STORAGE_KEY = 'municipality_context_id';
 let refreshPromise: Promise<ApiResponse<LoginResponse>> | null = null;
 sessionStorage.removeItem('auth_token');
+sessionStorage.removeItem(LEGACY_TENANT_STORAGE_KEY);
 
-export function getCurrentMunicipalityId(): number | null {
+export function getCurrentMunicipalityPublicId(): string | null {
   const value = sessionStorage.getItem(TENANT_STORAGE_KEY);
   if (!value) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : null;
 }
 
-export function setCurrentMunicipalityId(municipalityId: number | null) {
-  if (municipalityId === null) sessionStorage.removeItem(TENANT_STORAGE_KEY);
-  else sessionStorage.setItem(TENANT_STORAGE_KEY, String(municipalityId));
+export function setCurrentMunicipalityPublicId(municipalityPublicId: string | null) {
+  if (municipalityPublicId === null) sessionStorage.removeItem(TENANT_STORAGE_KEY);
+  else sessionStorage.setItem(TENANT_STORAGE_KEY, municipalityPublicId);
 }
 
 function addTenantHeader(headers: Record<string, string>) {
-  const municipalityId = getCurrentMunicipalityId();
-  if (municipalityId !== null) headers['X-Municipality-Id'] = String(municipalityId);
+  const municipalityPublicId = getCurrentMunicipalityPublicId();
+  if (municipalityPublicId !== null) headers['X-Municipality-Public-Id'] = municipalityPublicId;
   return headers;
 }
 
@@ -1240,7 +1241,7 @@ export async function logout() {
     await fetchApi<boolean>('/auth/logout', { method: 'POST' });
   } finally {
     clearTokens();
-    setCurrentMunicipalityId(null);
+    setCurrentMunicipalityPublicId(null);
   }
 }
 
@@ -1298,9 +1299,9 @@ export async function getMyPermissions(): Promise<ApiResponse<string[]>> {
   return get<string[]>('/v1/access/my-permissions');
 }
 
-export async function getMyTenantContextsPage(query: RegisterPageQuery = {}, municipalityId?: number): Promise<ApiResponse<PagedResult<TenantContextDto>>> {
+export async function getMyTenantContextsPage(query: RegisterPageQuery = {}, municipalityPublicId?: string): Promise<ApiResponse<PagedResult<TenantContextDto>>> {
   const pageQuery = registerPageQuery(query);
-  const exactQuery = municipalityId ? `${pageQuery ? '&' : '?'}municipalityId=${encodeURIComponent(municipalityId)}` : '';
+  const exactQuery = municipalityPublicId ? `${pageQuery ? '&' : '?'}municipalityPublicId=${encodeURIComponent(municipalityPublicId)}` : '';
   return get<PagedResult<TenantContextDto>>(`/v1/tenancy/my-contexts/page${pageQuery}${exactQuery}`);
 }
 

@@ -6,9 +6,9 @@ describe('tenant context API routes', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await getMyTenantContextsPage({ page: 2, pageSize: 25, search: ' metro ', sortBy: 'name', sortDirection: 'asc' });
-    await getMyTenantContextsPage({ page: 1, pageSize: 1, sortBy: 'name', sortDirection: 'asc' }, 42);
+    await getMyTenantContextsPage({ page: 1, pageSize: 1, sortBy: 'name', sortDirection: 'asc' }, '42424242-4242-4242-4242-424242424242');
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/tenancy/my-contexts/page?page=2&pageSize=25&search=metro&sortBy=name&sortDirection=asc'), expect.objectContaining({ credentials: 'include' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/tenancy/my-contexts/page?page=1&pageSize=1&sortBy=name&sortDirection=asc&municipalityId=42'), expect.objectContaining({ credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/tenancy/my-contexts/page?page=1&pageSize=1&sortBy=name&sortDirection=asc&municipalityPublicId=42424242-4242-4242-4242-424242424242'), expect.objectContaining({ credentials: 'include' }));
   });
 });

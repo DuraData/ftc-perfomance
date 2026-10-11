@@ -32,8 +32,7 @@ const kinds = ['Resource', 'Navigation', 'Member', 'Action', 'Report'] as const;
 const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
 
 export function SecurityAdministrationPage() {
-  const { currentMunicipalityId, tenantContexts } = useApp();
-  const currentMunicipalityPublicId = tenantContexts.find(item => item.id === currentMunicipalityId)?.publicId;
+  const { currentMunicipalityPublicId } = useApp();
   const [roles, setRoles] = useState<SecurityRoleSummary[]>([]);
   const [rolePage, setRolePage] = useState(1);
   const [roleTotalPages, setRoleTotalPages] = useState(0);
@@ -293,7 +292,7 @@ export function SecurityAdministrationPage() {
           <p className="mt-3 text-xs text-gray-500">Role choices follow the paged role search above; selections from other pages are preserved.</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-3">{roles.filter(role => role.isActive).map(role => {
             const assigned = assignmentDrafts.some(item => item.rolePublicId === role.publicId);
-            return <label key={role.publicId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { rolePublicId: role.publicId, municipalityPublicId: role.municipalityPublicId ?? currentMunicipalityPublicId, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.rolePublicId !== role.publicId))}/><span>{role.name}</span></label>;
+            return <label key={role.publicId} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={assigned} onChange={event => setAssignmentDrafts(current => event.target.checked ? [...current, { rolePublicId: role.publicId, municipalityPublicId: role.municipalityPublicId ?? currentMunicipalityPublicId ?? undefined, effectiveFrom: new Date().toISOString() }] : current.filter(item => item.rolePublicId !== role.publicId))}/><span>{role.name}</span></label>;
           })}</div>
           <div className="mt-4 space-y-3">{assignmentDrafts.map((assignment, index) => {
             const role = roles.find(item => item.publicId === assignment.rolePublicId);

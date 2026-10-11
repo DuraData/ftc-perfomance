@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({
   createSecurityRole: vi.fn(), saveRoleSecurityConfiguration: vi.fn(), updateSecurityRole: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ currentMunicipalityId: 7, tenantContexts: [{ id: 7, publicId: 'municipality-public' }] }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ currentMunicipalityPublicId: 'municipality-public' }) }));
 vi.mock('./NavigationRegistryEditor', () => ({ NavigationRegistryEditor: () => <div>Navigation editor</div> }));
 vi.mock('./SecurityRegistryEditor', () => ({ SecurityRegistryEditor: () => <div>Security registry editor</div> }));
 

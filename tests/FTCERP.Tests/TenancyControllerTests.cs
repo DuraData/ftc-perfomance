@@ -20,8 +20,8 @@ public class TenancyControllerTests
 
         page.TotalCount.Should().Be(11);
         page.Items.Select(item => item.Code).Should().Equal("MUN-03", "MUN-04", "MUN-05");
-        Payload(await controller.GetMyContextsPage(new PagedQueryRequest { PageSize = 1 }, page.Items[0].Id)).Items
-            .Should().ContainSingle().Which.Id.Should().Be(page.Items[0].Id);
+        Payload(await controller.GetMyContextsPage(new PagedQueryRequest { PageSize = 1 }, page.Items[0].PublicId)).Items
+            .Should().ContainSingle().Which.PublicId.Should().Be(page.Items[0].PublicId);
         (await controller.GetMyContextsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         controller.GetMyContexts().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }

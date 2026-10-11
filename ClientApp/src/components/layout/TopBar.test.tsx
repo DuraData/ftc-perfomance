@@ -9,14 +9,14 @@ const app = vi.hoisted(() => ({
   logout: vi.fn(),
   setCurrentPath: vi.fn(),
   pushToast: vi.fn(),
-  tenantContexts: [] as Array<{ id: number; publicId: string; code: string; name: string; isCurrent: boolean }>,
+  tenantContexts: [] as Array<{ publicId: string; code: string; name: string; isCurrent: boolean }>,
   tenantContextPage: 1,
   tenantContextTotalPages: 0,
   tenantContextTotalCount: 0,
   tenantContextSearch: '',
   setTenantContextPage: vi.fn(),
   setTenantContextSearch: vi.fn(),
-  currentMunicipalityId: null as number | null,
+  currentMunicipalityPublicId: null as string | null,
   switchMunicipality: vi.fn(),
 }));
 const api = vi.hoisted(() => ({ getNotifications: vi.fn(), markNotificationRead: vi.fn() }));
@@ -30,7 +30,7 @@ describe('TopBar notification feed', () => {
     app.tenantContextPage = 1;
     app.tenantContextTotalPages = 0;
     app.tenantContextTotalCount = 0;
-    app.currentMunicipalityId = null;
+    app.currentMunicipalityPublicId = null;
     app.authenticationGate = null;
     vi.clearAllMocks();
   });
@@ -67,7 +67,7 @@ describe('TopBar notification feed', () => {
   });
 
   it('searches and pages the municipality context directory', async () => {
-    app.tenantContexts = [{ id: 7, publicId: 'municipality-7', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true }];
+    app.tenantContexts = [{ publicId: '77777777-7777-7777-7777-777777777777', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true }];
     app.tenantContextTotalCount = 31;
     app.tenantContextTotalPages = 2;
     api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
@@ -81,20 +81,20 @@ describe('TopBar notification feed', () => {
 
   it('exposes municipality selection from the narrow-layout menu', async () => {
     app.tenantContexts = [
-      { id: 7, publicId: 'municipality-7', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true },
-      { id: 8, publicId: 'municipality-8', code: 'MUN-008', name: 'Eighth Municipality', isCurrent: false },
+      { publicId: '77777777-7777-7777-7777-777777777777', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true },
+      { publicId: '88888888-8888-8888-8888-888888888888', code: 'MUN-008', name: 'Eighth Municipality', isCurrent: false },
     ];
     app.tenantContextTotalCount = 2;
-    app.currentMunicipalityId = 7;
+    app.currentMunicipalityPublicId = '77777777-7777-7777-7777-777777777777';
     app.switchMunicipality.mockResolvedValue(true);
     api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
 
     render(<TopBar />);
     fireEvent.click(screen.getByRole('button', { name: 'Choose municipality context' }));
     const narrowSelector = screen.getByRole('dialog', { name: 'Municipality context selector' });
-    fireEvent.change(narrowSelector.querySelector('select')!, { target: { value: '8' } });
+    fireEvent.change(narrowSelector.querySelector('select')!, { target: { value: '88888888-8888-8888-8888-888888888888' } });
 
-    await waitFor(() => expect(app.switchMunicipality).toHaveBeenCalledWith(8));
+    await waitFor(() => expect(app.switchMunicipality).toHaveBeenCalledWith('88888888-8888-8888-8888-888888888888'));
     expect(app.pushToast).toHaveBeenCalledWith('success', 'Municipality context changed');
     expect(screen.queryByRole('dialog', { name: 'Municipality context selector' })).not.toBeInTheDocument();
   });

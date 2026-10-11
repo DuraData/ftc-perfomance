@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace FTCERP.Host.Infrastructure.Security;
 
@@ -22,9 +24,10 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 {
     internal const string MunicipalityItem = "OPMS.MunicipalityId";
     internal const string SystemItem = "OPMS.SystemScope";
-    public const string HeaderName = "X-Municipality-Id";
+    public const string HeaderName = "X-Municipality-Public-Id";
+    public const string LegacyHeaderName = "X-Municipality-Id";
 
-    public async Task InvokeAsync(HttpContext context, UserManager<ApplicationUser> userManager, IAccessControlService accessControl)
+    public async Task InvokeAsync(HttpContext context, UserManager<ApplicationUser> userManager, IAccessControlService accessControl, ApplicationDbContext dbContext)
     {
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId)) { await next(context); return; }
@@ -34,15 +37,31 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
         var allowed = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
         long? requested = null;
+        if (context.Request.Headers.ContainsKey(LegacyHeaderName))
+        {
+            await ApiProblemDetails.WriteAsync(context, StatusCodes.Status410Gone,
+                $"{LegacyHeaderName} is retired. Use {HeaderName} with the municipality PublicId.", "TENANT_CONTEXT_PRIVATE_KEY_RETIRED");
+            return;
+        }
         if (context.Request.Headers.TryGetValue(HeaderName, out var value) && !string.IsNullOrWhiteSpace(value))
         {
-            if (!long.TryParse(value, out var parsed) || (!system && !allowed.Contains(parsed)))
+            if (!Guid.TryParse(value, out var publicId))
             {
                 await ApiProblemDetails.WriteAsync(context, StatusCodes.Status403Forbidden,
                     "The requested municipality context is not authorized.", "TENANT_CONTEXT_DENIED");
                 return;
             }
-            requested = parsed;
+            var resolved = await dbContext.Municipalities.IgnoreQueryFilters().AsNoTracking()
+                .Where(item => item.PublicId == publicId && item.IsActive)
+                .Select(item => (long?)item.Id)
+                .SingleOrDefaultAsync(context.RequestAborted);
+            if (!resolved.HasValue || (!system && !allowed.Contains(resolved.Value)))
+            {
+                await ApiProblemDetails.WriteAsync(context, StatusCodes.Status403Forbidden,
+                    "The requested municipality context is not authorized.", "TENANT_CONTEXT_DENIED");
+                return;
+            }
+            requested = resolved.Value;
         }
         else if (allowed.Length == 1) requested = allowed[0];
         context.Items[SystemItem] = system;

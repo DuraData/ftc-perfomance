@@ -21,7 +21,7 @@ public sealed class TenancyController(ApplicationDbContext context, ITenantConte
 
     [HttpGet("my-contexts/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<TenantContextDto>>>> GetMyContextsPage(
-        [FromQuery] PagedQueryRequest request, [FromQuery] long? municipalityId = null)
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityPublicId = null)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId)) return Unauthorized(new ApiResponse<PagedResponse<TenantContextDto>>(false, null, "User not found"));
@@ -36,7 +36,7 @@ public sealed class TenancyController(ApplicationDbContext context, ITenantConte
                 && !assignment.RevokedAt.HasValue && assignment.EffectiveFrom <= now
                 && (!assignment.EffectiveTo.HasValue || assignment.EffectiveTo > now)));
         }
-        if (municipalityId.HasValue) query = query.Where(item => item.Id == municipalityId.Value);
+        if (municipalityPublicId.HasValue) query = query.Where(item => item.PublicId == municipalityPublicId.Value);
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.Code.Contains(request.NormalizedSearch) || item.Name.Contains(request.NormalizedSearch));
         var totalCount = await query.CountAsync();
@@ -50,10 +50,10 @@ public sealed class TenancyController(ApplicationDbContext context, ITenantConte
             _ => query.OrderBy(item => item.Name).ThenBy(item => item.Id)
         };
         var municipalities = await ordered.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
-        var rows = municipalities.Select(item => new TenantContextDto(item.Id, item.PublicId, item.Code, item.Name, tenantContext.MunicipalityId == item.Id));
+        var rows = municipalities.Select(item => new TenantContextDto(item.PublicId, item.Code, item.Name, tenantContext.MunicipalityId == item.Id));
         return Ok(new ApiResponse<PagedResponse<TenantContextDto>>(true,
             PagedResponse<TenantContextDto>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
 }
 
-public sealed record TenantContextDto(long Id, Guid PublicId, string Code, string Name, bool IsCurrent);
+public sealed record TenantContextDto(Guid PublicId, string Code, string Name, bool IsCurrent);

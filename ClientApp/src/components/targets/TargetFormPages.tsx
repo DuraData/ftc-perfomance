@@ -1306,7 +1306,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   className="w-full"
                   onClick={() => {
                     if (!selectedWard) return;
-                    const id = String(selectedWard.id);
+                    const id = selectedWard.publicId;
                     setForm(prev => ({ ...prev, wardIds: appendCsvId(prev.wardIds, id) }));
                     setReferenceLabels(current => ({ ...current, [`ward:${id}`]: selectedWard.name }));
                     setSelectedWard(undefined);
@@ -1315,7 +1315,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   Add Ward
                 </Button>
               </div>
-              <Input label="Ward Ids" value={form.wardIds} readOnly helpText="Maintained automatically by the collection editor." />
+              <Input label="Ward Public Ids" value={form.wardIds} readOnly helpText="Maintained automatically by the collection editor." />
             </FormRow>
             <div className="flex flex-wrap gap-2">
               {selectedWardIds.length === 0 ? <p className="text-xs text-secondary-500">No wards linked.</p> : null}
@@ -1387,7 +1387,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   className="w-full"
                   onClick={() => {
                     if (!selectedVoteNumber) return;
-                    const id = String(selectedVoteNumber.id);
+                    const id = selectedVoteNumber.publicId;
                     setForm(prev => ({ ...prev, voteNumberIds: appendCsvId(prev.voteNumberIds, id) }));
                     setReferenceLabels(current => ({ ...current, [`vote:${id}`]: `${selectedVoteNumber.number} - ${selectedVoteNumber.name}` }));
                     setSelectedVoteNumber(undefined);
@@ -1396,7 +1396,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   Add Vote Number
                 </Button>
               </div>
-              <Input label="Vote Number Ids" value={form.voteNumberIds} readOnly helpText="Maintained automatically by the collection editor." />
+              <Input label="Vote Number Public Ids" value={form.voteNumberIds} readOnly helpText="Maintained automatically by the collection editor." />
             </FormRow>
             <div className="flex flex-wrap gap-2">
               {selectedVoteIds.length === 0 ? <p className="text-xs text-secondary-500">No vote numbers linked.</p> : null}

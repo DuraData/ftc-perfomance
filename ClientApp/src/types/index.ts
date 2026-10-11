@@ -1478,7 +1478,6 @@ export interface RolePermission {
 }
 
 export interface TenantContextDto {
-  id: number;
   publicId: string;
   code: string;
   name: string;
@@ -1619,7 +1618,6 @@ export interface PositionMasterDto {
 
 export interface WardMasterDto {
   publicId: string;
-  id: number;
   code: string;
   name: string;
   isActive: boolean;
@@ -1630,7 +1628,6 @@ export interface WardMasterDto {
 
 export interface VoteNumberMasterDto {
   publicId: string;
-  id: number;
   departmentPublicId: string;
   departmentName: string;
   municipalityFinancialYearPublicId?: string | null;

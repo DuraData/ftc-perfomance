@@ -103,15 +103,21 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TenantHeader_CannotSelectAnUnassignedMunicipality()
+    public async Task TenantPublicHeader_CannotSelectAnUnassignedMunicipality_AndPrivateHeaderIsRetired()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/opms-targets/page?page=1&pageSize=10&sortBy=createdAt");
-        request.Headers.Add(TenantResolutionMiddleware.HeaderName, _ids.TenantBId.ToString());
+        request.Headers.Add(TenantResolutionMiddleware.HeaderName, _ids.TenantBPublicId.ToString());
 
         var response = await _client.SendAsync(request);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await response.Content.ReadAsStringAsync()).Should().Contain("TENANT_CONTEXT_DENIED");
+
+        using var legacyRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/opms-targets/page?page=1&pageSize=10&sortBy=createdAt");
+        legacyRequest.Headers.Add(TenantResolutionMiddleware.LegacyHeaderName, _ids.TenantBId.ToString());
+        var legacyResponse = await _client.SendAsync(legacyRequest);
+        legacyResponse.StatusCode.Should().Be(HttpStatusCode.Gone);
+        (await legacyResponse.Content.ReadAsStringAsync()).Should().Contain("TENANT_CONTEXT_PRIVATE_KEY_RETIRED");
     }
 
     [Fact]
@@ -291,7 +297,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         await context.SaveChangesAsync();
 
         var opmsReadPermissionId = permissions.Single(item => item.Code == "OPMS_KPI.READ").Id;
-        return new SeededIds(tenantB.Id, role.Id, opmsReadPermissionId, targetA.PublicId, targetB.PublicId, targetB.Id, submissionB.PublicId, submissionB.Id, evidenceB.PublicId, evidenceB.Id);
+        return new SeededIds(tenantB.Id, tenantB.PublicId, role.Id, opmsReadPermissionId, targetA.PublicId, targetB.PublicId, targetB.Id, submissionB.PublicId, submissionB.Id, evidenceB.PublicId, evidenceB.Id);
     }
 
     private static OpmsTarget Target(long municipalityId, int departmentId, string id, string name, string ownerId) => new()
@@ -329,7 +335,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     private static StringContent JsonContent(object value) =>
         new(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json");
 
-    private sealed record SeededIds(long TenantBId, string TenantARoleId, int OpmsReadPermissionId, Guid TenantATargetPublicId, Guid TenantBTargetPublicId, string TenantBTargetId, Guid TenantBSubmissionPublicId, string TenantBSubmissionId, Guid TenantBEvidencePublicId, string TenantBEvidenceId);
+    private sealed record SeededIds(long TenantBId, Guid TenantBPublicId, string TenantARoleId, int OpmsReadPermissionId, Guid TenantATargetPublicId, Guid TenantBTargetPublicId, string TenantBTargetId, Guid TenantBSubmissionPublicId, string TenantBSubmissionId, Guid TenantBEvidencePublicId, string TenantBEvidenceId);
 }
 
 internal sealed class TenantApplicationFactory(string userId) : WebApplicationFactory<Program>

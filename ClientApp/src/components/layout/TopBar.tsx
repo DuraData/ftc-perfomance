@@ -40,7 +40,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
     tenantContextSearch,
     setTenantContextPage,
     setTenantContextSearch,
-    currentMunicipalityId,
+    currentMunicipalityPublicId,
     switchMunicipality,
   } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -115,9 +115,9 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
     setShowUserMenu(prev => !prev);
   };
 
-  const changeMunicipality = async (municipalityId: number, closeMenu = false) => {
-    if (!municipalityId) return;
-    const success = await switchMunicipality(municipalityId);
+  const changeMunicipality = async (municipalityPublicId: string, closeMenu = false) => {
+    if (!municipalityPublicId) return;
+    const success = await switchMunicipality(municipalityPublicId);
     if (success) {
       pushToast('success', 'Municipality context changed');
       if (closeMenu) setShowTenantMenu(false);
@@ -157,13 +157,13 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
             <select
               id="municipality-context"
               aria-label="Municipality context"
-              value={currentMunicipalityId ?? ''}
-              onChange={(event) => { void changeMunicipality(Number(event.target.value)); }}
+              value={currentMunicipalityPublicId ?? ''}
+              onChange={(event) => { void changeMunicipality(event.target.value); }}
               className="max-w-56 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100"
             >
               {tenantContexts.length > 1 && <option value="">Select municipality</option>}
               {tenantContexts.map(context => (
-                <option key={context.id} value={context.id}>{context.code} — {context.name}</option>
+                <option key={context.publicId} value={context.publicId}>{context.code} — {context.name}</option>
               ))}
             </select>
             {tenantContextTotalPages > 1 && <><button type="button" aria-label="Previous municipality contexts" disabled={tenantContextPage <= 1} onClick={() => setTenantContextPage(Math.max(1, tenantContextPage - 1))} className="rounded border px-2 py-1 disabled:opacity-40">‹</button><span aria-label="Municipality context page">{tenantContextPage}/{tenantContextTotalPages}</span><button type="button" aria-label="Next municipality contexts" disabled={tenantContextPage >= tenantContextTotalPages} onClick={() => setTenantContextPage(Math.min(tenantContextTotalPages, tenantContextPage + 1))} className="rounded border px-2 py-1 disabled:opacity-40">›</button></>}
@@ -194,9 +194,9 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-secondary-600 dark:text-secondary-300" htmlFor="mobile-municipality-context">Municipality context</label>
-                    <select id="mobile-municipality-context" aria-label="Municipality context on narrow screens" value={currentMunicipalityId ?? ''} onChange={(event) => { void changeMunicipality(Number(event.target.value), true); }} className="w-full rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100">
+                    <select id="mobile-municipality-context" aria-label="Municipality context on narrow screens" value={currentMunicipalityPublicId ?? ''} onChange={(event) => { void changeMunicipality(event.target.value, true); }} className="w-full rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100">
                       {tenantContexts.length > 1 && <option value="">Select municipality</option>}
-                      {tenantContexts.map(context => <option key={context.id} value={context.id}>{context.code} — {context.name}</option>)}
+                      {tenantContexts.map(context => <option key={context.publicId} value={context.publicId}>{context.code} — {context.name}</option>)}
                     </select>
                   </div>
                   {tenantContextTotalPages > 1 && (
