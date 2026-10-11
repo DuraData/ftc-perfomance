@@ -12,7 +12,6 @@ using System.Text.Json;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/opms-target-library")]
 [Route("api/v1/opms-target-library")]
 [Authorize]
 public class OpmsTargetLibraryController : ControllerBase

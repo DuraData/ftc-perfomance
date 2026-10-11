@@ -11,7 +11,6 @@ using Microsoft.EntityFrameworkCore;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/notifications")]
 [Route("api/v1/notifications")]
 [Authorize]
 public class NotificationsController : ControllerBase

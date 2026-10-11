@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/opms-targets")]
 [Route("api/v1/opms-targets")]
 [Authorize]
 public class OpmsTargetsController : ControllerBase

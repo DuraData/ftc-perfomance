@@ -179,6 +179,31 @@ public sealed class LegacySecurityEndpointRetirementTests
     }
 
     [Fact]
+    public void Unversioned_performance_prefixes_are_hidden_tombstones_and_current_controllers_are_v1_only()
+    {
+        var controller = new LegacyPerformanceApiController();
+        AssertGone(controller.Retired().Result);
+
+        foreach (var controllerType in new[]
+                 {
+                     typeof(OpmsTargetsController), typeof(IpmsTargetsController),
+                     typeof(OpmsSubmissionsController), typeof(IpmsSubmissionsController),
+                     typeof(OpmsTargetLibraryController), typeof(IpmsTargetLibraryController),
+                     typeof(NotificationsController)
+                 })
+        {
+            var routes = controllerType.GetCustomAttributes(typeof(RouteAttribute), true)
+                .Cast<RouteAttribute>().Select(item => item.Template).ToArray();
+            Assert.Single(routes);
+            Assert.StartsWith("api/v1/", routes[0], StringComparison.Ordinal);
+        }
+
+        Assert.True(typeof(LegacyPerformanceApiController)
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+    }
+
+    [Fact]
     public void Generated_openapi_document_excludes_retired_private_key_routes_and_keeps_public_id_routes()
     {
         using var factory = new TenantApplicationFactory("swagger-user");
@@ -194,6 +219,8 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/idp/plans/{id}/alignment-matrix", "/api/idp/plans/{id}/reports/{reportType}",
                      "/api/idp/stakeholder-engagements", "/api/idp/tasks/{id}/complete",
                      "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
+                     "/api/opms-targets", "/api/ipms-targets", "/api/opms-submissions", "/api/ipms-submissions",
+                     "/api/opms-target-library", "/api/ipms-target-library", "/api/notifications",
                      "/api/Auth/register", "/api/v1/access/system-coverage-audit",
                      "/api/role-implementation-audit"
                  })
@@ -206,6 +233,9 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/roles/{publicId}", "/api/v1/idp/plans/{planPublicId}",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
                      "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",
+                     "/api/v1/opms-targets/{id}", "/api/v1/ipms-targets/{id}",
+                     "/api/v1/opms-submissions/{id}", "/api/v1/ipms-submissions/{id}",
+                     "/api/v1/notifications/{publicId}/read",
                      "/api/v1/access/system-coverage-audit/page", "/api/role-implementation-audit/page"
                  })
         {

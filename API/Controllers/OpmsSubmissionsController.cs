@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/opms-submissions")]
 [Route("api/v1/opms-submissions")]
 [Authorize]
 public class OpmsSubmissionsController : ControllerBase

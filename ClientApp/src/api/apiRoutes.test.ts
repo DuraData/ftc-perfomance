@@ -700,7 +700,7 @@ describe('versioned API routes', () => {
     });
     expect(attachments.data?.items[0].uploadedBy).toMatchObject({ id: '11111111-1111-1111-1111-111111111111', displayName: 'Live Uploader' });
     expect(attachments.data?.items[0]).toMatchObject({ id: '44444444-4444-4444-4444-444444444444', publicId: '44444444-4444-4444-4444-444444444444' });
-    expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/opms-submissions/submission-live/attachments/page?page=2&pageSize=25&search=evidence&scanStatus=Clean&quarantined=false&active=true'), expect.anything());
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/v1/opms-submissions/submission-live/attachments/page?page=2&pageSize=25&search=evidence&scanStatus=Clean&quarantined=false&active=true'), expect.anything());
   });
 
   it('routes OPMS and IPMS consolidation history through bounded filtered pages', async () => {
@@ -772,7 +772,7 @@ describe('versioned API routes', () => {
 
     await replaceOpmsSubmissionAttachment('submission-1', '66666666-6666-6666-6666-666666666666', { replacementEvidencePublicId: '55555555-5555-5555-5555-555555555555', reason: 'Corrected signed version', supersededRowVersion: 'AAAAAAAAAAE=', replacementRowVersion: 'AAAAAAAAAAI=' });
 
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/opms-submissions/submission-1/attachments/66666666-6666-6666-6666-666666666666/replace'), expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-submissions/submission-1/attachments/66666666-6666-6666-6666-666666666666/replace'), expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ replacementEvidencePublicId: '55555555-5555-5555-5555-555555555555', reason: 'Corrected signed version', supersededRowVersion: 'AAAAAAAAAAE=', replacementRowVersion: 'AAAAAAAAAAI=' }),
     }));
@@ -784,7 +784,7 @@ describe('versioned API routes', () => {
 
     await releaseOpmsEvidenceLegalHold('submission-1', '77777777-7777-7777-7777-777777777777', '9a98920c-78c5-4f38-9b3d-aa243d68d272', { reason: 'Matter concluded' });
 
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/opms-submissions/submission-1/attachments/77777777-7777-7777-7777-777777777777/legal-holds/9a98920c-78c5-4f38-9b3d-aa243d68d272/release'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'Matter concluded' }) }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-submissions/submission-1/attachments/77777777-7777-7777-7777-777777777777/legal-holds/9a98920c-78c5-4f38-9b3d-aa243d68d272/release'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'Matter concluded' }) }));
   });
 
   it('posts approval evidence and concurrency token to the disposal route', async () => {
@@ -793,6 +793,6 @@ describe('versioned API routes', () => {
 
     await requestOpmsEvidenceDisposal('submission-1', '88888888-8888-8888-8888-888888888888', { approvalReference: 'COUNCIL-2026-42', reason: 'Retention period completed', rowVersion: 'AAAAAAAAAAE=' });
 
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/opms-submissions/submission-1/attachments/88888888-8888-8888-8888-888888888888/disposals'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ approvalReference: 'COUNCIL-2026-42', reason: 'Retention period completed', rowVersion: 'AAAAAAAAAAE=' }) }));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-submissions/submission-1/attachments/88888888-8888-8888-8888-888888888888/disposals'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ approvalReference: 'COUNCIL-2026-42', reason: 'Retention period completed', rowVersion: 'AAAAAAAAAAE=' }) }));
   });
 });

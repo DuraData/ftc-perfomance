@@ -121,6 +121,23 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Unversioned_performance_prefixes_return_explicit_gone_responses()
+    {
+        foreach (var path in new[]
+                 {
+                     "/api/opms-targets", "/api/ipms-targets/legacy-record",
+                     "/api/opms-submissions/legacy-record/attachments/page",
+                     "/api/ipms-submissions", "/api/opms-target-library/legacy-record",
+                     "/api/ipms-target-library", "/api/notifications/page"
+                 })
+        {
+            var response = await _client.GetAsync(path);
+            response.StatusCode.Should().Be(HttpStatusCode.Gone, path);
+            (await response.Content.ReadAsStringAsync()).Should().Contain("/api/v1", path);
+        }
+    }
+
+    [Fact]
     public async Task DynamicRoleChange_HidesNavigationAndRevokesDirectHttpReadWithoutRestart()
     {
         var initialMenu = await _client.GetAsync("/api/navigation/my-menu");

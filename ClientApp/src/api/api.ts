@@ -2321,17 +2321,17 @@ export function getIpmsTargetOptions(query: RegisterPageQuery = {}): Promise<Api
 }
 
 export async function getIpmsTarget(id: string): Promise<ApiResponse<IPMSTarget>> {
-  const response = await get<IpmsTargetDto>(`/ipms-targets/${id}`);
+  const response = await get<IpmsTargetDto>(`/v1/ipms-targets/${id}`);
   return mapResponse(response, toIpmsTargetModel);
 }
 
 export async function createIpmsTarget(payload: SaveIpmsTargetPayload): Promise<ApiResponse<IPMSTarget>> {
-  const response = await post<IpmsTargetDto>('/ipms-targets', payload);
+  const response = await post<IpmsTargetDto>('/v1/ipms-targets', payload);
   return mapResponse(response, toIpmsTargetModel);
 }
 
 export async function updateIpmsTarget(id: string, payload: SaveIpmsTargetPayload): Promise<ApiResponse<IPMSTarget>> {
-  const response = await put<IpmsTargetDto>(`/ipms-targets/${id}`, payload);
+  const response = await put<IpmsTargetDto>(`/v1/ipms-targets/${id}`, payload);
   return mapResponse(response, toIpmsTargetModel);
 }
 
@@ -2367,17 +2367,17 @@ export async function getOpmsSubmissionsPage(query: RegisterPageQuery = {}): Pro
 }
 
 export async function getOpmsSubmission(id: string): Promise<ApiResponse<OPMSSubmission>> {
-  const response = await get<OpmsSubmissionDto>(`/opms-submissions/${id}`);
+  const response = await get<OpmsSubmissionDto>(`/v1/opms-submissions/${id}`);
   return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function createOpmsSubmission(payload: SaveOpmsSubmissionPayload): Promise<ApiResponse<OPMSSubmission>> {
-  const response = await post<OpmsSubmissionDto>('/opms-submissions', payload);
+  const response = await post<OpmsSubmissionDto>('/v1/opms-submissions', payload);
   return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function updateOpmsSubmission(id: string, payload: SaveOpmsSubmissionPayload): Promise<ApiResponse<OPMSSubmission>> {
-  const response = await put<OpmsSubmissionDto>(`/opms-submissions/${id}`, payload);
+  const response = await put<OpmsSubmissionDto>(`/v1/opms-submissions/${id}`, payload);
   return mapResponse(response, toOpmsSubmissionModel);
 }
 
@@ -2411,12 +2411,12 @@ export async function applyOpmsSubmissionWorkflowAction(
   action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
   payload: SubmissionWorkflowActionPayload,
 ): Promise<ApiResponse<OPMSSubmission>> {
-  const response = await post<OpmsSubmissionDto>(`/opms-submissions/${id}/${action}`, payload);
+  const response = await post<OpmsSubmissionDto>(`/v1/opms-submissions/${id}/${action}`, payload);
   return mapResponse(response, toOpmsSubmissionModel);
 }
 
 export async function extendOpmsSubmissionDueDate(id: string, payload: DueDateExtensionPayload): Promise<ApiResponse<OPMSSubmission>> {
-  const response = await post<OpmsSubmissionDto>(`/opms-submissions/${id}/extend-due-date`, payload);
+  const response = await post<OpmsSubmissionDto>(`/v1/opms-submissions/${id}/extend-due-date`, payload);
   return mapResponse(response, toOpmsSubmissionModel);
 }
 
@@ -2436,44 +2436,44 @@ function evidencePageQuery(query: EvidencePageQuery): string {
 }
 
 export async function getOpmsSubmissionAttachmentsPage(id: string, query: EvidencePageQuery = {}) {
-  const response = await get<PagedResult<PoeFileDto>>(`/opms-submissions/${encodeURIComponent(id)}/attachments/page${evidencePageQuery(query)}`);
+  const response = await get<PagedResult<PoeFileDto>>(`/v1/opms-submissions/${encodeURIComponent(id)}/attachments/page${evidencePageQuery(query)}`);
   return mapResponse(response, page => ({ ...page, items: page.items.map(toAttachmentModel) }));
 }
 
 export async function uploadOpmsSubmissionAttachment(id: string, file: File) {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await postForm<PoeFileDto>(`/opms-submissions/${id}/attachments`, formData);
+  const response = await postForm<PoeFileDto>(`/v1/opms-submissions/${id}/attachments`, formData);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function rescanOpmsSubmissionAttachment(id: string, attachmentId: string) {
-  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/rescan`);
+  const response = await post<PoeFileDto>(`/v1/opms-submissions/${id}/attachments/${attachmentId}/rescan`);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function assessOpmsSubmissionAttachment(id: string, attachmentId: string, payload: { outcome: 1 | 2 | 3; comment?: string }) {
-  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/assessments`, payload);
+  const response = await post<PoeFileDto>(`/v1/opms-submissions/${id}/attachments/${attachmentId}/assessments`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function replaceOpmsSubmissionAttachment(id: string, attachmentId: string, payload: { replacementEvidencePublicId: string; reason: string; supersededRowVersion: string; replacementRowVersion: string }) {
-  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/replace`, payload);
+  const response = await post<PoeFileDto>(`/v1/opms-submissions/${id}/attachments/${attachmentId}/replace`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function placeOpmsEvidenceLegalHold(id: string, attachmentId: string, payload: { holdReference: string; reason: string }) {
-  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/legal-holds`, payload);
+  const response = await post<PoeFileDto>(`/v1/opms-submissions/${id}/attachments/${attachmentId}/legal-holds`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function releaseOpmsEvidenceLegalHold(id: string, attachmentId: string, holdId: string, payload: { reason: string }) {
-  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/legal-holds/${holdId}/release`, payload);
+  const response = await post<PoeFileDto>(`/v1/opms-submissions/${id}/attachments/${attachmentId}/legal-holds/${holdId}/release`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function requestOpmsEvidenceDisposal(id: string, attachmentId: string, payload: { approvalReference: string; reason: string; rowVersion: string }) {
-  const response = await post<PoeFileDto>(`/opms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
+  const response = await post<PoeFileDto>(`/v1/opms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
@@ -2486,17 +2486,17 @@ export async function getIpmsSubmissionsPage(query: RegisterPageQuery = {}): Pro
 }
 
 export async function getIpmsSubmission(id: string): Promise<ApiResponse<IPMSSubmission>> {
-  const response = await get<IpmsSubmissionDto>(`/ipms-submissions/${id}`);
+  const response = await get<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}`);
   return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function createIpmsSubmission(payload: SaveIpmsSubmissionPayload): Promise<ApiResponse<IPMSSubmission>> {
-  const response = await post<IpmsSubmissionDto>('/ipms-submissions', payload);
+  const response = await post<IpmsSubmissionDto>('/v1/ipms-submissions', payload);
   return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function updateIpmsSubmission(id: string, payload: SaveIpmsSubmissionPayload): Promise<ApiResponse<IPMSSubmission>> {
-  const response = await put<IpmsSubmissionDto>(`/ipms-submissions/${id}`, payload);
+  const response = await put<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}`, payload);
   return mapResponse(response, toIpmsSubmissionModel);
 }
 
@@ -2519,54 +2519,54 @@ export async function applyIpmsSubmissionWorkflowAction(
   action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
   payload: SubmissionWorkflowActionPayload,
 ): Promise<ApiResponse<IPMSSubmission>> {
-  const response = await post<IpmsSubmissionDto>(`/ipms-submissions/${id}/${action}`, payload);
+  const response = await post<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}/${action}`, payload);
   return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function extendIpmsSubmissionDueDate(id: string, payload: DueDateExtensionPayload): Promise<ApiResponse<IPMSSubmission>> {
-  const response = await post<IpmsSubmissionDto>(`/ipms-submissions/${id}/extend-due-date`, payload);
+  const response = await post<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}/extend-due-date`, payload);
   return mapResponse(response, toIpmsSubmissionModel);
 }
 
 export async function getIpmsSubmissionAttachmentsPage(id: string, query: EvidencePageQuery = {}) {
-  const response = await get<PagedResult<PoeFileDto>>(`/ipms-submissions/${encodeURIComponent(id)}/attachments/page${evidencePageQuery(query)}`);
+  const response = await get<PagedResult<PoeFileDto>>(`/v1/ipms-submissions/${encodeURIComponent(id)}/attachments/page${evidencePageQuery(query)}`);
   return mapResponse(response, page => ({ ...page, items: page.items.map(toAttachmentModel) }));
 }
 
 export async function uploadIpmsSubmissionAttachment(id: string, file: File) {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await postForm<PoeFileDto>(`/ipms-submissions/${id}/attachments`, formData);
+  const response = await postForm<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments`, formData);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function rescanIpmsSubmissionAttachment(id: string, attachmentId: string) {
-  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/rescan`);
+  const response = await post<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments/${attachmentId}/rescan`);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function assessIpmsSubmissionAttachment(id: string, attachmentId: string, payload: { outcome: 1 | 2 | 3; comment?: string }) {
-  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/assessments`, payload);
+  const response = await post<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments/${attachmentId}/assessments`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function replaceIpmsSubmissionAttachment(id: string, attachmentId: string, payload: { replacementEvidencePublicId: string; reason: string; supersededRowVersion: string; replacementRowVersion: string }) {
-  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/replace`, payload);
+  const response = await post<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments/${attachmentId}/replace`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function placeIpmsEvidenceLegalHold(id: string, attachmentId: string, payload: { holdReference: string; reason: string }) {
-  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/legal-holds`, payload);
+  const response = await post<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments/${attachmentId}/legal-holds`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function releaseIpmsEvidenceLegalHold(id: string, attachmentId: string, holdId: string, payload: { reason: string }) {
-  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/legal-holds/${holdId}/release`, payload);
+  const response = await post<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments/${attachmentId}/legal-holds/${holdId}/release`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 
 export async function requestIpmsEvidenceDisposal(id: string, attachmentId: string, payload: { approvalReference: string; reason: string; rowVersion: string }) {
-  const response = await post<PoeFileDto>(`/ipms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
+  const response = await post<PoeFileDto>(`/v1/ipms-submissions/${id}/attachments/${attachmentId}/disposals`, payload);
   return mapResponse(response, toAttachmentModel);
 }
 

@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/ipms-submissions")]
 [Route("api/v1/ipms-submissions")]
 [Authorize]
 public class IpmsSubmissionsController : ControllerBase
