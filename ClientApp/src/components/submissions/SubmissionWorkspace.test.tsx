@@ -197,10 +197,42 @@ describe('SubmissionWorkspace member security', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('governed.pdf')).toBeInTheDocument());
-    for (const secret of ['Secret assessment note', 'Secret Assessor', 'Secret Legal Actor', 'Secret Disposal Actor', 'Secret disposal failure'])
+    for (const secret of ['Secret assessment note', 'Secret Assessor', 'CASE-1', 'Preservation', 'Secret Legal Actor', 'COUNCIL-1', 'Retention elapsed', 'Secret Disposal Actor', 'Secret disposal failure'])
       expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'AssessmentComment');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReference');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReason');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'DisposalApprovalReference');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'DisposalReason');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'DisposalDetail');
+  });
+
+  it('requires member update grants in addition to POE actions before rendering governance inputs', async () => {
+    security.canExecute.mockReturnValue(true);
+    api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [{
+        id: 'evidence-write', publicId: 'public-write', fileName: 'expired.pdf', fileSize: 10,
+        fileType: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence',
+        url: '/content/write', scanStatus: 'Clean', isActive: false, retainUntil: '2020-01-01T00:00:00Z',
+        rowVersion: 'AAAAAAAAAAA=', legalHolds: [], disposals: [],
+      }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    const rendered = render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    await waitFor(() => expect(screen.getByText('expired.pdf')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Legal hold reference for expired.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Disposal approval reference for expired.pdf')).not.toBeInTheDocument();
+
+    security.canEditField.mockReturnValue(true);
+    rendered.rerender(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+    expect(screen.getByLabelText('Legal hold reference for expired.pdf')).toBeInTheDocument();
+    expect(screen.getByLabelText('Disposal approval reference for expired.pdf')).toBeInTheDocument();
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReference');
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReason');
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'DisposalApprovalReference');
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'DisposalReason');
   });
 
   it('loads and navigates the bounded consolidation history register', async () => {

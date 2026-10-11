@@ -574,8 +574,12 @@ export function SubmissionWorkspace({
   const canReadReplacementActorId = security.canReadField(poeResourceCode, 'ReplacedByUserId');
   const canReadReplacementActorName = security.canReadField(poeResourceCode, 'ReplacedByName');
   const canReadReplacementCorrelation = security.canReadField(poeResourceCode, 'ReplacementCorrelationId');
+  const canReadHoldReference = security.canReadField(poeResourceCode, 'LegalHoldReference');
+  const canReadHoldReason = security.canReadField(poeResourceCode, 'LegalHoldReason');
   const canReadHoldActorId = security.canReadField(poeResourceCode, 'LegalHoldActorUserId');
   const canReadHoldActorName = security.canReadField(poeResourceCode, 'LegalHoldActorName');
+  const canReadDisposalApproval = security.canReadField(poeResourceCode, 'DisposalApprovalReference');
+  const canReadDisposalReason = security.canReadField(poeResourceCode, 'DisposalReason');
   const canReadDisposalActorId = security.canReadField(poeResourceCode, 'DisposalRequestedByUserId');
   const canReadDisposalActorName = security.canReadField(poeResourceCode, 'DisposalRequestedByName');
   const canReadDisposalDetail = security.canReadField(poeResourceCode, 'DisposalDetail');
@@ -623,6 +627,9 @@ export function SubmissionWorkspace({
     } : attachment.replacementOf,
     legalHolds: attachment.legalHolds?.map(item => ({
       ...item,
+      holdReference: canReadHoldReference ? item.holdReference : undefined,
+      placedReason: canReadHoldReason ? item.placedReason : undefined,
+      releasedReason: canReadHoldReason ? item.releasedReason : undefined,
       placedByUserPublicId: canReadHoldActorId ? item.placedByUserPublicId : undefined,
       placedByName: canReadHoldActorName ? item.placedByName : undefined,
       releasedByUserPublicId: canReadHoldActorId ? item.releasedByUserPublicId : undefined,
@@ -632,6 +639,8 @@ export function SubmissionWorkspace({
     retainUntil: attachment.retainUntil,
     disposals: attachment.disposals?.map(item => ({
       ...item,
+      approvalReference: canReadDisposalApproval ? item.approvalReference : undefined,
+      reason: canReadDisposalReason ? item.reason : undefined,
       requestedByUserPublicId: canReadDisposalActorId ? item.requestedByUserPublicId : undefined,
       requestedByName: canReadDisposalActorName ? item.requestedByName : undefined,
       detail: canReadDisposalDetail ? item.detail : undefined,
@@ -1012,9 +1021,9 @@ export function SubmissionWorkspace({
             onRescan={(attachmentId) => { void mutateEvidence(() => submissionType === 'OPMS' ? rescanOpmsSubmissionAttachment(submission.id, attachmentId) : rescanIpmsSubmissionAttachment(submission.id, attachmentId), 'Evidence scan completed'); }}
             onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? (attachmentId, outcome, comment) => { void mutateEvidence(() => submissionType === 'OPMS' ? assessOpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }) : assessIpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }), 'Evidence assessment recorded'); } : undefined}
             onReplace={security.canExecute(`${submissionType}_POE.REPLACE`) ? (attachmentId, replacementPublicId, reason, supersededRowVersion, replacementRowVersion) => { void mutateEvidence(() => submissionType === 'OPMS' ? replaceOpmsSubmissionAttachment(submission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion }) : replaceIpmsSubmissionAttachment(submission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion }), 'Evidence replacement recorded'); } : undefined}
-            onPlaceHold={security.canExecute(`${submissionType}_POE.PLACE_HOLD`) ? (attachmentId, holdReference, reason) => { void mutateEvidence(() => submissionType === 'OPMS' ? placeOpmsEvidenceLegalHold(submission.id, attachmentId, { holdReference, reason }) : placeIpmsEvidenceLegalHold(submission.id, attachmentId, { holdReference, reason }), 'Legal hold placed'); } : undefined}
-            onReleaseHold={security.canExecute(`${submissionType}_POE.RELEASE_HOLD`) ? (attachmentId, holdId, reason) => { void mutateEvidence(() => submissionType === 'OPMS' ? releaseOpmsEvidenceLegalHold(submission.id, attachmentId, holdId, { reason }) : releaseIpmsEvidenceLegalHold(submission.id, attachmentId, holdId, { reason }), 'Legal hold released'); } : undefined}
-            onDispose={security.canExecute(`${submissionType}_POE.DISPOSE`) ? (attachmentId, approvalReference, reason, rowVersion) => { void mutateEvidence(() => submissionType === 'OPMS' ? requestOpmsEvidenceDisposal(submission.id, attachmentId, { approvalReference, reason, rowVersion }) : requestIpmsEvidenceDisposal(submission.id, attachmentId, { approvalReference, reason, rowVersion }), 'Evidence disposal queued'); } : undefined}
+            onPlaceHold={security.canExecute(`${submissionType}_POE.PLACE_HOLD`) && security.canEditField(poeResourceCode, 'LegalHoldReference') && security.canEditField(poeResourceCode, 'LegalHoldReason') ? (attachmentId, holdReference, reason) => { void mutateEvidence(() => submissionType === 'OPMS' ? placeOpmsEvidenceLegalHold(submission.id, attachmentId, { holdReference, reason }) : placeIpmsEvidenceLegalHold(submission.id, attachmentId, { holdReference, reason }), 'Legal hold placed'); } : undefined}
+            onReleaseHold={security.canExecute(`${submissionType}_POE.RELEASE_HOLD`) && security.canEditField(poeResourceCode, 'LegalHoldReason') ? (attachmentId, holdId, reason) => { void mutateEvidence(() => submissionType === 'OPMS' ? releaseOpmsEvidenceLegalHold(submission.id, attachmentId, holdId, { reason }) : releaseIpmsEvidenceLegalHold(submission.id, attachmentId, holdId, { reason }), 'Legal hold released'); } : undefined}
+            onDispose={security.canExecute(`${submissionType}_POE.DISPOSE`) && security.canEditField(poeResourceCode, 'DisposalApprovalReference') && security.canEditField(poeResourceCode, 'DisposalReason') ? (attachmentId, approvalReference, reason, rowVersion) => { void mutateEvidence(() => submissionType === 'OPMS' ? requestOpmsEvidenceDisposal(submission.id, attachmentId, { approvalReference, reason, rowVersion }) : requestIpmsEvidenceDisposal(submission.id, attachmentId, { approvalReference, reason, rowVersion }), 'Evidence disposal queued'); } : undefined}
           />
           <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>{evidenceBusy ? 'Loading evidence…' : `Page ${evidencePage} of ${Math.max(1, evidenceTotalPages)}`}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={evidenceBusy || evidencePage <= 1} onClick={() => setEvidencePage(value => value - 1)}>Previous evidence</Button><Button size="sm" variant="outline" disabled={evidenceBusy || evidencePage >= evidenceTotalPages} onClick={() => setEvidencePage(value => value + 1)}>Next evidence</Button></div></div>
         </Section>

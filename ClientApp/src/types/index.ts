@@ -858,9 +858,9 @@ export interface PoeEvidenceReplacementDto {
 
 export interface PoeLegalHoldDto {
   holdId: string;
-  holdReference: string;
+  holdReference?: string | null;
   isActive: boolean;
-  placedReason: string;
+  placedReason?: string | null;
   placedByUserPublicId?: string | null;
   placedByName?: string | null;
   placedAt: string;
@@ -873,8 +873,8 @@ export interface PoeLegalHoldDto {
 export interface PoeDisposalDto {
   disposalId: string;
   status: 'Pending' | 'Completed' | 'Failed';
-  approvalReference: string;
-  reason: string;
+  approvalReference?: string | null;
+  reason?: string | null;
   requestedByUserPublicId?: string | null;
   requestedByName?: string | null;
   requestedAt: string;

@@ -623,10 +623,11 @@ public static class PerformanceApiSupport
     {
         var placed = events.First(item => item.Action == PoeLegalHoldAction.Placed);
         var released = events.LastOrDefault(item => item.Action == PoeLegalHoldAction.Released);
-        return new(placed.HoldId, placed.HoldReference, released == null, placed.Reason,
+        return new(placed.HoldId, memberAccess.LegalHoldReference ? placed.HoldReference : null, released == null,
+            memberAccess.LegalHoldReason ? placed.Reason : null,
             memberAccess.LegalHoldActorUserId ? placed.ActorUser?.PublicId : null,
             memberAccess.LegalHoldActorName ? placed.ActorUser?.FullName : null,
-            placed.OccurredAt, released?.Reason,
+            placed.OccurredAt, memberAccess.LegalHoldReason ? released?.Reason : null,
             memberAccess.LegalHoldActorUserId ? released?.ActorUser?.PublicId : null,
             memberAccess.LegalHoldActorName ? released?.ActorUser?.FullName : null,
             released?.OccurredAt);
@@ -637,7 +638,9 @@ public static class PerformanceApiSupport
         var completed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Completed);
         var failed = events.LastOrDefault(item => item.Action == PoeDisposalAction.Failed);
         var status = completed != null ? "Completed" : failed != null ? "Failed" : "Pending";
-        return new(requested.DisposalId, status, requested.ApprovalReference, requested.Reason,
+        return new(requested.DisposalId, status,
+            memberAccess.DisposalApprovalReference ? requested.ApprovalReference : null,
+            memberAccess.DisposalReason ? requested.Reason : null,
             memberAccess.DisposalRequestedByUserId ? requested.ActorUser?.PublicId : null,
             memberAccess.DisposalRequestedByName ? requested.ActorUser?.FullName : null,
             requested.OccurredAt, completed?.OccurredAt, failed?.OccurredAt,

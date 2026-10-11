@@ -307,7 +307,8 @@ public sealed class RegisterPaginationTests
                  {
                      "AssessmentComment", "AssessedByUserId", "AssessedByName", "AssessmentCorrelationId",
                      "ReplacedByUserId", "ReplacedByName", "ReplacementCorrelationId",
-                     "LegalHoldActorUserId", "LegalHoldActorName", "DisposalRequestedByUserId",
+                     "LegalHoldReference", "LegalHoldReason", "LegalHoldActorUserId", "LegalHoldActorName",
+                     "DisposalApprovalReference", "DisposalReason", "DisposalRequestedByUserId",
                      "DisposalRequestedByName", "DisposalDetail"
                  })
             access.Verify(service => service.CheckPermissionAsync(user, $"OPMS_POE.{member}.READ", It.IsAny<AccessScopeContext?>()), Times.AtLeastOnce);
@@ -382,8 +383,14 @@ public sealed class RegisterPaginationTests
         Assert.Null(denied.ReplacementOf!.ReplacedByUserPublicId);
         Assert.Null(denied.ReplacementOf.ReplacedByName);
         Assert.Null(denied.ReplacementOf.CorrelationId);
-        Assert.Null(Assert.Single(denied.LegalHolds).PlacedByUserPublicId);
+        var deniedHold = Assert.Single(denied.LegalHolds);
+        Assert.Null(deniedHold.HoldReference);
+        Assert.Null(deniedHold.PlacedReason);
+        Assert.Null(deniedHold.ReleasedReason);
+        Assert.Null(deniedHold.PlacedByUserPublicId);
         var deniedDisposal = Assert.Single(denied.Disposals);
+        Assert.Null(deniedDisposal.ApprovalReference);
+        Assert.Null(deniedDisposal.Reason);
         Assert.Null(deniedDisposal.RequestedByUserPublicId);
         Assert.Null(deniedDisposal.RequestedByName);
         Assert.Null(deniedDisposal.Detail);
@@ -397,9 +404,14 @@ public sealed class RegisterPaginationTests
         Assert.Equal(actor.PublicId, allowed.ReplacementOf!.ReplacedByUserPublicId);
         Assert.Equal("replacement-correlation", allowed.ReplacementOf.CorrelationId);
         var allowedHold = Assert.Single(allowed.LegalHolds);
+        Assert.Equal("CASE-1", allowedHold.HoldReference);
+        Assert.Equal("investigation", allowedHold.PlacedReason);
+        Assert.Equal("investigation closed", allowedHold.ReleasedReason);
         Assert.Equal(actor.PublicId, allowedHold.PlacedByUserPublicId);
         Assert.Equal(actor.PublicId, allowedHold.ReleasedByUserPublicId);
         var allowedDisposal = Assert.Single(allowed.Disposals);
+        Assert.Equal("COUNCIL-1", allowedDisposal.ApprovalReference);
+        Assert.Equal("retention elapsed", allowedDisposal.Reason);
         Assert.Equal(actor.PublicId, allowedDisposal.RequestedByUserPublicId);
         Assert.Equal("protected failure detail", allowedDisposal.Detail);
 

@@ -735,8 +735,11 @@ public class OpmsSubmissionsController : ControllerBase
         if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
         var submission = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.PLACE_HOLD", BuildScope(submission));
+        var scope = BuildScope(submission);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.PLACE_HOLD", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
+        var memberDenial = await PoeMemberPermissionDenialAsync(user, scope, "LegalHoldReference", "LegalHoldReason");
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, memberDenial));
         var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         if (evidence.DisposalEvents.Any(item => item.Action == PoeDisposalAction.Completed)) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Disposed evidence can no longer be placed under legal hold"));
@@ -759,8 +762,11 @@ public class OpmsSubmissionsController : ControllerBase
         if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
         var submission = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.RELEASE_HOLD", BuildScope(submission));
+        var scope = BuildScope(submission);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.RELEASE_HOLD", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
+        var memberDenial = await PoeMemberPermissionDenialAsync(user, scope, "LegalHoldReason");
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, memberDenial));
         var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         var placed = evidence.LegalHoldEvents.FirstOrDefault(item => item.HoldId == holdId && item.Action == PoeLegalHoldAction.Placed);
@@ -782,8 +788,11 @@ public class OpmsSubmissionsController : ControllerBase
         if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
         var submission = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "OPMS submission not found"));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.DISPOSE", BuildScope(submission));
+        var scope = BuildScope(submission);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.DISPOSE", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
+        var memberDenial = await PoeMemberPermissionDenialAsync(user, scope, "DisposalApprovalReference", "DisposalReason");
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, memberDenial));
         var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         var policy = PoeDisposalPolicy.Validate(evidence, request.ApprovalReference, request.Reason, DateTime.UtcNow);
@@ -1261,11 +1270,25 @@ public class OpmsSubmissionsController : ControllerBase
             await CanReadAsync("ReplacedByUserId"),
             await CanReadAsync("ReplacedByName"),
             await CanReadAsync("ReplacementCorrelationId"),
+            await CanReadAsync("LegalHoldReference"),
+            await CanReadAsync("LegalHoldReason"),
             await CanReadAsync("LegalHoldActorUserId"),
             await CanReadAsync("LegalHoldActorName"),
+            await CanReadAsync("DisposalApprovalReference"),
+            await CanReadAsync("DisposalReason"),
             await CanReadAsync("DisposalRequestedByUserId"),
             await CanReadAsync("DisposalRequestedByName"),
             await CanReadAsync("DisposalDetail"));
+    }
+
+    private async Task<string?> PoeMemberPermissionDenialAsync(ApplicationUser user, AccessScopeContext scope, params string[] memberCodes)
+    {
+        foreach (var memberCode in memberCodes)
+        {
+            var decision = await _accessControlService.CheckPermissionAsync(user, $"OPMS_POE.{memberCode}.UPDATE", scope);
+            if (!decision.Allowed) return decision.Reason;
+        }
+        return null;
     }
 
     private async Task<string?> ConsolidationPermissionDenialAsync(ApplicationUser user, OpmsSubmission submission, bool update)
@@ -1308,5 +1331,5 @@ public class OpmsSubmissionsController : ControllerBase
     private static AccessScopeContext BuildScope(OpmsSubmission submission) => BuildScope(submission.OpmsTarget);
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>
-        new(target.DepartmentId, target.UnitId, target.AssignedUserId, null, target.Id, null);
+        new(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, MunicipalityId: target.MunicipalityId);
 }
