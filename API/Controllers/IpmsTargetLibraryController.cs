@@ -51,6 +51,7 @@ public class IpmsTargetLibraryController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Library.View");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
             new ApiResponse<PagedResponse<IpmsTargetTemplateResponse>>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user);
 
         var query = ApplyFilters(_context.IpmsTargetTemplates.AsNoTracking(), page, filter);
         var totalCount = await query.CountAsync();
@@ -69,7 +70,7 @@ public class IpmsTargetLibraryController : ControllerBase
         };
         var templates = await query.Skip(page.Offset).Take(page.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<IpmsTargetTemplateResponse>>(true,
-            PagedResponse<IpmsTargetTemplateResponse>.Create(templates.Select(item => item.ToResponse()), page.Page, page.PageSize, totalCount)));
+            PagedResponse<IpmsTargetTemplateResponse>.Create(templates.Select(item => item.ToResponse(members.Read)), page.Page, page.PageSize, totalCount)));
     }
 
     [HttpGet("facets")]
@@ -107,11 +108,12 @@ public class IpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Library.View");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user);
 
         var template = await _context.IpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == publicId);
         return template == null
             ? NotFound(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "IPMS target template not found"))
-            : Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse()));
+            : Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
 
     [HttpPost]
@@ -121,17 +123,19 @@ public class IpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Library.Create");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user, includeUpdate: true);
+        if (SuppliesDeniedMember(request, members.Update)) return Forbid();
 
         var exists = await _context.IpmsTargetTemplates.AnyAsync(item => item.TemplateCode == request.TemplateCode);
         if (exists) return Conflict(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "Template code already exists"));
 
-        var template = Apply(new IpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id);
+        var template = Apply(new IpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id, members.Update);
         _context.IpmsTargetTemplates.Add(template);
         await _context.SaveChangesAsync();
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
 
     [HttpPut("{id:int}")]
@@ -147,6 +151,8 @@ public class IpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Library.Edit");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user, includeUpdate: true);
+        if (SuppliesDeniedMember(request, members.Update)) return Forbid();
 
         var template = await _context.IpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "IPMS target template not found"));
@@ -156,7 +162,7 @@ public class IpmsTargetLibraryController : ControllerBase
         if (codeConflict) return Conflict(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "Template code already exists"));
 
         var oldValue = template.ToResponse();
-        template = Apply(template, request, user.UserName ?? user.Email ?? user.Id);
+        template = Apply(template, request, user.UserName ?? user.Email ?? user.Id, members.Update);
         template.Version += 1;
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
@@ -166,7 +172,7 @@ public class IpmsTargetLibraryController : ControllerBase
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Edit", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse()));
+        return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
 
     [HttpDelete("{id:int}")]
@@ -213,6 +219,8 @@ public class IpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS.Library.Duplicate");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user, includeUpdate: true);
+        if (!HasCompleteProtectedAccess(members)) return Forbid();
 
         var template = await _context.IpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "IPMS target template not found"));
@@ -251,7 +259,7 @@ public class IpmsTargetLibraryController : ControllerBase
         return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, duplicate.ToResponse()));
     }
 
-    private static IpmsTargetTemplate Apply(IpmsTargetTemplate entity, SaveIpmsTargetTemplateRequest request, string actor)
+    private static IpmsTargetTemplate Apply(IpmsTargetTemplate entity, SaveIpmsTargetTemplateRequest request, string actor, IpmsTargetTemplateMemberAccess update)
     {
         entity.TemplateCode = request.TemplateCode.Trim();
         entity.TemplateName = request.TemplateName.Trim();
@@ -259,16 +267,16 @@ public class IpmsTargetLibraryController : ControllerBase
         entity.KpiDescription = request.KpiDescription.Trim();
         entity.PerformanceArea = request.PerformanceArea?.Trim();
         entity.EmployeeLevel = request.EmployeeLevel?.Trim();
-        entity.JobGrade = request.JobGrade?.Trim();
+        if (update.JobGrade) entity.JobGrade = request.JobGrade?.Trim();
         entity.TargetUnitType = request.TargetUnitType.Trim();
         entity.UnitOfMeasure = request.UnitOfMeasure?.Trim();
         entity.AnnualTarget = request.AnnualTarget;
         entity.AnnualTargetDescription = request.AnnualTargetDescription?.Trim();
         entity.Weight = request.Weight;
         entity.DefaultRatingMethod = request.DefaultRatingMethod?.Trim();
-        entity.DefaultScoreScale = request.DefaultScoreScale?.Trim();
-        entity.DefaultPoeRequirements = request.DefaultPoeRequirements?.Trim();
-        entity.DefaultTaskTemplatesJson = request.DefaultTaskTemplatesJson;
+        if (update.DefaultScoreScale) entity.DefaultScoreScale = request.DefaultScoreScale?.Trim();
+        if (update.DefaultPoeRequirements) entity.DefaultPoeRequirements = request.DefaultPoeRequirements?.Trim();
+        if (update.DefaultTaskTemplates) entity.DefaultTaskTemplatesJson = request.DefaultTaskTemplatesJson;
         entity.LinkedOpmsTargetRequired = request.LinkedOpmsTargetRequired;
         entity.FunctionalArea = request.FunctionalArea?.Trim();
         entity.IsActive = request.IsActive;
@@ -331,6 +339,30 @@ public class IpmsTargetLibraryController : ControllerBase
         await _context.SaveChangesAsync();
     }
 
+    private async Task<IpmsTemplateAccess> GetMemberAccessAsync(ApplicationUser user, bool includeUpdate = false)
+    {
+        async Task<bool> Allowed(string member, SecurityOperation operation) =>
+            (await _accessControlService.CheckPermissionAsync(user, $"IPMS_TARGET_TEMPLATE.{member}.{operation.ToString().ToUpperInvariant()}"))?.Allowed == true;
+        async Task<IpmsTargetTemplateMemberAccess> Resolve(SecurityOperation operation) => new(
+            await Allowed("JobGrade", operation),
+            await Allowed("DefaultScoreScale", operation),
+            await Allowed("DefaultPoeRequirements", operation),
+            await Allowed("DefaultTaskTemplates", operation));
+        return new(await Resolve(SecurityOperation.Read), includeUpdate ? await Resolve(SecurityOperation.Update) : IpmsTargetTemplateMemberAccess.None);
+    }
+
+    private static bool SuppliesDeniedMember(SaveIpmsTargetTemplateRequest request, IpmsTargetTemplateMemberAccess update) =>
+        !update.JobGrade && request.JobGrade is not null
+        || !update.DefaultScoreScale && request.DefaultScoreScale is not null
+        || !update.DefaultPoeRequirements && request.DefaultPoeRequirements is not null
+        || !update.DefaultTaskTemplates && request.DefaultTaskTemplatesJson is not null;
+
+    private static bool HasCompleteProtectedAccess(IpmsTemplateAccess access) =>
+        access.Read.JobGrade && access.Update.JobGrade
+        && access.Read.DefaultScoreScale && access.Update.DefaultScoreScale
+        && access.Read.DefaultPoeRequirements && access.Update.DefaultPoeRequirements
+        && access.Read.DefaultTaskTemplates && access.Update.DefaultTaskTemplates;
+
     private bool TrySetExpectedVersion(IpmsTargetTemplate template, string? encoded)
     {
         try
@@ -348,4 +380,6 @@ public class IpmsTargetLibraryController : ControllerBase
         var userId = PerformanceApiSupport.GetCurrentUserId(User);
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
+
+    private sealed record IpmsTemplateAccess(IpmsTargetTemplateMemberAccess Read, IpmsTargetTemplateMemberAccess Update);
 }

@@ -19,6 +19,7 @@ import { Modal } from '../common/Modal';
 import { StrategicPlanningMasterPicker } from '../common/StrategicPlanningMasterPicker';
 import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from '../common/Form';
 import { useApp } from '../../context/AppContext';
+import { useSecurity } from '../../context/SecurityContext';
 import {
   archiveIpmsTargetTemplate as archiveIpmsTargetTemplateApi,
   archiveOpmsTargetTemplate as archiveOpmsTargetTemplateApi,
@@ -81,6 +82,42 @@ interface TemplateRowAction {
 }
 
 const quarterOptions = ['Q1', 'Q2', 'Q3', 'Q4'] as const;
+
+function useOpmsTemplateMemberCapabilities() {
+  const security = useSecurity();
+  const read = {
+    internalReference: security.canReadField('OPMS_TARGET_TEMPLATE', 'InternalReference'),
+    fmsLink: security.canReadField('OPMS_TARGET_TEMPLATE', 'FmsLink'),
+    quarterlyTargets: security.canReadField('OPMS_TARGET_TEMPLATE', 'DefaultQuarterlyTargets'),
+    budgetInformation: security.canReadField('OPMS_TARGET_TEMPLATE', 'DefaultBudgetInformation'),
+    poeRequirements: security.canReadField('OPMS_TARGET_TEMPLATE', 'DefaultPoeRequirements'),
+  };
+  const edit = {
+    internalReference: security.canEditField('OPMS_TARGET_TEMPLATE', 'InternalReference'),
+    fmsLink: security.canEditField('OPMS_TARGET_TEMPLATE', 'FmsLink'),
+    quarterlyTargets: security.canEditField('OPMS_TARGET_TEMPLATE', 'DefaultQuarterlyTargets'),
+    budgetInformation: security.canEditField('OPMS_TARGET_TEMPLATE', 'DefaultBudgetInformation'),
+    poeRequirements: security.canEditField('OPMS_TARGET_TEMPLATE', 'DefaultPoeRequirements'),
+  };
+  return { read, edit, canDuplicateProtected: Object.values(read).every(Boolean) && Object.values(edit).every(Boolean) };
+}
+
+function useIpmsTemplateMemberCapabilities() {
+  const security = useSecurity();
+  const read = {
+    jobGrade: security.canReadField('IPMS_TARGET_TEMPLATE', 'JobGrade'),
+    scoreScale: security.canReadField('IPMS_TARGET_TEMPLATE', 'DefaultScoreScale'),
+    poeRequirements: security.canReadField('IPMS_TARGET_TEMPLATE', 'DefaultPoeRequirements'),
+    taskTemplates: security.canReadField('IPMS_TARGET_TEMPLATE', 'DefaultTaskTemplates'),
+  };
+  const edit = {
+    jobGrade: security.canEditField('IPMS_TARGET_TEMPLATE', 'JobGrade'),
+    scoreScale: security.canEditField('IPMS_TARGET_TEMPLATE', 'DefaultScoreScale'),
+    poeRequirements: security.canEditField('IPMS_TARGET_TEMPLATE', 'DefaultPoeRequirements'),
+    taskTemplates: security.canEditField('IPMS_TARGET_TEMPLATE', 'DefaultTaskTemplates'),
+  };
+  return { read, edit, canDuplicateProtected: Object.values(read).every(Boolean) && Object.values(edit).every(Boolean) };
+}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-ZA', {
@@ -659,7 +696,7 @@ function buildQuarterlyTargetsFromForm(quarterlyTargets: { quarter: string; targ
   }));
 }
 
-function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form']): SaveOpmsTargetTemplatePayload {
+function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form'], edit: ReturnType<typeof useOpmsTemplateMemberCapabilities>['edit']): SaveOpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
     templateName: form.templateName,
@@ -687,16 +724,16 @@ function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['
     functionalArea: form.functionalArea || null,
     standardClassification: form.standardClassification || null,
     idpReference: form.idpReference || null,
-    internalReference: form.internalReference || null,
-    fmsLink: form.fmsLink || null,
-    defaultQuarterlyTargetsJson: JSON.stringify(buildQuarterlyTargetsFromForm(form.quarterlyTargets)),
-    defaultBudgetInformation: form.defaultBudgetInformation || null,
-    defaultPoeRequirements: form.defaultPoeRequirements || null,
+    ...(edit.internalReference ? { internalReference: form.internalReference || null } : {}),
+    ...(edit.fmsLink ? { fmsLink: form.fmsLink || null } : {}),
+    ...(edit.quarterlyTargets ? { defaultQuarterlyTargetsJson: JSON.stringify(buildQuarterlyTargetsFromForm(form.quarterlyTargets)) } : {}),
+    ...(edit.budgetInformation ? { defaultBudgetInformation: form.defaultBudgetInformation || null } : {}),
+    ...(edit.poeRequirements ? { defaultPoeRequirements: form.defaultPoeRequirements || null } : {}),
     isActive: form.isActive,
   };
 }
 
-function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['form']): SaveIpmsTargetTemplatePayload {
+function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['form'], edit: ReturnType<typeof useIpmsTemplateMemberCapabilities>['edit']): SaveIpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
     templateName: form.templateName,
@@ -704,16 +741,16 @@ function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['
     kpiDescription: form.kpiDescription,
     performanceArea: form.performanceArea || null,
     employeeLevel: form.employeeLevel || null,
-    jobGrade: form.jobGrade || null,
+    ...(edit.jobGrade ? { jobGrade: form.jobGrade || null } : {}),
     targetUnitType: form.targetUnitType,
     unitOfMeasure: form.unitOfMeasureName || null,
     annualTarget: Number(form.annualTarget || 0),
     annualTargetDescription: form.annualTargetDescription || null,
     weight: Number(form.weight || 0),
     defaultRatingMethod: form.defaultRatingMethod || null,
-    defaultScoreScale: form.defaultScoreScale || null,
-    defaultPoeRequirements: form.defaultPoeRequirements || null,
-    defaultTaskTemplatesJson: JSON.stringify(form.defaultTaskTemplates.split('\n').map(item => item.trim()).filter(Boolean)),
+    ...(edit.scoreScale ? { defaultScoreScale: form.defaultScoreScale || null } : {}),
+    ...(edit.poeRequirements ? { defaultPoeRequirements: form.defaultPoeRequirements || null } : {}),
+    ...(edit.taskTemplates ? { defaultTaskTemplatesJson: JSON.stringify(form.defaultTaskTemplates.split('\n').map(item => item.trim()).filter(Boolean)) } : {}),
     linkedOpmsTargetRequired: form.linkedOpmsTargetRequired,
     functionalArea: form.functionalArea || null,
     isActive: form.isActive,
@@ -949,6 +986,7 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined) {
 
 export function OPMSTargetLibraryList() {
   const { pushToast, setCurrentPath } = useApp();
+  const { canDuplicateProtected } = useOpmsTemplateMemberCapabilities();
   const [opmsTargetTemplates, setOpmsTargetTemplates] = useState<OpmsTargetTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -1134,7 +1172,7 @@ export function OPMSTargetLibraryList() {
           actions={(template) => [
             { label: 'View', onClick: () => setCurrentPath(`/opms/library/${template.id}`) },
             { label: 'Edit', onClick: () => setCurrentPath(`/opms/library/${template.id}/edit`) },
-            {
+            ...(canDuplicateProtected ? [{
               label: 'Duplicate',
               onClick: () => {
                 void (async () => {
@@ -1147,7 +1185,7 @@ export function OPMSTargetLibraryList() {
                   }
                 })();
               },
-            },
+            } satisfies TemplateRowAction] : []),
             {
               label: 'Archive/Delete',
               variant: 'error',
@@ -1191,6 +1229,7 @@ export function OPMSTargetLibraryList() {
 
 export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const { read, canDuplicateProtected } = useOpmsTemplateMemberCapabilities();
   const [template, setTemplate] = useState<OpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -1243,7 +1282,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
             <Badge variant="default">v{template.version}</Badge>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
+            {canDuplicateProtected && <Button
               variant="outline"
               icon={<Copy className="h-4 w-4" />}
               onClick={() => {
@@ -1259,7 +1298,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               }}
             >
               Duplicate
-            </Button>
+            </Button>}
             <Button
               variant="outline"
               icon={<Archive className="h-4 w-4" />}
@@ -1323,8 +1362,8 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
           <DetailItem label="Functional Area" value={template.functionalArea} />
           <DetailItem label="Standard Classification" value={template.standardClassification} />
           <DetailItem label="IDP Reference" value={template.idpReference} />
-          <DetailItem label="Internal Reference" value={template.internalReference} />
-          <DetailItem label="FMS Link" value={template.fmsLink} />
+          {read.internalReference && <DetailItem label="Internal Reference" value={template.internalReference} />}
+          {read.fmsLink && <DetailItem label="FMS Link" value={template.fmsLink} />}
           <DetailItem label="Created Date" value={formatDate(template.createdDate)} />
         </div>
 
@@ -1333,7 +1372,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
           <p className="mt-2 text-sm text-secondary-600 dark:text-secondary-400">{template.kpiDescription}</p>
         </Card>
 
-        <Card>
+        {read.quarterlyTargets && <Card>
           <h3 className="text-sm font-semibold text-secondary-900 dark:text-white">Default Quarterly Targets</h3>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {template.defaultQuarterlyTargets.map(target => (
@@ -1350,11 +1389,11 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               />
             ))}
           </div>
-        </Card>
+        </Card>}
 
         <div className="grid gap-4 xl:grid-cols-2">
-          <DetailItem label="Default Budget Information" value={template.defaultBudgetInformation} />
-          <DetailItem label="Default POE Requirements" value={template.defaultPoeRequirements} />
+          {read.budgetInformation && <DetailItem label="Default Budget Information" value={template.defaultBudgetInformation} />}
+          {read.poeRequirements && <DetailItem label="Default POE Requirements" value={template.defaultPoeRequirements} />}
         </div>
       </div>
     </AppShell>
@@ -1363,6 +1402,7 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const { edit } = useOpmsTemplateMemberCapabilities();
   const [template, setTemplate] = useState<OpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
   const { form, setForm } = useOpmsTemplateForm(template);
@@ -1389,7 +1429,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   }, [templateId, pushToast]);
 
   const handleSave = async () => {
-    const payload = buildOpmsTemplatePayload(form);
+    const payload = buildOpmsTemplatePayload(form, edit);
 
     if (template) {
       const result = await updateOpmsTargetTemplateApi(template.id, { ...payload, rowVersion: template.rowVersion });
@@ -1486,7 +1526,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
           </FormPanel>
         </div>
 
-        <FormPanel title="Default Quarterly Targets" description="Set the default quarterly structure to pre-populate live OPMS targets." icon={<Target className="h-5 w-5" />}>
+        {edit.quarterlyTargets && <FormPanel title="Default Quarterly Targets" description="Set the default quarterly structure to pre-populate live OPMS targets." icon={<Target className="h-5 w-5" />}>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {form.quarterlyTargets.map((quarter, index) => (
               <Card key={quarter.quarter} className="border border-secondary-200 dark:border-secondary-700" padding="md">
@@ -1529,7 +1569,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               </Card>
             ))}
           </div>
-        </FormPanel>
+        </FormPanel>}
 
         <div className="grid gap-4 xl:grid-cols-2">
           <FormPanel title="Budget Defaults" description="Reusable budget and classification references." icon={<Target className="h-5 w-5" />}>
@@ -1538,16 +1578,16 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <StrategicPlanningMasterPicker kind="budget-types" label="Budget Type" value={form.budgetTypeId} selectedLabel={form.budgetTypeName} onChange={(value, option) => setForm(prev => ({ ...prev, budgetTypeId: value, budgetTypeName: option?.name ?? (value ? prev.budgetTypeName : '') }))} />
             </FormRow>
             <Input label="Standard Classification" value={form.standardClassification} onChange={(event) => setForm(prev => ({ ...prev, standardClassification: event.target.value }))} />
-            <Textarea label="Default Budget Information" rows={4} value={form.defaultBudgetInformation} onChange={(event) => setForm(prev => ({ ...prev, defaultBudgetInformation: event.target.value }))} />
+            {edit.budgetInformation && <Textarea label="Default Budget Information" rows={4} value={form.defaultBudgetInformation} onChange={(event) => setForm(prev => ({ ...prev, defaultBudgetInformation: event.target.value }))} />}
           </FormPanel>
 
           <FormPanel title="References" description="Persist document and system references that copy into live OPMS targets." icon={<Target className="h-5 w-5" />}>
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
-              <Input label="Internal Reference" value={form.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />
+              {edit.internalReference && <Input label="Internal Reference" value={form.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />}
             </FormRow>
-            <Input label="FMS Link" value={form.fmsLink} onChange={(event) => setForm(prev => ({ ...prev, fmsLink: event.target.value }))} />
-            <Textarea label="Default POE Requirements" rows={4} value={form.defaultPoeRequirements} onChange={(event) => setForm(prev => ({ ...prev, defaultPoeRequirements: event.target.value }))} />
+            {edit.fmsLink && <Input label="FMS Link" value={form.fmsLink} onChange={(event) => setForm(prev => ({ ...prev, fmsLink: event.target.value }))} />}
+            {edit.poeRequirements && <Textarea label="Default POE Requirements" rows={4} value={form.defaultPoeRequirements} onChange={(event) => setForm(prev => ({ ...prev, defaultPoeRequirements: event.target.value }))} />}
           </FormPanel>
         </div>
 
@@ -1566,6 +1606,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
 
 export function IPMSTargetLibraryList() {
   const { pushToast, setCurrentPath } = useApp();
+  const { canDuplicateProtected } = useIpmsTemplateMemberCapabilities();
   const [ipmsTargetTemplates, setIpmsTargetTemplates] = useState<IpmsTargetTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -1741,7 +1782,7 @@ export function IPMSTargetLibraryList() {
           actions={(template) => [
             { label: 'View', onClick: () => setCurrentPath(`/ipms/library/${template.id}`) },
             { label: 'Edit', onClick: () => setCurrentPath(`/ipms/library/${template.id}/edit`) },
-            {
+            ...(canDuplicateProtected ? [{
               label: 'Duplicate',
               onClick: () => {
                 void (async () => {
@@ -1754,7 +1795,7 @@ export function IPMSTargetLibraryList() {
                   }
                 })();
               },
-            },
+            } satisfies TemplateRowAction] : []),
             {
               label: 'Archive/Delete',
               variant: 'error',
@@ -1798,6 +1839,7 @@ export function IPMSTargetLibraryList() {
 
 export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const { read, canDuplicateProtected } = useIpmsTemplateMemberCapabilities();
   const [template, setTemplate] = useState<IpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -1850,7 +1892,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
             <Badge variant="default">v{template.version}</Badge>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
+            {canDuplicateProtected && <Button
               variant="outline"
               icon={<Copy className="h-4 w-4" />}
               onClick={() => {
@@ -1866,7 +1908,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
               }}
             >
               Duplicate
-            </Button>
+            </Button>}
             <Button
               variant="outline"
               icon={<Archive className="h-4 w-4" />}
@@ -1913,13 +1955,13 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
           <DetailItem label="Target Name" value={template.targetName} />
           <DetailItem label="Performance Area" value={template.performanceArea} />
           <DetailItem label="Employee Level" value={template.employeeLevel} />
-          <DetailItem label="Job Grade" value={template.jobGrade} />
+          {read.jobGrade && <DetailItem label="Job Grade" value={template.jobGrade} />}
           <DetailItem label="Target Unit Type" value={template.targetUnitType} />
           <DetailItem label="Unit of Measure" value={template.unitOfMeasure.name} />
           <DetailItem label="Annual Target" value={template.annualTarget} />
           <DetailItem label="Weight" value={`${template.weight}%`} />
           <DetailItem label="Default Rating Method" value={template.defaultRatingMethod} />
-          <DetailItem label="Default Score Scale" value={template.defaultScoreScale} />
+          {read.scoreScale && <DetailItem label="Default Score Scale" value={template.defaultScoreScale} />}
           <DetailItem label="Linked OPMS Required" value={template.linkedOpmsTargetRequired ? 'Yes' : 'No'} />
           <DetailItem label="Created Date" value={formatDate(template.createdDate)} />
         </div>
@@ -1930,8 +1972,8 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
         </Card>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          <DetailItem label="Default POE Requirements" value={template.defaultPoeRequirements} />
-          <DetailItem
+          {read.poeRequirements && <DetailItem label="Default POE Requirements" value={template.defaultPoeRequirements} />}
+          {read.taskTemplates && <DetailItem
             label="Default Task Templates"
             value={
               <div className="space-y-1">
@@ -1940,7 +1982,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
                 ))}
               </div>
             }
-          />
+          />}
         </div>
       </div>
     </AppShell>
@@ -1949,6 +1991,7 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
+  const { edit } = useIpmsTemplateMemberCapabilities();
   const [template, setTemplate] = useState<IpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
   const { form, setForm } = useIpmsTemplateForm(template);
@@ -1975,7 +2018,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   }, [templateId, pushToast]);
 
   const handleSave = async () => {
-    const payload = buildIpmsTemplatePayload(form);
+    const payload = buildIpmsTemplatePayload(form, edit);
 
     if (template) {
       const result = await updateIpmsTargetTemplateApi(template.id, { ...payload, rowVersion: template.rowVersion });
@@ -2043,7 +2086,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
           <FormPanel title="Employee Applicability" description="Reusable defaults for role level, grade, and measurement." icon={<UserSquare2 className="h-5 w-5" />}>
             <FormRow cols={3}>
               <Input label="Employee Level" required value={form.employeeLevel} onChange={(event) => setForm(prev => ({ ...prev, employeeLevel: event.target.value }))} />
-              <Input label="Job Grade" required value={form.jobGrade} onChange={(event) => setForm(prev => ({ ...prev, jobGrade: event.target.value }))} />
+              {edit.jobGrade && <Input label="Job Grade" required value={form.jobGrade} onChange={(event) => setForm(prev => ({ ...prev, jobGrade: event.target.value }))} />}
               <Input label="Weight" required type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
             </FormRow>
             <FormRow cols={3}>
@@ -2057,16 +2100,16 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
           <FormPanel title="Scoring Defaults" description="Default rating method, score scale, and evidence expectations." icon={<Target className="h-5 w-5" />}>
             <FormRow cols={2}>
               <Input label="Default Rating Method" value={form.defaultRatingMethod} onChange={(event) => setForm(prev => ({ ...prev, defaultRatingMethod: event.target.value }))} />
-              <Input label="Default Score Scale" value={form.defaultScoreScale} onChange={(event) => setForm(prev => ({ ...prev, defaultScoreScale: event.target.value }))} />
+              {edit.scoreScale && <Input label="Default Score Scale" value={form.defaultScoreScale} onChange={(event) => setForm(prev => ({ ...prev, defaultScoreScale: event.target.value }))} />}
             </FormRow>
-            <Textarea label="Default POE Requirements" rows={4} value={form.defaultPoeRequirements} onChange={(event) => setForm(prev => ({ ...prev, defaultPoeRequirements: event.target.value }))} />
-            <Textarea
+            {edit.poeRequirements && <Textarea label="Default POE Requirements" rows={4} value={form.defaultPoeRequirements} onChange={(event) => setForm(prev => ({ ...prev, defaultPoeRequirements: event.target.value }))} />}
+            {edit.taskTemplates && <Textarea
               label="Default Task Templates"
               rows={6}
               value={form.defaultTaskTemplates}
               onChange={(event) => setForm(prev => ({ ...prev, defaultTaskTemplates: event.target.value }))}
               helpText="Enter one default task template per line."
-            />
+            />}
           </FormPanel>
         </div>
 

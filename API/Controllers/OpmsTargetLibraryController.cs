@@ -51,6 +51,7 @@ public class OpmsTargetLibraryController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.View");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden,
             new ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user);
 
         var query = ApplyFilters(_context.OpmsTargetTemplates.AsNoTracking(), page, filter);
         var totalCount = await query.CountAsync();
@@ -69,7 +70,7 @@ public class OpmsTargetLibraryController : ControllerBase
         };
         var templates = await query.Skip(page.Offset).Take(page.PageSize).ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<OpmsTargetTemplateResponse>>(true,
-            PagedResponse<OpmsTargetTemplateResponse>.Create(templates.Select(item => item.ToResponse()), page.Page, page.PageSize, totalCount)));
+            PagedResponse<OpmsTargetTemplateResponse>.Create(templates.Select(item => item.ToResponse(members.Read)), page.Page, page.PageSize, totalCount)));
     }
 
     [HttpGet("facets")]
@@ -110,11 +111,12 @@ public class OpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.View");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user);
 
         var template = await _context.OpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == publicId);
         return template == null
             ? NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"))
-            : Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
+            : Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
 
     [HttpPost]
@@ -124,17 +126,19 @@ public class OpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.Create");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user, includeUpdate: true);
+        if (SuppliesDeniedMember(request, members.Update)) return Forbid();
 
         var exists = await _context.OpmsTargetTemplates.AnyAsync(item => item.TemplateCode == request.TemplateCode);
         if (exists) return Conflict(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "Template code already exists"));
 
-        var template = Apply(new OpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id);
+        var template = Apply(new OpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id, members.Update);
         _context.OpmsTargetTemplates.Add(template);
         await _context.SaveChangesAsync();
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
 
     [HttpPut("{id:int}")]
@@ -150,6 +154,8 @@ public class OpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.Edit");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user, includeUpdate: true);
+        if (SuppliesDeniedMember(request, members.Update)) return Forbid();
 
         var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"));
@@ -159,7 +165,7 @@ public class OpmsTargetLibraryController : ControllerBase
         if (codeConflict) return Conflict(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "Template code already exists"));
 
         var oldValue = template.ToResponse();
-        template = Apply(template, request, user.UserName ?? user.Email ?? user.Id);
+        template = Apply(template, request, user.UserName ?? user.Email ?? user.Id, members.Update);
         template.Version += 1;
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
@@ -169,7 +175,7 @@ public class OpmsTargetLibraryController : ControllerBase
         await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Edit", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
-        return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse()));
+        return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
 
     [HttpDelete("{id:int}")]
@@ -216,6 +222,8 @@ public class OpmsTargetLibraryController : ControllerBase
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "User not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS.Library.Duplicate");
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetTemplateResponse>(false, null, decision.Reason));
+        var members = await GetMemberAccessAsync(user, includeUpdate: true);
+        if (!HasCompleteProtectedAccess(members)) return Forbid();
 
         var template = await _context.OpmsTargetTemplates.AsNoTracking().FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"));
@@ -267,7 +275,7 @@ public class OpmsTargetLibraryController : ControllerBase
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, duplicate.ToResponse()));
     }
 
-    private static OpmsTargetTemplate Apply(OpmsTargetTemplate entity, SaveOpmsTargetTemplateRequest request, string actor)
+    private static OpmsTargetTemplate Apply(OpmsTargetTemplate entity, SaveOpmsTargetTemplateRequest request, string actor, OpmsTargetTemplateMemberAccess update)
     {
         entity.TemplateCode = request.TemplateCode.Trim();
         entity.TemplateName = request.TemplateName.Trim();
@@ -295,11 +303,11 @@ public class OpmsTargetLibraryController : ControllerBase
         entity.FunctionalArea = request.FunctionalArea?.Trim();
         entity.StandardClassification = request.StandardClassification?.Trim();
         entity.IdpReference = request.IdpReference?.Trim();
-        entity.InternalReference = request.InternalReference?.Trim();
-        entity.FmsLink = request.FmsLink?.Trim();
-        entity.DefaultQuarterlyTargetsJson = request.DefaultQuarterlyTargetsJson;
-        entity.DefaultBudgetInformation = request.DefaultBudgetInformation?.Trim();
-        entity.DefaultPoeRequirements = request.DefaultPoeRequirements?.Trim();
+        if (update.InternalReference) entity.InternalReference = request.InternalReference?.Trim();
+        if (update.FmsLink) entity.FmsLink = request.FmsLink?.Trim();
+        if (update.DefaultQuarterlyTargets) entity.DefaultQuarterlyTargetsJson = request.DefaultQuarterlyTargetsJson;
+        if (update.DefaultBudgetInformation) entity.DefaultBudgetInformation = request.DefaultBudgetInformation?.Trim();
+        if (update.DefaultPoeRequirements) entity.DefaultPoeRequirements = request.DefaultPoeRequirements?.Trim();
         entity.IsActive = request.IsActive;
         entity.IsArchived = !request.IsActive;
         entity.CreatedBy ??= actor;
@@ -360,6 +368,33 @@ public class OpmsTargetLibraryController : ControllerBase
         await _context.SaveChangesAsync();
     }
 
+    private async Task<OpmsTemplateAccess> GetMemberAccessAsync(ApplicationUser user, bool includeUpdate = false)
+    {
+        async Task<bool> Allowed(string member, SecurityOperation operation) =>
+            (await _accessControlService.CheckPermissionAsync(user, $"OPMS_TARGET_TEMPLATE.{member}.{operation.ToString().ToUpperInvariant()}"))?.Allowed == true;
+        async Task<OpmsTargetTemplateMemberAccess> Resolve(SecurityOperation operation) => new(
+            await Allowed("InternalReference", operation),
+            await Allowed("FmsLink", operation),
+            await Allowed("DefaultQuarterlyTargets", operation),
+            await Allowed("DefaultBudgetInformation", operation),
+            await Allowed("DefaultPoeRequirements", operation));
+        return new(await Resolve(SecurityOperation.Read), includeUpdate ? await Resolve(SecurityOperation.Update) : OpmsTargetTemplateMemberAccess.None);
+    }
+
+    private static bool SuppliesDeniedMember(SaveOpmsTargetTemplateRequest request, OpmsTargetTemplateMemberAccess update) =>
+        !update.InternalReference && request.InternalReference is not null
+        || !update.FmsLink && request.FmsLink is not null
+        || !update.DefaultQuarterlyTargets && request.DefaultQuarterlyTargetsJson is not null
+        || !update.DefaultBudgetInformation && request.DefaultBudgetInformation is not null
+        || !update.DefaultPoeRequirements && request.DefaultPoeRequirements is not null;
+
+    private static bool HasCompleteProtectedAccess(OpmsTemplateAccess access) =>
+        access.Read.InternalReference && access.Update.InternalReference
+        && access.Read.FmsLink && access.Update.FmsLink
+        && access.Read.DefaultQuarterlyTargets && access.Update.DefaultQuarterlyTargets
+        && access.Read.DefaultBudgetInformation && access.Update.DefaultBudgetInformation
+        && access.Read.DefaultPoeRequirements && access.Update.DefaultPoeRequirements;
+
     private bool TrySetExpectedVersion(OpmsTargetTemplate template, string? encoded)
     {
         try
@@ -377,4 +412,6 @@ public class OpmsTargetLibraryController : ControllerBase
         var userId = PerformanceApiSupport.GetCurrentUserId(User);
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
+
+    private sealed record OpmsTemplateAccess(OpmsTargetTemplateMemberAccess Read, OpmsTargetTemplateMemberAccess Update);
 }

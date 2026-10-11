@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
+  IPMSTargetLibraryDetail,
   IPMSTargetLibraryList,
   IPMSTargetTemplateFormPage,
+  OPMSTargetLibraryDetail,
   OPMSTargetLibraryList,
   OPMSTargetTemplateFormPage,
 } from './TargetLibraries';
@@ -24,8 +26,13 @@ const api = vi.hoisted(() => ({
   updateOpmsTargetTemplate: vi.fn(),
 }));
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
+const security = vi.hoisted(() => ({
+  canReadField: vi.fn(() => true),
+  canEditField: vi.fn(() => true),
+}));
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 
 const facets = { primaryAreas: ['Services'], functionalAreas: ['Operations'], classifications: ['Outcome'], targetUnitTypes: ['percentage'], versions: [2, 1] };
@@ -43,6 +50,8 @@ const ipmsTemplate = {
 describe('target library registers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    security.canReadField.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
     api.getOpmsTargetTemplateFacets.mockResolvedValue({ success: true, data: facets });
     api.getIpmsTargetTemplateFacets.mockResolvedValue({ success: true, data: facets });
     api.getOpmsTargetTemplatesPage.mockResolvedValue({ success: true, data: { items: [opmsTemplate], page: 1, pageSize: 25, totalCount: 27, totalPages: 2 } });
@@ -163,5 +172,124 @@ describe('target library registers', () => {
     expect(api.getIpmsTargetTemplatesPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 25 }));
     fireEvent.change(screen.getByLabelText('Sort templates'), { target: { value: 'templateCode' } });
     await waitFor(() => expect(api.getIpmsTargetTemplatesPage).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'templateCode', page: 1 })));
+  });
+
+  it('does not render or duplicate hostile OPMS protected values without member reads', async () => {
+    security.canReadField.mockReturnValue(false);
+    security.canEditField.mockReturnValue(false);
+    api.getOpmsTargetTemplate.mockResolvedValue({
+      success: true,
+      data: {
+        ...opmsTemplate,
+        publicId: 'opms-public-id', rowVersion: 'row-version', baseline: 5, annualTarget: 40,
+        annualTargetDescription: 'Annual description', unitOfMeasure: { id: '', name: 'Kilometers' },
+        performanceObjective: 'Improve roads', weight: 10, indicatorType: 'Quantitative',
+        internalReference: 'SECRET-INTERNAL', fmsLink: 'https://secret-fms.example',
+        defaultQuarterlyTargets: [{ quarter: 'Q1', target: 10, description: 'SECRET-QUARTER', budget: 500 }],
+        defaultBudgetInformation: 'SECRET-BUDGET', defaultPoeRequirements: 'SECRET-POE',
+        createdDate: '2026-10-10T00:00:00Z',
+      },
+    });
+
+    render(<OPMSTargetLibraryDetail templateId="opms-public-id" />);
+
+    expect(await screen.findByText('Water delivery')).toBeInTheDocument();
+    expect(screen.queryByText('SECRET-INTERNAL')).not.toBeInTheDocument();
+    expect(screen.queryByText('https://secret-fms.example')).not.toBeInTheDocument();
+    expect(screen.queryByText('SECRET-QUARTER')).not.toBeInTheDocument();
+    expect(screen.queryByText('SECRET-BUDGET')).not.toBeInTheDocument();
+    expect(screen.queryByText('SECRET-POE')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+  });
+
+  it('omits hostile OPMS protected values from edits without member updates', async () => {
+    security.canEditField.mockReturnValue(false);
+    const editable = {
+      ...opmsTemplate,
+      publicId: 'opms-public-id', rowVersion: 'row-version', baseline: 5, annualTarget: 40,
+      annualTargetDescription: 'Annual description', unitOfMeasure: { id: '', name: 'Kilometers' },
+      performanceObjective: 'Improve roads', weight: 10, indicatorType: 'Quantitative',
+      internalReference: 'SECRET-INTERNAL', fmsLink: 'https://secret-fms.example',
+      defaultQuarterlyTargets: [{ quarter: 'Q1', target: 10, description: 'SECRET-QUARTER', budget: 500 }],
+      defaultBudgetInformation: 'SECRET-BUDGET', defaultPoeRequirements: 'SECRET-POE',
+      createdDate: '2026-10-10T00:00:00Z',
+    };
+    api.getOpmsTargetTemplate.mockResolvedValue({ success: true, data: editable });
+    api.updateOpmsTargetTemplate.mockResolvedValue({ success: true, data: editable });
+
+    render(<OPMSTargetTemplateFormPage templateId="opms-public-id" />);
+
+    expect(await screen.findByText('Edit Mode')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Internal Reference')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('FMS Link')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default Budget Information')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default POE Requirements')).not.toBeInTheDocument();
+    expect(screen.queryByText('Default Quarterly Targets')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
+
+    await waitFor(() => expect(api.updateOpmsTargetTemplate).toHaveBeenCalled());
+    const payload = api.updateOpmsTargetTemplate.mock.calls[0][1];
+    expect(payload).not.toHaveProperty('internalReference');
+    expect(payload).not.toHaveProperty('fmsLink');
+    expect(payload).not.toHaveProperty('defaultQuarterlyTargetsJson');
+    expect(payload).not.toHaveProperty('defaultBudgetInformation');
+    expect(payload).not.toHaveProperty('defaultPoeRequirements');
+  });
+
+  it('does not render or duplicate hostile IPMS protected values without member reads', async () => {
+    security.canReadField.mockReturnValue(false);
+    security.canEditField.mockReturnValue(false);
+    api.getIpmsTargetTemplate.mockResolvedValue({
+      success: true,
+      data: {
+        ...ipmsTemplate,
+        publicId: 'ipms-public-id', rowVersion: 'row-version', jobGrade: 'SECRET-GRADE',
+        unitOfMeasure: { id: '', name: 'Percentage' }, annualTarget: 100,
+        annualTargetDescription: 'Annual description', weight: 20, defaultRatingMethod: 'Weighted',
+        defaultScoreScale: 'SECRET-SCALE', defaultPoeRequirements: 'SECRET-POE',
+        defaultTaskTemplates: ['SECRET-TASK'], linkedOpmsTargetRequired: false,
+        createdDate: '2026-10-10T00:00:00Z',
+      },
+    });
+
+    render(<IPMSTargetLibraryDetail templateId="ipms-public-id" />);
+
+    expect(await screen.findByText('Manager template')).toBeInTheDocument();
+    expect(screen.queryByText('SECRET-GRADE')).not.toBeInTheDocument();
+    expect(screen.queryByText('SECRET-SCALE')).not.toBeInTheDocument();
+    expect(screen.queryByText('SECRET-POE')).not.toBeInTheDocument();
+    expect(screen.queryByText('SECRET-TASK')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+  });
+
+  it('omits hostile IPMS protected values from edits without member updates', async () => {
+    security.canEditField.mockReturnValue(false);
+    const editable = {
+      ...ipmsTemplate,
+      publicId: 'ipms-public-id', rowVersion: 'row-version', jobGrade: 'SECRET-GRADE',
+      unitOfMeasure: { id: '', name: 'Percentage' }, annualTarget: 100,
+      annualTargetDescription: 'Annual description', weight: 20, defaultRatingMethod: 'Weighted',
+      defaultScoreScale: 'SECRET-SCALE', defaultPoeRequirements: 'SECRET-POE',
+      defaultTaskTemplates: ['SECRET-TASK'], linkedOpmsTargetRequired: false,
+      createdDate: '2026-10-10T00:00:00Z',
+    };
+    api.getIpmsTargetTemplate.mockResolvedValue({ success: true, data: editable });
+    api.updateIpmsTargetTemplate.mockResolvedValue({ success: true, data: editable });
+
+    render(<IPMSTargetTemplateFormPage templateId="ipms-public-id" />);
+
+    expect(await screen.findByText('Edit Mode')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Job Grade*')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default Score Scale')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default POE Requirements')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default Task Templates')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
+
+    await waitFor(() => expect(api.updateIpmsTargetTemplate).toHaveBeenCalled());
+    const payload = api.updateIpmsTargetTemplate.mock.calls[0][1];
+    expect(payload).not.toHaveProperty('jobGrade');
+    expect(payload).not.toHaveProperty('defaultScoreScale');
+    expect(payload).not.toHaveProperty('defaultPoeRequirements');
+    expect(payload).not.toHaveProperty('defaultTaskTemplatesJson');
   });
 });

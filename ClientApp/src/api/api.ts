@@ -1036,11 +1036,11 @@ function toOpmsTemplatePayload(template: SaveOpmsTargetTemplatePayload): SaveOpm
     functionalArea: template.functionalArea ?? null,
     standardClassification: template.standardClassification ?? null,
     idpReference: template.idpReference ?? null,
-    internalReference: template.internalReference ?? null,
-    fmsLink: template.fmsLink ?? null,
-    defaultQuarterlyTargetsJson: template.defaultQuarterlyTargetsJson ?? null,
-    defaultBudgetInformation: template.defaultBudgetInformation ?? null,
-    defaultPoeRequirements: template.defaultPoeRequirements ?? null,
+    internalReference: template.internalReference === undefined ? undefined : template.internalReference ?? null,
+    fmsLink: template.fmsLink === undefined ? undefined : template.fmsLink ?? null,
+    defaultQuarterlyTargetsJson: template.defaultQuarterlyTargetsJson === undefined ? undefined : template.defaultQuarterlyTargetsJson ?? null,
+    defaultBudgetInformation: template.defaultBudgetInformation === undefined ? undefined : template.defaultBudgetInformation ?? null,
+    defaultPoeRequirements: template.defaultPoeRequirements === undefined ? undefined : template.defaultPoeRequirements ?? null,
   };
 }
 
@@ -1049,13 +1049,13 @@ function toIpmsTemplatePayload(template: SaveIpmsTargetTemplatePayload): SaveIpm
     ...template,
     performanceArea: template.performanceArea ?? null,
     employeeLevel: template.employeeLevel ?? null,
-    jobGrade: template.jobGrade ?? null,
+    jobGrade: template.jobGrade === undefined ? undefined : template.jobGrade ?? null,
     unitOfMeasure: template.unitOfMeasure ?? null,
     annualTargetDescription: template.annualTargetDescription ?? null,
     defaultRatingMethod: template.defaultRatingMethod ?? null,
-    defaultScoreScale: template.defaultScoreScale ?? null,
-    defaultPoeRequirements: template.defaultPoeRequirements ?? null,
-    defaultTaskTemplatesJson: template.defaultTaskTemplatesJson ?? null,
+    defaultScoreScale: template.defaultScoreScale === undefined ? undefined : template.defaultScoreScale ?? null,
+    defaultPoeRequirements: template.defaultPoeRequirements === undefined ? undefined : template.defaultPoeRequirements ?? null,
+    defaultTaskTemplatesJson: template.defaultTaskTemplatesJson === undefined ? undefined : template.defaultTaskTemplatesJson ?? null,
     functionalArea: template.functionalArea ?? null,
   };
 }

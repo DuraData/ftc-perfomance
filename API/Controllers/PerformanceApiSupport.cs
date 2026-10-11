@@ -95,6 +95,9 @@ public static class PerformanceApiSupport
     }
 
     public static OpmsTargetTemplateResponse ToResponse(this OpmsTargetTemplate template) =>
+        template.ToResponse(OpmsTargetTemplateMemberAccess.Full);
+
+    public static OpmsTargetTemplateResponse ToResponse(this OpmsTargetTemplate template, OpmsTargetTemplateMemberAccess access) =>
         new(
             template.PublicId,
             template.TemplateCode,
@@ -123,11 +126,11 @@ public static class PerformanceApiSupport
             template.FunctionalArea,
             template.StandardClassification,
             template.IdpReference,
-            template.InternalReference,
-            template.FmsLink,
-            template.DefaultQuarterlyTargetsJson,
-            template.DefaultBudgetInformation,
-            template.DefaultPoeRequirements,
+            access.InternalReference ? template.InternalReference : null,
+            access.FmsLink ? template.FmsLink : null,
+            access.DefaultQuarterlyTargets ? template.DefaultQuarterlyTargetsJson : null,
+            access.DefaultBudgetInformation ? template.DefaultBudgetInformation : null,
+            access.DefaultPoeRequirements ? template.DefaultPoeRequirements : null,
             template.IsActive,
             template.IsArchived,
             template.Version,
@@ -135,6 +138,9 @@ public static class PerformanceApiSupport
             Convert.ToBase64String(template.RowVersion));
 
     public static IpmsTargetTemplateResponse ToResponse(this IpmsTargetTemplate template) =>
+        template.ToResponse(IpmsTargetTemplateMemberAccess.Full);
+
+    public static IpmsTargetTemplateResponse ToResponse(this IpmsTargetTemplate template, IpmsTargetTemplateMemberAccess access) =>
         new(
             template.PublicId,
             template.TemplateCode,
@@ -143,16 +149,16 @@ public static class PerformanceApiSupport
             template.KpiDescription,
             template.PerformanceArea,
             template.EmployeeLevel,
-            template.JobGrade,
+            access.JobGrade ? template.JobGrade : null,
             template.TargetUnitType,
             template.UnitOfMeasure,
             template.AnnualTarget,
             template.AnnualTargetDescription,
             template.Weight,
             template.DefaultRatingMethod,
-            template.DefaultScoreScale,
-            template.DefaultPoeRequirements,
-            template.DefaultTaskTemplatesJson,
+            access.DefaultScoreScale ? template.DefaultScoreScale : null,
+            access.DefaultPoeRequirements ? template.DefaultPoeRequirements : null,
+            access.DefaultTaskTemplates ? template.DefaultTaskTemplatesJson : null,
             template.LinkedOpmsTargetRequired,
             template.FunctionalArea,
             template.IsActive,
@@ -637,4 +643,25 @@ public static class PerformanceApiSupport
             requested.OccurredAt, completed?.OccurredAt, failed?.OccurredAt,
             memberAccess.DisposalDetail ? completed?.Detail ?? failed?.Detail : null);
     }
+}
+
+public sealed record OpmsTargetTemplateMemberAccess(
+    bool InternalReference,
+    bool FmsLink,
+    bool DefaultQuarterlyTargets,
+    bool DefaultBudgetInformation,
+    bool DefaultPoeRequirements)
+{
+    public static OpmsTargetTemplateMemberAccess Full { get; } = new(true, true, true, true, true);
+    public static OpmsTargetTemplateMemberAccess None { get; } = new(false, false, false, false, false);
+}
+
+public sealed record IpmsTargetTemplateMemberAccess(
+    bool JobGrade,
+    bool DefaultScoreScale,
+    bool DefaultPoeRequirements,
+    bool DefaultTaskTemplates)
+{
+    public static IpmsTargetTemplateMemberAccess Full { get; } = new(true, true, true, true);
+    public static IpmsTargetTemplateMemberAccess None { get; } = new(false, false, false, false);
 }
