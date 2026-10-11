@@ -81,12 +81,15 @@ public sealed class UsersControllerSecurityTests
                 "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
                 "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment", "PmsRecommendation", "PmsScore", "PmsRfi",
                 "WithdrawalReason", "WithdrawalActor"]);
+            submissionMembers.Should().HaveCount(30);
             var internalAuditMembers = await context.SecurityMemberDefinitions
                 .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("InternalAudit"))
                 .ToArrayAsync();
             internalAuditMembers.Should().HaveCount(7);
             internalAuditMembers.Should().OnlyContain(item => item.IsSensitive);
-            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(38);
+            (await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == resourceCode && item.MemberCode == "WithdrawalReason"))
+                .IsSystemManaged.Should().BeFalse();
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(39);
         }
 
         foreach (var resourceCode in new[] { "OPMS_KPI", "IPMS_KPI" })

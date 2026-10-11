@@ -533,6 +533,8 @@ export function SubmissionWorkspace({
   const workflowResourceCode = `${submissionType}_WORKFLOW`;
   const canEditWorkflowComment = security.canEditField(workflowResourceCode, 'ActionComment');
   const canEditWorkflowRating = security.canEditField(workflowResourceCode, 'ActionRatingValue');
+  const canWithdraw = security.canExecute(`${submissionType}_SUBMISSION.WITHDRAW`)
+    && security.canEditField(resourceCode, 'WithdrawalReason');
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
   const canReadSuggestionActor = security.canReadField(resourceCode, 'SuggestionActor');
   const canReadSuggestionReason = security.canReadField(resourceCode, 'SuggestionReason');
@@ -775,7 +777,7 @@ export function SubmissionWorkspace({
               </Button>
             </>
           ) : null}
-          {onWithdraw && !currentSubmission.isDisabled && (
+          {onWithdraw && canWithdraw && !currentSubmission.isDisabled && (
             <Button variant="error" size="sm" onClick={() => setShowWithdrawal(true)}>
               Withdraw
             </Button>

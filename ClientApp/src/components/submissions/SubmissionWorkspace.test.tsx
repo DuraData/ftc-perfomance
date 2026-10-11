@@ -144,6 +144,21 @@ describe('SubmissionWorkspace member security', () => {
     });
   });
 
+  it('requires both the withdrawal action and exact reason update before exposing withdrawal', () => {
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.WITHDRAW');
+    const onWithdraw = vi.fn();
+    const { rerender } = render(<SubmissionWorkspace submission={submission} submissionType="OPMS" onWithdraw={onWithdraw} />);
+
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+
+    security.canEditField.mockImplementation((resource: string, member: string) =>
+      resource === 'OPMS_SUBMISSION' && member === 'WithdrawalReason');
+    rerender(<SubmissionWorkspace submission={submission} submissionType="OPMS" onWithdraw={onWithdraw} />);
+
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'WithdrawalReason');
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  });
+
   it('hides workflow actions after a configurable workflow reaches completion', () => {
     security.canExecute.mockReturnValue(true);
     const completed = { ...submission, status: 'completed' } as OPMSSubmission;

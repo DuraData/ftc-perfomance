@@ -448,6 +448,8 @@ public class IpmsSubmissionsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.WITHDRAW", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
+        var reasonDecision = await _accessControlService.CheckPermissionAsync(user, "IPMS_SUBMISSION.WithdrawalReason.UPDATE", BuildScope(entity));
+        if (!reasonDecision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, reasonDecision.Reason));
         if (!TrySetExpectedVersion(entity, request.RowVersion))
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A valid RowVersion is required."));
 

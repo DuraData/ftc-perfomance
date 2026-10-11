@@ -1,7 +1,90 @@
+using FTCERP.Host.Application.Services;
+
 namespace FTCERP.Tests;
 
 public sealed class GovernedWithdrawalTests
 {
+    [Fact]
+    public async Task Submission_withdrawal_requires_scoped_reason_update_and_masks_the_update_response()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "WD-SUB", Name = "Submission Withdrawal Municipality" };
+        var user = IdpTestFixture.CreateUser("submission-withdraw-user");
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        user.MunicipalityId = municipality.Id;
+        var opmsTarget = new OpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "WD-OPMS",
+            TargetName = "OPMS withdrawal", KpiDescription = "OPMS withdrawal", AnnualTargetDescription = "One"
+        };
+        var ipmsTarget = new IpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "WD-IPMS",
+            TargetName = "IPMS withdrawal", KpiDescription = "IPMS withdrawal", AnnualTargetDescription = "One"
+        };
+        var opmsSubmission = new OpmsSubmission
+        {
+            MunicipalityId = municipality.Id, OpmsTarget = opmsTarget, Quarter = "Q1",
+            BaseState = SubmissionBaseStates.InProgress, Status = "draft", CreatedBy = user.Id
+        };
+        var ipmsSubmission = new IpmsSubmission
+        {
+            MunicipalityId = municipality.Id, IpmsTarget = ipmsTarget, Quarter = "Q1",
+            BaseState = SubmissionBaseStates.InProgress, Status = "draft", CreatedBy = user.Id
+        };
+        context.AddRange(opmsTarget, ipmsTarget, opmsSubmission, ipmsSubmission);
+        await context.SaveChangesAsync();
+
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_SUBMISSION.WITHDRAW", "IPMS_SUBMISSION.WITHDRAW"
+        };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(
+                It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(grants.Contains(code) && scope?.MunicipalityId == municipality.Id,
+                    grants.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        access.Setup(service => service.GetEffectiveAccessAsync(user))
+            .ReturnsAsync(() => new EffectiveAccessResult([], grants.ToArray(), [], [], [], []));
+        var audit = new Mock<IWorkflowGovernanceService>();
+        audit.Setup(service => service.WriteAuditTrailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(),
+                It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+        var opms = SubmissionController(context, user, access.Object, audit.Object);
+        var ipms = IpmsSubmissionController(context, user, access.Object, audit.Object);
+        var opmsVersion = Convert.ToBase64String(opmsSubmission.RowVersion);
+        var ipmsVersion = Convert.ToBase64String(ipmsSubmission.RowVersion);
+
+        var deniedOpms = await opms.WithdrawSubmission(opmsSubmission.PublicId.ToString(),
+            new WithdrawGovernedRecordRequest("Protected OPMS withdrawal reason", opmsVersion));
+        deniedOpms.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        var deniedIpms = await ipms.WithdrawSubmission(ipmsSubmission.PublicId.ToString(),
+            new WithdrawGovernedRecordRequest("Protected IPMS withdrawal reason", ipmsVersion));
+        deniedIpms.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        opmsSubmission.IsDisabled.Should().BeFalse();
+        ipmsSubmission.IsDisabled.Should().BeFalse();
+        context.GovernedRecordLifecycleEvents.Should().BeEmpty();
+
+        grants.UnionWith(["OPMS_SUBMISSION.WithdrawalReason.UPDATE", "IPMS_SUBMISSION.WithdrawalReason.UPDATE"]);
+        var allowedOpms = (await opms.WithdrawSubmission(opmsSubmission.PublicId.ToString(),
+                new WithdrawGovernedRecordRequest("Protected OPMS withdrawal reason", opmsVersion))).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Subject.Data!;
+        var allowedIpms = (await ipms.WithdrawSubmission(ipmsSubmission.PublicId.ToString(),
+                new WithdrawGovernedRecordRequest("Protected IPMS withdrawal reason", ipmsVersion))).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<IpmsSubmissionResponse>>().Subject.Data!;
+
+        allowedOpms.WithdrawalReason.Should().BeNull();
+        allowedIpms.WithdrawalReason.Should().BeNull();
+        (await context.OpmsSubmissions.SingleAsync()).WithdrawalReason.Should().Be("Protected OPMS withdrawal reason");
+        (await context.IpmsSubmissions.SingleAsync()).WithdrawalReason.Should().Be("Protected IPMS withdrawal reason");
+        (await context.GovernedRecordLifecycleEvents.CountAsync()).Should().Be(2);
+    }
+
     [Fact]
     public async Task Opms_target_withdrawal_preserves_record_and_appends_immutable_tenant_event()
     {
@@ -179,6 +262,26 @@ public sealed class GovernedWithdrawalTests
             });
         return mock;
     }
+
+    private static OpmsSubmissionsController SubmissionController(
+        ApplicationDbContext context, ApplicationUser user, IAccessControlService access, IWorkflowGovernanceService audit) =>
+        new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access, audit,
+            Mock.Of<IEvidenceBlobStorage>(), Mock.Of<ISubmissionValueService>(), Mock.Of<IConfigurableWorkflowService>(),
+            Mock.Of<IReportingWindowService>(), Mock.Of<IEvidenceInspectionService>(), Mock.Of<IEvidenceMalwareScanner>(),
+            Mock.Of<IPerformanceSuggestionService>())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
+
+    private static IpmsSubmissionsController IpmsSubmissionController(
+        ApplicationDbContext context, ApplicationUser user, IAccessControlService access, IWorkflowGovernanceService audit) =>
+        new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access, audit,
+            Mock.Of<IEvidenceBlobStorage>(), Mock.Of<ISubmissionValueService>(), Mock.Of<IConfigurableWorkflowService>(),
+            Mock.Of<IReportingWindowService>(), Mock.Of<IEvidenceInspectionService>(), Mock.Of<IEvidenceMalwareScanner>(),
+            Mock.Of<IPerformanceSuggestionService>())
+        {
+            ControllerContext = ControllerContext(user.Id)
+        };
 
     private static ControllerContext ControllerContext(string userId) => new()
     {
