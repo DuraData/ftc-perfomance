@@ -3162,7 +3162,7 @@ export interface IdpKpi {
   description: string;
   formula: string;
   baseline: number;
-  annualTarget: number;
+  annualTarget?: number | null;
   fiveYearTarget: number;
   responsibleDepartmentPublicId?: string | null;
   responsibleDepartmentName?: string | null;

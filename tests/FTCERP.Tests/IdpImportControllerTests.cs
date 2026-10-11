@@ -288,7 +288,11 @@ public class IdpImportControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await SeedPlanAsync(context);
         var workflow = new Mock<IWorkflowGovernanceService>();
-        var manual = IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(setup.User).Object, workflow.Object, setup.User.Id);
+        var manualAccess = new Mock<IAccessControlService>();
+        manualAccess.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var manual = IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(setup.User).Object,
+            workflow.Object, setup.User.Id, accessControl: manualAccess.Object);
         var manualResult = await manual.CreateKpi(new CreateIdpKpiRequest(
             setup.Project.PublicId, "BAD-MANUAL", "Bad manual KPI", "Description", "x", 0, 1, 5,
             null, "System", "Quarterly", "NotAType", false, false));
@@ -301,6 +305,109 @@ public class IdpImportControllerTests
         invalidImport.InvalidRows.Should().Be(1);
         invalidImport.Rows.Single().ErrorCode.Should().Be("INVALID_INDICATOR_TYPE");
         (await context.IdpKpis.AnyAsync(item => item.KpiCode.StartsWith("BAD"))).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Import_previews_compose_payload_access_with_domain_member_reads()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "IDP_INDICATOR.IMPORT",
+            "IDP_PLAN.IMPORT",
+            "IDP_PLAN.ImportRowPayload.READ"
+        };
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>(),
+            AccessControl(setup.User, allowed));
+
+        var kpiBatch = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
+            Guid.NewGuid(), "protected-kpi.csv", [Row(2, setup.Project.ProjectCode, "CHANGE-1", "Existing KPI", 99)])));
+        var kpiRow = kpiBatch.Rows.Single();
+        ReadJson(kpiRow.NormalizedJson!).GetProperty("annualTarget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        ReadJson(kpiRow.ExistingValueJson!).GetProperty("annualTarget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+
+        var hierarchyBatch = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
+            Guid.NewGuid(), "protected-hierarchy.csv", [HierarchyRow(2, "PROJECT-PROTECTED", "Protected project")])));
+        var hierarchy = ReadJson(hierarchyBatch.Rows.Single().NormalizedJson!);
+        hierarchy.GetProperty("objective").GetProperty("budget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        hierarchy.GetProperty("programme").GetProperty("plannedBudget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        hierarchy.GetProperty("programme").GetProperty("approvedBudget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        hierarchy.GetProperty("programme").GetProperty("actualExpenditure").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        hierarchy.GetProperty("project").GetProperty("budget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        hierarchy.GetProperty("project").GetProperty("fundingSource").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+
+        allowed.UnionWith([
+            "IDP_INDICATOR.AnnualTargetValue.READ",
+            "IDP_PLAN.ObjectiveBudgetAllocation.READ",
+            "IDP_PROJECT.ProgrammePlannedBudget.READ",
+            "IDP_PROJECT.ProgrammeApprovedBudget.READ",
+            "IDP_PROJECT.ProgrammeActualExpenditure.READ",
+            "IDP_PROJECT.ProjectBudget.READ",
+            "IDP_PROJECT.ProjectFundingSource.READ"
+        ]);
+
+        var visibleKpi = Payload(await controller.GetBatch(kpiBatch.PublicId)).Rows.Single();
+        ReadJson(visibleKpi.NormalizedJson!).GetProperty("annualTarget").GetDecimal().Should().Be(99);
+        ReadJson(visibleKpi.ExistingValueJson!).GetProperty("annualTarget").GetDecimal().Should().Be(10);
+        var visibleHierarchy = ReadJson(Payload(await controller.GetBatch(hierarchyBatch.PublicId)).Rows.Single().NormalizedJson!);
+        visibleHierarchy.GetProperty("objective").GetProperty("budget").GetDecimal().Should().Be(1000000);
+        visibleHierarchy.GetProperty("programme").GetProperty("plannedBudget").GetDecimal().Should().Be(900000);
+        visibleHierarchy.GetProperty("project").GetProperty("fundingSource").GetString().Should().Be("Municipal grant");
+    }
+
+    [Fact]
+    public async Task Kpi_import_commit_denies_annual_target_change_until_exact_member_update_is_granted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IDP_INDICATOR.IMPORT" };
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>(),
+            AccessControl(setup.User, allowed));
+        var staged = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
+            Guid.NewGuid(), "annual-target.csv", [Row(2, setup.Project.ProjectCode, "CHANGE-1", "Existing KPI", 77)])));
+
+        var denied = await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Protected change"));
+        denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1")).AnnualTarget.Should().Be(10);
+        (await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId)).Status.Should().Be(IdpImportBatchStatus.Staged);
+
+        allowed.Add("IDP_INDICATOR.AnnualTargetValue.UPDATE");
+        Payload(await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Approved protected change")))
+            .Status.Should().Be(IdpImportBatchStatus.Committed.ToString());
+        (await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1")).AnnualTarget.Should().Be(77);
+    }
+
+    [Fact]
+    public async Task Hierarchy_import_commit_denies_financial_changes_until_corresponding_member_updates_are_granted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IDP_PLAN.IMPORT" };
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>(),
+            AccessControl(setup.User, allowed));
+        var staged = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
+            Guid.NewGuid(), "financial-hierarchy.csv", [HierarchyRow(2, "PROJECT-SECURED", "Secured project")])));
+
+        var denied = await controller.CommitHierarchy(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Protected hierarchy"));
+        denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.IdpProjects.AnyAsync(item => item.ProjectCode == "PROJECT-SECURED")).Should().BeFalse();
+        (await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId)).Status.Should().Be(IdpImportBatchStatus.Staged);
+
+        allowed.UnionWith([
+            "IDP_PLAN.ObjectiveBudgetAllocation.UPDATE",
+            "IDP_PROJECT.ProgrammePlannedBudget.UPDATE",
+            "IDP_PROJECT.ProgrammeApprovedBudget.UPDATE",
+            "IDP_PROJECT.ProgrammeActualExpenditure.UPDATE",
+            "IDP_PROJECT.ProjectBudget.UPDATE",
+            "IDP_PROJECT.ProjectFundingSource.UPDATE"
+        ]);
+        Payload(await controller.CommitHierarchy(staged.PublicId,
+            new CommitIdpImportRequest(staged.RowVersion, "Approved protected hierarchy")))
+            .Status.Should().Be(IdpImportBatchStatus.Committed.ToString());
+        var project = await context.IdpProjects.SingleAsync(item => item.ProjectCode == "PROJECT-SECURED");
+        project.Budget.Should().Be(500000);
+        project.FundingSource.Should().Be("Municipal grant");
     }
 
     [Fact]
@@ -418,6 +525,18 @@ public class IdpImportControllerTests
             }
         };
     }
+
+    private static IAccessControlService AccessControl(ApplicationUser user, HashSet<string> allowed)
+    {
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+                new AccessDecisionResult(allowed.Contains(code), allowed.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        return access.Object;
+    }
+
+    private static System.Text.Json.JsonElement ReadJson(string json) =>
+        System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
     private static IdpImportBatchResponse Payload(ActionResult<ApiResponse<IdpImportBatchResponse>> action) =>
         ((action.Result as OkObjectResult)!.Value as ApiResponse<IdpImportBatchResponse>)!.Data!;

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
@@ -331,6 +332,9 @@ public class IdpImportsController(
                 || !VersionsEqual(candidate.Row.ExpectedEntityRowVersion, original.ExpectedEntityRowVersion))
                 return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, $"Source row {candidate.Row.SourceRowNumber} changed since reconciliation. Stage a new preview."));
         }
+        var memberWriteDenial = await GetKpiImportMemberWriteDenialAsync(user, batch.IdpPlan, current);
+        if (memberWriteDenial != null)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IdpImportBatchResponse>(false, null, memberWriteDenial));
 
         await using var transaction = await context.Database.BeginTransactionAsync();
         try
@@ -426,6 +430,9 @@ public class IdpImportsController(
                 || !VersionsEqual(candidate.Row.ExpectedEntityRowVersion, original.ExpectedEntityRowVersion))
                 return Conflict(new ApiResponse<IdpImportBatchResponse>(false, null, $"Source row {candidate.Row.SourceRowNumber} changed since reconciliation. Stage a new preview."));
         }
+        var memberWriteDenial = await GetHierarchyImportMemberWriteDenialAsync(user, batch.IdpPlan, current);
+        if (memberWriteDenial != null)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IdpImportBatchResponse>(false, null, memberWriteDenial));
 
         await using var transaction = await context.Database.BeginTransactionAsync();
         try
@@ -568,7 +575,7 @@ public class IdpImportsController(
                 NormalizedJson = JsonSerializer.Serialize(definition, JsonOptions),
                 ExistingValueJson = JsonSerializer.Serialize(snapshot, JsonOptions),
                 ExpectedEntityRowVersion = HierarchyVersionDigest(outcome, objective, priority, programme, project)
-            }, definition));
+            }, definition, snapshot, project?.PublicId));
         }
         return candidates;
     }
@@ -718,7 +725,7 @@ public class IdpImportsController(
                 ExistingValueJson = existing == null ? null : JsonSerializer.Serialize(Snapshot(existing), JsonOptions),
                 ExpectedEntityRowVersion = existing?.RowVersion.ToArray()
             };
-            candidates.Add(new(row, definition, existing));
+            candidates.Add(new(row, definition, existing, projectMatches[0].PublicId));
         }
 
         return candidates;
@@ -741,7 +748,7 @@ public class IdpImportsController(
             ErrorField = field,
             SuppliedValue = supplied?.Length > 1000 ? supplied[..1000] : supplied,
             ErrorMessage = message
-        }, null, null);
+        }, null, null, Guid.Empty);
 
     private static object Snapshot(IdpKpi item) => new
     {
@@ -784,9 +791,11 @@ public class IdpImportsController(
         Convert.ToBase64String(batch.RowVersion),
         batch.Rows.OrderBy(item => item.SourceRowNumber).Select(item => new IdpImportRowResponse(
              item.PublicId, item.SourceRowNumber, item.Reference, item.Status.ToString(),
-             access.RowPayload ? item.ExistingValueJson : null, access.RowPayload ? item.NormalizedJson : null,
+             access.RowPayload ? RedactImportJson(item.ExistingValueJson, batch.ImportType, access) : null,
+             access.RowPayload ? RedactImportJson(item.NormalizedJson, batch.ImportType, access) : null,
              access.ErrorDetail ? item.ErrorCode : null, access.ErrorDetail ? item.ErrorField : null,
-             access.RowPayload ? item.SuppliedValue : null, access.ErrorDetail ? item.ErrorMessage : null)).ToArray());
+             access.RowPayload ? RedactSuppliedValue(item, batch.ImportType, access) : null,
+             access.ErrorDetail ? item.ErrorMessage : null)).ToArray());
 
     private static IdpImportBatchSummaryResponse ToSummaryResponse(IdpImportBatch batch, IdpImportMemberAccess access) => new(
         batch.PublicId,
@@ -817,7 +826,7 @@ public class IdpImportsController(
 
     private Task<AccessDecisionResult> CheckPlanPermissionAsync(ApplicationUser user, string permission, IdpPlan plan) =>
         accessControlService.CheckPermissionAsync(user, permission,
-            new AccessScopeContext(MunicipalityId: plan.MunicipalityId));
+            new AccessScopeContext(TargetId: plan.PublicId.ToString(), MunicipalityId: plan.MunicipalityId));
 
     private async Task<AccessDecisionResult> CanReadImportsAsync(ApplicationUser user, IdpPlan plan)
     {
@@ -829,12 +838,131 @@ public class IdpImportsController(
 
     private async Task<IdpImportMemberAccess> GetImportMemberAccessAsync(ApplicationUser user, IdpPlan plan)
     {
-        async Task<bool> Read(string member) =>
-            (await CheckPlanPermissionAsync(user, $"IDP_PLAN.{member}.READ", plan)).Allowed;
+        async Task<bool> Read(string resource, string member) =>
+            (await CheckPlanPermissionAsync(user, $"{resource}.{member}.READ", plan)).Allowed;
         return new IdpImportMemberAccess(
-            await Read("ImportClientRequestId"), await Read("ImportSourceFileName"),
-            await Read("ImportSourceHash"), await Read("ImportActor"),
-            await Read("ImportRowPayload"), await Read("ImportErrorDetail"));
+            await Read("IDP_PLAN", "ImportClientRequestId"), await Read("IDP_PLAN", "ImportSourceFileName"),
+            await Read("IDP_PLAN", "ImportSourceHash"), await Read("IDP_PLAN", "ImportActor"),
+            await Read("IDP_PLAN", "ImportRowPayload"), await Read("IDP_PLAN", "ImportErrorDetail"),
+            await Read("IDP_INDICATOR", "AnnualTargetValue"),
+            await Read("IDP_PLAN", "ObjectiveBudgetAllocation"),
+            await Read("IDP_PROJECT", "ProgrammePlannedBudget"), await Read("IDP_PROJECT", "ProgrammeApprovedBudget"),
+            await Read("IDP_PROJECT", "ProgrammeActualExpenditure"), await Read("IDP_PROJECT", "ProjectBudget"),
+            await Read("IDP_PROJECT", "ProjectFundingSource"));
+    }
+
+    private async Task<string?> GetKpiImportMemberWriteDenialAsync(
+        ApplicationUser user,
+        IdpPlan plan,
+        IEnumerable<ImportCandidate> candidates)
+    {
+        foreach (var candidate in candidates.Where(item => item.Row.Status is (IdpImportRowStatus.New or IdpImportRowStatus.Changed)
+            && (item.Existing == null || item.Existing.AnnualTarget != item.Definition!.AnnualTarget)))
+        {
+            var scope = new AccessScopeContext(candidate.Definition!.ResponsibleDepartmentId, ProjectId: candidate.ProjectPublicId.ToString(),
+                KpiId: candidate.Existing?.PublicId.ToString(), TargetId: plan.PublicId.ToString(), MunicipalityId: plan.MunicipalityId);
+            var decision = await accessControlService.CheckPermissionAsync(user, "IDP_INDICATOR.AnnualTargetValue.UPDATE", scope);
+            if (!decision.Allowed) return "Importing an IDP KPI annual target requires AnnualTargetValue UPDATE permission in every affected KPI scope.";
+        }
+        return null;
+    }
+
+    private async Task<string?> GetHierarchyImportMemberWriteDenialAsync(
+        ApplicationUser user,
+        IdpPlan plan,
+        IEnumerable<HierarchyImportCandidate> candidates)
+    {
+        foreach (var candidate in candidates.Where(item => item.Row.Status is IdpImportRowStatus.New or IdpImportRowStatus.Changed))
+        {
+            var definition = candidate.Definition!;
+            if (candidate.Existing.Objective?.Budget != definition.Objective.Budget)
+            {
+                var objective = await accessControlService.CheckPermissionAsync(user, "IDP_PLAN.ObjectiveBudgetAllocation.UPDATE",
+                    new AccessScopeContext(definition.Objective.DepartmentId, TargetId: plan.PublicId.ToString(), MunicipalityId: plan.MunicipalityId));
+                if (!objective.Allowed) return "Importing objective budget allocations requires ObjectiveBudgetAllocation UPDATE permission in every affected plan scope.";
+            }
+
+            var programmePermissions = new List<string>();
+            if (candidate.Existing.Programme?.PlannedBudget != definition.Programme.PlannedBudget)
+                programmePermissions.Add("IDP_PROJECT.ProgrammePlannedBudget.UPDATE");
+            if (candidate.Existing.Programme?.ApprovedBudget != definition.Programme.ApprovedBudget)
+                programmePermissions.Add("IDP_PROJECT.ProgrammeApprovedBudget.UPDATE");
+            if (candidate.Existing.Programme?.ActualExpenditure != definition.Programme.ActualExpenditure)
+                programmePermissions.Add("IDP_PROJECT.ProgrammeActualExpenditure.UPDATE");
+            if (programmePermissions.Count > 0)
+            {
+                var programme = await accessControlService.CheckPermissionsAsync(user, programmePermissions,
+                    new AccessScopeContext(definition.Programme.DepartmentId, TargetId: plan.PublicId.ToString(), MunicipalityId: plan.MunicipalityId));
+                if (programme.Values.Any(item => !item.Allowed)) return "Importing programme financial values requires the corresponding programme budget UPDATE permissions in every affected plan scope.";
+            }
+
+            var projectPermissions = new List<string>();
+            if (candidate.Existing.Project?.Budget != definition.Project.Budget)
+                projectPermissions.Add("IDP_PROJECT.ProjectBudget.UPDATE");
+            if (!string.Equals(candidate.Existing.Project?.FundingSource, definition.Project.FundingSource, StringComparison.Ordinal))
+                projectPermissions.Add("IDP_PROJECT.ProjectFundingSource.UPDATE");
+            if (projectPermissions.Count > 0)
+            {
+                var project = await accessControlService.CheckPermissionsAsync(user, projectPermissions,
+                    new AccessScopeContext(definition.Project.DepartmentId, TargetId: plan.PublicId.ToString(),
+                        ProjectId: candidate.ExistingProjectPublicId?.ToString(), MunicipalityId: plan.MunicipalityId));
+                if (project.Values.Any(item => !item.Allowed)) return "Importing project budgets and funding sources requires their corresponding UPDATE permissions in every affected project scope.";
+            }
+        }
+        return null;
+    }
+
+    private static string? RedactImportJson(string? value, string importType, IdpImportMemberAccess access)
+    {
+        if (value == null) return null;
+        try
+        {
+            var root = JsonNode.Parse(value) as JsonObject;
+            if (root == null) return null;
+            if (string.Equals(importType, "KPI", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!access.AnnualTargetValue) root["annualTarget"] = null;
+            }
+            else if (string.Equals(importType, "HIERARCHY", StringComparison.OrdinalIgnoreCase))
+            {
+                if (root["objective"] is JsonObject objective && !access.ObjectiveBudgetAllocation) objective["budget"] = null;
+                if (root["programme"] is JsonObject programme)
+                {
+                    if (!access.ProgrammePlannedBudget) programme["plannedBudget"] = null;
+                    if (!access.ProgrammeApprovedBudget) programme["approvedBudget"] = null;
+                    if (!access.ProgrammeActualExpenditure) programme["actualExpenditure"] = null;
+                }
+                if (root["project"] is JsonObject project)
+                {
+                    if (!access.ProjectBudget) project["budget"] = null;
+                    if (!access.ProjectFundingSource) project["fundingSource"] = null;
+                }
+            }
+            return root.ToJsonString(JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? RedactSuppliedValue(IdpImportRow row, string importType, IdpImportMemberAccess access)
+    {
+        if (string.Equals(importType, "KPI", StringComparison.OrdinalIgnoreCase)
+            && row.ErrorField == nameof(IdpKpiImportRowRequest.AnnualTarget) && !access.AnnualTargetValue) return null;
+        if (!string.Equals(importType, "HIERARCHY", StringComparison.OrdinalIgnoreCase)) return row.SuppliedValue;
+        return row.ErrorField switch
+        {
+            nameof(IdpHierarchyImportRowRequest.ObjectiveBudget) when !access.ObjectiveBudgetAllocation => null,
+            nameof(IdpHierarchyImportRowRequest.ProgrammePlannedBudget) when !access.ProgrammePlannedBudget => null,
+            nameof(IdpHierarchyImportRowRequest.ProgrammeApprovedBudget) when !access.ProgrammeApprovedBudget => null,
+            nameof(IdpHierarchyImportRowRequest.ProgrammeActualExpenditure) when !access.ProgrammeActualExpenditure => null,
+            nameof(IdpHierarchyImportRowRequest.ProjectBudget) when !access.ProjectBudget => null,
+            nameof(IdpHierarchyImportRowRequest.ProjectFundingSource) when !access.ProjectFundingSource => null,
+            "Budget" when !access.ObjectiveBudgetAllocation || !access.ProgrammePlannedBudget || !access.ProgrammeApprovedBudget
+                || !access.ProgrammeActualExpenditure || !access.ProjectBudget => null,
+            _ => row.SuppliedValue
+        };
     }
 
     private sealed record IdpImportMemberAccess(
@@ -843,7 +971,14 @@ public class IdpImportsController(
         bool SourceHash,
         bool Actor,
         bool RowPayload,
-        bool ErrorDetail);
+        bool ErrorDetail,
+        bool AnnualTargetValue,
+        bool ObjectiveBudgetAllocation,
+        bool ProgrammePlannedBudget,
+        bool ProgrammeApprovedBudget,
+        bool ProgrammeActualExpenditure,
+        bool ProjectBudget,
+        bool ProjectFundingSource);
 
     private static string ComputeHash(IdpKpiImportRowRequest[] rows) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(rows, JsonOptions)))).ToLowerInvariant();
@@ -1012,7 +1147,7 @@ public class IdpImportsController(
             ErrorField = issue.Field,
             SuppliedValue = issue.SuppliedValue?.Length > 1000 ? issue.SuppliedValue[..1000] : issue.SuppliedValue,
             ErrorMessage = issue.Message
-        }, null);
+        }, null, new HierarchySnapshot(null, null, null, null, null), null);
 
     private static byte[]? HierarchyVersionDigest(params object?[] entities)
     {
@@ -1032,8 +1167,12 @@ public class IdpImportsController(
     private static bool CodeEquals(string? left, string? right) => string.Equals(left?.Trim(), right?.Trim(), StringComparison.OrdinalIgnoreCase);
     private static bool VersionsEqual(byte[]? left, byte[]? right) => left == null ? right == null : right != null && left.SequenceEqual(right);
 
-    private sealed record ImportCandidate(IdpImportRow Row, NormalizedIdpKpiDefinition? Definition, IdpKpi? Existing);
-    private sealed record HierarchyImportCandidate(IdpImportRow Row, HierarchyDefinition? Definition);
+    private sealed record ImportCandidate(IdpImportRow Row, NormalizedIdpKpiDefinition? Definition, IdpKpi? Existing, Guid ProjectPublicId);
+    private sealed record HierarchyImportCandidate(
+        IdpImportRow Row,
+        HierarchyDefinition? Definition,
+        HierarchySnapshot Existing,
+        Guid? ExistingProjectPublicId);
     private sealed record PreparedHierarchyRow(IdpHierarchyImportRowRequest Request, string Payload, string Reference, HierarchyDefinition? Definition, ValidationIssue? Issue);
     private sealed record ValidationIssue(string Code, string Field, string? SuppliedValue, string Message);
     private sealed record HierarchyDefinition(OutcomeDefinition Outcome, ObjectiveDefinition Objective, PriorityDefinition Priority, ProgrammeDefinition Programme, ProjectDefinition Project);

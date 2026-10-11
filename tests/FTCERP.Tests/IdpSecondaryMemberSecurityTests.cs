@@ -54,7 +54,29 @@ public class IdpSecondaryMemberSecurityTests
         var assignee = IdpTestFixture.CreateUser("idp-task-assignee", "Task", "Assignee");
         var graph = await SeedGraphAsync(context, actor, assignee);
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var controller = Controller(context, actor, allowed, assignee);
+        var observed = new List<(string Code, AccessScopeContext? Scope)>();
+        var controller = Controller(context, actor, allowed, assignee, observed: observed);
+
+        var kpiRequest = new CreateIdpKpiRequest(
+            graph.Project.PublicId, "KPI-PROTECTED-1", "Protected KPI", "Protected KPI detail", "Count",
+            0, 123, 500, null, "System", "Annual", "Output", false, false);
+        (await controller.CreateKpi(kpiRequest)).Result.Should().BeOfType<ForbidResult>();
+        (await context.IdpKpis.CountAsync()).Should().Be(1);
+        allowed.Add("IDP_INDICATOR.AnnualTargetValue.UPDATE");
+        var maskedKpi = Extract<IdpKpiResponse>((await controller.CreateKpi(kpiRequest)).Result!);
+        maskedKpi.AnnualTarget.Should().BeNull();
+        (await context.IdpKpis.SingleAsync(item => item.PublicId == maskedKpi.PublicId)).AnnualTarget.Should().Be(123);
+        observed.Should().Contain(item => item.Code == "IDP_INDICATOR.AnnualTargetValue.UPDATE"
+            && item.Scope!.TargetId == graph.Plan.PublicId.ToString()
+            && item.Scope.ProjectId == graph.Project.PublicId.ToString());
+        allowed.Add("IDP_INDICATOR.AnnualTargetValue.READ");
+        var visibleKpi = Extract<IdpKpiResponse>((await controller.CreateKpi(kpiRequest with
+        {
+            KpiCode = "KPI-PROTECTED-2",
+            AnnualTarget = 456
+        })).Result!);
+        visibleKpi.AnnualTarget.Should().Be(456);
+        allowed.Remove("IDP_INDICATOR.AnnualTargetValue.READ");
 
         var annualRequest = new CreateIdpAnnualTargetRequest(graph.Kpi.PublicId, 2026, 100, 75, "protected annual progress");
         (await controller.CreateAnnualTarget(annualRequest)).Result.Should().BeOfType<ForbidResult>();
@@ -324,12 +346,16 @@ public class IdpSecondaryMemberSecurityTests
         ApplicationUser actor,
         HashSet<string> allowed,
         ApplicationUser? assignee = null,
-        ITenantContext? tenantContext = null)
+        ITenantContext? tenantContext = null,
+        List<(string Code, AccessScopeContext? Scope)>? observed = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
-            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
-                new AccessDecisionResult(allowed.Contains(code), allowed.Contains(code) ? "allowed" : "denied", [], [], []));
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+            {
+                observed?.Add((code, scope));
+                return new AccessDecisionResult(allowed.Contains(code), allowed.Contains(code) ? "allowed" : "denied", [], [], []);
+            });
         var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor };
         if (assignee != null) users[assignee.Id] = assignee;
         return IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(actor, users).Object,

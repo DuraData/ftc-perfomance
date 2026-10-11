@@ -1161,6 +1161,15 @@ public class IdpController : ControllerBase
                 return BadRequest(new ApiResponse<IdpKpiResponse>(false, null, "Responsible department was not found in the selected municipality."));
         }
 
+        var plan = project.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan;
+        var kpiScope = new AccessScopeContext(
+            DepartmentId: responsibleDepartmentId ?? project.DepartmentId,
+            ProjectId: project.PublicId.ToString(),
+            TargetId: plan.PublicId.ToString(),
+            MunicipalityId: plan.MunicipalityId);
+        if (await MemberUpdateDenialAsync(user, "IDP_INDICATOR", kpiScope, ["AnnualTargetValue"]) is not null)
+            return Forbid();
+
         var input = new IdpKpiDefinitionInput(
             project.Id, request.KpiCode, request.KpiName, request.Description, request.Formula,
             request.Baseline, request.AnnualTarget, request.FiveYearTarget, responsibleDepartmentId,
@@ -1176,8 +1185,10 @@ public class IdpController : ControllerBase
         await _context.SaveChangesAsync();
 
         entity = await _context.IdpKpis.Include(item => item.ResponsibleDepartment).FirstAsync(item => item.Id == entity.Id);
-        await WriteIdpAudit(user.Id, "IdpKpi", entity.PublicId.ToString(), "Create", null, ToKpiResponse(entity, project.PublicId));
-        return Ok(new ApiResponse<IdpKpiResponse>(true, ToKpiResponse(entity, project.PublicId)));
+        await WriteIdpAudit(user.Id, "IdpKpi", entity.PublicId.ToString(), "Create", null, ToKpiResponse(entity, project.PublicId, true));
+        kpiScope = kpiScope with { KpiId = entity.PublicId.ToString() };
+        var canReadAnnualTarget = await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualTargetValue", SecurityOperation.Read, kpiScope);
+        return Ok(new ApiResponse<IdpKpiResponse>(true, ToKpiResponse(entity, project.PublicId, canReadAnnualTarget)));
     }
 
     [HttpPost("~/api/v1/idp/annual-targets")]
@@ -2297,7 +2308,7 @@ public class IdpController : ControllerBase
             project.CommunityNeedReference,
             Convert.ToBase64String(project.RowVersion));
 
-    private static IdpKpiResponse ToKpiResponse(IdpKpi kpi, Guid projectPublicId) =>
+    private static IdpKpiResponse ToKpiResponse(IdpKpi kpi, Guid projectPublicId, bool includeAnnualTarget) =>
         new(
             kpi.PublicId,
             projectPublicId,
@@ -2306,7 +2317,7 @@ public class IdpController : ControllerBase
             kpi.Description,
             kpi.Formula,
             kpi.Baseline,
-            kpi.AnnualTarget,
+            includeAnnualTarget ? kpi.AnnualTarget : null,
             kpi.FiveYearTarget,
             kpi.ResponsibleDepartment?.PublicId,
             kpi.ResponsibleDepartment?.Name,
