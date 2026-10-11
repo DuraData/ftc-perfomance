@@ -159,6 +159,9 @@ public sealed class SecurityAdministrationController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<SecurityUserDto>>(false, null, "SortBy must be createdAt, name, email, or status."));
         var access = await _accessControl.GetEffectiveAccessAsync(actor);
         var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
+        var canReadEmail = (await _accessControl.CheckPermissionAsync(actor, "USER.Email.READ",
+            new AccessScopeContext(MunicipalityId: _tenantContext.MunicipalityId))).Allowed;
+        if (request.NormalizedSortBy == "email" && !canReadEmail) return Forbid();
         var municipalities = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
         var query = _context.Users.AsNoTracking().AsQueryable();
         var now = DateTime.UtcNow;
@@ -169,8 +172,10 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (request.NormalizedSearch.Length > 0)
         {
             var term = request.NormalizedSearch;
-            query = query.Where(item => item.FirstName.Contains(term) || item.LastName.Contains(term)
-                || (item.Email != null && item.Email.Contains(term)) || (item.UserName != null && item.UserName.Contains(term)));
+            query = canReadEmail
+                ? query.Where(item => item.FirstName.Contains(term) || item.LastName.Contains(term)
+                    || (item.Email != null && item.Email.Contains(term)) || (item.UserName != null && item.UserName.Contains(term)))
+                : query.Where(item => item.FirstName.Contains(term) || item.LastName.Contains(term));
         }
         var totalCount = await query.CountAsync();
         query = (request.NormalizedSortBy, request.Descending) switch
@@ -185,7 +190,8 @@ public sealed class SecurityAdministrationController : ControllerBase
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
         };
         var users = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
-        var rows = users.Select(item => new SecurityUserDto(item.PublicId, item.FullName, item.Email ?? item.UserName ?? item.PublicId.ToString()));
+        var rows = users.Select(item => new SecurityUserDto(item.PublicId, item.FullName,
+            canReadEmail ? item.Email ?? item.UserName : null));
         return Ok(new ApiResponse<PagedResponse<SecurityUserDto>>(true,
             PagedResponse<SecurityUserDto>.Create(rows, request.Page, request.PageSize, totalCount)));
     }
@@ -1083,7 +1089,7 @@ public sealed class SecurityAdministrationController : ControllerBase
 
 public sealed record SecurityResourceDto(Guid PublicId, string Code, string Name, string Type, string? Description, bool CanCreate, bool CanRead, bool CanUpdate, bool CanDelete, bool CanExport, bool CanImport, bool SupportsMembers, bool SupportsCriteria, bool IsActive, string RowVersion);
 public sealed record SecurityRoleDto(Guid PublicId, string RoleCode, string Name, string? Description, Guid? MunicipalityPublicId, bool IsSystemRole, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
-public sealed record SecurityUserDto(Guid PublicId, string FullName, string Email);
+public sealed record SecurityUserDto(Guid PublicId, string FullName, string? Email);
 public sealed record UserRoleAssignmentDto(Guid PublicId, Guid RolePublicId, string RoleName, Guid? MunicipalityPublicId, Guid? DepartmentPublicId, string? DepartmentName, Guid? UnitPublicId, string? UnitName, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
 public sealed record UserRoleSecurityConfigurationDto(Guid UserPublicId, string UserName, UserRoleAssignmentDto[] Assignments);
 public sealed record ExpectedUserRoleAssignment(Guid AssignmentPublicId, string RowVersion);

@@ -159,7 +159,7 @@ export function AuthenticationAdministrationPage() {
   };
 
   const provision = async () => {
-    if (!selectedUserRecord || !providerCode) return;
+    if (!selectedUserRecord?.email || !providerCode) return;
     setBusy(true); setMessage('');
     const result = await provisionUserAuthenticator({ userPublicId: selectedUserRecord.publicId, providerRegistrationCode: providerCode, expectedEmail: selectedUserRecord.email, reason: linkReason });
     setMessage(result.success ? 'Enterprise identity pre-provisioned.' : result.message ?? 'Unable to provision the identity.');

@@ -203,8 +203,35 @@ public class DynamicSecurityTests
         var payload = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityUserDto>>>().Subject.Data!;
         payload.TotalCount.Should().Be(2);
         payload.Items.Should().ContainSingle();
+        payload.Items.Should().OnlyContain(item => item.Email == null);
         payload.TotalPages.Should().Be(2);
         payload.Items.Should().NotContain(item => item.PublicId == foreign.PublicId || item.PublicId == expired.PublicId);
+        (await controller.GetUsersPage(new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "email" })).Result
+            .Should().BeOfType<ForbidResult>();
+        var deniedSearch = await controller.GetUsersPage(new PagedQueryRequest
+            { Page = 1, PageSize = 25, SortBy = "name", Search = local.Email });
+        deniedSearch.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<SecurityUserDto>>>().Subject.Data!.TotalCount.Should().Be(0);
+
+        var emailPermission = new Permission
+        {
+            Code = "USER.Email.READ", Module = "Member", Feature = "USER", Action = "Read",
+            Kind = SecurityPermissionKind.Member, ResourceCode = "USER", MemberCode = "Email", Operation = SecurityOperation.Read
+        };
+        context.Permissions.Add(emailPermission);
+        await context.SaveChangesAsync();
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = localRole.Id, PermissionId = emailPermission.Id, IsAllowed = true, ScopeType = ScopeType.InstitutionScope,
+            IsActive = true, EffectiveFrom = now.AddMinutes(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var allowedSearch = await controller.GetUsersPage(new PagedQueryRequest
+            { Page = 1, PageSize = 25, SortBy = "email", Search = local.Email });
+        var allowedPayload = allowedSearch.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<SecurityUserDto>>>().Subject.Data!;
+        allowedPayload.Items.Should().ContainSingle(item => item.PublicId == local.PublicId && item.Email == local.Email);
         controller.GetUsers().Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
     }

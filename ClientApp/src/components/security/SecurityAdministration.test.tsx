@@ -66,4 +66,18 @@ describe('SecurityAdministrationPage role assignments', () => {
       expect.objectContaining({ permissionCode: 'CASE.UPDATE', state: 'DENY' }),
     ])));
   });
+
+  it('renders a member-protected user directory without inventing an email label', async () => {
+    api.getSecurityUsersPage.mockResolvedValue({ success: true, data: {
+      items: [{ publicId: 'user-public', fullName: 'Review User', email: null }],
+      page: 1, pageSize: 25, totalCount: 1, totalPages: 1,
+    } });
+
+    render(<SecurityAdministrationPage />);
+
+    const userOption = await screen.findByRole('option', { name: 'Review User' });
+    expect(userOption).toHaveTextContent('Review User');
+    expect(userOption).not.toHaveTextContent('null');
+    expect(userOption).not.toHaveTextContent('undefined');
+  });
 });

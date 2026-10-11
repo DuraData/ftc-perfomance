@@ -2272,7 +2272,7 @@ export interface SecurityRoleSummary extends AdminRole {
 export interface SecurityUserSummary {
   publicId: string;
   fullName: string;
-  email: string;
+  email?: string | null;
 }
 
 export interface SecurityUserRoleAssignment {
