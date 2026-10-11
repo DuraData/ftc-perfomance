@@ -187,12 +187,12 @@ public class IpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
-        if (string.IsNullOrWhiteSpace(request.IpmsTargetId))
+        if (request.IpmsTargetPublicId == Guid.Empty)
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS target is required."));
         if (request.ReportingPeriodPublicId == Guid.Empty)
             return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Reporting period is required."));
 
-        var target = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.Id == request.IpmsTargetId);
+        var target = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.PublicId == request.IpmsTargetPublicId);
         if (target == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS target not found"));
         if (target.IsWithdrawn) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be created for a withdrawn IPMS target."));
 
@@ -213,7 +213,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var entity = new IpmsSubmission
         {
-            IpmsTargetId = request.IpmsTargetId,
+            IpmsTargetId = target.Id,
             MunicipalityId = target.MunicipalityId,
             ReportingPeriodId = resolved.Period.Id,
             ReportingPeriod = resolved.Period,
@@ -265,7 +265,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
         var memberError = await ValidateMemberUpdatesAsync(user, request, entity);
         if (memberError != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberError));
-        if (!string.Equals(request.IpmsTargetId, entity.IpmsTargetId, StringComparison.Ordinal)) return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be moved to another KPI."));
+        if (request.IpmsTargetPublicId != entity.IpmsTarget.PublicId) return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be moved to another KPI."));
         SubmissionValueResolution resolved;
         try { resolved = await _submissionValues.ResolveIpmsAsync(entity.IpmsTargetId, request.ReportingPeriodPublicId, request.ActualPerformance, null); }
         catch (ArgumentException exception) { return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, exception.Message)); }

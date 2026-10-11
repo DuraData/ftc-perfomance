@@ -247,7 +247,7 @@ public record SaveTargetPeriodValueRequest(
 }
 
 public record SaveOpmsSubmissionRequest(
-    string OpmsTargetId,
+    Guid OpmsTargetPublicId,
     Guid ReportingPeriodPublicId,
     string? ActualPerformance,
     decimal? ActualExpenditure,
@@ -259,7 +259,7 @@ public record SaveOpmsSubmissionRequest(
     DateTime? ExtendedDueDate = null);
 
 public record SaveIpmsSubmissionRequest(
-    string IpmsTargetId,
+    Guid IpmsTargetPublicId,
     Guid ReportingPeriodPublicId,
     string? ActualPerformance,
     decimal? ActualExpenditure,

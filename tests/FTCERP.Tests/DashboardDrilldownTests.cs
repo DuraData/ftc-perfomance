@@ -83,11 +83,11 @@ public sealed class DashboardDrilldownTests
 
         var achievedResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "achieved"));
         var achievedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(achievedResult.Result).Value).Data!;
-        Assert.Equal("drill-achieved", Assert.Single(achievedPage.Items).Id);
+        Assert.Equal(achieved.PublicId, Assert.Single(achievedPage.Items).PublicId);
 
         var outstandingResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "outstanding"));
         var outstandingPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(outstandingResult.Result).Value).Data!;
-        Assert.Equal("drill-outstanding", Assert.Single(outstandingPage.Items).Id);
+        Assert.Equal(outstanding.PublicId, Assert.Single(outstandingPage.Items).PublicId);
 
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
@@ -190,11 +190,11 @@ public sealed class DashboardDrilldownTests
 
         var achievedResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "achieved"));
         var achievedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(achievedResult.Result).Value).Data!;
-        Assert.Equal("opms-drill-achieved", Assert.Single(achievedPage.Items).Id);
+        Assert.Equal(achieved.PublicId, Assert.Single(achievedPage.Items).PublicId);
 
         var outstandingResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "outstanding"));
         var outstandingPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(outstandingResult.Result).Value).Data!;
-        Assert.Equal("opms-drill-outstanding", Assert.Single(outstandingPage.Items).Id);
+        Assert.Equal(outstanding.PublicId, Assert.Single(outstandingPage.Items).PublicId);
 
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;

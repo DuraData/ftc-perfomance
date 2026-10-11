@@ -625,7 +625,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
           onUpdateSubmission={(submission) => {
             void (async () => {
               const result = await updateOpmsSubmissionApi(submission.id, {
-                opmsTargetId: submission.target.id,
+                opmsTargetPublicId: submission.target.id,
                 reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
                 actualPerformance: submission.actualPerformance ?? String(submission.actual),
                 varianceReason: submission.varianceReason ?? null,

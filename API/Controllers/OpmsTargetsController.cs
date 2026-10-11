@@ -179,17 +179,17 @@ public class OpmsTargetsController : ControllerBase
         var useRevised = request.ReportingPeriodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual;
         var items = await ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType)
             .Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new PerformanceTargetOptionResponse(item.Id, item.PublicId,
+            .Select(item => new PerformanceTargetOptionResponse(item.PublicId,
                 useRevised && item.IsIndicatorNumberRevised && item.RevisedIndicatorNumber != null ? item.RevisedIndicatorNumber : item.IndicatorNumber,
                 useRevised && item.IsTargetNameRevised && item.RevisedTargetName != null ? item.RevisedTargetName : item.TargetName,
-                item.DepartmentId, item.Department != null ? item.Department.Name : null))
+                item.Department != null ? item.Department.PublicId : null, item.Department != null ? item.Department.Name : null))
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(true,
             PagedResponse<PerformanceTargetOptionResponse>.Create(items, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> GetTarget(string id)
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> GetTarget(Guid id)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
@@ -202,6 +202,12 @@ public class OpmsTargetsController : ControllerBase
 
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, target)));
     }
+
+    [HttpGet("{legacyId}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<OpmsTargetResponse>> GetLegacyTarget(string legacyId) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<OpmsTargetResponse>(false, null,
+            "The private OPMS target-key route is retired. Use the target PublicId."));
 
     [HttpPost]
     public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> CreateTarget([FromBody] SaveOpmsTargetRequest request)
@@ -283,7 +289,7 @@ public class OpmsTargetsController : ControllerBase
         _context.OpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, entity.Id, null);
         await _context.SaveChangesAsync();
-        entity = await FindTargetAsync(entity.Id) ?? entity;
+        entity = await FindTargetAsync(entity.PublicId) ?? entity;
         await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "Create", null, entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         if (!string.IsNullOrWhiteSpace(entity.AssignedUserId))
         {
@@ -293,8 +299,8 @@ public class OpmsTargetsController : ControllerBase
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, entity)));
     }
 
-    [HttpPut("{id}")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> UpdateTarget(string id, [FromBody] SaveOpmsTargetRequest request)
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> UpdateTarget(Guid id, [FromBody] SaveOpmsTargetRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
@@ -308,7 +314,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.GovernedBudgetSources)
             .Include(item => item.SdbipLayer)
-            .FirstOrDefaultAsync(item => item.Id == id);
+            .FirstOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
 
@@ -382,12 +388,18 @@ public class OpmsTargetsController : ControllerBase
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Edit", before, after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "Edit", before, after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
-    [HttpPut("{id}/ordering")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> ReviseOrdering(string id, [FromBody] ReviseKpiOrderingRequest request)
+    [HttpPut("{legacyId}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<OpmsTargetResponse>> UpdateLegacyTarget(string legacyId, [FromBody] SaveOpmsTargetRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<OpmsTargetResponse>(false, null,
+            "The private OPMS target-key route is retired. Use the target PublicId."));
+
+    [HttpPut("{id:guid}/ordering")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> ReviseOrdering(Guid id, [FromBody] ReviseKpiOrderingRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
@@ -396,7 +408,7 @@ public class OpmsTargetsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 2000 || string.IsNullOrWhiteSpace(request.ApprovalReference) || request.ApprovalReference.Trim().Length > 500 || request.EffectiveAt == default)
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Reason, approval reference and effective date are required."));
 
-        var entity = await _context.OpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.OpmsTargets.SingleOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.REVISE", BuildScope(entity));
@@ -415,19 +427,19 @@ public class OpmsTargetsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI ordering changed since it was loaded. Refresh and try again.")); }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
-    [HttpPut("{id}/field-revisions")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> ReviseDefinitionFields(string id, [FromBody] ReviseKpiDefinitionRequest request)
+    [HttpPut("{id:guid}/field-revisions")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> ReviseDefinitionFields(Guid id, [FromBody] ReviseKpiDefinitionRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
         var validation = ValidateDefinitionRevision(request);
         if (validation != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, validation));
 
-        var entity = await _context.OpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.OpmsTargets.SingleOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
         if ((request.IsIndicatorNumberRevised && string.Equals(request.RevisedIndicatorNumber!.Trim(), entity.IndicatorNumber, StringComparison.Ordinal))
@@ -465,7 +477,7 @@ public class OpmsTargetsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI definition changed since it was loaded. Refresh and try again.")); }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
@@ -474,8 +486,8 @@ public class OpmsTargetsController : ControllerBase
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<KpiFieldRevisionResponse[]>(false, null,
             $"This unbounded ordering-revision route is retired. Use /api/v1/opms-targets/{id}/ordering-revisions/page."));
 
-    [HttpGet("{id}/ordering-revisions/page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetOrderingRevisionsPage(string id, [FromQuery] PagedQueryRequest request)
+    [HttpGet("{id:guid}/ordering-revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetOrderingRevisionsPage(Guid id, [FromQuery] PagedQueryRequest request)
         => await GetRevisionsPage(id, [nameof(OpmsTarget.OriginalOrderNumber), nameof(OpmsTarget.RevisedOrderNumber)], request);
 
     [HttpGet("{id}/field-revisions")]
@@ -483,15 +495,15 @@ public class OpmsTargetsController : ControllerBase
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<KpiFieldRevisionResponse[]>(false, null,
             $"This unbounded field-revision route is retired. Use /api/v1/opms-targets/{id}/field-revisions/page."));
 
-    [HttpGet("{id}/field-revisions/page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetFieldRevisionsPage(string id, [FromQuery] PagedQueryRequest request)
+    [HttpGet("{id:guid}/field-revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetFieldRevisionsPage(Guid id, [FromQuery] PagedQueryRequest request)
         => await GetRevisionsPage(id, [nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.TargetName), nameof(OpmsTarget.KpiDescription)], request);
 
-    private async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetRevisionsPage(string id, string[] fieldNames, PagedQueryRequest request)
+    private async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetRevisionsPage(Guid id, string[] fieldNames, PagedQueryRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "User not found"));
-        var entity = await _context.OpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.OpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "OPMS target not found"));
         var scope = BuildScope(entity);
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.READ", scope);
@@ -538,8 +550,8 @@ public class OpmsTargetsController : ControllerBase
     public ActionResult<ApiResponse<bool>> DeleteTarget(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed targets are never deleted. Use POST /api/v1/opms-targets/{id}/withdraw with a reason and RowVersion."));
 
-    [HttpPost("{id}/withdraw")]
-    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> WithdrawTarget(string id, [FromBody] WithdrawGovernedRecordRequest request)
+    [HttpPost("{id:guid}/withdraw")]
+    public async Task<ActionResult<ApiResponse<OpmsTargetResponse>>> WithdrawTarget(Guid id, [FromBody] WithdrawGovernedRecordRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsTargetResponse>(false, null, "User not found"));
@@ -547,7 +559,7 @@ public class OpmsTargetsController : ControllerBase
         if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawal reason between 1 and 1000 characters is required."));
 
-        var entity = await _context.OpmsTargets.FirstOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.OpmsTargets.FirstOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target is already withdrawn."));
         if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target must be reconciled to a municipality before withdrawal."));
@@ -581,7 +593,7 @@ public class OpmsTargetsController : ControllerBase
             CorrelationId = HttpContext.TraceIdentifier
         });
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", id, "Withdraw", before?.ToResponse(), entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "Withdraw", before?.ToResponse(), entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await transaction.CommitAsync();
         }
         catch (DbUpdateConcurrencyException)
@@ -658,7 +670,7 @@ public class OpmsTargetsController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
-    private async Task<OpmsTarget?> FindTargetAsync(string id)
+    private async Task<OpmsTarget?> FindTargetAsync(Guid id)
     {
         var target = await _context.OpmsTargets
             .AsNoTracking()
@@ -680,7 +692,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.KpiTypeMaster).Include(item => item.IndicatorTypeMaster)
             .Include(item => item.FunctionalAreaMaster).Include(item => item.StandardClassificationMaster).Include(item => item.KpiUnitOfMeasureMaster)
             .Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
-            .FirstOrDefaultAsync(item => item.Id == id);
+            .FirstOrDefaultAsync(item => item.PublicId == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;
     }

@@ -164,17 +164,17 @@ public class IpmsTargetsController : ControllerBase
         var useRevised = request.ReportingPeriodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual;
         var items = await ApplyTargetOrdering(query, request.NormalizedSortBy, request.Descending, request.ReportingPeriodType)
             .Skip(request.Offset).Take(request.PageSize)
-            .Select(item => new PerformanceTargetOptionResponse(item.Id, item.PublicId,
+            .Select(item => new PerformanceTargetOptionResponse(item.PublicId,
                 useRevised && item.IsIndicatorNumberRevised && item.RevisedIndicatorNumber != null ? item.RevisedIndicatorNumber : item.IndicatorNumber,
                 useRevised && item.IsTargetNameRevised && item.RevisedTargetName != null ? item.RevisedTargetName : item.TargetName,
-                item.DepartmentId, item.Department != null ? item.Department.Name : null, item.RelatedOpmsTarget != null ? item.RelatedOpmsTarget.PublicId : null))
+                item.Department != null ? item.Department.PublicId : null, item.Department != null ? item.Department.Name : null, item.RelatedOpmsTarget != null ? item.RelatedOpmsTarget.PublicId : null))
             .ToArrayAsync();
         return Ok(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(true,
             PagedResponse<PerformanceTargetOptionResponse>.Create(items, request.Page, request.PageSize, totalCount)));
     }
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> GetTarget(string id)
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> GetTarget(Guid id)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
@@ -187,6 +187,12 @@ public class IpmsTargetsController : ControllerBase
 
         return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(target)));
     }
+
+    [HttpGet("{legacyId}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<IpmsTargetResponse>> GetLegacyTarget(string legacyId) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsTargetResponse>(false, null,
+            "The private IPMS target-key route is retired. Use the target PublicId."));
 
     [HttpPost]
     public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> CreateTarget([FromBody] SaveIpmsTargetRequest request)
@@ -260,7 +266,7 @@ public class IpmsTargetsController : ControllerBase
         _context.IpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, null, entity.Id);
         await _context.SaveChangesAsync();
-        entity = await FindTargetAsync(entity.Id) ?? entity;
+        entity = await FindTargetAsync(entity.PublicId) ?? entity;
         var createdResponse = await ToResponseAsync(entity);
         await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "Create", null, createdResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         if (!string.IsNullOrWhiteSpace(entity.AssignedUserId))
@@ -271,13 +277,13 @@ public class IpmsTargetsController : ControllerBase
         return Ok(new ApiResponse<IpmsTargetResponse>(true, createdResponse));
     }
 
-    [HttpPut("{id}")]
-    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> UpdateTarget(string id, [FromBody] SaveIpmsTargetRequest request)
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> UpdateTarget(Guid id, [FromBody] SaveIpmsTargetRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
 
-        var entity = await _context.IpmsTargets.Include(item => item.GovernedBudgetSources).FirstOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IpmsTargets.Include(item => item.GovernedBudgetSources).FirstOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
 
@@ -345,12 +351,18 @@ public class IpmsTargetsController : ControllerBase
         var after = await FindTargetAsync(id) ?? entity;
         var beforeResponse = before == null ? null : await ToResponseAsync(before);
         var afterResponse = await ToResponseAsync(after);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Edit", beforeResponse, afterResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "Edit", beforeResponse, afterResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<IpmsTargetResponse>(true, afterResponse));
     }
 
-    [HttpPut("{id}/ordering")]
-    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> ReviseOrdering(string id, [FromBody] ReviseKpiOrderingRequest request)
+    [HttpPut("{legacyId}")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<IpmsTargetResponse>> UpdateLegacyTarget(string legacyId, [FromBody] SaveIpmsTargetRequest request) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsTargetResponse>(false, null,
+            "The private IPMS target-key route is retired. Use the target PublicId."));
+
+    [HttpPut("{id:guid}/ordering")]
+    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> ReviseOrdering(Guid id, [FromBody] ReviseKpiOrderingRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
@@ -359,7 +371,7 @@ public class IpmsTargetsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 2000 || string.IsNullOrWhiteSpace(request.ApprovalReference) || request.ApprovalReference.Trim().Length > 500 || request.EffectiveAt == default)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Reason, approval reference and effective date are required."));
 
-        var entity = await _context.IpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IpmsTargets.SingleOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.REVISE", BuildScope(entity));
@@ -378,19 +390,19 @@ public class IpmsTargetsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "The KPI ordering changed since it was loaded. Refresh and try again.")); }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(after)));
     }
 
-    [HttpPut("{id}/field-revisions")]
-    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> ReviseDefinitionFields(string id, [FromBody] ReviseKpiDefinitionRequest request)
+    [HttpPut("{id:guid}/field-revisions")]
+    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> ReviseDefinitionFields(Guid id, [FromBody] ReviseKpiDefinitionRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
         var validation = ValidateDefinitionRevision(request);
         if (validation != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, validation));
 
-        var entity = await _context.IpmsTargets.SingleOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IpmsTargets.SingleOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
         if ((request.IsIndicatorNumberRevised && string.Equals(request.RevisedIndicatorNumber!.Trim(), entity.IndicatorNumber, StringComparison.Ordinal))
@@ -428,7 +440,7 @@ public class IpmsTargetsController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "The KPI definition changed since it was loaded. Refresh and try again.")); }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<IpmsTargetResponse>(true, await ToResponseAsync(after)));
     }
 
@@ -437,8 +449,8 @@ public class IpmsTargetsController : ControllerBase
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<KpiFieldRevisionResponse[]>(false, null,
             $"This unbounded ordering-revision route is retired. Use /api/v1/ipms-targets/{id}/ordering-revisions/page."));
 
-    [HttpGet("{id}/ordering-revisions/page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetOrderingRevisionsPage(string id, [FromQuery] PagedQueryRequest request)
+    [HttpGet("{id:guid}/ordering-revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetOrderingRevisionsPage(Guid id, [FromQuery] PagedQueryRequest request)
         => await GetRevisionsPage(id, [nameof(IpmsTarget.OriginalOrderNumber), nameof(IpmsTarget.RevisedOrderNumber)], request);
 
     [HttpGet("{id}/field-revisions")]
@@ -446,15 +458,15 @@ public class IpmsTargetsController : ControllerBase
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<KpiFieldRevisionResponse[]>(false, null,
             $"This unbounded field-revision route is retired. Use /api/v1/ipms-targets/{id}/field-revisions/page."));
 
-    [HttpGet("{id}/field-revisions/page")]
-    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetFieldRevisionsPage(string id, [FromQuery] PagedQueryRequest request)
+    [HttpGet("{id:guid}/field-revisions/page")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetFieldRevisionsPage(Guid id, [FromQuery] PagedQueryRequest request)
         => await GetRevisionsPage(id, [nameof(IpmsTarget.IndicatorNumber), nameof(IpmsTarget.TargetName), nameof(IpmsTarget.KpiDescription)], request);
 
-    private async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetRevisionsPage(string id, string[] fieldNames, PagedQueryRequest request)
+    private async Task<ActionResult<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>> GetRevisionsPage(Guid id, string[] fieldNames, PagedQueryRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "User not found"));
-        var entity = await _context.IpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IpmsTargets.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<PagedResponse<KpiFieldRevisionResponse>>(false, null, "IPMS target not found"));
         var scope = BuildScope(entity);
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.READ", scope);
@@ -501,8 +513,8 @@ public class IpmsTargetsController : ControllerBase
     public ActionResult<ApiResponse<bool>> DeleteTarget(string id) =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false, "Governed targets are never deleted. Use POST /api/v1/ipms-targets/{id}/withdraw with a reason and RowVersion."));
 
-    [HttpPost("{id}/withdraw")]
-    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> WithdrawTarget(string id, [FromBody] WithdrawGovernedRecordRequest request)
+    [HttpPost("{id:guid}/withdraw")]
+    public async Task<ActionResult<ApiResponse<IpmsTargetResponse>>> WithdrawTarget(Guid id, [FromBody] WithdrawGovernedRecordRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
@@ -510,7 +522,7 @@ public class IpmsTargetsController : ControllerBase
         if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawal reason between 1 and 1000 characters is required."));
 
-        var entity = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.Id == id);
+        var entity = await _context.IpmsTargets.FirstOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "The IPMS target is already withdrawn."));
         if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "The IPMS target must be reconciled to a municipality before withdrawal."));
@@ -546,7 +558,7 @@ public class IpmsTargetsController : ControllerBase
         await _context.SaveChangesAsync();
         var beforeResponse = before == null ? null : await ToResponseAsync(before);
         var withdrawnResponse = await ToResponseAsync(entity);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", id, "Withdraw", beforeResponse, withdrawnResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTarget", entity.Id, "Withdraw", beforeResponse, withdrawnResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await transaction.CommitAsync();
         }
         catch (DbUpdateConcurrencyException)
@@ -623,7 +635,7 @@ public class IpmsTargetsController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? Task.FromResult<ApplicationUser?>(null) : _userManager.FindByIdAsync(userId);
     }
 
-    private async Task<IpmsTarget?> FindTargetAsync(string id)
+    private async Task<IpmsTarget?> FindTargetAsync(Guid id)
     {
         var target = await _context.IpmsTargets
             .AsNoTracking()
@@ -640,7 +652,7 @@ public class IpmsTargetsController : ControllerBase
             .Include(item => item.BudgetTypeMaster)
             .Include(item => item.KpiTypeMaster).Include(item => item.IndicatorTypeMaster).Include(item => item.FunctionalAreaMaster).Include(item => item.KpiUnitOfMeasureMaster)
             .Include(item => item.GovernedBudgetSources).ThenInclude(item => item.BudgetSource)
-            .FirstOrDefaultAsync(item => item.Id == id);
+            .FirstOrDefaultAsync(item => item.PublicId == id);
         if (target != null) await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, [target]);
         return target;
     }

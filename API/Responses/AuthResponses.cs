@@ -192,32 +192,35 @@ public record IpmsTargetTemplateResponse(
     string RowVersion);
 
 public record OpmsTargetResponse(
-    string Id,
-    string? SourceTemplateId,
+    Guid PublicId,
+    Guid? SourceTemplatePublicId,
     int? SourceTemplateVersion,
-    int? PeriodId,
-    int? DepartmentId,
+    Guid? MunicipalityFinancialYearPublicId,
+    string? MunicipalityFinancialYearName,
+    Guid? SdbipLayerPublicId,
+    string? SdbipLayerCode,
+    string? SdbipLayerName,
+    Guid? DepartmentPublicId,
     string? DepartmentName,
-    int? UnitId,
+    Guid? UnitPublicId,
     string? UnitName,
     Guid? AssignedUserPublicId,
     string? AssignedUserName,
-    int[] WardIds,
+    Guid[] WardPublicIds,
     Guid[] AdditionalAssigneePublicIds,
-    int[] VoteNumberIds,
+    Guid[] VoteNumberPublicIds,
     string IndicatorNumber,
     string NationalKpa,
     string MunicipalKpa,
-    int? StrategicGoalId,
-    int? StrategicObjectiveId,
+    Guid? StrategicGoalPublicId,
+    Guid? StrategicObjectivePublicId,
     string PerformanceObjective,
     string TargetName,
     string KpiDescription,
     decimal Baseline,
     string? BaselineDescription,
-    int? BudgetSourceId,
-    int? BudgetTypeId,
-    int? UnitOfMeasureId,
+    Guid? BudgetTypePublicId,
+    Guid? KpiUnitOfMeasurePublicId,
     decimal Weight,
     string KpiType,
     string IndicatorType,
@@ -232,8 +235,6 @@ public record OpmsTargetResponse(
     TargetPeriodValueResponse[] PeriodTargets,
     DateTime CreatedAt)
 {
-    public Guid PublicId { get; init; }
-    public Guid? SourceTemplatePublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
     public int OriginalOrderNumber { get; init; }
     public int RevisedOrderNumber { get; init; }
@@ -246,21 +247,12 @@ public record OpmsTargetResponse(
     public DateTime? WithdrawnAt { get; init; }
     public Guid? WithdrawnByUserPublicId { get; init; }
     public string? WithdrawnByName { get; init; }
-    public Guid? SdbipLayerPublicId { get; init; }
-    public Guid? MunicipalityFinancialYearPublicId { get; init; }
-    public string? MunicipalityFinancialYearName { get; init; }
-    public string? SdbipLayerCode { get; init; }
-    public string? SdbipLayerName { get; init; }
-    public Guid? DepartmentPublicId { get; init; }
-    public Guid? UnitPublicId { get; init; }
     public Guid? NationalKpaPublicId { get; init; }
     public Guid? MunicipalKpaPublicId { get; init; }
     public Guid? BackToBasicsPillarPublicId { get; init; }
-    public Guid? StrategicGoalPublicId { get; init; }
     public string? StrategicGoalCode { get; init; }
     public string? StrategicGoalName { get; init; }
     public Guid? StrategicInterventionPublicId { get; init; }
-    public Guid? StrategicObjectivePublicId { get; init; }
     public string? StrategicObjectiveCode { get; init; }
     public string? StrategicObjectiveName { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
@@ -268,33 +260,29 @@ public record OpmsTargetResponse(
     public string? PerformanceObjectiveName { get; init; }
     public string? BackToBasicsPillar { get; init; }
     public string? StrategicIntervention { get; init; }
-    public Guid? BudgetTypePublicId { get; init; }
     public string? BudgetTypeName { get; init; }
     public KpiBudgetSourceResponse[] BudgetSources { get; init; } = [];
     public Guid? KpiTypePublicId { get; init; }
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }
     public Guid? StandardClassificationPublicId { get; init; }
-    public Guid? KpiUnitOfMeasurePublicId { get; init; }
     public string? KpiUnitOfMeasureName { get; init; }
     public string? KpiUnitOfMeasureSymbol { get; init; }
     public OpmsTargetVoteNumberResponse[] VoteNumbers { get; init; } = [];
-    public Guid[] WardPublicIds { get; init; } = [];
-    public Guid[] VoteNumberPublicIds { get; init; } = [];
 }
 
 public sealed record KpiBudgetSourceResponse(Guid PublicId, Guid BudgetSourcePublicId, string Code, string Name, decimal? Amount);
-public sealed record OpmsTargetVoteNumberResponse(int Id, Guid PublicId, string Code, string Number, string Name, decimal Amount);
+public sealed record OpmsTargetVoteNumberResponse(Guid PublicId, string Code, string Number, string Name, decimal Amount);
 
 public record IpmsTargetResponse(
-    string Id,
-    string? SourceTemplateId,
+    Guid PublicId,
+    Guid? SourceTemplatePublicId,
     int? SourceTemplateVersion,
-    string? RelatedOpmsTargetId,
-    int? PeriodId,
-    int? DepartmentId,
+    Guid? RelatedOpmsTargetPublicId,
+    Guid? MunicipalityFinancialYearPublicId,
+    Guid? DepartmentPublicId,
     string? DepartmentName,
-    int? UnitId,
+    Guid? UnitPublicId,
     string? UnitName,
     Guid? AssignedUserPublicId,
     string? AssignedUserName,
@@ -302,15 +290,14 @@ public record IpmsTargetResponse(
     string IndicatorNumber,
     string NationalKpa,
     string MunicipalKpa,
-    int? StrategicGoalId,
-    int? StrategicObjectiveId,
+    Guid? StrategicGoalPublicId,
+    Guid? StrategicObjectivePublicId,
     string PerformanceObjective,
     string TargetName,
     string KpiDescription,
     decimal Baseline,
-    int? BudgetSourceId,
-    int? BudgetTypeId,
-    int? UnitOfMeasureId,
+    Guid? BudgetTypePublicId,
+    Guid? KpiUnitOfMeasurePublicId,
     decimal Weight,
     string KpiType,
     string IndicatorType,
@@ -321,9 +308,6 @@ public record IpmsTargetResponse(
     TargetPeriodValueResponse[] PeriodTargets,
     DateTime CreatedAt)
 {
-    public Guid PublicId { get; init; }
-    public Guid? SourceTemplatePublicId { get; init; }
-    public Guid? RelatedOpmsTargetPublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
     public int OriginalOrderNumber { get; init; }
     public int RevisedOrderNumber { get; init; }
@@ -338,25 +322,18 @@ public record IpmsTargetResponse(
     public DateTime? WithdrawnAt { get; init; }
     public Guid? WithdrawnByUserPublicId { get; init; }
     public string? WithdrawnByName { get; init; }
-    public Guid? DepartmentPublicId { get; init; }
-    public Guid? MunicipalityFinancialYearPublicId { get; init; }
-    public Guid? UnitPublicId { get; init; }
     public Guid? NationalKpaPublicId { get; init; }
     public Guid? MunicipalKpaPublicId { get; init; }
     public Guid? BackToBasicsPillarPublicId { get; init; }
-    public Guid? StrategicGoalPublicId { get; init; }
     public Guid? StrategicInterventionPublicId { get; init; }
-    public Guid? StrategicObjectivePublicId { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
     public string? BackToBasicsPillar { get; init; }
     public string? StrategicIntervention { get; init; }
-    public Guid? BudgetTypePublicId { get; init; }
     public string? BudgetTypeName { get; init; }
     public KpiBudgetSourceResponse[] BudgetSources { get; init; } = [];
     public Guid? KpiTypePublicId { get; init; }
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }
-    public Guid? KpiUnitOfMeasurePublicId { get; init; }
     public string? KpiUnitOfMeasureName { get; init; }
     public string? KpiUnitOfMeasureSymbol { get; init; }
 }
@@ -417,7 +394,7 @@ public sealed record KpiLifecycleMemberAccess(bool WithdrawalReason, bool Withdr
 
 public record OpmsSubmissionResponse(
     string Id,
-    string OpmsTargetId,
+    Guid OpmsTargetPublicId,
     string TargetName,
     string TargetIndicatorNumber,
     string Quarter,
@@ -503,7 +480,7 @@ public record OpmsSubmissionResponse(
 
 public record IpmsSubmissionResponse(
     string Id,
-    string IpmsTargetId,
+    Guid IpmsTargetPublicId,
     string TargetName,
     string TargetIndicatorNumber,
     string Quarter,

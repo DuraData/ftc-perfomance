@@ -47,8 +47,10 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         listJson.Should().NotContain(_ids.TenantBTargetPublicId.ToString());
         listJson.Should().NotContain("Tenant B KPI");
 
-        (await _client.GetAsync($"/api/v1/opms-targets/{_ids.TenantBTargetId}"))
+        (await _client.GetAsync($"/api/v1/opms-targets/{_ids.TenantBTargetPublicId}"))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await _client.GetAsync($"/api/v1/opms-targets/{_ids.TenantBTargetId}"))
+            .StatusCode.Should().Be(HttpStatusCode.Gone);
 
         using var edit = JsonContent(new
         {

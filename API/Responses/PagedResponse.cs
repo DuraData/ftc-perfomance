@@ -15,11 +15,10 @@ public sealed record PagedResponse<T>(
 }
 
 public sealed record PerformanceTargetOptionResponse(
-    string Id,
     Guid PublicId,
     string IndicatorNumber,
     string TargetName,
-    int? DepartmentId,
+    Guid? DepartmentPublicId,
     string? DepartmentName,
     Guid? RelatedOpmsTargetPublicId = null);
 

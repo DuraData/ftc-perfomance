@@ -13,6 +13,59 @@ namespace FTCERP.Tests;
 public sealed class NormalizedTargetWriteCutoverTests
 {
     [Fact]
+    public void Target_reads_options_and_submission_links_expose_public_ids_only()
+    {
+        var privateTargetProperties = new[]
+        {
+            "Id", "SourceTemplateId", "PeriodId", "DepartmentId", "UnitId", "WardIds", "VoteNumberIds",
+            "StrategicGoalId", "StrategicObjectiveId", "BudgetSourceId", "BudgetTypeId", "UnitOfMeasureId",
+            "RelatedOpmsTargetId"
+        };
+
+        foreach (var contract in new[] { typeof(OpmsTargetResponse), typeof(IpmsTargetResponse) })
+        {
+            Assert.Equal(typeof(Guid), contract.GetProperty("PublicId")!.PropertyType);
+            foreach (var property in privateTargetProperties)
+                Assert.Null(contract.GetProperty(property));
+        }
+
+        Assert.Equal(typeof(Guid), typeof(PerformanceTargetOptionResponse).GetProperty("PublicId")!.PropertyType);
+        Assert.Equal(typeof(Guid?), typeof(PerformanceTargetOptionResponse).GetProperty("DepartmentPublicId")!.PropertyType);
+        Assert.Null(typeof(PerformanceTargetOptionResponse).GetProperty("Id"));
+        Assert.Null(typeof(PerformanceTargetOptionResponse).GetProperty("DepartmentId"));
+        Assert.Null(typeof(OpmsTargetVoteNumberResponse).GetProperty("Id"));
+
+        Assert.Equal(typeof(Guid), typeof(SaveOpmsSubmissionRequest).GetProperty("OpmsTargetPublicId")!.PropertyType);
+        Assert.Equal(typeof(Guid), typeof(SaveIpmsSubmissionRequest).GetProperty("IpmsTargetPublicId")!.PropertyType);
+        Assert.Null(typeof(SaveOpmsSubmissionRequest).GetProperty("OpmsTargetId"));
+        Assert.Null(typeof(SaveIpmsSubmissionRequest).GetProperty("IpmsTargetId"));
+        Assert.Equal(typeof(Guid), typeof(OpmsSubmissionResponse).GetProperty("OpmsTargetPublicId")!.PropertyType);
+        Assert.Equal(typeof(Guid), typeof(IpmsSubmissionResponse).GetProperty("IpmsTargetPublicId")!.PropertyType);
+        Assert.Null(typeof(OpmsSubmissionResponse).GetProperty("OpmsTargetId"));
+        Assert.Null(typeof(IpmsSubmissionResponse).GetProperty("IpmsTargetId"));
+    }
+
+    [Fact]
+    public void Target_detail_mutation_and_history_routes_require_public_guids()
+    {
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.GetTarget), "{id:guid}");
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.UpdateTarget), "{id:guid}");
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.ReviseOrdering), "{id:guid}/ordering");
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.ReviseDefinitionFields), "{id:guid}/field-revisions");
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.GetOrderingRevisionsPage), "{id:guid}/ordering-revisions/page");
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.GetFieldRevisionsPage), "{id:guid}/field-revisions/page");
+        AssertGuidRoute<OpmsTargetsController>(nameof(OpmsTargetsController.WithdrawTarget), "{id:guid}/withdraw");
+
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.GetTarget), "{id:guid}");
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.UpdateTarget), "{id:guid}");
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.ReviseOrdering), "{id:guid}/ordering");
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.ReviseDefinitionFields), "{id:guid}/field-revisions");
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.GetOrderingRevisionsPage), "{id:guid}/ordering-revisions/page");
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.GetFieldRevisionsPage), "{id:guid}/field-revisions/page");
+        AssertGuidRoute<IpmsTargetsController>(nameof(IpmsTargetsController.WithdrawTarget), "{id:guid}/withdraw");
+    }
+
+    [Fact]
     public void Public_target_contracts_expose_only_canonical_period_values()
     {
         var retired = new[]
@@ -64,7 +117,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         var stored = await context.IpmsTargets.SingleAsync();
         Assert.Equal(0m, stored.AnnualTarget);
         Assert.Equal("absolute_count", stored.TargetUnitType);
-        Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync(item => item.IpmsTargetId == response.Id));
+        Assert.Equal(response.PublicId, stored.PublicId);
+        Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync(item => item.IpmsTargetId == stored.Id));
     }
 
     [Fact]
@@ -168,7 +222,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
         var changed = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { PeriodTargets = PeriodTargets("90") };
 
-        var result = await controller.UpdateTarget(created.Id, changed);
+        var result = await controller.UpdateTarget(created.PublicId, changed);
 
         var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<OpmsTargetResponse>>(conflict.Value);
@@ -185,7 +239,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
 
-        var result = await controller.UpdateTarget(created.Id, Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { InternalReference = "Updated metadata" });
+        var result = await controller.UpdateTarget(created.PublicId, Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { InternalReference = "Updated metadata" });
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Equal("Updated metadata", response.InternalReference);
@@ -264,7 +318,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Equal(opmsTemplate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), (await context.OpmsTargets.SingleAsync()).SourceTemplateId);
         var storedIpms = await context.IpmsTargets.SingleAsync();
         Assert.Equal(ipmsTemplate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), storedIpms.SourceTemplateId);
-        Assert.Equal(opmsResponse.Id, storedIpms.RelatedOpmsTargetId);
+        Assert.Equal((await context.OpmsTargets.SingleAsync()).Id, storedIpms.RelatedOpmsTargetId);
     }
 
     [Fact]
@@ -347,6 +401,18 @@ public sealed class NormalizedTargetWriteCutoverTests
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
         };
+    }
+
+    private static void AssertGuidRoute<TController>(string methodName, string expectedTemplate)
+    {
+        var methods = typeof(TController).GetMethods().Where(method => method.Name == methodName).ToArray();
+        Assert.NotEmpty(methods);
+        var template = methods
+            .SelectMany(method => method.GetCustomAttributes(inherit: false))
+            .OfType<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>()
+            .Select(attribute => attribute.Template)
+            .Single(value => value == expectedTemplate);
+        Assert.Equal(expectedTemplate, template);
     }
 
     private static IpmsTargetsController IpmsController(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId)

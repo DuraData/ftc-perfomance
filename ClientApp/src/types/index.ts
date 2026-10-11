@@ -401,7 +401,6 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   department: Department;
   unit?: DepartmentUnit;
   wards?: Ward[];
-  wardIds?: number[];
   wardPublicIds?: string[];
   assignedTo?: Employee;
   indicatorNumber: string;
@@ -473,7 +472,6 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   UserSubmit?: UserSubmitChild[];
   submissions: OPMSSubmission[];
   voteNumbers: VoteNumber[];
-  voteNumberIds?: number[];
   voteNumberPublicIds?: string[];
   VoteNumbers?: OpmsVoteNumberChild[];
   relatedIPMSTargets: IPMSTarget[];
@@ -1368,11 +1366,10 @@ export interface TargetLibraryFacets {
 }
 
 export interface PerformanceTargetOptionDto {
-  id: string;
   publicId: string;
   indicatorNumber: string;
   targetName: string;
-  departmentId?: number | null;
+  departmentPublicId?: string | null;
   departmentName?: string | null;
   relatedOpmsTargetPublicId?: string | null;
 }
@@ -2476,7 +2473,6 @@ export interface IpmsTargetTemplateDto {
 }
 
 export interface OpmsTargetDto {
-  id: string;
   publicId: string;
   rowVersion: string;
   municipalityFinancialYearPublicId?: string | null;
@@ -2484,22 +2480,16 @@ export interface OpmsTargetDto {
   sdbipLayerPublicId?: string | null;
   sdbipLayerCode?: string | null;
   sdbipLayerName?: string | null;
-  sourceTemplateId?: string | null;
   sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
-  periodId?: number | null;
-  departmentId?: number | null;
   departmentPublicId?: string | null;
   departmentName?: string | null;
-  unitId?: number | null;
   unitPublicId?: string | null;
   unitName?: string | null;
   assignedUserPublicId?: string | null;
   assignedUserName?: string | null;
-  wardIds: number[];
   wardPublicIds: string[];
   additionalAssigneePublicIds: string[];
-  voteNumberIds: number[];
   voteNumberPublicIds: string[];
   indicatorNumber: string;
   isIndicatorNumberRevised: boolean;
@@ -2523,8 +2513,6 @@ export interface OpmsTargetDto {
   performanceObjectivePublicId?: string | null;
   performanceObjectiveCode?: string | null;
   performanceObjectiveName?: string | null;
-  strategicGoalId?: number | null;
-  strategicObjectiveId?: number | null;
   performanceObjective: string;
   targetName: string;
   isTargetNameRevised: boolean;
@@ -2534,12 +2522,9 @@ export interface OpmsTargetDto {
   revisedKpiDescription?: string | null;
   baseline: number;
   baselineDescription?: string | null;
-  budgetSourceId?: number | null;
-  budgetTypeId?: number | null;
   budgetTypePublicId?: string | null;
   budgetTypeName?: string | null;
   budgetSources?: KpiBudgetSource[];
-  unitOfMeasureId?: number | null;
   kpiUnitOfMeasurePublicId?: string | null;
   kpiUnitOfMeasureName?: string | null;
   kpiUnitOfMeasureSymbol?: string | null;
@@ -2562,26 +2547,20 @@ export interface OpmsTargetDto {
   withdrawnByUserPublicId?: string | null;
   withdrawnByName?: string | null;
   periodTargets: PerformancePeriodTargetDto[];
-  voteNumbers?: Array<{ id: number; publicId: string; code: string; number: string; name: string; amount: number }>;
+  voteNumbers?: Array<{ publicId: string; code: string; number: string; name: string; amount: number }>;
   createdAt: string;
 }
 
 export interface IpmsTargetDto {
-  id: string;
   publicId: string;
   rowVersion: string;
   municipalityFinancialYearPublicId?: string | null;
   municipalityFinancialYearName?: string | null;
-  sourceTemplateId?: string | null;
   sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
-  relatedOpmsTargetId?: string | null;
   relatedOpmsTargetPublicId?: string | null;
-  periodId?: number | null;
-  departmentId?: number | null;
   departmentPublicId?: string | null;
   departmentName?: string | null;
-  unitId?: number | null;
   unitPublicId?: string | null;
   unitName?: string | null;
   assignedUserPublicId?: string | null;
@@ -2603,8 +2582,6 @@ export interface IpmsTargetDto {
   strategicIntervention?: string | null;
   strategicObjectivePublicId?: string | null;
   performanceObjectivePublicId?: string | null;
-  strategicGoalId?: number | null;
-  strategicObjectiveId?: number | null;
   performanceObjective: string;
   targetName: string;
   isTargetNameRevised: boolean;
@@ -2613,12 +2590,9 @@ export interface IpmsTargetDto {
   isKpiDescriptionRevised: boolean;
   revisedKpiDescription?: string | null;
   baseline: number;
-  budgetSourceId?: number | null;
-  budgetTypeId?: number | null;
   budgetTypePublicId?: string | null;
   budgetTypeName?: string | null;
   budgetSources?: KpiBudgetSource[];
-  unitOfMeasureId?: number | null;
   kpiUnitOfMeasurePublicId?: string | null;
   kpiUnitOfMeasureName?: string | null;
   kpiUnitOfMeasureSymbol?: string | null;
@@ -2645,7 +2619,7 @@ export interface OpmsSubmissionDto {
   id: string;
   rowVersion: string;
   baseState: string;
-  opmsTargetId: string;
+  opmsTargetPublicId: string;
   targetName: string;
   targetIndicatorNumber: string;
   targetDepartmentPublicId?: string | null;
@@ -2730,7 +2704,7 @@ export interface IpmsSubmissionDto {
   id: string;
   rowVersion: string;
   baseState: string;
-  ipmsTargetId: string;
+  ipmsTargetPublicId: string;
   targetName: string;
   targetIndicatorNumber: string;
   targetDepartmentPublicId?: string | null;
@@ -3059,7 +3033,7 @@ export interface SaveTargetPeriodValuePayload {
 }
 
 export interface SaveOpmsSubmissionPayload {
-  opmsTargetId: string;
+  opmsTargetPublicId: string;
   reportingPeriodPublicId: string;
   actualPerformance?: string | null;
   actualExpenditure?: number | null;
@@ -3072,7 +3046,7 @@ export interface SaveOpmsSubmissionPayload {
 }
 
 export interface SaveIpmsSubmissionPayload {
-  ipmsTargetId: string;
+  ipmsTargetPublicId: string;
   reportingPeriodPublicId: string;
   actualPerformance?: string | null;
   actualExpenditure?: number | null;

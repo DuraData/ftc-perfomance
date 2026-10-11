@@ -626,11 +626,12 @@ describe('versioned API routes', () => {
 
   it('projects OPMS API data without inheriting production fixture values', async () => {
     const dto = {
-      id: 'target-live', publicId: 'target-live-public', rowVersion: 'AQ==', periodId: 42,
-      departmentId: 7, departmentName: 'Live Water Services', unitId: null, unitName: null,
-      assignedUserPublicId: 'employee-live', assignedUserName: 'Live Owner', wardIds: [9],
-      additionalAssigneePublicIds: ['employee-two'], voteNumberIds: [12], indicatorNumber: 'LIVE-001',
-      nationalKpa: 'Infrastructure', municipalKpa: 'Water', strategicGoalId: 3,
+      id: 'private-target-key', publicId: 'target-live-public', rowVersion: 'AQ==', periodId: 42,
+      municipalityFinancialYearPublicId: 'year-live-public', municipalityFinancialYearName: '2026/27',
+      departmentId: 7, departmentPublicId: 'department-live-public', departmentName: 'Live Water Services', unitId: null, unitName: null,
+      assignedUserPublicId: 'employee-live', assignedUserName: 'Live Owner', wardIds: [9], wardPublicIds: ['ward-live-public'],
+      additionalAssigneePublicIds: ['employee-two'], voteNumberIds: [12], voteNumberPublicIds: ['vote-live-public'], indicatorNumber: 'LIVE-001',
+      nationalKpa: 'Infrastructure', municipalKpa: 'Water', strategicGoalId: 3, strategicGoalPublicId: 'goal-live-public', strategicGoalName: 'Live strategic goal',
       strategicObjectiveId: 4, performanceObjective: 'Deliver water', targetName: 'Live KPI',
       kpiDescription: 'Server supplied description', baseline: 10, annualTarget: 20,
       annualTargetDescription: 'Twenty', budgetSourceId: 5, budgetTypeId: 6,
@@ -645,11 +646,11 @@ describe('versioned API routes', () => {
     const target = result.data?.items[0];
 
     expect(target).toMatchObject({
-      id: 'target-live', targetName: 'Live KPI', indicatorNumber: 'LIVE-001',
-      department: { id: '7', name: 'Live Water Services' },
+      id: 'target-live-public', targetName: 'Live KPI', indicatorNumber: 'LIVE-001',
+      department: { id: 'department-live-public', name: 'Live Water Services' },
       assignedTo: { id: 'employee-live', displayName: 'Live Owner' },
-      period: { id: '42', name: 'Reporting period 42' },
-      strategicGoal: { id: '3', name: 'Not supplied by API' },
+      period: { id: 'year-live-public', name: '2026/27' },
+      strategicGoal: { id: 'goal-live-public', name: 'Live strategic goal' },
       kpiUnitOfMeasurePublicId: 'unit-public', unitOfMeasure: { id: 'unit-public', name: 'Households', symbol: '#' },
     });
     expect(target?.submissions).toEqual([]);
@@ -661,7 +662,7 @@ describe('versioned API routes', () => {
   it('projects submission actors and evidence uploaders only from API DTOs', async () => {
     const page = {
       items: [{
-        id: 'submission-live', rowVersion: 'Ag==', baseState: 'SUBMITTED', opmsTargetId: 'target-live',
+        id: 'submission-live', rowVersion: 'Ag==', baseState: 'SUBMITTED', opmsTargetPublicId: 'target-live',
         targetName: 'Live KPI', targetIndicatorNumber: 'LIVE-001', quarter: 'Q1', status: 'submitted', actualPerformance: '4',
         targetDepartmentPublicId: 'department-live', targetDepartmentName: 'Live Water Services',
         targetUnitPublicId: 'unit-live', targetUnitName: 'Bulk Water', targetFinancialYearName: '2026/27',

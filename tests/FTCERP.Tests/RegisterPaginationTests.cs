@@ -106,8 +106,8 @@ public sealed class RegisterPaginationTests
             dependencies.Inspection, dependencies.Scanner, dependencies.Suggestions)
         { ControllerContext = ControllerContext(user.Id) };
 
-        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest("", Guid.NewGuid(), null, null, null, null, null, null));
-        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest("", Guid.NewGuid(), null, null, null, null, null, null));
+        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest(Guid.Empty, Guid.NewGuid(), null, null, null, null, null, null));
+        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest(Guid.Empty, Guid.NewGuid(), null, null, null, null, null, null));
 
         opmsResult.Result.Should().BeOfType<BadRequestObjectResult>().Which.Value
             .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Be("OPMS target is required.");
@@ -155,7 +155,7 @@ public sealed class RegisterPaginationTests
         response.CorrectiveMeasure.Should().BeNull();
 
         var update = await controller.UpdateSubmission(submission.Id, new SaveOpmsSubmissionRequest(
-            target.Id, Guid.NewGuid(), "50", null, "Original reason", "Changed without permission", null, null));
+            target.PublicId, Guid.NewGuid(), "50", null, "Original reason", "Changed without permission", null, null));
         var denied = update.Result.Should().BeOfType<ObjectResult>().Subject;
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         denied.Value.Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Contain("Corrective Measure");
@@ -207,7 +207,7 @@ public sealed class RegisterPaginationTests
             Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal(1, envelope.Data!.TotalCount);
         var item = Assert.Single(envelope.Data.Items);
-        Assert.Equal(first.Id, item.OpmsTargetId);
+        Assert.Equal(first.PublicId, item.OpmsTargetPublicId);
         Assert.Equal("KPI-001", item.TargetIndicatorNumber);
 
         var retired = Assert.IsType<ObjectResult>(controller.GetSubmissions().Result);
@@ -445,7 +445,7 @@ public sealed class RegisterPaginationTests
         Assert.Equal(3, envelope.Data!.TotalCount);
         Assert.Equal(2, envelope.Data.TotalPages);
         Assert.Equal(["Alpha", "Beta"], envelope.Data.Items.Select(item => item.TargetName));
-        Assert.DoesNotContain(envelope.Data.Items, item => item.Id == "outside");
+        Assert.DoesNotContain(envelope.Data.Items, item => item.PublicId == new Guid("00000000-0000-0000-0000-000000000004"));
     }
 
     [Fact]
@@ -481,7 +481,7 @@ public sealed class RegisterPaginationTests
 
         var envelope = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value);
         Assert.Equal(1, envelope.Data!.TotalCount);
-        Assert.Equal("revised-finance", Assert.Single(envelope.Data.Items).Id);
+        Assert.Equal(revised.PublicId, Assert.Single(envelope.Data.Items).PublicId);
     }
 
     [Fact]
@@ -547,10 +547,9 @@ public sealed class RegisterPaginationTests
         Assert.Equal(1, envelope.Data!.TotalCount);
         Assert.Equal(1, envelope.Data.PageSize);
         var option = Assert.Single(envelope.Data.Items);
-        Assert.Equal(available.Id, option.Id);
         Assert.Equal(available.PublicId, option.PublicId);
         Assert.Equal("KPI-001", option.IndicatorNumber);
-        Assert.DoesNotContain(envelope.Data.Items, item => item.Id == withdrawn.Id || item.Id == outside.Id);
+        Assert.DoesNotContain(envelope.Data.Items, item => item.PublicId == withdrawn.PublicId || item.PublicId == outside.PublicId);
 
         var retired = Assert.IsType<ObjectResult>(controller.GetTargets().Result);
         Assert.Equal(StatusCodes.Status410Gone, retired.StatusCode);

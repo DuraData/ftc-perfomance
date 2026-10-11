@@ -28,7 +28,7 @@ describe('OPMS submission creation validation', () => {
     api.getOpmsTargetOptions.mockResolvedValue({
       success: true,
       data: {
-        items: [{ id: 'target-1', publicId: 'public-1', indicatorNumber: 'KPI-001', targetName: 'Road maintenance', departmentName: 'Infrastructure' }],
+        items: [{ publicId: 'public-1', indicatorNumber: 'KPI-001', targetName: 'Road maintenance', departmentName: 'Infrastructure' }],
         page: 1,
         pageSize: 25,
         totalCount: 1,
@@ -56,13 +56,13 @@ describe('OPMS submission creation validation', () => {
     expect(screen.getByText('Select a reporting period.')).toBeInTheDocument();
     expect(api.createOpmsSubmission).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByRole('combobox', { name: /^Target/ }), { target: { value: 'target-1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /^Target/ }), { target: { value: 'public-1' } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.change(await screen.findByRole('combobox', { name: /Reporting period/ }), { target: { value: 'period-q1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(api.createOpmsSubmission).toHaveBeenCalledWith(expect.objectContaining({
-      opmsTargetId: 'target-1',
+      opmsTargetPublicId: 'public-1',
       reportingPeriodPublicId: 'period-q1',
       actualPerformance: null,
     })));

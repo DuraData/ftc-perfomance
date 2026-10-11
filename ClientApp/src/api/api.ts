@@ -297,7 +297,7 @@ function parseJsonArray<T>(value?: string | null, fallback: T[] = []): T[] {
 
 const NOT_SUPPLIED = 'Not supplied by API';
 
-function toPeriodReference(id?: number | null, name?: string | null): Period {
+function toPeriodReference(id?: number | string | null, name?: string | null): Period {
   const governedName = normalizeOptionalString(name);
   return {
     id: id === null || id === undefined ? '' : String(id),
@@ -309,7 +309,7 @@ function toPeriodReference(id?: number | null, name?: string | null): Period {
   };
 }
 
-function toDepartmentReference(id?: number | null, name?: string | null, publicId?: string | null): Department {
+function toDepartmentReference(id?: number | string | null, name?: string | null, publicId?: string | null): Department {
   return {
     id: id === null || id === undefined ? '' : String(id),
     publicId: normalizeOptionalString(publicId),
@@ -322,7 +322,7 @@ function toDepartmentReference(id?: number | null, name?: string | null, publicI
 }
 
 function toUnitReference(
-  id: number | null | undefined,
+  id: number | string | null | undefined,
   name: string | null | undefined,
   department: Department,
   publicId?: string | null,
@@ -352,7 +352,7 @@ function toEmployeeReference(id?: string | null, name?: string | null): Employee
   };
 }
 
-function toStrategicGoalReference(id?: number | null, name?: string | null, code?: string | null): StrategicGoal {
+function toStrategicGoalReference(id?: number | string | null, name?: string | null, code?: string | null): StrategicGoal {
   return {
     id: id === null || id === undefined ? '' : String(id),
     name: normalizeOptionalString(name) ?? NOT_SUPPLIED,
@@ -362,7 +362,7 @@ function toStrategicGoalReference(id?: number | null, name?: string | null, code
 }
 
 function toStrategicObjectiveReference(
-  id: number | null | undefined,
+  id: number | string | null | undefined,
   name: string | null | undefined,
   strategicGoal: StrategicGoal,
   code?: string | null,
@@ -520,34 +520,31 @@ function numericTarget(value?: string | null): number {
 }
 
 function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
-  const department = toDepartmentReference(dto.departmentId, dto.departmentName, dto.departmentPublicId);
-  const strategicGoal = toStrategicGoalReference(dto.strategicGoalId, dto.strategicGoalName, dto.strategicGoalCode);
+  const department = toDepartmentReference(dto.departmentPublicId, dto.departmentName, dto.departmentPublicId);
+  const strategicGoal = toStrategicGoalReference(dto.strategicGoalPublicId, dto.strategicGoalName, dto.strategicGoalCode);
   const periods = dto.periodTargets ?? [];
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
   const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
   const canonicalUnitType = targetUnitByKind[annual?.unitKind ?? periods[0]?.unitKind ?? 2] ?? 'absolute_count';
   return {
-    id: dto.id,
+    id: dto.publicId,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
     municipalityFinancialYearPublicId: dto.municipalityFinancialYearPublicId ?? undefined,
     municipalityFinancialYearName: dto.municipalityFinancialYearName ?? undefined,
     sdbipLayer: dto.sdbipLayerPublicId ? { publicId: dto.sdbipLayerPublicId, code: dto.sdbipLayerCode ?? '', name: dto.sdbipLayerName ?? '' } : undefined,
-    sourceTemplateId: dto.sourceTemplateId ?? undefined,
+    sourceTemplateId: dto.sourceTemplatePublicId ?? undefined,
     sourceTemplatePublicId: dto.sourceTemplatePublicId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
-    period: toPeriodReference(dto.periodId, dto.municipalityFinancialYearName),
+    period: toPeriodReference(dto.municipalityFinancialYearPublicId, dto.municipalityFinancialYearName),
     department,
-    unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
+    unit: toUnitReference(dto.unitPublicId, dto.unitName, department, dto.unitPublicId),
     assignedTo: toEmployeeReference(dto.assignedUserPublicId, dto.assignedUserName),
-    wards: dto.wardIds.map(id => ({ id: String(id), code: String(id), name: `Ward ${id}`, isActive: true })),
-    wardIds: dto.wardIds,
+    wards: (dto.wardPublicIds ?? []).map(id => ({ id, code: id, name: `Ward ${id}`, isActive: true })),
     wardPublicIds: dto.wardPublicIds ?? [],
-    additionalAssignees: dto.additionalAssigneePublicIds.map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
-    additionalAssigneePublicIds: dto.additionalAssigneePublicIds,
-    voteNumbers: dto.voteNumbers?.map(item => ({ id: item.publicId || String(item.id), number: item.number, name: item.name, department, amount: item.amount, description: item.code, isActive: true }))
-      ?? dto.voteNumberIds.map(id => ({ id: String(id), number: String(id), name: `Vote ${id}`, department, isActive: true })),
-    voteNumberIds: dto.voteNumberIds,
+    additionalAssignees: (dto.additionalAssigneePublicIds ?? []).map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
+    additionalAssigneePublicIds: dto.additionalAssigneePublicIds ?? [],
+    voteNumbers: dto.voteNumbers?.map(item => ({ id: item.publicId, number: item.number, name: item.name, department, amount: item.amount, description: item.code, isActive: true })) ?? [],
     voteNumberPublicIds: dto.voteNumberPublicIds ?? [],
     indicatorNumber: dto.indicatorNumber,
     isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
@@ -572,7 +569,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     performanceObjectiveCode: dto.performanceObjectiveCode ?? undefined,
     performanceObjectiveName: dto.performanceObjectiveName ?? undefined,
     strategicGoal,
-    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, dto.strategicObjectiveName, strategicGoal, dto.strategicObjectiveCode),
+    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectivePublicId, dto.strategicObjectiveName, strategicGoal, dto.strategicObjectiveCode),
     performanceObjective: dto.performanceObjectiveName ?? dto.performanceObjective,
     targetName: dto.targetName,
     isTargetNameRevised: dto.isTargetNameRevised,
@@ -584,12 +581,12 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     baselineDescription: dto.baselineDescription ?? '',
     annualTarget: numericTarget(annual?.targetValue),
     annualTargetDescription: annual?.description ?? '',
-    budgetSource: dto.budgetSources?.[0] ? toBudgetSourceReference(dto.budgetSources[0].budgetSourcePublicId, dto.budgetSources[0].name, dto.budgetSources[0].code) : toBudgetSourceReference(dto.budgetSourceId),
-    budgetType: dto.budgetTypePublicId ? toBudgetTypeReference(dto.budgetTypePublicId, dto.budgetTypeName) : toBudgetTypeReference(dto.budgetTypeId),
+    budgetSource: dto.budgetSources?.[0] ? toBudgetSourceReference(dto.budgetSources[0].budgetSourcePublicId, dto.budgetSources[0].name, dto.budgetSources[0].code) : toBudgetSourceReference(),
+    budgetType: toBudgetTypeReference(dto.budgetTypePublicId, dto.budgetTypeName),
     budgetTypePublicId: dto.budgetTypePublicId ?? undefined,
     budgetTypeName: dto.budgetTypeName ?? undefined,
     budgetSources: dto.budgetSources ?? [],
-    unitOfMeasure: toUnitOfMeasureReference(dto.kpiUnitOfMeasurePublicId ?? dto.unitOfMeasureId, dto.kpiUnitOfMeasureName ?? canonicalUnitType, dto.kpiUnitOfMeasureSymbol),
+    unitOfMeasure: toUnitOfMeasureReference(dto.kpiUnitOfMeasurePublicId, dto.kpiUnitOfMeasureName ?? canonicalUnitType, dto.kpiUnitOfMeasureSymbol),
     kpiUnitOfMeasurePublicId: dto.kpiUnitOfMeasurePublicId ?? undefined,
     weight: dto.weight,
     kpiType: dto.kpiType,
@@ -635,25 +632,25 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
 }
 
 function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
-  const department = toDepartmentReference(dto.departmentId, dto.departmentName, dto.departmentPublicId);
-  const strategicGoal = toStrategicGoalReference(dto.strategicGoalId);
+  const department = toDepartmentReference(dto.departmentPublicId, dto.departmentName, dto.departmentPublicId);
+  const strategicGoal = toStrategicGoalReference(dto.strategicGoalPublicId);
   const periods = dto.periodTargets ?? [];
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
   const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
   const canonicalUnitType = targetUnitByKind[annual?.unitKind ?? periods[0]?.unitKind ?? 2] ?? 'absolute_count';
   return {
-    id: dto.id,
+    id: dto.publicId,
     publicId: dto.publicId,
     rowVersion: dto.rowVersion,
     municipalityFinancialYearPublicId: dto.municipalityFinancialYearPublicId ?? undefined,
-    sourceTemplateId: dto.sourceTemplateId ?? undefined,
+    sourceTemplateId: dto.sourceTemplatePublicId ?? undefined,
     sourceTemplatePublicId: dto.sourceTemplatePublicId ?? undefined,
     sourceTemplateVersion: dto.sourceTemplateVersion ?? undefined,
     relatedOpmsTargetPublicId: dto.relatedOpmsTargetPublicId ?? undefined,
     relatedOPMSTarget: undefined,
-    period: toPeriodReference(dto.periodId),
+    period: toPeriodReference(dto.municipalityFinancialYearPublicId),
     department,
-    unit: toUnitReference(dto.unitId, dto.unitName, department, dto.unitPublicId),
+    unit: toUnitReference(dto.unitPublicId, dto.unitName, department, dto.unitPublicId),
     assignedTo: toEmployeeReference(dto.assignedUserPublicId, dto.assignedUserName),
     supervisorPublicId: dto.supervisorPublicId ?? undefined,
     indicatorNumber: dto.indicatorNumber,
@@ -673,7 +670,7 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     strategicObjectivePublicId: dto.strategicObjectivePublicId ?? undefined,
     performanceObjectivePublicId: dto.performanceObjectivePublicId ?? undefined,
     strategicGoal,
-    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectiveId, undefined, strategicGoal),
+    strategicObjective: toStrategicObjectiveReference(dto.strategicObjectivePublicId, undefined, strategicGoal),
     performanceObjective: dto.performanceObjective,
     targetName: dto.targetName,
     isTargetNameRevised: dto.isTargetNameRevised,
@@ -684,12 +681,12 @@ function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
     baseline: dto.baseline,
     annualTarget: numericTarget(annual?.targetValue),
     annualTargetDescription: annual?.description ?? '',
-    budgetSource: dto.budgetSources?.[0] ? toBudgetSourceReference(dto.budgetSources[0].budgetSourcePublicId, dto.budgetSources[0].name, dto.budgetSources[0].code) : toBudgetSourceReference(dto.budgetSourceId),
-    budgetType: dto.budgetTypePublicId ? toBudgetTypeReference(dto.budgetTypePublicId, dto.budgetTypeName) : toBudgetTypeReference(dto.budgetTypeId),
+    budgetSource: dto.budgetSources?.[0] ? toBudgetSourceReference(dto.budgetSources[0].budgetSourcePublicId, dto.budgetSources[0].name, dto.budgetSources[0].code) : toBudgetSourceReference(),
+    budgetType: toBudgetTypeReference(dto.budgetTypePublicId, dto.budgetTypeName),
     budgetTypePublicId: dto.budgetTypePublicId ?? undefined,
     budgetTypeName: dto.budgetTypeName ?? undefined,
     budgetSources: dto.budgetSources ?? [],
-    unitOfMeasure: toUnitOfMeasureReference(dto.kpiUnitOfMeasurePublicId ?? dto.unitOfMeasureId, dto.kpiUnitOfMeasureName ?? canonicalUnitType, dto.kpiUnitOfMeasureSymbol),
+    unitOfMeasure: toUnitOfMeasureReference(dto.kpiUnitOfMeasurePublicId, dto.kpiUnitOfMeasureName ?? canonicalUnitType, dto.kpiUnitOfMeasureSymbol),
     kpiUnitOfMeasurePublicId: dto.kpiUnitOfMeasurePublicId ?? undefined,
     weight: dto.weight,
     kpiType: dto.kpiType,
@@ -745,13 +742,10 @@ interface SubmissionTargetProjection {
 
 function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = '', projection?: SubmissionTargetProjection): OPMSTarget {
   return toOpmsTargetModel({
-    id,
     publicId: id,
     rowVersion: '',
-    wardIds: [],
     wardPublicIds: [],
     additionalAssigneePublicIds: [],
-    voteNumberIds: [],
     voteNumberPublicIds: [],
     indicatorNumber,
     departmentPublicId: projection?.departmentPublicId,
@@ -784,7 +778,6 @@ function unresolvedOpmsTarget(id: string, targetName: string, indicatorNumber = 
 
 function unresolvedIpmsTarget(id: string, targetName: string, indicatorNumber = '', projection?: SubmissionTargetProjection): IPMSTarget {
   return toIpmsTargetModel({
-    id,
     publicId: id,
     rowVersion: '',
     indicatorNumber,
@@ -828,7 +821,7 @@ function numericActualProjection(value?: string | null): number {
 }
 
 function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
-  const target = unresolvedOpmsTarget(dto.opmsTargetId, dto.targetName, dto.targetIndicatorNumber, {
+  const target = unresolvedOpmsTarget(dto.opmsTargetPublicId, dto.targetName, dto.targetIndicatorNumber, {
     departmentPublicId: dto.targetDepartmentPublicId,
     departmentName: dto.targetDepartmentName,
     unitPublicId: dto.targetUnitPublicId,
@@ -913,7 +906,7 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
 }
 
 function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
-  const target = unresolvedIpmsTarget(dto.ipmsTargetId, dto.targetName, dto.targetIndicatorNumber, {
+  const target = unresolvedIpmsTarget(dto.ipmsTargetPublicId, dto.targetName, dto.targetIndicatorNumber, {
     departmentPublicId: dto.targetDepartmentPublicId,
     departmentName: dto.targetDepartmentName,
     unitPublicId: dto.targetUnitPublicId,

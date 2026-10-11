@@ -31,7 +31,7 @@ public sealed class KpiPeriodOrderingTests
         var staleVersion = Convert.ToBase64String(target.RowVersion);
         var controller = OpmsController(context, municipality.Id, user);
 
-        var result = await controller.ReviseDefinitionFields(target.Id, new ReviseKpiDefinitionRequest(
+        var result = await controller.ReviseDefinitionFields(target.PublicId, new ReviseKpiDefinitionRequest(
             true, "KPI-REVISED", false, null, false, null,
             "Externally approved KPI number", "COUNCIL-FIELD-1", new DateTime(2026, 10, 3), staleVersion));
 
@@ -46,10 +46,10 @@ public sealed class KpiPeriodOrderingTests
         Assert.Equal("KPI-ORIGINAL", revision.OriginalValue);
         Assert.Equal("KPI-REVISED", revision.RevisedValue);
 
-        var fieldHistoryPage = Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>((await controller.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { PageSize = 10, SortBy = "recordedAt" })).Result).Value).Data!;
+        var fieldHistoryPage = Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>((await controller.GetFieldRevisionsPage(target.PublicId, new PagedQueryRequest { PageSize = 10, SortBy = "recordedAt" })).Result).Value).Data!;
         var fieldHistory = fieldHistoryPage.Items;
         Assert.Single(fieldHistory);
-        var orderingHistoryPage = Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>((await controller.GetOrderingRevisionsPage(target.Id, new PagedQueryRequest { PageSize = 10, SortBy = "recordedAt" })).Result).Value).Data!;
+        var orderingHistoryPage = Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>((await controller.GetOrderingRevisionsPage(target.PublicId, new PagedQueryRequest { PageSize = 10, SortBy = "recordedAt" })).Result).Value).Data!;
         var orderingHistory = orderingHistoryPage.Items;
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetFieldRevisions(target.Id).Result).StatusCode);
         Assert.Equal(StatusCodes.Status410Gone, Assert.IsType<ObjectResult>(controller.GetOrderingRevisions(target.Id).Result).StatusCode);
@@ -58,7 +58,7 @@ public sealed class KpiPeriodOrderingTests
         revision.Reason = "Rewritten";
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
         context.ChangeTracker.Clear();
-        var stale = await controller.ReviseDefinitionFields(target.Id, new ReviseKpiDefinitionRequest(
+        var stale = await controller.ReviseDefinitionFields(target.PublicId, new ReviseKpiDefinitionRequest(
             false, null, true, "Revised name", false, null,
             "Second approved field", "COUNCIL-FIELD-2", new DateTime(2026, 10, 4), staleVersion));
         Assert.IsType<ConflictObjectResult>(stale.Result);
@@ -86,7 +86,7 @@ public sealed class KpiPeriodOrderingTests
         await context.SaveChangesAsync();
         var denied = OpmsController(context, municipality.Id, user, code => code == "OPMS_KPI.READ");
 
-        var maskedResult = await denied.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { SortBy = "recordedAt" });
+        var maskedResult = await denied.GetFieldRevisionsPage(target.PublicId, new PagedQueryRequest { SortBy = "recordedAt" });
         var masked = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>(maskedResult.Result).Value).Data!.Items);
         Assert.Null(masked.OriginalValue);
         Assert.Null(masked.RevisedValue);
@@ -94,12 +94,12 @@ public sealed class KpiPeriodOrderingTests
         Assert.Null(masked.ApprovalReference);
         Assert.Null(masked.RevisedByUserPublicId);
         Assert.Null(masked.RevisedByName);
-        var hiddenSearch = await denied.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { Search = "protected governance reason", SortBy = "recordedAt" });
+        var hiddenSearch = await denied.GetFieldRevisionsPage(target.PublicId, new PagedQueryRequest { Search = "protected governance reason", SortBy = "recordedAt" });
         Assert.Equal(0, Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>(hiddenSearch.Result).Value).Data!.TotalCount);
-        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>((await denied.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { SortBy = "revisedBy" })).Result).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>((await denied.GetFieldRevisionsPage(target.PublicId, new PagedQueryRequest { SortBy = "revisedBy" })).Result).StatusCode);
 
         var allowed = OpmsController(context, municipality.Id, user, _ => true);
-        var visibleResult = await allowed.GetFieldRevisionsPage(target.Id, new PagedQueryRequest { Search = "protected governance reason", SortBy = "revisedBy" });
+        var visibleResult = await allowed.GetFieldRevisionsPage(target.PublicId, new PagedQueryRequest { Search = "protected governance reason", SortBy = "revisedBy" });
         var visible = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<KpiFieldRevisionResponse>>>(Assert.IsType<OkObjectResult>(visibleResult.Result).Value).Data!.Items);
         Assert.Equal("protected original", visible.OriginalValue);
         Assert.Equal("protected revision", visible.RevisedValue);
@@ -126,7 +126,7 @@ public sealed class KpiPeriodOrderingTests
         await context.SaveChangesAsync();
         var controller = IpmsController(context, municipality.Id, user);
 
-        var result = await controller.ReviseDefinitionFields(target.Id, new ReviseKpiDefinitionRequest(
+        var result = await controller.ReviseDefinitionFields(target.PublicId, new ReviseKpiDefinitionRequest(
             false, null, false, null, true, "Revised individual wording",
             "Approved individual revision", "IPMS-FIELD-1", new DateTime(2026, 10, 3), Convert.ToBase64String(target.RowVersion)));
 
@@ -272,7 +272,7 @@ public sealed class KpiPeriodOrderingTests
         Assert.Null(masked.RevisedBudgetValue);
         Assert.Null(masked.Description);
 
-        var parentResult = await OpmsController(context, municipality.Id, user, code => code == "OPMS_KPI.READ").GetTarget(target.Id);
+        var parentResult = await OpmsController(context, municipality.Id, user, code => code == "OPMS_KPI.READ").GetTarget(target.PublicId);
         var parentTarget = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(parentResult.Result).Value).Data!;
         var parentPeriod = Assert.Single(parentTarget.PeriodTargets);
         Assert.Null(parentPeriod.TargetValue);
@@ -294,7 +294,7 @@ public sealed class KpiPeriodOrderingTests
         Assert.Equal(9876, visible.BudgetValue);
         Assert.Equal("secret description", visible.Description);
 
-        var visibleParentResult = await OpmsController(context, municipality.Id, user).GetTarget(target.Id);
+        var visibleParentResult = await OpmsController(context, municipality.Id, user).GetTarget(target.PublicId);
         var visibleParent = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(visibleParentResult.Result).Value).Data!;
         Assert.Equal("protected KPI withdrawal reason", visibleParent.ReasonForWithdrawal);
         Assert.Equal(user.PublicId, visibleParent.WithdrawnByUserPublicId);
@@ -309,12 +309,12 @@ public sealed class KpiPeriodOrderingTests
         };
         context.Add(ipmsTarget);
         await context.SaveChangesAsync();
-        var deniedIpmsResult = await IpmsController(context, municipality.Id, user, code => code == "IPMS_KPI.READ").GetTarget(ipmsTarget.Id);
+        var deniedIpmsResult = await IpmsController(context, municipality.Id, user, code => code == "IPMS_KPI.READ").GetTarget(ipmsTarget.PublicId);
         var deniedIpms = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(deniedIpmsResult.Result).Value).Data!;
         Assert.Null(deniedIpms.ReasonForWithdrawal);
         Assert.Null(deniedIpms.WithdrawnByUserPublicId);
         Assert.Null(deniedIpms.WithdrawnByName);
-        var visibleIpmsResult = await IpmsController(context, municipality.Id, user).GetTarget(ipmsTarget.Id);
+        var visibleIpmsResult = await IpmsController(context, municipality.Id, user).GetTarget(ipmsTarget.PublicId);
         var visibleIpms = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(visibleIpmsResult.Result).Value).Data!;
         Assert.Equal("protected IPMS withdrawal reason", visibleIpms.ReasonForWithdrawal);
         Assert.Equal(user.PublicId, visibleIpms.WithdrawnByUserPublicId);
@@ -325,7 +325,7 @@ public sealed class KpiPeriodOrderingTests
         context.Add(activeTarget);
         await context.SaveChangesAsync();
         var deniedWithdrawal = await OpmsController(context, municipality.Id, user,
-            code => code == "OPMS_KPI.WITHDRAW").WithdrawTarget(activeTarget.Id,
+            code => code == "OPMS_KPI.WITHDRAW").WithdrawTarget(activeTarget.PublicId,
             new WithdrawGovernedRecordRequest("Protected reason write", Convert.ToBase64String(activeTarget.RowVersion)));
         Assert.IsType<ForbidResult>(deniedWithdrawal.Result);
         Assert.False((await context.OpmsTargets.SingleAsync(item => item.Id == activeTarget.Id)).IsWithdrawn);
@@ -345,7 +345,7 @@ public sealed class KpiPeriodOrderingTests
         var staleVersion = Convert.ToBase64String(target.RowVersion);
 
         var controller = OpmsController(context, municipality.Id, user);
-        var result = await controller.ReviseOrdering(target.Id, new ReviseKpiOrderingRequest(
+        var result = await controller.ReviseOrdering(target.PublicId, new ReviseKpiOrderingRequest(
             4, 1, "Approved SDBIP resequencing", "COUNCIL-2026-10", new DateTime(2026, 10, 1), staleVersion));
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
@@ -360,7 +360,7 @@ public sealed class KpiPeriodOrderingTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
         context.ChangeTracker.Clear();
 
-        var stale = await controller.ReviseOrdering(target.Id, new ReviseKpiOrderingRequest(
+        var stale = await controller.ReviseOrdering(target.PublicId, new ReviseKpiOrderingRequest(
             5, 2, "Second approved sequence", "COUNCIL-2026-11", new DateTime(2026, 11, 1), staleVersion));
         Assert.IsType<ConflictObjectResult>(stale.Result);
         Assert.Equal(2, await context.KpiFieldRevisions.CountAsync());
@@ -383,7 +383,7 @@ public sealed class KpiPeriodOrderingTests
         await context.SaveChangesAsync();
 
         var controller = IpmsController(context, municipality.Id, user);
-        var result = await controller.ReviseOrdering(target.Id, new ReviseKpiOrderingRequest(
+        var result = await controller.ReviseOrdering(target.PublicId, new ReviseKpiOrderingRequest(
             2, 1, "Approved individual KPI sequence", "IPMS-APPROVAL-1", new DateTime(2026, 10, 2), Convert.ToBase64String(target.RowVersion)));
 
         var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
@@ -473,7 +473,7 @@ public sealed class KpiPeriodOrderingTests
 
         await using var tenantContext = new ApplicationDbContext(options, new TenantContext(tenantAId, user.Id));
         var controller = OpmsController(tenantContext, tenantAId, user);
-        var result = await controller.GetOrderingRevisionsPage("tenant-b-target", new PagedQueryRequest());
+        var result = await controller.GetOrderingRevisionsPage(Guid.NewGuid(), new PagedQueryRequest());
         Assert.IsType<NotFoundObjectResult>(result.Result);
     }
 

@@ -72,6 +72,8 @@ public sealed class OpmsTargetMappingTests
         long tenantBId;
         int wardId;
         int voteId;
+        Guid wardPublicId;
+        Guid votePublicId;
         await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
         {
             await setup.Database.EnsureCreatedAsync();
@@ -80,9 +82,9 @@ public sealed class OpmsTargetMappingTests
             setup.AddRange(tenantA, municipalityB); await setup.SaveChangesAsync(); tenantAId = tenantA.Id; tenantBId = municipalityB.Id;
             var department = new Department { MunicipalityId = tenantAId, Code = "FIN", Name = "Finance" };
             var ward = new Ward { MunicipalityId = tenantAId, Code = "W1", Name = "Ward 1", LegacyMunicipality = tenantA.Name, IsActive = true };
-            setup.AddRange(department, ward); await setup.SaveChangesAsync(); wardId = ward.Id;
+            setup.AddRange(department, ward); await setup.SaveChangesAsync(); wardId = ward.Id; wardPublicId = ward.PublicId;
             var vote = new VoteNumber { MunicipalityId = tenantAId, Code = "V1", Number = "001", Name = "Operations", DepartmentId = department.Id, IsActive = true };
-            setup.Add(vote); await setup.SaveChangesAsync(); voteId = vote.Id;
+            setup.Add(vote); await setup.SaveChangesAsync(); voteId = vote.Id; votePublicId = vote.PublicId;
         }
 
         await using (var tenantA = new ApplicationDbContext(options, new TenantContext(tenantAId, "mapping-user")))
@@ -96,10 +98,10 @@ public sealed class OpmsTargetMappingTests
             tenantA.OpmsTargetWards.Add(new OpmsTargetWard { MunicipalityId = tenantAId, OpmsTargetId = target.Id, WardId = wardId });
             await Assert.ThrowsAsync<DbUpdateException>(() => tenantA.SaveChangesAsync());
             tenantA.ChangeTracker.Clear();
-            var loaded = await tenantA.OpmsTargets.Include(item => item.Wards).Include(item => item.VoteNumbers).SingleAsync();
+            var loaded = await tenantA.OpmsTargets.Include(item => item.Wards).ThenInclude(item => item.Ward).Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber).SingleAsync();
             var response = loaded.ToResponse();
-            Assert.Equal([wardId], response.WardIds);
-            Assert.Equal([voteId], response.VoteNumberIds);
+            Assert.Equal([wardPublicId], response.WardPublicIds);
+            Assert.Equal([votePublicId], response.VoteNumberPublicIds);
         }
 
         await using var tenantB = new ApplicationDbContext(options, new TenantContext(tenantBId, "other-user"));

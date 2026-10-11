@@ -173,7 +173,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
         <p className="mt-1 text-xs text-secondary-500">The API rechecks both the action permission and record-level KPI update scope.</p>
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <Select label="Strategic risk" value={linkRiskPublicId} options={[{ value: '', label: 'Select active risk' }, ...risks.filter(risk => risk.isActive).map(risk => ({ value: risk.publicId, label: `${risk.riskReference ? `${risk.riskReference} · ` : ''}${risk.riskTitle}` }))]} onChange={event => setLinkRiskPublicId(event.target.value)} />
-          <TargetPicker kind="opms" label="OPMS KPI" value={targetPublicId} valueField="publicId" onChange={setTargetPublicId} required />
+          <TargetPicker kind="opms" label="OPMS KPI" value={targetPublicId} onChange={setTargetPublicId} required />
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={primary} onChange={event => setPrimary(event.target.checked)} /> Primary strategic risk for this KPI</label>
           <Textarea label="Link reason" value={linkReason} rows={2} required onChange={event => setLinkReason(event.target.value)} />
         </div>

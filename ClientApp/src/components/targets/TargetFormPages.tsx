@@ -1678,7 +1678,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               ) : (
                 <ul className="mt-2 space-y-2">
                   {relatedIpmsTargets.map(item => (
-                    <li key={item.id} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:text-secondary-200">
+                    <li key={item.publicId} className="rounded-lg border border-secondary-200 px-3 py-2 text-sm text-secondary-700 dark:border-secondary-700 dark:text-secondary-200">
                       {item.indicatorNumber} - {item.targetName}
                     </li>
                   ))}
@@ -1855,7 +1855,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <Input label="Template Version" value={form.sourceTemplateVersion} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateVersion: event.target.value }))} />
             </FormRow>
             <FormRow cols={3}>
-              <TargetPicker kind="opms" label="Related OPMS Target" emptyLabel="No link" value={form.relatedOPMSTargetId} valueField="publicId" onChange={(value, option) => { setForm(prev => ({ ...prev, relatedOPMSTargetId: value })); setLinkedOpmsLabel(option ? `${option.indicatorNumber} - ${option.targetName}` : ''); }} />
+              <TargetPicker kind="opms" label="Related OPMS Target" emptyLabel="No link" value={form.relatedOPMSTargetId} onChange={(value, option) => { setForm(prev => ({ ...prev, relatedOPMSTargetId: value })); setLinkedOpmsLabel(option ? `${option.indicatorNumber} - ${option.targetName}` : ''); }} />
               <div className="flex items-end">
                 <Button variant="outline" className="w-full" disabled={!form.relatedOPMSTargetId} onClick={() => setForm(prev => ({ ...prev, relatedOPMSTargetId: '' }))}>
                   Unlink

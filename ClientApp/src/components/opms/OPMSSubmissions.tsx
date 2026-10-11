@@ -222,7 +222,7 @@ export function OPMSSubmissionsList() {
 
     setIsCreating(true);
     const result = await createOpmsSubmission({
-      opmsTargetId: form.targetId,
+      opmsTargetPublicId: form.targetId,
       reportingPeriodPublicId: form.reportingPeriodPublicId,
       actualPerformance: form.actualPerformance.trim() || null,
       varianceReason: null,
@@ -244,7 +244,7 @@ export function OPMSSubmissionsList() {
 
   const persistSubmission = async (submission: OPMSSubmission) => {
     const result = await updateOpmsSubmission(submission.id, {
-      opmsTargetId: submission.target.id,
+      opmsTargetPublicId: submission.target.id,
       reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
       actualPerformance: submission.actualPerformance?.trim() || null,
       varianceReason: submission.varianceReason ?? null,
@@ -545,7 +545,7 @@ export function IPMSSubmissionsList() {
 
     setIsCreating(true);
     const result = await createIpmsSubmission({
-      ipmsTargetId: form.targetId,
+      ipmsTargetPublicId: form.targetId,
       reportingPeriodPublicId: form.reportingPeriodPublicId,
       actualPerformance: form.actualPerformance.trim() || null,
       varianceReason: null,
@@ -567,7 +567,7 @@ export function IPMSSubmissionsList() {
 
   const persistSubmission = async (submission: IPMSSubmission) => {
     const result = await updateIpmsSubmission(submission.id, {
-      ipmsTargetId: submission.target.id,
+      ipmsTargetPublicId: submission.target.id,
       reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
       actualPerformance: submission.actualPerformance?.trim() || null,
       varianceReason: submission.varianceReason ?? null,

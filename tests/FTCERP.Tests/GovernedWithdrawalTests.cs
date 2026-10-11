@@ -41,7 +41,7 @@ public sealed class GovernedWithdrawalTests
             ControllerContext = ControllerContext(user.Id)
         };
 
-        var result = await controller.WithdrawTarget(target.Id, new WithdrawGovernedRecordRequest("  Superseded by the approved plan  ", expectedVersion));
+        var result = await controller.WithdrawTarget(target.PublicId, new WithdrawGovernedRecordRequest("  Superseded by the approved plan  ", expectedVersion));
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var payload = Assert.IsType<ApiResponse<OpmsTargetResponse>>(ok.Value);
@@ -101,7 +101,7 @@ public sealed class GovernedWithdrawalTests
         };
 
         var staleVersion = Convert.ToBase64String(BitConverter.GetBytes(long.MaxValue));
-        var result = await controller.WithdrawTarget(target.Id, new WithdrawGovernedRecordRequest("Stale request", staleVersion));
+        var result = await controller.WithdrawTarget(target.PublicId, new WithdrawGovernedRecordRequest("Stale request", staleVersion));
 
         var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);

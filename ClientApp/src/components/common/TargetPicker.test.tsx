@@ -16,7 +16,7 @@ describe('TargetPicker', () => {
     vi.mocked(api.getOpmsTargetOptions).mockResolvedValue({
       success: true,
       data: {
-        items: [{ id: 'target-1', publicId: 'public-1', indicatorNumber: 'KPI-001', targetName: 'Water reliability', departmentName: 'Infrastructure' }],
+        items: [{ publicId: 'public-1', indicatorNumber: 'KPI-001', targetName: 'Water reliability', departmentName: 'Infrastructure' }],
         page: 1,
         pageSize: 25,
         totalCount: 26,
@@ -38,8 +38,8 @@ describe('TargetPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(api.getOpmsTargetOptions).toHaveBeenCalledWith(expect.objectContaining({ search: 'water', page: 2 })));
 
-    fireEvent.change(screen.getByLabelText('OPMS target', { selector: 'select' }), { target: { value: 'target-1' } });
-    expect(onChange).toHaveBeenCalledWith('target-1', expect.objectContaining({ publicId: 'public-1' }));
+    fireEvent.change(screen.getByLabelText('OPMS target', { selector: 'select' }), { target: { value: 'public-1' } });
+    expect(onChange).toHaveBeenCalledWith('public-1', expect.objectContaining({ publicId: 'public-1' }));
   });
 
   it('exposes an accessible validation error on the governed selector', async () => {

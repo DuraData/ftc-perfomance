@@ -9,7 +9,6 @@ type TargetPickerProps = {
   label: string;
   value: string;
   onChange: (value: string, option?: PerformanceTargetOptionDto) => void;
-  valueField?: 'id' | 'publicId';
   emptyLabel?: string;
   required?: boolean;
   error?: string;
@@ -17,14 +16,11 @@ type TargetPickerProps = {
   relatedOpmsTargetPublicId?: string;
 };
 
-const optionValue = (option: PerformanceTargetOptionDto, field: 'id' | 'publicId') => option[field];
-
 export function TargetPicker({
   kind,
   label,
   value,
   onChange,
-  valueField = 'id',
   emptyLabel = 'Select target',
   required,
   error: validationError,
@@ -66,15 +62,14 @@ export function TargetPicker({
       }
 
       const nextItems = [...result.data.items];
-      if (value && !nextItems.some(item => optionValue(item, valueField) === value)) {
+      if (value && !nextItems.some(item => item.publicId === value)) {
         const selected = kind === 'opms' ? await getOpmsTarget(value) : await getIpmsTarget(value);
         if (!cancelled && selected.success && selected.data && !selected.data.isWithdrawn) {
           nextItems.unshift({
-            id: selected.data.id,
-            publicId: selected.data.publicId ?? selected.data.id,
+            publicId: selected.data.id,
             indicatorNumber: selected.data.indicatorNumber,
             targetName: selected.data.targetName,
-            departmentId: Number(selected.data.department?.id) || null,
+            departmentPublicId: selected.data.department?.publicId ?? null,
             departmentName: selected.data.department?.name ?? null,
           });
         }
@@ -87,12 +82,12 @@ export function TargetPicker({
     };
     void load();
     return () => { cancelled = true; };
-  }, [kind, page, relatedOpmsTargetPublicId, search, value, valueField]);
+  }, [kind, page, relatedOpmsTargetPublicId, search, value]);
 
   const selectOptions = [
     { value: '', label: emptyLabel },
     ...items.map(item => ({
-      value: optionValue(item, valueField),
+      value: item.publicId,
       label: `${item.indicatorNumber} · ${item.targetName}${item.departmentName ? ` · ${item.departmentName}` : ''}`,
     })),
   ];
@@ -115,7 +110,7 @@ export function TargetPicker({
         options={selectOptions}
         onChange={event => {
           const selectedValue = event.target.value;
-          onChange(selectedValue, items.find(item => optionValue(item, valueField) === selectedValue));
+          onChange(selectedValue, items.find(item => item.publicId === selectedValue));
         }}
       />
       <div className="flex items-center justify-between gap-2 text-xs text-secondary-500" aria-live="polite">
