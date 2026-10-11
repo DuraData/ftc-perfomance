@@ -38,7 +38,7 @@ public sealed class StrategicRiskTests
         var user = IdpTestFixture.CreateUser("risk-admin");
         await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
         var seed = await SeedAsync(context, municipalityId, user);
-        var audit = new Mock<IWorkflowGovernanceService>();
+        var audit = new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id));
         var controller = Controller(context, user, municipalityId, audit);
 
         var created = Data(await controller.Create(new SaveStrategicRiskRequest(
@@ -57,10 +57,46 @@ public sealed class StrategicRiskTests
             "sr-01", "Stale edit", null, seed.Year.PublicId, seed.Year.PublicId,
             true, "Stale update", created.RowVersion));
         stale.Result.Should().BeOfType<ConflictObjectResult>();
-        audit.Verify(service => service.QueueAuditTrail(nameof(StrategicRisk), created.PublicId.ToString(), "Create",
-            null, It.IsAny<object>(), user.Id, It.IsAny<string?>(), "Risk committee resolution"), Times.Once);
-        audit.Verify(service => service.QueueAuditTrail(nameof(StrategicRisk), created.PublicId.ToString(), "Update",
-            It.IsAny<object>(), It.IsAny<object>(), user.Id, It.IsAny<string?>(), It.IsAny<string>()), Times.Exactly(2));
+        var audits = await context.AuditTrails.AsNoTracking()
+            .Where(item => item.EntityName == nameof(StrategicRisk) && item.EntityId == created.PublicId.ToString())
+            .OrderBy(item => item.Id)
+            .ToArrayAsync();
+        audits.Select(item => item.Action).Should().Equal("Create", "Update");
+        audits.Select(item => item.Reason).Should().Equal("Risk committee resolution", "Approved wording");
+    }
+
+    [Fact]
+    public async Task RiskMasterAndKpiLinks_RejectPersistenceBypassesAndHardDeletes()
+    {
+        const long municipalityId = 9108;
+        var user = IdpTestFixture.CreateUser("risk-governance");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var controller = Controller(context, user, municipalityId);
+        var risk = Data(await controller.Create(Request("SR-G", "Governed risk", seed.Year.PublicId)));
+        var link = Data(await controller.LinkKpi(new LinkStrategicRiskRequest(risk.PublicId, seed.Target.PublicId, true, "Governed link")));
+
+        context.ChangeTracker.Clear();
+        var directRisk = await context.StrategicRisks.SingleAsync(item => item.PublicId == risk.PublicId);
+        directRisk.RiskTitle = "Unaudited rewrite";
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        context.StrategicRisks.Remove(await context.StrategicRisks.SingleAsync(item => item.PublicId == risk.PublicId));
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*cannot be hard deleted*");
+
+        context.ChangeTracker.Clear();
+        var directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == link.PublicId);
+        directLink.LinkReason = "Rewritten provenance";
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity and provenance are append-preserved*");
+
+        context.ChangeTracker.Clear();
+        context.OpmsKpiStrategicRisks.Remove(await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == link.PublicId));
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*cannot be hard deleted*");
     }
 
     [Fact]
@@ -225,7 +261,7 @@ public sealed class StrategicRiskTests
         ApplicationDbContext context,
         ApplicationUser user,
         long municipalityId,
-        Mock<IWorkflowGovernanceService>? audit = null,
+        IWorkflowGovernanceService? audit = null,
         bool allow = true,
         ISet<string>? deniedPermissions = null)
     {
@@ -239,7 +275,7 @@ public sealed class StrategicRiskTests
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(allow, allow, [], [], [], [], [], []));
         return new StrategicRisksController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            (audit ?? new Mock<IWorkflowGovernanceService>()).Object, IdpTestFixture.Tenant(municipalityId, user.Id))
+            audit ?? new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id)), IdpTestFixture.Tenant(municipalityId, user.Id))
         {
             ControllerContext = new ControllerContext
             {

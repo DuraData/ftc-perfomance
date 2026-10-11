@@ -205,11 +205,11 @@ public sealed class StrategicRisksController(
         if (await context.OpmsKpiStrategicRisks.AnyAsync(item => item.OpmsTargetId == target.Id && item.StrategicRiskId == risk.Id && item.IsActive))
             return Conflict(Fail<StrategicRiskKpiLinkDto>("This strategic risk is already linked to the KPI."));
 
-        Guid[] replacedPrimaryLinks = [];
+        OpmsKpiStrategicRisk[] replacedPrimaryLinks = [];
         if (request.IsPrimary)
         {
             var currentPrimary = await context.OpmsKpiStrategicRisks.Where(item => item.OpmsTargetId == target.Id && item.IsActive && item.IsPrimary).ToArrayAsync();
-            replacedPrimaryLinks = currentPrimary.Select(item => item.PublicId).ToArray();
+            replacedPrimaryLinks = currentPrimary;
             foreach (var item in currentPrimary) item.IsPrimary = false;
         }
         var entity = new OpmsKpiStrategicRisk
@@ -222,8 +222,12 @@ public sealed class StrategicRisksController(
             LinkReason = request.Reason.Trim()
         };
         context.OpmsKpiStrategicRisks.Add(entity);
+        foreach (var replaced in replacedPrimaryLinks)
+            workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), replaced.PublicId.ToString(), "DemotePrimary",
+                new { IsPrimary = true }, new { IsPrimary = false, ReplacedByPublicId = entity.PublicId },
+                session.User.Id, IpAddress(), entity.LinkReason);
         workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Link", null,
-            new { TargetPublicId = target.PublicId, StrategicRiskPublicId = risk.PublicId, entity.IsPrimary, ReplacedPrimaryLinks = replacedPrimaryLinks },
+            new { TargetPublicId = target.PublicId, StrategicRiskPublicId = risk.PublicId, entity.IsPrimary, ReplacedPrimaryLinks = replacedPrimaryLinks.Select(item => item.PublicId).ToArray() },
             session.User.Id, IpAddress(), entity.LinkReason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("This strategic risk is already linked to the KPI.")); }

@@ -2311,6 +2311,40 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Strategic-document type history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<StrategicDocumentType>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(StrategicDocumentType), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        if (ChangeTracker.Entries<StrategicRisk>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-risk master history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<StrategicRisk>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(StrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        foreach (var entry in ChangeTracker.Entries<OpmsKpiStrategicRisk>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Strategic-risk KPI relationship history cannot be hard deleted.");
+
+            var originalActive = entry.OriginalValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsActive));
+            var currentActive = entry.CurrentValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsActive));
+            var originalPrimary = entry.OriginalValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsPrimary));
+            var currentPrimary = entry.CurrentValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsPrimary));
+            if (originalActive && currentActive && originalPrimary && !currentPrimary)
+            {
+                EnsureOnlyProperties(entry,
+                    [nameof(OpmsKpiStrategicRisk.IsPrimary), nameof(OpmsKpiStrategicRisk.RowVersion)],
+                    "Strategic-risk KPI relationship identity and provenance are append-preserved.");
+                RequireGovernanceAudit(nameof(OpmsKpiStrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId, "DemotePrimary");
+                continue;
+            }
+
+            EnsureOnlyProperties(entry,
+                [nameof(OpmsKpiStrategicRisk.IsActive), nameof(OpmsKpiStrategicRisk.IsPrimary),
+                    nameof(OpmsKpiStrategicRisk.UnlinkedByUserId), nameof(OpmsKpiStrategicRisk.UnlinkedAt),
+                    nameof(OpmsKpiStrategicRisk.UnlinkReason), nameof(OpmsKpiStrategicRisk.RowVersion)],
+                "Strategic-risk KPI relationship identity and provenance are append-preserved.");
+            if (!originalActive || currentActive || currentPrimary
+                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkedByUserId)))
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsKpiStrategicRisk.UnlinkedAt)).HasValue
+                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkReason))))
+                throw new InvalidOperationException("A strategic-risk KPI relationship may only advance once to a complete inactive unlink state.");
+            RequireGovernanceAudit(nameof(OpmsKpiStrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Unlink");
+        }
         var strategicMasterEntries = ChangeTracker.Entries()
             .Where(entry => entry.Entity is StrategicPlanningMasterBase)
             .ToArray();
