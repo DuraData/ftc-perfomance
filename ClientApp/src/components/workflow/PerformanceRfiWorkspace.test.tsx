@@ -99,4 +99,16 @@ describe('PerformanceRfiWorkspace', () => {
     expect(screen.queryByRole('button', { name: 'Respond' })).not.toBeInTheDocument();
     expect(api.getOpmsSubmissionAttachmentsPage).not.toHaveBeenCalled();
   });
+
+  it('hides RFI narrative actions without the workflow action-comment update grant', async () => {
+    security.canEditField.mockImplementation((resource: string) => resource === 'OPMS_RFI');
+
+    render(<PerformanceRfiWorkspace kind={1} submissionId="submission-7" />);
+
+    expect(await screen.findByText('Clarify the variance')).toBeInTheDocument();
+    expect(screen.queryByLabelText('New question')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Response')).not.toBeInTheDocument();
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_WORKFLOW', 'ActionComment');
+    expect(api.getOpmsSubmissionAttachmentsPage).not.toHaveBeenCalled();
+  });
 });

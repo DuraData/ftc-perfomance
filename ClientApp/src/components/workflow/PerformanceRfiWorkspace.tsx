@@ -14,6 +14,7 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
   const security = useSecurity();
   const prefix = kind === 1 ? 'OPMS' : 'IPMS';
   const resource = `${prefix}_RFI`;
+  const workflowResource = `${prefix}_WORKFLOW`;
   const canRead = security.canRead(resource);
   const canReadQuestion = security.canReadField(resource, 'Question');
   const canReadRaisedBy = security.canReadField(resource, 'RaisedBy');
@@ -24,8 +25,9 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
   const canReadEvidenceLinkedBy = security.canReadField(resource, 'EvidenceLinkedBy');
   const canEditQuestion = security.canEditField(resource, 'Question');
   const canEditResponse = security.canEditField(resource, 'Response');
-  const canRaise = security.canExecute(`${prefix}_RFI.RAISE`) && canEditQuestion;
-  const canRespond = security.canExecute(`${prefix}_RFI.RESPOND`) && canEditResponse;
+  const canEditActionComment = security.canEditField(workflowResource, 'ActionComment');
+  const canRaise = security.canExecute(`${prefix}_RFI.RAISE`) && canEditQuestion && canEditActionComment;
+  const canRespond = security.canExecute(`${prefix}_RFI.RESPOND`) && canEditResponse && canEditActionComment;
   const canClose = security.canExecute(`${prefix}_RFI.CLOSE`);
   const canSearch = canReadQuestion || canReadRaisedBy || canReadResponse || canReadRespondedBy || canReadClosedBy || canReadEvidenceMetadata || canReadEvidenceLinkedBy;
   const [rows, setRows] = useState<PerformanceRfiDto[]>([]);

@@ -239,8 +239,8 @@ public static class SecurityRegistrySeeder
             Member("IPMS_TARGET_TEMPLATE", "DefaultPoeRequirements", "Default POE Requirements", sensitive: true),
             Member("IPMS_TARGET_TEMPLATE", "DefaultTaskTemplates", "Default Task Templates", sensitive: true),
             Member("OPMS_WORKFLOW", "ActionActorUserId", "Workflow Action Actor Identity", sensitive: true, systemManaged: true),
-            Member("OPMS_WORKFLOW", "ActionComment", "Workflow Action Comment", sensitive: true, systemManaged: true),
-            Member("OPMS_WORKFLOW", "ActionRatingValue", "Workflow Action Rating Value", sensitive: true, systemManaged: true),
+            Member("OPMS_WORKFLOW", "ActionComment", "Workflow Action Comment", sensitive: true),
+            Member("OPMS_WORKFLOW", "ActionRatingValue", "Workflow Action Rating Value", sensitive: true),
             Member("OPMS_WORKFLOW", "StageRatingValue", "Stage Rating Value and Label", sensitive: true, systemManaged: true),
             Member("OPMS_WORKFLOW", "StageRatingAchievementPercent", "Stage Rating Achievement Percentage", sensitive: true, systemManaged: true),
             Member("OPMS_WORKFLOW", "StageRatingComment", "Stage Rating Comment", sensitive: true, systemManaged: true),
@@ -250,8 +250,8 @@ public static class SecurityRegistrySeeder
             Member("OPMS_WORKFLOW", "WindowExceptionReason", "Reporting Window Exception Reason", sensitive: true),
             Member("OPMS_WORKFLOW", "WindowExceptionApprovedBy", "Reporting Window Exception Approver", sensitive: true, systemManaged: true),
             Member("IPMS_WORKFLOW", "ActionActorUserId", "Workflow Action Actor Identity", sensitive: true, systemManaged: true),
-            Member("IPMS_WORKFLOW", "ActionComment", "Workflow Action Comment", sensitive: true, systemManaged: true),
-            Member("IPMS_WORKFLOW", "ActionRatingValue", "Workflow Action Rating Value", sensitive: true, systemManaged: true),
+            Member("IPMS_WORKFLOW", "ActionComment", "Workflow Action Comment", sensitive: true),
+            Member("IPMS_WORKFLOW", "ActionRatingValue", "Workflow Action Rating Value", sensitive: true),
             Member("IPMS_WORKFLOW", "StageRatingValue", "Stage Rating Value and Label", sensitive: true, systemManaged: true),
             Member("IPMS_WORKFLOW", "StageRatingAchievementPercent", "Stage Rating Achievement Percentage", sensitive: true, systemManaged: true),
             Member("IPMS_WORKFLOW", "StageRatingComment", "Stage Rating Comment", sensitive: true, systemManaged: true),
@@ -631,12 +631,27 @@ public static class SecurityRegistrySeeder
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT", "IDP_PLAN.ImportClientRequestId.READ", "IDP_PLAN.ImportSourceFileName.READ", "IDP_PLAN.ImportSourceHash.READ", "IDP_PLAN.ImportActor.READ", "IDP_PLAN.ImportRowPayload.READ", "IDP_PLAN.ImportErrorDetail.READ"]
         };
         mappings["NAV.SDBIP.REGISTER"] = ["NAV.SDBIP.DASHBOARD"];
-        mappings["OPMS_RFI.RAISE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.Question.UPDATE", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ"];
-        mappings["OPMS_RFI.RESPOND"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.Response.UPDATE", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ"];
-        mappings["OPMS_RFI.CLOSE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.ClosedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ"];
-        mappings["IPMS_RFI.RAISE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.Question.UPDATE", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
-        mappings["IPMS_RFI.RESPOND"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.Response.UPDATE", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
-        mappings["IPMS_RFI.CLOSE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.ClosedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ"];
+        mappings["OPMS_RFI.RAISE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.Question.UPDATE", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionComment.UPDATE"];
+        mappings["OPMS_RFI.RESPOND"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.Response.UPDATE", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionComment.UPDATE"];
+        mappings["OPMS_RFI.CLOSE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.ClosedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionComment.UPDATE"];
+        mappings["IPMS_RFI.RAISE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.Question.UPDATE", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ", "IPMS_WORKFLOW.ActionComment.UPDATE"];
+        mappings["IPMS_RFI.RESPOND"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.Response.UPDATE", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ", "IPMS_WORKFLOW.ActionComment.UPDATE"];
+        mappings["IPMS_RFI.CLOSE"] = ["IPMS_RFI.Question.READ", "IPMS_RFI.RaisedBy.READ", "IPMS_RFI.Response.READ", "IPMS_RFI.RespondedBy.READ", "IPMS_RFI.ClosedBy.READ", "IPMS_RFI.EvidenceMetadata.READ", "IPMS_RFI.EvidenceLinkedBy.READ", "IPMS_WORKFLOW.ActionComment.UPDATE"];
+
+        foreach (var legacyAction in new[]
+                 {
+                     "OPMS.Submissions.Submit", "OPMS.Submissions.Verify", "OPMS.Submissions.VerifyReject",
+                     "OPMS.Submissions.Approve", "OPMS.Submissions.Reject", "OPMS.Submissions.Review",
+                     "OPMS.Submissions.Audit", "OPMS.Submissions.Score"
+                 })
+            mappings[legacyAction] = [.. mappings[legacyAction], "OPMS_WORKFLOW.ActionComment.UPDATE", "OPMS_WORKFLOW.ActionRatingValue.UPDATE"];
+        foreach (var legacyAction in new[]
+                 {
+                     "IPMS.Submissions.Submit", "IPMS.Submissions.Verify", "IPMS.Submissions.VerifyReject",
+                     "IPMS.Submissions.Approve", "IPMS.Submissions.Reject", "IPMS.Submissions.Review",
+                     "IPMS.Submissions.Audit"
+                 })
+            mappings[legacyAction] = [.. mappings[legacyAction], "IPMS_WORKFLOW.ActionComment.UPDATE", "IPMS_WORKFLOW.ActionRatingValue.UPDATE"];
         mappings["IDP.Dashboard.View"] = ["NAV.IDP.OVERVIEW", "IDP_INDICATOR.AnnualTargetValue.READ", "IDP_INDICATOR.AnnualActualValue.READ", "IDP_PROJECT.BudgetSnapshotPlanned.READ", "IDP_PROJECT.BudgetSnapshotApproved.READ", "IDP_PROJECT.BudgetSnapshotActual.READ"];
         mappings["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT", "IDP_INDICATOR.AnnualTargetValue.READ", "IDP_INDICATOR.AnnualTargetValue.UPDATE", "IDP_INDICATOR.AnnualActualValue.READ", "IDP_INDICATOR.AnnualActualValue.UPDATE", "IDP_INDICATOR.AnnualProgressComment.READ", "IDP_INDICATOR.AnnualProgressComment.UPDATE", "IDP_PLAN.ImportClientRequestId.READ", "IDP_PLAN.ImportSourceFileName.READ", "IDP_PLAN.ImportSourceHash.READ", "IDP_PLAN.ImportActor.READ", "IDP_PLAN.ImportRowPayload.READ", "IDP_PLAN.ImportErrorDetail.READ"];
         mappings["IDP.Budget.View"] = ["IDP_PROJECT.READ", "IDP_PROJECT.BudgetSnapshotPlanned.READ", "IDP_PROJECT.BudgetSnapshotPlanned.UPDATE", "IDP_PROJECT.BudgetSnapshotApproved.READ", "IDP_PROJECT.BudgetSnapshotApproved.UPDATE", "IDP_PROJECT.BudgetSnapshotActual.READ", "IDP_PROJECT.BudgetSnapshotActual.UPDATE", "IDP_PROJECT.BudgetSnapshotSource.READ", "IDP_PROJECT.BudgetSnapshotSource.UPDATE"];

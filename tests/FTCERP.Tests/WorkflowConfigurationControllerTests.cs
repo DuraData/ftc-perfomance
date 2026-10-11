@@ -6,6 +6,72 @@ namespace FTCERP.Tests;
 public sealed class WorkflowConfigurationControllerTests
 {
     [Fact]
+    public async Task Action_comment_and_rating_require_scoped_member_updates_and_remain_independently_masked()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "WF-MEMBER", Name = "Workflow Member Municipality" };
+        var user = IdpTestFixture.CreateUser("workflow-actor");
+        var submitter = IdpTestFixture.CreateUser("different-submitter");
+        var financialYear = new FinancialYear { Code = "2036/37", Name = "2036/37", StartDate = new(2036, 7, 1), EndDate = new(2037, 6, 30) };
+        context.AddRange(municipality, user, submitter, financialYear);
+        await context.SaveChangesAsync();
+        user.MunicipalityId = municipality.Id;
+        submitter.MunicipalityId = municipality.Id;
+        var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, FinancialYear = financialYear, EffectiveFrom = financialYear.StartDate };
+        var target = new OpmsTarget { MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "WF-MEMBER-KPI", TargetName = "Workflow member target", KpiDescription = "Workflow member target", AnnualTargetDescription = "Target", PerformanceObjective = "Objective" };
+        var scheme = new RatingScheme { MunicipalityId = municipality.Id, Code = "WF-MEMBER-RATING", Name = "Workflow member rating" };
+        var ratingValue = new RatingSchemeValue { MunicipalityId = municipality.Id, RatingScheme = scheme, Value = 4, Label = "Achieved", SortOrder = 1 };
+        context.AddRange(year, target, scheme, ratingValue);
+        await context.SaveChangesAsync();
+        var period = new ReportingPeriod { MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = financialYear.StartDate, EndDate = financialYear.StartDate.AddMonths(3).AddDays(-1) };
+        var submission = new OpmsSubmission { MunicipalityId = municipality.Id, OpmsTargetId = target.Id, OpmsTarget = target, ReportingPeriod = period, Quarter = "Q1", BaseState = SubmissionBaseStates.Submitted, Status = "submitted", SubmittedByUserId = submitter.Id, SubmittedAt = DateTime.UtcNow };
+        var definition = new WorkflowDefinition { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, SubmissionKind = SubmissionKind.Opms, Code = "MEMBER", Name = "Member workflow", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        definition.Stages.Add(new WorkflowStageDefinition { MunicipalityId = municipality.Id, Code = "APPROVE", Name = "Approve", Sequence = 1, RequiredActionCode = "OPMS_SUBMISSION.APPROVE", RequiredPermissionCode = "OPMS_SUBMISSION.APPROVE", IsTerminal = true, RequiresRating = true, RatingScheme = scheme });
+        context.AddRange(period, submission, definition);
+        await context.SaveChangesAsync();
+
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.APPROVE" };
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(municipality.Id);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(grants.Contains(code) && scope?.MunicipalityId == municipality.Id, "test decision", [], [], []));
+        var controller = new WorkflowConfigurationController(
+            context, tenant.Object, access.Object, new ConfigurableWorkflowService(context), Mock.Of<IReportingWindowService>(),
+            new WorkflowGovernanceService(context), IdpTestFixture.CreateUserManagerMock(user).Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+        };
+        var request = new WorkflowActionRequest("OPMS_SUBMISSION.APPROVE", WorkflowActionOutcome.Approve, "Governed approval comment", 4);
+
+        (await controller.Act(SubmissionKind.Opms, submission.PublicId.ToString(), request)).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        context.SubmissionWorkflowActions.Should().BeEmpty();
+
+        grants.Add("OPMS_WORKFLOW.ActionComment.UPDATE");
+        (await controller.Act(SubmissionKind.Opms, submission.PublicId.ToString(), request)).Result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        context.SubmissionWorkflowActions.Should().BeEmpty();
+
+        grants.Add("OPMS_WORKFLOW.ActionRatingValue.UPDATE");
+        var allowed = (await controller.Act(SubmissionKind.Opms, submission.PublicId.ToString(), request)).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<WorkflowActionDto>>().Subject.Data!;
+        allowed.Comment.Should().BeNull();
+        allowed.RatingValue.Should().BeNull();
+        (await context.SubmissionWorkflowActions.CountAsync()).Should().Be(1);
+        (await context.SubmissionStageRatings.CountAsync()).Should().Be(1);
+
+        grants.UnionWith(["OPMS_SUBMISSION.READ", "OPMS_WORKFLOW.ActionComment.READ", "OPMS_WORKFLOW.ActionRatingValue.READ"]);
+        var history = (await controller.HistoryPage(SubmissionKind.Opms, submission.PublicId.ToString(),
+                new PagedQueryRequest { Search = "Governed approval comment", SortBy = "occurredAt" })).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<PagedResponse<WorkflowActionDto>>>().Subject.Data!;
+        history.Items.Should().ContainSingle(item => item.Comment == "Governed approval comment" && item.RatingValue == 4);
+    }
+
+    [Fact]
     public async Task CreateWindow_RequiresReasonAndWritesContextualAudit()
     {
         await using var context = IdpTestFixture.CreateContext();
@@ -206,6 +272,7 @@ public sealed class WorkflowConfigurationControllerTests
             grants.Add($"OPMS_RFI.{member}.READ");
         grants.Add("OPMS_RFI.Question.UPDATE");
         grants.Add("OPMS_RFI.Response.UPDATE");
+        grants.Add("OPMS_WORKFLOW.ActionComment.UPDATE");
         var visible = (await restricted.GetRfisPage(SubmissionKind.Opms, submission.PublicId.ToString(),
             new PagedQueryRequest { Search = "match-30", SortBy = "raisedAt" })).Result
             .Should().BeOfType<OkObjectResult>().Subject.Value

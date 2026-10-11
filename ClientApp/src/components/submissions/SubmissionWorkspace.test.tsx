@@ -116,10 +116,32 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.getByRole('button', { name: 'Verify' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Verify Reject' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Extend Due Date' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Workflow Comment')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Score')).not.toBeInTheDocument();
     for (const action of ['Submit', 'Approve', 'Reject', 'Review', 'Audit', 'Save Score'])
       expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
     expect(screen.queryByText('Escalate')).not.toBeInTheDocument();
     expect(screen.queryByText('Clear Review')).not.toBeInTheDocument();
+  });
+
+  it('submits workflow comments and ratings only when their exact member updates are granted', () => {
+    security.canExecute.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
+    const onWorkflowAction = vi.fn();
+    const submitted = { ...submission, status: 'submitted' } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={submitted} submissionType="OPMS" onWorkflowAction={onWorkflowAction} />);
+
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_WORKFLOW', 'ActionComment');
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_WORKFLOW', 'ActionRatingValue');
+    fireEvent.change(screen.getByLabelText('Workflow Comment'), { target: { value: 'Verified against evidence' } });
+    fireEvent.change(screen.getByLabelText('Score'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+
+    expect(onWorkflowAction).toHaveBeenCalledWith('verify', {
+      comment: 'Verified against evidence',
+      score: 4,
+    });
   });
 
   it('hides workflow actions after a configurable workflow reaches completion', () => {

@@ -266,11 +266,18 @@ function Field({
   type?: string;
   onChange?: (val: string) => void;
 }) {
+  const inputId = React.useId();
+
   return (
     <div className={wide ? 'md:col-span-3' : ''}>
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-secondary-500">{label}</p>
+      {editable ? (
+        <label htmlFor={inputId} className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-secondary-500">{label}</label>
+      ) : (
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-secondary-500">{label}</p>
+      )}
       {editable ? (
         <input
+          id={inputId}
           type={type}
           defaultValue={typeof value === 'string' || typeof value === 'number' ? value : ''}
           onChange={(e) => onChange?.(e.target.value)}
@@ -523,6 +530,9 @@ export function SubmissionWorkspace({
   const isConsolidationPeriod = currentSubmission.quarter === 'Mid-Year' || currentSubmission.quarter === 'Annual';
   const resourceCode = `${submissionType}_SUBMISSION`;
   const poeResourceCode = `${submissionType}_POE`;
+  const workflowResourceCode = `${submissionType}_WORKFLOW`;
+  const canEditWorkflowComment = security.canEditField(workflowResourceCode, 'ActionComment');
+  const canEditWorkflowRating = security.canEditField(workflowResourceCode, 'ActionRatingValue');
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
   const canReadSuggestionActor = security.canReadField(resourceCode, 'SuggestionActor');
   const canReadSuggestionReason = security.canReadField(resourceCode, 'SuggestionReason');
@@ -553,7 +563,8 @@ export function SubmissionWorkspace({
   const canAudit = currentSubmission.status === 'reviewed'
     && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
   const canScore = ['approved', 'reviewed'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`);
+    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`)
+    && canEditWorkflowRating;
   const canExtendDueDate = currentSubmission.status !== 'completed'
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`);
   const hasWorkflowAction = canSubmit || canVerify || canVerifyReject || canApprove || canReject || canReview || canAudit || canScore;
@@ -680,21 +691,11 @@ export function SubmissionWorkspace({
   };
 
   const triggerWorkflowAction = (action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score') => {
-    if (action === 'score') {
-      const parsedScore = Number(workflowScore);
-      if (Number.isNaN(parsedScore)) {
-        return;
-      }
-
-      onWorkflowAction?.(action, {
-        comment: workflowComment || undefined,
-        score: parsedScore,
-      });
-      return;
-    }
-
+    const parsedScore = canEditWorkflowRating && workflowScore.trim() !== '' ? Number(workflowScore) : undefined;
+    if (action === 'score' && (parsedScore === undefined || Number.isNaN(parsedScore))) return;
     onWorkflowAction?.(action, {
-      comment: workflowComment || undefined,
+      comment: canEditWorkflowComment ? workflowComment || undefined : undefined,
+      score: parsedScore !== undefined && !Number.isNaN(parsedScore) ? parsedScore : undefined,
     });
   };
 
@@ -1102,14 +1103,14 @@ export function SubmissionWorkspace({
       {!currentSubmission.isDisabled && ((onWorkflowAction && hasWorkflowAction) || (onExtendDueDate && canExtendDueDate)) && (
         <Section title="Workflow Actions" icon={<Check className="h-4 w-4" />}>
           <div className="grid gap-4 md:grid-cols-2">
-            {hasWorkflowAction && <Field
+            {hasWorkflowAction && canEditWorkflowComment && <Field
               label="Workflow Comment"
               value={workflowComment}
               editable
               onChange={setWorkflowComment}
               wide
             />}
-            {canScore && <Field
+            {hasWorkflowAction && canEditWorkflowRating && <Field
               label="Score"
               value={workflowScore}
               editable

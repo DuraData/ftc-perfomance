@@ -902,6 +902,8 @@ public class OpmsSubmissionsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_WORKFLOW.PMS_REVIEW", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));
+        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), request.Comment, request.Score);
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberDenial));
 
         _context.SubmissionScores.Add(new SubmissionScore
         {
@@ -981,6 +983,8 @@ public class OpmsSubmissionsController : ControllerBase
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));
+        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), request.Comment, request.Score);
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberDenial));
         if (string.Equals(permissionCode, "OPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(entity.ActualPerformance))
             return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Authoritative actual performance is required before submission."));
         var configurable = entity.ReportingPeriodId.HasValue && await HasConfiguredWorkflowAsync(entity.ReportingPeriodId.Value);
@@ -1296,6 +1300,21 @@ public class OpmsSubmissionsController : ControllerBase
         foreach (var memberCode in memberCodes)
         {
             var decision = await _accessControlService.CheckPermissionAsync(user, $"OPMS_POE.{memberCode}.UPDATE", scope);
+            if (!decision.Allowed) return decision.Reason;
+        }
+        return null;
+    }
+
+    private async Task<string?> WorkflowActionMemberPermissionDenialAsync(ApplicationUser user, AccessScopeContext scope, string? comment, decimal? rating)
+    {
+        if (!string.IsNullOrWhiteSpace(comment))
+        {
+            var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_WORKFLOW.ActionComment.UPDATE", scope);
+            if (!decision.Allowed) return decision.Reason;
+        }
+        if (rating.HasValue)
+        {
+            var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_WORKFLOW.ActionRatingValue.UPDATE", scope);
             if (!decision.Allowed) return decision.Reason;
         }
         return null;

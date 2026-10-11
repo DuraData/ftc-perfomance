@@ -414,6 +414,8 @@ public sealed class WorkflowConfigurationController(
         var scope = new AccessScopeContext(department, unit, owner, TargetId: submissionId, MunicipalityId: tenantContext.MunicipalityId);
         var permission = await accessControl.CheckPermissionAsync(user, request.ActionCode, scope);
         if (!permission.Allowed) return StatusCode(StatusCodes.Status403Forbidden, Fail<WorkflowActionDto>(permission.Reason));
+        var memberDenial = await WorkflowActionMemberDenialAsync(user, kind, scope, request.Comment, request.RatingValue);
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, Fail<WorkflowActionDto>(memberDenial));
         if (request.Outcome == WorkflowActionOutcome.Submit)
         {
             var window = await windows.CheckAsync(kind, periodId.Value, user.Id, department, unit, DateTime.UtcNow);
@@ -747,6 +749,7 @@ public sealed class WorkflowConfigurationController(
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
         var members = await ReadRfiMembersAsync(user, kind, access.Scope);
         if (!members.QuestionUpdate) return Forbid();
+        if (await WorkflowActionMemberDenialAsync(user, kind, access.Scope, request.Question, null) != null) return Forbid();
         var entity = new PerformanceRfi { MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = access.Instance.Id, SubmissionWorkflowInstance = access.Instance, Question = request.Question.Trim(), RaisedByUserId = user.Id, ResponseDueAt = request.ResponseDueAt };
         var evidenceError = await LinkEvidenceAsync(entity, kind, submissionId, RfiEvidencePurpose.Question, request.EvidencePublicIds, user.Id);
         if (evidenceError != null) return BadRequest(Fail<PerformanceRfiDto>(evidenceError));
@@ -774,6 +777,7 @@ public sealed class WorkflowConfigurationController(
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
         var members = await ReadRfiMembersAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope);
         if (!members.ResponseUpdate) return Forbid();
+        if (await WorkflowActionMemberDenialAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope, request.Response, null) != null) return Forbid();
         if (!TrySetRowVersion(rfi, request.RowVersion)) return BadRequest(Fail<PerformanceRfiDto>("A valid RowVersion is required."));
         var evidenceError = await LinkEvidenceAsync(rfi, rfi.SubmissionWorkflowInstance.SubmissionKind, rfi.SubmissionWorkflowInstance.SubmissionId, RfiEvidencePurpose.Response, request.EvidencePublicIds, user.Id);
         if (evidenceError != null) return BadRequest(Fail<PerformanceRfiDto>(evidenceError));
@@ -799,6 +803,7 @@ public sealed class WorkflowConfigurationController(
         var permissionCode = rfi.SubmissionWorkflowInstance.SubmissionKind == SubmissionKind.Opms ? "OPMS_RFI.CLOSE" : "IPMS_RFI.CLOSE";
         if (!(await accessControl.CheckPermissionAsync(user, permissionCode, access.Scope)).Allowed) return Forbid();
         var members = await ReadRfiMembersAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope);
+        if (await WorkflowActionMemberDenialAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope, request.Comment, null) != null) return Forbid();
         if (!TrySetRowVersion(rfi, request.RowVersion)) return BadRequest(Fail<PerformanceRfiDto>("A valid RowVersion is required."));
         rfi.ClosedByUserId = user.Id; rfi.ClosedAt = DateTime.UtcNow;
         AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.Complete, user.Id, request.Comment?.Trim());
@@ -920,6 +925,21 @@ public sealed class WorkflowConfigurationController(
             await Read("ActionActorUserId"), await Read("ActionComment"), await Read("ActionRatingValue"),
             await Read("StageRatingValue"), await Read("StageRatingAchievementPercent"), await Read("StageRatingComment"),
             await Read("StageRatingRatedByUserId"), await Read("StageRatingRatedByName"));
+    }
+    private async Task<string?> WorkflowActionMemberDenialAsync(ApplicationUser user, SubmissionKind kind, AccessScopeContext scope, string? comment, decimal? rating)
+    {
+        var resource = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW" : "IPMS_WORKFLOW";
+        if (!string.IsNullOrWhiteSpace(comment))
+        {
+            var decision = await accessControl.CheckPermissionAsync(user, $"{resource}.ActionComment.UPDATE", scope);
+            if (!decision.Allowed) return decision.Reason;
+        }
+        if (rating.HasValue)
+        {
+            var decision = await accessControl.CheckPermissionAsync(user, $"{resource}.ActionRatingValue.UPDATE", scope);
+            if (!decision.Allowed) return decision.Reason;
+        }
+        return null;
     }
     private static WorkflowActionDto ToDto(SubmissionWorkflowAction x, WorkflowMemberAccess members, ApplicationUser actor) => new(
         x.PublicId, x.Sequence, x.ActionCode, x.Outcome,

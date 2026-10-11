@@ -113,11 +113,11 @@ public sealed class UsersControllerSecurityTests
                 "StageRatingComment", "StageRatingRatedByName", "StageRatingRatedByUserId", "StageRatingValue",
                 "WindowExceptionApprovedBy", "WindowExceptionReason", "WindowExceptionScope");
             workflowMembers.Should().OnlyContain(item => item.IsSensitive);
-            workflowMembers.Where(item => item.MemberCode is not ("WindowExceptionReason" or "WindowExceptionScope"))
+            workflowMembers.Where(item => item.MemberCode is not ("ActionComment" or "ActionRatingValue" or "WindowExceptionReason" or "WindowExceptionScope"))
                 .Should().OnlyContain(item => item.IsSystemManaged);
-            workflowMembers.Where(item => item.MemberCode is "WindowExceptionReason" or "WindowExceptionScope")
+            workflowMembers.Where(item => item.MemberCode is "ActionComment" or "ActionRatingValue" or "WindowExceptionReason" or "WindowExceptionScope")
                 .Should().OnlyContain(item => !item.IsSystemManaged);
-            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(13);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(15);
             (await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity.Should().BeTrue();
         }
 
