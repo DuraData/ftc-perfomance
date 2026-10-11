@@ -895,6 +895,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         var entity = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot be scored."));
 
         if (string.Equals(SubmissionBaseStates.Normalize(entity.BaseState), SubmissionBaseStates.InProgress, StringComparison.OrdinalIgnoreCase))
@@ -909,6 +910,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         _context.SubmissionScores.Add(new SubmissionScore
         {
+            MunicipalityId = entity.MunicipalityId,
             SubmissionKind = SubmissionKind.Opms,
             SubmissionId = id,
             Score = request.Score.Value,
@@ -933,6 +935,7 @@ public class OpmsSubmissionsController : ControllerBase
 
         var entity = await _context.OpmsSubmissions.Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot receive a due-date extension."));
 
         var currentStatus = NormalizeStatus(entity.Status);
@@ -969,6 +972,7 @@ public class OpmsSubmissionsController : ControllerBase
         entity.UpdatedOn = DateTime.UtcNow;
         _context.DueDateExtensions.Add(new DueDateExtension
         {
+            MunicipalityId = entity.MunicipalityId,
             SubmissionKind = SubmissionKind.Opms,
             SubmissionId = id,
             OriginalDueDate = previousDueDate,
@@ -1005,6 +1009,7 @@ public class OpmsSubmissionsController : ControllerBase
             .Include(item => item.SubmittedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot transition workflow."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
@@ -1094,6 +1099,7 @@ public class OpmsSubmissionsController : ControllerBase
         {
             _context.ReviewComments.Add(new ReviewComment
             {
+                MunicipalityId = entity.MunicipalityId,
                 SubmissionKind = SubmissionKind.Opms,
                 SubmissionId = id,
                 Comment = request.Comment,

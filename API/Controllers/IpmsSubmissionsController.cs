@@ -895,6 +895,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot be scored."));
 
         if (string.Equals(SubmissionBaseStates.Normalize(entity.BaseState), SubmissionBaseStates.InProgress, StringComparison.OrdinalIgnoreCase))
@@ -909,6 +910,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         _context.SubmissionScores.Add(new SubmissionScore
         {
+            MunicipalityId = entity.MunicipalityId,
             SubmissionKind = SubmissionKind.Ipms,
             SubmissionId = id,
             Score = request.Score.Value,
@@ -933,6 +935,7 @@ public class IpmsSubmissionsController : ControllerBase
 
         var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot receive a due-date extension."));
 
         var currentStatus = NormalizeStatus(entity.Status);
@@ -969,6 +972,7 @@ public class IpmsSubmissionsController : ControllerBase
         entity.UpdatedOn = DateTime.UtcNow;
         _context.DueDateExtensions.Add(new DueDateExtension
         {
+            MunicipalityId = entity.MunicipalityId,
             SubmissionKind = SubmissionKind.Ipms,
             SubmissionId = id,
             OriginalDueDate = previousDueDate,
@@ -1005,6 +1009,7 @@ public class IpmsSubmissionsController : ControllerBase
             .Include(item => item.SubmittedByUser)
             .FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
+        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot transition workflow."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
@@ -1094,6 +1099,7 @@ public class IpmsSubmissionsController : ControllerBase
         {
             _context.ReviewComments.Add(new ReviewComment
             {
+                MunicipalityId = entity.MunicipalityId,
                 SubmissionKind = SubmissionKind.Ipms,
                 SubmissionId = id,
                 Comment = request.Comment,

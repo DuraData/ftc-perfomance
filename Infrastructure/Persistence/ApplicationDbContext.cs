@@ -435,6 +435,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IpmsTarget>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<OpmsSubmission>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<IpmsSubmission>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<DueDateExtension>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<ReviewComment>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<AuditFinding>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<SubmissionScore>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<MunicipalEmployee>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<EmployeeAssignment>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<MunicipalityFinancialYear>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -1169,28 +1173,52 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IdpTaskAssignment>().HasQueryFilter(item => TenantFilterBypass || item.IdpPlan.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<DueDateExtension>()
+            .HasOne(item => item.Municipality)
+            .WithMany()
+            .HasForeignKey(item => item.MunicipalityId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<DueDateExtension>()
             .HasOne(item => item.ApprovedByUser)
             .WithMany()
             .HasForeignKey(item => item.ApprovedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<DueDateExtension>().HasIndex(item => new { item.MunicipalityId, item.SubmissionKind, item.SubmissionId });
 
+        builder.Entity<ReviewComment>()
+            .HasOne(item => item.Municipality)
+            .WithMany()
+            .HasForeignKey(item => item.MunicipalityId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<ReviewComment>()
             .HasOne(comment => comment.CommentedByUser)
             .WithMany()
             .HasForeignKey(comment => comment.CommentedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<ReviewComment>().HasIndex(item => new { item.MunicipalityId, item.SubmissionKind, item.SubmissionId });
 
+        builder.Entity<AuditFinding>()
+            .HasOne(item => item.Municipality)
+            .WithMany()
+            .HasForeignKey(item => item.MunicipalityId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuditFinding>()
             .HasOne(finding => finding.CreatedByUser)
             .WithMany()
             .HasForeignKey(finding => finding.CreatedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<AuditFinding>().HasIndex(item => new { item.MunicipalityId, item.SubmissionKind, item.SubmissionId });
 
+        builder.Entity<SubmissionScore>()
+            .HasOne(item => item.Municipality)
+            .WithMany()
+            .HasForeignKey(item => item.MunicipalityId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SubmissionScore>()
             .HasOne(score => score.ScoredByUser)
             .WithMany()
             .HasForeignKey(score => score.ScoredByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<SubmissionScore>().HasIndex(item => new { item.MunicipalityId, item.SubmissionKind, item.SubmissionId });
 
         builder.Entity<Period>()
             .HasIndex(p => p.Code)
@@ -2099,6 +2127,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         var protectedTypes = new HashSet<Type>
         {
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
+            typeof(DueDateExtension), typeof(ReviewComment), typeof(AuditFinding), typeof(SubmissionScore),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)

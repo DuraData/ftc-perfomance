@@ -647,6 +647,7 @@ public class NotificationDeliveryAttempt
 public class DueDateExtension
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public long? MunicipalityId { get; set; }
     public SubmissionKind SubmissionKind { get; set; }
     public string SubmissionId { get; set; } = string.Empty;
     public DateTime OriginalDueDate { get; set; }
@@ -655,24 +656,28 @@ public class DueDateExtension
     public string ApprovedByUserId { get; set; } = string.Empty;
     public DateTime ApprovedAt { get; set; } = DateTime.UtcNow;
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser ApprovedByUser { get; set; } = null!;
 }
 
 public class ReviewComment
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public long? MunicipalityId { get; set; }
     public SubmissionKind SubmissionKind { get; set; }
     public string SubmissionId { get; set; } = string.Empty;
     public string Comment { get; set; } = string.Empty;
     public string CommentedByUserId { get; set; } = string.Empty;
     public DateTime CommentedAt { get; set; } = DateTime.UtcNow;
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser CommentedByUser { get; set; } = null!;
 }
 
 public class AuditFinding
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public long? MunicipalityId { get; set; }
     public SubmissionKind SubmissionKind { get; set; }
     public string SubmissionId { get; set; } = string.Empty;
     public string Finding { get; set; } = string.Empty;
@@ -680,12 +685,14 @@ public class AuditFinding
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser CreatedByUser { get; set; } = null!;
 }
 
 public class SubmissionScore
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public long? MunicipalityId { get; set; }
     public SubmissionKind SubmissionKind { get; set; }
     public string SubmissionId { get; set; } = string.Empty;
     public decimal Score { get; set; }
@@ -693,5 +700,6 @@ public class SubmissionScore
     public string ScoredByUserId { get; set; } = string.Empty;
     public DateTime ScoredAt { get; set; } = DateTime.UtcNow;
 
+    public Municipality? Municipality { get; set; }
     public ApplicationUser ScoredByUser { get; set; } = null!;
 }

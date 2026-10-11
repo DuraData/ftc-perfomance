@@ -241,12 +241,15 @@ namespace FTCERP.Host.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Recommendation")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("SubmissionId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("SubmissionKind")
                         .HasColumnType("int");
@@ -254,6 +257,8 @@ namespace FTCERP.Host.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("MunicipalityId", "SubmissionKind", "SubmissionId");
 
                     b.ToTable("AuditFindings");
                 });
@@ -1927,6 +1932,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<DateTime>("ExtendedDueDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("OriginalDueDate")
                         .HasColumnType("datetime2");
 
@@ -1936,7 +1944,7 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<string>("SubmissionId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("SubmissionKind")
                         .HasColumnType("int");
@@ -1944,6 +1952,8 @@ namespace FTCERP.Host.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ApprovedByUserId");
+
+                    b.HasIndex("MunicipalityId", "SubmissionKind", "SubmissionId");
 
                     b.ToTable("DueDateExtensions");
                 });
@@ -9898,12 +9908,15 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("IpmsSubmissionId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("OpmsSubmissionId")
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("SubmissionId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("SubmissionKind")
                         .HasColumnType("int");
@@ -9915,6 +9928,8 @@ namespace FTCERP.Host.Migrations
                     b.HasIndex("IpmsSubmissionId");
 
                     b.HasIndex("OpmsSubmissionId");
+
+                    b.HasIndex("MunicipalityId", "SubmissionKind", "SubmissionId");
 
                     b.ToTable("ReviewComments");
                 });
@@ -11069,6 +11084,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<string>("IpmsSubmissionId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<long?>("MunicipalityId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
@@ -11088,7 +11106,7 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<string>("SubmissionId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("SubmissionKind")
                         .HasColumnType("int");
@@ -11100,6 +11118,8 @@ namespace FTCERP.Host.Migrations
                     b.HasIndex("OpmsSubmissionId");
 
                     b.HasIndex("ScoredByUserId");
+
+                    b.HasIndex("MunicipalityId", "SubmissionKind", "SubmissionId");
 
                     b.ToTable("SubmissionScores");
                 });
@@ -12317,7 +12337,14 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("CreatedByUser");
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.AuditTrail", b =>
@@ -12997,7 +13024,14 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("ApprovedByUser");
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.EmployeeAssignment", b =>
@@ -15726,11 +15760,18 @@ namespace FTCERP.Host.Migrations
                         .WithMany("ReviewComments")
                         .HasForeignKey("IpmsSubmissionId");
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.OpmsSubmission", null)
                         .WithMany("ReviewComments")
                         .HasForeignKey("OpmsSubmissionId");
 
                     b.Navigation("CommentedByUser");
+
+                    b.Navigation("Municipality");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.RolePermission", b =>
@@ -16166,6 +16207,11 @@ namespace FTCERP.Host.Migrations
                         .WithMany("Scores")
                         .HasForeignKey("IpmsSubmissionId");
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.OpmsSubmission", null)
                         .WithMany("Scores")
                         .HasForeignKey("OpmsSubmissionId");
@@ -16175,6 +16221,8 @@ namespace FTCERP.Host.Migrations
                         .HasForeignKey("ScoredByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Municipality");
 
                     b.Navigation("ScoredByUser");
                 });

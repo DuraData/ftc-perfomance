@@ -103,7 +103,8 @@ public sealed class GovernedWithdrawalTests
         var extensions = await context.DueDateExtensions.OrderBy(item => item.SubmissionKind).ToArrayAsync();
         extensions.Should().HaveCount(2);
         extensions.Should().OnlyContain(item => item.OriginalDueDate == originalDueDate
-            && item.ExtendedDueDate == requestedDate && item.ApprovedByUserId == user.Id);
+            && item.ExtendedDueDate == requestedDate && item.ApprovedByUserId == user.Id
+            && item.MunicipalityId == municipality.Id);
         extensions.Select(item => item.Reason).Should().BeEquivalentTo("Protected OPMS reason", "Protected IPMS reason");
         opmsSubmission.DueDateExtendedDays.Should().Be(5);
         ipmsSubmission.DueDateExtendedDays.Should().Be(5);
