@@ -157,6 +157,9 @@ public sealed class LegacySecurityEndpointRetirementTests
                 .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
                 .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
         }
+        Assert.True(typeof(NavigationController).GetMethod(nameof(NavigationController.GetLegacyMyMenu))!
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
 
         foreach (var controllerType in new[] { typeof(OpmsTargetLibraryController), typeof(IpmsTargetLibraryController) })
         {
@@ -227,7 +230,7 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
                      "/api/opms-targets", "/api/ipms-targets", "/api/opms-submissions", "/api/ipms-submissions",
                      "/api/opms-target-library", "/api/ipms-target-library", "/api/notifications",
-                     "/api/Auth/register", "/api/v1/access/system-coverage-audit",
+                     "/api/Auth/register", "/api/navigation/my-menu", "/api/v1/access/system-coverage-audit",
                      "/api/role-implementation-audit"
                  })
         {
@@ -236,7 +239,7 @@ public sealed class LegacySecurityEndpointRetirementTests
 
         foreach (var publicPath in new[]
                  {
-                     "/api/v1/security/roles/{rolePublicId}", "/api/v1/idp/plans/{planPublicId}",
+                     "/api/v1/security/roles/{rolePublicId}", "/api/v1/navigation/my-menu", "/api/v1/idp/plans/{planPublicId}",
                      "/api/v1/idp/community-sessions", "/api/v1/idp/community-needs", "/api/v1/idp/ward-inputs",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
                      "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",

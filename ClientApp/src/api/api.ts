@@ -1283,7 +1283,7 @@ export function isAuthenticated() {
 export { clearTokens };
 
 export async function getMyMenu(): Promise<ApiResponse<MenuItem[]>> {
-  return get<MenuItem[]>('/navigation/my-menu');
+  return get<MenuItem[]>('/v1/navigation/my-menu');
 }
 
 export async function getMyPermissions(): Promise<ApiResponse<string[]>> {

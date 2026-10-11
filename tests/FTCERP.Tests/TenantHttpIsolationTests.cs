@@ -140,7 +140,11 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     [Fact]
     public async Task DynamicRoleChange_HidesNavigationAndRevokesDirectHttpReadWithoutRestart()
     {
-        var initialMenu = await _client.GetAsync("/api/navigation/my-menu");
+        var legacyMenu = await _client.GetAsync("/api/navigation/my-menu");
+        legacyMenu.StatusCode.Should().Be(HttpStatusCode.Gone);
+        (await legacyMenu.Content.ReadAsStringAsync()).Should().Contain("/api/v1/navigation/my-menu");
+
+        var initialMenu = await _client.GetAsync("/api/v1/navigation/my-menu");
         initialMenu.StatusCode.Should().Be(HttpStatusCode.OK);
         (await initialMenu.Content.ReadAsStringAsync()).Should().Contain("NAV.HTTP.OPMS");
 
@@ -150,7 +154,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
 
         await SetRolePermissionAsync(isAllowed: false);
 
-        var deniedMenu = await _client.GetAsync("/api/navigation/my-menu");
+        var deniedMenu = await _client.GetAsync("/api/v1/navigation/my-menu");
         deniedMenu.StatusCode.Should().Be(HttpStatusCode.OK);
         (await deniedMenu.Content.ReadAsStringAsync()).Should().NotContain("NAV.HTTP.OPMS");
 
@@ -170,7 +174,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
 
         await SetRolePermissionAsync(isAllowed: true);
 
-        var restoredMenu = await _client.GetAsync("/api/navigation/my-menu");
+        var restoredMenu = await _client.GetAsync("/api/v1/navigation/my-menu");
         restoredMenu.StatusCode.Should().Be(HttpStatusCode.OK);
         (await restoredMenu.Content.ReadAsStringAsync()).Should().Contain("NAV.HTTP.OPMS");
 

@@ -8,9 +8,19 @@ import { archiveIpmsTargetTemplate, archiveOpmsTargetTemplate } from './api';
 import { saveSecurityUserRoles } from './api';
 import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
 import { createIdpCommunitySession, createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
+import { getMyMenu } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('loads the authorized navigation tree only through the versioned contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getMyMenu();
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/navigation/my-menu'), expect.objectContaining({ credentials: 'include' }));
+  });
 
   it('uses a stable public notification identity for read acknowledgement', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
