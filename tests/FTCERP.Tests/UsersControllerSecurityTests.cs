@@ -327,9 +327,10 @@ public sealed class UsersControllerSecurityTests
 
         var idpIndicatorMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_INDICATOR").OrderBy(item => item.MemberCode).ToArrayAsync();
-        idpIndicatorMembers.Select(item => item.MemberCode).Should().Equal("AnnualActualValue", "AnnualProgressComment", "AnnualTargetValue");
+        idpIndicatorMembers.Select(item => item.MemberCode).Should().Equal(
+            "AnnualActualValue", "AnnualProgressComment", "AnnualTargetValue", "FiveYearTargetValue");
         idpIndicatorMembers.Should().OnlyContain(item => item.IsSensitive && !item.IsSystemManaged);
-        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_INDICATOR" && item.MemberCode != null)).Should().Be(6);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_INDICATOR" && item.MemberCode != null)).Should().Be(8);
 
         var idpProjectMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "IDP_PROJECT").OrderBy(item => item.MemberCode).ToArrayAsync();

@@ -325,7 +325,9 @@ public class IdpImportControllerTests
             Guid.NewGuid(), "protected-kpi.csv", [Row(2, setup.Project.ProjectCode, "CHANGE-1", "Existing KPI", 99)])));
         var kpiRow = kpiBatch.Rows.Single();
         ReadJson(kpiRow.NormalizedJson!).GetProperty("annualTarget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        ReadJson(kpiRow.NormalizedJson!).GetProperty("fiveYearTarget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
         ReadJson(kpiRow.ExistingValueJson!).GetProperty("annualTarget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        ReadJson(kpiRow.ExistingValueJson!).GetProperty("fiveYearTarget").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
 
         var hierarchyBatch = Payload(await controller.StageHierarchy(setup.Plan.PublicId, new StageIdpHierarchyImportRequest(
             Guid.NewGuid(), "protected-hierarchy.csv", [HierarchyRow(2, "PROJECT-PROTECTED", "Protected project")])));
@@ -339,6 +341,7 @@ public class IdpImportControllerTests
 
         allowed.UnionWith([
             "IDP_INDICATOR.AnnualTargetValue.READ",
+            "IDP_INDICATOR.FiveYearTargetValue.READ",
             "IDP_PLAN.ObjectiveBudgetAllocation.READ",
             "IDP_PROJECT.ProgrammePlannedBudget.READ",
             "IDP_PROJECT.ProgrammeApprovedBudget.READ",
@@ -349,7 +352,9 @@ public class IdpImportControllerTests
 
         var visibleKpi = Payload(await controller.GetBatch(kpiBatch.PublicId)).Rows.Single();
         ReadJson(visibleKpi.NormalizedJson!).GetProperty("annualTarget").GetDecimal().Should().Be(99);
+        ReadJson(visibleKpi.NormalizedJson!).GetProperty("fiveYearTarget").GetDecimal().Should().Be(50);
         ReadJson(visibleKpi.ExistingValueJson!).GetProperty("annualTarget").GetDecimal().Should().Be(10);
+        ReadJson(visibleKpi.ExistingValueJson!).GetProperty("fiveYearTarget").GetDecimal().Should().Be(50);
         var visibleHierarchy = ReadJson(Payload(await controller.GetBatch(hierarchyBatch.PublicId)).Rows.Single().NormalizedJson!);
         visibleHierarchy.GetProperty("objective").GetProperty("budget").GetDecimal().Should().Be(1000000);
         visibleHierarchy.GetProperty("programme").GetProperty("plannedBudget").GetDecimal().Should().Be(900000);
@@ -365,17 +370,22 @@ public class IdpImportControllerTests
         var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>(),
             AccessControl(setup.User, allowed));
         var staged = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
-            Guid.NewGuid(), "annual-target.csv", [Row(2, setup.Project.ProjectCode, "CHANGE-1", "Existing KPI", 77)])));
+            Guid.NewGuid(), "target-values.csv", [Row(2, setup.Project.ProjectCode, "CHANGE-1", "Existing KPI", 77, 88)])));
 
         var denied = await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Protected change"));
         denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         (await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1")).AnnualTarget.Should().Be(10);
+        (await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1")).FiveYearTarget.Should().Be(50);
         (await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId)).Status.Should().Be(IdpImportBatchStatus.Staged);
 
         allowed.Add("IDP_INDICATOR.AnnualTargetValue.UPDATE");
+        (await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Annual target only"))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        allowed.Add("IDP_INDICATOR.FiveYearTargetValue.UPDATE");
         Payload(await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Approved protected change")))
             .Status.Should().Be(IdpImportBatchStatus.Committed.ToString());
         (await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1")).AnnualTarget.Should().Be(77);
+        (await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1")).FiveYearTarget.Should().Be(88);
     }
 
     [Fact]
@@ -546,7 +556,8 @@ public class IdpImportControllerTests
         string projectCode,
         string kpiCode,
         string name,
-        decimal annualTarget = 10) => new(
+        decimal annualTarget = 10,
+        decimal fiveYearTarget = 50) => new(
             sourceRow,
             projectCode,
             kpiCode,
@@ -555,7 +566,7 @@ public class IdpImportControllerTests
             "Actual / Target",
             1,
             annualTarget,
-            50,
+            fiveYearTarget,
             null,
             "System",
             "Quarterly",

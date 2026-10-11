@@ -3163,7 +3163,7 @@ export interface IdpKpi {
   formula: string;
   baseline: number;
   annualTarget?: number | null;
-  fiveYearTarget: number;
+  fiveYearTarget?: number | null;
   responsibleDepartmentPublicId?: string | null;
   responsibleDepartmentName?: string | null;
   dataSource: string;

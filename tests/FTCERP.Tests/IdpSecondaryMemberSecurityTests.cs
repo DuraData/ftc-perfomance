@@ -63,8 +63,12 @@ public class IdpSecondaryMemberSecurityTests
         (await controller.CreateKpi(kpiRequest)).Result.Should().BeOfType<ForbidResult>();
         (await context.IdpKpis.CountAsync()).Should().Be(1);
         allowed.Add("IDP_INDICATOR.AnnualTargetValue.UPDATE");
+        (await controller.CreateKpi(kpiRequest)).Result.Should().BeOfType<ForbidResult>();
+        (await context.IdpKpis.CountAsync()).Should().Be(1);
+        allowed.Add("IDP_INDICATOR.FiveYearTargetValue.UPDATE");
         var maskedKpi = Extract<IdpKpiResponse>((await controller.CreateKpi(kpiRequest)).Result!);
         maskedKpi.AnnualTarget.Should().BeNull();
+        maskedKpi.FiveYearTarget.Should().BeNull();
         (await context.IdpKpis.SingleAsync(item => item.PublicId == maskedKpi.PublicId)).AnnualTarget.Should().Be(123);
         observed.Should().Contain(item => item.Code == "IDP_INDICATOR.AnnualTargetValue.UPDATE"
             && item.Scope!.TargetId == graph.Plan.PublicId.ToString()
@@ -76,7 +80,18 @@ public class IdpSecondaryMemberSecurityTests
             AnnualTarget = 456
         })).Result!);
         visibleKpi.AnnualTarget.Should().Be(456);
+        visibleKpi.FiveYearTarget.Should().BeNull();
+        allowed.Add("IDP_INDICATOR.FiveYearTargetValue.READ");
+        var fullyVisibleKpi = Extract<IdpKpiResponse>((await controller.CreateKpi(kpiRequest with
+        {
+            KpiCode = "KPI-PROTECTED-3",
+            AnnualTarget = 789,
+            FiveYearTarget = 999
+        })).Result!);
+        fullyVisibleKpi.AnnualTarget.Should().Be(789);
+        fullyVisibleKpi.FiveYearTarget.Should().Be(999);
         allowed.Remove("IDP_INDICATOR.AnnualTargetValue.READ");
+        allowed.Remove("IDP_INDICATOR.FiveYearTargetValue.READ");
 
         var annualRequest = new CreateIdpAnnualTargetRequest(graph.Kpi.PublicId, 2026, 100, 75, "protected annual progress");
         (await controller.CreateAnnualTarget(annualRequest)).Result.Should().BeOfType<ForbidResult>();

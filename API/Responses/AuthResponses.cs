@@ -762,7 +762,7 @@ public record IdpKpiResponse(
     string Formula,
     decimal Baseline,
     decimal? AnnualTarget,
-    decimal FiveYearTarget,
+    decimal? FiveYearTarget,
     Guid? ResponsibleDepartmentPublicId,
     string? ResponsibleDepartmentName,
     string DataSource,

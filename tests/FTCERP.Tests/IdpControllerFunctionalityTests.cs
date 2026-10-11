@@ -1087,6 +1087,25 @@ public class IdpControllerFunctionalityTests
             xml.Should().NotContain(">1250000.00<").And.NotContain(">250<");
         }
 
+        var annualOnlyAccess = new Mock<IAccessControlService>();
+        annualOnlyAccess.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+                new AccessDecisionResult(code == "IDP_INDICATOR.AnnualTargetValue.READ", "test", [], [], []));
+        var annualOnlyController = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id,
+            accessControl: annualOnlyAccess.Object);
+        var annualDocument = ((await annualOnlyController.GenerateReportByPublicId(plan.PublicId, "annual", "excel")).Result as OkObjectResult)!
+            .Value.Should().BeOfType<ApiResponse<IdpReportDocumentResponse>>().Subject.Data!;
+        var fiveYearDocument = ((await annualOnlyController.GenerateReportByPublicId(plan.PublicId, "five-year", "excel")).Result as OkObjectResult)!
+            .Value.Should().BeOfType<ApiResponse<IdpReportDocumentResponse>>().Subject.Data!;
+        using (var annualArchive = new System.IO.Compression.ZipArchive(
+            new MemoryStream(Convert.FromBase64String(annualDocument.ContentBase64)), System.IO.Compression.ZipArchiveMode.Read))
+        using (var annualReader = new StreamReader(annualArchive.GetEntry("xl/worksheets/sheet1.xml")!.Open()))
+            (await annualReader.ReadToEndAsync()).Should().Contain(">250<");
+        using (var fiveYearArchive = new System.IO.Compression.ZipArchive(
+            new MemoryStream(Convert.FromBase64String(fiveYearDocument.ContentBase64)), System.IO.Compression.ZipArchiveMode.Read))
+        using (var fiveYearReader = new StreamReader(fiveYearArchive.GetEntry("xl/worksheets/sheet1.xml")!.Open()))
+            (await fiveYearReader.ReadToEndAsync()).Should().NotContain(">1250<");
+
         (await controller.GenerateReportByPublicId(plan.PublicId, "unsupported", "pdf")).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GenerateReportByPublicId(plan.PublicId, "annual", "txt")).Result.Should().BeOfType<BadRequestObjectResult>();
     }

@@ -782,8 +782,10 @@ public class IdpController : ControllerBase
 
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IdpReportDocumentResponse>(false, null, "User not found"));
-        var canReadTarget = await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualTargetValue", SecurityOperation.Read, Scope());
-        var canReadBudget = await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectBudget", SecurityOperation.Read, Scope());
+        var planScope = new AccessScopeContext(TargetId: plan.PublicId.ToString(), MunicipalityId: plan.MunicipalityId);
+        var targetMember = normalizedReportType == "five-year" ? "FiveYearTargetValue" : "AnnualTargetValue";
+        var canReadTarget = await CanAccessMemberAsync(user, "IDP_INDICATOR", targetMember, SecurityOperation.Read, planScope);
+        var canReadBudget = await CanAccessMemberAsync(user, "IDP_PROJECT", "ProjectBudget", SecurityOperation.Read, planScope);
         var columns = new[]
         {
             new TabularDocumentColumn("outcome", "Strategic Outcome"),
@@ -1167,7 +1169,7 @@ public class IdpController : ControllerBase
             ProjectId: project.PublicId.ToString(),
             TargetId: plan.PublicId.ToString(),
             MunicipalityId: plan.MunicipalityId);
-        if (await MemberUpdateDenialAsync(user, "IDP_INDICATOR", kpiScope, ["AnnualTargetValue"]) is not null)
+        if (await MemberUpdateDenialAsync(user, "IDP_INDICATOR", kpiScope, ["AnnualTargetValue", "FiveYearTargetValue"]) is not null)
             return Forbid();
 
         var input = new IdpKpiDefinitionInput(
@@ -1188,7 +1190,9 @@ public class IdpController : ControllerBase
         await WriteIdpAudit(user.Id, "IdpKpi", entity.PublicId.ToString(), "Create", null, ToKpiResponse(entity, project.PublicId, true));
         kpiScope = kpiScope with { KpiId = entity.PublicId.ToString() };
         var canReadAnnualTarget = await CanAccessMemberAsync(user, "IDP_INDICATOR", "AnnualTargetValue", SecurityOperation.Read, kpiScope);
-        return Ok(new ApiResponse<IdpKpiResponse>(true, ToKpiResponse(entity, project.PublicId, canReadAnnualTarget)));
+        var canReadFiveYearTarget = await CanAccessMemberAsync(user, "IDP_INDICATOR", "FiveYearTargetValue", SecurityOperation.Read, kpiScope);
+        return Ok(new ApiResponse<IdpKpiResponse>(true,
+            ToKpiResponse(entity, project.PublicId, canReadAnnualTarget, canReadFiveYearTarget)));
     }
 
     [HttpPost("~/api/v1/idp/annual-targets")]
@@ -2308,7 +2312,11 @@ public class IdpController : ControllerBase
             project.CommunityNeedReference,
             Convert.ToBase64String(project.RowVersion));
 
-    private static IdpKpiResponse ToKpiResponse(IdpKpi kpi, Guid projectPublicId, bool includeAnnualTarget) =>
+    private static IdpKpiResponse ToKpiResponse(
+        IdpKpi kpi,
+        Guid projectPublicId,
+        bool includeAnnualTarget,
+        bool includeFiveYearTarget = true) =>
         new(
             kpi.PublicId,
             projectPublicId,
@@ -2318,7 +2326,7 @@ public class IdpController : ControllerBase
             kpi.Formula,
             kpi.Baseline,
             includeAnnualTarget ? kpi.AnnualTarget : null,
-            kpi.FiveYearTarget,
+            includeFiveYearTarget ? kpi.FiveYearTarget : null,
             kpi.ResponsibleDepartment?.PublicId,
             kpi.ResponsibleDepartment?.Name,
             kpi.DataSource,

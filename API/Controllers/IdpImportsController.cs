@@ -844,7 +844,7 @@ public class IdpImportsController(
             await Read("IDP_PLAN", "ImportClientRequestId"), await Read("IDP_PLAN", "ImportSourceFileName"),
             await Read("IDP_PLAN", "ImportSourceHash"), await Read("IDP_PLAN", "ImportActor"),
             await Read("IDP_PLAN", "ImportRowPayload"), await Read("IDP_PLAN", "ImportErrorDetail"),
-            await Read("IDP_INDICATOR", "AnnualTargetValue"),
+            await Read("IDP_INDICATOR", "AnnualTargetValue"), await Read("IDP_INDICATOR", "FiveYearTargetValue"),
             await Read("IDP_PLAN", "ObjectiveBudgetAllocation"),
             await Read("IDP_PROJECT", "ProgrammePlannedBudget"), await Read("IDP_PROJECT", "ProgrammeApprovedBudget"),
             await Read("IDP_PROJECT", "ProgrammeActualExpenditure"), await Read("IDP_PROJECT", "ProjectBudget"),
@@ -856,13 +856,19 @@ public class IdpImportsController(
         IdpPlan plan,
         IEnumerable<ImportCandidate> candidates)
     {
-        foreach (var candidate in candidates.Where(item => item.Row.Status is (IdpImportRowStatus.New or IdpImportRowStatus.Changed)
-            && (item.Existing == null || item.Existing.AnnualTarget != item.Definition!.AnnualTarget)))
+        foreach (var candidate in candidates.Where(item => item.Row.Status is IdpImportRowStatus.New or IdpImportRowStatus.Changed))
         {
             var scope = new AccessScopeContext(candidate.Definition!.ResponsibleDepartmentId, ProjectId: candidate.ProjectPublicId.ToString(),
                 KpiId: candidate.Existing?.PublicId.ToString(), TargetId: plan.PublicId.ToString(), MunicipalityId: plan.MunicipalityId);
-            var decision = await accessControlService.CheckPermissionAsync(user, "IDP_INDICATOR.AnnualTargetValue.UPDATE", scope);
-            if (!decision.Allowed) return "Importing an IDP KPI annual target requires AnnualTargetValue UPDATE permission in every affected KPI scope.";
+            var permissions = new List<string>();
+            if (candidate.Existing == null || candidate.Existing.AnnualTarget != candidate.Definition.AnnualTarget)
+                permissions.Add("IDP_INDICATOR.AnnualTargetValue.UPDATE");
+            if (candidate.Existing == null || candidate.Existing.FiveYearTarget != candidate.Definition.FiveYearTarget)
+                permissions.Add("IDP_INDICATOR.FiveYearTargetValue.UPDATE");
+            if (permissions.Count == 0) continue;
+            var decisions = await accessControlService.CheckPermissionsAsync(user, permissions, scope);
+            if (decisions.Values.Any(item => !item.Allowed))
+                return "Importing IDP KPI target values requires the corresponding annual and five-year target UPDATE permissions in every affected KPI scope.";
         }
         return null;
     }
@@ -922,6 +928,7 @@ public class IdpImportsController(
             if (string.Equals(importType, "KPI", StringComparison.OrdinalIgnoreCase))
             {
                 if (!access.AnnualTargetValue) root["annualTarget"] = null;
+                if (!access.FiveYearTargetValue) root["fiveYearTarget"] = null;
             }
             else if (string.Equals(importType, "HIERARCHY", StringComparison.OrdinalIgnoreCase))
             {
@@ -950,6 +957,8 @@ public class IdpImportsController(
     {
         if (string.Equals(importType, "KPI", StringComparison.OrdinalIgnoreCase)
             && row.ErrorField == nameof(IdpKpiImportRowRequest.AnnualTarget) && !access.AnnualTargetValue) return null;
+        if (string.Equals(importType, "KPI", StringComparison.OrdinalIgnoreCase)
+            && row.ErrorField == nameof(IdpKpiImportRowRequest.FiveYearTarget) && !access.FiveYearTargetValue) return null;
         if (!string.Equals(importType, "HIERARCHY", StringComparison.OrdinalIgnoreCase)) return row.SuppliedValue;
         return row.ErrorField switch
         {
@@ -973,6 +982,7 @@ public class IdpImportsController(
         bool RowPayload,
         bool ErrorDetail,
         bool AnnualTargetValue,
+        bool FiveYearTargetValue,
         bool ObjectiveBudgetAllocation,
         bool ProgrammePlannedBudget,
         bool ProgrammeApprovedBudget,
