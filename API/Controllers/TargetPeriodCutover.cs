@@ -87,6 +87,40 @@ internal static class TargetPeriodCutover
         if (municipalityYear == null)
             return TargetPeriodPlan.Invalid($"No active municipality financial year matches '{legacyPeriod.FiscalYear}'. Configure the governed financial-year master before saving targets.");
 
+        return await BuildPlanForYearAsync(context, unitEngine, municipalityYear, values);
+    }
+
+    public static async Task<TargetPeriodPlan> BuildPlanAsync(
+        ApplicationDbContext context,
+        IPerformanceUnitEngine unitEngine,
+        long? municipalityId,
+        Guid municipalityFinancialYearPublicId,
+        IEnumerable<SaveTargetPeriodValueRequest>? values)
+    {
+        if (municipalityId is not > 0)
+            return TargetPeriodPlan.Invalid("Select a municipality context before saving performance targets.");
+        if (municipalityFinancialYearPublicId == Guid.Empty)
+            return TargetPeriodPlan.Invalid("A municipality financial year public identifier is required before normalized target values can be saved.");
+
+        var municipalityYear = await context.MunicipalityFinancialYears
+            .AsNoTracking()
+            .Include(item => item.FinancialYear)
+            .Include(item => item.ReportingPeriods)
+            .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId.Value
+                && item.PublicId == municipalityFinancialYearPublicId && item.IsActive);
+        if (municipalityYear == null)
+            return TargetPeriodPlan.Invalid("The selected municipality financial year is missing, inactive, or outside the municipality.");
+
+        return await BuildPlanForYearAsync(context, unitEngine, municipalityYear, values);
+    }
+
+    private static async Task<TargetPeriodPlan> BuildPlanForYearAsync(
+        ApplicationDbContext context,
+        IPerformanceUnitEngine unitEngine,
+        MunicipalityFinancialYear municipalityYear,
+        IEnumerable<SaveTargetPeriodValueRequest>? values)
+    {
+
         var submittedValues = values?.ToArray() ?? [];
         if (submittedValues.Length == 0)
             return TargetPeriodPlan.Invalid("At least one canonical period target is required.");

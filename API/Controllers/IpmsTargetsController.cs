@@ -194,7 +194,7 @@ public class IpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
 
-        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, _tenantContext.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, _tenantContext.MunicipalityId, null, null, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.CREATE", new AccessScopeContext(organization.DepartmentId, organization.UnitId, user.Id));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
@@ -202,7 +202,7 @@ public class IpmsTargetsController : ControllerBase
         if (!await CanUpdatePeriodTargetMembersAsync(user, memberScope)) return Forbid();
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
-        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
         if (!strategicSelection.IsComplete) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "All governed strategic classifications are required."));
@@ -219,14 +219,17 @@ public class IpmsTargetsController : ControllerBase
         if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, kpiUnit.Error));
         var userReferences = await ResolveUserReferencesAsync(request);
         if (userReferences.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, userReferences.Error));
+        var sourceTemplate = await ResolveSourceTemplateAsync(request.SourceTemplatePublicId, request.SourceTemplateVersion);
+        if (!sourceTemplate.Succeeded) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, sourceTemplate.Error));
+        var relatedTarget = await ResolveRelatedOpmsTargetAsync(request.RelatedOpmsTargetPublicId);
+        if (!relatedTarget.Succeeded) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, relatedTarget.Error));
 
         var entity = new IpmsTarget
         {
             MunicipalityId = _tenantContext.MunicipalityId,
-            SourceTemplateId = request.SourceTemplateId,
+            SourceTemplateId = sourceTemplate.InternalId,
             SourceTemplateVersion = request.SourceTemplateVersion,
-            RelatedOpmsTargetId = request.RelatedOpmsTargetId,
-            PeriodId = request.PeriodId,
+            RelatedOpmsTargetId = relatedTarget.InternalId,
             DepartmentId = organization.DepartmentId,
             UnitId = organization.UnitId,
             AssignedUserId = userReferences.AssignedUserId,
@@ -236,13 +239,10 @@ public class IpmsTargetsController : ControllerBase
             RevisedOrderNumber = request.OriginalOrderNumber,
             NationalKpa = request.NationalKpa,
             MunicipalKpa = request.MunicipalKpa,
-            StrategicGoalId = request.StrategicGoalId,
-            StrategicObjectiveId = request.StrategicObjectiveId,
             PerformanceObjective = request.PerformanceObjective,
             TargetName = request.TargetName.Trim(),
             KpiDescription = request.KpiDescription.Trim(),
             Baseline = request.Baseline,
-            UnitOfMeasureId = request.UnitOfMeasureId,
             Weight = request.Weight,
             KpiType = request.KpiType,
             IndicatorType = request.IndicatorType,
@@ -285,9 +285,9 @@ public class IpmsTargetsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
         if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
-        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, null, null, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, organization.Error));
-        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, periodPlan.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
         if (!strategicSelection.IsComplete) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "All governed strategic classifications are required."));
@@ -308,6 +308,10 @@ public class IpmsTargetsController : ControllerBase
         if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, kpiUnit.Error));
         var userReferences = await ResolveUserReferencesAsync(request);
         if (userReferences.Error != null) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, userReferences.Error));
+        var sourceTemplate = await ResolveSourceTemplateAsync(request.SourceTemplatePublicId, request.SourceTemplateVersion, entity.SourceTemplateId);
+        if (!sourceTemplate.Succeeded) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, sourceTemplate.Error));
+        var relatedTarget = await ResolveRelatedOpmsTargetAsync(request.RelatedOpmsTargetPublicId);
+        if (!relatedTarget.Succeeded) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, relatedTarget.Error));
         var periodChangeError = await TargetPeriodCutover.EnsureUnchangedOrAddMissingAsync(_context, periodPlan, entity.MunicipalityId!.Value, user.Id, null, entity.Id);
         if (periodChangeError != null) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, periodChangeError));
         if (!string.Equals(entity.IndicatorNumber, request.IndicatorNumber.Trim(), StringComparison.Ordinal) ||
@@ -315,21 +319,17 @@ public class IpmsTargetsController : ControllerBase
             !string.Equals(entity.KpiDescription, request.KpiDescription.Trim(), StringComparison.Ordinal))
             return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "KPI number, target name and KPI wording are governed originals. Record approved changes through the field-revision endpoint."));
 
-        entity.SourceTemplateId = request.SourceTemplateId;
+        entity.SourceTemplateId = sourceTemplate.InternalId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
-        entity.RelatedOpmsTargetId = request.RelatedOpmsTargetId;
-        entity.PeriodId = request.PeriodId;
+        entity.RelatedOpmsTargetId = relatedTarget.InternalId;
         entity.DepartmentId = organization.DepartmentId;
         entity.UnitId = organization.UnitId;
         entity.AssignedUserId = userReferences.AssignedUserId;
         entity.SupervisorId = userReferences.SupervisorId;
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
-        entity.StrategicGoalId = request.StrategicGoalId;
-        entity.StrategicObjectiveId = request.StrategicObjectiveId;
         entity.PerformanceObjective = request.PerformanceObjective;
         entity.Baseline = request.Baseline;
-        entity.UnitOfMeasureId = request.UnitOfMeasureId;
         entity.Weight = request.Weight;
         entity.KpiType = request.KpiType;
         entity.IndicatorType = request.IndicatorType;
@@ -672,9 +672,49 @@ public class IpmsTargetsController : ControllerBase
             null);
     }
 
+    private async Task<(string? InternalId, string? Error, bool Succeeded)> ResolveSourceTemplateAsync(Guid? publicId, int? version, string? existingInternalId = null)
+    {
+        if (!publicId.HasValue)
+            return version.HasValue ? (null, "A source template public identifier is required when a template version is supplied.", false) : (null, null, true);
+        var template = await _context.IpmsTargetTemplates.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.PublicId == publicId.Value && !item.IsArchived);
+        if (template == null) return (null, "The source IPMS template was not found or is archived.", false);
+        var internalId = template.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!template.IsActive && !string.Equals(existingInternalId, internalId, StringComparison.Ordinal))
+            return (null, "The source IPMS template is inactive and cannot be selected for a new linkage.", false);
+        if (version.HasValue && version.Value != template.Version
+            && !await _context.IpmsTargetTemplateVersions.AnyAsync(item => item.IpmsTargetTemplateId == template.Id && item.Version == version.Value))
+            return (null, "The selected IPMS template version was not found.", false);
+        return (internalId, null, true);
+    }
+
+    private async Task<(string? InternalId, string? Error, bool Succeeded)> ResolveRelatedOpmsTargetAsync(Guid? publicId)
+    {
+        if (!publicId.HasValue) return (null, null, true);
+        if (_tenantContext.MunicipalityId is not > 0) return (null, "A municipality context is required.", false);
+        var targetId = await _context.OpmsTargets.AsNoTracking()
+            .Where(item => item.MunicipalityId == _tenantContext.MunicipalityId && item.PublicId == publicId.Value && !item.IsWithdrawn)
+            .Select(item => item.Id)
+            .SingleOrDefaultAsync();
+        return targetId == null
+            ? (null, "The related OPMS target was not found, is withdrawn, or is outside the selected municipality.", false)
+            : (targetId, null, true);
+    }
+
     private async Task<IpmsTargetResponse[]> ToResponsesAsync(IReadOnlyCollection<IpmsTarget> targets, ReportingPeriodType? periodType = null)
     {
         var user = await GetCurrentUserAsync();
+        var sourceTemplateIds = targets.Select(item => int.TryParse(item.SourceTemplateId, out var id) ? id : (int?)null)
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
+        var sourceTemplatePublicIds = sourceTemplateIds.Length == 0
+            ? new Dictionary<int, Guid>()
+            : await _context.IpmsTargetTemplates.AsNoTracking().Where(item => sourceTemplateIds.Contains(item.Id))
+                .ToDictionaryAsync(item => item.Id, item => item.PublicId);
+        var relatedTargetIds = targets.Where(item => item.RelatedOpmsTargetId != null).Select(item => item.RelatedOpmsTargetId!).Distinct().ToArray();
+        var relatedTargetPublicIds = relatedTargetIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+            : await _context.OpmsTargets.AsNoTracking().Where(item => relatedTargetIds.Contains(item.Id))
+                .ToDictionaryAsync(item => item.Id, item => item.PublicId, StringComparer.OrdinalIgnoreCase);
         var supervisorIds = targets.Where(item => item.SupervisorId != null).Select(item => item.SupervisorId!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var publicIds = supervisorIds.Length == 0
             ? new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
@@ -688,6 +728,13 @@ public class IpmsTargetsController : ControllerBase
             var response = item.ToResponse(periodType,
                 item.SupervisorId != null && publicIds.TryGetValue(item.SupervisorId, out var publicId) ? publicId : null,
                 memberAccess, lifecycleAccess);
+            response = response with
+            {
+                SourceTemplatePublicId = int.TryParse(item.SourceTemplateId, out var sourceTemplateId)
+                    && sourceTemplatePublicIds.TryGetValue(sourceTemplateId, out var sourceTemplatePublicId) ? sourceTemplatePublicId : null,
+                RelatedOpmsTargetPublicId = item.RelatedOpmsTargetId != null
+                    && relatedTargetPublicIds.TryGetValue(item.RelatedOpmsTargetId, out var relatedTargetPublicId) ? relatedTargetPublicId : null
+            };
             if (lifecycleAccess.WithdrawalActor && !string.IsNullOrWhiteSpace(item.WithdrawnByUserId))
             {
                 var actor = await _context.Users.AsNoTracking().Where(value => value.Id == item.WithdrawnByUserId)

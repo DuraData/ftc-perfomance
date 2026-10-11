@@ -144,44 +144,22 @@ public record SaveIpmsTargetTemplateRequest(
 
 public record ArchiveTargetTemplateRequest(string RowVersion);
 
-public record SaveOpmsTargetRequest(
-    string? SourceTemplateId,
-    int? SourceTemplateVersion,
-    int? PeriodId,
-    int? DepartmentId,
-    int? UnitId,
-    Guid? AssignedUserPublicId,
-    int[]? WardIds,
-    Guid[]? AdditionalAssigneePublicIds,
-    int[]? VoteNumberIds,
-    string IndicatorNumber,
-    string NationalKpa,
-    string MunicipalKpa,
-    int? StrategicGoalId,
-    int? StrategicObjectiveId,
-    string PerformanceObjective,
-    string TargetName,
-    string KpiDescription,
-    decimal Baseline,
-    string? BaselineDescription,
-    int? BudgetSourceId,
-    int? BudgetTypeId,
-    int? UnitOfMeasureId,
-    decimal Weight,
-    string KpiType,
-    string IndicatorType,
-    string? FunctionalArea,
-    string? StandardClassification,
-    string? IdpReference,
-    string? InternalReference,
-    string? FmsLink,
-    bool IsRevised,
-    SaveTargetPeriodValueRequest[] PeriodTargets)
+public sealed record SaveOpmsTargetRequest
 {
+    public Guid? SourceTemplatePublicId { get; init; }
+    public int? SourceTemplateVersion { get; init; }
+    public Guid MunicipalityFinancialYearPublicId { get; init; }
     public int OriginalOrderNumber { get; init; } = 1;
     public Guid? SdbipLayerPublicId { get; init; }
     public Guid? DepartmentPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
+    public Guid? AssignedUserPublicId { get; init; }
+    public Guid[] WardPublicIds { get; init; } = [];
+    public Guid[] AdditionalAssigneePublicIds { get; init; } = [];
+    public Guid[] VoteNumberPublicIds { get; init; } = [];
+    public string IndicatorNumber { get; init; } = string.Empty;
+    public string NationalKpa { get; init; } = string.Empty;
+    public string MunicipalKpa { get; init; } = string.Empty;
     public Guid? NationalKpaPublicId { get; init; }
     public Guid? MunicipalKpaPublicId { get; init; }
     public Guid? BackToBasicsPillarPublicId { get; init; }
@@ -189,6 +167,11 @@ public record SaveOpmsTargetRequest(
     public Guid? StrategicInterventionPublicId { get; init; }
     public Guid? StrategicObjectivePublicId { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
+    public string PerformanceObjective { get; init; } = string.Empty;
+    public string TargetName { get; init; } = string.Empty;
+    public string KpiDescription { get; init; } = string.Empty;
+    public decimal Baseline { get; init; }
+    public string? BaselineDescription { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
     public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
     public Guid? KpiTypePublicId { get; init; }
@@ -196,43 +179,34 @@ public record SaveOpmsTargetRequest(
     public Guid? FunctionalAreaPublicId { get; init; }
     public Guid? StandardClassificationPublicId { get; init; }
     public Guid? KpiUnitOfMeasurePublicId { get; init; }
+    public decimal Weight { get; init; }
+    public string KpiType { get; init; } = string.Empty;
+    public string IndicatorType { get; init; } = string.Empty;
+    public string? FunctionalArea { get; init; }
+    public string? StandardClassification { get; init; }
+    public string? IdpReference { get; init; }
+    public string? InternalReference { get; init; }
+    public string? FmsLink { get; init; }
+    public bool IsRevised { get; init; }
+    public SaveTargetPeriodValueRequest[] PeriodTargets { get; init; } = [];
 }
 
 public sealed record SaveKpiBudgetSourceRequest(Guid BudgetSourcePublicId, decimal? Amount);
 
-public record SaveIpmsTargetRequest(
-    string? SourceTemplateId,
-    int? SourceTemplateVersion,
-    string? RelatedOpmsTargetId,
-    int? PeriodId,
-    int? DepartmentId,
-    int? UnitId,
-    Guid? AssignedUserPublicId,
-    Guid? SupervisorPublicId,
-    string IndicatorNumber,
-    string NationalKpa,
-    string MunicipalKpa,
-    int? StrategicGoalId,
-    int? StrategicObjectiveId,
-    string PerformanceObjective,
-    string TargetName,
-    string KpiDescription,
-    decimal Baseline,
-    int? BudgetSourceId,
-    int? BudgetTypeId,
-    int? UnitOfMeasureId,
-    decimal Weight,
-    string KpiType,
-    string IndicatorType,
-    string? FunctionalArea,
-    string? IdpReference,
-    string? InternalReference,
-    bool IsRevised,
-    SaveTargetPeriodValueRequest[] PeriodTargets)
+public sealed record SaveIpmsTargetRequest
 {
+    public Guid? SourceTemplatePublicId { get; init; }
+    public int? SourceTemplateVersion { get; init; }
+    public Guid? RelatedOpmsTargetPublicId { get; init; }
+    public Guid MunicipalityFinancialYearPublicId { get; init; }
     public int OriginalOrderNumber { get; init; } = 1;
     public Guid? DepartmentPublicId { get; init; }
     public Guid? UnitPublicId { get; init; }
+    public Guid? AssignedUserPublicId { get; init; }
+    public Guid? SupervisorPublicId { get; init; }
+    public string IndicatorNumber { get; init; } = string.Empty;
+    public string NationalKpa { get; init; } = string.Empty;
+    public string MunicipalKpa { get; init; } = string.Empty;
     public Guid? NationalKpaPublicId { get; init; }
     public Guid? MunicipalKpaPublicId { get; init; }
     public Guid? BackToBasicsPillarPublicId { get; init; }
@@ -240,12 +214,24 @@ public record SaveIpmsTargetRequest(
     public Guid? StrategicInterventionPublicId { get; init; }
     public Guid? StrategicObjectivePublicId { get; init; }
     public Guid? PerformanceObjectivePublicId { get; init; }
+    public string PerformanceObjective { get; init; } = string.Empty;
+    public string TargetName { get; init; } = string.Empty;
+    public string KpiDescription { get; init; } = string.Empty;
+    public decimal Baseline { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
     public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
     public Guid? KpiTypePublicId { get; init; }
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }
     public Guid? KpiUnitOfMeasurePublicId { get; init; }
+    public decimal Weight { get; init; }
+    public string KpiType { get; init; } = string.Empty;
+    public string IndicatorType { get; init; } = string.Empty;
+    public string? FunctionalArea { get; init; }
+    public string? IdpReference { get; init; }
+    public string? InternalReference { get; init; }
+    public bool IsRevised { get; init; }
+    public SaveTargetPeriodValueRequest[] PeriodTargets { get; init; } = [];
 }
 
 public record SaveTargetPeriodValueRequest(

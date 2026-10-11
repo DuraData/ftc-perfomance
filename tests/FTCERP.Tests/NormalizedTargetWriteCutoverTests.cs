@@ -31,6 +31,22 @@ public sealed class NormalizedTargetWriteCutoverTests
         }
         Assert.Null(typeof(SaveOpmsTargetRequest).GetProperty("IsWithdrawn"));
         Assert.Null(typeof(SaveOpmsTargetRequest).GetProperty("ReasonForWithdrawal"));
+
+        Assert.Equal(typeof(Guid), typeof(SaveOpmsTargetRequest).GetProperty("MunicipalityFinancialYearPublicId")!.PropertyType);
+        Assert.Equal(typeof(Guid[]), typeof(SaveOpmsTargetRequest).GetProperty("WardPublicIds")!.PropertyType);
+        Assert.Equal(typeof(Guid[]), typeof(SaveOpmsTargetRequest).GetProperty("VoteNumberPublicIds")!.PropertyType);
+        Assert.Equal(typeof(Guid), typeof(SaveIpmsTargetRequest).GetProperty("MunicipalityFinancialYearPublicId")!.PropertyType);
+        Assert.Equal(typeof(Guid?), typeof(SaveIpmsTargetRequest).GetProperty("RelatedOpmsTargetPublicId")!.PropertyType);
+
+        var retiredWriteProperties = new[]
+        {
+            "SourceTemplateId", "PeriodId", "DepartmentId", "UnitId", "WardIds", "VoteNumberIds",
+            "StrategicGoalId", "StrategicObjectiveId", "BudgetSourceId", "BudgetTypeId", "UnitOfMeasureId",
+            "RelatedOpmsTargetId"
+        };
+        foreach (var contract in new[] { typeof(SaveOpmsTargetRequest), typeof(SaveIpmsTargetRequest) })
+            foreach (var property in retiredWriteProperties)
+                Assert.Null(contract.GetProperty(property));
     }
 
     [Fact]
@@ -40,7 +56,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var seed = await SeedAsync(context);
         var controller = IpmsController(context, seed.User, seed.Municipality.Id);
 
-        var result = await controller.CreateTarget(IpmsRequest(seed.LegacyPeriod.Id, seed.Classifications));
+        var result = await controller.CreateTarget(IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications));
 
         var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
@@ -58,7 +74,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
 
-        var result = await controller.CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications));
+        var result = await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications));
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
@@ -96,7 +112,7 @@ public sealed class NormalizedTargetWriteCutoverTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
-        var request = Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with
+        var request = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
         {
             PeriodTargets =
             [
@@ -119,7 +135,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var seed = await SeedAsync(context);
         var date = await context.OpmsUnitDefinitions.SingleAsync(item => item.Code == "DATE");
         var onOrBefore = await context.PerformanceDirectionDefinitions.SingleAsync(item => item.Code == "ON_OR_BEFORE_DATE");
-        var request = Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with
+        var request = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
         {
             PeriodTargets =
             [
@@ -149,8 +165,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
-        var changed = Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with { PeriodTargets = PeriodTargets("90") };
+        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
+        var changed = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { PeriodTargets = PeriodTargets("90") };
 
         var result = await controller.UpdateTarget(created.Id, changed);
 
@@ -167,9 +183,9 @@ public sealed class NormalizedTargetWriteCutoverTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
+        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
 
-        var result = await controller.UpdateTarget(created.Id, Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with { InternalReference = "Updated metadata" });
+        var result = await controller.UpdateTarget(created.Id, Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { InternalReference = "Updated metadata" });
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Equal("Updated metadata", response.InternalReference);
@@ -193,10 +209,10 @@ public sealed class NormalizedTargetWriteCutoverTests
         context.AddRange(municipality, user, period);
         await context.SaveChangesAsync();
 
-        var result = await Controller(context, user, municipality.Id).CreateTarget(Request(period.Id));
+        var result = await Controller(context, user, municipality.Id).CreateTarget(Request(Guid.NewGuid()));
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Contains("No active municipality financial year", Assert.IsType<ApiResponse<OpmsTargetResponse>>(badRequest.Value).Message);
+        Assert.Contains("municipality financial year", Assert.IsType<ApiResponse<OpmsTargetResponse>>(badRequest.Value).Message, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await context.OpmsTargets.ToArrayAsync());
     }
 
@@ -207,11 +223,75 @@ public sealed class NormalizedTargetWriteCutoverTests
         var seed = await SeedAsync(context);
 
         var result = await Controller(context, seed.User, seed.Municipality.Id)
-            .CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId));
+            .CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId));
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Contains("governed strategic classifications", Assert.IsType<ApiResponse<OpmsTargetResponse>>(badRequest.Value).Message);
         Assert.Empty(await context.OpmsTargets.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Public_template_and_related_target_ids_resolve_to_private_keys_without_leaking_into_writes()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var opmsTemplate = new OpmsTargetTemplate { TemplateCode = "OPMS-T", TemplateName = "OPMS template", Version = 2 };
+        var ipmsTemplate = new IpmsTargetTemplate { TemplateCode = "IPMS-T", TemplateName = "IPMS template", Version = 3 };
+        context.AddRange(opmsTemplate, ipmsTemplate);
+        await context.SaveChangesAsync();
+
+        var opmsRequest = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            SourceTemplatePublicId = opmsTemplate.PublicId,
+            SourceTemplateVersion = opmsTemplate.Version
+        };
+        var opmsResult = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(opmsRequest);
+        var opmsResponse = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(opmsResult.Result).Value).Data!;
+        Assert.Equal(opmsTemplate.PublicId, opmsResponse.SourceTemplatePublicId);
+
+        var ipmsRequest = IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with
+        {
+            SourceTemplatePublicId = ipmsTemplate.PublicId,
+            SourceTemplateVersion = ipmsTemplate.Version,
+            RelatedOpmsTargetPublicId = opmsResponse.PublicId
+        };
+        var ipmsResult = await IpmsController(context, seed.User, seed.Municipality.Id).CreateTarget(ipmsRequest);
+        var ipmsResponse = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(ipmsResult.Result).Value).Data!;
+        Assert.Equal(ipmsTemplate.PublicId, ipmsResponse.SourceTemplatePublicId);
+        Assert.Equal(opmsResponse.PublicId, ipmsResponse.RelatedOpmsTargetPublicId);
+
+        context.ChangeTracker.Clear();
+        Assert.Equal(opmsTemplate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), (await context.OpmsTargets.SingleAsync()).SourceTemplateId);
+        var storedIpms = await context.IpmsTargets.SingleAsync();
+        Assert.Equal(ipmsTemplate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), storedIpms.SourceTemplateId);
+        Assert.Equal(opmsResponse.Id, storedIpms.RelatedOpmsTargetId);
+    }
+
+    [Fact]
+    public async Task Ipms_related_target_public_id_cannot_cross_the_selected_municipality()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var foreignMunicipality = new Municipality { Code = "FOREIGN", Name = "Foreign Municipality" };
+        context.Municipalities.Add(foreignMunicipality);
+        await context.SaveChangesAsync();
+        var foreignTarget = new OpmsTarget
+        {
+            MunicipalityId = foreignMunicipality.Id,
+            IndicatorNumber = "FOREIGN-1",
+            TargetName = "Foreign target",
+            KpiDescription = "Foreign target",
+            PerformanceObjective = "Foreign objective"
+        };
+        context.OpmsTargets.Add(foreignTarget);
+        await context.SaveChangesAsync();
+
+        var result = await IpmsController(context, seed.User, seed.Municipality.Id)
+            .CreateTarget(IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with { RelatedOpmsTargetPublicId = foreignTarget.PublicId });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Contains("outside the selected municipality", Assert.IsType<ApiResponse<IpmsTargetResponse>>(badRequest.Value).Message);
+        Assert.Empty(await context.IpmsTargets.ToArrayAsync());
     }
 
     [Fact]
@@ -227,18 +307,29 @@ public sealed class NormalizedTargetWriteCutoverTests
         var otherMunicipalityYear = new MunicipalityFinancialYear { MunicipalityId = seed.Municipality.Id, FinancialYearId = otherFinancialYear.Id, IsActive = true, EffectiveFrom = otherFinancialYear.StartDate };
         context.MunicipalityFinancialYears.Add(otherMunicipalityYear);
         await context.SaveChangesAsync();
+        var foreignMunicipality = new Municipality { Code = "OTHER", Name = "Other Municipality" };
+        context.Municipalities.Add(foreignMunicipality);
+        await context.SaveChangesAsync();
+        var currentWard = new Ward { MunicipalityId = seed.Municipality.Id, Code = "W01", Name = "Ward 1", IsActive = true };
+        var foreignWard = new Ward { MunicipalityId = foreignMunicipality.Id, Code = "W99", Name = "Ward 99", IsActive = true };
         var currentVote = new VoteNumber { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = targetYear.Id, DepartmentId = department.Id, Code = "CUR", Number = "001", Name = "Current vote", IsActive = true };
         var futureVote = new VoteNumber { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = otherMunicipalityYear.Id, DepartmentId = department.Id, Code = "FUT", Number = "002", Name = "Future vote", IsActive = true };
-        context.AddRange(currentVote, futureVote);
+        context.AddRange(currentWard, foreignWard, currentVote, futureVote);
         await context.SaveChangesAsync();
 
-        var accepted = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with { VoteNumberIds = [currentVote.Id] });
-        Assert.IsType<OkObjectResult>(accepted.Result);
+        var accepted = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { WardPublicIds = [currentWard.PublicId], VoteNumberPublicIds = [currentVote.PublicId] });
+        var acceptedResponse = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(accepted.Result).Value).Data!;
+        Assert.Equal([currentWard.PublicId], acceptedResponse.WardPublicIds);
+        Assert.Equal([currentVote.PublicId], acceptedResponse.VoteNumberPublicIds);
         Assert.Equal(currentVote.Id, (await context.OpmsTargetVoteNumbers.SingleAsync()).VoteNumberId);
 
-        var rejected = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget((Request(seed.LegacyPeriod.Id, seed.SdbipLayer.PublicId, seed.Classifications) with { IndicatorNumber = "OPMS-2", VoteNumberIds = [futureVote.Id] }));
+        var rejected = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget((Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { IndicatorNumber = "OPMS-2", VoteNumberPublicIds = [futureVote.PublicId] }));
         var badRequest = Assert.IsType<BadRequestObjectResult>(rejected.Result);
         Assert.Contains("selected municipality financial year", Assert.IsType<ApiResponse<OpmsTargetResponse>>(badRequest.Value).Message);
+
+        var foreignWardResult = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { IndicatorNumber = "OPMS-3", WardPublicIds = [foreignWard.PublicId] });
+        var foreignWardBadRequest = Assert.IsType<BadRequestObjectResult>(foreignWardResult.Result);
+        Assert.Contains("selected municipality", Assert.IsType<ApiResponse<OpmsTargetResponse>>(foreignWardBadRequest.Value).Message);
     }
 
     private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId)
@@ -275,16 +366,20 @@ public sealed class NormalizedTargetWriteCutoverTests
         };
     }
 
-    private static SaveOpmsTargetRequest Request(int periodId, Guid? sdbipLayerPublicId = null, ClassificationIds? classifications = null) => new(
-        SourceTemplateId: null, SourceTemplateVersion: null, PeriodId: periodId, DepartmentId: null, UnitId: null,
-        AssignedUserPublicId: null, WardIds: [], AdditionalAssigneePublicIds: [], VoteNumberIds: [], IndicatorNumber: "OPMS-1",
-        NationalKpa: "National KPA", MunicipalKpa: "Municipal KPA", StrategicGoalId: null, StrategicObjectiveId: null,
-        PerformanceObjective: "Objective", TargetName: "Normalized target", KpiDescription: "Description", Baseline: 0m,
-        BaselineDescription: null, BudgetSourceId: null, BudgetTypeId: null, UnitOfMeasureId: null, Weight: 10m,
-        KpiType: "Quantitative", IndicatorType: "Output", FunctionalArea: null, StandardClassification: null,
-        IdpReference: null, InternalReference: null, FmsLink: null, IsRevised: false, PeriodTargets: PeriodTargets())
+    private static SaveOpmsTargetRequest Request(Guid municipalityFinancialYearPublicId, Guid? sdbipLayerPublicId = null, ClassificationIds? classifications = null) => new()
         {
+            MunicipalityFinancialYearPublicId = municipalityFinancialYearPublicId,
             SdbipLayerPublicId = sdbipLayerPublicId,
+            IndicatorNumber = "OPMS-1",
+            NationalKpa = "National KPA",
+            MunicipalKpa = "Municipal KPA",
+            PerformanceObjective = "Objective",
+            TargetName = "Normalized target",
+            KpiDescription = "Description",
+            Weight = 10m,
+            KpiType = "Quantitative",
+            IndicatorType = "Output",
+            PeriodTargets = PeriodTargets(),
             NationalKpaPublicId = classifications?.NationalKpa,
             MunicipalKpaPublicId = classifications?.MunicipalKpa,
             BackToBasicsPillarPublicId = classifications?.BackToBasicsPillar,
@@ -297,36 +392,19 @@ public sealed class NormalizedTargetWriteCutoverTests
             KpiUnitOfMeasurePublicId = classifications?.KpiUnitOfMeasure
         };
 
-    private static SaveIpmsTargetRequest IpmsRequest(int periodId, ClassificationIds classifications) => new(
-        SourceTemplateId: null,
-        SourceTemplateVersion: null,
-        RelatedOpmsTargetId: null,
-        PeriodId: periodId,
-        DepartmentId: null,
-        UnitId: null,
-        AssignedUserPublicId: null,
-        SupervisorPublicId: null,
-        IndicatorNumber: "IPMS-1",
-        NationalKpa: "National KPA",
-        MunicipalKpa: "Municipal KPA",
-        StrategicGoalId: null,
-        StrategicObjectiveId: null,
-        PerformanceObjective: "Objective",
-        TargetName: "Normalized individual target",
-        KpiDescription: "Description",
-        Baseline: 0m,
-        BudgetSourceId: null,
-        BudgetTypeId: null,
-        UnitOfMeasureId: null,
-        Weight: 10m,
-        KpiType: "Quantitative",
-        IndicatorType: "Output",
-        FunctionalArea: null,
-        IdpReference: null,
-        InternalReference: null,
-        IsRevised: false,
-        PeriodTargets: PeriodTargets())
+    private static SaveIpmsTargetRequest IpmsRequest(Guid municipalityFinancialYearPublicId, ClassificationIds classifications) => new()
         {
+            MunicipalityFinancialYearPublicId = municipalityFinancialYearPublicId,
+            IndicatorNumber = "IPMS-1",
+            NationalKpa = "National KPA",
+            MunicipalKpa = "Municipal KPA",
+            PerformanceObjective = "Objective",
+            TargetName = "Normalized individual target",
+            KpiDescription = "Description",
+            Weight = 10m,
+            KpiType = "Quantitative",
+            IndicatorType = "Output",
+            PeriodTargets = PeriodTargets(),
             NationalKpaPublicId = classifications.NationalKpa,
             MunicipalKpaPublicId = classifications.MunicipalKpa,
             BackToBasicsPillarPublicId = classifications.BackToBasicsPillar,
@@ -347,7 +425,7 @@ public sealed class NormalizedTargetWriteCutoverTests
 
     private sealed record ClassificationIds(Guid NationalKpa, Guid MunicipalKpa, Guid BackToBasicsPillar, Guid StrategicGoal, Guid StrategicIntervention, Guid StrategicObjective, Guid PerformanceObjective, Guid KpiType, Guid IndicatorType, Guid KpiUnitOfMeasure);
 
-    private static async Task<(Municipality Municipality, ApplicationUser User, Period LegacyPeriod, SdbipLayer SdbipLayer, ClassificationIds Classifications)> SeedAsync(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context)
+    private static async Task<(Municipality Municipality, ApplicationUser User, Period LegacyPeriod, MunicipalityFinancialYear MunicipalityYear, SdbipLayer SdbipLayer, ClassificationIds Classifications)> SeedAsync(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context)
     {
         var municipality = new Municipality { Code = "NORM", Name = "Normalized Municipality" };
         var user = IdpTestFixture.CreateUser("normalized-user");
@@ -383,7 +461,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var kpiUnitOfMeasure = new GovernedKpiUnitOfMeasure { MunicipalityId = municipality.Id, Code = "COUNT", Name = "Count", Symbol = "#" };
         context.AddRange(nationalKpa, municipalKpa, pillar, goal, intervention, objective, performanceObjective, kpiType, indicatorType, kpiUnitOfMeasure);
         await context.SaveChangesAsync();
-        return (municipality, user, legacyPeriod, sdbipLayer,
+        return (municipality, user, legacyPeriod, municipalityYear, sdbipLayer,
             new(nationalKpa.PublicId, municipalKpa.PublicId, pillar.PublicId, goal.PublicId, intervention.PublicId, objective.PublicId, performanceObjective.PublicId, kpiType.PublicId, indicatorType.PublicId, kpiUnitOfMeasure.PublicId));
     }
 }

@@ -2,7 +2,7 @@
 
 **Repository:** `ftc-perfomance`  
 **Requirements baseline:** `OPMS Requirements V3.9.docx`  
-**Assessment date:** 2026-10-07
+**Assessment date:** 2026-10-11
 **Assessment type:** Current-state repository, schema, configuration, migration, and automated-test review
 
 ## 1. Executive summary
@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **504 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **288 frontend tests pass** across 67 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **627 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **337 frontend tests pass** across 75 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -36,7 +36,7 @@ The review covered:
 - React routes, API mappings, target/submission forms, workflow queues, reports, HR and lookup screens;
 - repository configuration, tracked secrets, tests, and build-quality signals.
 
-The assessment did not alter application code or data. Runtime infrastructure, external identity providers, deployed database contents, network controls, backup jobs, malware scanners, mail infrastructure, and production observability were not available for direct inspection.
+The initial assessment did not alter application code or data; the numbered remediation sections document the subsequent controlled repository changes and their evidence. Runtime infrastructure, external identity providers, deployed database contents, network controls, backup jobs, malware scanners, mail infrastructure, and production observability were not available for direct inspection.
 
 ### 2.2 Evidence method
 
@@ -55,13 +55,13 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 | Check | Result | Interpretation |
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
-| Frontend unit tests | 279/279 passed across 66 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 491 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
+| Frontend unit tests | 337/337 passed across 75 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
+| Backend tests via ordinary `dotnet test` | 627 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
-| Production builds | Passed | The Release host build has 0 warnings/errors; Vite transforms 2,110 modules into 78 JavaScript chunks. |
-| Bundle budget | Passed | The largest JavaScript chunk is 401.4 KiB against the enforced 450 KiB limit. |
+| Production builds | Passed | The Release host build has 0 warnings/errors; Vite transforms 2,110 modules into 77 JavaScript chunks. |
+| Bundle budget | Passed | The largest JavaScript chunk is 401.5 KiB against the enforced 450 KiB limit. |
 | CI workflow | Implemented and most recent pushed run passed | The repository-enforced workflow builds and tests both applications and runs migration, dependency, secret and bundle checks; each new push is inspected separately. |
 
 ## 3. Classification definitions
@@ -3450,6 +3450,12 @@ The user-administration scope and operational-assignment contracts no longer acc
 
 Scope replacement enforces the selector required by each scope type, rejects duplicates and limits one request to 100 entries. Operational-assignment replacement likewise enforces one exact record selector, active same-tenant delegators, effective-date ordering, duplicate rejection and a 100-entry limit. Both paths reject missing, ambiguous and foreign record identities before ending existing effective-dated rows or writing audit data, preserve aggregate RowVersion concurrency and serialize only the public request contract into the audit trail. Reflection and relational tests prove the public-only organisation/delegator/record contracts, OPMS target paging/search/projection, IDP KPI/project/task round-tripping, private-key persistence, public-only audit evidence, foreign-record and foreign-delegator rejection, append-preserved history and stale-write denial. Focused verification passes **36/36 backend security tests**. Complete regression passes **625 backend tests with 1 SQL Server-only skip and 0 failures** and **337/337 frontend tests across 75 files**; TypeScript and ESLint pass, the Release build completes with **0 warnings and 0 errors**, the production build transforms **2,110 modules into 77 JavaScript chunks**, the bundle budget passes and diff hygiene passes. No schema migration or provider-specific behavior is introduced.
 
+### 11.268 Public-identity OPMS/IPMS target-write cutover
+
+Interactive OPMS and IPMS target creation and update no longer accept raw template, related-target, period, department, unit, ward, vote, strategic-goal, strategic-objective, budget, or unit-of-measure persistence keys. The write contracts now require the active tenant-owned municipality financial-year `PublicId` and accept only stable public identities for source templates, related OPMS targets, organisation scope, users, wards, vote numbers and every governed classification. Controllers resolve those identities inside the selected municipality and year, validate unit/department and vote/year scope, enforce active template selection while preserving an existing inactive historical linkage, reject foreign or withdrawn related records and retain private keys only inside persistence.
+
+The SPA now sends the same public-only contract from create, edit and list-copy flows; the obsolete numeric period selector was removed because canonical period rows are resolved from the governed municipality financial year. Response projections expose the public template, related-target, ward and vote identities needed for lossless edits while retaining existing compatibility response members for the later read-contract retirement. Source-template and related-target reverse projection is bounded rather than N+1 on register reads. Reflection rejects every retired write member, relational coverage proves public template/related-target resolution, private-key persistence, public ward/vote round-tripping, financial-year enforcement and cross-municipality ward/related-target denial, and frontend coverage asserts that no retired numeric property is serialized. Focused verification passes **12/12 backend tests** and **62/62 target/API frontend tests**. Complete regression passes **627 backend tests with 1 SQL Server-only skip and 0 failures** and **337/337 frontend tests across 75 files**; accessibility automation passes **2/2**, TypeScript and ESLint pass, the Release build completes with **0 warnings and 0 errors**, the production build transforms **2,110 modules into 77 JavaScript chunks**, the bundle budget passes and diff hygiene passes. This contract and resolution cutover adds no schema migration or provider-specific behavior; native SQL Server acceptance remains a separate release gate.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -3671,12 +3677,12 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 | Gate | Result |
 |---|---|
-| Backend test suite | **Passed: 617; Failed: 0; Skipped: 1; Total: 618.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
-| Frontend Vitest suite | **Passed: 336; Failed: 0; Test files: 75/75.** Governed global/municipality-year and reporting-period RowVersion edit flows, target-library create/edit reference round trips and public-ID-only IDP plan/version/collaboration transport pass alongside the authentication-gate recovery/restriction, unresolved-access loading, cookie/token bounding, Settings bootstrap, live dynamic HTTP permission-revocation, stable-public-identity, tenant-isolation, record/member/action security, bounded-transport, workflow, reporting, notification, IDP, TID, Circular 88, import, audit and hostile-payload suites. |
+| Backend test suite | **Passed: 627; Failed: 0; Skipped: 1; Total: 628.** The skipped test is the explicitly environment-gated native SQL Server acceptance test. |
+| Frontend Vitest suite | **Passed: 337; Failed: 0; Test files: 75/75.** Governed global/municipality-year and reporting-period RowVersion edit flows, public-ID-only OPMS/IPMS target writes, target-library create/edit reference round trips and public-ID-only IDP plan/version/collaboration transport pass alongside the authentication-gate recovery/restriction, unresolved-access loading, cookie/token bounding, Settings bootstrap, live dynamic HTTP permission-revocation, stable-public-identity, tenant-isolation, record/member/action security, bounded-transport, workflow, reporting, notification, IDP, TID, Circular 88, import, audit and hostile-payload suites. |
 | TypeScript type-check | Passed. |
 | ESLint | Passed. |
 | Frontend production build | Passed under Vite 8; 2,110 modules transformed. |
-| Bundle budget | Passed with 78 JavaScript chunks; largest chunk 401.6 KiB locally and within the enforced clean-runner budget. |
+| Bundle budget | Passed with 77 JavaScript chunks; largest chunk 401.5 KiB locally and within the enforced clean-runner budget. |
 | Frontend dependency audit | Clean reproducible `npm ci` passed; `npm audit --audit-level=high` reports **0 vulnerabilities**. |
 | Backend Release build | Passed; **0 warnings and 0 errors**. |
 | EF Core model/snapshot consistency | Passed; `has-pending-model-changes` reported no pending model changes. |

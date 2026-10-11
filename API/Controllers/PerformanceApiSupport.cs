@@ -209,6 +209,8 @@ public static class PerformanceApiSupport
             target.CreatedAt)
         {
             PublicId = target.PublicId,
+            WardPublicIds = target.Wards.Where(item => item.Ward != null).Select(item => item.Ward.PublicId).OrderBy(id => id).ToArray(),
+            VoteNumberPublicIds = target.VoteNumbers.Where(item => item.VoteNumber != null).Select(item => item.VoteNumber.PublicId).OrderBy(id => id).ToArray(),
             RowVersion = Convert.ToBase64String(target.RowVersion),
             OriginalOrderNumber = target.OriginalOrderNumber,
             RevisedOrderNumber = target.RevisedOrderNumber,

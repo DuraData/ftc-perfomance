@@ -497,15 +497,15 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
   return {
     municipalityFinancialYearPublicId: target.municipalityFinancialYearPublicId ?? '',
     sdbipLayerPublicId: target.sdbipLayer?.publicId ?? '',
-    sourceTemplateId: target.sourceTemplateId ?? '',
+    sourceTemplateId: target.sourceTemplatePublicId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
     periodId: target.period.id,
     departmentId: target.department.publicId ?? '',
     unitId: target.unit?.publicId ?? '',
     assignedToId: target.assignedTo?.id ?? '',
-    wardIds: (target.wardIds ?? target.wards?.map(item => Number(item.id)) ?? []).join(','),
+    wardIds: (target.wardPublicIds ?? []).join(','),
     additionalAssigneeIds: (target.additionalAssigneePublicIds ?? target.additionalAssignees.map(item => item.id)).join(','),
-    voteNumberIds: (target.voteNumberIds ?? target.voteNumbers.map(item => Number(item.id))).join(','),
+    voteNumberIds: (target.voteNumberPublicIds ?? target.voteNumbers.map(item => item.id)).join(','),
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
     municipalKPA: target.municipalKPA,
@@ -589,9 +589,9 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
   const q3 = period(4); const q4 = period(5); const annual = period(6);
   return {
     municipalityFinancialYearPublicId: target.municipalityFinancialYearPublicId ?? '',
-    sourceTemplateId: target.sourceTemplateId ?? '',
+    sourceTemplateId: target.sourceTemplatePublicId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
-    relatedOPMSTargetId: target.relatedOPMSTarget?.id ?? '',
+    relatedOPMSTargetId: target.relatedOpmsTargetPublicId ?? target.relatedOPMSTarget?.publicId ?? '',
     periodId: target.period.id,
     departmentId: target.department.publicId ?? '',
     unitId: target.unit?.publicId ?? '',
@@ -760,13 +760,6 @@ function periodTarget(
   return canonicalPeriodTarget(periodType, targetValue, unitValue ?? 'AbsoluteCount', budgetValue ? Number(budgetValue) : null, description, configuration);
 }
 
-export function buildPeriodSelectOptions(periods: Array<{ id: number; name: string }>) {
-  return [
-    { value: '', label: 'Select Period' },
-    ...periods.map(item => ({ value: String(item.id), label: item.name })),
-  ];
-}
-
 export function TargetFormActions({
   isEditing,
   onCancel,
@@ -811,17 +804,15 @@ function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState, config
 export function buildOpmsPayload(form: OpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveOpmsTargetPayload {
   return {
     sdbipLayerPublicId: form.sdbipLayerPublicId || null,
-    sourceTemplateId: form.sourceTemplateId || null,
+    sourceTemplatePublicId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
-    periodId: form.periodId ? Number(form.periodId) : null,
-    departmentId: null,
+    municipalityFinancialYearPublicId: form.municipalityFinancialYearPublicId,
     departmentPublicId: form.departmentId || null,
-    unitId: null,
     unitPublicId: form.unitId || null,
     assignedUserPublicId: form.assignedToId || null,
-    wardIds: [...new Set(parseCsvIds(form.wardIds).map(Number).filter(Number.isSafeInteger))],
+    wardPublicIds: [...new Set(parseCsvIds(form.wardIds))],
     additionalAssigneePublicIds: [...new Set(parseCsvIds(form.additionalAssigneeIds))],
-    voteNumberIds: [...new Set(parseCsvIds(form.voteNumberIds).map(Number).filter(Number.isSafeInteger))],
+    voteNumberPublicIds: [...new Set(parseCsvIds(form.voteNumberIds))],
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
     municipalKpa: form.municipalKPA,
@@ -832,8 +823,6 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
     strategicInterventionPublicId: form.strategicInterventionPublicId || null,
     strategicObjectivePublicId: form.strategicObjectivePublicId || null,
     performanceObjectivePublicId: form.performanceObjectivePublicId,
-    strategicGoalId: form.strategicGoalId ? Number(form.strategicGoalId) : null,
-    strategicObjectiveId: form.strategicObjectiveId ? Number(form.strategicObjectiveId) : null,
     performanceObjective: form.performanceObjective,
     targetName: form.targetName,
     kpiDescription: form.kpiDescription,
@@ -859,15 +848,13 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
   };
 }
 
-function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveIpmsTargetPayload {
+export function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveIpmsTargetPayload {
   return {
-    sourceTemplateId: form.sourceTemplateId || null,
+    sourceTemplatePublicId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
-    relatedOpmsTargetId: form.relatedOPMSTargetId || null,
-    periodId: form.periodId ? Number(form.periodId) : null,
-    departmentId: null,
+    relatedOpmsTargetPublicId: form.relatedOPMSTargetId || null,
+    municipalityFinancialYearPublicId: form.municipalityFinancialYearPublicId,
     departmentPublicId: form.departmentId || null,
-    unitId: null,
     unitPublicId: form.unitId || null,
     assignedUserPublicId: form.assignedToId || null,
     supervisorPublicId: form.supervisorId || null,
@@ -881,8 +868,6 @@ function buildIpmsPayload(form: IpmsFormState, configuration?: PerformanceConfig
     strategicInterventionPublicId: form.strategicInterventionPublicId || null,
     strategicObjectivePublicId: form.strategicObjectivePublicId || null,
     performanceObjectivePublicId: form.performanceObjectivePublicId,
-    strategicGoalId: form.strategicGoalId ? Number(form.strategicGoalId) : null,
-    strategicObjectiveId: form.strategicObjectiveId ? Number(form.strategicObjectiveId) : null,
     performanceObjective: form.performanceObjective,
     targetName: form.targetName,
     kpiDescription: form.kpiDescription,
@@ -908,7 +893,6 @@ function validateOpmsForm(form: OpmsFormState) {
   const errors = validateRequiredFields([
     { label: 'SDBIP Layer', value: form.sdbipLayerPublicId },
     { label: 'Municipality Financial Year', value: form.municipalityFinancialYearPublicId },
-    { label: 'Period', value: form.periodId },
     { label: 'Department', value: form.departmentId },
     { label: 'Indicator Number', value: form.indicatorNumber },
     { label: 'Target Name', value: form.targetName },
@@ -933,7 +917,6 @@ function validateOpmsForm(form: OpmsFormState) {
 function validateIpmsForm(form: IpmsFormState) {
   const errors = validateRequiredFields([
     { label: 'Municipality Financial Year', value: form.municipalityFinancialYearPublicId },
-    { label: 'Period', value: form.periodId },
     { label: 'Department', value: form.departmentId },
     { label: 'Indicator Number', value: form.indicatorNumber },
     { label: 'Target Name', value: form.targetName },
@@ -1256,9 +1239,8 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
+  const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch } = referenceData;
   const employeeIdentityOptions = employees.filter(item => item.identityUserPublicId).map(item => ({ value: item.identityUserPublicId!, label: `${item.firstName} ${item.lastName}` }));
-  const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = referenceLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = referenceLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
   const selectedUomName = referenceLabels[`uom:${form.kpiUnitOfMeasurePublicId}`] ?? existingTarget?.unitOfMeasure.name;
@@ -1303,11 +1285,10 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
         <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <FormPanel title="Planning Setup" description="Define ownership, period, template source, and local assignment information." icon={<CalendarRange className="h-5 w-5" />}>
             <FormRow cols={2}>
-              <Input label="Source Template Id" value={form.sourceTemplateId} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateId: event.target.value }))} />
+              <Input label="Source Template Public Id" value={form.sourceTemplateId} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateId: event.target.value }))} />
               <Input label="Template Version" value={form.sourceTemplateVersion} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateVersion: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={buildPeriodSelectOptions(lookups.periods)} />
               <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => { setSelectedVoteNumber(undefined); setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, sdbipLayerPublicId: '', voteNumberIds: '', nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', standardClassificationPublicId: '', standardClassification: '', kpiUnitOfMeasurePublicId: '' })); }} />
               <CalendarMasterPicker kind="sdbip-layer" label="SDBIP Layer" required value={form.sdbipLayerPublicId} municipalityFinancialYearId={form.municipalityFinancialYearPublicId || undefined} selectedLabel={existingTarget?.sdbipLayer ? `${existingTarget.sdbipLayer.code} · ${existingTarget.sdbipLayer.name}` : undefined} onChange={(value, option) => setForm(prev => ({ ...prev, sdbipLayerPublicId: value, municipalityFinancialYearPublicId: (option as SdbipLayerMasterDto | undefined)?.municipalityFinancialYearPublicId ?? prev.municipalityFinancialYearPublicId }))} />
             </FormRow>
@@ -1509,10 +1490,6 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Department</p>
                 <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedDepartmentName ?? '-'}</p>
-              </div>
-              <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Period</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedPeriod?.name ?? '-'}</p>
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Unit</p>
@@ -1831,9 +1808,8 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     );
   }
 
-  const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch, lookups } = referenceData;
+  const { employees, employeePage, employeeTotalPages, employeeSearch, setEmployeePage, setEmployeeSearch } = referenceData;
   const employeeIdentityOptions = employees.filter(item => item.identityUserPublicId).map(item => ({ value: item.identityUserPublicId!, label: `${item.firstName} ${item.lastName}` }));
-  const selectedPeriod = lookups.periods.find(item => String(item.id) === form.periodId);
   const selectedDepartmentName = organizationLabels[`department:${form.departmentId}`] ?? (existingTarget?.department.publicId === form.departmentId ? existingTarget.department.name : undefined);
   const selectedUnitName = organizationLabels[`unit:${form.unitId}`] ?? (existingTarget?.unit?.publicId === form.unitId ? existingTarget.unit.name : undefined);
   const selectedUomName = organizationLabels[`uom:${form.kpiUnitOfMeasurePublicId}`] ?? existingTarget?.unitOfMeasure.name;
@@ -1875,11 +1851,11 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
         <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
           <FormPanel title="Alignment And Ownership" description="Select the planning period, related OPMS target, employee, supervisor, and department." icon={<CalendarRange className="h-5 w-5" />}>
             <FormRow cols={2}>
-              <Input label="Source Template Id" value={form.sourceTemplateId} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateId: event.target.value }))} />
+              <Input label="Source Template Public Id" value={form.sourceTemplateId} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateId: event.target.value }))} />
               <Input label="Template Version" value={form.sourceTemplateVersion} onChange={(event) => setForm(prev => ({ ...prev, sourceTemplateVersion: event.target.value }))} />
             </FormRow>
             <FormRow cols={3}>
-              <TargetPicker kind="opms" label="Related OPMS Target" emptyLabel="No link" value={form.relatedOPMSTargetId} onChange={(value, option) => { setForm(prev => ({ ...prev, relatedOPMSTargetId: value })); setLinkedOpmsLabel(option ? `${option.indicatorNumber} - ${option.targetName}` : ''); }} />
+              <TargetPicker kind="opms" label="Related OPMS Target" emptyLabel="No link" value={form.relatedOPMSTargetId} valueField="publicId" onChange={(value, option) => { setForm(prev => ({ ...prev, relatedOPMSTargetId: value })); setLinkedOpmsLabel(option ? `${option.indicatorNumber} - ${option.targetName}` : ''); }} />
               <div className="flex items-end">
                 <Button variant="outline" className="w-full" disabled={!form.relatedOPMSTargetId} onClick={() => setForm(prev => ({ ...prev, relatedOPMSTargetId: '' }))}>
                   Unlink
@@ -1889,7 +1865,6 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
             </FormRow>
             <FormRow cols={3}>
               <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', kpiUnitOfMeasurePublicId: '' }))} />
-              <Select label="Period" required error={fieldError('Period')} value={form.periodId} onChange={(event) => setForm(prev => ({ ...prev, periodId: event.target.value }))} options={buildPeriodSelectOptions(lookups.periods)} />
               <OrganizationMasterPicker kind="department" label="Department" required value={form.departmentId} selectedLabel={selectedDepartmentName} emptyLabel="Select Department" onChange={(value, option) => { setForm(prev => ({ ...prev, departmentId: value, unitId: '' })); if (value && option) setOrganizationLabels(current => ({ ...current, [`department:${value}`]: option.name })); }} />
             </FormRow>
             <FormRow cols={2}>
@@ -1972,10 +1947,6 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Department</p>
                 <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedDepartmentName ?? '-'}</p>
-              </div>
-              <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Period</p>
-                <p className="mt-1 text-sm font-medium text-secondary-900 dark:text-white">{selectedPeriod?.name ?? '-'}</p>
               </div>
               <div className="rounded-xl border border-secondary-200 px-3 py-3 dark:border-secondary-700">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Unit</p>

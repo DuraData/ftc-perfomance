@@ -395,12 +395,14 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   sdbipLayer?: { publicId: string; code: string; name: string };
   PriorYearOpmsId?: string;
   sourceTemplateId?: string;
+  sourceTemplatePublicId?: string;
   sourceTemplateVersion?: number;
   period: Period;
   department: Department;
   unit?: DepartmentUnit;
   wards?: Ward[];
   wardIds?: number[];
+  wardPublicIds?: string[];
   assignedTo?: Employee;
   indicatorNumber: string;
   isIndicatorNumberRevised: boolean;
@@ -472,6 +474,7 @@ export interface OPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   submissions: OPMSSubmission[];
   voteNumbers: VoteNumber[];
   voteNumberIds?: number[];
+  voteNumberPublicIds?: string[];
   VoteNumbers?: OpmsVoteNumberChild[];
   relatedIPMSTargets: IPMSTarget[];
   RelatedIPMSTargets?: string[];
@@ -497,7 +500,9 @@ export interface IPMSTarget extends BaseKpiTargetXafFields, TypedTargetPeriodVal
   strategicObjectivePublicId?: string;
   performanceObjectivePublicId?: string;
   sourceTemplateId?: string;
+  sourceTemplatePublicId?: string;
   sourceTemplateVersion?: number;
+  relatedOpmsTargetPublicId?: string;
   relatedOPMSTarget?: OPMSTarget;
   period: Period;
   department: Department;
@@ -2480,6 +2485,7 @@ export interface OpmsTargetDto {
   sdbipLayerCode?: string | null;
   sdbipLayerName?: string | null;
   sourceTemplateId?: string | null;
+  sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
   periodId?: number | null;
   departmentId?: number | null;
@@ -2491,8 +2497,10 @@ export interface OpmsTargetDto {
   assignedUserPublicId?: string | null;
   assignedUserName?: string | null;
   wardIds: number[];
+  wardPublicIds: string[];
   additionalAssigneePublicIds: string[];
   voteNumberIds: number[];
+  voteNumberPublicIds: string[];
   indicatorNumber: string;
   isIndicatorNumberRevised: boolean;
   revisedIndicatorNumber?: string | null;
@@ -2565,8 +2573,10 @@ export interface IpmsTargetDto {
   municipalityFinancialYearPublicId?: string | null;
   municipalityFinancialYearName?: string | null;
   sourceTemplateId?: string | null;
+  sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetId?: string | null;
+  relatedOpmsTargetPublicId?: string | null;
   periodId?: number | null;
   departmentId?: number | null;
   departmentPublicId?: string | null;
@@ -2953,17 +2963,15 @@ export interface SaveIpmsTargetTemplatePayload {
 
 export interface SaveOpmsTargetPayload {
   sdbipLayerPublicId?: string | null;
-  sourceTemplateId?: string | null;
+  sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
-  periodId?: number | null;
-  departmentId?: number | null;
+  municipalityFinancialYearPublicId: string;
   departmentPublicId?: string | null;
-  unitId?: number | null;
   unitPublicId?: string | null;
   assignedUserPublicId?: string | null;
-  wardIds?: number[];
+  wardPublicIds?: string[];
   additionalAssigneePublicIds?: string[];
-  voteNumberIds?: number[];
+  voteNumberPublicIds?: string[];
   indicatorNumber: string;
   originalOrderNumber?: number;
   nationalKpa: string;
@@ -2975,8 +2983,6 @@ export interface SaveOpmsTargetPayload {
   strategicInterventionPublicId?: string | null;
   strategicObjectivePublicId?: string | null;
   performanceObjectivePublicId: string;
-  strategicGoalId?: number | null;
-  strategicObjectiveId?: number | null;
   performanceObjective: string;
   targetName: string;
   kpiDescription: string;
@@ -3002,13 +3008,11 @@ export interface SaveOpmsTargetPayload {
 }
 
 export interface SaveIpmsTargetPayload {
-  sourceTemplateId?: string | null;
+  sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
-  relatedOpmsTargetId?: string | null;
-  periodId?: number | null;
-  departmentId?: number | null;
+  relatedOpmsTargetPublicId?: string | null;
+  municipalityFinancialYearPublicId: string;
   departmentPublicId?: string | null;
-  unitId?: number | null;
   unitPublicId?: string | null;
   assignedUserPublicId?: string | null;
   supervisorPublicId?: string | null;
@@ -3023,8 +3027,6 @@ export interface SaveIpmsTargetPayload {
   strategicInterventionPublicId?: string | null;
   strategicObjectivePublicId?: string | null;
   performanceObjectivePublicId: string;
-  strategicGoalId?: number | null;
-  strategicObjectiveId?: number | null;
   performanceObjective: string;
   targetName: string;
   kpiDescription: string;

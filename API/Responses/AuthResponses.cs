@@ -233,6 +233,7 @@ public record OpmsTargetResponse(
     DateTime CreatedAt)
 {
     public Guid PublicId { get; init; }
+    public Guid? SourceTemplatePublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
     public int OriginalOrderNumber { get; init; }
     public int RevisedOrderNumber { get; init; }
@@ -278,6 +279,8 @@ public record OpmsTargetResponse(
     public string? KpiUnitOfMeasureName { get; init; }
     public string? KpiUnitOfMeasureSymbol { get; init; }
     public OpmsTargetVoteNumberResponse[] VoteNumbers { get; init; } = [];
+    public Guid[] WardPublicIds { get; init; } = [];
+    public Guid[] VoteNumberPublicIds { get; init; } = [];
 }
 
 public sealed record KpiBudgetSourceResponse(Guid PublicId, Guid BudgetSourcePublicId, string Code, string Name, decimal? Amount);
@@ -319,6 +322,8 @@ public record IpmsTargetResponse(
     DateTime CreatedAt)
 {
     public Guid PublicId { get; init; }
+    public Guid? SourceTemplatePublicId { get; init; }
+    public Guid? RelatedOpmsTargetPublicId { get; init; }
     public string RowVersion { get; init; } = string.Empty;
     public int OriginalOrderNumber { get; init; }
     public int RevisedOrderNumber { get; init; }

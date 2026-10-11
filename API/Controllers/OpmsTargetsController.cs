@@ -115,7 +115,7 @@ public class OpmsTargetsController : ControllerBase
         var items = await query
             .Skip(request.Offset).Take(request.PageSize)
             .Include(item => item.SdbipLayer).Include(item => item.Department).Include(item => item.Unit).Include(item => item.AssignedUser)
-            .Include(item => item.Wards).Include(item => item.AdditionalAssignees).ThenInclude(item => item.User).Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
+            .Include(item => item.Wards).ThenInclude(item => item.Ward).Include(item => item.AdditionalAssignees).ThenInclude(item => item.User).Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.NationalKpaReference).Include(item => item.MunicipalKpaReference).Include(item => item.BackToBasicsPillarReference)
             .Include(item => item.StrategicGoalMaster).Include(item => item.StrategicInterventionReference)
             .Include(item => item.StrategicObjectiveMaster).Include(item => item.PerformanceObjectiveReference)
@@ -125,8 +125,9 @@ public class OpmsTargetsController : ControllerBase
             .AsSplitQuery()
             .ToListAsync();
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items);
+        var sourceTemplatePublicIds = await ResolveSourceTemplatePublicIdsAsync(items);
         var responses = new List<OpmsTargetResponse>(items.Count);
-        foreach (var item in items) responses.Add(await ToSecureResponseAsync(user, item, request.ReportingPeriodType));
+        foreach (var item in items) responses.Add(await ToSecureResponseAsync(user, item, request.ReportingPeriodType, sourceTemplatePublicIds));
         return Ok(new ApiResponse<PagedResponse<OpmsTargetResponse>>(true,
             PagedResponse<OpmsTargetResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
@@ -211,7 +212,7 @@ public class OpmsTargetsController : ControllerBase
             request.KpiDescription, request.NationalKpa, request.MunicipalKpa, request.PerformanceObjective, request.Weight, request.KpiType, request.IndicatorType);
         if (definitionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, definitionError));
 
-        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, _tenantContext.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, _tenantContext.MunicipalityId, null, null, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.CREATE", new AccessScopeContext(organization.DepartmentId, organization.UnitId, null, null));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
@@ -219,12 +220,14 @@ public class OpmsTargetsController : ControllerBase
         if (!await CanUpdatePeriodTargetMembersAsync(user, memberScope)) return Forbid();
         if (request.OriginalOrderNumber <= 0)
             return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "Original order number must be a positive integer."));
-        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.PeriodId, request.PeriodTargets);
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, _tenantContext.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
-        var mappingError = await ValidateMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, new HashSet<int>());
-        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
+        var mappings = await ResolveMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, new HashSet<int>());
+        if (!mappings.Succeeded) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappings.Error));
         var userReferences = await ResolveUserReferencesAsync(request);
         if (userReferences.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, userReferences.Error));
+        var sourceTemplate = await ResolveSourceTemplateAsync(request.SourceTemplatePublicId, request.SourceTemplateVersion);
+        if (!sourceTemplate.Succeeded) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, sourceTemplate.Error));
         var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, null);
         if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
@@ -244,9 +247,8 @@ public class OpmsTargetsController : ControllerBase
         var entity = new OpmsTarget
         {
             SdbipLayerId = layer.Entity.Id,
-            SourceTemplateId = request.SourceTemplateId,
+            SourceTemplateId = sourceTemplate.InternalId,
             SourceTemplateVersion = request.SourceTemplateVersion,
-            PeriodId = request.PeriodId,
             DepartmentId = organization.DepartmentId,
             UnitId = organization.UnitId,
             AssignedUserId = userReferences.AssignedUserId,
@@ -256,14 +258,11 @@ public class OpmsTargetsController : ControllerBase
             RevisedOrderNumber = request.OriginalOrderNumber,
             NationalKpa = request.NationalKpa,
             MunicipalKpa = request.MunicipalKpa,
-            StrategicGoalId = request.StrategicGoalId,
-            StrategicObjectiveId = request.StrategicObjectiveId,
             PerformanceObjective = request.PerformanceObjective,
             TargetName = request.TargetName.Trim(),
             KpiDescription = request.KpiDescription.Trim(),
             Baseline = request.Baseline,
             BaselineDescription = request.BaselineDescription,
-            UnitOfMeasureId = request.UnitOfMeasureId,
             Weight = request.Weight,
             KpiType = request.KpiType,
             IndicatorType = request.IndicatorType,
@@ -279,7 +278,7 @@ public class OpmsTargetsController : ControllerBase
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
-        ApplyMappings(entity, request, userReferences.AdditionalAssigneeIds);
+        ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds);
 
         _context.OpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, entity.Id, null);
@@ -304,7 +303,7 @@ public class OpmsTargetsController : ControllerBase
         if (definitionError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, definitionError));
 
         var entity = await _context.OpmsTargets
-            .Include(item => item.Wards)
+            .Include(item => item.Wards).ThenInclude(item => item.Ward)
             .Include(item => item.AdditionalAssignees).ThenInclude(item => item.User)
             .Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.GovernedBudgetSources)
@@ -317,14 +316,16 @@ public class OpmsTargetsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
-        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, request.DepartmentId, request.UnitId, request.DepartmentPublicId, request.UnitPublicId);
+        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, null, null, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
-        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.PeriodId, request.PeriodTargets);
+        var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
-        var mappingError = await ValidateMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, entity.VoteNumbers.Select(item => item.VoteNumberId).ToHashSet());
-        if (mappingError != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappingError));
+        var mappings = await ResolveMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, entity.VoteNumbers.Select(item => item.VoteNumberId).ToHashSet());
+        if (!mappings.Succeeded) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappings.Error));
         var userReferences = await ResolveUserReferencesAsync(request);
         if (userReferences.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, userReferences.Error));
+        var sourceTemplate = await ResolveSourceTemplateAsync(request.SourceTemplatePublicId, request.SourceTemplateVersion, entity.SourceTemplateId);
+        if (!sourceTemplate.Succeeded) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, sourceTemplate.Error));
         var layer = await ResolveSdbipLayerAsync(request.SdbipLayerPublicId, periodPlan, entity.SdbipLayerId);
         if (layer.Entity == null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, layer.Error));
         var strategicSelection = StrategicClassificationResolver.Selection(request);
@@ -352,20 +353,16 @@ public class OpmsTargetsController : ControllerBase
             return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "KPI number, target name and KPI wording are governed originals. Record approved changes through the field-revision endpoint."));
 
         entity.SdbipLayerId = layer.Entity.Id;
-        entity.SourceTemplateId = request.SourceTemplateId;
+        entity.SourceTemplateId = sourceTemplate.InternalId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
-        entity.PeriodId = request.PeriodId;
         entity.DepartmentId = organization.DepartmentId;
         entity.UnitId = organization.UnitId;
         entity.AssignedUserId = userReferences.AssignedUserId;
         entity.NationalKpa = request.NationalKpa;
         entity.MunicipalKpa = request.MunicipalKpa;
-        entity.StrategicGoalId = request.StrategicGoalId;
-        entity.StrategicObjectiveId = request.StrategicObjectiveId;
         entity.PerformanceObjective = request.PerformanceObjective;
         entity.Baseline = request.Baseline;
         entity.BaselineDescription = request.BaselineDescription;
-        entity.UnitOfMeasureId = request.UnitOfMeasureId;
         entity.Weight = request.Weight;
         entity.KpiType = request.KpiType;
         entity.IndicatorType = request.IndicatorType;
@@ -381,7 +378,7 @@ public class OpmsTargetsController : ControllerBase
         _context.OpmsTargetWards.RemoveRange(entity.Wards);
         _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
         _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
-        ApplyMappings(entity, request, userReferences.AdditionalAssigneeIds);
+        ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds);
         await _context.SaveChangesAsync();
 
         var after = await FindTargetAsync(id) ?? entity;
@@ -669,7 +666,7 @@ public class OpmsTargetsController : ControllerBase
             .Include(item => item.Department)
             .Include(item => item.Unit)
             .Include(item => item.AssignedUser)
-            .Include(item => item.Wards)
+            .Include(item => item.Wards).ThenInclude(item => item.Ward)
             .Include(item => item.AdditionalAssignees).ThenInclude(item => item.User)
             .Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber)
             .Include(item => item.NationalKpaReference)
@@ -699,24 +696,49 @@ public class OpmsTargetsController : ControllerBase
         return (layer, null);
     }
 
-    private async Task<string?> ValidateMappingsAsync(SaveOpmsTargetRequest request, long municipalityFinancialYearId, IReadOnlySet<int> existingVoteIds)
+    private sealed record ResolvedTargetMappings(int[] WardIds, int[] VoteIds, string? Error)
+    {
+        public bool Succeeded => Error == null;
+    }
+
+    private async Task<ResolvedTargetMappings> ResolveMappingsAsync(SaveOpmsTargetRequest request, long municipalityFinancialYearId, IReadOnlySet<int> existingVoteIds)
     {
         var tenantId = _tenantContext.MunicipalityId;
-        if (!tenantId.HasValue || tenantId == long.MinValue) return "A municipality context is required.";
-        var wardIds = (request.WardIds ?? []).Distinct().ToArray();
+        if (!tenantId.HasValue || tenantId == long.MinValue) return new([], [], "A municipality context is required.");
+        var wardPublicIds = request.WardPublicIds.Distinct().ToArray();
         var assigneeIds = (request.AdditionalAssigneePublicIds ?? []).Distinct().ToArray();
-        var voteIds = (request.VoteNumberIds ?? []).Distinct().ToArray();
-        if (wardIds.Length > 100 || assigneeIds.Length > 100 || voteIds.Length > 100) return "At most 100 wards, additional assignees, and vote numbers may be linked.";
-        var wards = await _context.Wards.AsNoTracking().Where(item => wardIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
-        if (wards.Length != wardIds.Length || wards.Any(item => item.MunicipalityId != tenantId.Value))
-            return "Every ward must be active and belong to the selected municipality.";
+        var votePublicIds = request.VoteNumberPublicIds.Distinct().ToArray();
+        if (wardPublicIds.Length > 100 || assigneeIds.Length > 100 || votePublicIds.Length > 100)
+            return new([], [], "At most 100 wards, additional assignees, and vote numbers may be linked.");
+        var wards = await _context.Wards.AsNoTracking()
+            .Where(item => wardPublicIds.Contains(item.PublicId) && item.IsActive && item.MunicipalityId == tenantId.Value)
+            .Select(item => new { item.PublicId, item.Id }).ToArrayAsync();
+        if (wards.Length != wardPublicIds.Length)
+            return new([], [], "Every ward must be active and belong to the selected municipality.");
 
-        var votes = await _context.VoteNumbers.AsNoTracking().Include(item => item.Department).Where(item => voteIds.Contains(item.Id) && item.IsActive).ToArrayAsync();
-        if (votes.Length != voteIds.Length || votes.Any(item => item.MunicipalityId != tenantId.Value || item.Department.MunicipalityId != tenantId.Value
+        var votes = await _context.VoteNumbers.AsNoTracking().Include(item => item.Department)
+            .Where(item => votePublicIds.Contains(item.PublicId) && item.IsActive).ToArrayAsync();
+        if (votes.Length != votePublicIds.Length || votes.Any(item => item.MunicipalityId != tenantId.Value || item.Department.MunicipalityId != tenantId.Value
             || item.MunicipalityFinancialYearId != municipalityFinancialYearId && !(item.MunicipalityFinancialYearId == null && existingVoteIds.Contains(item.Id))))
-            return "Every vote number must be active and belong to the selected municipality financial year; unreconciled historical votes may only be retained on their existing KPI.";
+            return new([], [], "Every vote number must be active and belong to the selected municipality financial year; unreconciled historical votes may only be retained on their existing KPI.");
 
-        return null;
+        return new(wards.Select(item => item.Id).ToArray(), votes.Select(item => item.Id).ToArray(), null);
+    }
+
+    private async Task<(string? InternalId, string? Error, bool Succeeded)> ResolveSourceTemplateAsync(Guid? publicId, int? version, string? existingInternalId = null)
+    {
+        if (!publicId.HasValue)
+            return version.HasValue ? (null, "A source template public identifier is required when a template version is supplied.", false) : (null, null, true);
+        var template = await _context.OpmsTargetTemplates.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.PublicId == publicId.Value && !item.IsArchived);
+        if (template == null) return (null, "The source OPMS template was not found or is archived.", false);
+        var internalId = template.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!template.IsActive && !string.Equals(existingInternalId, internalId, StringComparison.Ordinal))
+            return (null, "The source OPMS template is inactive and cannot be selected for a new linkage.", false);
+        if (version.HasValue && version.Value != template.Version
+            && !await _context.OpmsTargetTemplateVersions.AnyAsync(item => item.OpmsTargetTemplateId == template.Id && item.Version == version.Value))
+            return (null, "The selected OPMS template version was not found.", false);
+        return (internalId, null, true);
     }
 
     private async Task<(string? AssignedUserId, IReadOnlyDictionary<Guid, string> AdditionalAssigneeIds, string? Error)> ResolveUserReferencesAsync(SaveOpmsTargetRequest request)
@@ -743,12 +765,13 @@ public class OpmsTargetsController : ControllerBase
         return (request.AssignedUserPublicId.HasValue ? users[request.AssignedUserPublicId.Value] : null, users, null);
     }
 
-    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request, IReadOnlyDictionary<Guid, string> userIdsByPublicId)
+    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request, ResolvedTargetMappings mappings, IReadOnlyDictionary<Guid, string> userIdsByPublicId)
     {
         var tenantId = _tenantContext.MunicipalityId;
-        target.Wards = (request.WardIds ?? []).Distinct().Select(id => new OpmsTargetWard { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = id }).ToList();
-        target.AdditionalAssignees = (request.AdditionalAssigneePublicIds ?? []).Distinct().Select(publicId => new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = userIdsByPublicId[publicId] }).ToList();
-        target.VoteNumbers = (request.VoteNumberIds ?? []).Distinct().Select(id => new OpmsTargetVoteNumber { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = id }).ToList();
+        target.Wards = mappings.WardIds.Select(id => new OpmsTargetWard { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = id }).ToList();
+        target.AdditionalAssignees = request.AdditionalAssigneePublicIds.Distinct()
+            .Select(publicId => new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = userIdsByPublicId[publicId] }).ToList();
+        target.VoteNumbers = mappings.VoteIds.Select(id => new OpmsTargetVoteNumber { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = id }).ToList();
     }
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>
@@ -768,11 +791,28 @@ public class OpmsTargetsController : ControllerBase
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalReason.READ", scope))?.Allowed == true,
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalActor.READ", scope))?.Allowed == true);
 
-    private async Task<OpmsTargetResponse> ToSecureResponseAsync(ApplicationUser user, OpmsTarget target, ReportingPeriodType? periodType = null)
+    private async Task<OpmsTargetResponse> ToSecureResponseAsync(
+        ApplicationUser user,
+        OpmsTarget target,
+        ReportingPeriodType? periodType = null,
+        IReadOnlyDictionary<int, Guid>? sourceTemplatePublicIds = null)
     {
         var scope = BuildScope(target);
         var lifecycleAccess = await GetLifecycleMemberAccessAsync(user, scope);
         var response = target.ToResponse(periodType, await GetPeriodTargetMemberAccessAsync(user, scope), lifecycleAccess);
+        if (int.TryParse(target.SourceTemplateId, out var sourceTemplateId))
+        {
+            var sourceTemplatePublicId = sourceTemplatePublicIds != null
+                ? sourceTemplatePublicIds.GetValueOrDefault(sourceTemplateId)
+                : await _context.OpmsTargetTemplates.AsNoTracking()
+                    .Where(item => item.Id == sourceTemplateId)
+                    .Select(item => item.PublicId)
+                    .SingleOrDefaultAsync();
+            response = response with
+            {
+                SourceTemplatePublicId = sourceTemplatePublicId == Guid.Empty ? null : sourceTemplatePublicId
+            };
+        }
         if (!lifecycleAccess.WithdrawalActor || string.IsNullOrWhiteSpace(target.WithdrawnByUserId)) return response;
         var actor = await _context.Users.AsNoTracking().Where(item => item.Id == target.WithdrawnByUserId)
             .Select(item => new { item.PublicId, item.FirstName, item.LastName }).SingleOrDefaultAsync();
@@ -781,5 +821,15 @@ public class OpmsTargetsController : ControllerBase
             WithdrawnByUserPublicId = actor.PublicId,
             WithdrawnByName = $"{actor.FirstName} {actor.LastName}".Trim()
         };
+    }
+
+    private async Task<IReadOnlyDictionary<int, Guid>> ResolveSourceTemplatePublicIdsAsync(IReadOnlyCollection<OpmsTarget> targets)
+    {
+        var ids = targets.Select(item => int.TryParse(item.SourceTemplateId, out var id) ? id : (int?)null)
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
+        return ids.Length == 0
+            ? new Dictionary<int, Guid>()
+            : await _context.OpmsTargetTemplates.AsNoTracking().Where(item => ids.Contains(item.Id))
+                .ToDictionaryAsync(item => item.Id, item => item.PublicId);
     }
 }
