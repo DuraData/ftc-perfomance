@@ -16,6 +16,8 @@ const api = vi.hoisted(() => ({
   getIpmsSubmissionAttachmentsPage: vi.fn(),
   getOpmsConsolidationHistoryPage: vi.fn(),
   getIpmsConsolidationHistoryPage: vi.fn(),
+  saveOpmsConsolidatedActual: vi.fn(),
+  saveIpmsConsolidatedActual: vi.fn(),
 }));
 
 vi.mock('../../api/api', () => api);
@@ -66,6 +68,8 @@ describe('SubmissionWorkspace member security', () => {
       success: true,
       data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 },
     });
+    api.saveOpmsConsolidatedActual.mockResolvedValue({ success: false, message: 'Transport assertion complete.' });
+    api.saveIpmsConsolidatedActual.mockResolvedValue({ success: false, message: 'Transport assertion complete.' });
   });
 
   it('does not render protected values or editing controls when member access is denied', () => {
@@ -351,6 +355,49 @@ describe('SubmissionWorkspace member security', () => {
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionActor');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionReason');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionCorrelationId');
+  });
+
+  it('does not expose or submit a consolidation override reason without its exact update grant', () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    security.canEditField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    const midyear = {
+      ...submission,
+      quarter: 'Mid-Year',
+      rowVersion: 'AAAAAAAAAAA=',
+      systemSuggestedActualPerformance: '50',
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={midyear} submissionType="OPMS" />);
+
+    expect(screen.queryByLabelText('Consolidation edit reason')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Final consolidated actual'), { target: { value: '45' } });
+    expect(screen.getByRole('button', { name: 'Save final actual' })).toBeDisabled();
+    expect(api.saveOpmsConsolidatedActual).not.toHaveBeenCalled();
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SuggestionReason');
+  });
+
+  it('submits a consolidation override reason only when its exact update grant is present', async () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
+    security.canEditField.mockImplementation((_resource: string, member: string) =>
+      member === 'ActualPerformance' || member === 'SuggestionReason');
+    const midyear = {
+      ...submission,
+      quarter: 'Mid-Year',
+      rowVersion: 'AAAAAAAAAAA=',
+      systemSuggestedActualPerformance: '50',
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={midyear} submissionType="OPMS" />);
+
+    fireEvent.change(screen.getByLabelText('Final consolidated actual'), { target: { value: '45' } });
+    fireEvent.change(screen.getByLabelText('Consolidation edit reason'), { target: { value: 'Reviewed source evidence' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save final actual' }));
+
+    await waitFor(() => expect(api.saveOpmsConsolidatedActual).toHaveBeenCalledWith('7', {
+      actualPerformance: '45',
+      editReason: 'Reviewed source evidence',
+      rowVersion: 'AAAAAAAAAAA=',
+    }));
   });
 
   it('does not render hostile current workflow identities or comments without their independent member grants', () => {

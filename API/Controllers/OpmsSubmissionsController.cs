@@ -348,6 +348,14 @@ public class OpmsSubmissionsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionResult>(false, null, mutationReason));
         var denial = await ConsolidationPermissionDenialAsync(user, entity, update: true);
         if (denial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PerformanceSuggestionResult>(false, null, denial));
+        if (!string.IsNullOrWhiteSpace(request.EditReason))
+        {
+            var reasonDecision = await _accessControlService.CheckPermissionAsync(user,
+                "OPMS_SUBMISSION.SuggestionReason.UPDATE", BuildScope(entity));
+            if (!reasonDecision.Allowed)
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new ApiResponse<PerformanceSuggestionResult>(false, null, reasonDecision.Reason));
+        }
 
         var result = await _performanceSuggestions.RecordFinalOpmsActualAsync(id, request.ActualPerformance, request.EditReason, request.RowVersion, user.Id, HttpContext.TraceIdentifier);
         if (result.Code == "CONCURRENCY_CONFLICT") return Conflict(new ApiResponse<PerformanceSuggestionResult>(false, result, result.Explanation));

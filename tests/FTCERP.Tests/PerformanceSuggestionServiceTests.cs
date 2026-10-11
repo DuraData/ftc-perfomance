@@ -115,6 +115,55 @@ public sealed class PerformanceSuggestionServiceTests
     }
 
     [Fact]
+    public async Task Consolidation_override_reason_requires_the_exact_dynamic_member_update_permission()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: true);
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_SUBMISSION.UPDATE", "OPMS_SUBMISSION.ActualPerformance.UPDATE",
+            "IPMS_SUBMISSION.UPDATE", "IPMS_SUBMISSION.ActualPerformance.UPDATE"
+        };
+        var access = ProjectionAccess(seed.User, permissions);
+        var suggestions = new Mock<IPerformanceSuggestionService>();
+        var saved = new PerformanceSuggestionResult(
+            false, false, "SUGGESTION_EDITED", "Saved", "50", "45", true, ["Q1", "Q2"]);
+        suggestions.Setup(item => item.RecordFinalOpmsActualAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(saved);
+        suggestions.Setup(item => item.RecordFinalIpmsActualAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(saved);
+        var opms = CreateController(context, seed.User, access.Object, suggestions.Object);
+        var ipms = CreateIpmsController(context, seed.User, access.Object, suggestions.Object);
+        var opmsRequest = new SaveConsolidatedActualRequest(
+            "45", "Reviewed source evidence", Convert.ToBase64String(seed.OpmsDestination.RowVersion));
+        var ipmsRequest = new SaveConsolidatedActualRequest(
+            "45", "Reviewed source evidence", Convert.ToBase64String(seed.IpmsDestination!.RowVersion));
+
+        var deniedOpms = await opms.SaveConsolidatedActual(seed.OpmsDestination.PublicId.ToString(), opmsRequest);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(deniedOpms.Result).StatusCode);
+        var deniedIpms = await ipms.SaveConsolidatedActual(seed.IpmsDestination.PublicId.ToString(), ipmsRequest);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(deniedIpms.Result).StatusCode);
+        suggestions.Verify(item => item.RecordFinalOpmsActualAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        suggestions.Verify(item => item.RecordFinalIpmsActualAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+
+        permissions.Add("OPMS_SUBMISSION.SuggestionReason.UPDATE");
+        permissions.Add("IPMS_SUBMISSION.SuggestionReason.UPDATE");
+
+        (await opms.SaveConsolidatedActual(seed.OpmsDestination.PublicId.ToString(), opmsRequest)).Result
+            .Should().BeOfType<OkObjectResult>();
+        (await ipms.SaveConsolidatedActual(seed.IpmsDestination.PublicId.ToString(), ipmsRequest)).Result
+            .Should().BeOfType<OkObjectResult>();
+        suggestions.Verify(item => item.RecordFinalOpmsActualAsync(
+            seed.OpmsDestination.Id, "45", "Reviewed source evidence", opmsRequest.RowVersion, seed.User.Id, "api-denial"), Times.Once);
+        suggestions.Verify(item => item.RecordFinalIpmsActualAsync(
+            seed.IpmsDestination.Id, "45", "Reviewed source evidence", ipmsRequest.RowVersion, seed.User.Id, "ipms-api-denial"), Times.Once);
+    }
+
+    [Fact]
     public async Task Legacy_review_and_audit_projection_inputs_require_each_exact_member_update()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

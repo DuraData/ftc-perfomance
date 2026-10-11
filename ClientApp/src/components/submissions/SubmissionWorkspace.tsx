@@ -539,6 +539,7 @@ export function SubmissionWorkspace({
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
   const canReadSuggestionActor = security.canReadField(resourceCode, 'SuggestionActor');
   const canReadSuggestionReason = security.canReadField(resourceCode, 'SuggestionReason');
+  const canEditSuggestionReason = security.canEditField(resourceCode, 'SuggestionReason');
   const canReadSuggestionCorrelation = security.canReadField(resourceCode, 'SuggestionCorrelationId');
   const canReadSubmitterIdentity = security.canReadField(resourceCode, 'SubmitterIdentity');
   const canReadSubmitterScore = security.canReadField(resourceCode, 'SubmitterScore');
@@ -737,10 +738,19 @@ export function SubmissionWorkspace({
 
   const saveConsolidation = async () => {
     if (!currentSubmission.rowVersion || !consolidatedActual.trim()) return;
+    const changesSuggestion = consolidatedActual.trim() !== currentSubmission.systemSuggestedActualPerformance;
+    if (changesSuggestion && !canEditSuggestionReason) {
+      setConsolidationError('You do not have permission to record the governance reason required to change the system suggestion.');
+      return;
+    }
     setConsolidationBusy(true);
     setConsolidationError('');
     try {
-      const payload = { actualPerformance: consolidatedActual.trim(), editReason: consolidationReason.trim() || undefined, rowVersion: currentSubmission.rowVersion };
+      const payload = {
+        actualPerformance: consolidatedActual.trim(),
+        editReason: canEditSuggestionReason ? consolidationReason.trim() || undefined : undefined,
+        rowVersion: currentSubmission.rowVersion,
+      };
       const response = submissionType === 'OPMS'
         ? await saveOpmsConsolidatedActual(currentSubmission.id, payload)
         : await saveIpmsConsolidatedActual(currentSubmission.id, payload);
@@ -912,16 +922,18 @@ export function SubmissionWorkspace({
                       Final actual
                       <input aria-label="Final consolidated actual" className="mt-1 min-h-11 w-full rounded-lg border border-secondary-200 bg-white px-3 dark:border-secondary-700 dark:bg-secondary-800" value={consolidatedActual} onChange={event => setConsolidatedActual(event.target.value)} />
                     </label>
-                    <label className="text-sm font-medium text-secondary-700 dark:text-secondary-200">
-                      Reason when changing the suggestion
-                      <input aria-label="Consolidation edit reason" className="mt-1 min-h-11 w-full rounded-lg border border-secondary-200 bg-white px-3 dark:border-secondary-700 dark:bg-secondary-800" value={consolidationReason} onChange={event => setConsolidationReason(event.target.value)} />
-                    </label>
+                    {canEditSuggestionReason && (
+                      <label className="text-sm font-medium text-secondary-700 dark:text-secondary-200">
+                        Reason when changing the suggestion
+                        <input aria-label="Consolidation edit reason" className="mt-1 min-h-11 w-full rounded-lg border border-secondary-200 bg-white px-3 dark:border-secondary-700 dark:bg-secondary-800" value={consolidationReason} onChange={event => setConsolidationReason(event.target.value)} />
+                      </label>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" disabled={consolidationBusy || Boolean(currentSubmission.systemSuggestedActualPerformance)} onClick={() => void generateConsolidation()}>
                       Generate suggestion
                     </Button>
-                    <Button variant="primary" size="sm" disabled={consolidationBusy || !currentSubmission.systemSuggestedActualPerformance || !consolidatedActual.trim() || (consolidatedActual.trim() !== currentSubmission.systemSuggestedActualPerformance && !consolidationReason.trim())} onClick={() => void saveConsolidation()}>
+                    <Button variant="primary" size="sm" disabled={consolidationBusy || !currentSubmission.systemSuggestedActualPerformance || !consolidatedActual.trim() || (consolidatedActual.trim() !== currentSubmission.systemSuggestedActualPerformance && (!canEditSuggestionReason || !consolidationReason.trim()))} onClick={() => void saveConsolidation()}>
                       Save final actual
                     </Button>
                   </div>
