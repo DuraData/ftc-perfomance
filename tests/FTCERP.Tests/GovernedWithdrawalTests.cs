@@ -5,6 +5,129 @@ namespace FTCERP.Tests;
 public sealed class GovernedWithdrawalTests
 {
     [Fact]
+    public async Task Due_date_extension_requires_exact_member_updates_and_row_version_and_derives_the_day_count()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "DUE-MEMBER", Name = "Due Date Municipality" };
+        var user = IdpTestFixture.CreateUser("due-date-user");
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        user.MunicipalityId = municipality.Id;
+        var originalDueDate = DateTime.UtcNow.Date.AddDays(5);
+        var opmsTarget = new OpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-OPMS",
+            TargetName = "OPMS due date", KpiDescription = "OPMS due date", AnnualTargetDescription = "One"
+        };
+        var ipmsTarget = new IpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-IPMS",
+            TargetName = "IPMS due date", KpiDescription = "IPMS due date", AnnualTargetDescription = "One"
+        };
+        var opmsSubmission = new OpmsSubmission
+        {
+            MunicipalityId = municipality.Id, OpmsTarget = opmsTarget, Quarter = "Q1", DueDate = originalDueDate,
+            BaseState = SubmissionBaseStates.InProgress, Status = "submitted", CreatedBy = user.Id
+        };
+        var ipmsSubmission = new IpmsSubmission
+        {
+            MunicipalityId = municipality.Id, IpmsTarget = ipmsTarget, Quarter = "Q1", DueDate = originalDueDate,
+            BaseState = SubmissionBaseStates.InProgress, Status = "submitted", CreatedBy = user.Id
+        };
+        context.AddRange(opmsTarget, ipmsTarget, opmsSubmission, ipmsSubmission);
+        await context.SaveChangesAsync();
+
+        var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OPMS_SUBMISSION.EXTEND_DUE_DATE", "IPMS_SUBMISSION.EXTEND_DUE_DATE"
+        };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(
+                It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(grants.Contains(code) && scope?.MunicipalityId == municipality.Id,
+                    grants.Contains(code) ? "Allowed" : "Denied", [], [], []));
+        access.Setup(service => service.GetEffectiveAccessAsync(user))
+            .ReturnsAsync(() => new EffectiveAccessResult([], grants.ToArray(), [], [], [], []));
+        var audit = new Mock<IWorkflowGovernanceService>();
+        audit.Setup(service => service.WriteAuditTrailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(),
+                It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+        audit.Setup(service => service.CreateWorkflowNotificationsAsync(
+                It.IsAny<IEnumerable<string>>(), It.IsAny<NotificationType>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string?>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+        var opms = SubmissionController(context, user, access.Object, audit.Object);
+        var ipms = IpmsSubmissionController(context, user, access.Object, audit.Object);
+        var opmsVersion = Convert.ToBase64String(opmsSubmission.RowVersion);
+        var ipmsVersion = Convert.ToBase64String(ipmsSubmission.RowVersion);
+        var requestedDate = originalDueDate.AddDays(5);
+
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate, "Protected OPMS reason", opmsVersion, 999))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        grants.Add("OPMS_SUBMISSION.DueDate.UPDATE");
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate, "Protected OPMS reason", opmsVersion, 999))).Result
+            .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.DueDateExtensions.CountAsync()).Should().Be(0);
+
+        grants.UnionWith([
+            "OPMS_SUBMISSION.DueDateExtensionReason.UPDATE",
+            "IPMS_SUBMISSION.DueDate.UPDATE",
+            "IPMS_SUBMISSION.DueDateExtensionReason.UPDATE"
+        ]);
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate, "   ", opmsVersion))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(originalDueDate, "Not an extension", opmsVersion))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate, "Invalid version", "not-base64"))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        (await context.DueDateExtensions.CountAsync()).Should().Be(0);
+
+        var allowedOpms = (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate, "  Protected OPMS reason  ", opmsVersion, 999))).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Subject.Data!;
+        var allowedIpms = (await ipms.ExtendDueDate(ipmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate, "  Protected IPMS reason  ", ipmsVersion, 999))).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<IpmsSubmissionResponse>>().Subject.Data!;
+
+        allowedOpms.DueDate.Should().BeNull();
+        allowedIpms.DueDate.Should().BeNull();
+        var extensions = await context.DueDateExtensions.OrderBy(item => item.SubmissionKind).ToArrayAsync();
+        extensions.Should().HaveCount(2);
+        extensions.Should().OnlyContain(item => item.OriginalDueDate == originalDueDate
+            && item.ExtendedDueDate == requestedDate && item.ApprovedByUserId == user.Id);
+        extensions.Select(item => item.Reason).Should().BeEquivalentTo("Protected OPMS reason", "Protected IPMS reason");
+        opmsSubmission.DueDateExtendedDays.Should().Be(5);
+        ipmsSubmission.DueDateExtendedDays.Should().Be(5);
+
+        grants.UnionWith(["OPMS_SUBMISSION.READ", "OPMS_SUBMISSION.DueDate.READ", "IPMS_SUBMISSION.READ", "IPMS_SUBMISSION.DueDate.READ"]);
+        var visibleOpms = (await opms.GetSubmission(opmsSubmission.PublicId.ToString())).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Subject.Data!;
+        var visibleIpms = (await ipms.GetSubmission(ipmsSubmission.PublicId.ToString())).Result
+            .Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<IpmsSubmissionResponse>>().Subject.Data!;
+        visibleOpms.DueDate.Should().Be(requestedDate);
+        visibleOpms.DueDateExtendedDays.Should().Be(5);
+        visibleIpms.DueDate.Should().Be(requestedDate);
+        visibleIpms.DueDateExtendedDays.Should().Be(5);
+
+        var beforeStaleAttempt = await context.DueDateExtensions.CountAsync();
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(requestedDate.AddDays(3), "Stale extension", opmsVersion))).Result
+            .Should().BeOfType<ConflictObjectResult>();
+        (await context.DueDateExtensions.CountAsync()).Should().Be(beforeStaleAttempt);
+    }
+
+    [Fact]
     public async Task Submission_withdrawal_requires_scoped_reason_update_and_masks_the_update_response()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

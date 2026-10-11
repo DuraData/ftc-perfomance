@@ -282,8 +282,13 @@ export function OPMSSubmissionsList() {
 
   const extendDueDate = async (payload: { extendedDueDate: string; reason: string }) => {
     if (!selectedSubmission) return;
+    const rowVersion = selectedSubmission.rowVersion;
+    if (!rowVersion) {
+      pushToast('error', 'Reload the submission before extending its due date.');
+      return;
+    }
     setWorkflowBusy(true);
-    const result = await extendOpmsSubmissionDueDate(selectedSubmission.id, payload);
+    const result = await extendOpmsSubmissionDueDate(selectedSubmission.id, { ...payload, rowVersion });
     setWorkflowBusy(false);
 
     if (!result.success || !result.data) {
@@ -605,8 +610,13 @@ export function IPMSSubmissionsList() {
 
   const extendDueDate = async (payload: { extendedDueDate: string; reason: string }) => {
     if (!selectedSubmission) return;
+    const rowVersion = selectedSubmission.rowVersion;
+    if (!rowVersion) {
+      pushToast('error', 'Reload the submission before extending its due date.');
+      return;
+    }
     setWorkflowBusy(true);
-    const result = await extendIpmsSubmissionDueDate(selectedSubmission.id, payload);
+    const result = await extendIpmsSubmissionDueDate(selectedSubmission.id, { ...payload, rowVersion });
     setWorkflowBusy(false);
 
     if (!result.success || !result.data) {

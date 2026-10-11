@@ -3035,6 +3035,7 @@ export interface SubmissionWorkflowActionPayload {
 export interface DueDateExtensionPayload {
   extendedDueDate: string;
   reason: string;
+  rowVersion: string;
 }
 
 export interface IdpPlanSummary {

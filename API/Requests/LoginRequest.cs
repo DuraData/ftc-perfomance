@@ -253,7 +253,7 @@ public record SubmissionWorkflowActionRequest(
     DateTime? ResponseDueDate = null,
     string? RfiComment = null);
 
-public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason, int? ExtendedByDays = null);
+public record DueDateExtensionRequest(DateTime ExtendedDueDate, string Reason, string RowVersion, int? ExtendedByDays = null);
 
 public record WithdrawGovernedRecordRequest(string Reason, string RowVersion);
 

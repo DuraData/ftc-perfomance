@@ -109,6 +109,8 @@ describe('SubmissionWorkspace member security', () => {
 
   it('shows only permitted actions that apply to the current workflow state', () => {
     security.canExecute.mockReturnValue(true);
+    security.canEditField.mockImplementation((_resource: string, member: string) =>
+      member === 'DueDate' || member === 'DueDateExtensionReason');
     const submitted = { ...submission, status: 'submitted' } as OPMSSubmission;
 
     render(<SubmissionWorkspace submission={submitted} submissionType="OPMS" onWorkflowAction={vi.fn()} onExtendDueDate={vi.fn()} />);
@@ -122,6 +124,26 @@ describe('SubmissionWorkspace member security', () => {
       expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
     expect(screen.queryByText('Escalate')).not.toBeInTheDocument();
     expect(screen.queryByText('Clear Review')).not.toBeInTheDocument();
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'DueDate');
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'DueDateExtensionReason');
+  });
+
+  it('keeps the due-date extension controls hidden until both exact member updates are granted', () => {
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.EXTEND_DUE_DATE');
+    security.canEditField.mockImplementation((_resource: string, member: string) => member === 'DueDate');
+    const submitted = { ...submission, status: 'submitted' } as OPMSSubmission;
+
+    const { rerender } = render(
+      <SubmissionWorkspace submission={submitted} submissionType="OPMS" onExtendDueDate={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Extend Due Date' })).not.toBeInTheDocument();
+
+    security.canEditField.mockImplementation((_resource: string, member: string) =>
+      member === 'DueDate' || member === 'DueDateExtensionReason');
+    rerender(<SubmissionWorkspace submission={submitted} submissionType="OPMS" onExtendDueDate={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Extend Due Date' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Extension Reason')).toBeInTheDocument();
   });
 
   it('submits workflow comments and ratings only when their exact member updates are granted', () => {

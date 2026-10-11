@@ -533,6 +533,7 @@ export function SubmissionWorkspace({
   const workflowResourceCode = `${submissionType}_WORKFLOW`;
   const canEditWorkflowComment = security.canEditField(workflowResourceCode, 'ActionComment');
   const canEditWorkflowRating = security.canEditField(workflowResourceCode, 'ActionRatingValue');
+  const canReadDueDate = security.canReadField(resourceCode, 'DueDate');
   const canWithdraw = security.canExecute(`${submissionType}_SUBMISSION.WITHDRAW`)
     && security.canEditField(resourceCode, 'WithdrawalReason');
   const canReadActual = security.canReadField(resourceCode, 'ActualPerformance');
@@ -568,7 +569,9 @@ export function SubmissionWorkspace({
     && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`)
     && canEditWorkflowRating;
   const canExtendDueDate = currentSubmission.status !== 'completed'
-    && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`);
+    && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)
+    && security.canEditField(resourceCode, 'DueDate')
+    && security.canEditField(resourceCode, 'DueDateExtensionReason');
   const hasWorkflowAction = canSubmit || canVerify || canVerifyReject || canApprove || canReject || canReview || canAudit || canScore;
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
@@ -822,7 +825,7 @@ export function SubmissionWorkspace({
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Due</p>
-              <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">{formatDate(currentSubmission.dueDate)}</p>
+              <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">{canReadDueDate ? formatDate(currentSubmission.dueDate) : 'Restricted'}</p>
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Actual</p>
@@ -864,8 +867,8 @@ export function SubmissionWorkspace({
           <Section title="Reporting Period" icon={<TimerReset className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Quarter" value={`${currentSubmission.quarter} ${currentSubmission.target.period.fiscalYear}`} />
-              <Field label="Due Date" value={formatDate(currentSubmission.dueDate)} />
-              <Field label="Extended Due Date" value={formatDate(currentSubmission.extendedDueDate)} />
+              <Field label="Due Date" value={canReadDueDate ? formatDate(currentSubmission.dueDate) : 'Restricted'} />
+              <Field label="Extended Due Date" value={canReadDueDate ? formatDate(currentSubmission.extendedDueDate) : 'Restricted'} />
             </div>
           </Section>
 

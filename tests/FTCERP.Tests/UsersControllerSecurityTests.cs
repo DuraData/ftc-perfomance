@@ -80,8 +80,8 @@ public sealed class UsersControllerSecurityTests
                 "InternalAuditScore", "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason", "SuggestionCorrelationId",
                 "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
                 "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment", "PmsRecommendation", "PmsScore", "PmsRfi",
-                "WithdrawalReason", "WithdrawalActor"]);
-            submissionMembers.Should().HaveCount(30);
+                "DueDate", "DueDateExtensionReason", "DueDateExtensionActor", "WithdrawalReason", "WithdrawalActor"]);
+            submissionMembers.Should().HaveCount(33);
             var internalAuditMembers = await context.SecurityMemberDefinitions
                 .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("InternalAudit"))
                 .ToArrayAsync();
@@ -89,10 +89,14 @@ public sealed class UsersControllerSecurityTests
             internalAuditMembers.Should().OnlyContain(item => item.IsSensitive);
             (await context.SecurityMemberDefinitions
                     .Where(item => item.ResourceCode == resourceCode
-                        && new[] { "WithdrawalReason", "PmsRecommendation", "PmsRfi", "InternalAuditRecommendation", "InternalAuditRfi" }.Contains(item.MemberCode))
+                        && new[] { "DueDate", "DueDateExtensionReason", "WithdrawalReason", "PmsRecommendation", "PmsRfi", "InternalAuditRecommendation", "InternalAuditRfi" }.Contains(item.MemberCode))
                     .ToArrayAsync())
                 .Should().OnlyContain(item => !item.IsSystemManaged);
-            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(42);
+            var extensionActor = await context.SecurityMemberDefinitions.SingleAsync(item =>
+                item.ResourceCode == resourceCode && item.MemberCode == "DueDateExtensionActor");
+            extensionActor.IsSensitive.Should().BeTrue();
+            extensionActor.IsSystemManaged.Should().BeTrue();
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(47);
         }
 
         foreach (var resourceCode in new[] { "OPMS_KPI", "IPMS_KPI" })

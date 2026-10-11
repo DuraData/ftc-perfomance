@@ -944,10 +944,27 @@ public class OpmsSubmissionsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.EXTEND_DUE_DATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));
 
-        var previousDueDate = entity.DueDate ?? DateTime.UtcNow;
+        var scope = BuildScope(entity);
+        foreach (var memberPermission in new[] { "OPMS_SUBMISSION.DueDate.UPDATE", "OPMS_SUBMISSION.DueDateExtensionReason.UPDATE" })
+        {
+            var memberDecision = await _accessControlService.CheckPermissionAsync(user, memberPermission, scope);
+            if (!memberDecision.Allowed)
+                return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberDecision.Reason));
+        }
+        var reason = request.Reason?.Trim() ?? string.Empty;
+        if (reason.Length == 0 || reason.Length > 2000)
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "A due-date extension reason between 1 and 2000 characters is required."));
+        if (!entity.DueDate.HasValue)
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "The submission must have a current due date before it can be extended."));
+        if (request.ExtendedDueDate.Date <= entity.DueDate.Value.Date)
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "The extended due date must be later than the current due date."));
+        if (!TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "A valid RowVersion is required."));
+
+        var previousDueDate = entity.DueDate.Value;
         entity.DueDate = request.ExtendedDueDate;
         entity.ExtendedDueDate = request.ExtendedDueDate;
-        entity.DueDateExtendedDays = request.ExtendedByDays ?? (int)Math.Max(0, (request.ExtendedDueDate.Date - previousDueDate.Date).TotalDays);
+        entity.DueDateExtendedDays = (int)(request.ExtendedDueDate.Date - previousDueDate.Date).TotalDays;
         entity.UpdatedBy = user.Id;
         entity.UpdatedOn = DateTime.UtcNow;
         _context.DueDateExtensions.Add(new DueDateExtension
@@ -956,12 +973,19 @@ public class OpmsSubmissionsController : ControllerBase
             SubmissionId = id,
             OriginalDueDate = previousDueDate,
             ExtendedDueDate = request.ExtendedDueDate,
-            Reason = request.Reason,
+            Reason = reason,
             ApprovedByUserId = user.Id,
             ApprovedAt = DateTime.UtcNow
         });
-        await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "ExtendDueDate", new { DueDate = previousDueDate }, new { DueDate = request.ExtendedDueDate, request.Reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission changed before its due date could be extended. Refresh and try again."));
+        }
+        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "ExtendDueDate", new { DueDate = previousDueDate }, new { DueDate = request.ExtendedDueDate, Reason = reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await _workflowGovernanceService.CreateWorkflowNotificationsAsync(GetRelevantUserIds(entity), NotificationType.DueDateExtension, "OPMS due date extended", $"The due date for OPMS submission '{entity.Id}' was extended.", "OpmsSubmission", id);
 
         var response = await FindSubmissionAsync(id) ?? entity;
@@ -1236,6 +1260,9 @@ public class OpmsSubmissionsController : ControllerBase
             AuditorRecommendation = projectionAccess.Contains("InternalAuditRecommendation") ? response.AuditorRecommendation : null,
             AuditorScore = projectionAccess.Contains("InternalAuditScore") ? response.AuditorScore : null,
             AuditorResponseDueDate = projectionAccess.Contains("InternalAuditRfi") ? response.AuditorResponseDueDate : null,
+            DueDate = projectionAccess.Contains("DueDate") ? response.DueDate : null,
+            ExtendedDueDate = projectionAccess.Contains("DueDate") ? response.ExtendedDueDate : null,
+            DueDateExtendedDays = projectionAccess.Contains("DueDate") ? response.DueDateExtendedDays : null,
             WithdrawalReason = projectionAccess.Contains("WithdrawalReason") ? response.WithdrawalReason : null,
             WithdrawnByUserPublicId = withdrawnActor?.PublicId,
             WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim()
@@ -1259,7 +1286,7 @@ public class OpmsSubmissionsController : ControllerBase
     [
         "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
         "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment",
-        "PmsRecommendation", "PmsScore", "PmsRfi", "WithdrawalReason", "WithdrawalActor",
+        "PmsRecommendation", "PmsScore", "PmsRfi", "DueDate", "WithdrawalReason", "WithdrawalActor",
         "InternalAuditObservation", "InternalAuditComment", "InternalAuditRecommendation", "InternalAuditScore",
         "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason"
     ];
