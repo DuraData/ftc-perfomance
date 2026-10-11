@@ -23,10 +23,10 @@ public sealed class StrategicRiskTests
 
         var codes = await context.Permissions.Where(item => item.Code.StartsWith("STRATEGIC_RISK"))
             .Select(item => item.Code).ToArrayAsync();
-        codes.Should().HaveCount(11).And.Contain([
+        codes.Should().HaveCount(13).And.Contain([
             "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.EXPORT", "STRATEGIC_RISK.IMPORT", "STRATEGIC_RISK.LINK_KPI",
-            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.RiskDescription.READ",
-            "STRATEGIC_RISK.RiskDescription.UPDATE", "STRATEGIC_RISK.UNLINK_KPI", "STRATEGIC_RISK.UnlinkReason.READ",
+            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.LinkReason.UPDATE", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.RiskDescription.READ",
+            "STRATEGIC_RISK.RiskDescription.UPDATE", "STRATEGIC_RISK.UNLINK_KPI", "STRATEGIC_RISK.UnlinkReason.READ", "STRATEGIC_RISK.UnlinkReason.UPDATE",
             "STRATEGIC_RISK.UPDATE"]);
         (await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_RISK")).SupportsFieldSecurity.Should().BeTrue();
     }
@@ -146,7 +146,8 @@ public sealed class StrategicRiskTests
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "STRATEGIC_RISK.RiskDescription.READ", "STRATEGIC_RISK.RiskDescription.UPDATE",
-            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.UnlinkReason.READ"
+            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.LinkReason.UPDATE",
+            "STRATEGIC_RISK.UnlinkReason.READ", "STRATEGIC_RISK.UnlinkReason.UPDATE"
         };
         var controller = Controller(context, user, municipalityId, deniedPermissions: denied);
 
@@ -182,9 +183,21 @@ public sealed class StrategicRiskTests
         }));
         visibleByTitle.Items.Should().ContainSingle().Which.RiskDescription.Should().BeNull();
 
+        var deniedLink = await controller.LinkKpi(new LinkStrategicRiskRequest(
+            created.PublicId, seed.Target.PublicId, true, "Restricted link rationale"));
+        deniedLink.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.OpmsKpiStrategicRisks.CountAsync()).Should().Be(0);
+
+        denied.Remove("STRATEGIC_RISK.LinkReason.UPDATE");
         var linked = Data(await controller.LinkKpi(new LinkStrategicRiskRequest(
             created.PublicId, seed.Target.PublicId, true, "Restricted link rationale")));
         linked.LinkReason.Should().BeNull();
+        var deniedUnlink = await controller.UnlinkKpi(linked.PublicId,
+            new UnlinkStrategicRiskRequest("Restricted mitigation outcome", linked.RowVersion));
+        deniedUnlink.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.OpmsKpiStrategicRisks.SingleAsync()).IsActive.Should().BeTrue();
+
+        denied.Remove("STRATEGIC_RISK.UnlinkReason.UPDATE");
         var unlinked = Data(await controller.UnlinkKpi(linked.PublicId,
             new UnlinkStrategicRiskRequest("Restricted mitigation outcome", linked.RowVersion)));
         unlinked.LinkReason.Should().BeNull();

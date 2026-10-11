@@ -128,6 +128,8 @@ function RiskWorkspace({ view }: { view: RiskView }) {
   const canEditDescription = security.canEditField('STRATEGIC_RISK', 'RiskDescription');
   const canReadLinkReason = security.canReadField('STRATEGIC_RISK', 'LinkReason');
   const canReadUnlinkReason = security.canReadField('STRATEGIC_RISK', 'UnlinkReason');
+  const canEditLinkReason = security.canEditField('STRATEGIC_RISK', 'LinkReason');
+  const canEditUnlinkReason = security.canEditField('STRATEGIC_RISK', 'UnlinkReason');
   const yearOptions = [{ value: '', label: 'Open-ended' }, ...years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · current' : ''}` }))];
   const canEditRegister = view === 'register';
   if (!security.canRead('STRATEGIC_RISK')) return <AppShell title={copy.title} subtitle={copy.subtitle}><Card><EmptyState title="Access unavailable" description="Your current role does not grant strategic-risk read access." /></Card></AppShell>;
@@ -168,7 +170,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
           {totalPages > 1 && <div className="mt-4 flex items-center justify-between"><span className="text-xs text-secondary-500">Page {page} of {totalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1 || busy} onClick={() => setPage(value => value - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= totalPages || busy} onClick={() => setPage(value => value + 1)}>Next</Button></div></div>}
         </Card>
       </div>
-      {canEditRegister && security.canExecute('STRATEGIC_RISK.LINK_KPI') && <Card>
+      {canEditRegister && security.canExecute('STRATEGIC_RISK.LINK_KPI') && canEditLinkReason && <Card>
         <h2 className="font-semibold">Link a strategic risk to an OPMS KPI</h2>
         <p className="mt-1 text-xs text-secondary-500">The API rechecks both the action permission and record-level KPI update scope.</p>
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -182,7 +184,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
       <Card>
         <div className="flex items-center justify-between"><h2 className="font-semibold">KPI relationship {view === 'reviews' ? 'history' : 'register'}</h2><Badge variant="info">{links.length} shown</Badge></div>
         <div className="mt-3 space-y-2">
-          {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p>{canReadLinkReason && link.linkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Link reason: {link.linkReason}</p>}{canReadUnlinkReason && link.unlinkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Unlink reason: {link.unlinkReason}</p>}</div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => void unlink(link)}>Unlink</Button>}</div></div>)}
+          {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p>{canReadLinkReason && link.linkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Link reason: {link.linkReason}</p>}{canReadUnlinkReason && link.unlinkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Unlink reason: {link.unlinkReason}</p>}</div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && canEditUnlinkReason && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => void unlink(link)}>Unlink</Button>}</div></div>)}
           {!links.length && <EmptyState title="No authorised KPI relationships" description="No strategic-risk link falls within your current KPI read scope." />}
         </div>
       </Card>

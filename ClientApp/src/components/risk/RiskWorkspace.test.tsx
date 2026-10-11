@@ -61,4 +61,15 @@ describe('Strategic risk member security', () => {
     expect(security.canReadField).toHaveBeenCalledWith('STRATEGIC_RISK', 'LinkReason');
     expect(security.canReadField).toHaveBeenCalledWith('STRATEGIC_RISK', 'UnlinkReason');
   });
+
+  it('does not expose link or unlink mutations with action-only authority', async () => {
+    security.canExecute.mockReturnValue(true);
+    render(<RiskRegisterPage />);
+
+    expect(await screen.findAllByText(/SR-1 · Water interruption/)).toHaveLength(2);
+    expect(screen.queryByText('Link a strategic risk to an OPMS KPI')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Unlink' })).not.toBeInTheDocument();
+    expect(security.canEditField).toHaveBeenCalledWith('STRATEGIC_RISK', 'LinkReason');
+    expect(security.canEditField).toHaveBeenCalledWith('STRATEGIC_RISK', 'UnlinkReason');
+  });
 });

@@ -353,9 +353,9 @@ public sealed class UsersControllerSecurityTests
         strategicRiskMembers.Select(item => item.MemberCode).Should().Equal("LinkReason", "RiskDescription", "UnlinkReason");
         strategicRiskMembers.Should().OnlyContain(item => item.IsSensitive);
         strategicRiskMembers.Where(item => item.MemberCode is "LinkReason" or "UnlinkReason")
-            .Should().OnlyContain(item => item.IsSystemManaged);
+            .Should().OnlyContain(item => !item.IsSystemManaged);
         strategicRiskMembers.Single(item => item.MemberCode == "RiskDescription").IsSystemManaged.Should().BeFalse();
-        (await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_RISK" && item.MemberCode != null)).Should().Be(4);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_RISK" && item.MemberCode != null)).Should().Be(6);
         (await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_RISK")).SupportsFieldSecurity.Should().BeTrue();
 
         var c88IndicatorMembers = await context.SecurityMemberDefinitions

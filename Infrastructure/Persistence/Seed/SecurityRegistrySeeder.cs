@@ -394,8 +394,8 @@ public static class SecurityRegistrySeeder
             Member("STRATEGIC_DOCUMENT", "ScannerReference", "Document Scanner Reference", sensitive: true, systemManaged: true),
             Member("STRATEGIC_DOCUMENT", "ScanDetail", "Document Scanner Detail", sensitive: true, systemManaged: true),
             Member("STRATEGIC_RISK", "RiskDescription", "Strategic Risk Description", sensitive: true),
-            Member("STRATEGIC_RISK", "LinkReason", "Strategic Risk KPI Link Reason", sensitive: true, systemManaged: true),
-            Member("STRATEGIC_RISK", "UnlinkReason", "Strategic Risk KPI Unlink Reason", sensitive: true, systemManaged: true),
+            Member("STRATEGIC_RISK", "LinkReason", "Strategic Risk KPI Link Reason", sensitive: true),
+            Member("STRATEGIC_RISK", "UnlinkReason", "Strategic Risk KPI Unlink Reason", sensitive: true),
             Member("EMPLOYEE", "EmployeeNumber", "Employee Number", sensitive: true),
             Member("EMPLOYEE", "SalaryReference", "Salary Reference", sensitive: true),
             Member("EMPLOYEE", "EmailAddress", "Email Address", sensitive: true),
@@ -659,6 +659,8 @@ public static class SecurityRegistrySeeder
             "IDP_PARTICIPATION.WardProjects.READ", "IDP_STAKEHOLDER.KeyInput.READ"
         };
         mappings["IDP.Participation.View"] = [.. mappings["IDP.Participation.View"], "IDP_PARTICIPATION.READ", .. participationReadMembers];
+        mappings["IDP.Risk.Manage"] = [.. mappings["IDP.Risk.Manage"],
+            "STRATEGIC_RISK.LinkReason.UPDATE", "STRATEGIC_RISK.UnlinkReason.UPDATE"];
         mappings["IDP.Participation.Manage"] = [.. mappings["IDP.Participation.Manage"],
             "IDP_PARTICIPATION.CREATE", "IDP_PARTICIPATION.READ", "IDP_PARTICIPATION.UPDATE",
             "IDP_PARTICIPATION.AttendanceRegisterPath.UPDATE", "IDP_PARTICIPATION.MinutesPath.UPDATE",
@@ -681,7 +683,8 @@ public static class SecurityRegistrySeeder
             mappings[action] = ["C88_REPORT.WorkflowReason.READ", "C88_REPORT.WorkflowReason.UPDATE", "C88_REPORT.WorkflowActor.READ"];
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
             "STRATEGIC_RISK.RiskDescription.READ", "STRATEGIC_RISK.RiskDescription.UPDATE",
-            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.UnlinkReason.READ",
+            "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.LinkReason.UPDATE",
+            "STRATEGIC_RISK.UnlinkReason.READ", "STRATEGIC_RISK.UnlinkReason.UPDATE",
             "C88_INDICATOR.PlanMissingDataExplanation.READ", "C88_INDICATOR.PlanMissingDataExplanation.UPDATE",
             "C88_INDICATOR.MappingReason.READ", "C88_INDICATOR.MappingReason.UPDATE",
             "C88_REPORT.CalculatedValue.READ", "C88_REPORT.MissingDataExplanation.READ", "C88_REPORT.MissingDataExplanation.UPDATE",

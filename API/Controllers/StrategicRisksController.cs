@@ -187,6 +187,8 @@ public sealed class StrategicRisksController(
         var session = await SessionAsync<StrategicRiskKpiLinkDto>("STRATEGIC_RISK.LINK_KPI");
         if (session.Error != null) return session.Error;
         if (string.IsNullOrWhiteSpace(request.Reason)) return BadRequest(Fail<StrategicRiskKpiLinkDto>("A link reason is required."));
+        if (!await CanUpdateMemberAsync(session.User!, "LinkReason"))
+            return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskKpiLinkDto>("Strategic risk KPI link reason update permission is required."));
         var risk = await context.StrategicRisks
             .Include(item => item.EffectiveFromMunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear)
             .Include(item => item.EffectiveToMunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear)
@@ -235,6 +237,8 @@ public sealed class StrategicRisksController(
         var session = await SessionAsync<StrategicRiskKpiLinkDto>("STRATEGIC_RISK.UNLINK_KPI");
         if (session.Error != null) return session.Error;
         if (string.IsNullOrWhiteSpace(request.Reason)) return BadRequest(Fail<StrategicRiskKpiLinkDto>("An unlink reason is required."));
+        if (!await CanUpdateMemberAsync(session.User!, "UnlinkReason"))
+            return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskKpiLinkDto>("Strategic risk KPI unlink reason update permission is required."));
         if (!TryVersion(request.RowVersion, out var expected)) return BadRequest(Fail<StrategicRiskKpiLinkDto>("A valid RowVersion is required."));
         var entity = await LinkQuery().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (entity == null) return NotFound(Fail<StrategicRiskKpiLinkDto>("Strategic-risk KPI link not found."));
