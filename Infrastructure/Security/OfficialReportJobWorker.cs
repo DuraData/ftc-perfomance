@@ -39,12 +39,15 @@ public sealed class OfficialReportJobWorker(
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var stale = DateTime.UtcNow.AddMinutes(-15);
             var abandoned = await context.OfficialReportJobs.IgnoreQueryFilters()
-                .Where(item => item.State == OfficialReportJobState.Processing && item.StartedAt < stale && item.AttemptCount < 5).Take(25).ToArrayAsync(cancellationToken);
+                .Where(item => item.State == OfficialReportJobState.Processing && item.StartedAt < stale && item.AttemptCount < 5)
+                .OrderBy(item => item.StartedAt).ThenBy(item => item.Id)
+                .Take(25).ToArrayAsync(cancellationToken);
             foreach (var item in abandoned) { item.State = OfficialReportJobState.RetryPending; item.AvailableAt = DateTime.UtcNow; item.LastError = "Recovered after an interrupted worker lease."; }
             if (abandoned.Length > 0) await context.SaveChangesAsync(cancellationToken);
             publicIds = await context.OfficialReportJobs.IgnoreQueryFilters().AsNoTracking()
                 .Where(item => (item.State == OfficialReportJobState.Queued || item.State == OfficialReportJobState.RetryPending) && item.AvailableAt <= DateTime.UtcNow && item.AttemptCount < 5)
-                .OrderBy(item => item.AvailableAt).ThenBy(item => item.RequestedAt).Select(item => item.PublicId).Take(10).ToArrayAsync(cancellationToken);
+                .OrderBy(item => item.AvailableAt).ThenBy(item => item.RequestedAt).ThenBy(item => item.Id)
+                .Select(item => item.PublicId).Take(10).ToArrayAsync(cancellationToken);
         }
         var processed = 0;
         foreach (var publicId in publicIds)
@@ -64,7 +67,7 @@ public sealed class OfficialReportJobWorker(
             .Include(item => item.ReportTemplate).Include(item => item.MunicipalityFinancialYear).Include(item => item.ReportingPeriod)
             .Include(item => item.Department).Include(item => item.Unit)
             .Where(item => item.IsCurrent && item.IsActive && item.NextRunAt != null && item.NextRunAt <= now)
-            .OrderBy(item => item.NextRunAt).Take(50).ToArrayAsync(cancellationToken);
+            .OrderBy(item => item.NextRunAt).ThenBy(item => item.Id).Take(50).ToArrayAsync(cancellationToken);
         foreach (var schedule in schedules)
         {
             var occurrence = schedule.NextRunAt!.Value;
