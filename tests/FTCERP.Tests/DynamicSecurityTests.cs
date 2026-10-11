@@ -150,6 +150,8 @@ public class DynamicSecurityTests
         reviewer.Complete.Should().BeTrue();
         payload.Items.Should().ContainSingle(item => item.RolePublicId == uncoveredRole.PublicId).Which.Complete.Should().BeFalse();
         controller.GetAudit().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetLegacyAudit().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        controller.GetLegacyAuditPage().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         (await controller.GetAuditPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
 
         var service = new AccessControlService(context, IdpTestFixture.CreateUserManagerMock(user).Object, roleManager.Object, tenant.Object);

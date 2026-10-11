@@ -2083,7 +2083,7 @@ export async function getLoginAuditLogs(query: RegisterPageQuery = {}, failuresO
 }
 
 export async function getRoleImplementationAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RoleImplementationAuditRow>>> {
-  return get<PagedResult<RoleImplementationAuditRow>>(`/role-implementation-audit/page${registerPageQuery(query)}`);
+  return get<PagedResult<RoleImplementationAuditRow>>(`/v1/security/role-implementation-audit/page${registerPageQuery(query)}`);
 }
 
 export async function getRoleAccessMatrixPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RoleAccessMatrixRow>>> {

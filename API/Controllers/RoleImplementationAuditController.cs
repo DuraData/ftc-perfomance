@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/role-implementation-audit")]
+[Route("api/v1/security/role-implementation-audit")]
 [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
 public class RoleImplementationAuditController : ControllerBase
 {
@@ -32,7 +32,19 @@ public class RoleImplementationAuditController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<RoleImplementationAuditResponse[]>> GetAudit() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<RoleImplementationAuditResponse[]>(false, null,
-            "This unbounded fixed-role audit is retired. Use /api/role-implementation-audit/page."));
+            "This unbounded fixed-role audit is retired. Use /api/v1/security/role-implementation-audit/page."));
+
+    [HttpGet("~/api/role-implementation-audit")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> GetLegacyAudit() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "This unversioned role audit is retired. Use /api/v1/security/role-implementation-audit/page."));
+
+    [HttpGet("~/api/role-implementation-audit/page")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<object>> GetLegacyAuditPage() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<object>(false, null,
+            "This unversioned role audit is retired. Use /api/v1/security/role-implementation-audit/page."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<RoleImplementationAuditResponse>>>> GetAuditPage([FromQuery] PagedQueryRequest request)

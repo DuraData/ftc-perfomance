@@ -151,6 +151,12 @@ public sealed class LegacySecurityEndpointRetirementTests
         Assert.True(typeof(RoleImplementationAuditController).GetMethod(nameof(RoleImplementationAuditController.GetAudit))!
             .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
             .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        foreach (var action in new[] { nameof(RoleImplementationAuditController.GetLegacyAudit), nameof(RoleImplementationAuditController.GetLegacyAuditPage) })
+        {
+            Assert.True(typeof(RoleImplementationAuditController).GetMethod(action)!
+                .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        }
 
         foreach (var controllerType in new[] { typeof(OpmsTargetLibraryController), typeof(IpmsTargetLibraryController) })
         {
@@ -237,7 +243,7 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/v1/opms-targets/{id}", "/api/v1/ipms-targets/{id}",
                      "/api/v1/opms-submissions/{id}", "/api/v1/ipms-submissions/{id}",
                      "/api/v1/notifications/{publicId}/read",
-                     "/api/v1/access/system-coverage-audit/page", "/api/role-implementation-audit/page"
+                     "/api/v1/access/system-coverage-audit/page", "/api/v1/security/role-implementation-audit/page"
                  })
         {
             Assert.True(paths.ContainsKey(publicPath), $"Public-ID path missing from OpenAPI: {publicPath}");
