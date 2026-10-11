@@ -59,12 +59,14 @@ public class IdpController : ControllerBase
 
     [HttpGet("plans")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpPlanSummaryResponse[]>> GetPlans() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<IdpPlanSummaryResponse[]>(false, null,
             "This fixed-limit route is retired. Use /api/v1/idp/plans/page."));
 
     [HttpGet("plans/page")]
     [Authorize(Policy = "Permission:IDP.Plan.View")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<PagedResponse<IdpPlanSummaryResponse>>> GetPlansPage([FromQuery] PagedQueryRequest request)
     {
         _ = request;
@@ -120,6 +122,7 @@ public class IdpController : ControllerBase
 
     [HttpPost("plans")]
     [Authorize(Policy = "Permission:IDP.Plan.Manage")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpPlanSummaryResponse>> CreatePlan([FromBody] CreateIdpPlanRequest request)
     {
         _ = request;
@@ -876,7 +879,7 @@ public class IdpController : ControllerBase
         }).ToArray();
     }
 
-    [HttpPost("outcomes")]
+    [HttpPost("~/api/v1/idp/outcomes")]
     [Authorize(Policy = "Permission:IDP.Hierarchy.Manage")]
     public async Task<ActionResult<ApiResponse<IdpStrategicOutcomeResponse>>> CreateOutcome([FromBody] CreateIdpStrategicOutcomeRequest request)
     {
@@ -905,7 +908,7 @@ public class IdpController : ControllerBase
         return Ok(new ApiResponse<IdpStrategicOutcomeResponse>(true, ToOutcomeResponse(entity, plan.PublicId)));
     }
 
-    [HttpPost("objectives")]
+    [HttpPost("~/api/v1/idp/objectives")]
     [Authorize(Policy = "Permission:IDP.Hierarchy.Manage")]
     public async Task<ActionResult<ApiResponse<IdpStrategicObjectiveResponse>>> CreateObjective([FromBody] CreateIdpStrategicObjectiveRequest request)
     {
@@ -981,7 +984,7 @@ public class IdpController : ControllerBase
             ToObjectiveResponse(entity, outcome.PublicId, await GetObjectiveMemberAccessAsync(user, objectiveScope))));
     }
 
-    [HttpPost("priorities")]
+    [HttpPost("~/api/v1/idp/priorities")]
     [Authorize(Policy = "Permission:IDP.Hierarchy.Manage")]
     public async Task<ActionResult<ApiResponse<IdpDevelopmentPriorityResponse>>> CreatePriority([FromBody] CreateIdpDevelopmentPriorityRequest request)
     {
@@ -1011,7 +1014,7 @@ public class IdpController : ControllerBase
         return Ok(new ApiResponse<IdpDevelopmentPriorityResponse>(true, response));
     }
 
-    [HttpPost("programmes")]
+    [HttpPost("~/api/v1/idp/programmes")]
     [Authorize(Policy = "Permission:IDP.Hierarchy.Manage")]
     public async Task<ActionResult<ApiResponse<IdpProgrammeResponse>>> CreateProgramme([FromBody] CreateIdpProgrammeRequest request)
     {
@@ -1065,7 +1068,7 @@ public class IdpController : ControllerBase
             ToProgrammeResponse(entity, priority.PublicId, await GetProgrammeMemberAccessAsync(user, programmeScope))));
     }
 
-    [HttpPost("projects")]
+    [HttpPost("~/api/v1/idp/projects")]
     [Authorize(Policy = "Permission:IDP.Project.Manage")]
     public async Task<ActionResult<ApiResponse<IdpProjectResponse>>> CreateProject([FromBody] CreateIdpProjectRequest request)
     {
@@ -1130,7 +1133,7 @@ public class IdpController : ControllerBase
             ToProjectResponse(entity, programme.PublicId, await GetProjectMemberAccessAsync(user, projectScope))));
     }
 
-    [HttpPost("kpis")]
+    [HttpPost("~/api/v1/idp/kpis")]
     [Authorize(Policy = "Permission:IDP_INDICATOR.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpKpiResponse>>> CreateKpi([FromBody] CreateIdpKpiRequest request)
     {
@@ -1177,7 +1180,7 @@ public class IdpController : ControllerBase
         return Ok(new ApiResponse<IdpKpiResponse>(true, ToKpiResponse(entity, project.PublicId)));
     }
 
-    [HttpPost("annual-targets")]
+    [HttpPost("~/api/v1/idp/annual-targets")]
     [Authorize(Policy = "Permission:IDP_INDICATOR.UPDATE")]
     public async Task<ActionResult<ApiResponse<IdpAnnualTargetResponse>>> CreateAnnualTarget([FromBody] CreateIdpAnnualTargetRequest request)
     {
@@ -1214,7 +1217,7 @@ public class IdpController : ControllerBase
             await GetAnnualTargetMemberAccessAsync(user, Scope(kpiId: kpi.PublicId, projectId: kpi.ProjectPublicId)))));
     }
 
-    [HttpPost("alignment-links")]
+    [HttpPost("~/api/v1/idp/alignment-links")]
     [Authorize(Policy = "Permission:IDP_ALIGNMENT.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpAlignmentLinkResponse>>> CreateAlignmentLink([FromBody] CreateIdpAlignmentLinkRequest request)
     {
@@ -1541,7 +1544,7 @@ public class IdpController : ControllerBase
             ToStakeholderPageResponse(entity, canReadContactPerson, canReadContactEmail, canReadKeyInput)));
     }
 
-    [HttpPost("risk-links")]
+    [HttpPost("~/api/v1/idp/risk-links")]
     [Authorize(Policy = "Permission:IDP_RISK_LINK.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpRiskLinkResponse>>> CreateRiskLink([FromBody] CreateIdpRiskLinkRequest request)
     {
@@ -1627,7 +1630,7 @@ public class IdpController : ControllerBase
             ToRiskResponse(entity, objective?.PublicId, project?.PublicId, kpi?.PublicId, includeMitigationPlan)));
     }
 
-    [HttpPost("budget-snapshots")]
+    [HttpPost("~/api/v1/idp/budget-snapshots")]
     [Authorize(Policy = "Permission:IDP.Budget.View")]
     public async Task<ActionResult<ApiResponse<IdpBudgetSnapshotResponse>>> CreateBudgetSnapshot([FromBody] CreateIdpBudgetSnapshotRequest request)
     {
@@ -1687,6 +1690,7 @@ public class IdpController : ControllerBase
 
     [HttpPost("documents")]
     [Authorize(Policy = "Permission:IDP_DOCUMENT.CREATE")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<IdpDocumentResponse>> CreateDocument([FromBody] CreateIdpDocumentRequest request)
     {
         _ = request;
@@ -1911,7 +1915,7 @@ public class IdpController : ControllerBase
         return Ok(new ApiResponse<IdpDocumentResponse>(true, response, scan.IsClean ? "Document released after a clean scan." : "Document remains quarantined."));
     }
 
-    [HttpPost("comments")]
+    [HttpPost("~/api/v1/idp/comments")]
     [Authorize(Policy = "Permission:IDP.Collaboration.Manage")]
     public async Task<ActionResult<ApiResponse<IdpCommentResponse>>> CreateComment([FromBody] CreateIdpCommentRequest request)
     {
@@ -1955,7 +1959,7 @@ public class IdpController : ControllerBase
             ToCommentResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, user, await GetCollaborationMemberAccessAsync(user, scope))));
     }
 
-    [HttpPost("tasks")]
+    [HttpPost("~/api/v1/idp/tasks")]
     [Authorize(Policy = "Permission:IDP.Collaboration.Manage")]
     public async Task<ActionResult<ApiResponse<IdpTaskResponse>>> CreateTask([FromBody] CreateIdpTaskRequest request)
     {

@@ -7,6 +7,7 @@ namespace FTCERP.Host.API.Controllers;
 [ApiController]
 [Route("api/access")]
 [Authorize]
+[ApiExplorerSettings(IgnoreApi = true)]
 public sealed class LegacyAccessController : ControllerBase
 {
     [HttpGet("my-permissions")]

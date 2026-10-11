@@ -26,6 +26,7 @@ public class AuditController : ControllerBase
 
     [HttpGet("login-logs")]
     [Authorize(Policy = "Permission:LOGIN_AUDIT.READ")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<LoginAuditLogResponse[]>> GetLoginLogs() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<LoginAuditLogResponse[]>(false, null,
             "This fixed-limit route is retired. Use /api/v1/audit/login-logs/page."));
@@ -110,6 +111,7 @@ public class AuditController : ControllerBase
 
     [HttpGet("security-events")]
     [Authorize(Policy = "Permission:Audit.View")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<object[]>> GetSecurityEvents() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<object[]>(false, null,
             "This placeholder route is retired. Use /api/v1/audit/trails/page for governed security and business audit events."));
@@ -117,6 +119,7 @@ public class AuditController : ControllerBase
     [HttpGet("trails")]
     [HttpGet("/api/v1/audit/trails")]
     [Authorize(Policy = "Permission:AUDIT_TRAIL.READ")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<AuditTrailEntryResponse[]>> GetAuditTrails() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<AuditTrailEntryResponse[]>(false, null,
             "This fixed-limit route is retired. Use /api/v1/audit/trails/page."));

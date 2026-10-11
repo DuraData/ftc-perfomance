@@ -6,6 +6,7 @@ using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,40 @@ namespace FTCERP.Tests;
 
 public sealed class LegacySecurityEndpointRetirementTests
 {
+    [Fact]
+    public void Every_action_under_an_unversioned_controller_prefix_is_hidden_from_api_discovery()
+    {
+        var controllerTypes = typeof(AuthController).Assembly.GetTypes()
+            .Where(type => !type.IsAbstract && typeof(ControllerBase).IsAssignableFrom(type))
+            .Where(type => type.GetCustomAttributes(typeof(RouteAttribute), true)
+                .Cast<RouteAttribute>()
+                .Any(route => (route.Template.Equals("api", StringComparison.OrdinalIgnoreCase)
+                        || route.Template.StartsWith("api/", StringComparison.OrdinalIgnoreCase))
+                    && !route.Template.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+
+        foreach (var controllerType in controllerTypes)
+        {
+            var controllerHidden = controllerType.GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                .Cast<ApiExplorerSettingsAttribute>().Any(setting => setting.IgnoreApi);
+            foreach (var method in controllerType.GetMethods().Where(method => method.DeclaringType == controllerType))
+            {
+                foreach (var route in method.GetCustomAttributes(true).OfType<HttpMethodAttribute>())
+                {
+                    var template = route.Template ?? string.Empty;
+                    if (template.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase)
+                        || template.StartsWith("~/api/v1/", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var actionHidden = method.GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                        .Cast<ApiExplorerSettingsAttribute>().Any(setting => setting.IgnoreApi);
+                    Assert.True(controllerHidden || actionHidden,
+                        $"Unversioned action must be hidden from API discovery: {controllerType.Name}.{method.Name} ({template})");
+                }
+            }
+        }
+    }
+
     [Fact]
     public async Task Legacy_role_collection_detail_and_mutations_are_gone()
     {
@@ -66,6 +101,31 @@ public sealed class LegacySecurityEndpointRetirementTests
         AssertGone(controller.Retired().Result);
         AssertGone(controller.Retired("login").Result);
         AssertGone(controller.Retired("me/profile").Result);
+    }
+
+    [Fact]
+    public void Unversioned_idp_prefix_has_a_hidden_catch_all_tombstone_and_live_mutations_are_v1_only()
+    {
+        var controller = new LegacyIdpApiController();
+        AssertGone(controller.Retired().Result);
+        AssertGone(controller.Retired("comments").Result);
+        AssertGone(controller.Retired("outcomes").Result);
+
+        foreach (var action in new[]
+                 {
+                     nameof(IdpController.CreateOutcome), nameof(IdpController.CreateObjective),
+                     nameof(IdpController.CreatePriority), nameof(IdpController.CreateProgramme),
+                     nameof(IdpController.CreateProject), nameof(IdpController.CreateKpi),
+                     nameof(IdpController.CreateAnnualTarget), nameof(IdpController.CreateAlignmentLink),
+                     nameof(IdpController.CreateRiskLink), nameof(IdpController.CreateBudgetSnapshot),
+                     nameof(IdpController.CreateComment), nameof(IdpController.CreateTask)
+                 })
+        {
+            var route = typeof(IdpController).GetMethod(action)!
+                .GetCustomAttributes(typeof(HttpPostAttribute), true)
+                .Cast<HttpPostAttribute>().Single().Template;
+            Assert.StartsWith("~/api/v1/idp/", route, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
@@ -185,6 +245,28 @@ public sealed class LegacySecurityEndpointRetirementTests
         Assert.True(typeof(LegacyAuthController)
             .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
             .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(LegacyIdpApiController)
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(LegacyAccessController)
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        foreach (var action in new[]
+                 {
+                     nameof(IdpController.GetPlans), nameof(IdpController.GetPlansPage), nameof(IdpController.CreatePlan),
+                     nameof(IdpController.CreateDocument), nameof(AuditController.GetLoginLogs),
+                     nameof(AuditController.GetSecurityEvents), nameof(AuditController.GetAuditTrails)
+                 })
+        {
+            var controllerType = action.StartsWith("GetLogin", StringComparison.Ordinal)
+                || action.StartsWith("GetSecurity", StringComparison.Ordinal)
+                || action.StartsWith("GetAudit", StringComparison.Ordinal)
+                    ? typeof(AuditController)
+                    : typeof(IdpController);
+            Assert.True(controllerType.GetMethod(action)!
+                .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+                .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        }
         foreach (var action in new[] { nameof(UsersController.GetUsers), nameof(UsersController.GetUserScopes), nameof(UsersController.GetUserAssignments) })
         {
             Assert.True(typeof(UsersController).GetMethod(action)!
@@ -250,6 +332,9 @@ public sealed class LegacySecurityEndpointRetirementTests
         var document = factory.Services.GetRequiredService<ISwaggerProvider>().GetSwagger("v1");
         var paths = document.Paths;
 
+        Assert.DoesNotContain(paths.Keys, path => path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase));
+
         foreach (var retiredPath in new[]
                  {
                      "/api/permissions", "/api/permissions/page", "/api/departments/{id}", "/api/units/{id}",
@@ -258,7 +343,12 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/idp/plans/{id}/hierarchy", "/api/idp/plans/{id}/dashboard",
                      "/api/idp/plans/{id}/alignment-matrix", "/api/idp/plans/{id}/reports/{reportType}",
                      "/api/idp/stakeholder-engagements", "/api/idp/community-sessions", "/api/idp/community-needs",
-                     "/api/idp/ward-inputs", "/api/idp/tasks/{id}/complete",
+                     "/api/idp/ward-inputs", "/api/idp/tasks/{id}/complete", "/api/idp/outcomes", "/api/idp/objectives",
+                     "/api/idp/priorities", "/api/idp/programmes", "/api/idp/projects", "/api/idp/kpis",
+                     "/api/idp/annual-targets", "/api/idp/alignment-links", "/api/idp/risk-links", "/api/idp/budget-snapshots",
+                     "/api/idp/comments", "/api/idp/tasks",
+                     "/api/access/my-permissions", "/api/access/check", "/api/access/simulate", "/api/access/role-access-matrix/page",
+                     "/api/audit/login-logs", "/api/audit/security-events", "/api/audit/trails",
                      "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
                      "/api/opms-targets", "/api/ipms-targets", "/api/opms-submissions", "/api/ipms-submissions",
                      "/api/opms-target-library", "/api/ipms-target-library", "/api/notifications",
@@ -277,6 +367,9 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/v1/idp/plans/{planPublicId}",
                      "/api/v1/idp/community-sessions", "/api/v1/idp/community-needs", "/api/v1/idp/ward-inputs",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
+                     "/api/v1/idp/outcomes", "/api/v1/idp/objectives", "/api/v1/idp/priorities", "/api/v1/idp/programmes",
+                     "/api/v1/idp/projects", "/api/v1/idp/kpis", "/api/v1/idp/annual-targets", "/api/v1/idp/alignment-links",
+                     "/api/v1/idp/risk-links", "/api/v1/idp/budget-snapshots", "/api/v1/idp/comments", "/api/v1/idp/tasks",
                      "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",
                      "/api/v1/opms-targets/{id}", "/api/v1/ipms-targets/{id}",
                      "/api/v1/opms-submissions/{id}", "/api/v1/ipms-submissions/{id}",

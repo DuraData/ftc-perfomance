@@ -2727,7 +2727,7 @@ export async function downloadIdpDocument(document: IdpDocument): Promise<ApiRes
 }
 
 export async function createIdpComment(payload: CreateIdpCommentPayload): Promise<ApiResponse<boolean>> {
-  return mapResponse(await post<{ publicId: string }>('/idp/comments', payload), () => true);
+  return mapResponse(await post<{ publicId: string }>('/v1/idp/comments', payload), () => true);
 }
 
 export async function createIdpCommunitySession(payload: CreateIdpCommunitySessionPayload): Promise<ApiResponse<boolean>> {
