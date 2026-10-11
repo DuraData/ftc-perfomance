@@ -2162,6 +2162,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
+        RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
+        RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
         RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))

@@ -123,6 +123,29 @@ public sealed class PerformanceConsolidationPersistenceTests
         exception.Message.Should().Contain("suggestion history is append-only");
     }
 
+    [Fact]
+    public async Task CanonicalCalculationUnitAndDirectionDefinitions_RejectRuntimeRewritesAndDeletes()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+
+        var calculation = await context.PerformanceCalculationTypes.SingleAsync(item => item.Code == "SUM");
+        calculation.Description = "Runtime rewrite";
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*calculation type definitions are migration-managed and immutable*");
+
+        context.ChangeTracker.Clear();
+        var unit = await context.OpmsUnitDefinitions.SingleAsync(item => item.Code == "PERCENT");
+        context.OpmsUnitDefinitions.Remove(unit);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*OPMS unit definitions are migration-managed and immutable*");
+
+        context.ChangeTracker.Clear();
+        var direction = await context.PerformanceDirectionDefinitions.SingleAsync(item => item.Code == "TARGET_OR_HIGHER");
+        direction.EngineDirection = PerformanceDirection.LowerIsBetter;
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*performance-direction definitions are migration-managed and immutable*");
+    }
+
     private sealed class SystemTenantContext : ITenantContext
     {
         public long? MunicipalityId => null;
