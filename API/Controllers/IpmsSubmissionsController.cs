@@ -625,8 +625,8 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(created, user, BuildScope(submission), submission.PublicId)));
     }
 
-    [HttpGet("{id:guid}/attachments/{attachmentId}/content")]
-    public async Task<IActionResult> DownloadAttachment(string id, string attachmentId)
+    [HttpGet("{id:guid}/attachments/{attachmentId:guid}/content")]
+    public async Task<IActionResult> DownloadAttachment(string id, Guid attachmentId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
@@ -636,15 +636,15 @@ public class IpmsSubmissionsController : ControllerBase
         if (submission == null) return NotFound();
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.READ", BuildScope(submission));
         if (!decision.Allowed) return Forbid();
-        var evidence = await _context.PoeFiles.AsNoTracking().Include(item => item.Blob).FirstOrDefaultAsync(item => item.Id == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive && !item.Blob.IsContentDeleted && !item.Blob.IsQuarantined && item.Blob.SignatureVerified && item.Blob.ScanStatus == "Clean");
+        var evidence = await _context.PoeFiles.AsNoTracking().Include(item => item.Blob).FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive && !item.Blob.IsContentDeleted && !item.Blob.IsQuarantined && item.Blob.SignatureVerified && item.Blob.ScanStatus == "Clean");
         if (evidence == null) return NotFound();
         var stored = await _evidenceStorage.ReadAsync(evidence.Blob.StorageKey, HttpContext.RequestAborted);
         if (!stored.Found) return stored.Available ? NotFound() : StatusCode(StatusCodes.Status503ServiceUnavailable);
         return File(stored.Content, evidence.Blob.ContentType ?? "application/octet-stream", evidence.FileName, enableRangeProcessing: true);
     }
 
-    [HttpPost("{id:guid}/attachments/{attachmentId}/rescan")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> RescanAttachment(string id, string attachmentId)
+    [HttpPost("{id:guid}/attachments/{attachmentId:guid}/rescan")]
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> RescanAttachment(string id, Guid attachmentId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
@@ -654,7 +654,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.UPLOAD", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
-        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.Id == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive);
+        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         if (evidence.Blob.IsContentDeleted) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Disposed evidence content cannot be rescanned"));
         var stored = await _evidenceStorage.ReadAsync(evidence.Blob.StorageKey, HttpContext.RequestAborted);
@@ -670,8 +670,8 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), scan.IsClean ? "Evidence released after a clean scan." : "Evidence remains quarantined."));
     }
 
-    [HttpPost("{id:guid}/attachments/{attachmentId}/assessments")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> AssessAttachment(string id, string attachmentId, AssessPoeRequest request)
+    [HttpPost("{id:guid}/attachments/{attachmentId:guid}/assessments")]
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> AssessAttachment(string id, Guid attachmentId, AssessPoeRequest request)
     {
         var comment = request.Comment?.Trim();
         var user = await GetCurrentUserAsync();
@@ -683,7 +683,7 @@ public class IpmsSubmissionsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.ASSESS", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
         var evidence = await _context.PoeFiles.IncludePoeGovernance()
-            .FirstOrDefaultAsync(item => item.Id == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive);
+            .FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         var policy = PoeAssessmentPolicy.Validate(evidence, request.Outcome, comment);
         if (!policy.Allowed) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, policy.Error));
@@ -694,8 +694,8 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Evidence assessment recorded."));
     }
 
-    [HttpPost("{id:guid}/attachments/{attachmentId}/replace")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> ReplaceAttachment(string id, string attachmentId, ReplacePoeRequest request)
+    [HttpPost("{id:guid}/attachments/{attachmentId:guid}/replace")]
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> ReplaceAttachment(string id, Guid attachmentId, ReplacePoeRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
@@ -706,8 +706,8 @@ public class IpmsSubmissionsController : ControllerBase
         if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be replaced on a withdrawn IPMS submission."));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.REPLACE", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
-        var rows = await _context.PoeFiles.IncludePoeGovernance().Where(item => item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && (item.Id == attachmentId || item.PublicId == request.ReplacementEvidencePublicId)).ToArrayAsync();
-        var superseded = rows.SingleOrDefault(item => item.Id == attachmentId);
+        var rows = await _context.PoeFiles.IncludePoeGovernance().Where(item => item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && (item.PublicId == attachmentId || item.PublicId == request.ReplacementEvidencePublicId)).ToArrayAsync();
+        var superseded = rows.SingleOrDefault(item => item.PublicId == attachmentId);
         var replacement = rows.SingleOrDefault(item => item.PublicId == request.ReplacementEvidencePublicId);
         if (superseded == null || replacement == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Both the superseded and replacement evidence records are required"));
         var policy = PoeReplacementPolicy.Validate(superseded, replacement, SubmissionKind.Ipms, id, request.Reason);
@@ -724,8 +724,8 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(superseded, user, BuildScope(submission), submission.PublicId), "Evidence replacement recorded; the prior record remains retained in immutable history."));
     }
 
-    [HttpPost("{id:guid}/attachments/{attachmentId}/legal-holds")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> PlaceLegalHold(string id, string attachmentId, PlacePoeLegalHoldRequest request)
+    [HttpPost("{id:guid}/attachments/{attachmentId:guid}/legal-holds")]
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> PlaceLegalHold(string id, Guid attachmentId, PlacePoeLegalHoldRequest request)
     {
         var error = PoeLegalHoldPolicy.ValidateText(request.HoldReference, request.Reason);
         if (error != null) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, error));
@@ -737,7 +737,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.PLACE_HOLD", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
-        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.Id == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
+        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         if (evidence.DisposalEvents.Any(item => item.Action == PoeDisposalAction.Completed)) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Disposed evidence can no longer be placed under legal hold"));
         if (evidence.LegalHoldEvents.GroupBy(item => item.HoldId).Any(group => group.First().HoldReference == request.HoldReference.Trim() && group.All(item => item.Action != PoeLegalHoldAction.Released)))
@@ -748,8 +748,8 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Legal hold placed."));
     }
 
-    [HttpPost("{id:guid}/attachments/{attachmentId}/legal-holds/{holdId:guid}/release")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> ReleaseLegalHold(string id, string attachmentId, Guid holdId, ReleasePoeLegalHoldRequest request)
+    [HttpPost("{id:guid}/attachments/{attachmentId:guid}/legal-holds/{holdId:guid}/release")]
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> ReleaseLegalHold(string id, Guid attachmentId, Guid holdId, ReleasePoeLegalHoldRequest request)
     {
         var error = PoeLegalHoldPolicy.ValidateReleaseReason(request.Reason);
         if (error != null) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, error));
@@ -761,7 +761,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.RELEASE_HOLD", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
-        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.Id == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
+        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         var placed = evidence.LegalHoldEvents.FirstOrDefault(item => item.HoldId == holdId && item.Action == PoeLegalHoldAction.Placed);
         if (placed == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Legal hold not found"));
@@ -773,8 +773,8 @@ public class IpmsSubmissionsController : ControllerBase
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Legal hold released."));
     }
 
-    [HttpPost("{id:guid}/attachments/{attachmentId}/disposals")]
-    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> RequestDisposal(string id, string attachmentId, RequestPoeDisposalRequest request)
+    [HttpPost("{id:guid}/attachments/{attachmentId:guid}/disposals")]
+    public async Task<ActionResult<ApiResponse<PoeFileResponse>>> RequestDisposal(string id, Guid attachmentId, RequestPoeDisposalRequest request)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<PoeFileResponse>(false, null, "User not found"));
@@ -784,7 +784,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.DISPOSE", BuildScope(submission));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
-        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.Id == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
+        var evidence = await _context.PoeFiles.IncludePoeGovernance().FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
         var policy = PoeDisposalPolicy.Validate(evidence, request.ApprovalReference, request.Reason, DateTime.UtcNow);
         if (!policy.Allowed) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, policy.Error));
@@ -810,8 +810,8 @@ public class IpmsSubmissionsController : ControllerBase
         catch (FormatException) { return false; }
     }
 
-    [HttpDelete("{id:guid}/attachments/{attachmentId}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteAttachment(string id, string attachmentId)
+    [HttpDelete("{id:guid}/attachments/{attachmentId:guid}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteAttachment(string id, Guid attachmentId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
@@ -827,7 +827,7 @@ public class IpmsSubmissionsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
 
         var file = await _context.PoeFiles.Include(item => item.UploadedByUser).FirstOrDefaultAsync(item =>
-            item.Id == attachmentId &&
+            item.PublicId == attachmentId &&
             item.SubmissionKind == SubmissionKind.Ipms &&
             item.SubmissionId == id);
         if (file == null) return NotFound(new ApiResponse<bool>(false, false, "Attachment not found"));

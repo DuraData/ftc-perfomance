@@ -810,7 +810,7 @@ export interface VoteNumber {
 
 export interface Attachment {
   id: string;
-  publicId?: string;
+  publicId: string;
   evidenceBlobPublicId?: string;
   fileName: string;
   fileSize: number;
@@ -2843,8 +2843,7 @@ export interface AuditTrailEntryDto {
 }
 
 export interface PoeFileDto {
-  id: string;
-  publicId?: string;
+  publicId: string;
   evidenceBlobPublicId?: string;
   submissionKind: string;
   submissionPublicId: string;

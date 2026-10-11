@@ -276,7 +276,13 @@ public sealed class RegisterPaginationTests
         Assert.Equal(2, envelope.Data!.TotalCount);
         Assert.Equal(2, envelope.Data.TotalPages);
         var deniedMetadata = Assert.Single(envelope.Data.Items);
-        Assert.Equal("evidence-2", deniedMetadata.Id);
+        var expectedEvidencePublicId = await context.PoeFiles
+            .Where(item => item.Id == "evidence-2")
+            .Select(item => item.PublicId)
+            .SingleAsync();
+        Assert.Equal(expectedEvidencePublicId, deniedMetadata.PublicId);
+        Assert.Contains($"/attachments/{expectedEvidencePublicId}/content", deniedMetadata.Url, StringComparison.Ordinal);
+        Assert.DoesNotContain("evidence-2", deniedMetadata.Url, StringComparison.Ordinal);
         Assert.Null(deniedMetadata.UploadedByUserPublicId);
         Assert.Null(deniedMetadata.UploadedByName);
         Assert.Null(deniedMetadata.ScannerProvider);

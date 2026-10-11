@@ -1,7 +1,7 @@
 namespace FTCERP.Host.API.Responses;
 
 public record PoeFileResponse(
-    string Id,
+    Guid PublicId,
     string SubmissionKind,
     Guid SubmissionPublicId,
     string FileName,
@@ -12,7 +12,6 @@ public record PoeFileResponse(
     DateTime UploadedAt,
     string Url)
 {
-    public Guid PublicId { get; init; }
     public Guid EvidenceBlobPublicId { get; init; }
     public string Sha256 { get; init; } = string.Empty;
     public bool SignatureVerified { get; init; }

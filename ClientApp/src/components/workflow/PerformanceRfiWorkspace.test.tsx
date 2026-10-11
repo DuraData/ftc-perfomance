@@ -48,13 +48,13 @@ describe('PerformanceRfiWorkspace', () => {
   it('renders immutable evidence provenance returned by the RFI ledger', async () => {
     api.getPerformanceRfisPage.mockResolvedValue({ success: true, data: { items: [{
       publicId: 'rfi-1', question: 'Clarify the variance', raisedByUserId: 'reviewer', raisedAt: '2026-10-01T00:00:00Z', responseDueAt: '2026-10-03T00:00:00Z', rowVersion: 'AQ==',
-      evidence: [{ publicId: 'link-1', evidencePublicId: 'evidence-1', purpose: 2, fileName: 'calculation.pdf', sizeInBytes: 100, sha256: 'abc', linkedByUserId: 'responder', linkedAt: '2026-10-02T00:00:00Z', url: '/api/opms-submissions/submission-7/attachments/file-1/content' }],
+      evidence: [{ publicId: 'link-1', evidencePublicId: '77777777-7777-7777-7777-777777777777', purpose: 2, fileName: 'calculation.pdf', sizeInBytes: 100, sha256: 'abc', linkedByUserId: 'responder', linkedAt: '2026-10-02T00:00:00Z', url: '/api/v1/opms-submissions/66666666-6666-6666-6666-666666666666/attachments/77777777-7777-7777-7777-777777777777/content' }],
     }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
 
     render(<PerformanceRfiWorkspace kind={1} submissionId="submission-7" />);
 
     const link = await screen.findByRole('link', { name: /calculation.pdf · response evidence/ });
-    expect(link).toHaveAttribute('href', '/api/opms-submissions/submission-7/attachments/file-1/content');
+    expect(link).toHaveAttribute('href', '/api/v1/opms-submissions/66666666-6666-6666-6666-666666666666/attachments/77777777-7777-7777-7777-777777777777/content');
   });
 
   it('transports search, lifecycle filter, sorting, and paging to the RFI page endpoint', async () => {

@@ -992,7 +992,7 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
 
 function toAttachmentModel(dto: PoeFileDto): Attachment {
   return {
-    id: dto.id,
+    id: dto.publicId,
     publicId: dto.publicId,
     evidenceBlobPublicId: dto.evidenceBlobPublicId,
     fileName: dto.fileName,

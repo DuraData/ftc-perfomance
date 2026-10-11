@@ -179,11 +179,15 @@ public sealed class AccessGovernanceContractTests
         Assert.Equal(typeof(Guid), typeof(WorkflowQueueItemResponse).GetProperty("PublicId")?.PropertyType);
         Assert.Equal(typeof(Guid), typeof(PoeFileResponse).GetProperty("SubmissionPublicId")?.PropertyType);
         Assert.Null(typeof(PoeFileResponse).GetProperty("SubmissionId"));
+        Assert.Equal(typeof(Guid), typeof(PoeFileResponse).GetProperty("PublicId")?.PropertyType);
+        Assert.Null(typeof(PoeFileResponse).GetProperty("Id"));
 
         AssertGuidRoutes(typeof(OpmsSubmissionsController), "{id", "{id:guid}");
         AssertGuidRoutes(typeof(IpmsSubmissionsController), "{id", "{id:guid}");
         AssertGuidRoutes(typeof(WorkflowConfigurationController), "{submissionId", "{submissionId:guid}");
         AssertGuidRoutes(typeof(InternalAuditAssessmentsController), "{submissionId", "{submissionId:guid}");
+        AssertGuidRoutes(typeof(OpmsSubmissionsController), "{attachmentId", "{attachmentId:guid}");
+        AssertGuidRoutes(typeof(IpmsSubmissionsController), "{attachmentId", "{attachmentId:guid}");
     }
 
     private static void AssertGone(ActionResult? result)

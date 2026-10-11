@@ -79,8 +79,10 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         (await _client.PostAsync($"/api/v1/opms-submissions/{_ids.TenantBSubmissionPublicId}/attachments", upload))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
 
-        (await _client.GetAsync($"/api/v1/opms-submissions/{_ids.TenantBSubmissionPublicId}/attachments/{_ids.TenantBEvidenceId}/content"))
+        (await _client.GetAsync($"/api/v1/opms-submissions/{_ids.TenantBSubmissionPublicId}/attachments/{_ids.TenantBEvidencePublicId}/content"))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await _client.GetAsync($"/api/v1/opms-submissions/{_ids.TenantBSubmissionPublicId}/attachments/{_ids.TenantBEvidenceId}/content"))
+            .StatusCode.Should().Be(HttpStatusCode.Gone);
 
         var report = await _client.GetAsync("/api/v1/reports/performance-summary?kind=Opms");
         report.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -289,7 +291,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         await context.SaveChangesAsync();
 
         var opmsReadPermissionId = permissions.Single(item => item.Code == "OPMS_KPI.READ").Id;
-        return new SeededIds(tenantB.Id, role.Id, opmsReadPermissionId, targetA.PublicId, targetB.PublicId, targetB.Id, submissionB.PublicId, submissionB.Id, evidenceB.Id);
+        return new SeededIds(tenantB.Id, role.Id, opmsReadPermissionId, targetA.PublicId, targetB.PublicId, targetB.Id, submissionB.PublicId, submissionB.Id, evidenceB.PublicId, evidenceB.Id);
     }
 
     private static OpmsTarget Target(long municipalityId, int departmentId, string id, string name, string ownerId) => new()
@@ -327,7 +329,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     private static StringContent JsonContent(object value) =>
         new(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json");
 
-    private sealed record SeededIds(long TenantBId, string TenantARoleId, int OpmsReadPermissionId, Guid TenantATargetPublicId, Guid TenantBTargetPublicId, string TenantBTargetId, Guid TenantBSubmissionPublicId, string TenantBSubmissionId, string TenantBEvidenceId);
+    private sealed record SeededIds(long TenantBId, string TenantARoleId, int OpmsReadPermissionId, Guid TenantATargetPublicId, Guid TenantBTargetPublicId, string TenantBTargetId, Guid TenantBSubmissionPublicId, string TenantBSubmissionId, Guid TenantBEvidencePublicId, string TenantBEvidenceId);
 }
 
 internal sealed class TenantApplicationFactory(string userId) : WebApplicationFactory<Program>

@@ -91,7 +91,7 @@ public static class PerformanceApiSupport
     public static string BuildProtectedFileUrl(HttpContext context, PoeFile file, Guid submissionPublicId)
     {
         var kind = file.SubmissionKind == SubmissionKind.Opms ? "opms-submissions" : "ipms-submissions";
-        return $"{context.Request.Scheme}://{context.Request.Host}/api/v1/{kind}/{submissionPublicId}/attachments/{file.Id}/content";
+        return $"{context.Request.Scheme}://{context.Request.Host}/api/v1/{kind}/{submissionPublicId}/attachments/{file.PublicId}/content";
     }
 
     public static OpmsTargetTemplateResponse ToResponse(this OpmsTargetTemplate template) =>
@@ -571,7 +571,7 @@ public static class PerformanceApiSupport
     {
         memberAccess ??= PoeResponseMemberAccess.None;
         return new(
-            file.Id,
+            file.PublicId,
             file.SubmissionKind.ToString(),
             submissionPublicId,
             file.FileName,
@@ -582,7 +582,6 @@ public static class PerformanceApiSupport
             file.UploadedAt,
             file.IsActive && !file.Blob.IsContentDeleted && file.Blob.ScanStatus == "Clean" && !file.Blob.IsQuarantined ? BuildProtectedFileUrl(context, file, submissionPublicId) : string.Empty)
         {
-            PublicId = file.PublicId,
             EvidenceBlobPublicId = file.Blob.PublicId,
             Sha256 = file.Blob.Sha256,
             SignatureVerified = file.Blob.SignatureVerified,
