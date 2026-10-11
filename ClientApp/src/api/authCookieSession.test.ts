@@ -29,6 +29,7 @@ describe('cookie-only authentication sessions', () => {
 
     await login({ email: 'user@example.test', password: 'not-a-real-password' });
 
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/auth/login');
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     expect(request.credentials).toBe('include');
     expect(request.headers).not.toHaveProperty('Authorization');
@@ -41,7 +42,7 @@ describe('cookie-only authentication sessions', () => {
   it('coalesces concurrent refreshes and retries without bearer headers or token bodies', async () => {
     let protectedCalls = 0;
     const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-      if (input.includes('/auth/refresh-token')) {
+      if (input.includes('/v1/auth/refresh-token')) {
         expect(init?.body).toBeUndefined();
         return Promise.resolve(jsonResponse({ success: true, data: { expiresAt: '2026-10-02T12:00:00Z' } }));
       }
@@ -54,7 +55,7 @@ describe('cookie-only authentication sessions', () => {
 
     await Promise.all([getMfaStatus(), getMfaStatus()]);
 
-    const refreshCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/auth/refresh-token'));
+    const refreshCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/v1/auth/refresh-token'));
     expect(refreshCalls).toHaveLength(1);
     for (const [, init] of fetchMock.mock.calls) {
       expect((init as RequestInit).credentials).toBe('include');
@@ -66,7 +67,7 @@ describe('cookie-only authentication sessions', () => {
   it('reuses one idempotency key when a POST is retried after session refresh', async () => {
     let protectedCalls = 0;
     const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.includes('/auth/refresh-token')) {
+      if (input.includes('/v1/auth/refresh-token')) {
         return Promise.resolve(jsonResponse({ success: true, data: { expiresAt: '2026-10-02T12:00:00Z' } }));
       }
       protectedCalls++;
@@ -78,7 +79,7 @@ describe('cookie-only authentication sessions', () => {
 
     await retryNotificationDelivery({ publicId: 'event-id', rowVersion: 'AQ==' } as never, 'Operator retry');
 
-    const protectedRequests = fetchMock.mock.calls.filter(([url]) => !String(url).includes('/auth/refresh-token'));
+    const protectedRequests = fetchMock.mock.calls.filter(([url]) => !String(url).includes('/v1/auth/refresh-token'));
     expect(protectedRequests).toHaveLength(2);
     const firstHeaders = protectedRequests[0][1]?.headers as Record<string, string>;
     const retryHeaders = protectedRequests[1][1]?.headers as Record<string, string>;

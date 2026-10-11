@@ -24,7 +24,8 @@ public sealed class AuthCookiePolicyTests
         Assert.Equal(SameSiteMode.Strict, access.SameSite);
         Assert.Equal("/api", access.Path);
         Assert.Equal(TimeSpan.FromMinutes(15), access.MaxAge);
-        Assert.Equal("/api/auth", refresh.Path);
+        Assert.Equal("/api/v1/auth", refresh.Path);
+        Assert.Equal("/api/auth", AuthCookiePolicy.LegacyRefreshPath);
     }
 
     [Fact]

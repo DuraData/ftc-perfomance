@@ -10,7 +10,8 @@ public static class AuthCookiePolicy
     public const string DevelopmentAccessCookieName = "opms_dev_access";
     public const string DevelopmentRefreshCookieName = "opms_dev_refresh";
     public const string AccessPath = "/api";
-    public const string RefreshPath = "/api/auth";
+    public const string RefreshPath = "/api/v1/auth";
+    public const string LegacyRefreshPath = "/api/auth";
 
     public static string GetAccessCookieName(IHostEnvironment environment) =>
         environment.IsDevelopment() ? DevelopmentAccessCookieName : AccessCookieName;

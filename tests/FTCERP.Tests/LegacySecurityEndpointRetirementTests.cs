@@ -59,6 +59,16 @@ public sealed class LegacySecurityEndpointRetirementTests
     }
 
     [Fact]
+    public void Unversioned_authentication_prefix_is_an_explicit_gone_tombstone()
+    {
+        var controller = new LegacyAuthController();
+
+        AssertGone(controller.Retired().Result);
+        AssertGone(controller.Retired("login").Result);
+        AssertGone(controller.Retired("me/profile").Result);
+    }
+
+    [Fact]
     public async Task Legacy_permission_definition_mutations_are_gone_and_cannot_rewrite_registry_codes()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
@@ -172,6 +182,9 @@ public sealed class LegacySecurityEndpointRetirementTests
         Assert.True(typeof(LegacyUsersController)
             .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
             .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(LegacyAuthController)
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
         foreach (var action in new[] { nameof(UsersController.GetUsers), nameof(UsersController.GetUserScopes), nameof(UsersController.GetUserAssignments) })
         {
             Assert.True(typeof(UsersController).GetMethod(action)!
@@ -249,7 +262,8 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
                      "/api/opms-targets", "/api/ipms-targets", "/api/opms-submissions", "/api/ipms-submissions",
                      "/api/opms-target-library", "/api/ipms-target-library", "/api/notifications",
-                     "/api/Auth/register", "/api/navigation/my-menu", "/api/v1/access/system-coverage-audit",
+                     "/api/Auth/register", "/api/auth/login", "/api/auth/refresh-token", "/api/auth/logout", "/api/auth/me", "/api/auth/me/profile",
+                     "/api/navigation/my-menu", "/api/v1/access/system-coverage-audit",
                      "/api/role-implementation-audit"
                  })
         {
@@ -258,7 +272,9 @@ public sealed class LegacySecurityEndpointRetirementTests
 
         foreach (var publicPath in new[]
                  {
-                     "/api/v1/security/roles/{rolePublicId}", "/api/v1/navigation/my-menu", "/api/v1/users/page", "/api/v1/users/{publicId}", "/api/v1/idp/plans/{planPublicId}",
+                     "/api/v1/security/roles/{rolePublicId}", "/api/v1/navigation/my-menu", "/api/v1/users/page", "/api/v1/users/{publicId}",
+                     "/api/v1/auth/login", "/api/v1/auth/refresh-token", "/api/v1/auth/logout", "/api/v1/auth/me", "/api/v1/auth/me/profile",
+                     "/api/v1/idp/plans/{planPublicId}",
                      "/api/v1/idp/community-sessions", "/api/v1/idp/community-needs", "/api/v1/idp/ward-inputs",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
                      "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",

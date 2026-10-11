@@ -1084,7 +1084,7 @@ async function fetchApi<T>(
     credentials: 'include',
   });
 
-  if (response.status === 401 && endpoint !== '/auth/refresh-token' && endpoint !== '/auth/login') {
+  if (response.status === 401 && endpoint !== '/v1/auth/refresh-token' && endpoint !== '/v1/auth/login') {
     try {
       const refreshResult = await refreshAccessToken();
       if (refreshResult.success) {
@@ -1160,7 +1160,7 @@ async function postForm<T>(endpoint: string, body: FormData): Promise<ApiRespons
 async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh-token`, {
         method: 'POST',
         headers: addTenantHeader({ 'Content-Type': 'application/json', 'X-OPMS-Request': 'same-origin' }),
         credentials: 'include',
@@ -1213,7 +1213,7 @@ export async function getAuthenticationEventsPage(query: AuthenticationEventPage
 }
 
 export async function login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
-  const result = await fetchApi<LoginResponse>('/auth/login', {
+  const result = await fetchApi<LoginResponse>('/v1/auth/login', {
     method: 'POST',
     body: JSON.stringify(credentials),
   });
@@ -1224,12 +1224,12 @@ export async function login(credentials: LoginRequest): Promise<ApiResponse<Logi
 }
 
 export async function updateMyProfile(payload: { firstName: string; lastName: string; phoneNumber?: string | null }): Promise<ApiResponse<UserProfile>> {
-  return put<UserProfile>('/auth/me/profile', payload);
+  return put<UserProfile>('/v1/auth/me/profile', payload);
 }
 
 export async function logout() {
   try {
-    await fetchApi<boolean>('/auth/logout', { method: 'POST' });
+    await fetchApi<boolean>('/v1/auth/logout', { method: 'POST' });
   } finally {
     clearTokens();
     setCurrentMunicipalityPublicId(null);

@@ -10,6 +10,7 @@ import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
 import { createIdpCommunitySession, createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
 import { getMyMenu } from './api';
 import { activateUser, createUser, deactivateUser, deleteUser, getUser, getUserPermissions, getUsersPage, setUserPermissionOverrides, setUserRoles, updateUser } from './api';
+import { logout, updateMyProfile } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -41,6 +42,17 @@ describe('versioned API routes', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(10);
     for (const [url] of fetchMock.mock.calls) expect(String(url)).toContain('/api/v1/users');
+  });
+
+  it('uses only the versioned local-authentication profile and logout routes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await updateMyProfile({ firstName: 'Test', lastName: 'User', phoneNumber: null });
+    await logout();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/auth/me/profile'), expect.objectContaining({ method: 'PUT', credentials: 'include' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/auth/logout'), expect.objectContaining({ method: 'POST', credentials: 'include' }));
   });
 
   it('uses a stable public notification identity for read acknowledgement', async () => {

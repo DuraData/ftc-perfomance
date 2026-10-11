@@ -15,7 +15,7 @@ using System.Text.Json;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/auth")]
 public class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
@@ -117,7 +117,7 @@ public class AuthController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<bool>> Register() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<bool>(false, false,
-            "This default-role registration route is retired. Use POST /api/users, then assign effective roles through dynamic security administration."));
+            "This default-role registration route is retired. Use POST /api/v1/users, then assign effective roles through dynamic security administration."));
 
     [HttpPost("/api/v1/auth/password/forgot")]
     [EnableRateLimiting("authentication")]
@@ -451,6 +451,7 @@ public class AuthController : ControllerBase
     private void SetSessionCookies(string accessToken, string refreshToken, DateTime accessExpiresAt)
     {
         var environment = GetHostEnvironment();
+        Response.Cookies.Delete(AuthCookiePolicy.GetRefreshCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.LegacyRefreshPath));
         Response.Cookies.Append(AuthCookiePolicy.GetAccessCookieName(environment), accessToken, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath, accessExpiresAt - DateTime.UtcNow));
         Response.Cookies.Append(AuthCookiePolicy.GetRefreshCookieName(environment), refreshToken, AuthCookiePolicy.Create(
             environment,
@@ -463,6 +464,7 @@ public class AuthController : ControllerBase
         var environment = GetHostEnvironment();
         Response.Cookies.Delete(AuthCookiePolicy.GetAccessCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath));
         Response.Cookies.Delete(AuthCookiePolicy.GetRefreshCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.RefreshPath));
+        Response.Cookies.Delete(AuthCookiePolicy.GetRefreshCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.LegacyRefreshPath));
     }
 
     private IWebHostEnvironment GetHostEnvironment() =>

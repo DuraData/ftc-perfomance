@@ -174,6 +174,7 @@ public sealed class EnterpriseAuthController(
     private void SetSessionCookies(string accessToken, string refreshToken, DateTime accessExpiresAt)
     {
         var environment = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
+        Response.Cookies.Delete(AuthCookiePolicy.GetRefreshCookieName(environment), AuthCookiePolicy.Create(environment, AuthCookiePolicy.LegacyRefreshPath));
         Response.Cookies.Append(AuthCookiePolicy.GetAccessCookieName(environment), accessToken, AuthCookiePolicy.Create(environment, AuthCookiePolicy.AccessPath, accessExpiresAt - DateTime.UtcNow));
         Response.Cookies.Append(AuthCookiePolicy.GetRefreshCookieName(environment), refreshToken, AuthCookiePolicy.Create(environment, AuthCookiePolicy.RefreshPath,
             TimeSpan.FromDays(Math.Clamp(jwtSettings.Value.RefreshTokenExpiryDays, 1, 90))));

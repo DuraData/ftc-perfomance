@@ -53,6 +53,6 @@ public sealed class MfaEnrollmentMiddleware(RequestDelegate next)
     private static bool IsEnrollmentEndpoint(PathString path) =>
         path.StartsWithSegments("/api/v1/auth/mfa")
         || path.StartsWithSegments("/api/v1/auth/password")
-        || path.StartsWithSegments("/api/auth/logout")
-        || path.StartsWithSegments("/api/auth/me");
+        || path.StartsWithSegments("/api/v1/auth/logout")
+        || path.StartsWithSegments("/api/v1/auth/me");
 }

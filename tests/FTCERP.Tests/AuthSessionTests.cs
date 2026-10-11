@@ -403,6 +403,13 @@ public sealed class AuthSessionTests
         allowed.User = blocked.User;
         await middleware.InvokeAsync(allowed);
         Assert.True(downstreamCalled);
+
+        downstreamCalled = false;
+        var profile = new DefaultHttpContext();
+        profile.Request.Path = "/api/v1/auth/me/profile";
+        profile.User = blocked.User;
+        await middleware.InvokeAsync(profile);
+        Assert.True(downstreamCalled);
     }
 
     [Fact]
@@ -427,6 +434,12 @@ public sealed class AuthSessionTests
         var allowed = new DefaultHttpContext { User = principal! };
         allowed.Request.Path = "/api/v1/auth/password/change";
         await middleware.InvokeAsync(allowed);
+        Assert.True(downstreamCalled);
+
+        downstreamCalled = false;
+        var logout = new DefaultHttpContext { User = principal! };
+        logout.Request.Path = "/api/v1/auth/logout";
+        await middleware.InvokeAsync(logout);
         Assert.True(downstreamCalled);
     }
 
