@@ -255,7 +255,7 @@ public sealed class StrategicDocumentsController : ControllerBase
                 : (Guid?)null;
             query = query.Where(item => item.Title.Contains(request.NormalizedSearch)
                 || (item.Description != null && item.Description.Contains(request.NormalizedSearch))
-                || (item.ApprovalReference != null && item.ApprovalReference.Contains(request.NormalizedSearch))
+                || (memberAccess.ApprovalReference && item.ApprovalReference != null && item.ApprovalReference.Contains(request.NormalizedSearch))
                 || (memberAccess.CreatedByUserId && ((actorPublicId.HasValue && item.CreatedByUser.PublicId == actorPublicId.Value)
                     || item.CreatedByUser.FirstName.Contains(request.NormalizedSearch)
                     || item.CreatedByUser.LastName.Contains(request.NormalizedSearch)))
@@ -293,6 +293,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         var decision = await accessControl.CheckPermissionAsync(user, permission, MunicipalityScope());
         if (!decision.Allowed) return Forbidden<StrategicDocumentResponse>(decision.Reason);
         if (!TryNormalizeDocument(request, out var normalized, out var error)) return BadRequest(Fail<StrategicDocumentResponse>(error!));
+        if (!await CanUpdateMemberAsync(user, "EventReason", tenantContext.MunicipalityId!.Value))
+            return Forbidden<StrategicDocumentResponse>("Strategic document event reason update permission is required.");
         var year = await context.MunicipalityFinancialYears.Include(item => item.FinancialYear)
             .SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId && item.IsActive);
         if (year == null) return BadRequest(Fail<StrategicDocumentResponse>("Municipality financial year not found or inactive."));
@@ -411,6 +413,9 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (loaded.Error != null) return loaded.Error;
         if (!TryText(request.ApprovalReference, "ApprovalReference", 240, out var reference, out var error) || !TryReason(request.Reason, out var reason, out error))
             return BadRequest(Fail<StrategicDocumentResponse>(error!));
+        if (!await CanUpdateMemberAsync(loaded.User!, "ApprovalReference", loaded.Document!.MunicipalityId)
+            || !await CanUpdateMemberAsync(loaded.User!, "EventReason", loaded.Document.MunicipalityId))
+            return Forbidden<StrategicDocumentResponse>("Strategic document approval reference and event reason update permissions are required.");
         var entity = loaded.Document!;
         if (!entity.IsCurrent || !entity.IsActive) return Conflict(Fail<StrategicDocumentResponse>("Only the active current version can be approved."));
         if (entity.IsApproved) return Conflict(Fail<StrategicDocumentResponse>("This version is already approved."));
@@ -431,6 +436,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         var loaded = await LoadForCommand(publicId, "STRATEGIC_DOCUMENT.PUBLISH", request.RowVersion);
         if (loaded.Error != null) return loaded.Error;
         if (!TryReason(request.Reason, out var reason, out var error)) return BadRequest(Fail<StrategicDocumentResponse>(error!));
+        if (!await CanUpdateMemberAsync(loaded.User!, "EventReason", loaded.Document!.MunicipalityId))
+            return Forbidden<StrategicDocumentResponse>("Strategic document event reason update permission is required.");
         if (request.PublicationDate == default) return BadRequest(Fail<StrategicDocumentResponse>("PublicationDate is required."));
         var entity = loaded.Document!;
         if (!entity.IsCurrent || !entity.IsActive || !entity.IsApproved) return Conflict(Fail<StrategicDocumentResponse>("Only an active, approved current version can be published."));
@@ -452,6 +459,8 @@ public sealed class StrategicDocumentsController : ControllerBase
         var loaded = await LoadForCommand(publicId, "STRATEGIC_DOCUMENT.RETIRE", request.RowVersion);
         if (loaded.Error != null) return loaded.Error;
         if (!TryReason(request.Reason, out var reason, out var error)) return BadRequest(Fail<StrategicDocumentResponse>(error!));
+        if (!await CanUpdateMemberAsync(loaded.User!, "EventReason", loaded.Document!.MunicipalityId))
+            return Forbidden<StrategicDocumentResponse>("Strategic document event reason update permission is required.");
         var entity = loaded.Document!;
         var actor = loaded.User!;
         if (!entity.IsActive) return Conflict(Fail<StrategicDocumentResponse>("This version is already retired."));
@@ -578,11 +587,16 @@ public sealed class StrategicDocumentsController : ControllerBase
             await CanReadAsync("ApprovedByUserId"),
             await CanReadAsync("PublishedByUserId"),
             await CanReadAsync("EventActorUserId"),
+            await CanReadAsync("ApprovalReference"),
             await CanReadAsync("EventReason"),
             await CanReadAsync("ScannerProvider"),
             await CanReadAsync("ScannerReference"),
             await CanReadAsync("ScanDetail"));
     }
+
+    private async Task<bool> CanUpdateMemberAsync(ApplicationUser user, string memberCode, long municipalityId) =>
+        (await accessControl.CheckPermissionAsync(user, $"STRATEGIC_DOCUMENT.{memberCode}.UPDATE",
+            new AccessScopeContext(MunicipalityId: municipalityId))).Allowed;
 
     private async Task<(ApplicationUser? User, ActionResult<ApiResponse<T>>? Error)> SessionAsync<T>(string permission)
     {
@@ -629,7 +643,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         item.DocumentDate, item.DisplayOrder, item.IsCurrent, item.IsActive, item.IsApproved, item.ApprovedAt,
         memberAccess.ApprovedByUserId ? item.ApprovedByUser?.PublicId : null,
         memberAccess.ApprovedByUserId ? item.ApprovedByUser?.FullName : null,
-        item.ApprovalReference, item.IsPublished, item.PublicationDate, item.PublishedAt,
+        memberAccess.ApprovalReference ? item.ApprovalReference : null, item.IsPublished, item.PublicationDate, item.PublishedAt,
         memberAccess.PublishedByUserId ? item.PublishedByUser?.PublicId : null,
         memberAccess.PublishedByUserId ? item.PublishedByUser?.FullName : null, item.CreatedAt,
         memberAccess.CreatedByUserId ? item.CreatedByUser.PublicId : null,

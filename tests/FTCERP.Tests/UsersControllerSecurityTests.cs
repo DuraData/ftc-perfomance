@@ -339,10 +339,12 @@ public sealed class UsersControllerSecurityTests
             .Where(item => item.ResourceCode == "STRATEGIC_DOCUMENT")
             .OrderBy(item => item.MemberCode)
             .ToArrayAsync();
-        Assert.Equal(new[] { "ApprovedByUserId", "CreatedByUserId", "EventActorUserId", "EventReason", "PublishedByUserId", "ScanDetail", "ScannerProvider", "ScannerReference" },
+        Assert.Equal(new[] { "ApprovalReference", "ApprovedByUserId", "CreatedByUserId", "EventActorUserId", "EventReason", "PublishedByUserId", "ScanDetail", "ScannerProvider", "ScannerReference" },
             strategicDocumentMembers.Select(item => item.MemberCode));
-        Assert.All(strategicDocumentMembers, item => { Assert.True(item.IsSensitive); Assert.True(item.IsSystemManaged); });
-        Assert.Equal(8, await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_DOCUMENT" && item.MemberCode != null));
+        Assert.All(strategicDocumentMembers, item => Assert.True(item.IsSensitive));
+        strategicDocumentMembers.Where(item => item.MemberCode is "ApprovalReference" or "EventReason").Should().OnlyContain(item => !item.IsSystemManaged);
+        strategicDocumentMembers.Where(item => item.MemberCode is not ("ApprovalReference" or "EventReason")).Should().OnlyContain(item => item.IsSystemManaged);
+        Assert.Equal(11, await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_DOCUMENT" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_DOCUMENT")).SupportsFieldSecurity);
         Assert.Single(await context.Permissions.Where(item => item.Code == "STRATEGIC_DOCUMENT.RESCAN").ToArrayAsync());
 

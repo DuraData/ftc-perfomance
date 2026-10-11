@@ -5,7 +5,7 @@ const app = vi.hoisted(() => ({ pushToast: vi.fn() }));
 const capabilities = vi.hoisted(() => ({
   canRead: vi.fn(() => true), canCreate: vi.fn(() => true), canUpdate: vi.fn(() => true),
   canDelete: vi.fn(() => false), canExport: vi.fn(() => false), canImport: vi.fn(() => false),
-  canExecute: vi.fn(() => true), canReadField: vi.fn(() => true), canEditField: vi.fn(() => true),
+  canExecute: vi.fn(() => true), canReadField: vi.fn((...args: [string?, string?]) => args.length >= 0), canEditField: vi.fn((...args: [string?, string?]) => args.length >= 0),
 }));
 const api = vi.hoisted(() => ({
   approveStrategicDocument: vi.fn(), createStrategicDocumentType: vi.fn(), createStrategicDocumentVersion: vi.fn(),
@@ -41,6 +41,7 @@ describe('Strategic documents workspace', () => {
     capabilities.canUpdate.mockReturnValue(true);
     capabilities.canExecute.mockReturnValue(true);
     capabilities.canReadField.mockReturnValue(true);
+    capabilities.canEditField.mockReturnValue(true);
     api.getStrategicDocumentTypesPage.mockResolvedValue({ success: true, data: { items: [type], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
@@ -147,5 +148,20 @@ describe('Strategic documents workspace', () => {
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'CreatedByUserId');
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'EventActorUserId');
     expect(capabilities.canReadField).toHaveBeenCalledWith('STRATEGIC_DOCUMENT', 'EventReason');
+  });
+
+  it('hides governed narrative mutations and approval references without member grants', async () => {
+    capabilities.canReadField.mockImplementation((_resource?: string, member?: string) => member !== 'ApprovalReference');
+    capabilities.canEditField.mockReturnValue(false);
+    api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [{ ...document, isApproved: true, approvedAt: '2026-07-02T00:00:00Z', approvalReference: 'hostile secret council reference' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    render(<StrategicDocumentsWorkspace />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
+    expect(screen.queryByText(/hostile secret council reference/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Add strategic document')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Version' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Strategic document action reason')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retire' })).not.toBeInTheDocument();
   });
 });

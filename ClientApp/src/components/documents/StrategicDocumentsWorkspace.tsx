@@ -37,8 +37,11 @@ const emptyType = () => ({
 
 export function StrategicDocumentsWorkspace() {
   const { pushToast } = useApp();
-  const { canCreate, canRead, canUpdate, canExecute, canReadField } = useSecurity();
+  const { canCreate, canRead, canUpdate, canExecute, canReadField, canEditField } = useSecurity();
   const canManage = canCreate('STRATEGIC_DOCUMENT') || canUpdate('STRATEGIC_DOCUMENT');
+  const canEditEventReason = canEditField('STRATEGIC_DOCUMENT', 'EventReason');
+  const canEditApprovalReference = canEditField('STRATEGIC_DOCUMENT', 'ApprovalReference');
+  const canReadApprovalReference = canReadField('STRATEGIC_DOCUMENT', 'ApprovalReference');
   const canManageTypes = canExecute('STRATEGIC_DOCUMENT.MANAGE_TYPES');
   const [types, setTypes] = useState<StrategicDocumentType[]>([]);
   const [typePage, setTypePage] = useState(1);
@@ -272,7 +275,7 @@ export function StrategicDocumentsWorkspace() {
           </Card>
         ) : null}
 
-        {canManage ? (
+        {canManage && canEditEventReason ? (
           <Card>
             <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{draft.previousVersionPublicId ? 'Create successor version' : 'Add strategic document'}</h2><p className="text-xs text-secondary-500">A successor preserves its predecessor and becomes the administrative current version. Existing published content remains visible until the successor is published.</p></div>{draft.previousVersionPublicId ? <Button variant="ghost" onClick={() => setDraft(emptyDocument())}>Cancel successor</Button> : null}</div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -311,7 +314,7 @@ export function StrategicDocumentsWorkspace() {
               <div className="space-y-4">
                 <div><h2 className="font-semibold">{selected.title}</h2><p className="text-xs text-secondary-500">Version {selected.versionNumber} · dated {new Date(selected.documentDate).toLocaleDateString()}</p></div>
                 <div className="grid gap-2 text-sm">
-                  <p><strong>Approval:</strong> {selected.isApproved ? `${selected.approvalReference} · ${new Date(selected.approvedAt!).toLocaleString()}` : 'Pending'}</p>
+                  <p><strong>Approval:</strong> {selected.isApproved ? `${canReadApprovalReference && selected.approvalReference ? `${selected.approvalReference} · ` : ''}${new Date(selected.approvedAt!).toLocaleString()}` : 'Pending'}</p>
                   <p><strong>Publication:</strong> {selected.isPublished ? new Date(selected.publicationDate!).toLocaleDateString() : 'Pending'}</p>
                   <p><strong>Content:</strong> {selected.fileName ?? selected.externalUrl ?? 'Unavailable'}</p>
                   {canReadField('STRATEGIC_DOCUMENT', 'CreatedByUserId') && selected.createdByUserPublicId ? <p><strong>Created by:</strong> {selected.createdByName || selected.createdByUserPublicId}</p> : null}
@@ -322,13 +325,13 @@ export function StrategicDocumentsWorkspace() {
                   {canReadField('STRATEGIC_DOCUMENT', 'ScannerReference') && selected.scannerReference ? <p><strong>Scanner reference:</strong> {selected.scannerReference}</p> : null}
                   {canReadField('STRATEGIC_DOCUMENT', 'ScanDetail') && selected.scanDetail ? <p><strong>Scan detail:</strong> {selected.scanDetail}</p> : null}
                 </div>
-                <div className="flex flex-wrap gap-2">{selected.contentUrl && !selected.isQuarantined && selected.scanStatus === 'Clean' ? <Button variant="outline" onClick={() => void downloadStrategicDocument(selected)}>Download</Button> : null}{selected.externalUrl ? <a className="rounded bg-primary-600 px-3 py-2 text-sm text-white" href={selected.externalUrl} target="_blank" rel="noreferrer">Open publication</a> : null}{canManage && selected.isCurrent ? <Button variant="outline" onClick={() => startSuccessor(selected)}>New Version</Button> : null}</div>
-                {canManage ? (
+                <div className="flex flex-wrap gap-2">{selected.contentUrl && !selected.isQuarantined && selected.scanStatus === 'Clean' ? <Button variant="outline" onClick={() => void downloadStrategicDocument(selected)}>Download</Button> : null}{selected.externalUrl ? <a className="rounded bg-primary-600 px-3 py-2 text-sm text-white" href={selected.externalUrl} target="_blank" rel="noreferrer">Open publication</a> : null}{canManage && canEditEventReason && selected.isCurrent ? <Button variant="outline" onClick={() => startSuccessor(selected)}>New Version</Button> : null}</div>
+                {canManage && (canEditEventReason || selected.isQuarantined && canExecute('STRATEGIC_DOCUMENT.RESCAN')) ? (
                   <div className="space-y-3 border-t border-secondary-200 pt-3 dark:border-secondary-700">
-                    <label className="text-xs text-secondary-600">Action reason<input aria-label="Strategic document action reason" className={fieldClass} value={actionReason} onChange={event => setActionReason(event.target.value)} /></label>
-                    {!selected.isApproved ? <label className="text-xs text-secondary-600">Approval reference<input aria-label="Strategic document approval reference" className={fieldClass} value={approvalReference} onChange={event => setApprovalReference(event.target.value)} /></label> : null}
+                    {canEditEventReason ? <label className="text-xs text-secondary-600">Action reason<input aria-label="Strategic document action reason" className={fieldClass} value={actionReason} onChange={event => setActionReason(event.target.value)} /></label> : null}
+                    {!selected.isApproved && canEditApprovalReference ? <label className="text-xs text-secondary-600">Approval reference<input aria-label="Strategic document approval reference" className={fieldClass} value={approvalReference} onChange={event => setApprovalReference(event.target.value)} /></label> : null}
                     {selected.isApproved && !selected.isPublished ? <label className="text-xs text-secondary-600">Publication date<input aria-label="Strategic document publication date" type="date" className={fieldClass} value={publicationDate} onChange={event => setPublicationDate(event.target.value)} /></label> : null}
-                    <div className="flex flex-wrap gap-2">{!selected.isApproved && canExecute('STRATEGIC_DOCUMENT.APPROVE') ? <Button disabled={busy || selected.isQuarantined} onClick={() => void runAction('approve')}>Approve</Button> : null}{selected.isApproved && !selected.isPublished && canExecute('STRATEGIC_DOCUMENT.PUBLISH') ? <Button disabled={busy} onClick={() => void runAction('publish')}>Publish</Button> : null}{selected.isActive && canExecute('STRATEGIC_DOCUMENT.RETIRE') ? <Button variant="outline" disabled={busy} onClick={() => void runAction('retire')}>Retire</Button> : null}{selected.isQuarantined && canExecute('STRATEGIC_DOCUMENT.RESCAN') ? <Button variant="outline" disabled={busy} onClick={() => void runAction('rescan')}>Rescan</Button> : null}</div>
+                    <div className="flex flex-wrap gap-2">{!selected.isApproved && canEditEventReason && canEditApprovalReference && canExecute('STRATEGIC_DOCUMENT.APPROVE') ? <Button disabled={busy || selected.isQuarantined} onClick={() => void runAction('approve')}>Approve</Button> : null}{selected.isApproved && !selected.isPublished && canEditEventReason && canExecute('STRATEGIC_DOCUMENT.PUBLISH') ? <Button disabled={busy} onClick={() => void runAction('publish')}>Publish</Button> : null}{selected.isActive && canEditEventReason && canExecute('STRATEGIC_DOCUMENT.RETIRE') ? <Button variant="outline" disabled={busy} onClick={() => void runAction('retire')}>Retire</Button> : null}{selected.isQuarantined && canExecute('STRATEGIC_DOCUMENT.RESCAN') ? <Button variant="outline" disabled={busy} onClick={() => void runAction('rescan')}>Rescan</Button> : null}</div>
                   </div>
                 ) : null}
                 {canManage ? <div className="border-t border-secondary-200 pt-3 dark:border-secondary-700"><div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-sm font-semibold">Version and action history</h3><p className="text-xs text-secondary-500">{historyTotalCount} immutable version{historyTotalCount === 1 ? '' : 's'}</p></div><label className="text-xs text-secondary-600">Search history<input aria-label="Search strategic document version history" className={fieldClass} value={historySearchInput} onChange={event => setHistorySearchInput(event.target.value)} /></label></div><div className="mt-2 space-y-2">{history.map(version => <div key={version.publicId} className="rounded bg-secondary-50 p-2 text-xs dark:bg-secondary-800"><p className="font-medium">Version {version.versionNumber} · {version.isCurrent ? 'Current' : 'Superseded'}</p>{version.events.map(event => <p key={event.publicId}>{new Date(event.occurredAt).toLocaleString()} · {event.action}{canReadField('STRATEGIC_DOCUMENT', 'EventReason') && event.reason ? ` · ${event.reason}` : ''}{canReadField('STRATEGIC_DOCUMENT', 'EventActorUserId') && event.actorUserPublicId ? ` · ${event.actorName || event.actorUserPublicId}` : ''}</p>)}</div>)}{!history.length ? <p className="text-xs text-secondary-500">No versions match the selected history search.</p> : null}</div>{historyTotalPages > 1 ? <div className="mt-3 flex items-center justify-between gap-2 text-xs"><Button size="sm" variant="outline" disabled={busy || historyPage <= 1} onClick={() => selected && void loadHistory(selected, historyPage - 1, historySearch)}>Previous versions</Button><span>Page {historyPage} of {historyTotalPages}</span><Button size="sm" variant="outline" disabled={busy || historyPage >= historyTotalPages} onClick={() => selected && void loadHistory(selected, historyPage + 1, historySearch)}>Next versions</Button></div> : null}</div> : null}

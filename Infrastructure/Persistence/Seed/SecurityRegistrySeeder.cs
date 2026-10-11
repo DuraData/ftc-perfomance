@@ -389,7 +389,8 @@ public static class SecurityRegistrySeeder
             Member("STRATEGIC_DOCUMENT", "ApprovedByUserId", "Document Approver Identity", sensitive: true, systemManaged: true),
             Member("STRATEGIC_DOCUMENT", "PublishedByUserId", "Document Publisher Identity", sensitive: true, systemManaged: true),
             Member("STRATEGIC_DOCUMENT", "EventActorUserId", "Document Event Actor Identity", sensitive: true, systemManaged: true),
-            Member("STRATEGIC_DOCUMENT", "EventReason", "Document Event Governance Reason", sensitive: true, systemManaged: true),
+            Member("STRATEGIC_DOCUMENT", "ApprovalReference", "Document Approval Reference", sensitive: true),
+            Member("STRATEGIC_DOCUMENT", "EventReason", "Document Event Governance Reason", sensitive: true),
             Member("STRATEGIC_DOCUMENT", "ScannerProvider", "Document Scanner Provider", sensitive: true, systemManaged: true),
             Member("STRATEGIC_DOCUMENT", "ScannerReference", "Document Scanner Reference", sensitive: true, systemManaged: true),
             Member("STRATEGIC_DOCUMENT", "ScanDetail", "Document Scanner Detail", sensitive: true, systemManaged: true),
@@ -661,6 +662,9 @@ public static class SecurityRegistrySeeder
         mappings["IDP.Participation.View"] = [.. mappings["IDP.Participation.View"], "IDP_PARTICIPATION.READ", .. participationReadMembers];
         mappings["IDP.Risk.Manage"] = [.. mappings["IDP.Risk.Manage"],
             "STRATEGIC_RISK.LinkReason.UPDATE", "STRATEGIC_RISK.UnlinkReason.UPDATE"];
+        mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "STRATEGIC_DOCUMENT.ApprovalReference.READ", "STRATEGIC_DOCUMENT.ApprovalReference.UPDATE",
+            "STRATEGIC_DOCUMENT.EventReason.UPDATE"];
         mappings["IDP.Participation.Manage"] = [.. mappings["IDP.Participation.Manage"],
             "IDP_PARTICIPATION.CREATE", "IDP_PARTICIPATION.READ", "IDP_PARTICIPATION.UPDATE",
             "IDP_PARTICIPATION.AttendanceRegisterPath.UPDATE", "IDP_PARTICIPATION.MinutesPath.UPDATE",

@@ -199,7 +199,8 @@ public class StrategicDocumentsControllerTests
         var setup = await SeedAsync(context, allowsExternalLinks: true);
         var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.UPDATE"
+            "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.UPDATE",
+            "STRATEGIC_DOCUMENT.EventReason.UPDATE"
         };
         var controller = Controller(context, setup.User, setup.Municipality.Id, grantedPermissions: permissions);
 
@@ -224,7 +225,7 @@ public class StrategicDocumentsControllerTests
         }));
         hiddenReasonSearch.TotalCount.Should().Be(0);
 
-        foreach (var member in new[] { "CreatedByUserId", "ApprovedByUserId", "PublishedByUserId", "EventActorUserId", "EventReason", "ScannerProvider", "ScannerReference", "ScanDetail" })
+        foreach (var member in new[] { "ApprovalReference", "CreatedByUserId", "ApprovedByUserId", "PublishedByUserId", "EventActorUserId", "EventReason", "ScannerProvider", "ScannerReference", "ScanDetail" })
             permissions.Add($"STRATEGIC_DOCUMENT.{member}.READ");
 
         var visibleSearch = Payload(await controller.GetVersionHistoryPage(created.DocumentFamilyId, new PagedQueryRequest
@@ -254,6 +255,44 @@ public class StrategicDocumentsControllerTests
         typeof(StrategicDocumentResponse).GetProperty("ApprovedByUserId").Should().BeNull();
         typeof(StrategicDocumentResponse).GetProperty("PublishedByUserId").Should().BeNull();
         typeof(StrategicDocumentEventResponse).GetProperty("ActorUserId").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Approval_reference_and_event_reason_require_dynamic_member_updates()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, allowsExternalLinks: true);
+        var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "STRATEGIC_DOCUMENT.READ", "STRATEGIC_DOCUMENT.CREATE", "STRATEGIC_DOCUMENT.APPROVE"
+        };
+        var controller = Controller(context, setup.User, setup.Municipality.Id, grantedPermissions: permissions);
+
+        var deniedCreate = await controller.CreateVersion(ExternalRequest(setup, "Protected plan", "https://example.gov.za/protected.pdf"));
+        deniedCreate.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.StrategicDocuments.CountAsync()).Should().Be(0);
+
+        permissions.Add("STRATEGIC_DOCUMENT.EventReason.UPDATE");
+        var created = Payload(await controller.CreateVersion(ExternalRequest(setup, "Protected plan", "https://example.gov.za/protected.pdf")));
+        permissions.Remove("STRATEGIC_DOCUMENT.EventReason.UPDATE");
+        var deniedReason = await controller.Approve(created.PublicId,
+            new ApproveStrategicDocumentRequest(created.RowVersion, "SECRET-COUNCIL-1", "Restricted approval reason"));
+        deniedReason.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        permissions.Add("STRATEGIC_DOCUMENT.EventReason.UPDATE");
+        var deniedReference = await controller.Approve(created.PublicId,
+            new ApproveStrategicDocumentRequest(created.RowVersion, "SECRET-COUNCIL-1", "Restricted approval reason"));
+        deniedReference.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.StrategicDocuments.SingleAsync()).IsApproved.Should().BeFalse();
+
+        permissions.Add("STRATEGIC_DOCUMENT.ApprovalReference.UPDATE");
+        var approved = Payload(await controller.Approve(created.PublicId,
+            new ApproveStrategicDocumentRequest(created.RowVersion, "SECRET-COUNCIL-1", "Restricted approval reason")));
+        approved.ApprovalReference.Should().BeNull();
+        permissions.Add("STRATEGIC_DOCUMENT.ApprovalReference.READ");
+        permissions.Add("STRATEGIC_DOCUMENT.UPDATE");
+        var visible = Payload(await controller.GetDocumentsPage(new PagedQueryRequest(), setup.Year.PublicId));
+        visible.Items.Should().ContainSingle().Which.ApprovalReference.Should().Be("SECRET-COUNCIL-1");
     }
 
     [Fact]
