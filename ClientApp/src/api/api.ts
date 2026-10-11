@@ -1879,19 +1879,19 @@ export async function downloadOfficialReport(publicId: string, fileName: string)
 }
 
 export async function getUsersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<AdminUserDetail>>> {
-  return get<PagedResult<AdminUserDetail>>(`/users/page${registerPageQuery(query)}`);
+  return get<PagedResult<AdminUserDetail>>(`/v1/users/page${registerPageQuery(query)}`);
 }
 
 export async function getUser(publicId: string): Promise<ApiResponse<AdminUserDetail>> {
-  return get<AdminUserDetail>(`/users/${publicId}`);
+  return get<AdminUserDetail>(`/v1/users/${publicId}`);
 }
 
 export async function createUser(payload: { firstName: string; lastName: string; email: string; password: string; phoneNumber?: string }): Promise<ApiResponse<AdminUserDetail>> {
-  return post<AdminUserDetail>('/users', payload);
+  return post<AdminUserDetail>('/v1/users', payload);
 }
 
 export async function updateUser(payload: { publicId: string; firstName: string; lastName: string; phoneNumber?: string; isActive: boolean }): Promise<ApiResponse<AdminUserDetail>> {
-  return put<AdminUserDetail>(`/users/${payload.publicId}`, {
+  return put<AdminUserDetail>(`/v1/users/${payload.publicId}`, {
     firstName: payload.firstName,
     lastName: payload.lastName,
     phoneNumber: payload.phoneNumber ?? null,
@@ -1900,27 +1900,27 @@ export async function updateUser(payload: { publicId: string; firstName: string;
 }
 
 export async function activateUser(publicId: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/users/${publicId}/activate`);
+  return patch<boolean>(`/v1/users/${publicId}/activate`);
 }
 
 export async function deactivateUser(publicId: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/users/${publicId}/deactivate`);
+  return patch<boolean>(`/v1/users/${publicId}/deactivate`);
 }
 
 export async function deleteUser(publicId: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/users/${publicId}`);
+  return del<boolean>(`/v1/users/${publicId}`);
 }
 
 export async function setUserRoles(userPublicId: string, rolePublicIds: string[]): Promise<ApiResponse<boolean>> {
-  return post<boolean>(`/users/${userPublicId}/roles`, { rolePublicIds });
+  return post<boolean>(`/v1/users/${userPublicId}/roles`, { rolePublicIds });
 }
 
 export async function getUserPermissions(userPublicId: string): Promise<ApiResponse<UserPermissions>> {
-  return get<UserPermissions>(`/users/${userPublicId}/permissions`);
+  return get<UserPermissions>(`/v1/users/${userPublicId}/permissions`);
 }
 
 export async function setUserPermissionOverrides(userPublicId: string, overrides: UserPermissionOverride[]): Promise<ApiResponse<boolean>> {
-  return put<boolean>(`/users/${userPublicId}/permission-overrides`, { overrides });
+  return put<boolean>(`/v1/users/${userPublicId}/permission-overrides`, { overrides });
 }
 
 export async function getRoles(): Promise<ApiResponse<AdminRole[]>> {

@@ -128,7 +128,7 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
                      "/api/opms-targets", "/api/ipms-targets/legacy-record",
                      "/api/opms-submissions/legacy-record/attachments/page",
                      "/api/ipms-submissions", "/api/opms-target-library/legacy-record",
-                     "/api/ipms-target-library", "/api/notifications/page"
+                     "/api/ipms-target-library", "/api/notifications/page", "/api/users/page"
                  })
         {
             var response = await _client.GetAsync(path);

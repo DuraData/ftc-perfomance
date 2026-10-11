@@ -13,7 +13,7 @@ using System.Text.Json;
 namespace FTCERP.Host.API.Controllers;
 
 [ApiController]
-[Route("api/users")]
+[Route("api/v1/users")]
 [Authorize]
 public class UsersController : ControllerBase
 {
@@ -33,9 +33,10 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<UserDetailResponse[]>> GetUsers() =>
         StatusCode(StatusCodes.Status410Gone, Fail<UserDetailResponse[]>(
-            "This fixed-limit route is retired. Use /api/users/page."));
+            "This fixed-limit route is retired. Use /api/v1/users/page."));
 
     [HttpGet("page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<UserDetailResponse>>>> GetUsersPage([FromQuery] PagedQueryRequest request)
@@ -328,9 +329,10 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{publicId:guid}/scopes")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<UserScopeResponse[]>> GetUserScopes(Guid publicId) =>
         StatusCode(StatusCodes.Status410Gone, Fail<UserScopeResponse[]>(
-            $"This unbounded route is retired. Use /api/users/{publicId}/scopes/page."));
+            $"This unbounded route is retired. Use /api/v1/users/{publicId}/scopes/page."));
 
     [HttpGet("{publicId:guid}/scopes/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<UserScopeResponse>>>> GetUserScopesPage(Guid publicId, [FromQuery] PagedQueryRequest request)
@@ -489,9 +491,10 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{publicId:guid}/assignments")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<UserAssignmentResponse[]>> GetUserAssignments(Guid publicId) =>
         StatusCode(StatusCodes.Status410Gone, Fail<UserAssignmentResponse[]>(
-            $"This unbounded route is retired. Use /api/users/{publicId}/assignments/page."));
+            $"This unbounded route is retired. Use /api/v1/users/{publicId}/assignments/page."));
 
     [HttpGet("{publicId:guid}/assignments/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<UserAssignmentResponse>>>> GetUserAssignmentsPage(Guid publicId, [FromQuery] PagedQueryRequest request)

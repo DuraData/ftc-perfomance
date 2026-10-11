@@ -9,6 +9,7 @@ import { saveSecurityUserRoles } from './api';
 import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
 import { createIdpCommunitySession, createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
 import { getMyMenu } from './api';
+import { activateUser, createUser, deactivateUser, deleteUser, getUser, getUserPermissions, getUsersPage, setUserPermissionOverrides, setUserRoles, updateUser } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -20,6 +21,26 @@ describe('versioned API routes', () => {
     await getMyMenu();
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/navigation/my-menu'), expect.objectContaining({ credentials: 'include' }));
+  });
+
+  it('uses only the versioned user-administration prefix', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const userId = '11111111-1111-1111-1111-111111111111';
+
+    await getUsersPage({ page: 2, pageSize: 25, search: 'reviewer' });
+    await getUser(userId);
+    await createUser({ firstName: 'New', lastName: 'User', email: 'new@example.test', password: 'Local-Test-Only-9!' });
+    await updateUser({ publicId: userId, firstName: 'Updated', lastName: 'User', isActive: true });
+    await activateUser(userId);
+    await deactivateUser(userId);
+    await deleteUser(userId);
+    await setUserRoles(userId, []);
+    await getUserPermissions(userId);
+    await setUserPermissionOverrides(userId, []);
+
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+    for (const [url] of fetchMock.mock.calls) expect(String(url)).toContain('/api/v1/users');
   });
 
   it('uses a stable public notification identity for read acknowledgement', async () => {
