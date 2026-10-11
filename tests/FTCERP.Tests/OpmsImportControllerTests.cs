@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using System.Text;
+using System.Text.Json;
 
 namespace FTCERP.Tests;
 
@@ -237,6 +238,133 @@ public sealed class OpmsImportControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await SeedAsync(context);
+        await SeedExportTargetAsync(context, setup);
+
+        var result = await Controller(context, setup).Export(setup.Layer.PublicId);
+        var file = result.Should().BeOfType<FileContentResult>().Subject;
+        var csv = Encoding.UTF8.GetString(file.FileContents).TrimStart('\uFEFF');
+        csv.Should().Contain("EXISTING_INDICATOR_NUMBER,INDICATOR_NUMBER");
+        csv.Should().Contain("\"KPI-REV\",\"KPI-REV\",\"3\"");
+        csv.Should().Contain("\"'=Revised target\"");
+        csv.Should().Contain("\"CAPEX\",\"MIG:125.5\"");
+        csv.Should().Contain("\"Output\",\"Quantitative\",\"TECHNICAL\",\"SERVICE\",\"COUNT\"");
+        csv.Should().Contain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
+    }
+
+    [Fact]
+    public async Task Export_masks_sensitive_period_and_budget_source_values_until_exact_read_grants_exist()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        await SeedExportTargetAsync(context, setup);
+        var readable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(setup.User, It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string code) => code == "OPMS_KPI.EXPORT" || readable.Contains(code)
+                ? code == "OPMS_KPI.EXPORT"
+                    ? new AccessQueryScopeResult(true, true, [], [], [], [], [], [setup.Municipality.Id])
+                    : new AccessQueryScopeResult(true, false, [setup.Department.Id], [], [], [], [], [])
+                : new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        var controller = Controller(context, setup, access.Object);
+
+        var hiddenFile = (await controller.Export(setup.Layer.PublicId)).Should().BeOfType<FileContentResult>().Subject;
+        var hidden = Encoding.UTF8.GetString(hiddenFile.FileContents).TrimStart('\uFEFF');
+        hidden.Should().Contain("\"CAPEX\",\"MIG\"");
+        hidden.Should().NotContain("MIG:125.5");
+        hidden.Should().NotContain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
+
+        foreach (var member in new[] { "PeriodTargetValue", "PeriodBudgetValue", "PeriodDescription", "BudgetSourceAmounts" })
+            readable.Add($"OPMS_KPI.{member}.READ");
+
+        var visibleFile = (await controller.Export(setup.Layer.PublicId)).Should().BeOfType<FileContentResult>().Subject;
+        var visible = Encoding.UTF8.GetString(visibleFile.FileContents).TrimStart('\uFEFF');
+        visible.Should().Contain("\"CAPEX\",\"MIG:125.5\"");
+        visible.Should().Contain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
+    }
+
+    [Fact]
+    public async Task Import_preview_composes_row_payload_and_sensitive_member_read_permissions()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_KPI.IMPORT", "OPMS_KPI.ImportRowPayload.READ" };
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(allowed.Contains(code) && scope?.MunicipalityId == setup.Municipality.Id, code, [], [], []));
+        var controller = Controller(context, setup, access.Object);
+        var row = Row(2, "KPI-PREVIEW", setup.Department.Code) with
+        {
+            BudgetType = setup.BudgetType.Code,
+            BudgetSources = $"{setup.BudgetSourceA.Code}:125.50"
+        };
+
+        var staged = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "preview.csv", [row])));
+        using (var hidden = JsonDocument.Parse(staged.Rows.Single().NormalizedJson!))
+        {
+            hidden.RootElement.GetProperty("budgetSources")[0].GetProperty("amount").ValueKind.Should().Be(JsonValueKind.Null);
+            var period = hidden.RootElement.GetProperty("periodTargets")[0];
+            period.GetProperty("targetValue").GetString().Should().BeEmpty();
+            period.GetProperty("budgetValue").ValueKind.Should().Be(JsonValueKind.Null);
+            period.GetProperty("description").ValueKind.Should().Be(JsonValueKind.Null);
+        }
+
+        foreach (var member in new[] { "PeriodTargetValue", "PeriodBudgetValue", "PeriodDescription", "BudgetSourceAmounts" })
+            allowed.Add($"OPMS_KPI.{member}.READ");
+        var visibleBatch = Payload(await controller.GetBatch(staged.PublicId));
+        using var visible = JsonDocument.Parse(visibleBatch.Rows.Single().NormalizedJson!);
+        visible.RootElement.GetProperty("budgetSources")[0].GetProperty("amount").GetDecimal().Should().Be(125.50m);
+        var visiblePeriod = visible.RootElement.GetProperty("periodTargets")[0];
+        visiblePeriod.GetProperty("targetValue").GetString().Should().Be("100");
+        visiblePeriod.GetProperty("budgetValue").GetDecimal().Should().Be(1000m);
+        visiblePeriod.GetProperty("description").GetString().Should().Be("Annual");
+    }
+
+    [Fact]
+    public async Task Import_commit_denies_sensitive_writes_atomically_and_dynamic_grants_take_effect()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var direct = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_KPI.IMPORT" };
+        var scoped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? scope) =>
+                new AccessDecisionResult(direct.Contains(code) && scope?.MunicipalityId == setup.Municipality.Id, code, [], [], []));
+        access.Setup(service => service.GetQueryScopeAsync(setup.User, It.IsAny<string>()))
+            .ReturnsAsync((ApplicationUser _, string code) => scoped.Contains(code)
+                ? new AccessQueryScopeResult(true, false, [setup.Department.Id], [], [], [], [], [])
+                : new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        var controller = Controller(context, setup, access.Object);
+        var row = Row(2, "KPI-GOVERNED", setup.Department.Code) with
+        {
+            BudgetType = setup.BudgetType.Code,
+            BudgetSources = $"{setup.BudgetSourceA.Code}:125.50"
+        };
+        var staged = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "governed.csv", [row])));
+
+        var denied = await controller.Commit(staged.PublicId,
+            new CommitOpmsImportRequest("Governed import", null, null, staged.RowVersion));
+        denied.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await context.OpmsTargets.CountAsync()).Should().Be(0);
+        (await context.PerformancePeriodTargets.CountAsync()).Should().Be(0);
+
+        foreach (var member in new[] { "PeriodTargetValue", "PeriodBudgetValue", "PeriodDescription", "BudgetSourceAmounts" })
+            scoped.Add($"OPMS_KPI.{member}.UPDATE");
+        _ = Payload(await controller.Commit(staged.PublicId,
+            new CommitOpmsImportRequest("Governed import", null, null, staged.RowVersion)));
+        var saved = await context.OpmsTargets.Include(item => item.GovernedBudgetSources).SingleAsync();
+        saved.GovernedBudgetSources.Single().Amount.Should().Be(125.50m);
+        (await context.PerformancePeriodTargets.SingleAsync()).TargetValue.Should().Be("100");
+    }
+
+    private static string? Policy(string method) => typeof(OpmsImportsController).GetMethod(method)!
+        .GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().Single().Policy;
+
+    private static async Task SeedExportTargetAsync(ApplicationDbContext context, Setup setup)
+    {
         var target = new OpmsTarget
         {
             MunicipalityId = setup.Municipality.Id, SdbipLayerId = setup.Layer.Id, PeriodId = setup.LegacyPeriod.Id,
@@ -252,28 +380,17 @@ public sealed class OpmsImportControllerTests
             KpiType = "Output", IndicatorType = "Quantitative", AnnualTargetDescription = "Annual", Weight = 10
         };
         target.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = setup.Municipality.Id, BudgetSourceId = setup.BudgetSourceA.Id, Amount = 125.50m });
-        context.Add(target); context.PerformancePeriodTargets.Add(new PerformancePeriodTarget
+        context.Add(target);
+        await context.SaveChangesAsync();
+        context.PerformancePeriodTargets.Add(new PerformancePeriodTarget
         {
             MunicipalityId = setup.Municipality.Id, ReportingPeriodId = setup.Annual.Id, OpmsTargetId = target.Id,
             UnitKind = PerformanceUnitKind.AbsoluteCount, Direction = PerformanceDirection.HigherIsBetter,
             TargetValue = "100", IsTargetRevised = true, RevisedTargetValue = "125", RevisedUnitKind = PerformanceUnitKind.AbsoluteCount,
-            BudgetValue = 1000, IsBudgetRevised = true, RevisedBudgetValue = 1250, CreatedByUserId = setup.User.Id
+            BudgetValue = 1000, IsBudgetRevised = true, RevisedBudgetValue = 1250, Description = "Annual", CreatedByUserId = setup.User.Id
         });
         await context.SaveChangesAsync();
-
-        var result = await Controller(context, setup).Export(setup.Layer.PublicId);
-        var file = result.Should().BeOfType<FileContentResult>().Subject;
-        var csv = Encoding.UTF8.GetString(file.FileContents).TrimStart('\uFEFF');
-        csv.Should().Contain("EXISTING_INDICATOR_NUMBER,INDICATOR_NUMBER");
-        csv.Should().Contain("\"KPI-REV\",\"KPI-REV\",\"3\"");
-        csv.Should().Contain("\"'=Revised target\"");
-        csv.Should().Contain("\"CAPEX\",\"MIG:125.5\"");
-        csv.Should().Contain("\"Output\",\"Quantitative\",\"TECHNICAL\",\"SERVICE\",\"COUNT\"");
-        csv.Should().Contain("\"125\",\"ABSOLUTE_COUNT\",\"HIGHER_IS_BETTER\",\"1250.0\"");
     }
-
-    private static string? Policy(string method) => typeof(OpmsImportsController).GetMethod(method)!
-        .GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().Single().Policy;
 
     private static OpmsImportRowRequest Row(int sourceRow, string indicator, string department) => new(sourceRow, indicator, 1,
         "Water connections", "Households connected", department, null, "Basic Services", "Service Delivery", "Improve access",

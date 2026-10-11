@@ -38,6 +38,10 @@ public sealed class OpmsImportsController(
         if (layer == null) return NotFound(new ApiResponse<object>(false, null, "Active SDBIP layer not found."));
         var scope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.EXPORT");
         if (!scope.PermissionGranted) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<object>(false, null, "SDBIP export permission is denied."));
+        var targetValueScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.PeriodTargetValue.READ");
+        var periodBudgetScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.PeriodBudgetValue.READ");
+        var periodDescriptionScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.PeriodDescription.READ");
+        var budgetSourceAmountScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.BudgetSourceAmounts.READ");
         var query = context.OpmsTargets.AsNoTracking().Include(x => x.Department).Include(x => x.Unit)
             .Include(x => x.NationalKpaReference).Include(x => x.MunicipalKpaReference)
             .Include(x => x.BackToBasicsPillarReference).Include(x => x.StrategicGoalMaster)
@@ -48,7 +52,8 @@ public sealed class OpmsImportsController(
              .Include(x => x.FunctionalAreaMaster).Include(x => x.StandardClassificationMaster).Include(x => x.KpiUnitOfMeasureMaster)
             .Where(x => x.SdbipLayerId == layer.Id && !x.IsWithdrawn);
         if (!scope.Unrestricted)
-            query = query.Where(x => (x.DepartmentId.HasValue && scope.DepartmentIds.Contains(x.DepartmentId.Value)) ||
+            query = query.Where(x => scope.MunicipalityIds.Contains(x.MunicipalityId ?? -1) ||
+                (x.DepartmentId.HasValue && scope.DepartmentIds.Contains(x.DepartmentId.Value)) ||
                 (x.UnitId.HasValue && scope.UnitIds.Contains(x.UnitId.Value)) ||
                 (x.AssignedUserId != null && scope.OwnerUserIds.Contains(x.AssignedUserId)) || scope.TargetIds.Contains(x.Id) || scope.KpiIds.Contains(x.Id));
         var targets = await query.OrderBy(x => x.RevisedOrderNumber).ThenBy(x => x.PublicId).Take(100001).ToArrayAsync();
@@ -59,6 +64,10 @@ public sealed class OpmsImportsController(
         var csv = new StringBuilder(OpmsImportCsv.WideHeader).Append("\r\n");
         foreach (var target in targets)
         {
+            var canReadTargetValue = MatchesScope(targetValueScope, target);
+            var canReadPeriodBudget = MatchesScope(periodBudgetScope, target);
+            var canReadPeriodDescription = MatchesScope(periodDescriptionScope, target);
+            var canReadBudgetSourceAmount = MatchesScope(budgetSourceAmountScope, target);
             var effectiveIndicator = target.IsIndicatorNumberRevised && target.RevisedIndicatorNumber != null ? target.RevisedIndicatorNumber : target.IndicatorNumber;
             var effectiveName = target.IsTargetNameRevised && target.RevisedTargetName != null ? target.RevisedTargetName : target.TargetName;
             var effectiveWording = target.IsKpiDescriptionRevised && target.RevisedKpiDescription != null ? target.RevisedKpiDescription : target.KpiDescription;
@@ -70,7 +79,7 @@ public sealed class OpmsImportsController(
                 target.PerformanceObjectiveReference?.Code ?? target.PerformanceObjectiveReference?.Name,
                 target.BudgetTypeMaster?.Code ?? target.BudgetTypeMaster?.Name,
                 string.Join(';', target.GovernedBudgetSources.Where(item => item.IsActive).OrderBy(item => item.BudgetSource.Code)
-                    .Select(item => item.BudgetSource.Code + (item.Amount.HasValue ? ":" + item.Amount.Value.ToString(CultureInfo.InvariantCulture) : string.Empty))),
+                    .Select(item => item.BudgetSource.Code + (canReadBudgetSourceAmount && item.Amount.HasValue ? ":" + item.Amount.Value.ToString(CultureInfo.InvariantCulture) : string.Empty))),
                 target.Baseline.ToString(CultureInfo.InvariantCulture), target.Weight.ToString(CultureInfo.InvariantCulture),
                 target.KpiTypeMaster?.Code ?? target.KpiType, target.IndicatorTypeMaster?.Code ?? target.IndicatorType,
                 target.FunctionalAreaMaster?.Code ?? target.FunctionalArea, target.StandardClassificationMaster?.Code ?? target.StandardClassification,
@@ -79,11 +88,11 @@ public sealed class OpmsImportsController(
             {
                 var period = periods.SingleOrDefault(x => x.OpmsTargetId == target.Id && x.ReportingPeriod.PeriodType == periodType);
                 var revisable = periodType is ReportingPeriodType.Quarter3 or ReportingPeriodType.Quarter4 or ReportingPeriodType.Annual;
-                values.Add(period == null ? null : revisable && period.IsTargetRevised ? period.RevisedTargetValue : period.TargetValue);
+                values.Add(period == null || !canReadTargetValue ? null : revisable && period.IsTargetRevised ? period.RevisedTargetValue : period.TargetValue);
                 values.Add(period == null ? null : OpmsImportCsv.ToTemplateUnit(revisable ? period.RevisedUnitKind ?? period.UnitKind : period.UnitKind));
                 values.Add(period == null ? null : OpmsImportCsv.ToTemplateDirection(period.Direction));
-                values.Add(period == null ? null : (revisable && period.IsBudgetRevised ? period.RevisedBudgetValue : period.BudgetValue)?.ToString(CultureInfo.InvariantCulture));
-                values.Add(period?.Description);
+                values.Add(period == null || !canReadPeriodBudget ? null : (revisable && period.IsBudgetRevised ? period.RevisedBudgetValue : period.BudgetValue)?.ToString(CultureInfo.InvariantCulture));
+                values.Add(period == null || !canReadPeriodDescription ? null : period.Description);
             }
             csv.AppendJoin(',', values.Select(PerformanceReportCsv.Encode)).Append("\r\n");
         }
@@ -225,6 +234,9 @@ public sealed class OpmsImportsController(
         var fresh = await BuildCandidates(batch.SdbipLayer, payloads);
         if (fresh.Count != batch.Rows.Count || fresh.Zip(batch.Rows.OrderBy(x => x.SourceRowNumber)).Any(x => x.First.Status != x.Second.Status || !VersionsEqual(x.First.ExpectedEntityRowVersion, x.Second.ExpectedEntityRowVersion)))
             return Conflict(new ApiResponse<OpmsImportBatchResponse>(false, null, "A target changed after preview. Stage a new preview."));
+        var memberWriteDenial = await GetImportMemberWriteDenialAsync(user, batch, fresh);
+        if (memberWriteDenial != null)
+            return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsImportBatchResponse>(false, null, memberWriteDenial));
 
         await using var transaction = await context.Database.BeginTransactionAsync();
         try
@@ -526,7 +538,39 @@ public sealed class OpmsImportsController(
             (await accessControl.CheckPermissionAsync(user, $"OPMS_KPI.{member}.READ", new AccessScopeContext(MunicipalityId: municipalityId))).Allowed;
         return new OpmsImportMemberAccess(
             await Read("ImportClientRequestId"), await Read("ImportSourceFileName"), await Read("ImportSourceHash"),
-            await Read("ImportActor"), await Read("ImportRowPayload"), await Read("ImportErrorDetail"));
+            await Read("ImportActor"), await Read("ImportRowPayload"), await Read("ImportErrorDetail"),
+            await Read("PeriodTargetValue"), await Read("PeriodBudgetValue"), await Read("PeriodDescription"),
+            await Read("BudgetSourceAmounts"));
+    }
+    private async Task<string?> GetImportMemberWriteDenialAsync(ApplicationUser user, OpmsImportBatch batch, IEnumerable<OpmsImportRow> rows)
+    {
+        var candidates = rows.Where(item => item.Status is OpmsImportRowStatus.New or OpmsImportRowStatus.Changed).ToArray();
+        if (candidates.Length == 0) return null;
+        var targetValueScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.PeriodTargetValue.UPDATE");
+        var periodBudgetScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.PeriodBudgetValue.UPDATE");
+        var periodDescriptionScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.PeriodDescription.UPDATE");
+        var budgetSourceAmountScope = await accessControl.GetQueryScopeAsync(user, "OPMS_KPI.BudgetSourceAmounts.UPDATE");
+        var existingTargets = await context.OpmsTargets.AsNoTracking()
+            .Where(item => item.SdbipLayerId == batch.SdbipLayerId).ToArrayAsync();
+        foreach (var candidate in candidates)
+        {
+            var normalized = JsonSerializer.Deserialize<NormalizedRow>(candidate.NormalizedJson!, JsonOptions)!;
+            var source = JsonSerializer.Deserialize<OpmsImportRowRequest>(candidate.PayloadJson, JsonOptions)!;
+            var reference = string.IsNullOrWhiteSpace(source.ExistingIndicatorNumber) ? source.IndicatorNumber.Trim() : source.ExistingIndicatorNumber.Trim();
+            var existing = existingTargets.SingleOrDefault(item => string.Equals(item.IndicatorNumber.Trim(), reference, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.RevisedIndicatorNumber?.Trim(), reference, StringComparison.OrdinalIgnoreCase));
+            var scope = new AccessScopeContext(normalized.DepartmentId, normalized.UnitId, existing?.AssignedUserId,
+                TargetId: existing?.Id, KpiId: existing?.Id, MunicipalityId: batch.MunicipalityId);
+            if (!MatchesScope(targetValueScope, scope)) return "Importing reporting-period target values requires PeriodTargetValue UPDATE permission in every affected KPI scope.";
+            if (normalized.PeriodTargets.Any(item => item.BudgetValue.HasValue) && !MatchesScope(periodBudgetScope, scope))
+                return "Importing reporting-period budget values requires PeriodBudgetValue UPDATE permission in every affected KPI scope.";
+            if (normalized.PeriodTargets.Any(item => item.Description != null) && !MatchesScope(periodDescriptionScope, scope))
+                return "Importing reporting-period descriptions requires PeriodDescription UPDATE permission in every affected KPI scope.";
+            if (candidate.Status == OpmsImportRowStatus.New && normalized.BudgetSources.Any(item => item.Amount.HasValue)
+                && !MatchesScope(budgetSourceAmountScope, scope))
+                return "Importing budget-source allocation amounts requires BudgetSourceAmounts UPDATE permission in every affected KPI scope.";
+        }
+        return null;
     }
     private static IQueryable<OpmsImportBatch> ApplyImportBatchOrdering(IQueryable<OpmsImportBatch> query, string sortBy, bool descending) =>
         (sortBy, descending) switch
@@ -553,9 +597,9 @@ public sealed class OpmsImportsController(
         access.Actor ? x.CommittedByUser?.PublicId : null, access.Actor ? x.CommittedByUser?.FullName : null, x.CommittedAt,
         Convert.ToBase64String(x.RowVersion), x.Rows.OrderBy(r => r.SourceRowNumber).Select(r => new OpmsImportRowResponse(
             r.PublicId, r.SourceRowNumber, r.Reference, r.Status.ToString(),
-            access.RowPayload ? r.ExistingValueJson : null, access.RowPayload ? r.NormalizedJson : null,
+            access.RowPayload ? r.ExistingValueJson : null, access.RowPayload ? RedactNormalizedJson(r.NormalizedJson, access) : null,
             access.ErrorDetail ? r.ErrorCode : null, access.ErrorDetail ? r.ErrorPeriod : null,
-            access.ErrorDetail ? r.ErrorField : null, access.RowPayload ? r.SuppliedValue : null,
+            access.ErrorDetail ? r.ErrorField : null, access.RowPayload ? RedactSuppliedValue(r, access) : null,
             access.ErrorDetail ? r.ErrorMessage : null)).ToArray());
     private static OpmsImportBatchSummaryResponse ToSummaryResponse(OpmsImportBatch x, OpmsImportMemberAccess access) => new(
         x.PublicId, access.ClientRequestId ? x.ClientRequestId : null, x.SdbipLayer.PublicId,
@@ -564,7 +608,46 @@ public sealed class OpmsImportsController(
         access.Actor ? x.CreatedByUser?.PublicId : null, access.Actor ? x.CreatedByUser?.FullName : null, x.CreatedAt,
         access.Actor ? x.CommittedByUser?.PublicId : null, access.Actor ? x.CommittedByUser?.FullName : null, x.CommittedAt,
         Convert.ToBase64String(x.RowVersion));
-    private sealed record OpmsImportMemberAccess(bool ClientRequestId, bool SourceFileName, bool SourceHash, bool Actor, bool RowPayload, bool ErrorDetail);
+    private static string? RedactNormalizedJson(string? value, OpmsImportMemberAccess access)
+    {
+        if (value == null) return null;
+        try
+        {
+            var row = JsonSerializer.Deserialize<NormalizedRow>(value, JsonOptions);
+            if (row == null) return null;
+            return JsonSerializer.Serialize(row with
+            {
+                BudgetSources = (row.BudgetSources ?? []).Select(item => item with { Amount = access.BudgetSourceAmounts ? item.Amount : null }).ToArray(),
+                PeriodTargets = (row.PeriodTargets ?? []).Select(item => item with
+                {
+                    TargetValue = access.PeriodTargetValue ? item.TargetValue : string.Empty,
+                    BudgetValue = access.PeriodBudgetValue ? item.BudgetValue : null,
+                    Description = access.PeriodDescription ? item.Description : null
+                }).ToArray()
+            }, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+    private static string? RedactSuppliedValue(OpmsImportRow row, OpmsImportMemberAccess access) => row.ErrorField switch
+    {
+        nameof(OpmsImportRowRequest.BudgetSources) when !access.BudgetSourceAmounts => null,
+        "PeriodTargets" when !access.PeriodTargetValue || !access.PeriodBudgetValue || !access.PeriodDescription => null,
+        _ => row.SuppliedValue
+    };
+    private static bool MatchesScope(AccessQueryScopeResult scope, OpmsTarget target) => MatchesScope(scope,
+        new AccessScopeContext(target.DepartmentId, target.UnitId, target.AssignedUserId, TargetId: target.Id, KpiId: target.Id, MunicipalityId: target.MunicipalityId));
+    private static bool MatchesScope(AccessQueryScopeResult scope, AccessScopeContext target) => scope.PermissionGranted && (scope.Unrestricted
+        || target.MunicipalityId.HasValue && scope.MunicipalityIds.Contains(target.MunicipalityId.Value)
+        || target.DepartmentId.HasValue && scope.DepartmentIds.Contains(target.DepartmentId.Value)
+        || target.UnitId.HasValue && scope.UnitIds.Contains(target.UnitId.Value)
+        || target.OwnerUserId != null && scope.OwnerUserIds.Contains(target.OwnerUserId)
+        || target.TargetId != null && scope.TargetIds.Contains(target.TargetId)
+        || target.KpiId != null && scope.KpiIds.Contains(target.KpiId));
+    private sealed record OpmsImportMemberAccess(bool ClientRequestId, bool SourceFileName, bool SourceHash, bool Actor, bool RowPayload, bool ErrorDetail,
+        bool PeriodTargetValue, bool PeriodBudgetValue, bool PeriodDescription, bool BudgetSourceAmounts);
     private sealed record ReferenceMatch(Guid? PublicId, string? ErrorCode, string Field, string? Value, string? ErrorMessage);
     private sealed record NormalizedRow(string IndicatorNumber, int OrderNumber, string TargetName, string KpiDescription, int DepartmentId, int? UnitId,
         StrategicClassificationSelection ClassificationSelection, string NationalKpa, string MunicipalKpa, string PerformanceObjective,
