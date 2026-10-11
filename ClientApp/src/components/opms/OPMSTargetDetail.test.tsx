@@ -75,7 +75,7 @@ describe('OPMS target relational tabs', () => {
       ...liveTarget, strategicGoal: { id: '', name: 'Goal', isActive: true },
       strategicObjective: { id: '', name: 'Objective', strategicGoal: {} as never, isActive: true },
       internalReference: 'INTERNAL-SECRET', fmsLink: 'FMS-SECRET',
-    } as OPMSTarget} canReadInternalReference={false} canReadFmsLink={false} />);
+    } as unknown as OPMSTarget} canReadInternalReference={false} canReadFmsLink={false} />);
 
     expect(screen.queryByLabelText('Internal Reference')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('FMS Link')).not.toBeInTheDocument();
