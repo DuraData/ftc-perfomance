@@ -54,5 +54,15 @@ public sealed class OpmsTargetResponseProjectionTests
         Assert.Equal("001", projectedVote.Number);
         Assert.Equal("Roads Capital Programme", projectedVote.Name);
         Assert.Equal(12_500_000m, projectedVote.Amount);
+
+        var masked = target.ToResponse(
+            FTCERP.Host.API.Responses.PeriodTargetMemberAccess.Full,
+            FTCERP.Host.API.Responses.KpiLifecycleMemberAccess.Full,
+            FTCERP.Host.API.Responses.VoteNumberMemberAccess.None);
+        var maskedVote = Assert.Single(masked.VoteNumbers);
+        Assert.Null(maskedVote.Number);
+        Assert.Null(maskedVote.Amount);
+        Assert.Equal("VOTE-01", maskedVote.Code);
+        Assert.Equal("Roads Capital Programme", maskedVote.Name);
     }
 }

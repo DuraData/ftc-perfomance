@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Data.Sqlite;
+using Moq;
 
 namespace FTCERP.Tests;
 
@@ -315,6 +316,87 @@ public sealed class OrganizationMastersControllerTests
     }
 
     [Fact]
+    public async Task Organization_sensitive_members_are_masked_query_safe_and_independently_writable()
+    {
+        var tenant = new TenantContext(722, "organization-reader");
+        await using var context = NewContext(tenant);
+        var municipality = new Municipality { Id = 722, Code = "ORG-722", Name = "Organization Security" };
+        var actor = new ApplicationUser
+        {
+            Id = tenant.UserId!, MunicipalityId = 722, UserName = "organization-reader",
+            NormalizedUserName = "ORGANIZATION-READER", FirstName = "Organization", LastName = "Reader", IsActive = true
+        };
+        var year = new FinancialYear { Code = "2036/37", Name = "2036/37", StartDate = new DateTime(2036, 7, 1), EndDate = new DateTime(2037, 6, 30) };
+        var department = new Department { MunicipalityId = 722, Code = "FIN", Name = "Finance", EffectiveFrom = year.StartDate };
+        context.AddRange(municipality, actor, year, department);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = 722, FinancialYearId = year.Id, FinancialYear = year, IsActive = true, EffectiveFrom = year.StartDate };
+        context.MunicipalityFinancialYears.Add(municipalityYear);
+        await context.SaveChangesAsync();
+        var position = new Position { MunicipalityId = 722, DepartmentId = department.Id, Department = department, Code = "CFO", Name = "Chief Financial Officer", Grade = "SECRET-GRADE", EffectiveFrom = year.StartDate, RowVersion = [1] };
+        var vote = new VoteNumber { MunicipalityId = 722, MunicipalityFinancialYearId = municipalityYear.Id, MunicipalityFinancialYear = municipalityYear, DepartmentId = department.Id, Department = department, Code = "V01", Number = "SECRET-999", Name = "Operating Vote", Amount = 987654m, EffectiveFrom = year.StartDate, RowVersion = [1] };
+        context.AddRange(position, vote);
+        await context.SaveChangesAsync();
+
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+                new AccessDecisionResult(allowed.Contains(code), "Test member decision", [], [], []));
+        var controller = new OrganizationMastersController(context, tenant, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var hiddenPositions = Assert.IsType<ApiResponse<PagedResponse<PositionMasterDto>>>(Assert.IsType<OkObjectResult>(
+            (await controller.GetPositionsPage(new PagedQueryRequest { Search = "SECRET-GRADE" })).Result).Value).Data!;
+        Assert.Equal(0, hiddenPositions.TotalCount);
+        var maskedPosition = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<PositionMasterDto>>>(Assert.IsType<OkObjectResult>(
+            (await controller.GetPositionsPage(new PagedQueryRequest())).Result).Value).Data!.Items);
+        Assert.Null(maskedPosition.Grade);
+        Assert.IsType<ForbidResult>((await controller.GetPositionsPage(new PagedQueryRequest { SortBy = "grade" })).Result);
+
+        var hiddenVotes = Assert.IsType<ApiResponse<PagedResponse<VoteNumberMasterDto>>>(Assert.IsType<OkObjectResult>(
+            (await controller.GetVoteNumbersPage(new PagedQueryRequest { Search = "SECRET-999" })).Result).Value).Data!;
+        Assert.Equal(0, hiddenVotes.TotalCount);
+        var maskedVote = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<VoteNumberMasterDto>>>(Assert.IsType<OkObjectResult>(
+            (await controller.GetVoteNumbersPage(new PagedQueryRequest())).Result).Value).Data!.Items);
+        Assert.Null(maskedVote.Number);
+        Assert.Null(maskedVote.Amount);
+        Assert.IsType<ForbidResult>((await controller.GetVoteNumbersPage(new PagedQueryRequest { SortBy = "number" })).Result);
+        Assert.IsType<ForbidResult>((await controller.GetVoteNumbersPage(new PagedQueryRequest { SortBy = "amount" })).Result);
+
+        var deniedPosition = await controller.UpdatePosition(position.PublicId,
+            new SavePositionMasterRequest(department.PublicId, null, position.Code, position.Name, "CHANGED", true,
+                position.EffectiveFrom, null, "Approved organization correction", Convert.ToBase64String(position.RowVersion)));
+        Assert.IsType<ForbidResult>(deniedPosition.Result);
+
+        allowed.UnionWith(["POSITION.Grade.READ", "VOTE_NUMBER.Number.READ", "VOTE_NUMBER.Amount.READ"]);
+        var exposedPosition = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<PositionMasterDto>>>(Assert.IsType<OkObjectResult>(
+            (await controller.GetPositionsPage(new PagedQueryRequest { Search = "SECRET-GRADE", SortBy = "grade" })).Result).Value).Data!.Items);
+        Assert.Equal("SECRET-GRADE", exposedPosition.Grade);
+        var exposedVote = Assert.Single(Assert.IsType<ApiResponse<PagedResponse<VoteNumberMasterDto>>>(Assert.IsType<OkObjectResult>(
+            (await controller.GetVoteNumbersPage(new PagedQueryRequest { Search = "SECRET-999", SortBy = "amount" })).Result).Value).Data!.Items);
+        Assert.Equal("SECRET-999", exposedVote.Number);
+        Assert.Equal(987654m, exposedVote.Amount);
+
+        var positionUpdate = await controller.UpdatePosition(position.PublicId,
+            new SavePositionMasterRequest(department.PublicId, null, position.Code, "Chief Finance Officer", null, true,
+                position.EffectiveFrom, null, "Approved non-sensitive correction", Convert.ToBase64String(position.RowVersion), GradeSpecified: false));
+        Assert.IsType<OkObjectResult>(positionUpdate.Result);
+        Assert.Equal("SECRET-GRADE", (await context.Positions.SingleAsync()).Grade);
+
+        var voteUpdate = await controller.UpdateVoteNumber(vote.PublicId,
+            new SaveVoteNumberMasterRequest(department.PublicId, municipalityYear.PublicId, vote.Code, string.Empty,
+                "Approved Operating Vote", 0m, true, vote.EffectiveFrom, null, "Approved non-sensitive correction",
+                Convert.ToBase64String(vote.RowVersion), NumberSpecified: false, AmountSpecified: false));
+        Assert.IsType<OkObjectResult>(voteUpdate.Result);
+        var persistedVote = await context.VoteNumbers.SingleAsync();
+        Assert.Equal("SECRET-999", persistedVote.Number);
+        Assert.Equal(987654m, persistedVote.Amount);
+    }
+
+    [Fact]
     public async Task Organization_masters_reject_unaudited_rewrites_and_hard_deletes()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -423,7 +505,32 @@ public sealed class OrganizationMastersControllerTests
         Assert.Contains("cannot be hard deleted", exception.Message);
         context.ChangeTracker.Clear();
     }
-    private static OrganizationMastersController CreateController(ApplicationDbContext context, ITenantContext tenant) => new(context, tenant) { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
+    private static OrganizationMastersController CreateController(ApplicationDbContext context, ITenantContext tenant)
+    {
+        if (!string.IsNullOrWhiteSpace(tenant.UserId) && !context.Users.IgnoreQueryFilters().Any(item => item.Id == tenant.UserId))
+        {
+            context.Users.Add(new ApplicationUser
+            {
+                Id = tenant.UserId!,
+                MunicipalityId = tenant.MunicipalityId,
+                UserName = tenant.UserId,
+                NormalizedUserName = tenant.UserId!.ToUpperInvariant(),
+                Email = $"{tenant.UserId}@tests.local",
+                NormalizedEmail = $"{tenant.UserId}@tests.local".ToUpperInvariant(),
+                FirstName = "Test",
+                LastName = tenant.UserId!,
+                IsActive = true
+            });
+            context.SaveChanges();
+        }
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Test access", [], [], []));
+        return new OrganizationMastersController(context, tenant, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+    }
     private sealed class TenantContext(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
     private sealed class SystemTenantContext : ITenantContext { public long? MunicipalityId => null; public bool IsSystem => true; public string? UserId => "system"; }
 }

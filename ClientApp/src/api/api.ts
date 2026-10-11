@@ -543,7 +543,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
     wardPublicIds: dto.wardPublicIds ?? [],
     additionalAssignees: (dto.additionalAssigneePublicIds ?? []).map(id => toEmployeeReference(id)).filter((employee): employee is Employee => Boolean(employee)),
     additionalAssigneePublicIds: dto.additionalAssigneePublicIds ?? [],
-    voteNumbers: dto.voteNumbers?.map(item => ({ id: item.publicId, number: item.number, name: item.name, department, amount: item.amount, description: item.code, isActive: true })) ?? [],
+    voteNumbers: dto.voteNumbers?.map(item => ({ id: item.publicId, number: item.number ?? '', name: item.name, department, amount: item.amount ?? undefined, description: item.code, isActive: true })) ?? [],
     voteNumberPublicIds: dto.voteNumberPublicIds ?? [],
     indicatorNumber: dto.indicatorNumber,
     isIndicatorNumberRevised: dto.isIndicatorNumberRevised,
@@ -1446,7 +1446,7 @@ export async function getPositionMastersPage(query: OrganizationMasterPageQuery 
   return get<PagedResult<PositionMasterDto>>(`/v1/masters/positions/page${organizationMasterPageQuery(query)}`);
 }
 
-export async function savePositionMaster(publicId: string | null, payload: { departmentPublicId: string; unitPublicId?: string | null; code: string; name: string; grade?: string | null; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<PositionMasterDto>> {
+export async function savePositionMaster(publicId: string | null, payload: { departmentPublicId: string; unitPublicId?: string | null; code: string; name: string; grade?: string | null; gradeSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<PositionMasterDto>> {
   return publicId ? put<PositionMasterDto>(`/v1/masters/positions/${publicId}`, payload) : post<PositionMasterDto>('/v1/masters/positions', payload);
 }
 
@@ -1462,7 +1462,7 @@ export async function getVoteNumberMastersPage(query: OrganizationMasterPageQuer
   return get<PagedResult<import('../types').VoteNumberMasterDto>>(`/v1/masters/vote-numbers/page${organizationMasterPageQuery(query)}`);
 }
 
-export async function saveVoteNumberMaster(publicId: string | null, payload: { departmentPublicId: string; municipalityFinancialYearPublicId: string; code: string; number: string; name: string; amount: number; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').VoteNumberMasterDto>> {
+export async function saveVoteNumberMaster(publicId: string | null, payload: { departmentPublicId: string; municipalityFinancialYearPublicId: string; code: string; number: string; numberSpecified?: boolean; name: string; amount: number; amountSpecified?: boolean; isActive: boolean; effectiveFrom: string; effectiveTo?: string | null; reason: string; rowVersion?: string | null }): Promise<ApiResponse<import('../types').VoteNumberMasterDto>> {
   return publicId ? put<import('../types').VoteNumberMasterDto>(`/v1/masters/vote-numbers/${publicId}`, payload) : post<import('../types').VoteNumberMasterDto>('/v1/masters/vote-numbers', payload);
 }
 

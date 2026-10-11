@@ -172,7 +172,7 @@ public static class PerformanceApiSupport
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess) =>
         target.ToResponse(memberAccess, KpiLifecycleMemberAccess.Full);
 
-    public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, VoteNumberMemberAccess? voteAccess = null) =>
         new(
             target.PublicId,
             null,
@@ -251,8 +251,11 @@ public static class PerformanceApiSupport
             KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol,
             VoteNumbers = target.VoteNumbers
                 .Where(item => item.VoteNumber != null)
-                .OrderBy(item => item.VoteNumber.Number)
-                .Select(item => new OpmsTargetVoteNumberResponse(item.VoteNumber.PublicId, item.VoteNumber.Code, item.VoteNumber.Number, item.VoteNumber.Name, item.VoteNumber.Amount))
+                .OrderBy(item => item.VoteNumber.Code)
+                .Select(item => new OpmsTargetVoteNumberResponse(item.VoteNumber.PublicId, item.VoteNumber.Code,
+                    (voteAccess ?? VoteNumberMemberAccess.Full).Number ? item.VoteNumber.Number : null,
+                    item.VoteNumber.Name,
+                    (voteAccess ?? VoteNumberMemberAccess.Full).Amount ? item.VoteNumber.Amount : null))
                 .ToArray()
         };
 
@@ -262,8 +265,8 @@ public static class PerformanceApiSupport
     public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess) =>
         target.ToResponse(periodType, memberAccess, KpiLifecycleMemberAccess.Full);
 
-    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess) =>
-        !periodType.HasValue ? target.ToResponse(memberAccess, lifecycleAccess) : target.ToResponse(memberAccess, lifecycleAccess) with
+    public static OpmsTargetResponse ToResponse(this OpmsTarget target, ReportingPeriodType? periodType, PeriodTargetMemberAccess memberAccess, KpiLifecycleMemberAccess lifecycleAccess, VoteNumberMemberAccess? voteAccess = null) =>
+        !periodType.HasValue ? target.ToResponse(memberAccess, lifecycleAccess, voteAccess) : target.ToResponse(memberAccess, lifecycleAccess, voteAccess) with
         {
             IndicatorNumber = PerformanceRevisionResolver.EffectiveIndicatorNumber(target, periodType.Value),
             TargetName = PerformanceRevisionResolver.EffectiveTargetName(target, periodType.Value),

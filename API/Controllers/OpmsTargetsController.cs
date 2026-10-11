@@ -802,6 +802,10 @@ public class OpmsTargetsController : ControllerBase
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalReason.READ", scope))?.Allowed == true,
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.WithdrawalActor.READ", scope))?.Allowed == true);
 
+    private async Task<VoteNumberMemberAccess> GetVoteNumberMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
+        (await _accessControlService.CheckPermissionAsync(user, "VOTE_NUMBER.Number.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "VOTE_NUMBER.Amount.READ", scope))?.Allowed == true);
+
     private async Task<OpmsTargetResponse> ToSecureResponseAsync(
         ApplicationUser user,
         OpmsTarget target,
@@ -810,7 +814,8 @@ public class OpmsTargetsController : ControllerBase
     {
         var scope = BuildScope(target);
         var lifecycleAccess = await GetLifecycleMemberAccessAsync(user, scope);
-        var response = target.ToResponse(periodType, await GetPeriodTargetMemberAccessAsync(user, scope), lifecycleAccess);
+        var response = target.ToResponse(periodType, await GetPeriodTargetMemberAccessAsync(user, scope), lifecycleAccess,
+            await GetVoteNumberMemberAccessAsync(user, scope));
         if (int.TryParse(target.SourceTemplateId, out var sourceTemplateId))
         {
             var sourceTemplatePublicId = sourceTemplatePublicIds != null

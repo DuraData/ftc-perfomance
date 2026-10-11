@@ -262,7 +262,7 @@ public record OpmsTargetResponse(
 }
 
 public sealed record KpiBudgetSourceResponse(Guid PublicId, Guid BudgetSourcePublicId, string Code, string Name, decimal? Amount);
-public sealed record OpmsTargetVoteNumberResponse(Guid PublicId, string Code, string Number, string Name, decimal Amount);
+public sealed record OpmsTargetVoteNumberResponse(Guid PublicId, string Code, string? Number, string Name, decimal? Amount);
 
 public record IpmsTargetResponse(
     Guid PublicId,
@@ -374,6 +374,12 @@ public sealed record PeriodTargetMemberAccess(bool TargetValue, bool BudgetValue
 {
     public static PeriodTargetMemberAccess Full { get; } = new(true, true, true);
     public static PeriodTargetMemberAccess None { get; } = new(false, false, false);
+}
+
+public sealed record VoteNumberMemberAccess(bool Number, bool Amount)
+{
+    public static VoteNumberMemberAccess Full { get; } = new(true, true);
+    public static VoteNumberMemberAccess None { get; } = new(false, false);
 }
 
 public sealed record KpiLifecycleMemberAccess(bool WithdrawalReason, bool WithdrawalActor)

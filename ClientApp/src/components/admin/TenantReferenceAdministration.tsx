@@ -35,6 +35,10 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
   const [sort, setSort] = useState('code:asc');
   const isVote = kind === 'vote-numbers';
   const resource = isVote ? 'VOTE_NUMBER' : 'WARD';
+  const canReadNumber = security.canReadField('VOTE_NUMBER', 'Number');
+  const canReadAmount = security.canReadField('VOTE_NUMBER', 'Amount');
+  const canEditNumber = security.canEditField('VOTE_NUMBER', 'Number');
+  const canEditAmount = security.canEditField('VOTE_NUMBER', 'Amount');
   const title = isVote ? 'Vote Numbers' : 'Wards';
   const rows: ReferenceRow[] = isVote ? voteNumbers : wards;
 
@@ -69,9 +73,9 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
       departmentPublicId: 'departmentPublicId' in item ? item.departmentPublicId : '',
       municipalityFinancialYearPublicId: 'municipalityFinancialYearPublicId' in item ? item.municipalityFinancialYearPublicId ?? '' : '',
       code: item.code,
-      number: 'number' in item ? item.number : '',
+      number: 'number' in item ? item.number ?? '' : '',
       name: item.name,
-      amount: 'amount' in item ? String(item.amount) : '0',
+      amount: 'amount' in item && item.amount != null ? String(item.amount) : '0',
       isActive: String(item.isActive),
       effectiveFrom: dateValue(item.effectiveFrom),
       effectiveTo: dateValue(item.effectiveTo),
@@ -80,14 +84,14 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
   };
 
   const save = async () => {
-    if (!form.code.trim() || !form.name.trim() || (isVote && (!form.departmentPublicId || !form.municipalityFinancialYearPublicId || !form.number.trim()))) { setError('Complete all required fields.'); return; }
+    if (!form.code.trim() || !form.name.trim() || (isVote && (!form.departmentPublicId || !form.municipalityFinancialYearPublicId || (canEditNumber && !form.number.trim())))) { setError('Complete all required fields.'); return; }
     if (form.reason.trim().length < 10) { setError('A governance reason of at least 10 characters is required.'); return; }
     const amount = Number(form.amount);
-    if (isVote && (!Number.isFinite(amount) || amount < 0)) { setError('Amount must be a non-negative number.'); return; }
+    if (isVote && canEditAmount && (!Number.isFinite(amount) || amount < 0)) { setError('Amount must be a non-negative number.'); return; }
     setBusy(true); setError(null);
     const common = { code: form.code, name: form.name, isActive: form.isActive === 'true', effectiveFrom: atUtc(form.effectiveFrom), effectiveTo: form.effectiveTo ? atUtc(form.effectiveTo) : null, reason: form.reason.trim(), rowVersion: selected?.rowVersion ?? null };
     const result = isVote
-      ? await saveVoteNumberMaster(selected?.publicId ?? null, { ...common, departmentPublicId: form.departmentPublicId, municipalityFinancialYearPublicId: form.municipalityFinancialYearPublicId, number: form.number, amount })
+      ? await saveVoteNumberMaster(selected?.publicId ?? null, { ...common, departmentPublicId: form.departmentPublicId, municipalityFinancialYearPublicId: form.municipalityFinancialYearPublicId, number: form.number, numberSpecified: canEditNumber, amount, amountSpecified: canEditAmount })
       : await saveWardMaster(selected?.publicId ?? null, common);
     if (!result.success) setError(result.message ?? `${title.slice(0, -1)} could not be saved.`);
     else { pushToast('success', `${title.slice(0, -1)} saved with audit history`); clear(); await load(); }
@@ -100,24 +104,24 @@ export function TenantReferenceAdministration({ kind }: { kind: ReferenceKind })
         <div className="grid flex-1 gap-2 sm:grid-cols-3">
           <Input label={`Search ${title.toLowerCase()}`} value={searchInput} onChange={event => setSearchInput(event.target.value)} />
           <Select label="Status" value={status} options={[{ value: 'all', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} onChange={event => { setStatus(event.target.value); setPage(1); }} />
-          <Select label="Sort" value={sort} options={[{ value: 'code:asc', label: 'Code A-Z' }, { value: 'code:desc', label: 'Code Z-A' }, { value: 'name:asc', label: 'Name A-Z' }, ...(isVote ? [{ value: 'number:asc', label: 'Vote number' }, { value: 'amount:desc', label: 'Highest amount' }] : []), { value: 'effectiveFrom:desc', label: 'Newest effective date' }]} onChange={event => { setSort(event.target.value); setPage(1); }} />
+          <Select label="Sort" value={sort} options={[{ value: 'code:asc', label: 'Code A-Z' }, { value: 'code:desc', label: 'Code Z-A' }, { value: 'name:asc', label: 'Name A-Z' }, ...(isVote && canReadNumber ? [{ value: 'number:asc', label: 'Vote number' }] : []), ...(isVote && canReadAmount ? [{ value: 'amount:desc', label: 'Highest amount' }] : []), { value: 'effectiveFrom:desc', label: 'Newest effective date' }]} onChange={event => { setSort(event.target.value); setPage(1); }} />
         </div>
         <Button size="sm" variant="ghost" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={busy}>Refresh</Button>
       </div>
       {error && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{error}</div>}
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-        {(selected ? security.canUpdate(resource) : security.canCreate(resource)) && <FormPanel title={selected ? `Edit ${title.slice(0, -1).toLowerCase()}` : `Create ${title.slice(0, -1).toLowerCase()}`} description="Updates are audited, reasoned, and protected by optimistic concurrency." icon={<Landmark className="h-5 w-5" />}>
+        {(selected ? security.canUpdate(resource) : security.canCreate(resource) && (!isVote || (canEditNumber && canEditAmount))) && <FormPanel title={selected ? `Edit ${title.slice(0, -1).toLowerCase()}` : `Create ${title.slice(0, -1).toLowerCase()}`} description="Updates are audited, reasoned, and protected by optimistic concurrency." icon={<Landmark className="h-5 w-5" />}>
           {isVote && <OrganizationMasterPicker kind="department" label="Department" value={form.departmentPublicId} selectedLabel={selected && 'departmentName' in selected ? selected.departmentName : undefined} onChange={value => setForm(current => ({ ...current, departmentPublicId: value }))} required />}
           {isVote && <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" value={form.municipalityFinancialYearPublicId} selectedLabel={selected && 'financialYearCode' in selected ? selected.financialYearCode ?? undefined : undefined} onChange={value => setForm(current => ({ ...current, municipalityFinancialYearPublicId: value }))} required />}
-          <div className="grid grid-cols-2 gap-2"><Input label="Code" value={form.code} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} required />{isVote && <Input label="Vote number" value={form.number} onChange={event => setForm(current => ({ ...current, number: event.target.value }))} required />}</div>
+          <div className="grid grid-cols-2 gap-2"><Input label="Code" value={form.code} onChange={event => setForm(current => ({ ...current, code: event.target.value }))} required />{isVote && canEditNumber && <Input label="Vote number" value={form.number} onChange={event => setForm(current => ({ ...current, number: event.target.value }))} required />}</div>
           <Input label="Name" value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} required />
-          {isVote && <Input label="Amount (R)" type="number" min="0" step="0.01" value={form.amount} onChange={event => setForm(current => ({ ...current, amount: event.target.value }))} required />}
+          {isVote && canEditAmount && <Input label="Amount (R)" type="number" min="0" step="0.01" value={form.amount} onChange={event => setForm(current => ({ ...current, amount: event.target.value }))} required />}
           <div className="grid grid-cols-2 gap-2"><Input label="Effective from" type="date" value={form.effectiveFrom} onChange={event => setForm(current => ({ ...current, effectiveFrom: event.target.value }))} /><Input label="Effective to" type="date" value={form.effectiveTo} onChange={event => setForm(current => ({ ...current, effectiveTo: event.target.value }))} /></div>
           <Select label="Status" value={form.isActive} options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} onChange={event => setForm(current => ({ ...current, isActive: event.target.value }))} />
           <Textarea label="Governance reason" value={form.reason} onChange={event => setForm(current => ({ ...current, reason: event.target.value }))} required />
           <div className="flex gap-2"><Button icon={<Plus className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{selected ? 'Save changes' : 'Create'}</Button>{selected && <Button variant="outline" onClick={clear}>Cancel</Button>}</div>
         </FormPanel>}
-        <Card className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{title} register</h3><Badge variant="primary">{totalCount}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className="flex w-full items-center justify-between rounded-lg border border-secondary-200 p-3 text-left dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}{'number' in item ? ` · ${item.number} · ${item.departmentName} · ${item.financialYearCode ?? 'Historic year pending reconciliation'} · R ${item.amount.toLocaleString()}` : ''}</p><p className="mt-1 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open-ended'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages} · {totalCount} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(current => current + 1)}>Next</Button></div></div>}</Card>
+        <Card className="p-4"><div className="flex items-center justify-between"><h3 className="font-semibold">{title} register</h3><Badge variant="primary">{totalCount}</Badge></div><div className="mt-3 space-y-2">{rows.map(item => <button type="button" key={item.publicId} onClick={() => edit(item)} className="flex w-full items-center justify-between rounded-lg border border-secondary-200 p-3 text-left dark:border-secondary-700"><div><p className="font-medium">{item.name}</p><p className="text-xs text-secondary-500">{item.code}{'number' in item ? `${canReadNumber && item.number ? ` · ${item.number}` : ''} · ${item.departmentName} · ${item.financialYearCode ?? 'Historic year pending reconciliation'}${canReadAmount && item.amount != null ? ` · R ${item.amount.toLocaleString()}` : ''}` : ''}</p><p className="mt-1 text-xs text-secondary-500">Effective {new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open-ended'}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></button>)}{!rows.length && <p className="text-sm text-secondary-500">No records.</p>}</div>{totalPages > 1 && <div className="mt-4 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages} · {totalCount} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(current => current + 1)}>Next</Button></div></div>}</Card>
       </div>
     </div>
   </AppShell>;

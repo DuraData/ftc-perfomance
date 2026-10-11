@@ -42,7 +42,7 @@ const configuration: Record<OrganizationMasterKind, { sortBy: string; noun: stri
 function labelFor(kind: OrganizationMasterKind, item: OrganizationMasterOption) {
   if (kind === 'vote-number') {
     const vote = item as VoteNumberMasterDto;
-    return `${vote.code} · ${vote.number} · ${vote.name}`;
+    return `${vote.code}${vote.number ? ` · ${vote.number}` : ''} · ${vote.name}`;
   }
   if (kind === 'unit') {
     const unit = item as UnitMasterDto;

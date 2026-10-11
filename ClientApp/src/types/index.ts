@@ -1625,9 +1625,9 @@ export interface VoteNumberMasterDto {
   municipalityFinancialYearPublicId?: string | null;
   financialYearCode?: string | null;
   code: string;
-  number: string;
+  number?: string | null;
   name: string;
-  amount: number;
+  amount?: number | null;
   isActive: boolean;
   effectiveFrom: string;
   effectiveTo?: string | null;
@@ -2514,7 +2514,7 @@ export interface OpmsTargetDto {
   withdrawnByUserPublicId?: string | null;
   withdrawnByName?: string | null;
   periodTargets: PerformancePeriodTargetDto[];
-  voteNumbers?: Array<{ publicId: string; code: string; number: string; name: string; amount: number }>;
+  voteNumbers?: Array<{ publicId: string; code: string; number?: string | null; name: string; amount?: number | null }>;
   createdAt: string;
 }
 
