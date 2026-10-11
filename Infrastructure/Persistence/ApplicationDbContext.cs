@@ -2165,6 +2165,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
+        if (ChangeTracker.Entries<MunicipalityConsolidationPolicy>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Municipality consolidation-policy history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<MunicipalityConsolidationPolicy>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit(nameof(MunicipalityConsolidationPolicy), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Edit");
         RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))

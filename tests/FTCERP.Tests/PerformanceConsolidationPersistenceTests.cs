@@ -54,9 +54,17 @@ public sealed class PerformanceConsolidationPersistenceTests
 
         await using var stale = new ApplicationDbContext(options, new TenantContext(municipalityId, "consolidation-admin"));
         var stalePolicy = await stale.MunicipalityConsolidationPolicies.SingleAsync();
+        var visibleBefore = new { visible.DeriveAnnualTarget, visible.AllowDerivedTargetOverride };
         visible.DeriveAnnualTarget = true;
+        new WorkflowGovernanceService(tenant, tenantContext: new TenantContext(municipalityId, "consolidation-admin"))
+            .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), visible.PublicId.ToString(), "Edit", visibleBefore,
+                new { visible.DeriveAnnualTarget, visible.AllowDerivedTargetOverride }, "consolidation-admin", null, "Enable annual derivation");
         await tenant.SaveChangesAsync();
+        var staleBefore = new { stalePolicy.DeriveAnnualTarget, stalePolicy.AllowDerivedTargetOverride };
         stalePolicy.AllowDerivedTargetOverride = false;
+        new WorkflowGovernanceService(stale, tenantContext: new TenantContext(municipalityId, "consolidation-admin"))
+            .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), stalePolicy.PublicId.ToString(), "Edit", staleBefore,
+                new { stalePolicy.DeriveAnnualTarget, stalePolicy.AllowDerivedTargetOverride }, "consolidation-admin", null, "Concurrent policy correction");
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
 
         await using var duplicate = new ApplicationDbContext(options, new TenantContext(municipalityId, "consolidation-admin"));
@@ -144,6 +152,34 @@ public sealed class PerformanceConsolidationPersistenceTests
         direction.EngineDirection = PerformanceDirection.LowerIsBetter;
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*performance-direction definitions are migration-managed and immutable*");
+    }
+
+    [Fact]
+    public async Task MunicipalityConsolidationPolicy_RejectsUnauditedRewriteAndHardDelete()
+    {
+        const long municipalityId = 6511;
+        var user = IdpTestFixture.CreateUser("consolidation-governance");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var municipality = new Municipality { Id = municipalityId, Code = "CON-GOV", Name = "Consolidation Governance" };
+        user.MunicipalityId = municipalityId;
+        var policy = new MunicipalityConsolidationPolicy
+        {
+            MunicipalityId = municipalityId,
+            CalculationTypeId = 1,
+            CreatedByUserId = user.Id
+        };
+        context.AddRange(user, municipality, policy);
+        await context.SaveChangesAsync();
+
+        policy.DeriveAnnualTarget = true;
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        context.MunicipalityConsolidationPolicies.Remove(
+            await context.MunicipalityConsolidationPolicies.SingleAsync(item => item.PublicId == policy.PublicId));
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*cannot be hard deleted*");
     }
 
     private sealed class SystemTenantContext : ITenantContext

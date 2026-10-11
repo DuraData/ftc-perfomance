@@ -17,12 +17,8 @@ public sealed class PerformanceConsolidationControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var (municipality, user) = await SeedAsync(context);
-        var audit = new Mock<IWorkflowGovernanceService>();
-        audit.Setup(service => service.WriteAuditTrailAsync(
-                nameof(MunicipalityConsolidationPolicy), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(),
-                It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
-            .Returns(Task.CompletedTask);
-        var controller = Controller(context, municipality.Id, user, true, audit.Object);
+        var audit = new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipality.Id, user.Id));
+        var controller = Controller(context, municipality.Id, user, true, audit);
         var type = await context.PerformanceCalculationTypes.SingleAsync(item => item.Code == "NON_CUMULATIVE");
 
         var createdResult = await controller.SavePolicy(type.PublicId,
@@ -36,8 +32,12 @@ public sealed class PerformanceConsolidationControllerTests
         var updated = Assert.IsType<ApiResponse<ConsolidationPolicyDto>>(Assert.IsType<OkObjectResult>(updatedResult.Result).Value).Data!;
         updated.DeriveAnnualTarget.Should().BeTrue();
         updated.ConsolidationRule.Should().Be(PerformanceCalculationType.LatestValue);
-        audit.Verify(service => service.WriteAuditTrailAsync(nameof(MunicipalityConsolidationPolicy), It.IsAny<string>(), "Create", null, It.IsAny<object>(), user.Id, It.IsAny<string?>()), Times.Once);
-        audit.Verify(service => service.WriteAuditTrailAsync(nameof(MunicipalityConsolidationPolicy), It.IsAny<string>(), "Edit", It.IsAny<object>(), It.IsAny<object>(), user.Id, It.IsAny<string?>()), Times.Once);
+        var audits = await context.AuditTrails.AsNoTracking()
+            .Where(item => item.EntityName == nameof(MunicipalityConsolidationPolicy) && item.EntityId == updated.PolicyPublicId.ToString())
+            .OrderBy(item => item.Id)
+            .ToArrayAsync();
+        audits.Select(item => item.Action).Should().Equal("Create", "Edit");
+        audits.Select(item => item.Reason).Should().Equal("Approved council policy", "Annual policy approved");
     }
 
     [Fact]
