@@ -47,8 +47,8 @@ public sealed class PoeGovernanceMemberSecurityTests
 
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "OPMS_POE.PLACE_HOLD", "OPMS_POE.RELEASE_HOLD", "OPMS_POE.DISPOSE",
-            "IPMS_POE.PLACE_HOLD", "IPMS_POE.RELEASE_HOLD", "IPMS_POE.DISPOSE"
+            "OPMS_POE.ASSESS", "OPMS_POE.REPLACE", "OPMS_POE.PLACE_HOLD", "OPMS_POE.RELEASE_HOLD", "OPMS_POE.DISPOSE",
+            "IPMS_POE.ASSESS", "IPMS_POE.REPLACE", "IPMS_POE.PLACE_HOLD", "IPMS_POE.RELEASE_HOLD", "IPMS_POE.DISPOSE"
         };
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
@@ -63,6 +63,12 @@ public sealed class PoeGovernanceMemberSecurityTests
         var attachmentId = Guid.NewGuid();
         var holdId = Guid.NewGuid();
 
+        AssertForbidden(await opms.AssessAttachment(opmsSubmission.PublicId.ToString(), attachmentId,
+            new AssessPoeRequest(PoeAssessmentOutcome.Accepted, "Protected assessment comment")), "AssessmentComment.UPDATE");
+        AssertNotFound(await opms.AssessAttachment(opmsSubmission.PublicId.ToString(), attachmentId,
+            new AssessPoeRequest(PoeAssessmentOutcome.Accepted, null)));
+        AssertForbidden(await opms.ReplaceAttachment(opmsSubmission.PublicId.ToString(), attachmentId,
+            new ReplacePoeRequest(Guid.NewGuid(), "Protected replacement reason", "AAAAAAAAAAA=", "AAAAAAAAAAA=")), "ReplacementReason.UPDATE");
         AssertForbidden(await opms.PlaceLegalHold(opmsSubmission.PublicId.ToString(), attachmentId,
             new PlacePoeLegalHoldRequest("CASE-2026-SECURITY", "Protected investigation reason")), "LegalHoldReference.UPDATE");
         AssertForbidden(await opms.ReleaseLegalHold(opmsSubmission.PublicId.ToString(), attachmentId, holdId,
@@ -70,6 +76,12 @@ public sealed class PoeGovernanceMemberSecurityTests
         AssertForbidden(await opms.RequestDisposal(opmsSubmission.PublicId.ToString(), attachmentId,
             new RequestPoeDisposalRequest("COUNCIL-SECURITY", "Protected disposal reason", "AAAAAAAAAAA=")), "DisposalApprovalReference.UPDATE");
 
+        AssertForbidden(await ipms.AssessAttachment(ipmsSubmission.PublicId.ToString(), attachmentId,
+            new AssessPoeRequest(PoeAssessmentOutcome.Accepted, "Protected assessment comment")), "AssessmentComment.UPDATE");
+        AssertNotFound(await ipms.AssessAttachment(ipmsSubmission.PublicId.ToString(), attachmentId,
+            new AssessPoeRequest(PoeAssessmentOutcome.Accepted, null)));
+        AssertForbidden(await ipms.ReplaceAttachment(ipmsSubmission.PublicId.ToString(), attachmentId,
+            new ReplacePoeRequest(Guid.NewGuid(), "Protected replacement reason", "AAAAAAAAAAA=", "AAAAAAAAAAA=")), "ReplacementReason.UPDATE");
         AssertForbidden(await ipms.PlaceLegalHold(ipmsSubmission.PublicId.ToString(), attachmentId,
             new PlacePoeLegalHoldRequest("CASE-2026-SECURITY", "Protected investigation reason")), "LegalHoldReference.UPDATE");
         AssertForbidden(await ipms.ReleaseLegalHold(ipmsSubmission.PublicId.ToString(), attachmentId, holdId,
@@ -78,17 +90,27 @@ public sealed class PoeGovernanceMemberSecurityTests
             new RequestPoeDisposalRequest("COUNCIL-SECURITY", "Protected disposal reason", "AAAAAAAAAAA=")), "DisposalApprovalReference.UPDATE");
         Assert.Empty(await context.PoeLegalHoldEvents.ToArrayAsync());
         Assert.Empty(await context.PoeDisposalEvents.ToArrayAsync());
+        Assert.Empty(await context.PoeEvidenceAssessments.ToArrayAsync());
+        Assert.Empty(await context.PoeEvidenceReplacements.ToArrayAsync());
 
         foreach (var resource in new[] { "OPMS_POE", "IPMS_POE" })
-        foreach (var member in new[] { "LegalHoldReference", "LegalHoldReason", "DisposalApprovalReference", "DisposalReason" })
+        foreach (var member in new[] { "AssessmentComment", "ReplacementReason", "LegalHoldReference", "LegalHoldReason", "DisposalApprovalReference", "DisposalReason" })
             allowed.Add($"{resource}.{member}.UPDATE");
 
+        AssertNotFound(await opms.AssessAttachment(opmsSubmission.PublicId.ToString(), attachmentId,
+            new AssessPoeRequest(PoeAssessmentOutcome.Accepted, "Protected assessment comment")));
+        AssertNotFound(await opms.ReplaceAttachment(opmsSubmission.PublicId.ToString(), attachmentId,
+            new ReplacePoeRequest(Guid.NewGuid(), "Protected replacement reason", "AAAAAAAAAAA=", "AAAAAAAAAAA=")));
         AssertNotFound(await opms.PlaceLegalHold(opmsSubmission.PublicId.ToString(), attachmentId,
             new PlacePoeLegalHoldRequest("CASE-2026-SECURITY", "Protected investigation reason")));
         AssertNotFound(await opms.ReleaseLegalHold(opmsSubmission.PublicId.ToString(), attachmentId, holdId,
             new ReleasePoeLegalHoldRequest("Protected release reason")));
         AssertNotFound(await opms.RequestDisposal(opmsSubmission.PublicId.ToString(), attachmentId,
             new RequestPoeDisposalRequest("COUNCIL-SECURITY", "Protected disposal reason", "AAAAAAAAAAA=")));
+        AssertNotFound(await ipms.AssessAttachment(ipmsSubmission.PublicId.ToString(), attachmentId,
+            new AssessPoeRequest(PoeAssessmentOutcome.Accepted, "Protected assessment comment")));
+        AssertNotFound(await ipms.ReplaceAttachment(ipmsSubmission.PublicId.ToString(), attachmentId,
+            new ReplacePoeRequest(Guid.NewGuid(), "Protected replacement reason", "AAAAAAAAAAA=", "AAAAAAAAAAA=")));
         AssertNotFound(await ipms.PlaceLegalHold(ipmsSubmission.PublicId.ToString(), attachmentId,
             new PlacePoeLegalHoldRequest("CASE-2026-SECURITY", "Protected investigation reason")));
         AssertNotFound(await ipms.ReleaseLegalHold(ipmsSubmission.PublicId.ToString(), attachmentId, holdId,

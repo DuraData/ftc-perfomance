@@ -306,7 +306,7 @@ public sealed class RegisterPaginationTests
         foreach (var member in new[]
                  {
                      "AssessmentComment", "AssessedByUserId", "AssessedByName", "AssessmentCorrelationId",
-                     "ReplacedByUserId", "ReplacedByName", "ReplacementCorrelationId",
+                     "ReplacedByUserId", "ReplacedByName", "ReplacementCorrelationId", "ReplacementReason",
                      "LegalHoldReference", "LegalHoldReason", "LegalHoldActorUserId", "LegalHoldActorName",
                      "DisposalApprovalReference", "DisposalReason", "DisposalRequestedByUserId",
                      "DisposalRequestedByName", "DisposalDetail"
@@ -383,6 +383,7 @@ public sealed class RegisterPaginationTests
         Assert.Null(denied.ReplacementOf!.ReplacedByUserPublicId);
         Assert.Null(denied.ReplacementOf.ReplacedByName);
         Assert.Null(denied.ReplacementOf.CorrelationId);
+        Assert.Null(denied.ReplacementOf.Reason);
         var deniedHold = Assert.Single(denied.LegalHolds);
         Assert.Null(deniedHold.HoldReference);
         Assert.Null(deniedHold.PlacedReason);
@@ -403,6 +404,7 @@ public sealed class RegisterPaginationTests
         Assert.Equal("assessment-correlation", allowedAssessment.CorrelationId);
         Assert.Equal(actor.PublicId, allowed.ReplacementOf!.ReplacedByUserPublicId);
         Assert.Equal("replacement-correlation", allowed.ReplacementOf.CorrelationId);
+        Assert.Equal("approved replacement", allowed.ReplacementOf.Reason);
         var allowedHold = Assert.Single(allowed.LegalHolds);
         Assert.Equal("CASE-1", allowedHold.HoldReference);
         Assert.Equal("investigation", allowedHold.PlacedReason);

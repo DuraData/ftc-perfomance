@@ -680,8 +680,14 @@ public class IpmsSubmissionsController : ControllerBase
         if (id.Length == 0) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.ASSESS", BuildScope(submission));
+        var scope = BuildScope(submission);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.ASSESS", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
+        if (!string.IsNullOrEmpty(comment))
+        {
+            var memberDenial = await PoeMemberPermissionDenialAsync(user, scope, "AssessmentComment");
+            if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, memberDenial));
+        }
         var evidence = await _context.PoeFiles.IncludePoeGovernance()
             .FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && item.IsActive);
         if (evidence == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "Attachment not found"));
@@ -704,8 +710,11 @@ public class IpmsSubmissionsController : ControllerBase
         var submission = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound(new ApiResponse<PoeFileResponse>(false, null, "IPMS submission not found"));
         if (submission.IsDisabled) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence cannot be replaced on a withdrawn IPMS submission."));
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.REPLACE", BuildScope(submission));
+        var scope = BuildScope(submission);
+        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_POE.REPLACE", scope);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, decision.Reason));
+        var memberDenial = await PoeMemberPermissionDenialAsync(user, scope, "ReplacementReason");
+        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<PoeFileResponse>(false, null, memberDenial));
         var rows = await _context.PoeFiles.IncludePoeGovernance().Where(item => item.SubmissionKind == SubmissionKind.Ipms && item.SubmissionId == id && (item.PublicId == attachmentId || item.PublicId == request.ReplacementEvidencePublicId)).ToArrayAsync();
         var superseded = rows.SingleOrDefault(item => item.PublicId == attachmentId);
         var replacement = rows.SingleOrDefault(item => item.PublicId == request.ReplacementEvidencePublicId);
@@ -1267,6 +1276,7 @@ public class IpmsSubmissionsController : ControllerBase
             await CanReadAsync("ReplacedByUserId"),
             await CanReadAsync("ReplacedByName"),
             await CanReadAsync("ReplacementCorrelationId"),
+            await CanReadAsync("ReplacementReason"),
             await CanReadAsync("LegalHoldReference"),
             await CanReadAsync("LegalHoldReason"),
             await CanReadAsync("LegalHoldActorUserId"),

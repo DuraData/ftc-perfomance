@@ -232,16 +232,16 @@ public sealed class UsersControllerSecurityTests
                     "AssessedByName", "AssessedByUserId", "AssessmentComment", "AssessmentCorrelationId",
                     "DisposalApprovalReference", "DisposalDetail", "DisposalReason", "DisposalRequestedByName", "DisposalRequestedByUserId",
                     "LegalHoldActorName", "LegalHoldActorUserId", "LegalHoldReason", "LegalHoldReference", "ReplacedByName", "ReplacedByUserId",
-                    "ReplacementCorrelationId", "ScanDetail", "ScannerProvider", "ScannerReference",
+                    "ReplacementCorrelationId", "ReplacementReason", "ScanDetail", "ScannerProvider", "ScannerReference",
                     "UploadedByName", "UploadedByUserId"
                 },
                 evidenceMembers.Select(item => item.MemberCode));
             Assert.All(evidenceMembers, item => Assert.True(item.IsSensitive));
-            evidenceMembers.Where(item => item.MemberCode is "LegalHoldReference" or "LegalHoldReason" or "DisposalApprovalReference" or "DisposalReason")
+            evidenceMembers.Where(item => item.MemberCode is "AssessmentComment" or "ReplacementReason" or "LegalHoldReference" or "LegalHoldReason" or "DisposalApprovalReference" or "DisposalReason")
                 .Should().OnlyContain(item => !item.IsSystemManaged);
-            evidenceMembers.Where(item => item.MemberCode is not ("LegalHoldReference" or "LegalHoldReason" or "DisposalApprovalReference" or "DisposalReason"))
+            evidenceMembers.Where(item => item.MemberCode is not ("AssessmentComment" or "ReplacementReason" or "LegalHoldReference" or "LegalHoldReason" or "DisposalApprovalReference" or "DisposalReason"))
                 .Should().OnlyContain(item => item.IsSystemManaged);
-            Assert.Equal(25, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
+            Assert.Equal(28, await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null));
             Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == resourceCode)).SupportsFieldSecurity);
         }
 

@@ -615,7 +615,8 @@ public static class PerformanceApiSupport
 
     private static PoeEvidenceReplacementResponse ToReplacementResponse(PoeEvidenceReplacement item, PoeResponseMemberAccess memberAccess) => new(
         item.PublicId, item.SupersededPoeFile.PublicId, item.SupersededPoeFile.FileName,
-        item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName, item.Reason,
+        item.ReplacementPoeFile.PublicId, item.ReplacementPoeFile.FileName,
+        memberAccess.ReplacementReason ? item.Reason : null,
         memberAccess.ReplacedByUserId ? item.ReplacedByUser?.PublicId : null,
         memberAccess.ReplacedByName ? item.ReplacedByUser?.FullName : null,
         item.ReplacedAt, memberAccess.ReplacementCorrelationId ? item.CorrelationId : null);

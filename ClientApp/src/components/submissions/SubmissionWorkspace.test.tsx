@@ -189,6 +189,7 @@ describe('SubmissionWorkspace member security', () => {
         fileType: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence',
         url: '/content/governance', scanStatus: 'Clean', isActive: false, retainUntil: '2020-01-01T00:00:00Z',
         assessments: [{ publicId: 'assessment-1', outcome: 'Accepted', comment: 'Secret assessment note', assessedByUserPublicId: '11111111-1111-1111-1111-111111111111', assessedByName: 'Secret Assessor', assessedAt: '2026-10-02T00:00:00Z', correlationId: 'secret-assessment-correlation' }],
+        replacementOf: { publicId: 'replacement-1', supersededEvidencePublicId: 'old-evidence', supersededFileName: 'prior.pdf', replacementEvidencePublicId: 'public-governance', replacementFileName: 'governed.pdf', reason: 'Secret replacement reason', replacedAt: '2026-10-02T12:00:00Z' },
         legalHolds: [{ holdId: 'hold-1', holdReference: 'CASE-1', isActive: true, placedReason: 'Preservation', placedByUserPublicId: '22222222-2222-2222-2222-222222222222', placedByName: 'Secret Legal Actor', placedAt: '2026-10-03T00:00:00Z' }],
         disposals: [{ disposalId: 'disposal-1', status: 'Failed', approvalReference: 'COUNCIL-1', reason: 'Retention elapsed', requestedByUserPublicId: '33333333-3333-3333-3333-333333333333', requestedByName: 'Secret Disposal Actor', requestedAt: '2026-10-04T00:00:00Z', detail: 'Secret disposal failure' }],
       }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
@@ -197,9 +198,10 @@ describe('SubmissionWorkspace member security', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('governed.pdf')).toBeInTheDocument());
-    for (const secret of ['Secret assessment note', 'Secret Assessor', 'CASE-1', 'Preservation', 'Secret Legal Actor', 'COUNCIL-1', 'Retention elapsed', 'Secret Disposal Actor', 'Secret disposal failure'])
+    for (const secret of ['Secret assessment note', 'Secret Assessor', 'Secret replacement reason', 'CASE-1', 'Preservation', 'Secret Legal Actor', 'COUNCIL-1', 'Retention elapsed', 'Secret Disposal Actor', 'Secret disposal failure'])
       expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'AssessmentComment');
+    expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'ReplacementReason');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReference');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReason');
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_POE', 'DisposalApprovalReference');
@@ -216,7 +218,15 @@ describe('SubmissionWorkspace member security', () => {
         fileType: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence',
         url: '/content/write', scanStatus: 'Clean', isActive: false, retainUntil: '2020-01-01T00:00:00Z',
         rowVersion: 'AAAAAAAAAAA=', legalHolds: [], disposals: [],
-      }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+      }, {
+        id: 'evidence-current', publicId: 'public-current', fileName: 'current.pdf', fileSize: 10,
+        fileType: 'application/pdf', uploadedAt: '2026-10-02T00:00:00Z', documentType: 'evidence',
+        url: '/content/current', scanStatus: 'Clean', isActive: true, rowVersion: 'AAAAAAAAAAA=',
+      }, {
+        id: 'evidence-replacement', publicId: 'public-replacement', fileName: 'replacement.pdf', fileSize: 10,
+        fileType: 'application/pdf', uploadedAt: '2026-10-03T00:00:00Z', documentType: 'evidence',
+        url: '/content/replacement', scanStatus: 'Clean', isActive: true, rowVersion: 'AAAAAAAAAAA=',
+      }], page: 1, pageSize: 25, totalCount: 3, totalPages: 1 },
     });
     const rendered = render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
@@ -224,11 +234,18 @@ describe('SubmissionWorkspace member security', () => {
     await waitFor(() => expect(screen.getByText('expired.pdf')).toBeInTheDocument());
     expect(screen.queryByLabelText('Legal hold reference for expired.pdf')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Disposal approval reference for expired.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Assessment comment for current.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Replacement reason for current.pdf')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Assessment outcome for current.pdf')).toBeInTheDocument();
 
     security.canEditField.mockReturnValue(true);
     rendered.rerender(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
     expect(screen.getByLabelText('Legal hold reference for expired.pdf')).toBeInTheDocument();
     expect(screen.getByLabelText('Disposal approval reference for expired.pdf')).toBeInTheDocument();
+    expect(screen.getByLabelText('Assessment comment for current.pdf')).toBeInTheDocument();
+    expect(screen.getByLabelText('Replacement reason for current.pdf')).toBeInTheDocument();
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'AssessmentComment');
+    expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'ReplacementReason');
     expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReference');
     expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'LegalHoldReason');
     expect(security.canEditField).toHaveBeenCalledWith('OPMS_POE', 'DisposalApprovalReference');

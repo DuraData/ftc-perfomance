@@ -849,7 +849,7 @@ export interface PoeEvidenceReplacementDto {
   supersededFileName: string;
   replacementEvidencePublicId: string;
   replacementFileName: string;
-  reason: string;
+  reason?: string | null;
   replacedByUserPublicId?: string | null;
   replacedByName?: string | null;
   replacedAt: string;
