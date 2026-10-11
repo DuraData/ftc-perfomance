@@ -678,7 +678,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpGet("~/api/v1/idp/plans/{planPublicId:guid}/alignment-matrix/page")]
-    [Authorize(Policy = "Permission:IDP.Alignment.View")]
+    [Authorize(Policy = "Permission:IDP_ALIGNMENT.READ")]
     public async Task<ActionResult<ApiResponse<PagedResponse<IdpAlignmentMatrixItemResponse>>>> GetAlignmentMatrixPage(
         Guid planPublicId,
         [FromQuery] PagedQueryRequest request,
@@ -1215,7 +1215,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpPost("alignment-links")]
-    [Authorize(Policy = "Permission:IDP.Alignment.Manage")]
+    [Authorize(Policy = "Permission:IDP_ALIGNMENT.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpAlignmentLinkResponse>>> CreateAlignmentLink([FromBody] CreateIdpAlignmentLinkRequest request)
     {
         var user = await GetCurrentUserAsync();
@@ -1228,9 +1228,14 @@ public class IdpController : ControllerBase
 
         var objective = await _context.IdpStrategicObjectives.AsNoTracking()
             .Where(item => item.PublicId == request.IdpStrategicObjectivePublicId)
-            .Select(item => new { item.Id, item.PublicId })
+            .Select(item => new { item.Id, item.PublicId, PlanPublicId = item.IdpStrategicOutcome.IdpPlan.PublicId })
             .SingleOrDefaultAsync();
         if (objective == null) return NotFound(new ApiResponse<IdpAlignmentLinkResponse>(false, null, "Strategic objective not found"));
+
+        var scope = Scope(targetId: objective.PlanPublicId);
+        if (!string.IsNullOrWhiteSpace(request.Notes)
+            && await MemberUpdateDenialAsync(user, "IDP_ALIGNMENT", scope, ["Notes"]) is not null)
+            return Forbid();
 
         var entity = new IdpAlignmentLink
         {
@@ -1243,10 +1248,13 @@ public class IdpController : ControllerBase
 
         _context.IdpAlignmentLinks.Add(entity);
         await _context.SaveChangesAsync();
+        var fullResponse = ToAlignmentResponse(entity, objective.PublicId, includeNotes: true);
         await WriteIdpAudit(user.Id, "IdpAlignmentLink", entity.PublicId.ToString(), "Create", null,
-            ToAlignmentResponse(entity, objective.PublicId));
+            fullResponse);
 
-        return Ok(new ApiResponse<IdpAlignmentLinkResponse>(true, ToAlignmentResponse(entity, objective.PublicId)));
+        var includeNotes = await CanAccessMemberAsync(user, "IDP_ALIGNMENT", "Notes", SecurityOperation.Read, scope);
+        return Ok(new ApiResponse<IdpAlignmentLinkResponse>(true,
+            ToAlignmentResponse(entity, objective.PublicId, includeNotes)));
     }
 
     [HttpPost("community-sessions")]
@@ -1534,7 +1542,7 @@ public class IdpController : ControllerBase
     }
 
     [HttpPost("risk-links")]
-    [Authorize(Policy = "Permission:IDP.Risk.Manage")]
+    [Authorize(Policy = "Permission:IDP_RISK_LINK.CREATE")]
     public async Task<ActionResult<ApiResponse<IdpRiskLinkResponse>>> CreateRiskLink([FromBody] CreateIdpRiskLinkRequest request)
     {
         var user = await GetCurrentUserAsync();
@@ -1593,6 +1601,11 @@ public class IdpController : ControllerBase
             || project != null && kpi != null && project.PublicId != kpi.ProjectPublicId)
             return BadRequest(new ApiResponse<IdpRiskLinkResponse>(false, null, "The selected objective, project, and KPI must belong to the same IDP hierarchy."));
 
+        var scope = Scope(targetId: planPublicIds[0], kpiId: kpi?.PublicId, projectId: project?.PublicId);
+        if (!string.IsNullOrWhiteSpace(request.MitigationPlan)
+            && await MemberUpdateDenialAsync(user, "IDP_RISK_LINK", scope, ["MitigationPlan"]) is not null)
+            return Forbid();
+
         var entity = new IdpRiskLink
         {
             IdpStrategicObjectiveId = objective?.Id,
@@ -1606,10 +1619,12 @@ public class IdpController : ControllerBase
 
         _context.IdpRiskLinks.Add(entity);
         await _context.SaveChangesAsync();
-        var response = ToRiskResponse(entity, objective?.PublicId, project?.PublicId, kpi?.PublicId);
-        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.PublicId.ToString(), "Create", null, response);
+        var fullResponse = ToRiskResponse(entity, objective?.PublicId, project?.PublicId, kpi?.PublicId, includeMitigationPlan: true);
+        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.PublicId.ToString(), "Create", null, fullResponse);
 
-        return Ok(new ApiResponse<IdpRiskLinkResponse>(true, response));
+        var includeMitigationPlan = await CanAccessMemberAsync(user, "IDP_RISK_LINK", "MitigationPlan", SecurityOperation.Read, scope);
+        return Ok(new ApiResponse<IdpRiskLinkResponse>(true,
+            ToRiskResponse(entity, objective?.PublicId, project?.PublicId, kpi?.PublicId, includeMitigationPlan)));
     }
 
     [HttpPost("budget-snapshots")]
@@ -2305,8 +2320,9 @@ public class IdpController : ControllerBase
             access.ProgressComment ? annualTarget.ProgressComment : null,
             Convert.ToBase64String(annualTarget.RowVersion));
 
-    private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link, Guid objectivePublicId) =>
-        new(link.PublicId, objectivePublicId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle, link.Notes, Convert.ToBase64String(link.RowVersion));
+    private static IdpAlignmentLinkResponse ToAlignmentResponse(IdpAlignmentLink link, Guid objectivePublicId, bool includeNotes) =>
+        new(link.PublicId, objectivePublicId, link.FrameworkType.ToString(), link.FrameworkReferenceCode, link.FrameworkReferenceTitle,
+            includeNotes ? link.Notes : null, Convert.ToBase64String(link.RowVersion));
 
     private static IdpCommunitySessionResponse ToCommunitySessionResponse(
         IdpCommunitySession session, Guid planPublicId, Guid? wardPublicId, string? wardName, IdpParticipationMemberAccess access) =>
@@ -2339,9 +2355,10 @@ public class IdpController : ControllerBase
             includeContactEmail ? stakeholder.ContactEmail : null,
             includeKeyInput ? stakeholder.KeyInput : null, Convert.ToBase64String(stakeholder.RowVersion));
 
-    private static IdpRiskLinkResponse ToRiskResponse(IdpRiskLink risk, Guid? objectivePublicId, Guid? projectPublicId, Guid? kpiPublicId) =>
+    private static IdpRiskLinkResponse ToRiskResponse(
+        IdpRiskLink risk, Guid? objectivePublicId, Guid? projectPublicId, Guid? kpiPublicId, bool includeMitigationPlan) =>
         new(risk.PublicId, objectivePublicId, projectPublicId, kpiPublicId, risk.RiskReference, risk.RiskTitle,
-            risk.MitigationPlan, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));
+            includeMitigationPlan ? risk.MitigationPlan : null, risk.RiskLevel.ToString(), Convert.ToBase64String(risk.RowVersion));
 
     private static IdpBudgetSnapshotResponse ToBudgetSnapshotResponse(IdpBudgetSnapshot snapshot, Guid? objectivePublicId, Guid? projectPublicId, IdpBudgetMemberAccess access) =>
         new(snapshot.PublicId, objectivePublicId, projectPublicId, snapshot.FinancialYear,

@@ -166,6 +166,20 @@ public sealed class UsersControllerSecurityTests
         Assert.All(participationMembers, item => { Assert.True(item.IsSensitive); Assert.False(item.IsSystemManaged); });
         Assert.Equal(14, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_PARTICIPATION" && item.MemberCode != null));
         Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_PARTICIPATION")).SupportsFieldSecurity);
+
+        var alignmentMembers = await context.SecurityMemberDefinitions.AsNoTracking()
+            .Where(item => item.ResourceCode == "IDP_ALIGNMENT")
+            .ToArrayAsync();
+        Assert.Single(alignmentMembers).MemberCode.Should().Be("Notes");
+        Assert.Equal(2, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_ALIGNMENT" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_ALIGNMENT")).SupportsFieldSecurity);
+
+        var riskLinkMembers = await context.SecurityMemberDefinitions.AsNoTracking()
+            .Where(item => item.ResourceCode == "IDP_RISK_LINK")
+            .ToArrayAsync();
+        Assert.Single(riskLinkMembers).MemberCode.Should().Be("MitigationPlan");
+        Assert.Equal(2, await context.Permissions.CountAsync(item => item.ResourceCode == "IDP_RISK_LINK" && item.MemberCode != null));
+        Assert.True((await context.SecurityResources.SingleAsync(item => item.Code == "IDP_RISK_LINK")).SupportsFieldSecurity);
         var loginAuditMembers = await context.SecurityMemberDefinitions
             .Where(item => item.ResourceCode == "LOGIN_AUDIT")
             .OrderBy(item => item.MemberCode)

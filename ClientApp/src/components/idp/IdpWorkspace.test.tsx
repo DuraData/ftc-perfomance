@@ -428,7 +428,9 @@ describe('IDP plan lineage workspace', () => {
     });
 
     render(<IdpHierarchyPage />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Review Comment' }));
+    const addComment = await screen.findByRole('button', { name: 'Add Review Comment' });
+    await waitFor(() => expect(addComment).toBeEnabled());
+    fireEvent.click(addComment);
 
     await waitFor(() => expect(api.createIdpComment).toHaveBeenCalledWith({
       idpPlanPublicId: predecessor.publicId,

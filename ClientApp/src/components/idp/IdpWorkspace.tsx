@@ -661,6 +661,7 @@ export function IdpHierarchyPage() {
   const [selectedPlan, setSelectedPlan] = useState<IdpPlanSummary | null>(null);
   const [pathRows, setPathRows] = useState<IdpHierarchyPath[]>([]);
   const [activeVersionPublicId, setActiveVersionPublicId] = useState<string | null>(null);
+  const [versionLookupPending, setVersionLookupPending] = useState(false);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -682,19 +683,26 @@ export function IdpHierarchyPage() {
     if (!selectedPlan) {
       setPathRows([]);
       setActiveVersionPublicId(null);
+      setVersionLookupPending(false);
       setTotalCount(0);
       setTotalPages(0);
       return;
     }
+    let cancelled = false;
+    setActiveVersionPublicId(null);
+    setVersionLookupPending(true);
     void Promise.all([
       getIdpHierarchyPathsPage(selectedPlan.publicId, { page, pageSize: 25, search, sortBy, sortDirection }),
       getIdpPlanVersionsPage(selectedPlan.publicId, { page: 1, pageSize: 1, sortBy: 'versionNumber', sortDirection: 'desc' }, true),
     ]).then(([pathsResult, versionsResult]) => {
+      if (cancelled) return;
       setPathRows(pathsResult.data?.items ?? []);
       setTotalCount(pathsResult.data?.totalCount ?? 0);
       setTotalPages(pathsResult.data?.totalPages ?? 0);
       setActiveVersionPublicId(versionsResult.data?.items[0]?.publicId ?? null);
+      setVersionLookupPending(false);
     });
+    return () => { cancelled = true; };
   }, [page, refreshKey, search, selectedPlan, sortBy, sortDirection]);
 
   return (
@@ -708,6 +716,7 @@ export function IdpHierarchyPage() {
             {canManageHierarchy ? (
               <Button
                 variant="outline"
+                disabled={versionLookupPending}
                 onClick={async () => {
                   if (!selectedPlan) return;
                   const result = await createIdpComment({
@@ -721,7 +730,7 @@ export function IdpHierarchyPage() {
                   pushToast(result.success ? 'success' : 'error', result.success ? 'Hierarchy review comment added.' : (result.message ?? 'Failed to add comment.'));
                 }}
               >
-                Add Review Comment
+                {versionLookupPending ? 'Loading Review Context' : 'Add Review Comment'}
               </Button>
             ) : null}
           </div>
