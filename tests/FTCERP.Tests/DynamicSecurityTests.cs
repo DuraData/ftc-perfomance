@@ -269,6 +269,11 @@ public class DynamicSecurityTests
         active.TotalPages.Should().Be(2);
         active.Items.Should().OnlyContain(item => item.MunicipalityPublicId == municipalityA.PublicId);
 
+        var localDetail = await controller.GetRole(localRole.PublicId);
+        localDetail.Result.Should().BeOfType<OkObjectResult>().Which.Value
+            .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Which.Data!.PublicId.Should().Be(localRole.PublicId);
+        (await controller.GetRole(foreignRole.PublicId)).Result.Should().BeOfType<NotFoundObjectResult>();
+
         var inactiveResult = await controller.GetRolesPage(new PagedQueryRequest { Search = "FORMER", SortBy = "code", SortDirection = "asc" }, includeInactive: true);
         var inactive = inactiveResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityRoleDto>>>().Subject.Data!;
         inactive.Items.Should().ContainSingle(item => item.PublicId == inactiveRole.PublicId);

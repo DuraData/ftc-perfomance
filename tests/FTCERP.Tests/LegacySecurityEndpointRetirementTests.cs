@@ -17,7 +17,7 @@ namespace FTCERP.Tests;
 public sealed class LegacySecurityEndpointRetirementTests
 {
     [Fact]
-    public async Task Legacy_role_and_permission_collections_and_mutations_are_gone_while_role_detail_remains_tenant_scoped()
+    public async Task Legacy_role_collection_detail_and_mutations_are_gone()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -33,10 +33,11 @@ public sealed class LegacySecurityEndpointRetirementTests
             roleA,
             roleB);
         await context.SaveChangesAsync();
-        var controller = new RolesController(context, tenant);
+        var controller = new RolesController();
 
         AssertGone(controller.GetRoles().Result);
-        Assert.IsType<NotFoundObjectResult>((await controller.GetRole(roleB.PublicId)).Result);
+        AssertGone(controller.GetRole(roleA.PublicId).Result);
+        AssertGone(controller.GetRole(roleB.PublicId).Result);
         AssertGone(controller.GetRolePermissions("role-a").Result);
         AssertGone(controller.GetRolePermissions("role-b").Result);
 
@@ -111,11 +112,9 @@ public sealed class LegacySecurityEndpointRetirementTests
             .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
         Assert.True(typeof(UnitsController).GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
             .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
-        Assert.Null(typeof(RolesController).GetMethod(nameof(RolesController.GetRole))!
-            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true).SingleOrDefault());
         foreach (var action in new[]
                  {
-                     nameof(RolesController.GetRoles), nameof(RolesController.CreateRole), nameof(RolesController.UpdateRole),
+                     nameof(RolesController.GetRoles), nameof(RolesController.GetRole), nameof(RolesController.CreateRole), nameof(RolesController.UpdateRole),
                      nameof(RolesController.DeleteRole), nameof(RolesController.GetRolePermissions), nameof(RolesController.SetRolePermissions)
                  })
         {
@@ -231,7 +230,7 @@ public sealed class LegacySecurityEndpointRetirementTests
 
         foreach (var publicPath in new[]
                  {
-                     "/api/roles/{publicId}", "/api/v1/idp/plans/{planPublicId}",
+                     "/api/v1/security/roles/{rolePublicId}", "/api/v1/idp/plans/{planPublicId}",
                      "/api/v1/idp/community-sessions", "/api/v1/idp/community-needs", "/api/v1/idp/ward-inputs",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
                      "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",

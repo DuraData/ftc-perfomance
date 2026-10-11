@@ -82,6 +82,27 @@ public sealed class SecurityAdministrationController : ControllerBase
 
     private static readonly HashSet<string> SecurityRoleSortFields = ["createdat", "name", "code", "status", "effectivefrom"];
 
+    [HttpGet("roles/{rolePublicId:guid}")]
+    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    public async Task<ActionResult<ApiResponse<SecurityRoleDto>>> GetRole(Guid rolePublicId)
+    {
+        var actor = await GetCurrentUserAsync();
+        if (actor == null) return Unauthorized(new ApiResponse<SecurityRoleDto>(false, null, "User not found"));
+        var access = await _accessControl.GetEffectiveAccessAsync(actor);
+        var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
+        var municipalities = access.RoleAssignments
+            .Where(item => item.MunicipalityId.HasValue)
+            .Select(item => item.MunicipalityId!.Value)
+            .Distinct()
+            .ToArray();
+        var query = _context.Roles.AsNoTracking().Include(item => item.Municipality).AsQueryable();
+        if (!system)
+            query = query.Where(item => item.MunicipalityId.HasValue && municipalities.Contains(item.MunicipalityId.Value));
+        var role = await query.SingleOrDefaultAsync(item => item.PublicId == rolePublicId);
+        if (role == null) return NotFound(new ApiResponse<SecurityRoleDto>(false, null, "Role not found"));
+        return Ok(new ApiResponse<SecurityRoleDto>(true, ToRoleDto(role)));
+    }
+
     [HttpPost("roles")]
     [Authorize(Policy = "Permission:SECURITY.MANAGE_ROLES")]
     public async Task<ActionResult<ApiResponse<SecurityRoleDto>>> CreateRole([FromBody] CreateSecurityRoleRequest request)
