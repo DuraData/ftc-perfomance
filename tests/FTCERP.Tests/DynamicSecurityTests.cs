@@ -98,8 +98,8 @@ public class DynamicSecurityTests
         await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
         var municipality = new Municipality { Id = 7, Code = "AUDIT-7", Name = "Audit Municipality" };
         var user = IdpTestFixture.CreateUser("audit-user", "Audit", "Reviewer"); user.Municipality = municipality;
-        var role = Role("audit-reviewer", SecurityModel.Reviewer); role.Municipality = municipality;
-        var uncoveredRole = Role("audit-approver", SecurityModel.Approver); uncoveredRole.Municipality = municipality;
+        var role = Role("audit-runtime-reviewer", "RUNTIME_REVIEW"); role.Name = "Runtime Review Role"; role.NormalizedName = role.Name.ToUpperInvariant(); role.Municipality = municipality;
+        var uncoveredRole = Role("audit-runtime-observer", "RUNTIME_OBSERVER"); uncoveredRole.Name = "Runtime Observer"; uncoveredRole.NormalizedName = uncoveredRole.Name.ToUpperInvariant(); uncoveredRole.Municipality = municipality;
         var dashboard = new Permission { Code = "Dashboard.View", Module = "Dashboard", Feature = "Dashboard", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
         var reports = new Permission { Code = "Reports.View", Module = "Reports", Feature = "Reports", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
         var audit = new Permission { Code = "Audit.Trails.View", Module = "Audit", Feature = "Trails", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true };
@@ -129,11 +129,14 @@ public class DynamicSecurityTests
         roleManager.SetupGet(manager => manager.Roles).Returns(context.Roles);
         var controller = new RoleImplementationAuditController(context, roleManager.Object, tenant.Object);
 
-        var result = await controller.GetAudit();
+        var result = await controller.GetAuditPage(new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "code" });
 
         var payload = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
-            .Should().BeOfType<ApiResponse<RoleImplementationAuditResponse[]>>().Subject.Data!;
-        var reviewer = payload.Should().ContainSingle(item => item.Role == SecurityModel.Reviewer).Subject;
+            .Should().BeOfType<ApiResponse<PagedResponse<RoleImplementationAuditResponse>>>().Subject.Data!;
+        payload.TotalCount.Should().Be(2);
+        var reviewer = payload.Items.Should().ContainSingle(item => item.RolePublicId == role.PublicId).Subject;
+        reviewer.RoleCode.Should().Be("RUNTIME_REVIEW");
+        reviewer.Role.Should().Be("Runtime Review Role");
         reviewer.Dashboard.Should().BeTrue();
         reviewer.Menus.Should().BeTrue();
         reviewer.ScopeFiltering.Should().BeTrue();
@@ -141,11 +144,19 @@ public class DynamicSecurityTests
         reviewer.Notifications.Should().BeFalse("the current notification rule is an explicit deny");
         reviewer.Reports.Should().BeTrue();
         reviewer.AuditTrail.Should().BeTrue();
+        reviewer.AllowedPermissionCount.Should().Be(3);
+        reviewer.DeniedPermissionCount.Should().Be(1);
+        reviewer.ActiveAssignmentCount.Should().Be(1);
         reviewer.Complete.Should().BeTrue();
+        payload.Items.Should().ContainSingle(item => item.RolePublicId == uncoveredRole.PublicId).Which.Complete.Should().BeFalse();
+        controller.GetAudit().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        (await controller.GetAuditPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
 
         var service = new AccessControlService(context, IdpTestFixture.CreateUserManagerMock(user).Object, roleManager.Object, tenant.Object);
-        var coverage = await service.BuildSystemCoverageAuditAsync();
-        var reviewerCoverage = coverage.Should().ContainSingle(item => item.Role == SecurityModel.Reviewer).Subject;
+        var coverage = await service.BuildSystemCoverageAuditPageAsync(new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "code" });
+        coverage.TotalCount.Should().Be(2);
+        var reviewerCoverage = coverage.Items.Should().ContainSingle(item => item.RolePublicId == role.PublicId).Subject;
+        reviewerCoverage.RoleCode.Should().Be("RUNTIME_REVIEW");
         reviewerCoverage.SeededUser.Should().BeTrue();
         reviewerCoverage.Dashboard.Should().BeTrue();
         reviewerCoverage.Menu.Should().BeTrue();
@@ -154,7 +165,10 @@ public class DynamicSecurityTests
         reviewerCoverage.Reports.Should().BeTrue();
         reviewerCoverage.AuditTrail.Should().BeTrue();
         reviewerCoverage.Notifications.Should().BeFalse();
-        coverage.Should().ContainSingle(item => item.Role == SecurityModel.Approver).Which.Dashboard.Should().BeFalse();
+        coverage.Items.Should().ContainSingle(item => item.RolePublicId == uncoveredRole.PublicId).Which.Dashboard.Should().BeFalse();
+        var accessController = new AccessController(service, IdpTestFixture.CreateUserManagerMock(user).Object, context, tenant.Object);
+        accessController.GetSystemCoverageAudit().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
+        (await accessController.GetSystemCoverageAuditPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]

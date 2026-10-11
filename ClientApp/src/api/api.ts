@@ -2082,16 +2082,16 @@ export async function getLoginAuditLogs(query: RegisterPageQuery = {}, failuresO
   return get<PagedResult<LoginAuditLog>>(`/v1/audit/login-logs/page${suffix}`);
 }
 
-export async function getRoleImplementationAudit(): Promise<ApiResponse<RoleImplementationAuditRow[]>> {
-  return get<RoleImplementationAuditRow[]>('/role-implementation-audit');
+export async function getRoleImplementationAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RoleImplementationAuditRow>>> {
+  return get<PagedResult<RoleImplementationAuditRow>>(`/role-implementation-audit/page${registerPageQuery(query)}`);
 }
 
 export async function getRoleAccessMatrixPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RoleAccessMatrixRow>>> {
   return get<PagedResult<RoleAccessMatrixRow>>(`/v1/access/role-access-matrix/page${registerPageQuery(query)}`);
 }
 
-export async function getSystemCoverageAudit(): Promise<ApiResponse<SystemCoverageAuditRow[]>> {
-  return get<SystemCoverageAuditRow[]>('/v1/access/system-coverage-audit');
+export async function getSystemCoverageAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SystemCoverageAuditRow>>> {
+  return get<PagedResult<SystemCoverageAuditRow>>(`/v1/access/system-coverage-audit/page${registerPageQuery(query)}`);
 }
 
 export async function simulateAccess(payload: {

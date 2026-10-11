@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Clock3, XCircle } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Card, Badge, Button } from '../ui';
+import { Input, Select } from '../common/Form';
 import type { RoleImplementationAuditRow } from '../../types';
-import { getRoleImplementationAudit } from '../../api/api';
+import { getRoleImplementationAuditPage } from '../../api/api';
 
-type AuditColumnKey = Exclude<keyof RoleImplementationAuditRow, 'role' | 'complete'>;
+type AuditColumnKey = Exclude<keyof RoleImplementationAuditRow,
+  'rolePublicId' | 'roleCode' | 'role' | 'allowedPermissionCount' | 'deniedPermissionCount' | 'activeAssignmentCount' | 'complete'>;
 
 const columnLabels: Record<AuditColumnKey, string> = {
   dashboard: 'Dashboard',
@@ -33,6 +35,13 @@ function AuditCell({ value }: { value: boolean }) {
 
 export function RoleImplementationAuditPage() {
   const [rows, setRows] = useState<RoleImplementationAuditRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,14 +56,18 @@ export function RoleImplementationAuditPage() {
     const load = async () => {
       setLoading(true);
       setError(null);
-      const result = await getRoleImplementationAudit();
+      const result = await getRoleImplementationAuditPage({ page, pageSize: 25, search, sortBy, sortDirection });
       if (!active) return;
 
       if (!result.success || !result.data) {
         setError(result.message ?? 'Failed to load role implementation audit.');
         setRows([]);
+        setTotalCount(0);
+        setTotalPages(0);
       } else {
-        setRows(result.data);
+        setRows(result.data.items);
+        setTotalCount(result.data.totalCount);
+        setTotalPages(result.data.totalPages);
       }
 
       setLoading(false);
@@ -64,7 +77,15 @@ export function RoleImplementationAuditPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page, search, sortBy, sortDirection]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   return (
     <AppShell
@@ -75,19 +96,24 @@ export function RoleImplementationAuditPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Roles Tracked</p>
-            <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{rows.length}</p>
+            <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{totalCount}</p>
           </Card>
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Complete</p>
-            <p className="mt-2 text-3xl font-bold text-success-600 dark:text-success-400">{completedCount}</p>
+            <p className="mt-2 text-3xl font-bold text-success-600 dark:text-success-400">{completedCount} on page</p>
           </Card>
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Pending</p>
-            <p className="mt-2 text-3xl font-bold text-warning-600 dark:text-warning-400">{Math.max(rows.length - completedCount, 0)}</p>
+            <p className="mt-2 text-3xl font-bold text-warning-600 dark:text-warning-400">{Math.max(rows.length - completedCount, 0)} on page</p>
           </Card>
         </div>
 
         <Card className="overflow-hidden">
+          <div className="grid gap-3 border-b border-secondary-200 p-4 dark:border-secondary-700 md:grid-cols-3">
+            <Input label="Search role implementation audit" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Role code, name or description" />
+            <Select label="Sort roles by" value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }} options={[{ value: 'name', label: 'Name' }, { value: 'code', label: 'Code' }, { value: 'createdAt', label: 'Created' }]} />
+            <Select label="Role sort direction" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} />
+          </div>
           <div className="flex items-center justify-between border-b border-secondary-200 px-6 py-4 dark:border-secondary-700">
             <div>
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Implementation Matrix</h3>
@@ -95,9 +121,7 @@ export function RoleImplementationAuditPage() {
                 Tracks dashboards, menus, CRUD, scopes, notifications, reports, and audit support for each role.
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-              Refresh
-            </Button>
+            <Badge>Current dynamic configuration</Badge>
           </div>
 
           {loading ? (
@@ -120,8 +144,8 @@ export function RoleImplementationAuditPage() {
                 </thead>
                 <tbody className="divide-y divide-secondary-200 bg-white dark:divide-secondary-700 dark:bg-secondary-900">
                   {rows.map(row => (
-                    <tr key={row.role}>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}</td>
+                    <tr key={row.rolePublicId}>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td>
                       <td className="px-4 py-4 text-sm"><AuditCell value={row.dashboard} /></td>
                       <td className="px-4 py-4 text-sm"><AuditCell value={row.menus} /></td>
                       <td className="px-4 py-4 text-sm"><AuditCell value={row.crud} /></td>
@@ -145,6 +169,10 @@ export function RoleImplementationAuditPage() {
               </table>
             </div>
           )}
+          <div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700">
+            <span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span>
+            <span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next roles</Button></span>
+          </div>
         </Card>
       </div>
     </AppShell>

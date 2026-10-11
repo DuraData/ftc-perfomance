@@ -68,6 +68,8 @@ public record UserAssignmentResponse(
     string RowVersion);
 
 public record RoleImplementationAuditResponse(
+    Guid RolePublicId,
+    string RoleCode,
     string Role,
     bool Dashboard,
     bool Menus,
@@ -76,6 +78,9 @@ public record RoleImplementationAuditResponse(
     bool Notifications,
     bool Reports,
     bool AuditTrail,
+    int AllowedPermissionCount,
+    int DeniedPermissionCount,
+    int ActiveAssignmentCount,
     bool Complete);
 
 public record AccessSimulationResponse(
@@ -86,6 +91,8 @@ public record AccessSimulationResponse(
     string[] MatchedAssignments);
 
 public record RoleAccessMatrixResponse(
+    Guid RolePublicId,
+    string RoleCode,
     string Role,
     string[] Permissions,
     string[] Scope,
@@ -95,6 +102,8 @@ public record RoleAccessMatrixResponse(
     string? TestUser);
 
 public record SystemCoverageAuditResponse(
+    Guid RolePublicId,
+    string RoleCode,
     string Role,
     bool SeededUser,
     bool Dashboard,

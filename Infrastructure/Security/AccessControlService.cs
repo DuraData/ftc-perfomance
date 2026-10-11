@@ -15,8 +15,7 @@ public interface IAccessControlService
     Task<AccessQueryScopeResult> GetQueryScopeAsync(ApplicationUser user, string permissionCode);
     Task<MenuItemResponse[]> GetAuthorizedNavigationAsync(ApplicationUser user);
     Task<PagedResponse<RoleAccessMatrixResponse>> BuildRoleAccessMatrixPageAsync(PagedQueryRequest request);
-    Task<RoleAccessMatrixResponse[]> BuildRoleAccessMatrixAsync();
-    Task<SystemCoverageAuditResponse[]> BuildSystemCoverageAuditAsync();
+    Task<PagedResponse<SystemCoverageAuditResponse>> BuildSystemCoverageAuditPageAsync(PagedQueryRequest request);
 }
 
 public sealed record AccessScopeContext(
@@ -298,7 +297,9 @@ public class AccessControlService : IAccessControlService
 
     public async Task<PagedResponse<RoleAccessMatrixResponse>> BuildRoleAccessMatrixPageAsync(PagedQueryRequest request)
     {
-        var query = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
+        var now = DateTime.UtcNow;
+        var query = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive && role.EffectiveFrom <= now
+            && (!role.EffectiveTo.HasValue || role.EffectiveTo > now));
         if (_tenantContext?.MunicipalityId is long municipalityId)
             query = query.Where(role => role.MunicipalityId == municipalityId || !role.MunicipalityId.HasValue);
         if (request.NormalizedSearch.Length > 0)
@@ -318,15 +319,6 @@ public class AccessControlService : IAccessControlService
         var roles = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
         var rows = await BuildRoleAccessRowsAsync(roles);
         return PagedResponse<RoleAccessMatrixResponse>.Create(rows, request.Page, request.PageSize, totalCount);
-    }
-
-    public async Task<RoleAccessMatrixResponse[]> BuildRoleAccessMatrixAsync()
-    {
-        var query = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
-        if (_tenantContext?.MunicipalityId is long municipalityId)
-            query = query.Where(role => role.MunicipalityId == municipalityId || !role.MunicipalityId.HasValue);
-        var roles = await query.OrderBy(role => role.Name).ToArrayAsync();
-        return await BuildRoleAccessRowsAsync(roles);
     }
 
     private async Task<RoleAccessMatrixResponse[]> BuildRoleAccessRowsAsync(ApplicationRole[] roles)
@@ -371,6 +363,8 @@ public class AccessControlService : IAccessControlService
                 : Array.Empty<string>();
 
             return new RoleAccessMatrixResponse(
+                role.PublicId,
+                role.RoleCode,
                 role.Name!,
                 permissionCodes,
                 testScopes,
@@ -381,16 +375,30 @@ public class AccessControlService : IAccessControlService
         }).ToArray();
     }
 
-    public async Task<SystemCoverageAuditResponse[]> BuildSystemCoverageAuditAsync()
+    public async Task<PagedResponse<SystemCoverageAuditResponse>> BuildSystemCoverageAuditPageAsync(PagedQueryRequest request)
     {
-        var matrix = await BuildRoleAccessMatrixAsync();
         var now = DateTime.UtcNow;
-        var roleQuery = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive);
+        var roleQuery = _roleManager.Roles.AsNoTracking().Where(role => role.IsActive && role.Name != null
+            && role.EffectiveFrom <= now && (!role.EffectiveTo.HasValue || role.EffectiveTo > now));
         if (_tenantContext?.MunicipalityId is long roleMunicipalityId)
             roleQuery = roleQuery.Where(role => role.MunicipalityId == roleMunicipalityId || !role.MunicipalityId.HasValue);
-        var visibleRoles = await roleQuery.Where(role => role.Name != null).ToArrayAsync();
+        if (request.NormalizedSearch.Length > 0)
+        {
+            var search = request.NormalizedSearch.ToLowerInvariant();
+            roleQuery = roleQuery.Where(role => (role.Name != null && role.Name.ToLower().Contains(search))
+                || role.RoleCode.ToLower().Contains(search)
+                || (role.Description != null && role.Description.ToLower().Contains(search)));
+        }
+        var totalCount = await roleQuery.CountAsync();
+        roleQuery = request.NormalizedSortBy switch
+        {
+            "code" => request.Descending ? roleQuery.OrderByDescending(role => role.RoleCode).ThenBy(role => role.Id) : roleQuery.OrderBy(role => role.RoleCode).ThenBy(role => role.Id),
+            "createdat" => request.Descending ? roleQuery.OrderByDescending(role => role.CreatedAt).ThenBy(role => role.Id) : roleQuery.OrderBy(role => role.CreatedAt).ThenBy(role => role.Id),
+            _ => request.Descending ? roleQuery.OrderByDescending(role => role.Name).ThenBy(role => role.Id) : roleQuery.OrderBy(role => role.Name).ThenBy(role => role.Id)
+        };
+        var visibleRoles = await roleQuery.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var matrix = await BuildRoleAccessRowsAsync(visibleRoles);
         var visibleRoleIds = visibleRoles.Select(role => role.Id).ToArray();
-        var rolesByName = visibleRoles.ToDictionary(role => role.Name!, StringComparer.OrdinalIgnoreCase);
         var assignmentQuery = _context.SecurityUserRoleAssignments.AsNoTracking()
             .Where(link => visibleRoleIds.Contains(link.RoleId) && link.IsActive && link.EffectiveFrom <= now
                 && (!link.EffectiveTo.HasValue || link.EffectiveTo > now) && !link.RevokedAt.HasValue)
@@ -407,16 +415,17 @@ public class AccessControlService : IAccessControlService
         var assignedUserIds = userRoles.Select(link => link.UserId).Distinct().ToArray();
         var userScopes = await scopeQuery.Where(scope => assignedUserIds.Contains(scope.UserId)).ToListAsync();
 
-        return SecurityModel.OrderedRoles.Select(roleName =>
+        var rows = visibleRoles.Select(role =>
         {
-            rolesByName.TryGetValue(roleName, out var role);
-            var links = role == null ? [] : userRoles.Where(link => link.RoleId == role.Id).ToArray();
-            var row = matrix.FirstOrDefault(item => string.Equals(item.Role, roleName, StringComparison.OrdinalIgnoreCase));
+            var links = userRoles.Where(link => link.RoleId == role.Id).ToArray();
+            var row = matrix.Single(item => item.RolePublicId == role.PublicId);
             var hasPermissions = row != null && row.Permissions.Length > 0;
             var hasScopeFiltering = links.Any(link => link.MunicipalityId.HasValue || link.DepartmentId.HasValue || link.UnitId.HasValue
                 || userScopes.Any(scope => scope.UserId == link.UserId));
             return new SystemCoverageAuditResponse(
-                roleName,
+                role.PublicId,
+                role.RoleCode,
+                role.Name!,
                 SeededUser: links.Length > 0,
                 Dashboard: row != null && row.Permissions.Any(permission => permission.Equals("Dashboard.View", StringComparison.OrdinalIgnoreCase) || permission == "*"),
                 Menu: row != null && row.Menus.Length > 0,
@@ -428,6 +437,7 @@ public class AccessControlService : IAccessControlService
                 AuditTrail: row != null && row.Permissions.Any(permission => permission.StartsWith("Audit.", StringComparison.OrdinalIgnoreCase) || permission.Contains("Trail", StringComparison.OrdinalIgnoreCase) || permission == "*"),
                 Notifications: row != null && row.Permissions.Any(permission => permission.StartsWith("Notifications.", StringComparison.OrdinalIgnoreCase) || permission == "*"));
         }).ToArray();
+        return PagedResponse<SystemCoverageAuditResponse>.Create(rows, request.Page, request.PageSize, totalCount);
     }
 
     private static bool ScopeMatches(UserScope current, AccessScopeContext requested)

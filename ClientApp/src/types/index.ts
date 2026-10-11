@@ -2320,6 +2320,8 @@ export interface LoginAuditLog {
 }
 
 export interface RoleImplementationAuditRow {
+  rolePublicId: string;
+  roleCode: string;
   role: string;
   dashboard: boolean;
   menus: boolean;
@@ -2328,6 +2330,9 @@ export interface RoleImplementationAuditRow {
   notifications: boolean;
   reports: boolean;
   auditTrail: boolean;
+  allowedPermissionCount: number;
+  deniedPermissionCount: number;
+  activeAssignmentCount: number;
   complete: boolean;
 }
 
@@ -2340,6 +2345,8 @@ export interface AccessSimulationResult {
 }
 
 export interface RoleAccessMatrixRow {
+  rolePublicId: string;
+  roleCode: string;
   role: string;
   permissions: string[];
   scope: string[];
@@ -2350,6 +2357,8 @@ export interface RoleAccessMatrixRow {
 }
 
 export interface SystemCoverageAuditRow {
+  rolePublicId: string;
+  roleCode: string;
   role: string;
   seededUser: boolean;
   dashboard: boolean;

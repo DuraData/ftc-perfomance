@@ -4,7 +4,7 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
-import { getRoleAccessMatrixPage, getSecurityPermissionDefinitionsPage, getSystemCoverageAudit, getUsersPage, simulateAccess } from '../../api/api';
+import { getRoleAccessMatrixPage, getSecurityPermissionDefinitionsPage, getSystemCoverageAuditPage, getUsersPage, simulateAccess } from '../../api/api';
 import type { AccessSimulationResult, AdminUserDetail, RoleAccessMatrixRow, SecurityPermissionDefinition, SystemCoverageAuditRow } from '../../types';
 
 function BooleanPill({ value }: { value: boolean }) {
@@ -73,7 +73,7 @@ export function RoleAccessMatrixPage() {
           <div><div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
               <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Role', 'Permissions', 'Scope', 'Menus', 'Allowed Actions', 'Reports', 'Test User'].map(header => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{header}</th>)}</tr></thead>
-              <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">{rows.map(row => <tr key={row.role}><td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.permissions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.scope.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.menus.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.allowedActions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.reports.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td></tr>)}</tbody>
+              <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">{rows.map(row => <tr key={row.rolePublicId}><td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.permissions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.scope.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.menus.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.allowedActions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.reports.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td></tr>)}</tbody>
             </table>
           </div><div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700"><span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next roles</Button></span></div></div>
         )}
@@ -258,6 +258,13 @@ export function PermissionSimulationPage() {
 
 export function SystemCoverageAuditPage() {
   const [rows, setRows] = useState<SystemCoverageAuditRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -265,13 +272,17 @@ export function SystemCoverageAuditPage() {
     let active = true;
     const load = async () => {
       setLoading(true);
-      const response = await getSystemCoverageAudit();
+      const response = await getSystemCoverageAuditPage({ page, pageSize: 25, search, sortBy, sortDirection });
       if (!active) return;
       if (response.success && response.data) {
-        setRows(response.data);
+        setRows(response.data.items);
+        setTotalCount(response.data.totalCount);
+        setTotalPages(response.data.totalPages);
         setError(null);
       } else {
         setRows([]);
+        setTotalCount(0);
+        setTotalPages(0);
         setError(response.message ?? 'Failed to load system coverage audit.');
       }
       setLoading(false);
@@ -280,32 +291,38 @@ export function SystemCoverageAuditPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page, search, sortBy, sortDirection]);
+  useEffect(() => { const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300); return () => window.clearTimeout(timeout); }, [searchInput]);
 
   const coveredCount = useMemo(
-    () => rows.filter(row => Object.values(row).slice(1).every(Boolean)).length,
+    () => rows.filter(row => row.seededUser && row.permissions).length,
     [rows],
   );
 
   return (
-    <AppShell title="System Coverage Audit" subtitle="Checks whether each EPMS role has seeded data, menus, permissions, scope filtering, workflow, and governance support">
+    <AppShell title="System Coverage Audit" subtitle="Checks every current dynamic role's persisted assignments, permissions, menus, scopes, workflow, reports, and governance support">
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Roles Audited</p>
-            <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{rows.length}</p>
+            <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{totalCount}</p>
           </Card>
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Fully Covered</p>
-            <p className="mt-2 text-3xl font-bold text-success-600 dark:text-success-400">{coveredCount}</p>
+            <p className="mt-2 text-3xl font-bold text-success-600 dark:text-success-400">{coveredCount} on page</p>
           </Card>
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Remaining Gaps</p>
-            <p className="mt-2 text-3xl font-bold text-warning-600 dark:text-warning-400">{Math.max(rows.length - coveredCount, 0)}</p>
+            <p className="mt-2 text-3xl font-bold text-warning-600 dark:text-warning-400">{Math.max(rows.length - coveredCount, 0)} on page</p>
           </Card>
         </div>
 
         <Card className="overflow-hidden">
+          <div className="grid gap-3 border-b border-secondary-200 p-4 dark:border-secondary-700 md:grid-cols-3">
+            <Input label="Search system coverage audit" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Role code, name or description" />
+            <Select label="Sort coverage roles by" value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }} options={[{ value: 'name', label: 'Name' }, { value: 'code', label: 'Code' }, { value: 'createdAt', label: 'Created' }]} />
+            <Select label="Coverage sort direction" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} />
+          </div>
           <div className="flex items-center justify-between border-b border-secondary-200 px-6 py-4 dark:border-secondary-700">
             <div>
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Coverage Matrix</h3>
@@ -313,9 +330,7 @@ export function SystemCoverageAuditPage() {
                 Verifies the role-by-role implementation footprint across the current backend and frontend foundation.
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-              Refresh
-            </Button>
+            <Badge>Current dynamic configuration</Badge>
           </div>
           {loading ? (
             <div className="px-6 py-8 text-sm text-secondary-500 dark:text-secondary-400">Loading coverage audit...</div>
@@ -326,7 +341,7 @@ export function SystemCoverageAuditPage() {
               <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
                 <thead className="bg-secondary-50 dark:bg-secondary-800/60">
                   <tr>
-                    {['Role', 'Seeded User', 'Dashboard', 'Menu', 'Permissions', 'Scope Filtering', 'CRUD', 'Workflow', 'Reports', 'Audit Trail', 'Notifications'].map(header => (
+                    {['Role', 'Assigned User', 'Dashboard', 'Menu', 'Permissions', 'Scope Filtering', 'CRUD', 'Workflow', 'Reports', 'Audit Trail', 'Notifications'].map(header => (
                       <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
                         {header}
                       </th>
@@ -335,8 +350,8 @@ export function SystemCoverageAuditPage() {
                 </thead>
                 <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
                   {rows.map(row => (
-                    <tr key={row.role}>
-                      <td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}</td>
+                    <tr key={row.rolePublicId}>
+                      <td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td>
                       <td className="px-4 py-4 text-sm"><BooleanPill value={row.seededUser} /></td>
                       <td className="px-4 py-4 text-sm"><BooleanPill value={row.dashboard} /></td>
                       <td className="px-4 py-4 text-sm"><BooleanPill value={row.menu} /></td>
@@ -353,15 +368,18 @@ export function SystemCoverageAuditPage() {
               </table>
             </div>
           )}
+          <div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700"><span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next roles</Button></span></div>
         </Card>
       </div>
     </AppShell>
   );
 }
 
-type CrudAuditStatus = 'Pass' | 'Partial' | 'Missing' | 'Security Risk';
+type CrudAuditStatus = 'Pass' | 'Partial' | 'Missing';
 
 interface RolePermissionCrudAuditRow {
+  rolePublicId: string;
+  roleCode: string;
   role: string;
   scope: string;
   module: string;
@@ -379,11 +397,10 @@ interface RolePermissionCrudAuditRow {
   status: CrudAuditStatus;
 }
 
-const statusTone: Record<CrudAuditStatus, 'success' | 'warning' | 'error' | 'default'> = {
+const statusTone: Record<CrudAuditStatus, 'success' | 'warning' | 'default'> = {
   Pass: 'success',
   Partial: 'warning',
   Missing: 'default',
-  'Security Risk': 'error',
 };
 
 function includesPermission(permissions: string[], matchers: RegExp[]) {
@@ -396,7 +413,7 @@ function buildRolePermissionCrudRows(
 ): RolePermissionCrudAuditRow[] {
   return roleRows.map(roleRow => {
     const permissions = roleRow.permissions ?? [];
-    const coverage = coverageRows.find(item => item.role.toLowerCase() === roleRow.role.toLowerCase());
+    const coverage = coverageRows.find(item => item.rolePublicId === roleRow.rolePublicId);
 
     const create = includesPermission(permissions, [
       /\.Create$/i,
@@ -404,10 +421,11 @@ function buildRolePermissionCrudRows(
       /^Configuration\.Manage$/i,
       /^IDP\.(Plan|Hierarchy|Project|Kpi)\.Manage$/i,
     ]);
-    const read = includesPermission(permissions, [/\.View$/i, /^UserDirectory\.View$/i]);
+    const read = includesPermission(permissions, [/\.(Read|View)$/i, /^UserDirectory\.View$/i]);
     const view = roleRow.menus.length > 0 || read;
     const edit = includesPermission(permissions, [
       /\.Edit$/i,
+      /\.Update$/i,
       /\.Manage$/i,
     ]);
     const deleteArchive = includesPermission(permissions, [/\.Delete$/i, /\.Archive$/i]);
@@ -418,32 +436,18 @@ function buildRolePermissionCrudRows(
     const audit = includesPermission(permissions, [/^Audit\./i, /^Workflow\.Audit\.View$/i]);
     const report = roleRow.reports.length > 0 || includesPermission(permissions, [/^Reports\./i]);
 
-    const isAuditorGeneral = roleRow.role.toLowerCase() === 'auditor general';
-    const isSubmitter = roleRow.role.toLowerCase() === 'submitter';
-    const hasReadOnlyViolation = isAuditorGeneral && (create || edit || deleteArchive || submit || verify || approve || review);
-    const hasSubmitterTargetCrudRisk = isSubmitter && (create || edit || deleteArchive);
-
     const implementedCount = [create, read, view, edit, deleteArchive, submit, verify, approve, review, audit, report].filter(Boolean).length;
-    const highCoverage = Boolean(
-      coverage
-      && coverage.permissions
-      && coverage.menu
-      && coverage.scopeFiltering
-      && coverage.crud
-      && coverage.workflowActions
-      && coverage.reports,
-    );
 
     let status: CrudAuditStatus = 'Partial';
-    if (hasReadOnlyViolation || hasSubmitterTargetCrudRisk) {
-      status = 'Security Risk';
-    } else if (implementedCount === 0) {
+    if (implementedCount === 0) {
       status = 'Missing';
-    } else if (highCoverage && read && view) {
+    } else if (coverage?.permissions && coverage.seededUser) {
       status = 'Pass';
     }
 
     return {
+      rolePublicId: roleRow.rolePublicId,
+      roleCode: roleRow.roleCode,
       role: roleRow.role,
       scope: roleRow.scope.join(', ') || 'Not specified',
       module: 'Cross-Module',
@@ -482,7 +486,7 @@ export function RolePermissionCrudAuditPage() {
       setLoading(true);
       const [matrixResponse, coverageResponse] = await Promise.all([
         getRoleAccessMatrixPage({ page, pageSize: 25, search, sortBy, sortDirection }),
-        getSystemCoverageAudit(),
+        getSystemCoverageAuditPage({ page, pageSize: 25, search, sortBy, sortDirection }),
       ]);
       if (!active) return;
 
@@ -500,7 +504,7 @@ export function RolePermissionCrudAuditPage() {
         return;
       }
 
-      setRows(buildRolePermissionCrudRows(matrixResponse.data.items, coverageResponse.data));
+      setRows(buildRolePermissionCrudRows(matrixResponse.data.items, coverageResponse.data.items));
       setTotalCount(matrixResponse.data.totalCount);
       setTotalPages(matrixResponse.data.totalPages);
       setError(null);
@@ -516,12 +520,11 @@ export function RolePermissionCrudAuditPage() {
 
   const passCount = useMemo(() => rows.filter(item => item.status === 'Pass').length, [rows]);
   const partialCount = useMemo(() => rows.filter(item => item.status === 'Partial').length, [rows]);
-  const riskCount = useMemo(() => rows.filter(item => item.status === 'Security Risk').length, [rows]);
 
   return (
     <AppShell title="Role Permission & CRUD Audit" subtitle="API-backed role capability matrix for merged role enforcement">
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Roles Audited</p>
             <p className="mt-2 text-3xl font-bold text-secondary-900 dark:text-white">{totalCount}</p>
@@ -533,10 +536,6 @@ export function RolePermissionCrudAuditPage() {
           <Card>
             <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Partial on page</p>
             <p className="mt-2 text-3xl font-bold text-warning-600 dark:text-warning-400">{partialCount}</p>
-          </Card>
-          <Card>
-            <p className="text-sm font-semibold text-secondary-500 dark:text-secondary-400">Risk on page</p>
-            <p className="mt-2 text-3xl font-bold text-error-600 dark:text-error-400">{riskCount}</p>
           </Card>
         </div>
 
@@ -550,7 +549,7 @@ export function RolePermissionCrudAuditPage() {
             <div>
               <h3 className="text-base font-semibold text-secondary-900 dark:text-white">Merged Role CRUD Matrix</h3>
               <p className="mt-1 text-sm text-secondary-500 dark:text-secondary-400">
-                Status values are restricted to Pass, Partial, Missing, and Security Risk.
+                Status reflects each persisted role's own effective permissions and assignments; role names do not imply capabilities.
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
@@ -592,8 +591,8 @@ export function RolePermissionCrudAuditPage() {
                 </thead>
                 <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
                   {rows.map(row => (
-                    <tr key={row.role}>
-                      <td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}</td>
+                    <tr key={row.rolePublicId}>
+                      <td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td>
                       <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.scope}</td>
                       <td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.module}</td>
                       <td className="px-4 py-4 text-sm"><BooleanPill value={row.create} /></td>

@@ -8,13 +8,11 @@ public sealed class CollectionEndpointGovernanceTests
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["AccessController.GetMyPermissions"] = "Complete effective capability snapshot required for client-side presentation; bounded by the governed permission registry.",
-            ["AccessController.GetSystemCoverageAudit"] = "One row per role in the fixed system-role catalogue.",
             ["AuthenticationAdministrationController.GetProviders"] = "Finite deployment-configured enterprise identity-provider registry.",
             ["NavigationController.GetMyMenu"] = "Complete authorized navigation hierarchy required to render the current user's menu; bounded by the governed navigation registry.",
             ["PerformanceConsolidationController.GetCalculationTypes"] = "Finite controlled performance-calculation type catalogue.",
             ["PerformanceConsolidationController.GetPolicies"] = "At most one tenant policy per controlled performance-calculation type.",
             ["PerformancePeriodTargetsController.Get"] = "Exactly one KPI's period values; uniqueness and the controlled reporting-period catalogue bound cardinality.",
-            ["RoleImplementationAuditController.GetAudit"] = "One audit result per role in the fixed system-role catalogue."
         };
 
     [Fact]

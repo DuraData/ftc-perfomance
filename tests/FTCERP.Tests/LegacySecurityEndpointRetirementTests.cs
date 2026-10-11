@@ -146,6 +146,12 @@ public sealed class LegacySecurityEndpointRetirementTests
         Assert.True(typeof(AuthController).GetMethod(nameof(AuthController.Register))!
             .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
             .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(AccessController).GetMethod(nameof(AccessController.GetSystemCoverageAudit))!
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
+        Assert.True(typeof(RoleImplementationAuditController).GetMethod(nameof(RoleImplementationAuditController.GetAudit))!
+            .GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), true)
+            .Cast<ApiExplorerSettingsAttribute>().Single().IgnoreApi);
 
         foreach (var controllerType in new[] { typeof(OpmsTargetLibraryController), typeof(IpmsTargetLibraryController) })
         {
@@ -188,7 +194,8 @@ public sealed class LegacySecurityEndpointRetirementTests
                      "/api/idp/plans/{id}/alignment-matrix", "/api/idp/plans/{id}/reports/{reportType}",
                      "/api/idp/stakeholder-engagements", "/api/idp/tasks/{id}/complete",
                      "/api/opms-target-library/{id}", "/api/ipms-target-library/{id}",
-                     "/api/Auth/register"
+                     "/api/Auth/register", "/api/v1/access/system-coverage-audit",
+                     "/api/role-implementation-audit"
                  })
         {
             Assert.False(paths.ContainsKey(retiredPath), $"Retired private-key path remained in OpenAPI: {retiredPath}");
@@ -198,7 +205,8 @@ public sealed class LegacySecurityEndpointRetirementTests
                  {
                      "/api/roles/{publicId}", "/api/v1/idp/plans/{planPublicId}",
                      "/api/v1/idp/community-sessions/{sessionPublicId}/stakeholder-engagements",
-                     "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}"
+                     "/api/v1/opms-target-library/{publicId}", "/api/v1/ipms-target-library/{publicId}",
+                     "/api/v1/access/system-coverage-audit/page", "/api/role-implementation-audit/page"
                  })
         {
             Assert.True(paths.ContainsKey(publicPath), $"Public-ID path missing from OpenAPI: {publicPath}");

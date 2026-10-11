@@ -140,9 +140,18 @@ public class AccessController : ControllerBase
 
     [HttpGet("system-coverage-audit")]
     [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
-    public async Task<ActionResult<ApiResponse<SystemCoverageAuditResponse[]>>> GetSystemCoverageAudit()
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<SystemCoverageAuditResponse[]>> GetSystemCoverageAudit() =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<SystemCoverageAuditResponse[]>(false, null,
+            "This unbounded fixed-role audit is retired. Use /api/v1/access/system-coverage-audit/page."));
+
+    [HttpGet("system-coverage-audit/page")]
+    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<SystemCoverageAuditResponse>>>> GetSystemCoverageAuditPage([FromQuery] PagedQueryRequest request)
     {
-        var rows = await _accessControlService.BuildSystemCoverageAuditAsync();
-        return Ok(new ApiResponse<SystemCoverageAuditResponse[]>(true, rows));
+        if (request.NormalizedSortBy is not ("name" or "code" or "createdat"))
+            return BadRequest(new ApiResponse<PagedResponse<SystemCoverageAuditResponse>>(false, null, "SortBy must be name, code, or createdAt."));
+        var page = await _accessControlService.BuildSystemCoverageAuditPageAsync(request);
+        return Ok(new ApiResponse<PagedResponse<SystemCoverageAuditResponse>>(true, page));
     }
 }

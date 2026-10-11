@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAuditPage } from './AccessGovernancePages';
+import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAuditPage, SystemCoverageAuditPage } from './AccessGovernancePages';
 
 const api = vi.hoisted(() => ({
   getSecurityPermissionDefinitionsPage: vi.fn(),
   getRoleAccessMatrixPage: vi.fn(),
-  getSystemCoverageAudit: vi.fn(),
+  getSystemCoverageAuditPage: vi.fn(),
   getUsersPage: vi.fn(),
   simulateAccess: vi.fn(),
 }));
@@ -29,14 +29,23 @@ describe('PermissionSimulationPage', () => {
     api.getRoleAccessMatrixPage.mockImplementation(async ({ page = 1, search = '' }) => ({
       success: true,
       data: {
-        items: [{ role: `Role ${page}`, permissions: ['OPMS_KPI.READ'], scope: ['Municipality:7'], menus: ['OPMS'], allowedActions: ['OPMS KPI Read'], reports: [], testUser: `User ${page}` }],
+        items: [{ rolePublicId: `role-public-${page}`, roleCode: `ROLE_${page}`, role: `Role ${page}`, permissions: ['OPMS_KPI.READ'], scope: ['Municipality:7'], menus: ['OPMS'], allowedActions: ['OPMS KPI Read'], reports: [], testUser: `User ${page}` }],
         page,
         pageSize: 25,
         totalCount: search ? 1 : 26,
         totalPages: search ? 1 : 2,
       },
     }));
-    api.getSystemCoverageAudit.mockResolvedValue({ success: true, data: [] });
+    api.getSystemCoverageAuditPage.mockImplementation(async ({ page = 1, search = '' }) => ({
+      success: true,
+      data: {
+        items: [{ rolePublicId: `role-public-${page}`, roleCode: `ROLE_${page}`, role: `Role ${page}`, seededUser: true, dashboard: true, menu: true, permissions: true, scopeFiltering: true, crud: false, workflowActions: false, reports: false, auditTrail: false, notifications: false }],
+        page,
+        pageSize: 25,
+        totalCount: search ? 1 : 26,
+        totalPages: search ? 1 : 2,
+      },
+    }));
     api.getUsersPage.mockImplementation(async ({ page = 1, search = '' }) => ({
       success: true,
       data: {
@@ -116,5 +125,16 @@ describe('PermissionSimulationPage', () => {
     await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
     fireEvent.change(screen.getByLabelText('Search role CRUD audit'), { target: { value: 'submitter' } });
     await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submitter', sortBy: 'name', sortDirection: 'asc' }));
+    await waitFor(() => expect(api.getSystemCoverageAuditPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submitter', sortBy: 'name', sortDirection: 'asc' }));
+  });
+
+  it('searches and pages every current dynamic role in the system coverage audit', async () => {
+    render(<SystemCoverageAuditPage />);
+
+    expect(await screen.findByText('26 roles · Page 1 of 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next roles' }));
+    await waitFor(() => expect(api.getSystemCoverageAuditPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
+    fireEvent.change(screen.getByLabelText('Search system coverage audit'), { target: { value: 'runtime role' } });
+    await waitFor(() => expect(api.getSystemCoverageAuditPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'runtime role', sortBy: 'name', sortDirection: 'asc' }));
   });
 });
