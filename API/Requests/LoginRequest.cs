@@ -35,7 +35,14 @@ public record UpdateUserPermissionOverrideItem(int PermissionId, bool IsAllowed,
 
 public record AssignUserRolesRequest(Guid[] RolePublicIds);
 
-public record UserScopeItemRequest(string ScopeType, int? DepartmentId, int? UnitId, string? TargetId, string? KpiId, string? ProjectId, string? TaskId);
+public record UserScopeItemRequest(
+    string ScopeType,
+    Guid? DepartmentPublicId,
+    Guid? UnitPublicId,
+    Guid? TargetPublicId,
+    Guid? KpiPublicId,
+    Guid? ProjectPublicId,
+    Guid? TaskPublicId);
 
 public record UpdateUserScopesRequest(UserScopeItemRequest[] Scopes, string RowVersion, string Reason);
 
@@ -45,10 +52,10 @@ public record UserAssignmentItemRequest(
     bool IsActive,
     DateTime? ValidFromUtc,
     DateTime? ValidToUtc,
-    string? TargetId,
-    string? KpiId,
-    string? ProjectId,
-    string? TaskId);
+    Guid? TargetPublicId,
+    Guid? KpiPublicId,
+    Guid? ProjectPublicId,
+    Guid? TaskPublicId);
 
 public record UpdateUserAssignmentsRequest(UserAssignmentItemRequest[] Assignments, string RowVersion, string Reason);
 

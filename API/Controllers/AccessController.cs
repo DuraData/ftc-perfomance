@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using System.Globalization;
 
 namespace FTCERP.Host.API.Controllers;
 
@@ -77,15 +76,17 @@ public class AccessController : ControllerBase
             return NotFound(new ApiResponse<AccessSimulationResponse>(false, null, "Simulation user not found"));
         }
 
-        var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(
+        var resolvedScope = await SecurityScopeIdentityResolver.ResolveAsync(
             _context,
-            _tenantContext.MunicipalityId,
-            null,
-            null,
+            _tenantContext.MunicipalityId.Value,
             request.DepartmentPublicId,
-            request.UnitPublicId);
-        if (organization.Error != null)
-            return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, organization.Error));
+            request.UnitPublicId,
+            request.TargetPublicId,
+            request.KpiPublicId,
+            request.ProjectPublicId,
+            request.TaskPublicId);
+        if (!resolvedScope.Succeeded)
+            return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, resolvedScope.Error));
 
         var referencedUsers = new[] { request.OwnerUserPublicId, request.DelegatorUserPublicId }
             .Where(item => item.HasValue)
@@ -100,99 +101,23 @@ public class AccessController : ControllerBase
         if (userIdsByPublicId.Count != referencedUsers.Length)
             return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, "Owner and delegator users must belong to the selected municipality."));
 
-        var recordScope = await ResolveRecordScopeAsync(request);
-        if (recordScope.Error != null)
-            return BadRequest(new ApiResponse<AccessSimulationResponse>(false, null, recordScope.Error));
-
         var result = await _accessControlService.CheckPermissionAsync(
             subject,
             request.PermissionCode,
             new AccessScopeContext(
-                organization.DepartmentId,
-                organization.UnitId,
+                resolvedScope.DepartmentId,
+                resolvedScope.UnitId,
                 request.OwnerUserPublicId.HasValue ? userIdsByPublicId[request.OwnerUserPublicId.Value] : null,
                 request.DelegatorUserPublicId.HasValue ? userIdsByPublicId[request.DelegatorUserPublicId.Value] : null,
-                recordScope.TargetId,
-                recordScope.KpiId,
-                recordScope.ProjectId,
-                recordScope.TaskId,
+                resolvedScope.TargetId,
+                resolvedScope.KpiId,
+                resolvedScope.ProjectId,
+                resolvedScope.TaskId,
                 _tenantContext.MunicipalityId));
 
         return Ok(new ApiResponse<AccessSimulationResponse>(
             true,
             new AccessSimulationResponse(result.Allowed, result.Reason, result.EffectivePermissions, result.MatchedScopes, result.MatchedAssignments)));
-    }
-
-    private async Task<(string? TargetId, string? KpiId, string? ProjectId, string? TaskId, string? Error)> ResolveRecordScopeAsync(SimulateAccessRequest request)
-    {
-        var municipalityId = _tenantContext.MunicipalityId!.Value;
-        string? targetId = null;
-        if (request.TargetPublicId.HasValue)
-        {
-            var targetCandidates = await _context.OpmsTargets.AsNoTracking()
-                .Where(item => item.MunicipalityId == municipalityId && item.PublicId == request.TargetPublicId.Value)
-                .Select(item => item.Id)
-                .Concat(_context.IpmsTargets.AsNoTracking()
-                    .Where(item => item.MunicipalityId == municipalityId && item.PublicId == request.TargetPublicId.Value)
-                    .Select(item => item.Id))
-                .Take(2)
-                .ToArrayAsync();
-            if (targetCandidates.Length != 1)
-                return (null, null, null, null, "Target public identifier was not found uniquely in the selected municipality.");
-            targetId = targetCandidates[0];
-        }
-
-        string? kpiId = null;
-        if (request.KpiPublicId.HasValue)
-        {
-            var performanceCandidates = await _context.OpmsTargets.AsNoTracking()
-                .Where(item => item.MunicipalityId == municipalityId && item.PublicId == request.KpiPublicId.Value)
-                .Select(item => item.Id)
-                .Concat(_context.IpmsTargets.AsNoTracking()
-                    .Where(item => item.MunicipalityId == municipalityId && item.PublicId == request.KpiPublicId.Value)
-                    .Select(item => item.Id))
-                .Take(2)
-                .ToArrayAsync();
-            var idpCandidates = await _context.IdpKpis.AsNoTracking()
-                .Where(item => item.PublicId == request.KpiPublicId.Value
-                    && item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == municipalityId)
-                .Select(item => item.Id)
-                .Take(2)
-                .ToArrayAsync();
-            var candidates = performanceCandidates.Concat(idpCandidates.Select(item => item.ToString(CultureInfo.InvariantCulture))).Take(2).ToArray();
-            if (candidates.Length != 1)
-                return (null, null, null, null, "KPI public identifier was not found uniquely in the selected municipality.");
-            kpiId = candidates[0];
-        }
-
-        string? projectId = null;
-        if (request.ProjectPublicId.HasValue)
-        {
-            var internalProjectIds = await _context.IdpProjects.AsNoTracking()
-                .Where(item => item.PublicId == request.ProjectPublicId.Value
-                    && item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == municipalityId)
-                .Select(item => item.Id)
-                .Take(2)
-                .ToArrayAsync();
-            if (internalProjectIds.Length != 1)
-                return (null, null, null, null, "Project public identifier was not found uniquely in the selected municipality.");
-            projectId = internalProjectIds[0].ToString(CultureInfo.InvariantCulture);
-        }
-
-        string? taskId = null;
-        if (request.TaskPublicId.HasValue)
-        {
-            var internalTaskIds = await _context.IdpTaskAssignments.AsNoTracking()
-                .Where(item => item.PublicId == request.TaskPublicId.Value && item.IdpPlan.MunicipalityId == municipalityId)
-                .Select(item => item.Id)
-                .Take(2)
-                .ToArrayAsync();
-            if (internalTaskIds.Length != 1)
-                return (null, null, null, null, "Task public identifier was not found uniquely in the selected municipality.");
-            taskId = internalTaskIds[0].ToString(CultureInfo.InvariantCulture);
-        }
-
-        return (targetId, kpiId, projectId, taskId, null);
     }
 
     [HttpGet("role-access-matrix/page")]

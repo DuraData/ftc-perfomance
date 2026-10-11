@@ -337,6 +337,7 @@ public class UsersController : ControllerBase
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<PagedResponse<UserScopeResponse>>("User not found"));
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<PagedResponse<UserScopeResponse>>("Select a municipality context before viewing scopes"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
         var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(Fail<PagedResponse<UserScopeResponse>>("User not found"));
@@ -353,13 +354,22 @@ public class UsersController : ControllerBase
         {
             var term = request.NormalizedSearch;
             var hasType = Enum.TryParse<ScopeType>(term, true, out var scopeType);
+            var hasPublicId = Guid.TryParse(term, out var recordPublicId);
             query = query.Where(scope => (hasType && scope.ScopeType == scopeType)
                 || (scope.Department != null && scope.Department.Name.Contains(term))
                 || (scope.Unit != null && scope.Unit.Name.Contains(term))
-                || (scope.TargetId != null && scope.TargetId.Contains(term))
-                || (scope.KpiId != null && scope.KpiId.Contains(term))
-                || (scope.ProjectId != null && scope.ProjectId.Contains(term))
-                || (scope.TaskId != null && scope.TaskId.Contains(term)));
+                || (hasPublicId && scope.TargetId != null
+                    && (_context.OpmsTargets.Any(item => item.Id == scope.TargetId && item.PublicId == recordPublicId)
+                        || _context.IpmsTargets.Any(item => item.Id == scope.TargetId && item.PublicId == recordPublicId)))
+                || (hasPublicId && scope.KpiId != null
+                    && (_context.OpmsTargets.Any(item => item.Id == scope.KpiId && item.PublicId == recordPublicId)
+                        || _context.IpmsTargets.Any(item => item.Id == scope.KpiId && item.PublicId == recordPublicId)
+                        || _context.IdpKpis.Any(item => item.Id.ToString() == scope.KpiId && item.PublicId == recordPublicId
+                            && item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == _tenantContext.MunicipalityId)))
+                || (hasPublicId && scope.ProjectId != null && _context.IdpProjects.Any(item => item.Id.ToString() == scope.ProjectId && item.PublicId == recordPublicId
+                    && item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == _tenantContext.MunicipalityId))
+                || (hasPublicId && scope.TaskId != null && _context.IdpTaskAssignments.Any(item => item.Id.ToString() == scope.TaskId && item.PublicId == recordPublicId
+                    && item.IdpPlan.MunicipalityId == _tenantContext.MunicipalityId)));
         }
         var totalCount = await query.CountAsync();
         query = (request.NormalizedSortBy, request.Descending) switch
@@ -375,23 +385,27 @@ public class UsersController : ControllerBase
             (_, false) => query.OrderBy(scope => scope.CreatedAt).ThenBy(scope => scope.Id),
             _ => query.OrderByDescending(scope => scope.CreatedAt).ThenBy(scope => scope.Id)
         };
-        var scopes = await query.Skip(request.Offset).Take(request.PageSize)
-            .Select(scope => new UserScopeResponse(
+        var scopeRows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var identities = await SecurityScopeIdentityResolver.ResolvePublicIdsAsync(
+            _context, _tenantContext.MunicipalityId!.Value,
+            scopeRows.Select(item => item.TargetId), scopeRows.Select(item => item.KpiId),
+            scopeRows.Select(item => item.ProjectId), scopeRows.Select(item => item.TaskId));
+        var scopes = scopeRows.Select(scope => new UserScopeResponse(
                 scope.PublicId,
                 scope.ScopeType.ToString(),
                 scope.Department != null ? scope.Department.PublicId : null,
                 scope.Department != null ? scope.Department.Name : null,
                 scope.Unit != null ? scope.Unit.PublicId : null,
                 scope.Unit != null ? scope.Unit.Name : null,
-                scope.TargetId,
-                scope.KpiId,
-                scope.ProjectId,
-                scope.TaskId,
+                PublicIdOrNull(identities.Targets, scope.TargetId),
+                PublicIdOrNull(identities.Kpis, scope.KpiId),
+                PublicIdOrNull(identities.Projects, scope.ProjectId),
+                PublicIdOrNull(identities.Tasks, scope.TaskId),
                 scope.EffectiveFrom,
                 scope.EffectiveTo,
                 scope.IsActive,
                 Convert.ToBase64String(scope.RowVersion)))
-            .ToArrayAsync();
+            .ToArray();
 
         return Ok(new ApiResponse<PagedResponse<UserScopeResponse>>(true,
             PagedResponse<UserScopeResponse>.Create(scopes, request.Page, request.PageSize, totalCount)));
@@ -412,17 +426,29 @@ public class UsersController : ControllerBase
         if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 5 or > 500)
             return BadRequest(Fail<bool>("Reason must contain between 5 and 500 characters."));
         if (request.Scopes == null) return BadRequest(Fail<bool>("Scopes are required."));
+        if (request.Scopes.Length > 100) return BadRequest(Fail<bool>("No more than 100 scopes may be assigned at once."));
 
         var invalidScope = request.Scopes.FirstOrDefault(scope => !Enum.TryParse<ScopeType>(scope.ScopeType, true, out _));
         if (invalidScope != null)
         {
             return BadRequest(new ApiResponse<bool>(false, false, $"Invalid scope type '{invalidScope.ScopeType}'"));
         }
-        var departmentIds = request.Scopes.Where(item => item.DepartmentId.HasValue).Select(item => item.DepartmentId!.Value).Distinct().ToArray();
-        var unitIds = request.Scopes.Where(item => item.UnitId.HasValue).Select(item => item.UnitId!.Value).Distinct().ToArray();
-        if (await _context.Departments.CountAsync(item => departmentIds.Contains(item.Id)) != departmentIds.Length
-            || await _context.Units.CountAsync(item => unitIds.Contains(item.Id)) != unitIds.Length)
-            return Forbid();
+        var resolvedScopes = new List<(UserScopeItemRequest Request, ScopeType Type, SecurityScopeIdentityResolution Identity)>();
+        foreach (var scope in request.Scopes)
+        {
+            var type = Enum.Parse<ScopeType>(scope.ScopeType, true);
+            var identity = await SecurityScopeIdentityResolver.ResolveAsync(
+                _context, _tenantContext.MunicipalityId.Value,
+                scope.DepartmentPublicId, scope.UnitPublicId, scope.TargetPublicId, scope.KpiPublicId,
+                scope.ProjectPublicId, scope.TaskPublicId);
+            if (!identity.Succeeded) return BadRequest(Fail<bool>(identity.Error!));
+            var selectorError = ValidateScopeSelector(type, scope);
+            if (selectorError != null) return BadRequest(Fail<bool>(selectorError));
+            resolvedScopes.Add((scope, type, identity));
+        }
+        var duplicateScope = resolvedScopes.GroupBy(item => ScopeKey(item.Type, item.Request), StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicateScope != null) return BadRequest(Fail<bool>("Duplicate user scopes are not permitted."));
 
         var now = DateTime.UtcNow;
         var existing = await _context.UserScopes.Where(scope => scope.UserId == user.Id && scope.IsActive).ToListAsync();
@@ -432,19 +458,19 @@ public class UsersController : ControllerBase
             item.EffectiveTo = now;
         }
 
-        foreach (var scope in request.Scopes)
+        foreach (var scope in resolvedScopes)
         {
             _context.UserScopes.Add(new UserScope
             {
                 UserId = user.Id,
                 MunicipalityId = _tenantContext.MunicipalityId,
-                ScopeType = Enum.Parse<ScopeType>(scope.ScopeType, true),
-                DepartmentId = scope.DepartmentId,
-                UnitId = scope.UnitId,
-                TargetId = scope.TargetId,
-                KpiId = scope.KpiId,
-                ProjectId = scope.ProjectId,
-                TaskId = scope.TaskId,
+                ScopeType = scope.Type,
+                DepartmentId = scope.Identity.DepartmentId,
+                UnitId = scope.Identity.UnitId,
+                TargetId = scope.Identity.TargetId,
+                KpiId = scope.Identity.KpiId,
+                ProjectId = scope.Identity.ProjectId,
+                TaskId = scope.Identity.TaskId,
                 EffectiveFrom = now,
                 IsActive = true
             });
@@ -472,6 +498,7 @@ public class UsersController : ControllerBase
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<PagedResponse<UserAssignmentResponse>>("User not found"));
+        if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<PagedResponse<UserAssignmentResponse>>("Select a municipality context before viewing assignments"));
         if (!await IsAllowedAsync(actor, "SECURITY.VIEW_EFFECTIVE")) return Forbid();
         var user = await TenantUsers().AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(Fail<PagedResponse<UserAssignmentResponse>>("User not found"));
@@ -485,14 +512,22 @@ public class UsersController : ControllerBase
         {
             var term = request.NormalizedSearch;
             var hasType = Enum.TryParse<AssignmentType>(term, true, out var assignmentType);
-            var hasDelegator = Guid.TryParse(term, out var delegatorPublicId);
+            var hasPublicId = Guid.TryParse(term, out var searchPublicId);
             query = query.Where(assignment => (hasType && assignment.AssignmentType == assignmentType)
-                || (hasDelegator && assignment.DelegatorUserId != null
-                    && _context.Users.Any(delegator => delegator.Id == assignment.DelegatorUserId && delegator.PublicId == delegatorPublicId))
-                || (assignment.TargetId != null && assignment.TargetId.Contains(term))
-                || (assignment.KpiId != null && assignment.KpiId.Contains(term))
-                || (assignment.ProjectId != null && assignment.ProjectId.Contains(term))
-                || (assignment.TaskId != null && assignment.TaskId.Contains(term)));
+                || (hasPublicId && assignment.DelegatorUserId != null
+                    && _context.Users.Any(delegator => delegator.Id == assignment.DelegatorUserId && delegator.PublicId == searchPublicId))
+                || (hasPublicId && assignment.TargetId != null
+                    && (_context.OpmsTargets.Any(item => item.Id == assignment.TargetId && item.PublicId == searchPublicId)
+                        || _context.IpmsTargets.Any(item => item.Id == assignment.TargetId && item.PublicId == searchPublicId)))
+                || (hasPublicId && assignment.KpiId != null
+                    && (_context.OpmsTargets.Any(item => item.Id == assignment.KpiId && item.PublicId == searchPublicId)
+                        || _context.IpmsTargets.Any(item => item.Id == assignment.KpiId && item.PublicId == searchPublicId)
+                        || _context.IdpKpis.Any(item => item.Id.ToString() == assignment.KpiId && item.PublicId == searchPublicId
+                            && item.IdpProject.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == _tenantContext.MunicipalityId)))
+                || (hasPublicId && assignment.ProjectId != null && _context.IdpProjects.Any(item => item.Id.ToString() == assignment.ProjectId && item.PublicId == searchPublicId
+                    && item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlan.MunicipalityId == _tenantContext.MunicipalityId))
+                || (hasPublicId && assignment.TaskId != null && _context.IdpTaskAssignments.Any(item => item.Id.ToString() == assignment.TaskId && item.PublicId == searchPublicId
+                    && item.IdpPlan.MunicipalityId == _tenantContext.MunicipalityId)));
         }
         var totalCount = await query.CountAsync();
         query = (request.NormalizedSortBy, request.Descending) switch
@@ -508,23 +543,29 @@ public class UsersController : ControllerBase
             (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id),
             _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
         };
-        var assignments = await query.Skip(request.Offset).Take(request.PageSize)
-            .Select(assignment => new UserAssignmentResponse(
+        var assignmentRows = await query.Skip(request.Offset).Take(request.PageSize).ToArrayAsync();
+        var identities = await SecurityScopeIdentityResolver.ResolvePublicIdsAsync(
+            _context, _tenantContext.MunicipalityId!.Value,
+            assignmentRows.Select(item => item.TargetId), assignmentRows.Select(item => item.KpiId),
+            assignmentRows.Select(item => item.ProjectId), assignmentRows.Select(item => item.TaskId));
+        var delegatorIds = assignmentRows.Where(item => item.DelegatorUserId != null).Select(item => item.DelegatorUserId!).Distinct().ToArray();
+        var delegatorPublicIds = delegatorIds.Length == 0
+            ? new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+            : await TenantUsers().AsNoTracking().Where(item => delegatorIds.Contains(item.Id))
+                .ToDictionaryAsync(item => item.Id, item => item.PublicId, StringComparer.OrdinalIgnoreCase);
+        var assignments = assignmentRows.Select(assignment => new UserAssignmentResponse(
                 assignment.PublicId,
                 assignment.AssignmentType.ToString(),
-                assignment.DelegatorUserId == null ? null : _context.Users
-                    .Where(delegator => delegator.Id == assignment.DelegatorUserId)
-                    .Select(delegator => (Guid?)delegator.PublicId)
-                    .SingleOrDefault(),
+                PublicIdOrNull(delegatorPublicIds, assignment.DelegatorUserId),
                 assignment.IsActive,
                 assignment.ValidFromUtc,
                 assignment.ValidToUtc,
-                assignment.TargetId,
-                assignment.KpiId,
-                assignment.ProjectId,
-                assignment.TaskId,
+                PublicIdOrNull(identities.Targets, assignment.TargetId),
+                PublicIdOrNull(identities.Kpis, assignment.KpiId),
+                PublicIdOrNull(identities.Projects, assignment.ProjectId),
+                PublicIdOrNull(identities.Tasks, assignment.TaskId),
                 Convert.ToBase64String(assignment.RowVersion)))
-            .ToArrayAsync();
+            .ToArray();
 
         return Ok(new ApiResponse<PagedResponse<UserAssignmentResponse>>(true,
             PagedResponse<UserAssignmentResponse>.Create(assignments, request.Page, request.PageSize, totalCount)));
@@ -546,6 +587,8 @@ public class UsersController : ControllerBase
             return BadRequest(Fail<bool>("Reason must contain between 5 and 500 characters."));
         if (request.Assignments == null)
             return BadRequest(Fail<bool>("Assignments are required."));
+        if (request.Assignments.Length > 100)
+            return BadRequest(Fail<bool>("No more than 100 assignments may be assigned at once."));
 
         var invalidAssignment = request.Assignments.FirstOrDefault(assignment => !Enum.TryParse<AssignmentType>(assignment.AssignmentType, true, out _));
         if (invalidAssignment != null)
@@ -553,25 +596,33 @@ public class UsersController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, $"Invalid assignment type '{invalidAssignment.AssignmentType}'"));
         }
 
+        var resolvedAssignments = new List<(UserAssignmentItemRequest Request, AssignmentType Type, SecurityScopeIdentityResolution Identity)>();
         foreach (var assignment in request.Assignments)
         {
             var type = Enum.Parse<AssignmentType>(assignment.AssignmentType, true);
             if (assignment.ValidFromUtc.HasValue && assignment.ValidToUtc.HasValue && assignment.ValidToUtc <= assignment.ValidFromUtc)
                 return BadRequest(Fail<bool>("Assignment ValidToUtc must be later than ValidFromUtc."));
-            var hasTarget = !string.IsNullOrWhiteSpace(assignment.TargetId) || !string.IsNullOrWhiteSpace(assignment.KpiId);
+            var identity = await SecurityScopeIdentityResolver.ResolveAsync(
+                _context, _tenantContext.MunicipalityId.Value,
+                null, null, assignment.TargetPublicId, assignment.KpiPublicId,
+                assignment.ProjectPublicId, assignment.TaskPublicId);
+            if (!identity.Succeeded) return BadRequest(Fail<bool>(identity.Error!));
+            var hasTarget = identity.TargetId != null || identity.KpiId != null;
+            var selectorCount = new[] { identity.TargetId, identity.KpiId, identity.ProjectId, identity.TaskId }.Count(item => item != null);
             var validSelector = type switch
             {
-                AssignmentType.AdditionalApproverAssignment or AssignmentType.AdditionalVerifierAssignment or AssignmentType.AdditionalSubmitterAssignment => hasTarget,
-                AssignmentType.ProjectAssignee => !string.IsNullOrWhiteSpace(assignment.ProjectId),
-                AssignmentType.TaskAssignee => !string.IsNullOrWhiteSpace(assignment.TaskId),
+                AssignmentType.AdditionalApproverAssignment or AssignmentType.AdditionalVerifierAssignment or AssignmentType.AdditionalSubmitterAssignment => hasTarget && selectorCount == 1,
+                AssignmentType.ProjectAssignee => identity.ProjectId != null && selectorCount == 1,
+                AssignmentType.TaskAssignee => identity.TaskId != null && selectorCount == 1,
                 AssignmentType.DelegatedAssignment => assignment.DelegatorUserPublicId.HasValue
-                    && (hasTarget || !string.IsNullOrWhiteSpace(assignment.ProjectId) || !string.IsNullOrWhiteSpace(assignment.TaskId)),
+                    && selectorCount == 1,
                 _ => false
             };
             if (!validSelector)
                 return BadRequest(Fail<bool>($"Assignment type '{type}' requires its corresponding record selector."));
             if (type == AssignmentType.DelegatedAssignment && assignment.DelegatorUserPublicId == user.PublicId)
                 return BadRequest(Fail<bool>("A user cannot delegate an assignment to themselves."));
+            resolvedAssignments.Add((assignment, type, identity));
         }
 
         var delegatorPublicIds = request.Assignments
@@ -589,8 +640,8 @@ public class UsersController : ControllerBase
                 return BadRequest(Fail<bool>("Every delegator must be an active user in the selected municipality."));
         }
 
-        var duplicate = request.Assignments
-            .GroupBy(AssignmentKey, StringComparer.OrdinalIgnoreCase)
+        var duplicate = resolvedAssignments
+            .GroupBy(item => AssignmentKey(item.Request), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate != null) return BadRequest(Fail<bool>("Duplicate operational assignments are not permitted."));
 
@@ -605,22 +656,22 @@ public class UsersController : ControllerBase
                 assignment.ValidToUtc = now;
         }
 
-        foreach (var assignment in request.Assignments)
+        foreach (var assignment in resolvedAssignments)
         {
             _context.UserAssignments.Add(new UserAssignment
             {
                 UserId = user.Id,
-                AssignmentType = Enum.Parse<AssignmentType>(assignment.AssignmentType, true),
-                DelegatorUserId = assignment.DelegatorUserPublicId.HasValue
-                    ? delegatorIds[assignment.DelegatorUserPublicId.Value]
+                AssignmentType = assignment.Type,
+                DelegatorUserId = assignment.Request.DelegatorUserPublicId.HasValue
+                    ? delegatorIds[assignment.Request.DelegatorUserPublicId.Value]
                     : null,
-                IsActive = assignment.IsActive,
-                ValidFromUtc = assignment.ValidFromUtc,
-                ValidToUtc = assignment.ValidToUtc,
-                TargetId = NullIfWhiteSpace(assignment.TargetId),
-                KpiId = NullIfWhiteSpace(assignment.KpiId),
-                ProjectId = NullIfWhiteSpace(assignment.ProjectId),
-                TaskId = NullIfWhiteSpace(assignment.TaskId)
+                IsActive = assignment.Request.IsActive,
+                ValidFromUtc = assignment.Request.ValidFromUtc,
+                ValidToUtc = assignment.Request.ValidToUtc,
+                TargetId = assignment.Identity.TargetId,
+                KpiId = assignment.Identity.KpiId,
+                ProjectId = assignment.Identity.ProjectId,
+                TaskId = assignment.Identity.TaskId
             });
         }
 
@@ -722,11 +773,34 @@ public class UsersController : ControllerBase
         });
 
     private static string AssignmentKey(UserAssignmentItemRequest assignment) => string.Join('|',
-        assignment.AssignmentType.Trim(), assignment.DelegatorUserPublicId, assignment.TargetId?.Trim(), assignment.KpiId?.Trim(),
-        assignment.ProjectId?.Trim(), assignment.TaskId?.Trim(), assignment.ValidFromUtc?.ToUniversalTime().Ticks,
+        assignment.AssignmentType.Trim(), assignment.DelegatorUserPublicId, assignment.TargetPublicId,
+        assignment.KpiPublicId, assignment.ProjectPublicId, assignment.TaskPublicId, assignment.ValidFromUtc?.ToUniversalTime().Ticks,
         assignment.ValidToUtc?.ToUniversalTime().Ticks, assignment.IsActive);
 
-    private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string ScopeKey(ScopeType type, UserScopeItemRequest scope) => string.Join('|',
+        type, scope.DepartmentPublicId, scope.UnitPublicId, scope.TargetPublicId, scope.KpiPublicId,
+        scope.ProjectPublicId, scope.TaskPublicId);
+
+    private static string? ValidateScopeSelector(ScopeType type, UserScopeItemRequest scope)
+    {
+        var recordCount = new[] { scope.TargetPublicId, scope.KpiPublicId, scope.ProjectPublicId, scope.TaskPublicId }.Count(item => item.HasValue);
+        var valid = type switch
+        {
+            ScopeType.Self or ScopeType.InstitutionScope or ScopeType.System =>
+                !scope.DepartmentPublicId.HasValue && !scope.UnitPublicId.HasValue && recordCount == 0,
+            ScopeType.DepartmentScope => scope.DepartmentPublicId.HasValue && !scope.UnitPublicId.HasValue && recordCount == 0,
+            ScopeType.UnitScope => scope.UnitPublicId.HasValue && recordCount == 0,
+            ScopeType.AssignedTargetScope => scope.TargetPublicId.HasValue && recordCount == 1 && !scope.DepartmentPublicId.HasValue && !scope.UnitPublicId.HasValue,
+            ScopeType.AssignedKpiScope => scope.KpiPublicId.HasValue && recordCount == 1 && !scope.DepartmentPublicId.HasValue && !scope.UnitPublicId.HasValue,
+            ScopeType.AssignedProjectScope => scope.ProjectPublicId.HasValue && recordCount == 1 && !scope.DepartmentPublicId.HasValue && !scope.UnitPublicId.HasValue,
+            ScopeType.AssignedTaskScope => scope.TaskPublicId.HasValue && recordCount == 1 && !scope.DepartmentPublicId.HasValue && !scope.UnitPublicId.HasValue,
+            _ => false
+        };
+        return valid ? null : $"Scope type '{type}' requires exactly its corresponding public record selector.";
+    }
+
+    private static Guid? PublicIdOrNull(IReadOnlyDictionary<string, Guid> map, string? internalId) =>
+        !string.IsNullOrWhiteSpace(internalId) && map.TryGetValue(internalId, out var publicId) ? publicId : null;
 
     private static bool TryDecodeRowVersion(string? value, out byte[] rowVersion)
     {

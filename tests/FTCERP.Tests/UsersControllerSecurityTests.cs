@@ -469,6 +469,12 @@ public sealed class UsersControllerSecurityTests
         var unit = new Unit { MunicipalityId = 401, DepartmentId = department.Id, Code = "U401", Name = "Unit 401" };
         context.Units.Add(unit);
         await context.SaveChangesAsync();
+        var performanceTargets = Enumerable.Range(1, 12).Select(index => new OpmsTarget
+        {
+            Id = $"target-{index:00}", PublicId = Guid.NewGuid(), MunicipalityId = 401,
+            IndicatorNumber = $"KPI-{index:00}", TargetName = $"Target {index:00}", KpiDescription = $"KPI {index:00}"
+        }).ToArray();
+        context.OpmsTargets.AddRange(performanceTargets);
         for (var index = 1; index <= 12; index++)
         {
             context.UserScopes.Add(new UserScope
@@ -501,6 +507,7 @@ public sealed class UsersControllerSecurityTests
         Assert.All(scopes.Items, item =>
         {
             Assert.NotEqual(Guid.Empty, item.PublicId);
+            Assert.NotNull(item.TargetPublicId);
             Assert.False(string.IsNullOrWhiteSpace(item.RowVersion));
         });
         var scopedResult = await controller.GetUserScopesPage(target.PublicId,
@@ -514,12 +521,12 @@ public sealed class UsersControllerSecurityTests
 
         var assignmentsResult = await controller.GetUserAssignmentsPage(target.PublicId, new PagedQueryRequest
         {
-            Page = 1, PageSize = 10, Search = "target-12", SortBy = "validFrom", SortDirection = "asc"
+            Page = 1, PageSize = 10, Search = performanceTargets[11].PublicId.ToString(), SortBy = "validFrom", SortDirection = "asc"
         });
         var assignments = Assert.IsType<ApiResponse<PagedResponse<UserAssignmentResponse>>>(Assert.IsType<OkObjectResult>(assignmentsResult.Result).Value).Data!;
         Assert.Equal(1, assignments.TotalCount);
         var assignment = Assert.Single(assignments.Items);
-        Assert.Equal("target-12", assignment.TargetId);
+        Assert.Equal(performanceTargets[11].PublicId, assignment.TargetPublicId);
         Assert.NotEqual(Guid.Empty, assignment.PublicId);
         Assert.False(string.IsNullOrWhiteSpace(assignment.RowVersion));
 
@@ -534,24 +541,40 @@ public sealed class UsersControllerSecurityTests
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
-        var tenant = new FixedTenantContext(451, "actor");
+        long? currentMunicipalityId = null;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(() => currentMunicipalityId);
+        tenant.SetupGet(item => item.UserId).Returns("actor");
+        tenant.SetupGet(item => item.IsSystem).Returns(true);
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
-        await using var context = new ApplicationDbContext(options, tenant);
+        await using var context = new ApplicationDbContext(options, tenant.Object);
         await context.Database.EnsureCreatedAsync();
         var municipality = new Municipality { Id = 451, Code = "M451", Name = "Municipality 451" };
+        var foreignMunicipality = new Municipality { Id = 452, Code = "M452", Name = "Municipality 452" };
         var actor = User("actor", 451, "actor@example.test", "0111111111");
         var target = User("target", 451, "target@example.test", "0222222222");
+        var performanceTarget = new OpmsTarget
+        {
+            Id = "target-451", PublicId = Guid.NewGuid(), MunicipalityId = 451,
+            IndicatorNumber = "KPI-451", TargetName = "Target 451", KpiDescription = "KPI 451"
+        };
+        var foreignPerformanceTarget = new OpmsTarget
+        {
+            Id = "target-452", PublicId = Guid.NewGuid(), MunicipalityId = 452,
+            IndicatorNumber = "KPI-452", TargetName = "Foreign target 452", KpiDescription = "Foreign KPI 452"
+        };
         var prior = new UserScope { UserId = target.Id, MunicipalityId = 451, ScopeType = ScopeType.InstitutionScope, IsActive = true };
-        context.AddRange(municipality, actor, target, prior);
+        context.AddRange(municipality, foreignMunicipality, actor, target, performanceTarget, foreignPerformanceTarget, prior);
         await context.SaveChangesAsync();
+        currentMunicipalityId = 451;
         var originalUserVersion = Convert.ToBase64String(target.RowVersion);
         var priorPublicId = prior.PublicId;
         context.ChangeTracker.Clear();
 
-        var controller = Controller(context, tenant, actor, new[] { actor, target }.ToDictionary(item => item.Id),
+        var controller = Controller(context, tenant.Object, actor, new[] { actor, target }.ToDictionary(item => item.Id),
             Access(actor, "SECURITY.ASSIGN_ROLES").Object);
         var response = await controller.SetUserScopes(target.PublicId, new UpdateUserScopesRequest(
-            [new UserScopeItemRequest(nameof(ScopeType.AssignedTargetScope), null, null, "target-451", null, null, null)],
+            [new UserScopeItemRequest(nameof(ScopeType.AssignedTargetScope), null, null, performanceTarget.PublicId, null, null, null)],
             originalUserVersion, "Approved target responsibility scope"));
 
         Assert.IsType<OkObjectResult>(response.Result);
@@ -563,7 +586,19 @@ public sealed class UsersControllerSecurityTests
         Assert.NotEqual(Guid.Empty, history[1].PublicId);
         Assert.True(history[1].IsActive);
         Assert.All(history, item => Assert.NotEmpty(item.RowVersion));
-        Assert.Equal("Approved target responsibility scope", (await context.AuditTrails.SingleAsync()).Reason);
+        var scopeAudit = await context.AuditTrails.SingleAsync();
+        Assert.Equal("Approved target responsibility scope", scopeAudit.Reason);
+        Assert.Contains(performanceTarget.PublicId.ToString(), scopeAudit.NewValue);
+        Assert.DoesNotContain(performanceTarget.Id, scopeAudit.NewValue);
+
+        context.ChangeTracker.Clear();
+        var refreshedTarget = await context.Users.SingleAsync(item => item.Id == target.Id);
+        var foreign = await controller.SetUserScopes(target.PublicId, new UpdateUserScopesRequest(
+            [new UserScopeItemRequest(nameof(ScopeType.AssignedTargetScope), null, null, foreignPerformanceTarget.PublicId, null, null, null)],
+            Convert.ToBase64String(refreshedTarget.RowVersion), "Attempt foreign target scope"));
+        Assert.IsType<BadRequestObjectResult>(foreign.Result);
+        Assert.Equal(2, await context.UserScopes.CountAsync());
+        Assert.Single(await context.AuditTrails.ToArrayAsync());
 
         context.ChangeTracker.Clear();
         var stale = await controller.SetUserScopes(target.PublicId, new UpdateUserScopesRequest(
@@ -578,16 +613,30 @@ public sealed class UsersControllerSecurityTests
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
-        var tenant = new FixedTenantContext(501, "actor");
+        long? currentMunicipalityId = null;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(() => currentMunicipalityId);
+        tenant.SetupGet(item => item.UserId).Returns("actor");
+        tenant.SetupGet(item => item.IsSystem).Returns(true);
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
-        await using var context = new ApplicationDbContext(options, tenant);
+        await using var context = new ApplicationDbContext(options, tenant.Object);
         await context.Database.EnsureCreatedAsync();
         context.AddRange(new Municipality { Id = 501, Code = "M501", Name = "Municipality 501" },
             new Municipality { Id = 502, Code = "M502", Name = "Municipality 502" });
         var actor = User("actor", 501, "actor@example.test", "0111111111");
         var target = User("target", 501, "target@example.test", "0222222222");
         var otherTenant = User("other", 502, "other@example.test", "0333333333");
-        context.AddRange(actor, target, otherTenant);
+        var performanceTarget = new OpmsTarget
+        {
+            Id = "delegated-target", PublicId = Guid.NewGuid(), MunicipalityId = 501,
+            IndicatorNumber = "KPI-501", TargetName = "Delegated target", KpiDescription = "Delegated KPI"
+        };
+        var foreignPerformanceTarget = new OpmsTarget
+        {
+            Id = "foreign-delegated-target", PublicId = Guid.NewGuid(), MunicipalityId = 502,
+            IndicatorNumber = "KPI-502", TargetName = "Foreign delegated target", KpiDescription = "Foreign delegated KPI"
+        };
+        context.AddRange(actor, target, otherTenant, performanceTarget, foreignPerformanceTarget);
         var prior = new UserAssignment
         {
             UserId = target.Id,
@@ -598,15 +647,16 @@ public sealed class UsersControllerSecurityTests
         };
         context.UserAssignments.Add(prior);
         await context.SaveChangesAsync();
+        currentMunicipalityId = 501;
         var originalVersion = Convert.ToBase64String(target.RowVersion);
         context.ChangeTracker.Clear();
 
         var directory = new[] { actor, target, otherTenant }.ToDictionary(item => item.Id);
-        var controller = Controller(context, tenant, actor, directory, Access(actor, "SECURITY.ASSIGN_ROLES").Object);
+        var controller = Controller(context, tenant.Object, actor, directory, Access(actor, "SECURITY.ASSIGN_ROLES").Object);
         var now = DateTime.UtcNow;
         var response = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
             [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), actor.PublicId, true,
-                now.AddMinutes(-1), now.AddDays(1), "delegated-target", null, null, null)],
+                now.AddMinutes(-1), now.AddDays(1), performanceTarget.PublicId, null, null, null)],
             originalVersion, "Approved temporary submission delegation"));
 
         Assert.IsType<OkObjectResult>(response.Result);
@@ -617,21 +667,34 @@ public sealed class UsersControllerSecurityTests
         Assert.True(rows[1].IsActive);
         Assert.Equal(actor.Id, rows[1].DelegatorUserId);
         Assert.NotEqual(originalVersion, Convert.ToBase64String((await context.Users.SingleAsync(item => item.Id == target.Id)).RowVersion));
-        Assert.Equal("Approved temporary submission delegation", (await context.AuditTrails.SingleAsync()).Reason);
+        var assignmentAudit = await context.AuditTrails.SingleAsync();
+        Assert.Equal("Approved temporary submission delegation", assignmentAudit.Reason);
+        Assert.Contains(performanceTarget.PublicId.ToString(), assignmentAudit.NewValue);
+        Assert.DoesNotContain(performanceTarget.Id, assignmentAudit.NewValue);
 
         context.ChangeTracker.Clear();
         var refreshedTarget = await context.Users.SingleAsync(item => item.Id == target.Id);
+        var foreignRecord = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
+            [new UserAssignmentItemRequest(nameof(AssignmentType.AdditionalSubmitterAssignment), null, true,
+                now, now.AddDays(1), foreignPerformanceTarget.PublicId, null, null, null)],
+            Convert.ToBase64String(refreshedTarget.RowVersion), "Attempt cross tenant target assignment"));
+        Assert.IsType<BadRequestObjectResult>(foreignRecord.Result);
+        Assert.Equal(2, await context.UserAssignments.CountAsync());
+        Assert.Single(await context.AuditTrails.ToArrayAsync());
+
+        context.ChangeTracker.Clear();
+        refreshedTarget = await context.Users.SingleAsync(item => item.Id == target.Id);
         var invalid = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
             [new UserAssignmentItemRequest(nameof(AssignmentType.DelegatedAssignment), otherTenant.PublicId, true,
-                now, now.AddDays(1), "cross-tenant-target", null, null, null)],
+                now, now.AddDays(1), performanceTarget.PublicId, null, null, null)],
             Convert.ToBase64String(refreshedTarget.RowVersion), "Attempt cross tenant delegation"));
         Assert.IsType<BadRequestObjectResult>(invalid.Result);
         Assert.Equal(2, await context.UserAssignments.CountAsync());
 
         context.ChangeTracker.Clear();
         var stale = await controller.SetUserAssignments(target.PublicId, new UpdateUserAssignmentsRequest(
-            [new UserAssignmentItemRequest(nameof(AssignmentType.TaskAssignee), null, true,
-                now, now.AddDays(2), null, null, null, "stale-task")],
+            [new UserAssignmentItemRequest(nameof(AssignmentType.AdditionalSubmitterAssignment), null, true,
+                now, now.AddDays(2), performanceTarget.PublicId, null, null, null)],
             originalVersion, "Attempt stale assignment update"));
         Assert.IsType<ConflictObjectResult>(stale.Result);
         Assert.Equal(2, await context.UserAssignments.CountAsync());

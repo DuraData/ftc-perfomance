@@ -43,6 +43,28 @@ public sealed class AccessGovernanceContractTests
     }
 
     [Fact]
+    public void User_scope_and_operational_assignment_contracts_expose_public_record_identifiers_only()
+    {
+        AssertPublicOnly(typeof(UserScopeItemRequest));
+        AssertPublicOnly(typeof(UserAssignmentItemRequest));
+        AssertPublicOnly(typeof(UserScopeResponse));
+        AssertPublicOnly(typeof(UserAssignmentResponse));
+
+        foreach (var contract in new[] { typeof(UserScopeItemRequest), typeof(UserScopeResponse) })
+        {
+            var properties = contract.GetProperties().ToDictionary(item => item.Name, item => item.PropertyType);
+            Assert.Equal(typeof(Guid?), properties["DepartmentPublicId"]);
+            Assert.Equal(typeof(Guid?), properties["UnitPublicId"]);
+        }
+
+        foreach (var contract in new[] { typeof(UserAssignmentItemRequest), typeof(UserAssignmentResponse) })
+        {
+            var properties = contract.GetProperties().ToDictionary(item => item.Name, item => item.PropertyType);
+            Assert.Equal(typeof(Guid?), properties["DelegatorUserPublicId"]);
+        }
+    }
+
+    [Fact]
     public async Task Simulation_resolves_public_organization_and_target_ids_inside_the_selected_tenant()
     {
         const long municipalityId = 9701;
@@ -107,9 +129,53 @@ public sealed class AccessGovernanceContractTests
         access.Verify(item => item.CheckPermissionAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<AccessScopeContext>()), Times.Never);
     }
 
+    [Fact]
+    public async Task Scope_identity_resolver_round_trips_tenant_owned_idp_kpi_project_and_task_public_ids()
+    {
+        const long municipalityId = 9704;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(municipalityId);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var municipality = new Municipality { Id = municipalityId, PublicId = Guid.NewGuid(), Code = "SIM-9704", Name = "IDP Scope Municipality" };
+        var actor = IdpTestFixture.CreateUser("idp-scope-actor", "IDP", "Actor");
+        actor.MunicipalityId = municipalityId;
+        var plan = new IdpPlan { PublicId = Guid.NewGuid(), MunicipalityId = municipalityId, MunicipalityName = municipality.Name, PlanCode = "IDP-SCOPE", PlanTitle = "Scope plan", CreatedByUserId = actor.Id };
+        var outcome = new IdpStrategicOutcome { PublicId = Guid.NewGuid(), IdpPlan = plan, Code = "OUT", Name = "Outcome" };
+        var objective = new IdpStrategicObjective { PublicId = Guid.NewGuid(), IdpStrategicOutcome = outcome, Code = "OBJ", Name = "Objective", StartDate = DateTime.UtcNow, EndDate = DateTime.UtcNow.AddYears(1) };
+        var priority = new IdpDevelopmentPriority { PublicId = Guid.NewGuid(), IdpStrategicObjective = objective, PriorityCode = "PRI", Name = "Priority" };
+        var programme = new IdpProgramme { PublicId = Guid.NewGuid(), IdpDevelopmentPriority = priority, ProgrammeCode = "PRG", Name = "Programme" };
+        var project = new IdpProject { PublicId = Guid.NewGuid(), IdpProgramme = programme, ProjectCode = "PRJ", ProjectName = "Project", StartDate = DateTime.UtcNow, EndDate = DateTime.UtcNow.AddMonths(6) };
+        var kpi = new IdpKpi { PublicId = Guid.NewGuid(), IdpProject = project, KpiCode = "KPI", KpiName = "KPI" };
+        var task = new IdpTaskAssignment { PublicId = Guid.NewGuid(), IdpPlan = plan, Title = "Task", AssignedToUserId = actor.Id, AssignedByUserId = actor.Id, DueDate = DateTime.UtcNow.AddDays(5) };
+        context.AddRange(municipality, actor, plan, outcome, objective, priority, programme, project, kpi, task);
+        await context.SaveChangesAsync();
+
+        var resolved = await SecurityScopeIdentityResolver.ResolveAsync(
+            context, municipalityId, null, null, null, kpi.PublicId, project.PublicId, task.PublicId);
+        Assert.True(resolved.Succeeded);
+        Assert.Equal(kpi.Id.ToString(), resolved.KpiId);
+        Assert.Equal(project.Id.ToString(), resolved.ProjectId);
+        Assert.Equal(task.Id.ToString(), resolved.TaskId);
+
+        var projected = await SecurityScopeIdentityResolver.ResolvePublicIdsAsync(
+            context, municipalityId, [], [resolved.KpiId], [resolved.ProjectId], [resolved.TaskId]);
+        Assert.Equal(kpi.PublicId, projected.Kpis[resolved.KpiId!]);
+        Assert.Equal(project.PublicId, projected.Projects[resolved.ProjectId!]);
+        Assert.Equal(task.PublicId, projected.Tasks[resolved.TaskId!]);
+    }
+
     private static void AssertGone(ActionResult? result)
     {
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status410Gone, objectResult.StatusCode);
+    }
+
+    private static void AssertPublicOnly(Type contract)
+    {
+        var properties = contract.GetProperties().ToDictionary(item => item.Name, item => item.PropertyType);
+        foreach (var retired in new[] { "DepartmentId", "UnitId", "TargetId", "KpiId", "ProjectId", "TaskId" })
+            Assert.DoesNotContain(retired, properties.Keys);
+        foreach (var publicName in new[] { "TargetPublicId", "KpiPublicId", "ProjectPublicId", "TaskPublicId" })
+            Assert.Equal(typeof(Guid?), properties[publicName]);
     }
 }
