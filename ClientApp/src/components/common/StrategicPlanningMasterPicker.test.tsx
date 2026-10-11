@@ -33,4 +33,11 @@ describe('StrategicPlanningMasterPicker', () => {
     render(<StrategicPlanningMasterPicker kind="strategic-objectives" label="Child" value="historic-objective" selectedLabel="Historic objective" onChange={vi.fn()} />);
     expect(await screen.findByRole('option', { name: 'Historic objective' })).toHaveValue('historic-objective');
   });
+
+  it('resolves a legacy name-backed selection to its governed public identity', async () => {
+    const onChange = vi.fn();
+    render(<StrategicPlanningMasterPicker kind="strategic-goals" label="Goal" value="" selectedLabel="Inclusive growth" onChange={onChange} />);
+    await waitFor(() => expect(api.getStrategicPlanningMastersPage).toHaveBeenCalledWith('strategic-goals', expect.objectContaining({ search: 'Inclusive growth' })));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('goal-1', expect.objectContaining({ name: 'Inclusive growth' })));
+  });
 });

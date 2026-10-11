@@ -1,34 +1,39 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getStrategicPlanningMastersPage, type StrategicPlanningMasterKind } from '../../api/api';
 import type { StrategicPlanningMasterDto } from '../../types';
 import { Button } from '../ui';
 import { Input, Select } from './Form';
 
-export type StrategicRelationshipMasterKind = Extract<StrategicPlanningMasterKind,
-  'municipal-kpas' | 'strategic-goals' | 'strategic-interventions' | 'strategic-objectives' | 'performance-objectives'>;
-
 type Props = {
-  kind: StrategicRelationshipMasterKind;
+  kind: StrategicPlanningMasterKind;
   label: string;
   value: string;
   onChange: (value: string, option?: StrategicPlanningMasterDto) => void;
   selectedLabel?: string;
   disabled?: boolean;
+  required?: boolean;
 };
 
-const nouns: Record<StrategicRelationshipMasterKind, string> = {
+const nouns: Record<StrategicPlanningMasterKind, string> = {
   'municipal-kpas': 'municipal KPA',
   'strategic-goals': 'strategic goal',
   'strategic-interventions': 'strategic intervention',
   'strategic-objectives': 'strategic objective',
   'performance-objectives': 'performance objective',
+  'budget-sources': 'budget source',
+  'budget-types': 'budget type',
+  'kpi-types': 'KPI type',
+  'indicator-types': 'indicator type',
+  'functional-areas': 'functional area',
+  'standard-classifications': 'standard classification',
+  'kpi-units-of-measure': 'KPI unit of measure',
 };
 
 function optionLabel(item: StrategicPlanningMasterDto) {
   return `${item.code ? `${item.code} · ` : ''}${item.name}`;
 }
 
-export function StrategicPlanningMasterPicker({ kind, label, value, onChange, selectedLabel, disabled }: Props) {
+export function StrategicPlanningMasterPicker({ kind, label, value, onChange, selectedLabel, disabled, required }: Props) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -38,7 +43,11 @@ export function StrategicPlanningMasterPicker({ kind, label, value, onChange, se
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const onChangeRef = useRef(onChange);
+  const resolvedLabelRef = useRef<string>();
   const noun = nouns[kind];
+
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300);
@@ -53,9 +62,10 @@ export function StrategicPlanningMasterPicker({ kind, label, value, onChange, se
     const load = async () => {
       setIsLoading(true);
       setError(undefined);
+      const selectedSearch = !value && selectedLabel?.trim() ? selectedLabel.trim() : undefined;
       const result = await getStrategicPlanningMastersPage(
         kind,
-        { page, pageSize: 25, search: search || undefined, sortBy: 'name', sortDirection: 'asc' },
+        { page, pageSize: 25, search: search || selectedSearch, sortBy: 'name', sortDirection: 'asc' },
       );
       if (cancelled) return;
       if (!result.success || !result.data) {
@@ -64,12 +74,21 @@ export function StrategicPlanningMasterPicker({ kind, label, value, onChange, se
         setItems(result.data.items); setTotalCount(result.data.totalCount); setTotalPages(result.data.totalPages);
         const matching = result.data.items.find(item => item.publicId === value);
         if (matching) setSelectedOption(matching);
+        if (!value && selectedSearch) {
+          const normalized = selectedSearch.toLocaleLowerCase();
+          const exact = result.data.items.find(item => item.name.trim().toLocaleLowerCase() === normalized);
+          if (exact && resolvedLabelRef.current !== `${kind}:${normalized}`) {
+            resolvedLabelRef.current = `${kind}:${normalized}`;
+            setSelectedOption(exact);
+            onChangeRef.current(exact.publicId, exact);
+          }
+        }
       }
       setIsLoading(false);
     };
     void load();
     return () => { cancelled = true; };
-  }, [kind, noun, page, search, value]);
+  }, [kind, noun, page, search, selectedLabel, value]);
 
   const options = useMemo(() => {
     const values = items.map(item => ({ value: item.publicId, label: optionLabel(item) }));
@@ -82,7 +101,7 @@ export function StrategicPlanningMasterPicker({ kind, label, value, onChange, se
 
   return <div className="space-y-2">
     <Input label={`${label} search`} value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${noun}s`} disabled={disabled} />
-    <Select label={label} value={value} disabled={disabled || isLoading} options={options} onChange={event => {
+    <Select label={label} value={value} required={required} disabled={disabled || isLoading} options={options} onChange={event => {
       const next = event.target.value;
       const option = items.find(item => item.publicId === next) ?? (selectedOption?.publicId === next ? selectedOption : undefined);
       if (option) setSelectedOption(option);

@@ -109,7 +109,6 @@ import type {
   PerformanceTargetRevisionDto,
   KpiFieldRevisionDto,
   ReportingWindowExceptionDto,
-  PerformanceLookupsDto,
   PerformanceRfiDto,
   StageRatingDto,
   SecurityNavigationItemDto,
@@ -1682,10 +1681,6 @@ export async function getInternalAuditAssessmentsPage(kind: 1 | 2, submissionId:
 
 export async function saveInternalAuditAssessment(kind: 1 | 2, submissionId: string, payload: { outcome: 1 | 2 | 3 | 4; detailedObservation: string; comment?: string; findings?: string; recommendation?: string; score?: number; responseDueAt?: string; previousAssessmentPublicId?: string }): Promise<ApiResponse<InternalAuditAssessmentDto>> {
   return post<InternalAuditAssessmentDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments`, payload);
-}
-
-export async function getPerformanceLookups(): Promise<ApiResponse<PerformanceLookupsDto>> {
-  return get<PerformanceLookupsDto>('/v1/performance-lookups');
 }
 
 export async function getRatingSchemesPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<RatingSchemeDto>>> {

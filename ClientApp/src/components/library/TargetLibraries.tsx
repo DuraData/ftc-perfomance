@@ -16,6 +16,7 @@ import {
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card, EmptyState } from '../ui';
 import { Modal } from '../common/Modal';
+import { StrategicPlanningMasterPicker } from '../common/StrategicPlanningMasterPicker';
 import { Checkbox, FormHero, FormPanel, FormRow, Input, Select, Textarea } from '../common/Form';
 import { useApp } from '../../context/AppContext';
 import {
@@ -34,7 +35,6 @@ import {
   updateIpmsTargetTemplate as updateIpmsTargetTemplateApi,
   updateOpmsTargetTemplate as updateOpmsTargetTemplateApi,
 } from '../../api/api';
-import { usePerformanceReferenceData } from '../../hooks/usePerformanceReferenceData';
 import type {
   IpmsTargetTemplate,
   OpmsTargetTemplate,
@@ -42,7 +42,6 @@ import type {
   SaveOpmsTargetTemplatePayload,
   TargetUnitType,
   TemplateQuarterlyTarget,
-  PerformanceLookupsDto,
   TargetLibraryFacets,
 } from '../../types';
 
@@ -660,7 +659,7 @@ function buildQuarterlyTargetsFromForm(quarterlyTargets: { quarter: string; targ
   }));
 }
 
-function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form'], lookups: PerformanceLookupsDto): SaveOpmsTargetTemplatePayload {
+function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['form']): SaveOpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
     templateName: form.templateName,
@@ -671,17 +670,17 @@ function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['
     annualTarget: Number(form.annualTarget || 0),
     annualTargetDescription: form.annualTargetDescription || null,
     targetUnitType: form.targetUnitType,
-    unitOfMeasure: lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId)?.name ?? null,
+    unitOfMeasure: form.unitOfMeasureName || null,
     nationalKpa: form.nationalKPA || null,
     municipalKpa: form.municipalKPA || null,
-    strategicGoal: lookups.strategicGoals.find(item => String(item.id) === form.strategicGoalId)?.name ?? null,
-    strategicObjective: lookups.strategicObjectives.find(item => String(item.id) === form.strategicObjectiveId)?.name ?? null,
+    strategicGoal: form.strategicGoalName || null,
+    strategicObjective: form.strategicObjectiveName || null,
     performanceObjective: form.performanceObjective || null,
     outcome: form.outcome || null,
     output: form.output || null,
     priorityIssue: form.priorityIssue || null,
-    budgetSource: lookups.budgetSources.find(item => String(item.id) === form.budgetSourceId)?.name ?? null,
-    budgetType: lookups.budgetTypes.find(item => String(item.id) === form.budgetTypeId)?.name ?? null,
+    budgetSource: form.budgetSourceName || null,
+    budgetType: form.budgetTypeName || null,
     weight: Number(form.weight || 0),
     kpiType: form.kpiType || null,
     indicatorType: form.indicatorType || null,
@@ -697,7 +696,7 @@ function buildOpmsTemplatePayload(form: ReturnType<typeof useOpmsTemplateForm>['
   };
 }
 
-function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['form'], lookups: PerformanceLookupsDto): SaveIpmsTargetTemplatePayload {
+function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['form']): SaveIpmsTargetTemplatePayload {
   return {
     templateCode: form.templateCode,
     templateName: form.templateName,
@@ -707,7 +706,7 @@ function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['
     employeeLevel: form.employeeLevel || null,
     jobGrade: form.jobGrade || null,
     targetUnitType: form.targetUnitType,
-    unitOfMeasure: lookups.unitsOfMeasure.find(item => String(item.id) === form.unitOfMeasureId)?.name ?? null,
+    unitOfMeasure: form.unitOfMeasureName || null,
     annualTarget: Number(form.annualTarget || 0),
     annualTargetDescription: form.annualTargetDescription || null,
     weight: Number(form.weight || 0),
@@ -721,17 +720,7 @@ function buildIpmsTemplatePayload(form: ReturnType<typeof useIpmsTemplateForm>['
   };
 }
 
-function referenceIdByName(
-  items: ReadonlyArray<{ id: number | string; name: string }>,
-  name?: string,
-) {
-  const normalized = name?.trim().toLocaleLowerCase();
-  if (!normalized) return '';
-  const match = items.find(item => item.name.trim().toLocaleLowerCase() === normalized);
-  return match ? String(match.id) : '';
-}
-
-function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lookups: PerformanceLookupsDto) {
+function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined) {
   const [form, setForm] = useState({
     templateCode: '',
     templateName: '',
@@ -744,16 +733,21 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
     annualTargetDescription: '',
     targetUnitType: 'absolute_count' as TargetUnitType,
     unitOfMeasureId: '',
+    unitOfMeasureName: '',
     nationalKPA: '',
     municipalKPA: '',
     strategicGoalId: '',
+    strategicGoalName: '',
     strategicObjectiveId: '',
+    strategicObjectiveName: '',
     performanceObjective: '',
     outcome: '',
     output: '',
     priorityIssue: '',
     budgetSourceId: '',
+    budgetSourceName: '',
     budgetTypeId: '',
+    budgetTypeName: '',
     weight: '0',
     kpiType: '',
     indicatorType: '',
@@ -783,16 +777,21 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
         annualTargetDescription: '',
         targetUnitType: 'absolute_count',
         unitOfMeasureId: '',
+        unitOfMeasureName: '',
         nationalKPA: '',
         municipalKPA: '',
         strategicGoalId: '',
+        strategicGoalName: '',
         strategicObjectiveId: '',
+        strategicObjectiveName: '',
         performanceObjective: '',
         outcome: '',
         output: '',
         priorityIssue: '',
         budgetSourceId: '',
+        budgetSourceName: '',
         budgetTypeId: '',
+        budgetTypeName: '',
         weight: '0',
         kpiType: '',
         indicatorType: '',
@@ -821,17 +820,22 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
       annualTarget: String(template.annualTarget),
       annualTargetDescription: template.annualTargetDescription,
       targetUnitType: template.targetUnitType,
-      unitOfMeasureId: referenceIdByName(lookups.unitsOfMeasure, template.unitOfMeasure.name),
+      unitOfMeasureId: '',
+      unitOfMeasureName: template.unitOfMeasure.name,
       nationalKPA: template.nationalKPA,
       municipalKPA: template.municipalKPA,
-      strategicGoalId: referenceIdByName(lookups.strategicGoals, template.strategicGoal?.name),
-      strategicObjectiveId: referenceIdByName(lookups.strategicObjectives, template.strategicObjective?.name),
+      strategicGoalId: '',
+      strategicGoalName: template.strategicGoal?.name ?? '',
+      strategicObjectiveId: '',
+      strategicObjectiveName: template.strategicObjective?.name ?? '',
       performanceObjective: template.performanceObjective,
       outcome: template.outcome ?? '',
       output: template.output ?? '',
       priorityIssue: template.priorityIssue ?? '',
-      budgetSourceId: referenceIdByName(lookups.budgetSources, template.budgetSource?.name),
-      budgetTypeId: referenceIdByName(lookups.budgetTypes, template.budgetType?.name),
+      budgetSourceId: '',
+      budgetSourceName: template.budgetSource?.name ?? '',
+      budgetTypeId: '',
+      budgetTypeName: template.budgetType?.name ?? '',
       weight: String(template.weight),
       kpiType: template.kpiType,
       indicatorType: template.indicatorType,
@@ -854,12 +858,12 @@ function useOpmsTemplateForm(template: OpmsTargetTemplate | null | undefined, lo
         };
       }),
     });
-  }, [lookups, template]);
+  }, [template]);
 
   return { form, setForm };
 }
 
-function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lookups: PerformanceLookupsDto) {
+function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined) {
   const [form, setForm] = useState({
     templateCode: '',
     templateName: '',
@@ -871,6 +875,7 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
     jobGrade: '',
     targetUnitType: 'percentage' as TargetUnitType,
     unitOfMeasureId: '',
+    unitOfMeasureName: '',
     annualTarget: '0',
     annualTargetDescription: '',
     weight: '0',
@@ -897,6 +902,7 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
         jobGrade: '',
         targetUnitType: 'percentage',
         unitOfMeasureId: '',
+        unitOfMeasureName: '',
         annualTarget: '0',
         annualTargetDescription: '',
         weight: '0',
@@ -922,7 +928,8 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
       employeeLevel: template.employeeLevel,
       jobGrade: template.jobGrade,
       targetUnitType: template.targetUnitType,
-      unitOfMeasureId: referenceIdByName(lookups.unitsOfMeasure, template.unitOfMeasure.name),
+      unitOfMeasureId: '',
+      unitOfMeasureName: template.unitOfMeasure.name,
       annualTarget: String(template.annualTarget),
       annualTargetDescription: template.annualTargetDescription,
       weight: String(template.weight),
@@ -935,7 +942,7 @@ function useIpmsTemplateForm(template: IpmsTargetTemplate | null | undefined, lo
       isActive: template.isActive,
       version: String(template.version),
     });
-  }, [lookups, template]);
+  }, [template]);
 
   return { form, setForm };
 }
@@ -1356,10 +1363,9 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
-  const referenceData = usePerformanceReferenceData(false);
   const [template, setTemplate] = useState<OpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
-  const { form, setForm } = useOpmsTemplateForm(template, referenceData.lookups);
+  const { form, setForm } = useOpmsTemplateForm(template);
 
   useEffect(() => {
     if (!templateId) {
@@ -1383,7 +1389,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   }, [templateId, pushToast]);
 
   const handleSave = async () => {
-    const payload = buildOpmsTemplatePayload(form, referenceData.lookups);
+    const payload = buildOpmsTemplatePayload(form);
 
     if (template) {
       const result = await updateOpmsTargetTemplateApi(template.id, { ...payload, rowVersion: template.rowVersion });
@@ -1405,7 +1411,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     }
   };
 
-  if (isLoading || referenceData.isLoading) {
+  if (isLoading) {
     return (
       <AppShell title={templateId ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
         <Card>
@@ -1414,16 +1420,6 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
       </AppShell>
     );
   }
-
-  if (referenceData.error) {
-    return (
-      <AppShell title={templateId ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
-        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
-      </AppShell>
-    );
-  }
-
-  const { lookups } = referenceData;
 
   return (
     <AppShell title={template ? 'Edit OPMS Target Template' : 'Create OPMS Target Template'} subtitle="Reusable generic OPMS target definition">
@@ -1463,8 +1459,8 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
               <Input label="Municipal KPA" required value={form.municipalKPA} onChange={(event) => setForm(prev => ({ ...prev, municipalKPA: event.target.value }))} />
             </FormRow>
             <FormRow cols={2}>
-              <Select label="Strategic Goal" value={form.strategicGoalId} onChange={(event) => setForm(prev => ({ ...prev, strategicGoalId: event.target.value, strategicObjectiveId: '' }))} options={[{ value: '', label: 'Select Goal' }, ...lookups.strategicGoals.map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Select label="Strategic Objective" value={form.strategicObjectiveId} onChange={(event) => setForm(prev => ({ ...prev, strategicObjectiveId: event.target.value }))} options={[{ value: '', label: 'Select Objective' }, ...lookups.strategicObjectives.filter(item => !form.strategicGoalId || String(item.strategicGoalId) === form.strategicGoalId).map(item => ({ value: String(item.id), label: item.name }))]} />
+              <StrategicPlanningMasterPicker kind="strategic-goals" label="Strategic Goal" value={form.strategicGoalId} selectedLabel={form.strategicGoalName} onChange={(value, option) => setForm(prev => ({ ...prev, strategicGoalId: value, strategicGoalName: option?.name ?? (value ? prev.strategicGoalName : ''), strategicObjectiveId: '', strategicObjectiveName: '' }))} />
+              <StrategicPlanningMasterPicker kind="strategic-objectives" label="Strategic Objective" value={form.strategicObjectiveId} selectedLabel={form.strategicObjectiveName} onChange={(value, option) => setForm(prev => ({ ...prev, strategicObjectiveId: value, strategicObjectiveName: option?.name ?? (value ? prev.strategicObjectiveName : '') }))} />
             </FormRow>
             <Input label="Performance Objective" required value={form.performanceObjective} onChange={(event) => setForm(prev => ({ ...prev, performanceObjective: event.target.value }))} />
             <FormRow cols={3}>
@@ -1483,7 +1479,7 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />
             <FormRow cols={4}>
               <Select label="Target Unit Type" required value={form.targetUnitType} onChange={(event) => setForm(prev => ({ ...prev, targetUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypes} />
-              <Select label="Unit of Measure" required value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
+              <StrategicPlanningMasterPicker kind="kpi-units-of-measure" label="Unit of Measure" required value={form.unitOfMeasureId} selectedLabel={form.unitOfMeasureName} onChange={(value, option) => setForm(prev => ({ ...prev, unitOfMeasureId: value, unitOfMeasureName: option?.name ?? (value ? prev.unitOfMeasureName : '') }))} />
               <Input label="KPI Type" required value={form.kpiType} onChange={(event) => setForm(prev => ({ ...prev, kpiType: event.target.value }))} />
               <Input label="Indicator Type" required value={form.indicatorType} onChange={(event) => setForm(prev => ({ ...prev, indicatorType: event.target.value }))} />
             </FormRow>
@@ -1538,8 +1534,8 @@ export function OPMSTargetTemplateFormPage({ templateId }: { templateId?: string
         <div className="grid gap-4 xl:grid-cols-2">
           <FormPanel title="Budget Defaults" description="Reusable budget and classification references." icon={<Target className="h-5 w-5" />}>
             <FormRow cols={2}>
-              <Select label="Budget Source" value={form.budgetSourceId} onChange={(event) => setForm(prev => ({ ...prev, budgetSourceId: event.target.value }))} options={[{ value: '', label: 'Select Budget Source' }, ...lookups.budgetSources.map(item => ({ value: String(item.id), label: item.name }))]} />
-              <Select label="Budget Type" value={form.budgetTypeId} onChange={(event) => setForm(prev => ({ ...prev, budgetTypeId: event.target.value }))} options={[{ value: '', label: 'Select Budget Type' }, ...lookups.budgetTypes.map(item => ({ value: String(item.id), label: item.name }))]} />
+              <StrategicPlanningMasterPicker kind="budget-sources" label="Budget Source" value={form.budgetSourceId} selectedLabel={form.budgetSourceName} onChange={(value, option) => setForm(prev => ({ ...prev, budgetSourceId: value, budgetSourceName: option?.name ?? (value ? prev.budgetSourceName : '') }))} />
+              <StrategicPlanningMasterPicker kind="budget-types" label="Budget Type" value={form.budgetTypeId} selectedLabel={form.budgetTypeName} onChange={(value, option) => setForm(prev => ({ ...prev, budgetTypeId: value, budgetTypeName: option?.name ?? (value ? prev.budgetTypeName : '') }))} />
             </FormRow>
             <Input label="Standard Classification" value={form.standardClassification} onChange={(event) => setForm(prev => ({ ...prev, standardClassification: event.target.value }))} />
             <Textarea label="Default Budget Information" rows={4} value={form.defaultBudgetInformation} onChange={(event) => setForm(prev => ({ ...prev, defaultBudgetInformation: event.target.value }))} />
@@ -1953,10 +1949,9 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
 
 export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string }) {
   const { pushToast, setCurrentPath } = useApp();
-  const referenceData = usePerformanceReferenceData(false);
   const [template, setTemplate] = useState<IpmsTargetTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(!!templateId);
-  const { form, setForm } = useIpmsTemplateForm(template, referenceData.lookups);
+  const { form, setForm } = useIpmsTemplateForm(template);
 
   useEffect(() => {
     if (!templateId) {
@@ -1980,7 +1975,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
   }, [templateId, pushToast]);
 
   const handleSave = async () => {
-    const payload = buildIpmsTemplatePayload(form, referenceData.lookups);
+    const payload = buildIpmsTemplatePayload(form);
 
     if (template) {
       const result = await updateIpmsTargetTemplateApi(template.id, { ...payload, rowVersion: template.rowVersion });
@@ -2002,7 +1997,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
     }
   };
 
-  if (isLoading || referenceData.isLoading) {
+  if (isLoading) {
     return (
       <AppShell title={templateId ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
         <Card>
@@ -2011,16 +2006,6 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
       </AppShell>
     );
   }
-
-  if (referenceData.error) {
-    return (
-      <AppShell title={templateId ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
-        <Card><p className="text-sm text-error-600">{referenceData.error}</p></Card>
-      </AppShell>
-    );
-  }
-
-  const { lookups } = referenceData;
 
   return (
     <AppShell title={template ? 'Edit IPMS Target Template' : 'Create IPMS Target Template'} subtitle="Reusable generic IPMS target definition">
@@ -2063,7 +2048,7 @@ export function IPMSTargetTemplateFormPage({ templateId }: { templateId?: string
             </FormRow>
             <FormRow cols={3}>
               <Select label="Target Unit Type" required value={form.targetUnitType} onChange={(event) => setForm(prev => ({ ...prev, targetUnitType: event.target.value as TargetUnitType }))} options={targetUnitTypes} />
-              <Select label="Unit of Measure" required value={form.unitOfMeasureId} onChange={(event) => setForm(prev => ({ ...prev, unitOfMeasureId: event.target.value }))} options={lookups.unitsOfMeasure.map(item => ({ value: String(item.id), label: item.name }))} />
+              <StrategicPlanningMasterPicker kind="kpi-units-of-measure" label="Unit of Measure" required value={form.unitOfMeasureId} selectedLabel={form.unitOfMeasureName} onChange={(value, option) => setForm(prev => ({ ...prev, unitOfMeasureId: value, unitOfMeasureName: option?.name ?? (value ? prev.unitOfMeasureName : '') }))} />
               <Input label="Annual Target" required type="number" value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
             </FormRow>
             <Textarea label="Annual Target Description" rows={3} value={form.annualTargetDescription} onChange={(event) => setForm(prev => ({ ...prev, annualTargetDescription: event.target.value }))} />

@@ -19,26 +19,13 @@ const api = vi.hoisted(() => ({
   getOpmsTargetTemplate: vi.fn(),
   getOpmsTargetTemplateFacets: vi.fn(),
   getOpmsTargetTemplatesPage: vi.fn(),
+  getStrategicPlanningMastersPage: vi.fn(),
   updateIpmsTargetTemplate: vi.fn(),
   updateOpmsTargetTemplate: vi.fn(),
 }));
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
-const referenceData = vi.hoisted(() => ({
-  lookups: {
-    periods: [],
-    strategicGoals: [{ id: 11, name: 'Service Delivery Excellence' }],
-    strategicObjectives: [{ id: 12, name: 'Improve Road Infrastructure', strategicGoalId: 11 }],
-    budgetSources: [{ id: 13, name: 'Municipal Infrastructure Grant' }],
-    budgetTypes: [{ id: 14, name: 'Capital Expenditure' }],
-    unitsOfMeasure: [{ id: 15, name: 'Kilometers' }, { id: 16, name: 'Percentage' }],
-  },
-  isLoading: false,
-  error: null,
-}));
-
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
-vi.mock('../../hooks/usePerformanceReferenceData', () => ({ usePerformanceReferenceData: () => referenceData }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 
 const facets = { primaryAreas: ['Services'], functionalAreas: ['Operations'], classifications: ['Outcome'], targetUnitTypes: ['percentage'], versions: [2, 1] };
@@ -60,6 +47,21 @@ describe('target library registers', () => {
     api.getIpmsTargetTemplateFacets.mockResolvedValue({ success: true, data: facets });
     api.getOpmsTargetTemplatesPage.mockResolvedValue({ success: true, data: { items: [opmsTemplate], page: 1, pageSize: 25, totalCount: 27, totalPages: 2 } });
     api.getIpmsTargetTemplatesPage.mockResolvedValue({ success: true, data: { items: [ipmsTemplate], page: 1, pageSize: 25, totalCount: 28, totalPages: 2 } });
+    const masters = {
+      'strategic-goals': [{ publicId: 'goal-public', code: 'SG1', name: 'Service Delivery Excellence' }],
+      'strategic-objectives': [{ publicId: 'objective-public', code: 'SO1', name: 'Improve Road Infrastructure' }],
+      'budget-sources': [{ publicId: 'source-public', code: 'MIG', name: 'Municipal Infrastructure Grant' }],
+      'budget-types': [{ publicId: 'type-public', code: 'CAPEX', name: 'Capital Expenditure' }],
+      'kpi-units-of-measure': [
+        { publicId: 'kilometres-public', code: 'KM', name: 'Kilometers' },
+        { publicId: 'percentage-public', code: 'PCT', name: 'Percentage' },
+      ],
+    } as const;
+    api.getStrategicPlanningMastersPage.mockImplementation(async (kind: keyof typeof masters, query: { search?: string }) => {
+      const rows = masters[kind] ?? [];
+      const items = query.search ? rows.filter(item => item.name.toLowerCase() === query.search?.toLowerCase()) : rows;
+      return { success: true, data: { items, page: 1, pageSize: 25, totalCount: items.length, totalPages: items.length ? 1 : 0 } };
+    });
   });
 
   it('round-trips OPMS name-based references through the edit form without destructive defaults', async () => {
@@ -91,11 +93,11 @@ describe('target library registers', () => {
     expect(screen.queryByLabelText(/Created Date/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Creator identity and creation time are assigned by the server/i)).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('15');
-      expect(screen.getByLabelText('Strategic Goal')).toHaveValue('11');
-      expect(screen.getByLabelText('Strategic Objective')).toHaveValue('12');
-      expect(screen.getByLabelText('Budget Source')).toHaveValue('13');
-      expect(screen.getByLabelText('Budget Type')).toHaveValue('14');
+      expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('kilometres-public');
+      expect(screen.getByLabelText('Strategic Goal')).toHaveValue('goal-public');
+      expect(screen.getByLabelText('Strategic Objective')).toHaveValue('objective-public');
+      expect(screen.getByLabelText('Budget Source')).toHaveValue('source-public');
+      expect(screen.getByLabelText('Budget Type')).toHaveValue('type-public');
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
 
@@ -135,7 +137,7 @@ describe('target library registers', () => {
     expect(screen.queryByLabelText(/Created By/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Created Date/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Creator identity and creation time are assigned by the server/i)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('16'));
+    await waitFor(() => expect(screen.getByLabelText('Unit of Measure*')).toHaveValue('percentage-public'));
     fireEvent.click(screen.getByRole('button', { name: 'Save Template' }));
     await waitFor(() => expect(api.updateIpmsTargetTemplate).toHaveBeenCalledWith(
       '2',
