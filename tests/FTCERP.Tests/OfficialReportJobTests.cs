@@ -521,6 +521,90 @@ public sealed class OfficialReportJobTests
         (await verification.AuditTrails.IgnoreQueryFilters().AnyAsync(item => item.EntityName == nameof(OfficialReportJob) && item.Action == "Complete")).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(OfficialReportFormat.Pdf, "application/pdf", ".pdf")]
+    [InlineData(OfficialReportFormat.Xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")]
+    [InlineData(OfficialReportFormat.Docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx")]
+    public async Task DurableJob_PersistsAndAuthorizesAnIntegrityCheckedDocumentRoundTrip(
+        OfficialReportFormat format, string expectedContentType, string expectedExtension)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        var seeded = await SeedDueSchedule(options, format: format);
+        var tenant = new FixedTenantContext(seeded.Schedule.MunicipalityId, seeded.User.Id);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        var storage = new MemoryEvidenceBlobStorage();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddHttpContextAccessor();
+        services.AddScoped<ITenantContext, HttpTenantContext>();
+        services.AddScoped(provider => new ApplicationDbContext(options, provider.GetRequiredService<ITenantContext>()));
+        services.AddScoped<UserManager<ApplicationUser>>(provider =>
+            IdpTestFixture.CreateUserManagerMock(provider.GetRequiredService<ApplicationDbContext>().Users.Single(item => item.Id == seeded.User.Id)).Object);
+        services.AddSingleton(access.Object);
+        services.AddSingleton<IEvidenceBlobStorage>(storage);
+        services.AddScoped<IWorkflowGovernanceService, WorkflowGovernanceService>();
+        await using var provider = services.BuildServiceProvider();
+        var worker = new OfficialReportJobWorker(provider.GetRequiredService<IServiceScopeFactory>(), new ConfigurationBuilder().Build(), NullLogger<OfficialReportJobWorker>.Instance);
+
+        (await worker.ProcessBatch(CancellationToken.None)).Should().Be(1);
+
+        Guid generationPublicId;
+        string storageKey;
+        byte[] persistedBytes;
+        await using (var verification = new ApplicationDbContext(options, new SystemTenantContext()))
+        {
+            var job = await verification.OfficialReportJobs.IgnoreQueryFilters()
+                .Include(item => item.OfficialReportGeneration).ThenInclude(item => item!.Blob).SingleAsync();
+            job.State.Should().Be(OfficialReportJobState.Completed, job.LastError);
+            job.OfficialReportGeneration.Should().NotBeNull();
+            var generation = job.OfficialReportGeneration!;
+            generationPublicId = generation.PublicId;
+            generation.ContentType.Should().Be(expectedContentType);
+            generation.FileName.Should().EndWith(expectedExtension);
+            generation.Blob.ContentType.Should().Be(expectedContentType);
+            generation.Blob.SignatureVerified.Should().BeTrue();
+            generation.Blob.ScanStatus.Should().Be("SystemGenerated");
+            storageKey = generation.Blob.StorageKey;
+            persistedBytes = storage.Get(storageKey);
+            generation.SizeInBytes.Should().Be(persistedBytes.LongLength);
+            generation.Blob.SizeInBytes.Should().Be(persistedBytes.LongLength);
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(persistedBytes)).ToLowerInvariant();
+            generation.Sha256.Should().Be(hash);
+            generation.Blob.Sha256.Should().Be(hash);
+        }
+
+        await using var context = new ApplicationDbContext(options, tenant);
+        var governance = new WorkflowGovernanceService(context, tenantContext: tenant);
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(seeded.User).Object,
+            access.Object, tenant, governance, storage)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seeded.User.Id) }
+            }
+        };
+
+        var download = Assert.IsType<FileContentResult>(await controller.Download(generationPublicId));
+        download.ContentType.Should().Be(expectedContentType);
+        download.FileDownloadName.Should().EndWith(expectedExtension);
+        download.FileContents.Should().Equal(persistedBytes);
+        if (format == OfficialReportFormat.Pdf) download.FileContents[..5].Should().Equal("%PDF-"u8.ToArray());
+        else download.FileContents[..2].Should().Equal("PK"u8.ToArray());
+        (await context.AuditTrails.AnyAsync(item => item.EntityName == nameof(OfficialReportGeneration)
+            && item.EntityId == generationPublicId.ToString() && item.Action == "Download")).Should().BeTrue();
+
+        await storage.StoreAsync(storageKey, "tampered report bytes"u8.ToArray(), CancellationToken.None);
+        var rejected = Assert.IsType<ConflictObjectResult>(await controller.Download(generationPublicId));
+        rejected.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+        (await context.AuditTrails.AnyAsync(item => item.EntityName == nameof(OfficialReportGeneration)
+            && item.EntityId == generationPublicId.ToString() && item.Action == "IntegrityFailure")).Should().BeTrue();
+    }
+
     [Fact]
     public async Task DueSchedule_WithNoResolvedRecipients_FailsClosedWithoutGenerating()
     {
@@ -546,7 +630,9 @@ public sealed class OfficialReportJobTests
         (await verification.OfficialReportGenerations.IgnoreQueryFilters().CountAsync()).Should().Be(0);
     }
 
-    private static async Task<(ApplicationUser User, OfficialReportSchedule Schedule)> SeedDueSchedule(DbContextOptions<ApplicationDbContext> options, string? recipientUserId = null, SubmissionKind kind = SubmissionKind.Opms)
+    private static async Task<(ApplicationUser User, OfficialReportSchedule Schedule)> SeedDueSchedule(
+        DbContextOptions<ApplicationDbContext> options, string? recipientUserId = null,
+        SubmissionKind kind = SubmissionKind.Opms, OfficialReportFormat format = OfficialReportFormat.Csv)
     {
         await using var context = new ApplicationDbContext(options, new SystemTenantContext());
         await context.Database.EnsureCreatedAsync();
@@ -562,7 +648,7 @@ public sealed class OfficialReportJobTests
         var template = new OfficialReportTemplate
         {
             MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalYear.Id, SubmissionKind = kind,
-            ReportType = OfficialReportType.QuarterlyPerformance, Code = "QUARTERLY", Name = "Quarterly report", Format = OfficialReportFormat.Csv,
+            ReportType = OfficialReportType.QuarterlyPerformance, Code = "QUARTERLY", Name = "Quarterly report", Format = format,
             ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.QuarterlyPerformance), EffectiveFrom = DateTime.UtcNow.AddDays(-1),
             ApprovalReference = "Council-2026", Reason = "Approved", CreatedByUserId = user.Id
         };
@@ -624,4 +710,39 @@ public sealed class OfficialReportJobTests
 
     private sealed class SystemTenantContext : ITenantContext { public long? MunicipalityId => null; public bool IsSystem => true; public string? UserId => "system"; }
     private sealed class FixedTenantContext(long municipalityId, string userId) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => false; public string? UserId => userId; }
+
+    private sealed class MemoryEvidenceBlobStorage : IEvidenceBlobStorage
+    {
+        private readonly Dictionary<string, byte[]> content = new(StringComparer.Ordinal);
+
+        public byte[] Get(string storageKey) => content[storageKey].ToArray();
+
+        public Task<EvidenceStorageOperationResult> StoreAsync(string storageKey, ReadOnlyMemory<byte> value, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            content[storageKey] = value.ToArray();
+            return Task.FromResult(new EvidenceStorageOperationResult(true, "Stored in the deterministic test blob store."));
+        }
+
+        public Task<EvidenceStorageReadResult> ReadAsync(string storageKey, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(content.TryGetValue(storageKey, out var value)
+                ? new EvidenceStorageReadResult(true, value.ToArray(), "Read from the deterministic test blob store.")
+                : new EvidenceStorageReadResult(false, [], "Content was not found."));
+        }
+
+        public Task<EvidenceStorageOperationResult> DisposeAsync(string storageKey, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            content.Remove(storageKey);
+            return Task.FromResult(new EvidenceStorageOperationResult(true, "Disposed from the deterministic test blob store."));
+        }
+
+        public Task<EvidenceStorageHealthResult> CheckHealthAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new EvidenceStorageHealthResult(true, "Memory", "Deterministic test blob store is available."));
+        }
+    }
 }
