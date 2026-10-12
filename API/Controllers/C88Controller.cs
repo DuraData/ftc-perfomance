@@ -473,7 +473,7 @@ public sealed class C88Controller : ControllerBase
             IsActive = request.IsActive, CreatedByUserId = session.User!.Id
         };
         context.C88CatalogueVersions.Add(entity);
-        Audit(entity.PublicId, "CreateCatalogueVersion", null, new { entity.Code, entity.Name, entity.EditionDate, entity.IsPublished, Reason = reason }, session.User.Id);
+        Audit(entity.PublicId, "CreateCatalogueVersion", null, new { entity.Code, entity.Name, entity.EditionDate, entity.IsPublished, Reason = reason }, session.User.Id, reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<Guid>("The catalogue version conflicts with an existing record.")); }
         return OkId(entity.PublicId);
@@ -501,7 +501,7 @@ public sealed class C88Controller : ControllerBase
         var before = new { entity.Code, entity.Name, entity.EditionDate, entity.EffectiveFrom, entity.EffectiveTo, entity.IsPublished, entity.IsActive };
         entity.Code = code; entity.Name = name; entity.EditionDate = Utc(request.EditionDate); entity.EffectiveFrom = Utc(request.EffectiveFrom);
         entity.EffectiveTo = NullableUtc(request.EffectiveTo); entity.IsPublished = request.IsPublished; entity.IsActive = request.IsActive;
-        Audit(entity.PublicId, "UpdateCatalogueVersion", before, new { entity.Code, entity.Name, entity.EditionDate, entity.EffectiveFrom, entity.EffectiveTo, entity.IsPublished, entity.IsActive, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "UpdateCatalogueVersion", before, new { entity.Code, entity.Name, entity.EditionDate, entity.EffectiveFrom, entity.EffectiveTo, entity.IsPublished, entity.IsActive, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The catalogue version changed before this update. Reload and retry.");
     }
 
@@ -527,7 +527,7 @@ public sealed class C88Controller : ControllerBase
             Kind = request.Kind, Code = code, Name = name, Description = Clean(request.Description, 4000), DisplayOrder = request.DisplayOrder, IsActive = request.IsActive
         };
         context.C88CatalogueItems.Add(entity);
-        Audit(entity.PublicId, "CreateCatalogueItem", null, new { version.PublicId, entity.Kind, entity.Code, entity.Name, ParentPublicId = parent?.PublicId, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "CreateCatalogueItem", null, new { version.PublicId, entity.Kind, entity.Code, entity.Name, ParentPublicId = parent?.PublicId, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The catalogue item conflicts with an existing code.");
     }
 
@@ -577,7 +577,7 @@ public sealed class C88Controller : ControllerBase
         foreach (var item in normalizedElements) entity.DataElements.Add(new C88DataElement { MunicipalityId = entity.MunicipalityId, Code = item.Code, Name = item.Name, Description = item.Description, ValueType = item.ValueType, IsRequired = item.IsRequired, Sequence = item.Sequence });
         foreach (var item in applicability) entity.Applicability.Add(new C88IndicatorApplicability { MunicipalityId = entity.MunicipalityId, MunicipalCategoryItemId = item.Category.Id, ReadinessTierItemId = item.Tier?.Id, IsApplicable = item.Input.IsApplicable, Notes = Clean(item.Input.Notes, 2000) });
         context.C88Indicators.Add(entity);
-        Audit(entity.PublicId, "CreateIndicator", null, new { version.PublicId, entity.Code, entity.Name, entity.ValueType, entity.CalculationOperator, DataElements = normalizedElements.Count, Applicability = applicability.Count, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "CreateIndicator", null, new { version.PublicId, entity.Code, entity.Name, entity.ValueType, entity.CalculationOperator, DataElements = normalizedElements.Count, Applicability = applicability.Count, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The indicator conflicts with existing catalogue content.");
     }
 
@@ -595,7 +595,7 @@ public sealed class C88Controller : ControllerBase
         if (reportType == null || responseType == null) return BadRequest(Fail<Guid>("Report and response types must belong to the selected edition."));
         var entity = new C88ComplianceQuestion { MunicipalityId = tenantContext.MunicipalityId!.Value, C88CatalogueVersionId = version.Id, ReportTypeItemId = reportType.Id, ResponseTypeItemId = responseType.Id, Code = code, Prompt = prompt, IsRequired = request.IsRequired, Sequence = request.Sequence, IsActive = request.IsActive };
         context.C88ComplianceQuestions.Add(entity);
-        Audit(entity.PublicId, "CreateComplianceQuestion", null, new { CatalogueVersionPublicId = version.PublicId, ReportTypePublicId = reportType.PublicId, ResponseTypePublicId = responseType.PublicId, entity.Code, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "CreateComplianceQuestion", null, new { CatalogueVersionPublicId = version.PublicId, ReportTypePublicId = reportType.PublicId, ResponseTypePublicId = responseType.PublicId, entity.Code, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The compliance question conflicts with existing catalogue content.");
     }
 
@@ -624,7 +624,7 @@ public sealed class C88Controller : ControllerBase
             before = new { entity.C88CatalogueVersionId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo };
         }
         entity.C88CatalogueVersionId = version.Id; entity.IsEnabled = request.IsEnabled; entity.EffectiveFrom = Utc(request.EffectiveFrom); entity.EffectiveTo = NullableUtc(request.EffectiveTo);
-        Audit(entity.PublicId, "Configure", before, new { FinancialYearPublicId = year.PublicId, CatalogueVersionPublicId = version.PublicId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "Configure", before, new { FinancialYearPublicId = year.PublicId, CatalogueVersionPublicId = version.PublicId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The Circular 88 configuration changed before this update. Reload and retry.");
     }
 
@@ -660,7 +660,7 @@ public sealed class C88Controller : ControllerBase
         }
         entity.BaselineValue = Clean(request.BaselineValue, 1024); entity.MediumTermTarget = Clean(request.MediumTermTarget, 1024);
         entity.AnnualTarget = Clean(request.AnnualTarget, 1024); entity.MissingDataExplanation = requestedMissingExplanation; entity.EstimatedAvailability = NullableUtc(request.EstimatedAvailability);
-        Audit(entity.PublicId, "SavePlan", before, new { pair.Indicator!.PublicId, entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "SavePlan", before, new { pair.Indicator!.PublicId, entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The plan changed before this update. Reload and retry.");
     }
 
@@ -684,7 +684,7 @@ public sealed class C88Controller : ControllerBase
         }
         var entity = new C88ReportingCalendar { MunicipalityId = tenantContext.MunicipalityId!.Value, C88MunicipalityConfigurationId = configuration.Id, ReportTypeItemId = reportType.Id, ReportingPeriodId = period?.Id, Code = code, Name = name, OpensAt = Utc(request.OpensAt), ClosesAt = Utc(request.ClosesAt), DueAt = Utc(request.DueAt), IsActive = request.IsActive };
         context.C88ReportingCalendars.Add(entity);
-        Audit(entity.PublicId, "CreateCalendar", null, new { ConfigurationPublicId = configuration.PublicId, ReportTypePublicId = reportType.PublicId, ReportingPeriodPublicId = period?.PublicId, entity.Code, entity.OpensAt, entity.ClosesAt, entity.DueAt, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "CreateCalendar", null, new { ConfigurationPublicId = configuration.PublicId, ReportTypePublicId = reportType.PublicId, ReportingPeriodPublicId = period?.PublicId, entity.Code, entity.OpensAt, entity.ClosesAt, entity.DueAt, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The reporting calendar conflicts with an existing code.");
     }
 
@@ -704,7 +704,7 @@ public sealed class C88Controller : ControllerBase
             return Conflict(Fail<Guid>("Only one active Primary Capturer is allowed for this financial-year indicator context."));
         var entity = new C88Assignment { MunicipalityId = tenantContext.MunicipalityId!.Value, C88MunicipalityConfigurationId = pair.Configuration!.Id, C88IndicatorId = pair.Indicator!.Id, MunicipalEmployeeId = employee.Id, Role = request.Role, EffectiveFrom = Utc(request.EffectiveFrom), EffectiveTo = NullableUtc(request.EffectiveTo), IsActive = request.IsActive };
         context.C88Assignments.Add(entity);
-        Audit(entity.PublicId, "CreateAssignment", null, new { ConfigurationPublicId = pair.Configuration.PublicId, IndicatorPublicId = pair.Indicator.PublicId, EmployeePublicId = employee.PublicId, entity.Role, entity.EffectiveFrom, entity.EffectiveTo, entity.IsActive, Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "CreateAssignment", null, new { ConfigurationPublicId = pair.Configuration.PublicId, IndicatorPublicId = pair.Indicator.PublicId, EmployeePublicId = employee.PublicId, entity.Role, entity.EffectiveFrom, entity.EffectiveTo, entity.IsActive, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The assignment conflicts with an existing active assignment.");
     }
 
@@ -735,11 +735,14 @@ public sealed class C88Controller : ControllerBase
         }
         else if (await context.C88WorkflowDefinitions.AnyAsync(item => item.C88MunicipalityConfigurationId == configuration.Id && item.IsCurrent))
             return Conflict(Fail<Guid>("A current workflow exists; create a successor using its PublicId and RowVersion."));
-        var entity = new C88WorkflowDefinition { MunicipalityId = tenantContext.MunicipalityId!.Value, C88MunicipalityConfigurationId = configuration.Id, PreviousVersionId = previous?.Id, VersionNumber = (previous?.VersionNumber ?? 0) + 1, EffectiveFrom = Utc(request.EffectiveFrom), EffectiveTo = NullableUtc(request.EffectiveTo), CreatedByUserId = session.User!.Id };
+        var effectiveFrom = Utc(request.EffectiveFrom);
+        if (previous != null && effectiveFrom <= previous.EffectiveFrom)
+            return Conflict(Fail<Guid>("A Circular 88 workflow successor must start after its predecessor."));
+        var entity = new C88WorkflowDefinition { MunicipalityId = tenantContext.MunicipalityId!.Value, C88MunicipalityConfigurationId = configuration.Id, PreviousVersionId = previous?.Id, VersionNumber = (previous?.VersionNumber ?? 0) + 1, EffectiveFrom = effectiveFrom, EffectiveTo = NullableUtc(request.EffectiveTo), CreatedByUserId = session.User!.Id };
         foreach (var stage in ordered) entity.Stages.Add(new C88WorkflowStage { MunicipalityId = entity.MunicipalityId, Sequence = stage.Sequence, Kind = stage.Kind, Name = stage.Name.Trim(), RequiredRole = stage.RequiredRole, IsActive = true });
-        if (previous != null) { previous.IsCurrent = false; previous.IsActive = false; previous.EffectiveTo ??= entity.EffectiveFrom; }
+        if (previous != null) { previous.IsCurrent = false; previous.IsActive = false; previous.EffectiveTo = entity.EffectiveFrom; }
         context.C88WorkflowDefinitions.Add(entity);
-        Audit(entity.PublicId, "CreateWorkflowVersion", null, new { configuration.PublicId, entity.VersionNumber, PreviousPublicId = previous?.PublicId, Stages = ordered.Select(item => new { item.Sequence, item.Kind, item.Name, item.RequiredRole }), Reason = reason }, session.User!.Id);
+        Audit(entity.PublicId, "CreateWorkflowVersion", null, new { configuration.PublicId, entity.VersionNumber, PreviousPublicId = previous?.PublicId, Stages = ordered.Select(item => new { item.Sequence, item.Kind, item.Name, item.RequiredRole }), Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The workflow changed before this successor was saved.");
     }
 
@@ -757,7 +760,7 @@ public sealed class C88Controller : ControllerBase
         if (target == null) return BadRequest(Fail<Guid>("OPMS target not found in this municipality."));
         var entity = new C88OpmsMapping { MunicipalityId = tenantContext.MunicipalityId!.Value, C88MunicipalityConfigurationId = pair.Configuration!.Id, C88IndicatorId = pair.Indicator!.Id, OpmsTargetId = target.Id, MappingType = request.MappingType, Reason = reason, IsActive = request.IsActive, CreatedByUserId = session.User!.Id };
         context.C88OpmsMappings.Add(entity);
-        Audit(entity.PublicId, "CreateMapping", null, new { ConfigurationPublicId = pair.Configuration.PublicId, IndicatorPublicId = pair.Indicator.PublicId, OpmsTargetPublicId = target.PublicId, entity.MappingType, entity.IsActive, Reason = reason }, session.User.Id);
+        Audit(entity.PublicId, "CreateMapping", null, new { ConfigurationPublicId = pair.Configuration.PublicId, IndicatorPublicId = pair.Indicator.PublicId, OpmsTargetPublicId = target.PublicId, entity.MappingType, entity.IsActive, Reason = reason }, session.User.Id, reason);
         return await SaveId(entity.PublicId, "This OPMS/Circular 88 mapping already exists.");
     }
 
@@ -854,7 +857,7 @@ public sealed class C88Controller : ControllerBase
         {
             if (previous != null) previous.IsCurrent = false;
             context.C88IndicatorReports.Add(report);
-            Audit(report.PublicId, "CreateReportVersion", null, new { report.ReportFamilyId, report.VersionNumber, PreviousPublicId = previous?.PublicId, ConfigurationPublicId = pair.Configuration.PublicId, CalendarPublicId = calendar.PublicId, IndicatorPublicId = pair.Indicator.PublicId, report.CalculatedValue, Values = report.DataElementValues.Count, Responses = report.ComplianceResponses.Count, Reason = reason }, session.User.Id);
+            Audit(report.PublicId, "CreateReportVersion", null, new { report.ReportFamilyId, report.VersionNumber, PreviousPublicId = previous?.PublicId, ConfigurationPublicId = pair.Configuration.PublicId, CalendarPublicId = calendar.PublicId, IndicatorPublicId = pair.Indicator.PublicId, report.CalculatedValue, Values = report.DataElementValues.Count, Responses = report.ComplianceResponses.Count, Reason = reason }, session.User.Id, reason);
             await context.SaveChangesAsync(); await transaction.CommitAsync();
         }
         catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(); return Conflict(Fail<Guid>("The report changed before this successor was saved.")); }
@@ -883,7 +886,7 @@ public sealed class C88Controller : ControllerBase
         if (first == null) return Conflict(Fail<Guid>("The current workflow has no Capturer stage."));
         var from = report.CurrentStageSequence; report.State = C88ReportState.Rework; report.CurrentStageSequence = first.Sequence;
         report.WorkflowActions.Add(NewAction(report, from, first.Sequence, C88WorkflowActionKind.Returned, loaded.Reason!, loaded.User!.Id));
-        Audit(report.PublicId, "Return", new { State = loaded.OriginalState, Stage = from }, new { report.State, Stage = first.Sequence, Reason = loaded.Reason }, loaded.User.Id);
+        Audit(report.PublicId, "Return", new { State = loaded.OriginalState, Stage = from }, new { report.State, Stage = first.Sequence, Reason = loaded.Reason }, loaded.User.Id, loaded.Reason!);
         return await SaveId(report.PublicId, "The report changed before it was returned.");
     }
 
@@ -912,7 +915,7 @@ public sealed class C88Controller : ControllerBase
         report.State = next; report.CurrentStageSequence = to;
         if (next == C88ReportState.FinalSubmitted) { report.FinalSubmittedAt = DateTime.UtcNow; report.FinalSubmittedByUserId = loaded.User!.Id; }
         report.WorkflowActions.Add(NewAction(report, from, to, action, loaded.Reason!, loaded.User!.Id));
-        Audit(report.PublicId, action.ToString(), new { State = loaded.OriginalState, Stage = from }, new { report.State, Stage = to, Reason = loaded.Reason }, loaded.User.Id);
+        Audit(report.PublicId, action.ToString(), new { State = loaded.OriginalState, Stage = from }, new { report.State, Stage = to, Reason = loaded.Reason }, loaded.User.Id, loaded.Reason!);
         return await SaveId(report.PublicId, "The report changed before this workflow action was saved.");
     }
 
@@ -1074,7 +1077,9 @@ public sealed class C88Controller : ControllerBase
             await Read("DataElementMissingDataExplanation"), await Read("ComplianceResponse"), await Read("ComplianceComment"),
             await Read("WorkflowReason"), await Read("WorkflowActor"));
     }
-    private void Audit(Guid publicId, string action, object? before, object after, string userId) => workflow.QueueAuditTrail("C88", publicId.ToString(), action, before, after, userId, PerformanceApiSupport.GetIpAddress(HttpContext));
+    private void Audit(Guid publicId, string action, object? before, object after, string userId, string reason) =>
+        workflow.QueueAuditTrail("C88", publicId.ToString(), action, before, after, userId,
+            PerformanceApiSupport.GetIpAddress(HttpContext), reason);
     private ActionResult<ApiResponse<Guid>> OkId(Guid id) => Ok(new ApiResponse<Guid>(true, id));
 
     private async Task<ActionResult<ApiResponse<Guid>>> SaveId(Guid id, string conflict)

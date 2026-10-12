@@ -29,7 +29,7 @@ public class C88ControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var workflowAudit = new Mock<IWorkflowGovernanceService>();
-        var controller = Controller(context, seed.User, seed.Municipality.Id, workflowAudit);
+        var controller = Controller(context, seed.User, seed.Municipality.Id, workflowAudit.Object);
         var module = await CreateCatalogueAsync(context, controller, seed);
 
         var planId = Payload(await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId,
@@ -81,7 +81,113 @@ public class C88ControllerTests
         var value = await context.C88DataElementValues.FirstAsync();
         value.Value = "999";
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>().WithMessage("*append-only*");
-        workflowAudit.Verify(service => service.QueueAuditTrail("C88", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object>(), seed.User.Id, It.IsAny<string?>()), Times.AtLeast(10));
+        workflowAudit.Verify(service => service.QueueAuditTrail("C88", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object>(), seed.User.Id, It.IsAny<string?>(), It.Is<string?>(reason => !string.IsNullOrWhiteSpace(reason))), Times.AtLeast(10));
+    }
+
+    [Fact]
+    public async Task Configuration_plan_and_workflow_successor_changes_are_atomically_reason_audited()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+
+        var staleConfigurationVersion = Convert.ToBase64String(module.Configuration.RowVersion);
+        Payload(await controller.Configure(new ConfigureC88Request(seed.Year.PublicId, module.Version.PublicId, true,
+            seed.Year.EffectiveFrom, seed.Year.EffectiveFrom.AddMonths(11), "Bound configuration validity", staleConfigurationVersion)))
+            .Should().Be(module.Configuration.PublicId);
+        var staleConfiguration = await controller.Configure(new ConfigureC88Request(seed.Year.PublicId, module.Version.PublicId, true,
+            seed.Year.EffectiveFrom, null, "Attempt stale configuration rewrite", staleConfigurationVersion));
+        staleConfiguration.Result.Should().BeOfType<ConflictObjectResult>();
+
+        var planId = Payload(await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId,
+            module.Indicator.PublicId, "10", "50", "75", null, null, "Create controlled plan", null)));
+        var plan = await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId);
+        Payload(await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId,
+            module.Indicator.PublicId, "20", "60", "85", "Awaiting verified source", seed.Year.EffectiveFrom.AddMonths(2),
+            "Revise approved planning values", Convert.ToBase64String(plan.RowVersion)))).Should().Be(planId);
+
+        var firstEffectiveFrom = seed.Year.EffectiveFrom.AddDays(1);
+        var firstWorkflowId = Payload(await controller.CreateWorkflow(new SaveC88WorkflowRequest(module.Configuration.PublicId,
+            firstEffectiveFrom, null, WorkflowStages(), "Create governed workflow", null, null)));
+        var firstWorkflow = await context.C88WorkflowDefinitions.SingleAsync(item => item.PublicId == firstWorkflowId);
+        var successorEffectiveFrom = firstEffectiveFrom.AddDays(30);
+        var successorId = Payload(await controller.CreateWorkflow(new SaveC88WorkflowRequest(module.Configuration.PublicId,
+            successorEffectiveFrom, null, WorkflowStages(), "Replace governed workflow", firstWorkflow.PublicId,
+            Convert.ToBase64String(firstWorkflow.RowVersion))));
+
+        var predecessor = await context.C88WorkflowDefinitions.SingleAsync(item => item.PublicId == firstWorkflowId);
+        predecessor.IsCurrent.Should().BeFalse();
+        predecessor.IsActive.Should().BeFalse();
+        predecessor.EffectiveTo.Should().Be(successorEffectiveFrom.ToUniversalTime());
+        (await context.C88WorkflowDefinitions.SingleAsync(item => item.PublicId == successorId)).VersionNumber.Should().Be(2);
+
+        var configurationAudit = await context.AuditTrails.SingleAsync(item => item.EntityName == "C88"
+            && item.EntityId == module.Configuration.PublicId.ToString() && item.Action == "Configure" && item.OldValue != null);
+        configurationAudit.Reason.Should().Be("Bound configuration validity");
+        configurationAudit.NewValue.Should().NotBeNull();
+        var planAudit = await context.AuditTrails.SingleAsync(item => item.EntityName == "C88"
+            && item.EntityId == planId.ToString() && item.Action == "SavePlan" && item.OldValue != null);
+        planAudit.Reason.Should().Be("Revise approved planning values");
+        var successorAudit = await context.AuditTrails.SingleAsync(item => item.EntityName == "C88"
+            && item.EntityId == successorId.ToString() && item.Action == "CreateWorkflowVersion");
+        successorAudit.Reason.Should().Be("Replace governed workflow");
+    }
+
+    [Fact]
+    public async Task Direct_C88_rewrites_and_hard_deletes_are_rejected_at_the_persistence_boundary()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var planId = Payload(await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId,
+            module.Indicator.PublicId, "10", "50", "75", null, null, "Create controlled plan", null)));
+        var calendarId = Payload(await controller.CreateCalendar(new SaveC88ReportingCalendarRequest(module.Configuration.PublicId,
+            module.ReportType.PublicId, null, "ANNUAL", "Annual", seed.Year.EffectiveFrom, seed.Year.EffectiveFrom.AddMonths(10),
+            seed.Year.EffectiveFrom.AddMonths(11), true, "Create reporting calendar", null)));
+        var assignmentId = Payload(await controller.CreateAssignment(new SaveC88AssignmentRequest(module.Configuration.PublicId,
+            module.Indicator.PublicId, seed.Employee.PublicId, C88AssignmentRole.Contributor, seed.Year.EffectiveFrom, null, true,
+            "Create governed assignment", null)));
+        var mappingId = Payload(await controller.CreateMapping(new SaveC88MappingRequest(module.Configuration.PublicId,
+            module.Indicator.PublicId, seed.Target.PublicId, C88MappingType.Contributing, "Create governed mapping", true, null)));
+        var workflowId = Payload(await controller.CreateWorkflow(new SaveC88WorkflowRequest(module.Configuration.PublicId,
+            seed.Year.EffectiveFrom.AddDays(1), null, WorkflowStages(), "Create governed workflow", null, null)));
+
+        context.ChangeTracker.Clear();
+        (await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId)).IsEnabled = false;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId)).AnnualTarget = "999";
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88ReportingCalendars.SingleAsync(item => item.PublicId == calendarId)).Name = "Rewritten";
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-only*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88Assignments.SingleAsync(item => item.PublicId == assignmentId)).IsActive = false;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-only*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88OpmsMappings.SingleAsync(item => item.PublicId == mappingId)).IsActive = false;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*append-only*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88WorkflowDefinitions.SingleAsync(item => item.PublicId == workflowId)).IsActive = false;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact chronological, reason-audited successor version*");
+
+        context.ChangeTracker.Clear();
+        context.C88MunicipalityConfigurations.Remove(await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId));
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
     }
 
     [Fact]
@@ -551,7 +657,7 @@ public class C88ControllerTests
         return new(user, municipality, year, employee, target);
     }
 
-    private static C88Controller Controller(ApplicationDbContext context, ApplicationUser user, long municipalityId, Mock<IWorkflowGovernanceService>? audit = null, Func<string, bool>? permissionRule = null)
+    private static C88Controller Controller(ApplicationDbContext context, ApplicationUser user, long municipalityId, IWorkflowGovernanceService? audit = null, Func<string, bool>? permissionRule = null)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
@@ -560,14 +666,21 @@ public class C88ControllerTests
                 var allowed = permissionRule?.Invoke(permission) ?? true;
                 return new AccessDecisionResult(allowed, allowed ? "Allowed" : "Denied", [], [], []);
             });
+        var tenant = new FixedTenantContext(municipalityId, false);
         return new C88Controller(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            (audit ?? new Mock<IWorkflowGovernanceService>()).Object, new FixedTenantContext(municipalityId, false))
+            audit ?? new WorkflowGovernanceService(context, tenantContext: tenant), tenant)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
         };
     }
 
     private static T Payload<T>(ActionResult<ApiResponse<T>> action) => ((action.Result as OkObjectResult)!.Value as ApiResponse<T>)!.Data!;
+    private static C88WorkflowStageInput[] WorkflowStages() =>
+    [
+        new(1, C88WorkflowStageKind.Capturer, "Capture", C88AssignmentRole.PrimaryCapturer, true),
+        new(2, C88WorkflowStageKind.ReviewerVerifier, "Verify", C88AssignmentRole.ReviewerVerifier, true),
+        new(3, C88WorkflowStageKind.FinalSubmission, "Final submit", C88AssignmentRole.FinalSubmitter, true)
+    ];
     private sealed record Seed(ApplicationUser User, Municipality Municipality, MunicipalityFinancialYear Year, MunicipalEmployee Employee, OpmsTarget Target);
     private sealed record Module(C88CatalogueVersion Version, C88MunicipalityConfiguration Configuration, C88Indicator Indicator, C88DataElement Numerator, C88DataElement Denominator, C88CatalogueItem ReportType, C88ComplianceQuestion Question);
     private sealed class FixedTenantContext(long? municipalityId, bool isSystem) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => isSystem; public string? UserId => "c88-test"; }

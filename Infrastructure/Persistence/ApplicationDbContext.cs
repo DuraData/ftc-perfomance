@@ -2745,6 +2745,44 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Circular 88 report evidence is append-only; create a successor report version.");
         if (ChangeTracker.Entries<C88WorkflowStage>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Circular 88 workflow-stage versions are append-only.");
+        foreach (var entry in ChangeTracker.Entries<C88MunicipalityConfiguration>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit("C88", entry.Entity.PublicId, entry.Entity.MunicipalityId, "Configure");
+        foreach (var entry in ChangeTracker.Entries<C88IndicatorPlan>().Where(entry => entry.State == EntityState.Modified))
+            RequireGovernanceAudit("C88", entry.Entity.PublicId, entry.Entity.MunicipalityId, "SavePlan");
+        if (ChangeTracker.Entries<C88ReportingCalendar>().Any(entry => entry.State == EntityState.Modified)
+            || ChangeTracker.Entries<C88Assignment>().Any(entry => entry.State == EntityState.Modified)
+            || ChangeTracker.Entries<C88OpmsMapping>().Any(entry => entry.State == EntityState.Modified))
+            throw new InvalidOperationException("Circular 88 calendar, assignment, and OPMS-mapping definitions are append-only.");
+        foreach (var entry in ChangeTracker.Entries<C88WorkflowDefinition>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(C88WorkflowDefinition.IsCurrent), nameof(C88WorkflowDefinition.IsActive),
+                    nameof(C88WorkflowDefinition.EffectiveTo), nameof(C88WorkflowDefinition.RowVersion)],
+                "Circular 88 workflow definitions are append-preserved; definition changes require a successor version.");
+            var successor = ChangeTracker.Entries<C88WorkflowDefinition>().SingleOrDefault(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.PreviousVersionId == entry.Entity.Id
+                && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                && candidate.Entity.C88MunicipalityConfigurationId == entry.Entity.C88MunicipalityConfigurationId
+                && candidate.Entity.VersionNumber == entry.Entity.VersionNumber + 1
+                && candidate.Entity.IsCurrent && candidate.Entity.IsActive);
+            var successorAudit = successor == null ? null : ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == "C88"
+                && candidate.Entity.EntityId == successor.Entity.PublicId.ToString()
+                && candidate.Entity.Action == "CreateWorkflowVersion"
+                && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && candidate.Entity.NewValue != null);
+            if (!entry.OriginalValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsCurrent))
+                || !entry.OriginalValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsActive))
+                || entry.CurrentValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsCurrent))
+                || entry.CurrentValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsActive))
+                || successor == null || successorAudit == null
+                || successor.Entity.EffectiveFrom <= entry.OriginalValues.GetValue<DateTime>(nameof(C88WorkflowDefinition.EffectiveFrom))
+                || entry.CurrentValues.GetValue<DateTime?>(nameof(C88WorkflowDefinition.EffectiveTo)) != successor.Entity.EffectiveFrom)
+                throw new InvalidOperationException("A Circular 88 workflow predecessor may only close beside its exact chronological, reason-audited successor version.");
+        }
         if (ChangeTracker.Entries<C88CatalogueItem>().Any(entry => entry.State == EntityState.Modified)
             || ChangeTracker.Entries<C88Indicator>().Any(entry => entry.State == EntityState.Modified)
             || ChangeTracker.Entries<C88DataElement>().Any(entry => entry.State == EntityState.Modified)
