@@ -997,7 +997,7 @@ public class OpmsSubmissionsController : ControllerBase
         var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), "score", request);
         if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberDenial));
 
-        _context.SubmissionScores.Add(new SubmissionScore
+        var score = new SubmissionScore
         {
             MunicipalityId = entity.MunicipalityId,
             SubmissionKind = SubmissionKind.Opms,
@@ -1006,9 +1006,13 @@ public class OpmsSubmissionsController : ControllerBase
             Notes = request.Comment,
             ScoredByUserId = user.Id,
             ScoredAt = DateTime.UtcNow
-        });
+        };
+        _context.SubmissionScores.Add(score);
+        _workflowGovernanceService.QueueAuditTrail("OpmsSubmission", id, "Score", null,
+            new { score.Score, score.Notes, score.ScoredAt }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext),
+            string.IsNullOrWhiteSpace(request.Comment) ? "Submission score recorded." : request.Comment.Trim());
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "Score", null, new { request.Score, request.Comment }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         var response = await FindSubmissionAsync(id) ?? entity;
         return Ok(new ApiResponse<OpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(response, user)));
@@ -1070,16 +1074,20 @@ public class OpmsSubmissionsController : ControllerBase
             ApprovedByUserId = user.Id,
             ApprovedAt = DateTime.UtcNow
         });
+        _workflowGovernanceService.QueueAuditTrail("OpmsSubmission", id, "ExtendDueDate",
+            new { DueDate = previousDueDate }, new { DueDate = request.ExtendedDueDate, Reason = reason },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+        _workflowGovernanceService.QueueWorkflowNotifications(GetRelevantUserIds(entity), NotificationType.DueDateExtension,
+            "OPMS due date extended", $"The due date for OPMS submission '{entity.Id}' was extended.", "OpmsSubmission", id);
         try
         {
             await _context.SaveChangesAsync();
         }
         catch (DbUpdateConcurrencyException)
         {
+            _context.ChangeTracker.Clear();
             return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission changed before its due date could be extended. Refresh and try again."));
         }
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "ExtendDueDate", new { DueDate = previousDueDate }, new { DueDate = request.ExtendedDueDate, Reason = reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        await _workflowGovernanceService.CreateWorkflowNotificationsAsync(GetRelevantUserIds(entity), NotificationType.DueDateExtension, "OPMS due date extended", $"The due date for OPMS submission '{entity.Id}' was extended.", "OpmsSubmission", id);
 
         var response = await FindSubmissionAsync(id) ?? entity;
         return Ok(new ApiResponse<OpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(response, user)));

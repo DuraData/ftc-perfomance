@@ -1,4 +1,5 @@
 using FTCERP.Host.Application.Services;
+using System.Text.Json;
 
 namespace FTCERP.Tests;
 
@@ -49,17 +50,10 @@ public sealed class GovernedWithdrawalTests
                     grants.Contains(code) ? "Allowed" : "Denied", [], [], []));
         access.Setup(service => service.GetEffectiveAccessAsync(user))
             .ReturnsAsync(() => new EffectiveAccessResult([], grants.ToArray(), [], [], [], []));
-        var audit = new Mock<IWorkflowGovernanceService>();
-        audit.Setup(service => service.WriteAuditTrailAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(),
-                It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
-            .Returns(Task.CompletedTask);
-        audit.Setup(service => service.CreateWorkflowNotificationsAsync(
-                It.IsAny<IEnumerable<string>>(), It.IsAny<NotificationType>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string?>(), It.IsAny<string?>()))
-            .Returns(Task.CompletedTask);
-        var opms = SubmissionController(context, user, access.Object, audit.Object);
-        var ipms = IpmsSubmissionController(context, user, access.Object, audit.Object);
+        var governance = new WorkflowGovernanceService(context,
+            tenantContext: new TenantContext(municipality.Id, user.Id));
+        var opms = SubmissionController(context, user, access.Object, governance);
+        var ipms = IpmsSubmissionController(context, user, access.Object, governance);
         var opmsVersion = Convert.ToBase64String(opmsSubmission.RowVersion);
         var ipmsVersion = Convert.ToBase64String(ipmsSubmission.RowVersion);
         var requestedDate = originalDueDate.AddDays(5);
@@ -106,6 +100,10 @@ public sealed class GovernedWithdrawalTests
             && item.ExtendedDueDate == requestedDate && item.ApprovedByUserId == user.Id
             && item.MunicipalityId == municipality.Id);
         extensions.Select(item => item.Reason).Should().BeEquivalentTo("Protected OPMS reason", "Protected IPMS reason");
+        var audits = await context.AuditTrails.Where(item => item.Action == "ExtendDueDate").OrderBy(item => item.EntityName).ToArrayAsync();
+        audits.Should().HaveCount(2);
+        audits.Should().OnlyContain(item => item.MunicipalityId == municipality.Id && !string.IsNullOrWhiteSpace(item.Reason));
+        (await context.Notifications.CountAsync(item => item.Type == NotificationType.DueDateExtension)).Should().Be(2);
         opmsSubmission.DueDateExtendedDays.Should().Be(5);
         ipmsSubmission.DueDateExtendedDays.Should().Be(5);
 
@@ -189,6 +187,7 @@ public sealed class GovernedWithdrawalTests
                 OriginalDueDate = ipmsSubmission.DueDate!.Value, ExtendedDueDate = ipmsSubmission.DueDate.Value.AddDays(3),
                 Reason = "Protected IPMS reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(3)
             });
+        QueueSubmissionLedgerAudits(context, user.Id);
         await context.SaveChangesAsync();
 
         var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
@@ -538,6 +537,26 @@ public sealed class GovernedWithdrawalTests
             TraceIdentifier = "withdrawal-test"
         }
     };
+
+    private static void QueueSubmissionLedgerAudits(ApplicationDbContext context, string userId)
+    {
+        foreach (var entry in context.ChangeTracker.Entries<DueDateExtension>().Where(item => item.State == EntityState.Added).ToArray())
+        {
+            var extension = entry.Entity;
+            context.AuditTrails.Add(new AuditTrail
+            {
+                MunicipalityId = extension.MunicipalityId,
+                EntityName = extension.SubmissionKind == SubmissionKind.Opms ? nameof(OpmsSubmission) : nameof(IpmsSubmission),
+                EntityId = extension.SubmissionId,
+                Action = "ExtendDueDate",
+                OldValue = JsonSerializer.Serialize(new { DueDate = extension.OriginalDueDate }),
+                NewValue = JsonSerializer.Serialize(new { DueDate = extension.ExtendedDueDate, extension.Reason }),
+                Reason = extension.Reason,
+                ChangedBy = userId,
+                ChangedAt = extension.ApprovedAt
+            });
+        }
+    }
 
     private sealed class TenantContext(long municipalityId, string userId) : ITenantContext
     {

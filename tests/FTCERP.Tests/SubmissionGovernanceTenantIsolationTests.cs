@@ -1,7 +1,42 @@
 namespace FTCERP.Tests;
 
+using System.Text.Json;
+
 public sealed class SubmissionGovernanceTenantIsolationTests
 {
+    [Fact]
+    public async Task Score_and_due_date_ledgers_require_same_transaction_parent_audits()
+    {
+        const long municipalityId = 9799;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(municipalityId);
+        tenant.SetupGet(item => item.IsSystem).Returns(false);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var municipality = new Municipality { Id = municipalityId, Code = "LEDGER-AUDIT", Name = "Ledger Audit Municipality" };
+        var user = IdpTestFixture.CreateUser("ledger-audit-user");
+        user.MunicipalityId = municipalityId;
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+
+        context.SubmissionScores.Add(new SubmissionScore
+        {
+            MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Opms, SubmissionId = "submission-score",
+            Score = 4, ScoredByUserId = user.Id
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        context.DueDateExtensions.Add(new DueDateExtension
+        {
+            MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Ipms, SubmissionId = "submission-extension",
+            OriginalDueDate = DateTime.UtcNow.Date, ExtendedDueDate = DateTime.UtcNow.Date.AddDays(2),
+            Reason = "Governed extension", ApprovedByUserId = user.Id
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+    }
+
     [Fact]
     public async Task Tenant_write_guard_stamps_unscoped_ledger_rows_and_rejects_cross_municipality_rows()
     {
@@ -116,6 +151,29 @@ public sealed class SubmissionGovernanceTenantIsolationTests
                 Score = 3,
                 ScoredByUserId = userId,
                 ScoredAt = now
+            },
+            new AuditTrail
+            {
+                MunicipalityId = municipalityId,
+                EntityName = nameof(OpmsSubmission),
+                EntityId = submissionId,
+                Action = "ExtendDueDate",
+                OldValue = JsonSerializer.Serialize(new { DueDate = now }),
+                NewValue = JsonSerializer.Serialize(new { DueDate = now.AddDays(1), Reason = "Governed extension" }),
+                Reason = "Governed extension",
+                ChangedBy = userId,
+                ChangedAt = now
+            },
+            new AuditTrail
+            {
+                MunicipalityId = municipalityId,
+                EntityName = nameof(OpmsSubmission),
+                EntityId = submissionId,
+                Action = "Score",
+                NewValue = JsonSerializer.Serialize(new { Score = 3 }),
+                Reason = "Governed score",
+                ChangedBy = userId,
+                ChangedAt = now
             });
     }
 }
