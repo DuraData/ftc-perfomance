@@ -19,6 +19,35 @@ namespace FTCERP.Tests;
 public sealed class OpmsImportControllerTests
 {
     [Fact]
+    public async Task Import_batch_identity_commit_transition_and_history_are_persistence_governed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var controller = Controller(context, setup);
+        var staged = Payload(await controller.Stage(setup.Layer.PublicId, new StageOpmsImportRequest(
+            Guid.NewGuid(), "governed.csv", [Row(2, "KPI-GOVERNED", setup.Department.Code)])));
+
+        var batch = await context.OpmsImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.SourceFileName = "rewritten.csv";
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*identity, source, reconciliation counts and creator evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        batch = await context.OpmsImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.Status = OpmsImportBatchStatus.Committed;
+        batch.CommittedAt = DateTime.UtcNow;
+        batch.CommittedByUserId = setup.User.Id;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        batch = await context.OpmsImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        context.OpmsImportBatches.Remove(batch);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
+
+    [Fact]
     public async Task Invalid_row_blocks_the_complete_batch_without_business_writes()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -406,7 +435,8 @@ public sealed class OpmsImportControllerTests
         access.Setup(x => x.CheckPermissionAsync(setup.User, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string _, AccessScopeContext? scope) => new AccessDecisionResult(scope?.MunicipalityId == setup.Municipality.Id, "Allowed", [], [], []));
         return new OpmsImportsController(context, IdpTestFixture.CreateUserManagerMock(setup.User).Object,
-            new Tenant(setup.Municipality.Id, setup.User.Id), new PerformanceUnitEngine(), new Mock<IWorkflowGovernanceService>().Object, configuredAccess ?? access.Object)
+            new Tenant(setup.Municipality.Id, setup.User.Id), new PerformanceUnitEngine(),
+            new WorkflowGovernanceService(context, tenantContext: new Tenant(setup.Municipality.Id, setup.User.Id)), configuredAccess ?? access.Object)
         { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(setup.User.Id) } } };
     }
 

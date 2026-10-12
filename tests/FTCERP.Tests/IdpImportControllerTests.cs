@@ -3,6 +3,35 @@ namespace FTCERP.Tests;
 public class IdpImportControllerTests
 {
     [Fact]
+    public async Task Import_batch_identity_commit_transition_and_history_are_persistence_governed()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>());
+        var staged = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
+            Guid.NewGuid(), "governed.csv", [Row(2, setup.Project.ProjectCode, "NEW-GOVERNED", "Governed KPI")])));
+
+        var batch = await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.SourceSha256 = new string('f', 64);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*identity, plan, type, source, reconciliation counts and creator evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        batch = await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.Status = IdpImportBatchStatus.Committed;
+        batch.CommittedAt = DateTime.UtcNow;
+        batch.CommittedByUserId = setup.User.Id;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        batch = await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        context.IdpImportBatches.Remove(batch);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
+
+    [Fact]
     public async Task StageKpis_ClassifiesEveryRow_AndBlocksInvalidBatchCommit()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -62,10 +91,9 @@ public class IdpImportControllerTests
         kpis.Should().Contain(item => item.KpiCode == "NEW-2" && item.KpiName == "Imported KPI");
         kpis.Single(item => item.KpiCode == "CHANGE-1").AnnualTarget.Should().Be(77);
         (await context.IdpImportRows.CountAsync()).Should().Be(2);
-        workflow.Verify(service => service.WriteAuditTrailAsync(
-            "IdpImportBatch", It.IsAny<string>(), "Stage", null, It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
-        workflow.Verify(service => service.WriteAuditTrailAsync(
-            "IdpImportBatch", It.IsAny<string>(), "Commit", It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
+        var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(IdpImportBatch)).OrderBy(item => item.Id).ToListAsync();
+        audits.Select(item => item.Action).Should().Equal("Stage", "Commit");
+        audits[1].Reason.Should().Be("Council-approved KPI reconciliation");
     }
 
     [Fact]
@@ -462,10 +490,10 @@ public class IdpImportControllerTests
         priority.PriorityCode.Should().Be("PRI-NEW");
         programme.Projects.Select(item => item.ProjectCode).Should().BeEquivalentTo("PROJECT-A", "PROJECT-B");
         programme.Projects.Should().OnlyContain(item => item.PublicId != Guid.Empty && item.RowVersion.Length > 0);
-        workflow.Verify(service => service.WriteAuditTrailAsync(
-            "IdpImportBatch", It.IsAny<string>(), "StageHierarchy", null, It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
-        workflow.Verify(service => service.WriteAuditTrailAsync(
-            "IdpImportBatch", It.IsAny<string>(), "CommitHierarchy", It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
+        var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(IdpImportBatch)
+            && item.EntityId == staged.PublicId.ToString()).OrderBy(item => item.Id).ToListAsync();
+        audits.Select(item => item.Action).Should().Equal("StageHierarchy", "CommitHierarchy");
+        audits[1].Reason.Should().Be("Council-approved hierarchy reconciliation");
 
         context.IdpDevelopmentPriorities.Add(new IdpDevelopmentPriority
         {
@@ -523,11 +551,14 @@ public class IdpImportControllerTests
                 .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(true, "Allowed", [code], [], []));
             access = accessMock.Object;
         }
+        var effectiveWorkflow = workflow is WorkflowGovernanceService
+            ? workflow
+            : new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(user.MunicipalityId, user.Id));
         return new IdpImportsController(
             context,
             IdpTestFixture.CreateUserManagerMock(user).Object,
             access,
-            workflow)
+            effectiveWorkflow)
         {
             ControllerContext = new ControllerContext
             {
@@ -587,6 +618,7 @@ public class IdpImportControllerTests
     private static async Task<(ApplicationUser User, IdpPlan Plan, IdpProject Project)> SeedPlanAsync(ApplicationDbContext context)
     {
         var user = IdpTestFixture.CreateUser("importer");
+        user.MunicipalityId = 501;
         var municipality = new Municipality { Id = 501, PublicId = Guid.NewGuid(), Code = "IMPORT", Name = "Import Municipality", IsActive = true };
         context.AddRange(user, municipality);
         var plan = new IdpPlan

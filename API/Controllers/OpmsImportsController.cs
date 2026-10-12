@@ -198,12 +198,12 @@ public sealed class OpmsImportsController(
             InvalidRows = candidates.Count(x => x.Status == OpmsImportRowStatus.Invalid), CreatedByUserId = user.Id, CreatedByUser = user,
             Rows = candidates
         };
-        context.Add(batch);
-        await context.SaveChangesAsync();
         batch.SdbipLayer = layer;
-        await workflow.WriteAuditTrailAsync("OpmsImportBatch", batch.PublicId.ToString(), "Stage", null,
+        context.Add(batch);
+        workflow.QueueAuditTrail("OpmsImportBatch", batch.PublicId.ToString(), "Stage", null,
             new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await context.SaveChangesAsync();
         return Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(batch, members)));
     }
 
@@ -312,6 +312,9 @@ public sealed class OpmsImportsController(
             }
             batch.Status = OpmsImportBatchStatus.Committed; batch.CommittedAt = DateTime.UtcNow; batch.CommittedByUserId = user.Id; batch.CommittedByUser = user;
             context.Entry(batch).Property(x => x.RowVersion).OriginalValue = version;
+            workflow.QueueAuditTrail("OpmsImportBatch", batch.PublicId.ToString(), "Commit", new { Status = "Staged" },
+                new { Status = "Committed", Reason = request.Reason.Trim() }, user.Id,
+                PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
         }
@@ -320,8 +323,6 @@ public sealed class OpmsImportsController(
             await transaction.RollbackAsync();
             return Conflict(new ApiResponse<OpmsImportBatchResponse>(false, null, "The import preview changed before commit. Stage a new preview."));
         }
-        await workflow.WriteAuditTrailAsync("OpmsImportBatch", batch.PublicId.ToString(), "Commit", new { Status = "Staged" },
-            new { Status = "Committed", Reason = request.Reason.Trim() }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsImportBatchResponse>(true, ToResponse(batch, members)));
     }
 

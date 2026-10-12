@@ -2175,6 +2175,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceIpmsTargetTemplateHistory();
         EnforceEvidenceLifecycle();
         EnforceIdpPlanHistory();
+        EnforceImportBatchHistory();
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))
         {
             var row = entry.Entity;
@@ -3051,6 +3052,42 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || (int)currentStatus >= (int)IdpPlanStatus.Published
                     && (!currentPublishedAt.HasValue || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(IdpPlan.PublicationReference)))))
                 throw new InvalidOperationException("IDP plan lifecycle may only advance with immutable approval/publication evidence and valid effective dates.");
+        }
+    }
+
+    private void EnforceImportBatchHistory()
+    {
+        if (ChangeTracker.Entries<OpmsImportBatch>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IdpImportBatch>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Import batch history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<OpmsImportBatch>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(OpmsImportBatch.Status), nameof(OpmsImportBatch.CommittedAt), nameof(OpmsImportBatch.CommittedByUserId), nameof(OpmsImportBatch.RowVersion)],
+                "OPMS import identity, source, reconciliation counts and creator evidence are immutable.");
+            if (entry.OriginalValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) != OpmsImportBatchStatus.Staged
+                || entry.CurrentValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) != OpmsImportBatchStatus.Committed
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsImportBatch.CommittedAt)).HasValue
+                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(OpmsImportBatch.CommittedByUserId))))
+                throw new InvalidOperationException("An OPMS import may advance only once from Staged to Committed with complete actor and timestamp evidence.");
+            RequireGovernanceAudit(nameof(OpmsImportBatch), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Commit");
+        }
+
+        foreach (var entry in ChangeTracker.Entries<IdpImportBatch>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpImportBatch.Status), nameof(IdpImportBatch.CommittedAt), nameof(IdpImportBatch.CommittedByUserId), nameof(IdpImportBatch.RowVersion)],
+                "IDP import identity, plan, type, source, reconciliation counts and creator evidence are immutable.");
+            if (entry.OriginalValues.GetValue<IdpImportBatchStatus>(nameof(IdpImportBatch.Status)) != IdpImportBatchStatus.Staged
+                || entry.CurrentValues.GetValue<IdpImportBatchStatus>(nameof(IdpImportBatch.Status)) != IdpImportBatchStatus.Committed
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(IdpImportBatch.CommittedAt)).HasValue
+                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(IdpImportBatch.CommittedByUserId))))
+                throw new InvalidOperationException("An IDP import may advance only once from Staged to Committed with complete actor and timestamp evidence.");
+            var action = string.Equals(entry.Entity.ImportType, "HIERARCHY", StringComparison.OrdinalIgnoreCase)
+                ? "CommitHierarchy"
+                : "Commit";
+            RequireGovernanceAudit(nameof(IdpImportBatch), entry.Entity.PublicId, entry.Entity.MunicipalityId, action);
         }
     }
 

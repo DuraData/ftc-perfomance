@@ -198,13 +198,12 @@ public class IdpImportsController(
             Rows = candidates.Select(item => item.Row).ToList()
         };
         context.IdpImportBatches.Add(batch);
-        await context.SaveChangesAsync();
         batch.IdpPlan = plan;
-
-        await workflowGovernanceService.WriteAuditTrailAsync(
+        workflowGovernanceService.QueueAuditTrail(
             "IdpImportBatch", batch.PublicId.ToString(), "Stage", null,
             new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await context.SaveChangesAsync();
 
         return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
@@ -268,13 +267,12 @@ public class IdpImportsController(
             Rows = candidates.Select(item => item.Row).ToList()
         };
         context.IdpImportBatches.Add(batch);
-        await context.SaveChangesAsync();
         batch.IdpPlan = plan;
-
-        await workflowGovernanceService.WriteAuditTrailAsync(
+        workflowGovernanceService.QueueAuditTrail(
             "IdpImportBatch", batch.PublicId.ToString(), "StageHierarchy", null,
             new { batch.SourceFileName, batch.SourceSha256, batch.TotalRows, batch.NewRows, batch.UnchangedRows, batch.ChangedRows, batch.InvalidRows },
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await context.SaveChangesAsync();
 
         return Ok(new ApiResponse<IdpImportBatchResponse>(true, ToResponse(batch, memberAccess)));
     }
@@ -353,12 +351,12 @@ public class IdpImportsController(
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
             batch.CommittedByUser = user;
-            await context.SaveChangesAsync();
-            await workflowGovernanceService.WriteAuditTrailAsync(
+            workflowGovernanceService.QueueAuditTrail(
                 "IdpImportBatch", batch.PublicId.ToString(), "Commit",
                 new { Status = IdpImportBatchStatus.Staged.ToString() },
                 new { Status = batch.Status.ToString(), Reason = request.Reason.Trim(), batch.NewRows, batch.UnchangedRows, batch.ChangedRows },
-                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
+            await context.SaveChangesAsync();
             await transaction.CommitAsync();
         }
         catch (DbUpdateConcurrencyException)
@@ -445,12 +443,12 @@ public class IdpImportsController(
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
             batch.CommittedByUser = user;
-            await context.SaveChangesAsync();
-            await workflowGovernanceService.WriteAuditTrailAsync(
+            workflowGovernanceService.QueueAuditTrail(
                 "IdpImportBatch", batch.PublicId.ToString(), "CommitHierarchy",
                 new { Status = IdpImportBatchStatus.Staged.ToString() },
                 new { Status = batch.Status.ToString(), Reason = request.Reason.Trim(), batch.NewRows, batch.UnchangedRows, batch.ChangedRows },
-                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
+            await context.SaveChangesAsync();
             await transaction.CommitAsync();
         }
         catch (DbUpdateConcurrencyException)
