@@ -210,6 +210,57 @@ public sealed class TargetLibraryPagingTests
             item.EntityId == ipms.PublicId.ToString() && item.NewValue!.Contains("IP-AUDIT"));
     }
 
+    [Fact]
+    public async Task Target_library_edits_are_atomic_and_direct_history_bypass_is_rejected()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser("library-history-writer");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var opmsController = OpmsController(context, user);
+        var ipmsController = IpmsController(context, user);
+
+        var createdOpms = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>((await opmsController.CreateTemplate(OpmsRequest("OP-HISTORY", "OPMS history"))).Result).Value).Data!;
+        var createdIpms = Assert.IsType<ApiResponse<IpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>((await ipmsController.CreateTemplate(IpmsRequest("IP-HISTORY", "IPMS history"))).Result).Value).Data!;
+
+        var editedOpms = Assert.IsType<ApiResponse<OpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>((await opmsController.UpdateTemplate(createdOpms.PublicId,
+                OpmsRequest("OP-HISTORY", "OPMS history v2", createdOpms.RowVersion))).Result).Value).Data!;
+        var editedIpms = Assert.IsType<ApiResponse<IpmsTargetTemplateResponse>>(
+            Assert.IsType<OkObjectResult>((await ipmsController.UpdateTemplate(createdIpms.PublicId,
+                IpmsRequest("IP-HISTORY", "IPMS history v2", createdIpms.RowVersion))).Result).Value).Data!;
+
+        editedOpms.Version.Should().Be(2);
+        editedIpms.Version.Should().Be(2);
+        (await context.OpmsTargetTemplateVersions.CountAsync(item => item.OpmsTargetTemplate.PublicId == createdOpms.PublicId)).Should().Be(2);
+        (await context.IpmsTargetTemplateVersions.CountAsync(item => item.IpmsTargetTemplate.PublicId == createdIpms.PublicId)).Should().Be(2);
+        var editAudits = await context.AuditTrails.Where(item => item.Action == "Edit"
+            && (item.EntityId == createdOpms.PublicId.ToString() || item.EntityId == createdIpms.PublicId.ToString())).ToArrayAsync();
+        editAudits.Should().HaveCount(2).And.OnlyContain(item => !string.IsNullOrWhiteSpace(item.Reason)
+            && item.OldValue != null && item.NewValue != null);
+
+        context.ChangeTracker.Clear();
+        var directOpms = await context.OpmsTargetTemplates.SingleAsync(item => item.PublicId == createdOpms.PublicId);
+        directOpms.TemplateName = "Unaudited rewrite";
+        directOpms.Version += 1;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact next append-only version snapshot*");
+
+        context.ChangeTracker.Clear();
+        var directIpms = await context.IpmsTargetTemplates.SingleAsync(item => item.PublicId == createdIpms.PublicId);
+        directIpms.IsArchived = true;
+        directIpms.IsActive = false;
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        context.OpmsTargetTemplates.Remove(await context.OpmsTargetTemplates.SingleAsync(item => item.PublicId == createdOpms.PublicId));
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be hard deleted*");
+    }
+
     private static SaveOpmsTargetTemplateRequest OpmsRequest(string code, string name, string? rowVersion = null) =>
         new(TemplateCode: code, TemplateName: name, IndicatorNumber: "KPI-1", TargetName: "Target",
             KpiDescription: "Description", Baseline: 0, AnnualTarget: 100, AnnualTargetDescription: null,
@@ -231,7 +282,7 @@ public sealed class TargetLibraryPagingTests
     {
         var access = Access(user);
         return new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            governance ?? Mock.Of<IWorkflowGovernanceService>())
+            governance ?? new WorkflowGovernanceService(context))
         {
             ControllerContext = Context(user.Id)
         };
@@ -244,7 +295,7 @@ public sealed class TargetLibraryPagingTests
     {
         var access = Access(user);
         return new(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            governance ?? Mock.Of<IWorkflowGovernanceService>())
+            governance ?? new WorkflowGovernanceService(context))
         {
             ControllerContext = Context(user.Id)
         };

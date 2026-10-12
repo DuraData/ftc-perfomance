@@ -134,9 +134,10 @@ public class OpmsTargetLibraryController : ControllerBase
 
         var template = Apply(new OpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id, members.Update);
         _context.OpmsTargetTemplates.Add(template);
+        QueueVersion(template, user.UserName ?? user.Email ?? user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(OpmsTargetTemplate), template.PublicId.ToString(), "Create", null,
+            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Created governed OPMS target template.");
         await _context.SaveChangesAsync();
-        await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
@@ -159,6 +160,7 @@ public class OpmsTargetLibraryController : ControllerBase
 
         var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "OPMS target template not found"));
+        if (template.IsArchived) return Conflict(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "Archived OPMS target templates cannot be edited."));
         if (!TrySetExpectedVersion(template, request.RowVersion))
             return BadRequest(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "A valid RowVersion is required."));
         var codeConflict = await _context.OpmsTargetTemplates.AnyAsync(item => item.PublicId != publicId && item.TemplateCode == request.TemplateCode);
@@ -167,13 +169,15 @@ public class OpmsTargetLibraryController : ControllerBase
         var oldValue = template.ToResponse();
         template = Apply(template, request, user.UserName ?? user.Email ?? user.Id, members.Update);
         template.Version += 1;
+        QueueVersion(template, user.UserName ?? user.Email ?? user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(OpmsTargetTemplate), template.PublicId.ToString(), "Edit", oldValue,
+            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Edited governed OPMS target template and appended its version snapshot.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
+            _context.ChangeTracker.Clear();
             return Conflict(new ApiResponse<OpmsTargetTemplateResponse>(false, null, "The OPMS target template changed. Reload and retry."));
         }
-        await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Edit", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
@@ -194,18 +198,21 @@ public class OpmsTargetLibraryController : ControllerBase
 
         var template = await _context.OpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<bool>(false, false, "OPMS target template not found"));
+        if (template.IsArchived) return Conflict(new ApiResponse<bool>(false, false, "The OPMS target template is already archived."));
         if (!TrySetExpectedVersion(template, request.RowVersion))
             return BadRequest(new ApiResponse<bool>(false, false, "A valid RowVersion is required."));
 
         var oldValue = template.ToResponse();
         template.IsArchived = true;
         template.IsActive = false;
+        _workflowGovernanceService.QueueAuditTrail(nameof(OpmsTargetTemplate), template.PublicId.ToString(), "Archive", oldValue,
+            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Archived governed OPMS target template.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
+            _context.ChangeTracker.Clear();
             return Conflict(new ApiResponse<bool>(false, false, "The OPMS target template changed. Reload and retry."));
         }
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", template.PublicId.ToString(), "Archive", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -269,9 +276,10 @@ public class OpmsTargetLibraryController : ControllerBase
         };
 
         _context.OpmsTargetTemplates.Add(duplicate);
+        QueueVersion(duplicate, user.UserName ?? user.Email ?? user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(OpmsTargetTemplate), duplicate.PublicId.ToString(), "Duplicate", template.ToResponse(),
+            duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Duplicated governed OPMS target template.");
         await _context.SaveChangesAsync();
-        await AddVersionAsync(duplicate, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTargetTemplate", duplicate.PublicId.ToString(), "Duplicate", template.ToResponse(), duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetTemplateResponse>(true, duplicate.ToResponse()));
     }
 
@@ -355,17 +363,17 @@ public class OpmsTargetLibraryController : ControllerBase
         return query;
     }
 
-    private async Task AddVersionAsync(OpmsTargetTemplate template, string actor)
+    private void QueueVersion(OpmsTargetTemplate template, string actor)
     {
         _context.OpmsTargetTemplateVersions.Add(new OpmsTargetTemplateVersion
         {
             OpmsTargetTemplateId = template.Id,
+            OpmsTargetTemplate = template,
             Version = template.Version,
             SnapshotJson = JsonSerializer.Serialize(template.ToResponse()),
             CreatedBy = actor,
             CreatedDate = DateTime.UtcNow
         });
-        await _context.SaveChangesAsync();
     }
 
     private async Task<OpmsTemplateAccess> GetMemberAccessAsync(ApplicationUser user, bool includeUpdate = false)

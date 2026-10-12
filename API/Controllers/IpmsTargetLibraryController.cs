@@ -131,9 +131,10 @@ public class IpmsTargetLibraryController : ControllerBase
 
         var template = Apply(new IpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id, members.Update);
         _context.IpmsTargetTemplates.Add(template);
+        QueueVersion(template, user.UserName ?? user.Email ?? user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Create", null,
+            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Created governed IPMS target template.");
         await _context.SaveChangesAsync();
-        await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Create", null, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
@@ -156,6 +157,7 @@ public class IpmsTargetLibraryController : ControllerBase
 
         var template = await _context.IpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "IPMS target template not found"));
+        if (template.IsArchived) return Conflict(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "Archived IPMS target templates cannot be edited."));
         if (!TrySetExpectedVersion(template, request.RowVersion))
             return BadRequest(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "A valid RowVersion is required."));
         var codeConflict = await _context.IpmsTargetTemplates.AnyAsync(item => item.PublicId != publicId && item.TemplateCode == request.TemplateCode);
@@ -164,13 +166,15 @@ public class IpmsTargetLibraryController : ControllerBase
         var oldValue = template.ToResponse();
         template = Apply(template, request, user.UserName ?? user.Email ?? user.Id, members.Update);
         template.Version += 1;
+        QueueVersion(template, user.UserName ?? user.Email ?? user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Edit", oldValue,
+            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Edited governed IPMS target template and appended its version snapshot.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
+            _context.ChangeTracker.Clear();
             return Conflict(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "The IPMS target template changed. Reload and retry."));
         }
-        await AddVersionAsync(template, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Edit", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
 
         return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, template.ToResponse(members.Read)));
     }
@@ -191,18 +195,21 @@ public class IpmsTargetLibraryController : ControllerBase
 
         var template = await _context.IpmsTargetTemplates.FirstOrDefaultAsync(item => item.PublicId == publicId);
         if (template == null) return NotFound(new ApiResponse<bool>(false, false, "IPMS target template not found"));
+        if (template.IsArchived) return Conflict(new ApiResponse<bool>(false, false, "The IPMS target template is already archived."));
         if (!TrySetExpectedVersion(template, request.RowVersion))
             return BadRequest(new ApiResponse<bool>(false, false, "A valid RowVersion is required."));
 
         var oldValue = template.ToResponse();
         template.IsArchived = true;
         template.IsActive = false;
+        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Archive", oldValue,
+            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Archived governed IPMS target template.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
+            _context.ChangeTracker.Clear();
             return Conflict(new ApiResponse<bool>(false, false, "The IPMS target template changed. Reload and retry."));
         }
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", template.PublicId.ToString(), "Archive", oldValue, template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -253,9 +260,10 @@ public class IpmsTargetLibraryController : ControllerBase
         };
 
         _context.IpmsTargetTemplates.Add(duplicate);
+        QueueVersion(duplicate, user.UserName ?? user.Email ?? user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), duplicate.PublicId.ToString(), "Duplicate", template.ToResponse(),
+            duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Duplicated governed IPMS target template.");
         await _context.SaveChangesAsync();
-        await AddVersionAsync(duplicate, user.UserName ?? user.Email ?? user.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsTargetTemplate", duplicate.PublicId.ToString(), "Duplicate", template.ToResponse(), duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<IpmsTargetTemplateResponse>(true, duplicate.ToResponse()));
     }
 
@@ -326,17 +334,17 @@ public class IpmsTargetLibraryController : ControllerBase
         return query;
     }
 
-    private async Task AddVersionAsync(IpmsTargetTemplate template, string actor)
+    private void QueueVersion(IpmsTargetTemplate template, string actor)
     {
         _context.IpmsTargetTemplateVersions.Add(new IpmsTargetTemplateVersion
         {
             IpmsTargetTemplateId = template.Id,
+            IpmsTargetTemplate = template,
             Version = template.Version,
             SnapshotJson = JsonSerializer.Serialize(template.ToResponse()),
             CreatedBy = actor,
             CreatedDate = DateTime.UtcNow
         });
-        await _context.SaveChangesAsync();
     }
 
     private async Task<IpmsTemplateAccess> GetMemberAccessAsync(ApplicationUser user, bool includeUpdate = false)

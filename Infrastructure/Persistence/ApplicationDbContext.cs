@@ -2171,6 +2171,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             RequireGovernanceAudit(nameof(MunicipalityConsolidationPolicy), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Edit");
         RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
+        EnforceOpmsTargetTemplateHistory();
+        EnforceIpmsTargetTemplateHistory();
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))
         {
             var row = entry.Entity;
@@ -2870,6 +2872,72 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         if (ChangeTracker.Entries<TEntity>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException(message);
+    }
+
+    private void EnforceOpmsTargetTemplateHistory()
+    {
+        if (ChangeTracker.Entries<OpmsTargetTemplate>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("OPMS target-template history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<OpmsTargetTemplate>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var originalArchived = entry.OriginalValues.GetValue<bool>(nameof(OpmsTargetTemplate.IsArchived));
+            var currentArchived = entry.CurrentValues.GetValue<bool>(nameof(OpmsTargetTemplate.IsArchived));
+            if (!originalArchived && currentArchived)
+            {
+                EnsureOnlyProperties(entry,
+                    [nameof(OpmsTargetTemplate.IsArchived), nameof(OpmsTargetTemplate.IsActive), nameof(OpmsTargetTemplate.RowVersion)],
+                    "OPMS target-template archive state is one-way and all definition changes require a version snapshot.");
+                if (entry.CurrentValues.GetValue<bool>(nameof(OpmsTargetTemplate.IsActive)))
+                    throw new InvalidOperationException("An archived OPMS target template cannot remain active.");
+                RequireGovernanceAudit(nameof(OpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Archive");
+                continue;
+            }
+
+            var originalVersion = entry.OriginalValues.GetValue<int>(nameof(OpmsTargetTemplate.Version));
+            var version = ChangeTracker.Entries<OpmsTargetTemplateVersion>().SingleOrDefault(candidate =>
+                candidate.State == EntityState.Added
+                && (candidate.Entity.OpmsTargetTemplateId == entry.Entity.Id
+                    || ReferenceEquals(candidate.Entity.OpmsTargetTemplate, entry.Entity))
+                && candidate.Entity.Version == entry.Entity.Version);
+            if (originalArchived || currentArchived || entry.Entity.Version != originalVersion + 1
+                || version == null || string.IsNullOrWhiteSpace(version.Entity.SnapshotJson)
+                || string.IsNullOrWhiteSpace(version.Entity.CreatedBy))
+                throw new InvalidOperationException("OPMS target-template edits require the exact next append-only version snapshot in the same unit of work.");
+            RequireGovernanceAudit(nameof(OpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Edit");
+        }
+    }
+
+    private void EnforceIpmsTargetTemplateHistory()
+    {
+        if (ChangeTracker.Entries<IpmsTargetTemplate>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("IPMS target-template history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<IpmsTargetTemplate>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var originalArchived = entry.OriginalValues.GetValue<bool>(nameof(IpmsTargetTemplate.IsArchived));
+            var currentArchived = entry.CurrentValues.GetValue<bool>(nameof(IpmsTargetTemplate.IsArchived));
+            if (!originalArchived && currentArchived)
+            {
+                EnsureOnlyProperties(entry,
+                    [nameof(IpmsTargetTemplate.IsArchived), nameof(IpmsTargetTemplate.IsActive), nameof(IpmsTargetTemplate.RowVersion)],
+                    "IPMS target-template archive state is one-way and all definition changes require a version snapshot.");
+                if (entry.CurrentValues.GetValue<bool>(nameof(IpmsTargetTemplate.IsActive)))
+                    throw new InvalidOperationException("An archived IPMS target template cannot remain active.");
+                RequireGovernanceAudit(nameof(IpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Archive");
+                continue;
+            }
+
+            var originalVersion = entry.OriginalValues.GetValue<int>(nameof(IpmsTargetTemplate.Version));
+            var version = ChangeTracker.Entries<IpmsTargetTemplateVersion>().SingleOrDefault(candidate =>
+                candidate.State == EntityState.Added
+                && (candidate.Entity.IpmsTargetTemplateId == entry.Entity.Id
+                    || ReferenceEquals(candidate.Entity.IpmsTargetTemplate, entry.Entity))
+                && candidate.Entity.Version == entry.Entity.Version);
+            if (originalArchived || currentArchived || entry.Entity.Version != originalVersion + 1
+                || version == null || string.IsNullOrWhiteSpace(version.Entity.SnapshotJson)
+                || string.IsNullOrWhiteSpace(version.Entity.CreatedBy))
+                throw new InvalidOperationException("IPMS target-template edits require the exact next append-only version snapshot in the same unit of work.");
+            RequireGovernanceAudit(nameof(IpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Edit");
+        }
     }
 
     private static void EnsureMonotonicClosure<TEntity>(EntityEntry<TEntity> entry, string activeProperty, string endProperty,
