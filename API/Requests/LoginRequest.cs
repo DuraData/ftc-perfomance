@@ -303,7 +303,8 @@ public record UpdateIdpPlanRequest(
     string? RowVersion = null,
     DateTime? EffectiveFrom = null,
     DateTime? EffectiveTo = null,
-    string? PublicationReference = null);
+    string? PublicationReference = null,
+    string Reason = "");
 
 public record CreateIdpPlanVersionRequest(
     string VersionType,
@@ -311,7 +312,9 @@ public record CreateIdpPlanVersionRequest(
     string? ReviewYear,
     string? SummaryOfChanges,
     DateTime? EffectiveFrom = null,
-    string? PublicationReference = null);
+    string? PublicationReference = null,
+    string RowVersion = "",
+    string Reason = "");
 
 public record CreateIdpStrategicOutcomeRequest(
     Guid IdpPlanPublicId,

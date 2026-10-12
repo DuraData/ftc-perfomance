@@ -196,6 +196,28 @@ describe('IDP plan lineage workspace', () => {
     })));
   });
 
+  it('creates an exact governed successor version with the current plan concurrency token', async () => {
+    security.canEditField.mockReturnValue(true);
+    render(<IdpPlanManagementPage />);
+
+    await screen.findByRole('option', { name: 'IDP-2026 - Current IDP' });
+    fireEvent.change(screen.getByLabelText('Version type'), { target: { value: 'Amendment' } });
+    fireEvent.change(screen.getByLabelText('Version label'), { target: { value: 'Council amendment' } });
+    fireEvent.change(screen.getByLabelText('Version effective from'), { target: { value: '2027-07-01' } });
+    fireEvent.change(screen.getByLabelText('Summary of changes'), { target: { value: 'Updated service-delivery commitments' } });
+    fireEvent.change(screen.getByLabelText('Version governance reason'), { target: { value: 'Council approved resolution 2027/18' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Version' }));
+
+    await waitFor(() => expect(api.createIdpPlanVersion).toHaveBeenCalledWith(predecessor.publicId, expect.objectContaining({
+      versionType: 'Amendment',
+      versionLabel: 'Council amendment',
+      summaryOfChanges: 'Updated service-delivery commitments',
+      effectiveFrom: '2027-07-01T00:00:00.000Z',
+      rowVersion: predecessor.rowVersion,
+      reason: 'Council approved resolution 2027/18',
+    })));
+  });
+
   it('does not render import controls without the dynamic import capability', async () => {
     security.canImport.mockReturnValue(false);
     render(<IdpPlanManagementPage />);

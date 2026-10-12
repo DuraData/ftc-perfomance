@@ -235,28 +235,57 @@ public class IdpController : ControllerBase
             return NotFound(new ApiResponse<IdpPlanSummaryResponse>(false, null, "IDP plan not found"));
         }
 
+        if (!TryGovernanceReason(request.Reason, out var reason))
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "A governance reason between 1 and 1000 characters is required."));
+        if (string.IsNullOrWhiteSpace(request.RowVersion))
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "RowVersion is required."));
         var before = ToSummaryResponse(entity);
-        if (!string.IsNullOrWhiteSpace(request.RowVersion))
+        try
         {
-            try { _context.Entry(entity).Property(x => x.RowVersion).OriginalValue = Convert.FromBase64String(request.RowVersion); }
-            catch (FormatException) { return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Invalid RowVersion.")); }
+            var expected = Convert.FromBase64String(request.RowVersion);
+            if (expected.Length == 0) return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Invalid RowVersion."));
+            _context.Entry(entity).Property(x => x.RowVersion).OriginalValue = expected;
         }
-        entity.PlanTitle = request.PlanTitle.Trim();
+        catch (FormatException) { return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Invalid RowVersion.")); }
+        if (!TryParseEnum(request.Status, out IdpPlanStatus status))
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Invalid IDP plan status."));
+        if (entity.Status == IdpPlanStatus.Archived)
+            return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null, "An archived IDP plan cannot be rewritten."));
+        if ((int)status < (int)entity.Status)
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "IDP plan status cannot move backwards."));
+        if (entity.Status == IdpPlanStatus.Published && status != IdpPlanStatus.Archived)
+            return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null, "A published IDP plan may only advance to Archived; create a governed version for content changes."));
         var effectiveFrom = request.EffectiveFrom ?? entity.EffectiveFrom;
-        var effectiveTo = request.EffectiveTo;
+        var effectiveTo = request.EffectiveTo ?? entity.EffectiveTo;
         if (request.EndFinancialYear < request.StartFinancialYear || effectiveTo.HasValue && effectiveTo <= effectiveFrom)
             return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "The financial-year and effective-date ranges must end after they begin."));
-        entity.StartFinancialYear = request.StartFinancialYear;
-        entity.EndFinancialYear = request.EndFinancialYear;
-        entity.EffectiveFrom = effectiveFrom;
+        if (status == IdpPlanStatus.Archived && !effectiveTo.HasValue)
+            return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "Archiving an IDP plan requires an effective end date."));
+        var publicationReference = NormalizeOptional(request.PublicationReference) ?? entity.PublicationReference;
+        if (entity.Status == IdpPlanStatus.Published
+            && (!string.Equals(request.PlanTitle.Trim(), entity.PlanTitle, StringComparison.Ordinal)
+                || request.StartFinancialYear != entity.StartFinancialYear
+                || request.EndFinancialYear != entity.EndFinancialYear
+                || effectiveFrom != entity.EffectiveFrom
+                || !string.Equals(publicationReference, entity.PublicationReference, StringComparison.Ordinal)))
+            return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null,
+                "Published IDP content and publication evidence are immutable; archiving may only set the status and effective end date."));
+
+        if (entity.Status != IdpPlanStatus.Published)
+        {
+            entity.PlanTitle = request.PlanTitle.Trim();
+            entity.StartFinancialYear = request.StartFinancialYear;
+            entity.EndFinancialYear = request.EndFinancialYear;
+            entity.EffectiveFrom = effectiveFrom;
+            entity.PublicationReference = publicationReference;
+        }
         entity.EffectiveTo = effectiveTo;
-        entity.PublicationReference = NormalizeOptional(request.PublicationReference) ?? entity.PublicationReference;
-        if (TryParseEnum(request.Status, out IdpPlanStatus status))
+        if (status != entity.Status)
         {
             if (status == IdpPlanStatus.Published && string.IsNullOrWhiteSpace(entity.PublicationReference))
                 return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "A publication reference is required before publishing an IDP plan."));
             entity.Status = status;
-            if (status == IdpPlanStatus.Approved || status == IdpPlanStatus.Published)
+            if ((int)status >= (int)IdpPlanStatus.Approved && !entity.ApprovedAt.HasValue)
             {
                 entity.ApprovedAt = DateTime.UtcNow;
                 entity.ApprovedByUserId = user.Id;
@@ -271,7 +300,8 @@ public class IdpController : ControllerBase
             before,
             ToSummaryResponse(entity),
             user.Id,
-            PerformanceApiSupport.GetIpAddress(HttpContext));
+            PerformanceApiSupport.GetIpAddress(HttpContext),
+            reason);
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IdpPlanSummaryResponse>(false, null, "IDP plan was changed by another user.")); }
 
@@ -305,6 +335,18 @@ public class IdpController : ControllerBase
             return NotFound(new ApiResponse<IdpPlanVersionResponse>(false, null, "IDP plan not found"));
         }
 
+        if (!TryGovernanceReason(request.Reason, out var reason))
+            return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "A governance reason between 1 and 1000 characters is required."));
+        if (string.IsNullOrWhiteSpace(request.RowVersion))
+            return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "The current plan RowVersion is required."));
+        try
+        {
+            var expected = Convert.FromBase64String(request.RowVersion);
+            if (expected.Length == 0) return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "Invalid plan RowVersion."));
+            _context.Entry(plan).Property(item => item.RowVersion).OriginalValue = expected;
+        }
+        catch (FormatException) { return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "Invalid plan RowVersion.")); }
+
         var versionScope = Scope(targetId: plan.PublicId);
         if (!string.IsNullOrWhiteSpace(request.SummaryOfChanges)
             && await MemberUpdateDenialAsync(user, "IDP_PLAN", versionScope, ["VersionSummary"]) is not null)
@@ -319,6 +361,8 @@ public class IdpController : ControllerBase
         if (effectiveFrom < plan.EffectiveFrom || plan.EffectiveTo.HasValue && effectiveFrom >= plan.EffectiveTo)
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "The version effective date must fall within the plan effective period."));
         var previousActive = await _context.IdpPlanVersions.Where(item => item.IdpPlanId == plan.Id && item.IsActive).OrderByDescending(item => item.VersionNumber).ToListAsync();
+        if (previousActive.Count > 1)
+            return Conflict(new ApiResponse<IdpPlanVersionResponse>(false, null, "Multiple active IDP versions require reconciliation before a successor can be created."));
         var predecessor = previousActive.FirstOrDefault();
         if (predecessor != null && effectiveFrom <= predecessor.EffectiveFrom)
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "A successor version must become effective after its predecessor."));
@@ -350,16 +394,17 @@ public class IdpController : ControllerBase
 
         _context.IdpPlanVersions.Add(entity);
         plan.CurrentVersionNumber = nextVersion;
-        await _context.SaveChangesAsync();
-
-        await _workflowGovernanceService.WriteAuditTrailAsync(
+        _workflowGovernanceService.QueueAuditTrail(
             "IdpPlanVersion",
             entity.PublicId.ToString(),
             "Create",
             null,
             ToVersionResponse(entity, plan.PublicId, IdpPlanVersionMemberAccess.Full),
             user.Id,
-            PerformanceApiSupport.GetIpAddress(HttpContext));
+            PerformanceApiSupport.GetIpAddress(HttpContext),
+            reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IdpPlanVersionResponse>(false, null, "The IDP plan changed before its successor version could be created.")); }
 
         return Ok(new ApiResponse<IdpPlanVersionResponse>(true,
             ToVersionResponse(entity, plan.PublicId, await GetPlanVersionMemberAccessAsync(user, versionScope))));
@@ -2252,6 +2297,12 @@ public class IdpController : ControllerBase
             version.EffectiveFrom, version.EffectiveTo, version.PublishedAt, version.PublicationReference, Convert.ToBase64String(version.RowVersion));
 
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static bool TryGovernanceReason(string? value, out string reason)
+    {
+        reason = value?.Trim() ?? string.Empty;
+        return reason.Length is > 0 and <= 1000;
+    }
 
     private static IdpStrategicOutcomeResponse ToOutcomeResponse(IdpStrategicOutcome outcome, Guid planPublicId) =>
         new(outcome.PublicId, planPublicId, outcome.Code, outcome.Name, outcome.Description, outcome.SortOrder,

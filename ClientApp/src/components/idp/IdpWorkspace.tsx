@@ -234,6 +234,7 @@ export function IdpPlanManagementPage() {
     summaryOfChanges: '',
     effectiveFrom: today,
     publicationReference: '',
+    reason: '',
   });
 
   const fieldClass = 'w-full rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100';
@@ -423,8 +424,8 @@ export function IdpPlanManagementPage() {
   };
 
   const submitVersion = async () => {
-    if (!selectedPlan || !versionDraft.versionLabel.trim() || !versionDraft.effectiveFrom) {
-      pushToast('error', 'Select a plan and provide a version label and effective date.');
+    if (!selectedPlan || !versionDraft.versionLabel.trim() || !versionDraft.effectiveFrom || !versionDraft.reason.trim()) {
+      pushToast('error', 'Select a plan and provide a version label, effective date, and governance reason.');
       return;
     }
 
@@ -435,11 +436,13 @@ export function IdpPlanManagementPage() {
       summaryOfChanges: versionDraft.summaryOfChanges.trim() || null,
       effectiveFrom: `${versionDraft.effectiveFrom}T00:00:00.000Z`,
       publicationReference: versionDraft.publicationReference.trim() || null,
+      rowVersion: selectedPlan.rowVersion,
+      reason: versionDraft.reason.trim(),
     });
 
     if (result.success) {
       pushToast('success', 'IDP version created and linked to its predecessor.');
-      setVersionDraft(draft => ({ ...draft, versionLabel: '', summaryOfChanges: '', publicationReference: '' }));
+      setVersionDraft(draft => ({ ...draft, versionLabel: '', summaryOfChanges: '', publicationReference: '', reason: '' }));
       setVersionPage(1);
       setVersionRevision(value => value + 1);
     } else {
@@ -509,11 +512,12 @@ export function IdpPlanManagementPage() {
             </div>
             {canManagePlan ? (
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <label className="text-xs text-secondary-600">Version type<select aria-label="Version type" className={fieldClass} value={versionDraft.versionType} onChange={event => setVersionDraft({ ...versionDraft, versionType: event.target.value })}><option value="AnnualReview">Annual review</option><option value="Revised">Revised</option><option value="Amended">Amended</option></select></label>
+                <label className="text-xs text-secondary-600">Version type<select aria-label="Version type" className={fieldClass} value={versionDraft.versionType} onChange={event => setVersionDraft({ ...versionDraft, versionType: event.target.value })}><option value="AnnualReview">Annual review</option><option value="Revised">Revised</option><option value="Amendment">Amendment</option></select></label>
                 <label className="text-xs text-secondary-600">Version label<input aria-label="Version label" className={fieldClass} value={versionDraft.versionLabel} onChange={event => setVersionDraft({ ...versionDraft, versionLabel: event.target.value })} /></label>
                 <label className="text-xs text-secondary-600">Review year<input aria-label="Review year" className={fieldClass} value={versionDraft.reviewYear} onChange={event => setVersionDraft({ ...versionDraft, reviewYear: event.target.value })} /></label>
                 <label className="text-xs text-secondary-600">Effective from<input aria-label="Version effective from" type="date" className={fieldClass} value={versionDraft.effectiveFrom} onChange={event => setVersionDraft({ ...versionDraft, effectiveFrom: event.target.value })} /></label>
                 <label className="text-xs text-secondary-600">Publication reference<input aria-label="Version publication reference" className={fieldClass} value={versionDraft.publicationReference} onChange={event => setVersionDraft({ ...versionDraft, publicationReference: event.target.value })} /></label>
+                <label className="text-xs text-secondary-600 md:col-span-2">Governance reason<textarea aria-label="Version governance reason" className={fieldClass} rows={2} value={versionDraft.reason} onChange={event => setVersionDraft({ ...versionDraft, reason: event.target.value })} /></label>
                 {canEditVersionSummary ? <label className="text-xs text-secondary-600 md:col-span-2">Summary of changes<textarea aria-label="Summary of changes" className={fieldClass} rows={3} value={versionDraft.summaryOfChanges} onChange={event => setVersionDraft({ ...versionDraft, summaryOfChanges: event.target.value })} /></label> : null}
                 <div className="md:col-span-2"><Button variant="outline" disabled={!selectedPlanPublicId} onClick={() => void submitVersion()}>Create Version</Button></div>
               </div>

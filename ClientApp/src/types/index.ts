@@ -3448,6 +3448,8 @@ export interface CreateIdpPlanVersionPayload {
   summaryOfChanges?: string | null;
   effectiveFrom?: string | null;
   publicationReference?: string | null;
+  rowVersion: string;
+  reason: string;
 }
 
 export interface CreateIdpCommentPayload {

@@ -2174,6 +2174,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOpmsTargetTemplateHistory();
         EnforceIpmsTargetTemplateHistory();
         EnforceEvidenceLifecycle();
+        EnforceIdpPlanHistory();
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))
         {
             var row = entry.Entity;
@@ -2806,14 +2807,32 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 nameof(IdpPlanVersion.IsActive), nameof(IdpPlanVersion.EffectiveTo), nameof(IdpPlanVersion.RowVersion)
             };
             var changed = entry.Properties.Where(property => property.IsModified).Select(property => property.Metadata.Name).ToArray();
+            var successor = ChangeTracker.Entries<IdpPlanVersion>().SingleOrDefault(candidate =>
+                candidate.State == EntityState.Added
+                && (candidate.Entity.IdpPlanId == entry.Entity.IdpPlanId
+                    || ReferenceEquals(candidate.Entity.IdpPlan, entry.Entity.IdpPlan))
+                && (candidate.Entity.PredecessorVersionId == entry.Entity.Id
+                    || ReferenceEquals(candidate.Entity.PredecessorVersion, entry.Entity))
+                && candidate.Entity.VersionNumber == entry.Entity.VersionNumber + 1
+                && candidate.Entity.IsActive);
+            var successorAudit = successor == null ? null : ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == nameof(IdpPlanVersion)
+                && candidate.Entity.EntityId == successor.Entity.PublicId.ToString()
+                && candidate.Entity.Action == "Create"
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && candidate.Entity.NewValue != null);
             if (changed.Any(property => !allowed.Contains(property))
                 || !entry.OriginalValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive))
                 || entry.CurrentValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive))
                 || entry.OriginalValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo)).HasValue
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo)).HasValue
                 || entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo))
-                    <= entry.OriginalValues.GetValue<DateTime>(nameof(IdpPlanVersion.EffectiveFrom)))
-                throw new InvalidOperationException("IDP plan versions are append-preserved; only the active predecessor may be closed by a successor.");
+                    <= entry.OriginalValues.GetValue<DateTime>(nameof(IdpPlanVersion.EffectiveFrom))
+                || successor == null
+                || successor.Entity.EffectiveFrom != entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo))
+                || successorAudit == null)
+                throw new InvalidOperationException("IDP plan versions are append-preserved; an active predecessor may only close beside its exact chronological, reason-audited successor in the same unit of work.");
         }
         var c88GovernedTypes = new HashSet<Type>
         {
@@ -2961,6 +2980,78 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             || (start.HasValue && currentEnd.HasValue && currentEnd < start)
             || (originalEnd.HasValue && currentEnd.HasValue && currentEnd > originalEnd))
             throw new InvalidOperationException(message);
+    }
+
+    private void EnforceIdpPlanHistory()
+    {
+        if (ChangeTracker.Entries<IdpPlan>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("IDP plan history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<IdpPlan>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name)
+                .Where(property => property != nameof(IdpPlan.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            if (changed.SetEquals([nameof(IdpPlan.CurrentVersionNumber)]))
+            {
+                var originalVersion = entry.OriginalValues.GetValue<int>(nameof(IdpPlan.CurrentVersionNumber));
+                var currentVersion = entry.CurrentValues.GetValue<int>(nameof(IdpPlan.CurrentVersionNumber));
+                var successors = ChangeTracker.Entries<IdpPlanVersion>()
+                    .Where(candidate => candidate.State == EntityState.Added
+                        && (candidate.Entity.IdpPlanId == entry.Entity.Id || ReferenceEquals(candidate.Entity.IdpPlan, entry.Entity))
+                        && candidate.Entity.VersionNumber == currentVersion)
+                    .Select(candidate => candidate.Entity)
+                    .ToArray();
+                var audit = successors.Length == 1
+                    ? ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate => candidate.State == EntityState.Added
+                        && candidate.Entity.EntityName == nameof(IdpPlanVersion)
+                        && candidate.Entity.EntityId == successors[0].PublicId.ToString()
+                        && candidate.Entity.Action == "Create"
+                        && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                        && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                        && candidate.Entity.NewValue != null)
+                    : null;
+                if (currentVersion != originalVersion + 1 || successors.Length != 1 || audit == null)
+                    throw new InvalidOperationException("IDP plan version sequence may advance only by one exact reason-audited successor in the same unit of work.");
+                continue;
+            }
+
+            EnsureOnlyProperties(entry,
+                [nameof(IdpPlan.PlanTitle), nameof(IdpPlan.StartFinancialYear), nameof(IdpPlan.EndFinancialYear),
+                    nameof(IdpPlan.Status), nameof(IdpPlan.EffectiveFrom), nameof(IdpPlan.EffectiveTo),
+                    nameof(IdpPlan.PublicationReference), nameof(IdpPlan.ApprovedAt), nameof(IdpPlan.ApprovedByUserId),
+                    nameof(IdpPlan.PublishedAt), nameof(IdpPlan.RowVersion)],
+                "IDP plan family, predecessor, tenant, code and creation identity are immutable.");
+            RequireGovernanceAudit(nameof(IdpPlan), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+
+            var originalStatus = entry.OriginalValues.GetValue<IdpPlanStatus>(nameof(IdpPlan.Status));
+            var currentStatus = entry.CurrentValues.GetValue<IdpPlanStatus>(nameof(IdpPlan.Status));
+            var originalApprovedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(IdpPlan.ApprovedAt));
+            var currentApprovedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlan.ApprovedAt));
+            var originalApprovedBy = entry.OriginalValues.GetValue<string?>(nameof(IdpPlan.ApprovedByUserId));
+            var currentApprovedBy = entry.CurrentValues.GetValue<string?>(nameof(IdpPlan.ApprovedByUserId));
+            var originalPublishedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(IdpPlan.PublishedAt));
+            var currentPublishedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlan.PublishedAt));
+            var effectiveFrom = entry.CurrentValues.GetValue<DateTime>(nameof(IdpPlan.EffectiveFrom));
+            var effectiveTo = entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlan.EffectiveTo));
+
+            if (originalStatus == IdpPlanStatus.Archived
+                || (int)currentStatus < (int)originalStatus
+                || originalStatus == IdpPlanStatus.Published && currentStatus != IdpPlanStatus.Archived
+                || originalStatus == IdpPlanStatus.Published
+                    && changed.Any(property => property != nameof(IdpPlan.Status) && property != nameof(IdpPlan.EffectiveTo))
+                || currentStatus == IdpPlanStatus.Archived && !effectiveTo.HasValue
+                || effectiveTo.HasValue && effectiveTo <= effectiveFrom
+                || originalApprovedAt.HasValue && (currentApprovedAt != originalApprovedAt || currentApprovedBy != originalApprovedBy)
+                || (int)currentStatus >= (int)IdpPlanStatus.Approved && (!currentApprovedAt.HasValue || string.IsNullOrWhiteSpace(currentApprovedBy))
+                || originalPublishedAt.HasValue && currentPublishedAt != originalPublishedAt
+                || (int)currentStatus >= (int)IdpPlanStatus.Published
+                    && (!currentPublishedAt.HasValue || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(IdpPlan.PublicationReference)))))
+                throw new InvalidOperationException("IDP plan lifecycle may only advance with immutable approval/publication evidence and valid effective dates.");
+        }
     }
 
     private void EnforceEvidenceLifecycle()

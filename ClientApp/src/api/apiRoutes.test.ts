@@ -250,7 +250,7 @@ describe('versioned API routes', () => {
     await createIdpPlan({ municipalityName: '', planTitle: 'Five-year plan', planCode: 'IDP-2026', startFinancialYear: 2026, endFinancialYear: 2031 });
     await createIdpPlanVersion('plan-public-id', {
       versionType: 'AnnualReview', versionLabel: 'Annual review', reviewYear: '2026/2027', summaryOfChanges: 'Council-approved changes',
-      effectiveFrom: '2026-07-01T00:00:00Z', publicationReference: 'Resolution 42',
+      effectiveFrom: '2026-07-01T00:00:00Z', publicationReference: 'Resolution 42', rowVersion: 'AQID', reason: 'Council annual-review approval',
     });
     await getIdpDashboard('plan-public-id');
     await getIdpReport('plan-public-id', 'annual performance', 'pdf');

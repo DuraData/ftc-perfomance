@@ -518,11 +518,12 @@ public class IdpControllerFunctionalityTests
         context.IdpPlans.Add(plan);
         await context.SaveChangesAsync();
 
-        var workflow = new Mock<IWorkflowGovernanceService>();
+        var workflow = new WorkflowGovernanceService(context);
         var userManager = IdpTestFixture.CreateUserManagerMock(approver);
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, approver.Id);
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow, approver.Id);
 
-        var request = new UpdateIdpPlanRequest("Updated", 2027, 2032, "Approved");
+        var request = new UpdateIdpPlanRequest("Updated", 2027, 2032, "Approved",
+            Convert.ToBase64String(plan.RowVersion), Reason: "Council approved the revised plan period");
         controller.UpdatePlan(plan.Id, request).Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         var result = await controller.UpdatePlanByPublicId(plan.PublicId, request);
@@ -534,6 +535,7 @@ public class IdpControllerFunctionalityTests
         updated.Status.Should().Be(IdpPlanStatus.Approved);
         updated.ApprovedByUserId.Should().Be(approver.Id);
         updated.ApprovedAt.Should().NotBeNull();
+        (await context.AuditTrails.SingleAsync()).Reason.Should().Be("Council approved the revised plan period");
     }
 
     [Fact]
@@ -568,15 +570,17 @@ public class IdpControllerFunctionalityTests
         });
         await context.SaveChangesAsync();
 
-        var workflow = new Mock<IWorkflowGovernanceService>();
+        var workflow = new WorkflowGovernanceService(context);
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
                 new AccessDecisionResult(code == "IDP_PLAN.VersionSummary.UPDATE", code == "IDP_PLAN.VersionSummary.UPDATE" ? "allowed" : "denied", [], [], []));
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, user.Id, accessControl: access.Object);
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow, user.Id, accessControl: access.Object);
 
-        var request = new CreateIdpPlanVersionRequest("AnnualReview", "Annual Review", "2026/2027", "Changes");
+        var request = new CreateIdpPlanVersionRequest("AnnualReview", "Annual Review", "2026/2027", "Changes",
+            EffectiveFrom: DateTime.UtcNow.AddDays(1), RowVersion: Convert.ToBase64String(plan.RowVersion),
+            Reason: "Annual review approved by council");
         controller.CreatePlanVersion(plan.Id, request).Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         var action = await controller.CreatePlanVersionByPublicId(plan.PublicId, request);
@@ -593,6 +597,10 @@ public class IdpControllerFunctionalityTests
         versions[1].PredecessorVersionId.Should().Be(versions[0].Id);
 
         (await context.IdpPlans.SingleAsync()).CurrentVersionNumber.Should().Be(2);
+        var audit = await context.AuditTrails.SingleAsync();
+        audit.EntityName.Should().Be(nameof(IdpPlanVersion));
+        audit.EntityId.Should().Be(versions[1].PublicId.ToString());
+        audit.Reason.Should().Be("Annual review approved by council");
     }
 
     [Fact]
@@ -613,18 +621,21 @@ public class IdpControllerFunctionalityTests
         context.IdpPlans.Add(plan);
         await context.SaveChangesAsync();
 
-        var workflow = new Mock<IWorkflowGovernanceService>();
+        var workflow = new WorkflowGovernanceService(context);
         var controller = IdpTestFixture.CreateController(
             context,
             IdpTestFixture.CreateUserManagerMock(user).Object,
-            workflow.Object,
+            workflow,
             user.Id);
 
-        var rejected = await controller.UpdatePlanByPublicId(plan.PublicId, new UpdateIdpPlanRequest("IDP", 2026, 2031, "Published"));
+        var rowVersion = Convert.ToBase64String(plan.RowVersion);
+        var rejected = await controller.UpdatePlanByPublicId(plan.PublicId, new UpdateIdpPlanRequest(
+            "IDP", 2026, 2031, "Published", rowVersion, Reason: "Publish approved IDP"));
         rejected.Result.Should().BeOfType<BadRequestObjectResult>();
 
         var accepted = await controller.UpdatePlanByPublicId(plan.PublicId, new UpdateIdpPlanRequest(
-            "IDP", 2026, 2031, "Published", PublicationReference: "Council resolution 2026/17"));
+            "IDP", 2026, 2031, "Published", rowVersion, PublicationReference: "Council resolution 2026/17",
+            Reason: "Publish approved IDP"));
         accepted.Result.Should().BeOfType<OkObjectResult>();
 
         var published = await context.IdpPlans.SingleAsync();
@@ -679,9 +690,9 @@ public class IdpControllerFunctionalityTests
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
         context.ChangeTracker.Clear();
 
-        var persistedPlan = await context.IdpPlans.SingleAsync();
-        persistedPlan.EffectiveTo = persistedPlan.EffectiveFrom;
-        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
+        await FluentActions.Invoking(() => context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE IdpPlans SET EffectiveTo = EffectiveFrom WHERE Id = {plan.Id}"))
+            .Should().ThrowAsync<SqliteException>();
     }
 
     [Fact]

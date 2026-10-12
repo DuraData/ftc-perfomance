@@ -167,9 +167,11 @@ public class IdpSecondaryMemberSecurityTests
         var actor = IdpTestFixture.CreateUser("idp-version-actor", "Version", "Governor");
         var graph = await SeedGraphAsync(context, actor);
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var controller = Controller(context, actor, allowed);
+        var controller = Controller(context, actor, allowed, realWorkflow: true);
         var request = new CreateIdpPlanVersionRequest(
-            "AnnualReview", "Governed annual review", "2026/2027", "PROTECTED-VERSION-SUMMARY");
+            "AnnualReview", "Governed annual review", "2026/2027", "PROTECTED-VERSION-SUMMARY",
+            EffectiveFrom: graph.Plan.EffectiveFrom.AddDays(1), RowVersion: Convert.ToBase64String(graph.Plan.RowVersion),
+            Reason: "Governed annual review approval");
 
         (await controller.CreatePlanVersionByPublicId(graph.Plan.PublicId, request)).Result.Should().BeOfType<ForbidResult>();
         context.IdpPlanVersions.Should().BeEmpty();
@@ -362,7 +364,8 @@ public class IdpSecondaryMemberSecurityTests
         HashSet<string> allowed,
         ApplicationUser? assignee = null,
         ITenantContext? tenantContext = null,
-        List<(string Code, AccessScopeContext? Scope)>? observed = null)
+        List<(string Code, AccessScopeContext? Scope)>? observed = null,
+        bool realWorkflow = false)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(item => item.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
@@ -373,8 +376,11 @@ public class IdpSecondaryMemberSecurityTests
             });
         var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor };
         if (assignee != null) users[assignee.Id] = assignee;
+        var workflow = realWorkflow
+            ? new WorkflowGovernanceService(context, tenantContext: tenantContext)
+            : Mock.Of<IWorkflowGovernanceService>();
         return IdpTestFixture.CreateController(context, IdpTestFixture.CreateUserManagerMock(actor, users).Object,
-            Mock.Of<IWorkflowGovernanceService>(), actor.Id, tenantContext, accessControl: access.Object);
+            workflow, actor.Id, tenantContext, accessControl: access.Object);
     }
 
     private static async Task<(IdpPlan Plan, IdpStrategicOutcome Outcome, IdpStrategicObjective Objective,
