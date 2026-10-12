@@ -260,9 +260,10 @@ public class OpmsSubmissionsController : ControllerBase
         };
 
         _context.OpmsSubmissions.Add(entity);
+        _workflowGovernanceService.QueueAuditTrail("OpmsSubmission", entity.Id, "Create", null,
+            AuditSnapshot(entity), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Draft OPMS submission created.");
         await _context.SaveChangesAsync();
         var created = await FindSubmissionAsync(entity.Id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", created.Id, "Create", null, created.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(created, user)));
     }
 
@@ -295,6 +296,7 @@ public class OpmsSubmissionsController : ControllerBase
         if (entity.ReportingPeriodId.HasValue && entity.ReportingPeriodId != resolved.Period.Id) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A submission cannot be moved to another reporting period."));
 
         var before = await FindSubmissionAsync(id);
+        var beforeAudit = before == null ? null : AuditSnapshot(before);
         entity.ReportingPeriodId = resolved.Period.Id;
         entity.ActualPerformance = resolved.Calculation?.CanonicalActual;
         entity.AchievementPercent = resolved.Calculation?.AchievementPercent;
@@ -307,10 +309,11 @@ public class OpmsSubmissionsController : ControllerBase
         entity.PoeType = request.PoeType?.Trim();
         entity.UpdatedBy = user.Id;
         entity.UpdatedOn = DateTime.UtcNow;
+        _workflowGovernanceService.QueueAuditTrail("OpmsSubmission", id, "Edit", beforeAudit,
+            AuditSnapshot(entity), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Draft OPMS submission updated.");
         await _context.SaveChangesAsync();
 
         var after = await FindSubmissionAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsSubmission", id, "Edit", before?.ToResponse(), after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(after, user)));
     }
 
@@ -1216,6 +1219,26 @@ public class OpmsSubmissionsController : ControllerBase
     {
         return new[] { submission.SubmittedByUserId, submission.OpmsTarget.AssignedUserId }.Where(id => !string.IsNullOrWhiteSpace(id))!;
     }
+
+    private static object AuditSnapshot(OpmsSubmission submission) => new
+    {
+        submission.PublicId,
+        submission.OpmsTargetId,
+        submission.ReportingPeriodId,
+        submission.BaseState,
+        submission.Status,
+        submission.ActualPerformance,
+        submission.AchievementPercent,
+        submission.TargetAchieved,
+        submission.Variance,
+        submission.VarianceReason,
+        submission.CorrectiveMeasure,
+        submission.SubmitterScore,
+        submission.PoeType,
+        submission.SubmittedByUserId,
+        submission.CreatedOn,
+        submission.UpdatedOn
+    };
 
     private async Task<bool> HasConfiguredWorkflowAsync(long reportingPeriodId)
     {
