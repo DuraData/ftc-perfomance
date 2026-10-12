@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace FTCERP.Tests;
 
@@ -46,6 +47,23 @@ public sealed class OfficialReportGenerationTests
         {
             using var archive = new ZipArchive(new MemoryStream(first.Content), ZipArchiveMode.Read);
             archive.GetEntry("[Content_Types].xml").Should().NotBeNull();
+            if (format == OfficialReportFormat.Xlsx)
+            {
+                archive.GetEntry("xl/styles.xml").Should().NotBeNull();
+                using var workbookReader = new StreamReader(archive.GetEntry("xl/workbook.xml")!.Open());
+                var workbook = workbookReader.ReadToEnd();
+                workbook.Should().Contain("<bookViews>").And.Contain("_xlnm.Print_Titles").And.Contain("'Performance Report'!$1:$2");
+                using var reader = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+                var sheet = reader.ReadToEnd();
+                sheet.Should().Contain("state=\"frozen\"").And.Contain("<mergeCell").And.Contain("<autoFilter");
+                sheet.IndexOf("<autoFilter", StringComparison.Ordinal).Should().BeLessThan(sheet.IndexOf("<mergeCells", StringComparison.Ordinal));
+            }
+            else
+            {
+                using var reader = new StreamReader(archive.GetEntry("word/document.xml")!.Open());
+                var document = reader.ReadToEnd();
+                document.Should().Contain("<w:tblHeader w:val=\"true\"/>").And.Contain("<w:tblBorders>").And.Contain("w:fill=\"1F4E78\"");
+            }
         }
         if (format == OfficialReportFormat.Csv)
             System.Text.Encoding.UTF8.GetString(first.Content).Should().Contain("\"'=FORMULA\"");
@@ -136,8 +154,24 @@ public sealed class OfficialReportGenerationTests
         var rows = Enumerable.Range(1, 120).Select(index => Rows[0] with { Indicator = $"KPI-{index:D3}" }).ToArray();
         var result = OfficialReportRenderer.Render(new("Example Municipality", "2026/27", "Annual", "Annual report", OfficialReportRenderer.DefaultColumnsJson, OfficialReportFormat.Pdf, rows));
         var pdf = System.Text.Encoding.ASCII.GetString(result.Content);
-        pdf.Should().Contain("/Count 3");
+        var pageCount = int.Parse(Regex.Match(pdf, @"/Type /Pages /Kids \[[^\]]+\] /Count (?<count>\d+)").Groups["count"].Value);
+        pageCount.Should().BeGreaterThan(1);
         pdf.Should().Contain("KPI-120");
+        pdf.Should().Contain("Helvetica-Bold").And.Contain(" re S ").And.Contain("Page 1 of");
+        Regex.Matches(pdf, Regex.Escape("Annual report")).Count.Should().Be(pageCount);
+        Regex.Matches(pdf, @"\(Indicator\) Tj").Count.Should().Be(pageCount);
+        Regex.Matches(pdf, @"\(Page \d+ of \d+\) Tj").Count.Should().Be(pageCount);
+    }
+
+    [Fact]
+    public void PdfRenderer_WrapsLongOfficialValuesWithoutDroppingWords()
+    {
+        const string longValue = "Improve the reliability and response time of community facing municipal infrastructure services";
+        var result = OfficialReportRenderer.Render(new("Example Municipality", "2026/27", "Annual", "Annual report", OfficialReportRenderer.DefaultColumnsJson,
+            OfficialReportFormat.Pdf, [Rows[0] with { TargetName = longValue }]));
+        var pdf = System.Text.Encoding.ASCII.GetString(result.Content);
+
+        foreach (var word in longValue.Split(' ')) pdf.Should().Contain(word);
     }
 
     [Fact]

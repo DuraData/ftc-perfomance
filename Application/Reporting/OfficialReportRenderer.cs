@@ -171,26 +171,61 @@ public static class OfficialReportRenderer
         using var result = new MemoryStream();
         using (var archive = new ZipArchive(result, ZipArchiveMode.Create, true))
         {
-            AddText(archive, "[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>");
+            AddText(archive, "[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>");
             AddText(archive, "_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
-            AddText(archive, "xl/workbook.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Performance Report\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
-            AddText(archive, "xl/_rels/workbook.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>");
-            var sheet = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
-            AppendSheetRow(sheet, [heading]);
-            AppendSheetRow(sheet, columns.Select(column => column.Heading));
-            foreach (var row in rows) AppendSheetRow(sheet, columns.Select(column => row.Value(column.Key)));
-            sheet.Append("</sheetData></worksheet>");
+            AddText(archive, "xl/workbook.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><bookViews><workbookView xWindow=\"0\" yWindow=\"0\" windowWidth=\"24000\" windowHeight=\"12000\"/></bookViews><sheets><sheet name=\"Performance Report\" sheetId=\"1\" r:id=\"rId1\"/></sheets><definedNames><definedName name=\"_xlnm.Print_Titles\" localSheetId=\"0\">'Performance Report'!$1:$2</definedName></definedNames></workbook>");
+            AddText(archive, "xl/_rels/workbook.xml.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
+            AddText(archive, "xl/styles.xml", XlsxStyles);
+            var lastColumn = ExcelColumnName(columns.Count);
+            var sheet = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>");
+            sheet.Append("<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"2\" topLeftCell=\"A3\" activePane=\"bottomLeft\" state=\"frozen\"/></sheetView></sheetViews>");
+            sheet.Append("<sheetFormatPr defaultRowHeight=\"15\"/>");
+            sheet.Append("<cols>");
+            for (var index = 0; index < columns.Count; index++)
+                sheet.Append("<col min=\"").Append(index + 1).Append("\" max=\"").Append(index + 1).Append("\" width=\"").Append(XlsxWidth(columns[index].Key).ToString(CultureInfo.InvariantCulture)).Append("\" customWidth=\"1\"/>");
+            sheet.Append("</cols><sheetData>");
+            AppendSheetRow(sheet, [heading], 1, 1);
+            AppendSheetRow(sheet, columns.Select(column => column.Heading), 2, 2);
+            var rowIndex = 3;
+            foreach (var row in rows)
+                AppendSheetRow(sheet, columns.Select(column => row.Value(column.Key)), rowIndex, rowIndex++ % 2 == 0 ? 4 : 3);
+            // SpreadsheetML child order is significant. In particular, autoFilter
+            // must precede mergeCells or desktop Excel rejects the package.
+            sheet.Append("</sheetData><autoFilter ref=\"A2:").Append(lastColumn).Append(Math.Max(2, rowIndex - 1)).Append("\"/>")
+                .Append("<mergeCells count=\"1\"><mergeCell ref=\"A1:").Append(lastColumn).Append("1\"/></mergeCells>")
+                .Append("<pageMargins left=\"0.25\" right=\"0.25\" top=\"0.5\" bottom=\"0.5\" header=\"0.2\" footer=\"0.2\"/><pageSetup paperSize=\"1\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/></worksheet>");
             AddText(archive, "xl/worksheets/sheet1.xml", sheet.ToString());
         }
         return result.ToArray();
     }
 
-    private static void AppendSheetRow(StringBuilder xml, IEnumerable<string> values)
+    private const string XlsxStyles = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><fonts count=\"3\"><font><sz val=\"10\"/><name val=\"Aptos\"/></font><font><b/><sz val=\"15\"/><color rgb=\"FF000000\"/><name val=\"Aptos Display\"/></font><font><b/><sz val=\"10\"/><color rgb=\"FFFFFFFF\"/><name val=\"Aptos\"/></font></fonts><fills count=\"4\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill><fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF1F4E78\"/><bgColor indexed=\"64\"/></patternFill></fill><fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFEAF2F8\"/><bgColor indexed=\"64\"/></patternFill></fill></fills><borders count=\"2\"><border/><border><left style=\"thin\"><color rgb=\"FFD9D9D9\"/></left><right style=\"thin\"><color rgb=\"FFD9D9D9\"/></right><top style=\"thin\"><color rgb=\"FFD9D9D9\"/></top><bottom style=\"thin\"><color rgb=\"FFD9D9D9\"/></bottom><diagonal/></border></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs count=\"5\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyAlignment=\"1\"><alignment vertical=\"center\"/></xf><xf numFmtId=\"0\" fontId=\"2\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\" wrapText=\"1\"/></xf><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\" applyAlignment=\"1\"><alignment vertical=\"center\" wrapText=\"1\"/></xf><xf numFmtId=\"0\" fontId=\"0\" fillId=\"3\" borderId=\"1\" xfId=\"0\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment vertical=\"center\" wrapText=\"1\"/></xf></cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>";
+
+    private static void AppendSheetRow(StringBuilder xml, IEnumerable<string> values, int rowIndex, int styleIndex)
     {
-        xml.Append("<row>");
-        foreach (var value in values) xml.Append("<c t=\"inlineStr\"><is><t xml:space=\"preserve\">").Append(Xml(value)).Append("</t></is></c>");
+        xml.Append("<row r=\"").Append(rowIndex).Append("\"");
+        if (rowIndex == 1) xml.Append(" ht=\"24\" customHeight=\"1\"");
+        else if (rowIndex == 2) xml.Append(" ht=\"30\" customHeight=\"1\"");
+        xml.Append('>');
+        var columnIndex = 1;
+        foreach (var value in values)
+            xml.Append("<c r=\"").Append(ExcelColumnName(columnIndex++)).Append(rowIndex).Append("\" s=\"").Append(styleIndex).Append("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">").Append(Xml(value)).Append("</t></is></c>");
         xml.Append("</row>");
     }
+
+    private static string ExcelColumnName(int index)
+    {
+        var value = new StringBuilder();
+        while (index > 0) { index--; value.Insert(0, (char)('A' + index % 26)); index /= 26; }
+        return value.ToString();
+    }
+
+    private static double XlsxWidth(string key) => key switch
+    {
+        "indicator" => 14, "targetName" => 42, "department" => 26, "unit" => 28, "period" => 16,
+        "targetValue" => 16, "actualPerformance" => 18, "variance" => 20, "achievementPercent" => 18,
+        "targetAchieved" => 15, "status" => 24, _ => 22
+    };
 
     private static byte[] RenderDocx(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
     {
@@ -200,46 +235,113 @@ public static class OfficialReportRenderer
             AddText(archive, "[Content_Types].xml", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>");
             AddText(archive, "_rels/.rels", "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>");
             var document = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>");
-            document.Append("<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>").Append(Xml(heading)).Append("</w:t></w:r></w:p><w:tbl>");
-            AppendWordRow(document, columns.Select(column => column.Heading));
-            foreach (var row in rows) AppendWordRow(document, columns.Select(column => row.Value(column.Key)));
-            document.Append("</w:tbl><w:sectPr><w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/></w:sectPr></w:body></w:document>");
+            document.Append("<w:p><w:pPr><w:spacing w:after=\"180\"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val=\"000000\"/><w:sz w:val=\"28\"/><w:szCs w:val=\"28\"/></w:rPr><w:t>").Append(Xml(heading)).Append("</w:t></w:r></w:p><w:tbl>")
+                .Append("<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLayout w:type=\"fixed\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:color=\"D9D9D9\"/><w:left w:val=\"single\" w:sz=\"4\" w:color=\"D9D9D9\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:color=\"D9D9D9\"/><w:right w:val=\"single\" w:sz=\"4\" w:color=\"D9D9D9\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"D9D9D9\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"D9D9D9\"/></w:tblBorders><w:tblCellMar><w:top w:w=\"60\" w:type=\"dxa\"/><w:left w:w=\"60\" w:type=\"dxa\"/><w:bottom w:w=\"60\" w:type=\"dxa\"/><w:right w:w=\"60\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
+            foreach (var column in columns) document.Append("<w:gridCol w:w=\"").Append(DocxWidth(column.Key)).Append("\"/>");
+            document.Append("</w:tblGrid>");
+            AppendWordRow(document, columns, columns.Select(column => column.Heading), true, false);
+            var odd = false;
+            foreach (var row in rows) { AppendWordRow(document, columns, columns.Select(column => row.Value(column.Key)), false, odd); odd = !odd; }
+            document.Append("</w:tbl><w:sectPr><w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/><w:pgMar w:top=\"600\" w:right=\"600\" w:bottom=\"600\" w:left=\"600\" w:header=\"300\" w:footer=\"300\" w:gutter=\"0\"/></w:sectPr></w:body></w:document>");
             AddText(archive, "word/document.xml", document.ToString());
         }
         return result.ToArray();
     }
 
-    private static void AppendWordRow(StringBuilder xml, IEnumerable<string> values)
+    private static void AppendWordRow(StringBuilder xml, IReadOnlyList<Column> columns, IEnumerable<string> values, bool header, bool shaded)
     {
-        xml.Append("<w:tr>");
-        foreach (var value in values) xml.Append("<w:tc><w:p><w:r><w:t xml:space=\"preserve\">").Append(Xml(value)).Append("</w:t></w:r></w:p></w:tc>");
+        xml.Append("<w:tr><w:trPr>");
+        if (header) xml.Append("<w:tblHeader w:val=\"true\"/>");
+        xml.Append("<w:cantSplit/></w:trPr>");
+        var index = 0;
+        foreach (var value in values)
+        {
+            var width = DocxWidth(columns[index++].Key);
+            xml.Append("<w:tc><w:tcPr><w:tcW w:w=\"").Append(width).Append("\" w:type=\"dxa\"/>");
+            if (header) xml.Append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"1F4E78\"/>");
+            else if (shaded) xml.Append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"EAF2F8\"/>");
+            xml.Append("<w:vAlign w:val=\"center\"/></w:tcPr><w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"180\" w:lineRule=\"auto\"/>");
+            if (header) xml.Append("<w:jc w:val=\"center\"/>");
+            xml.Append("</w:pPr><w:r><w:rPr>");
+            if (header) xml.Append("<w:b/><w:color w:val=\"FFFFFF\"/>");
+            else xml.Append("<w:color w:val=\"000000\"/>");
+            xml.Append("<w:sz w:val=\"14\"/><w:szCs w:val=\"14\"/></w:rPr><w:t xml:space=\"preserve\">").Append(Xml(value)).Append("</w:t></w:r></w:p></w:tc>");
+        }
         xml.Append("</w:tr>");
     }
 
+    private static int DocxWidth(string key) => key switch
+    {
+        "indicator" => 850, "targetName" => 1900, "department" => 1300, "unit" => 1350, "period" => 850,
+        "targetValue" => 800, "actualPerformance" => 900, "variance" => 900, "achievementPercent" => 900,
+        "targetAchieved" => 750, "status" => 1100, _ => 1000
+    };
+
     private static byte[] RenderPdf(string heading, IReadOnlyList<Column> columns, IReadOnlyList<OfficialReportDataRow> rows)
     {
-        var dataLines = rows.Select(row => string.Join(" | ", columns.Select(column => row.Value(column.Key)))).ToArray();
-        var pageData = dataLines.Chunk(55).Select(chunk => chunk.ToArray()).ToList();
-        if (pageData.Count == 0) pageData.Add([]);
-        var fontObjectId = 3 + pageData.Count * 2;
+        const double pageWidth = 792;
+        const double pageHeight = 612;
+        const double left = 24;
+        const double right = 24;
+        const double bottom = 28;
+        const double tableTop = 535;
+        const double fontSize = 5.4;
+        const double lineHeight = 6.7;
+        const double padding = 2.5;
+        var availableWidth = pageWidth - left - right;
+        var weights = columns.Select(column => PdfWeight(column.Key)).ToArray();
+        var weightTotal = weights.Sum();
+        var widths = weights.Select(weight => availableWidth * weight / weightTotal).ToArray();
+        var headerLines = columns.Select((column, index) => WrapPdf(column.Heading, widths[index] - padding * 2, fontSize, true)).ToArray();
+        var headerHeight = Math.Max(18, headerLines.Max(lines => lines.Length) * lineHeight + padding * 2);
+        var preparedRows = rows.Select(row =>
+        {
+            var lines = columns.Select((column, index) => WrapPdf(row.Value(column.Key), widths[index] - padding * 2, fontSize, false)).ToArray();
+            return new PdfPreparedRow(lines, Math.Max(13, lines.Max(value => value.Length) * lineHeight + padding * 2));
+        }).ToArray();
+        var pages = new List<List<PdfPreparedRow>> { new() };
+        var remaining = tableTop - headerHeight - bottom;
+        foreach (var row in preparedRows)
+        {
+            if (pages[^1].Count > 0 && row.Height > remaining)
+            {
+                pages.Add(new());
+                remaining = tableTop - headerHeight - bottom;
+            }
+            pages[^1].Add(row);
+            remaining -= row.Height;
+        }
+        var regularFontObjectId = 3 + pages.Count * 2;
+        var boldFontObjectId = regularFontObjectId + 1;
         var objects = new List<string>
         {
             "<< /Type /Catalog /Pages 2 0 R >>",
-            $"<< /Type /Pages /Kids [{string.Join(' ', Enumerable.Range(0, pageData.Count).Select(index => $"{3 + index * 2} 0 R"))}] /Count {pageData.Count} >>"
+            $"<< /Type /Pages /Kids [{string.Join(' ', Enumerable.Range(0, pages.Count).Select(index => $"{3 + index * 2} 0 R"))}] /Count {pages.Count} >>"
         };
-        for (var pageIndex = 0; pageIndex < pageData.Count; pageIndex++)
+        for (var pageIndex = 0; pageIndex < pages.Count; pageIndex++)
         {
             var pageObjectId = 3 + pageIndex * 2;
             var contentObjectId = pageObjectId + 1;
-            objects.Add($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 {fontObjectId} 0 R >> >> /Contents {contentObjectId} 0 R >>");
-            var content = new StringBuilder("BT /F1 7 Tf 30 570 Td 9 TL ");
-            var lines = new[] { heading, $"Page {pageIndex + 1} of {pageData.Count}", string.Join(" | ", columns.Select(column => column.Heading)) }.Concat(pageData[pageIndex]);
-            foreach (var line in lines) content.Append('(').Append(Pdf(Trim(line, 160))).Append(") Tj T* ");
-            content.Append("ET");
+            objects.Add($"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {N(pageWidth)} {N(pageHeight)}] /Resources << /Font << /F1 {regularFontObjectId} 0 R /F2 {boldFontObjectId} 0 R >> >> /Contents {contentObjectId} 0 R >>");
+            var content = new StringBuilder();
+            AppendPdfText(content, heading, left, pageHeight - 30, 13, true);
+            AppendPdfText(content, $"Official performance report  |  Generated record set: {rows.Count} row{(rows.Count == 1 ? string.Empty : "s")}", left, pageHeight - 47, 7.5, false);
+            var y = tableTop;
+            AppendPdfRow(content, headerLines, widths, left, y, headerHeight, lineHeight, padding, true, false);
+            y -= headerHeight;
+            var shaded = false;
+            foreach (var row in pages[pageIndex])
+            {
+                AppendPdfRow(content, row.Lines, widths, left, y, row.Height, lineHeight, padding, false, shaded);
+                y -= row.Height;
+                shaded = !shaded;
+            }
+            AppendPdfText(content, $"Page {pageIndex + 1} of {pages.Count}", pageWidth - 82, 14, 7, false);
             var stream = content.ToString();
             objects.Add($"<< /Length {Encoding.ASCII.GetByteCount(stream)} >>\nstream\n{stream}\nendstream");
         }
-        objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+        objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+        objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
         using var output = new MemoryStream();
         using var writer = new StreamWriter(output, Encoding.ASCII, 1024, true) { NewLine = "\n" };
         writer.Write("%PDF-1.4\n"); writer.Flush();
@@ -250,6 +352,77 @@ public static class OfficialReportRenderer
         foreach (var offset in offsets.Skip(1)) writer.Write($"{offset:D10} 00000 n \n");
         writer.Write($"trailer\n<< /Size {objects.Count + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF"); writer.Flush();
         return output.ToArray();
+    }
+
+    private sealed record PdfPreparedRow(string[][] Lines, double Height);
+
+    private static double PdfWeight(string key) => key switch
+    {
+        "indicator" => 0.8, "targetName" => 2.25, "department" => 1.45, "unit" => 1.5, "period" => 0.9,
+        "targetValue" => 0.85, "actualPerformance" => 0.95, "variance" => 1.0, "achievementPercent" => 0.95,
+        "targetAchieved" => 0.8, "status" => 1.2, _ => 1.0
+    };
+
+    private static string[] WrapPdf(string? value, double width, double fontSize, bool heading)
+    {
+        var text = PdfText(value ?? string.Empty);
+        if (text.Length == 0) return [string.Empty];
+        var maximum = Math.Max(3, (int)Math.Floor(width / (fontSize * (heading ? 0.57 : 0.51))));
+        var lines = new List<string>();
+        var current = new StringBuilder();
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var remainder = word;
+            while (remainder.Length > maximum)
+            {
+                if (current.Length > 0) { lines.Add(current.ToString()); current.Clear(); }
+                lines.Add(remainder[..maximum]);
+                remainder = remainder[maximum..];
+            }
+            if (current.Length == 0) current.Append(remainder);
+            else if (current.Length + 1 + remainder.Length <= maximum) current.Append(' ').Append(remainder);
+            else { lines.Add(current.ToString()); current.Clear(); current.Append(remainder); }
+        }
+        if (current.Length > 0) lines.Add(current.ToString());
+        return lines.Count == 0 ? [string.Empty] : lines.ToArray();
+    }
+
+    private static void AppendPdfRow(StringBuilder content, string[][] cells, double[] widths, double left, double top, double height, double lineHeight, double padding, bool header, bool shaded)
+    {
+        if (header) content.Append("0.122 0.306 0.471 rg ").Append(N(left)).Append(' ').Append(N(top - height)).Append(' ').Append(N(widths.Sum())).Append(' ').Append(N(height)).Append(" re f ");
+        else if (shaded) content.Append("0.918 0.949 0.973 rg ").Append(N(left)).Append(' ').Append(N(top - height)).Append(' ').Append(N(widths.Sum())).Append(' ').Append(N(height)).Append(" re f ");
+        content.Append("0.82 G 0.35 w ");
+        var x = left;
+        for (var index = 0; index < widths.Length; index++)
+        {
+            content.Append(N(x)).Append(' ').Append(N(top - height)).Append(' ').Append(N(widths[index])).Append(' ').Append(N(height)).Append(" re S ");
+            var textY = top - padding - lineHeight + 1;
+            foreach (var line in cells[index])
+            {
+                AppendPdfText(content, line, x + padding, textY, 5.4, header);
+                textY -= lineHeight;
+            }
+            x += widths[index];
+        }
+    }
+
+    private static void AppendPdfText(StringBuilder content, string value, double x, double y, double size, bool bold) =>
+        content.Append("BT /").Append(bold ? "F2" : "F1").Append(' ').Append(N(size)).Append(" Tf ")
+            .Append(PdfTextColor(bold, size)).Append(N(x)).Append(' ').Append(N(y)).Append(" Td (").Append(Pdf(value)).Append(") Tj ET ");
+
+    private static string PdfTextColor(bool bold, double size) => bold && size < 10 ? "1 1 1 rg " : "0 0 0 rg ";
+
+    private static string N(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static string PdfText(string value)
+    {
+        var punctuation = value
+            .Replace('\u2013', '-').Replace('\u2014', '-').Replace('\u2011', '-').Replace('\u2212', '-')
+            .Replace('\u2018', '\'').Replace('\u2019', '\'').Replace('\u201C', '"').Replace('\u201D', '"')
+            .Replace('\u2022', '-').Replace('\u00B7', '-').Replace('\u00A0', ' ');
+        return string.Concat(punctuation.Normalize(NormalizationForm.FormD)
+            .Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark))
+            .Normalize(NormalizationForm.FormC);
     }
 
     private static void AddText(ZipArchive archive, string path, string content)
@@ -267,8 +440,7 @@ public static class OfficialReportRenderer
         var valid = string.Concat((value ?? string.Empty).Where(XmlConvert.IsXmlChar));
         return System.Security.SecurityElement.Escape(valid) ?? string.Empty;
     }
-    private static string Pdf(string value) => string.Concat(value.Select(character => character is >= ' ' and <= '~' ? character : '?')).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
-    private static string Trim(string value, int maximum) => value.Length <= maximum ? value : value[..(maximum - 1)] + "…";
+    private static string Pdf(string value) => string.Concat(PdfText(value).Select(character => character is >= ' ' and <= '~' ? character : '?')).Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
 
     private static OfficialReportDataRow ToDataRow(OfficialPerformanceReportRow row) => new(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
