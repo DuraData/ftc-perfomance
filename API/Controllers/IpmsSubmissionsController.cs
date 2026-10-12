@@ -686,6 +686,11 @@ public class IpmsSubmissionsController : ControllerBase
         };
 
         _context.PoeFiles.Add(entity);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", entity.Id, "Upload", null,
+            new { entity.PublicId, entity.FileName, entity.RetainUntil, entity.UploadedAt, entity.Blob.Sha256, entity.Blob.ScanStatus },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Evidence upload");
+        _workflowGovernanceService.QueueWorkflowNotifications(GetRelevantUserIds(submission), NotificationType.Submission,
+            "IPMS evidence uploaded", $"A POE file was uploaded for IPMS submission '{id}'.", "IpmsSubmission", id);
         try { await _context.SaveChangesAsync(); }
         catch
         {
@@ -694,8 +699,6 @@ public class IpmsSubmissionsController : ControllerBase
         }
 
         var created = await _context.PoeFiles.IncludePoeGovernance().FirstAsync(item => item.Id == entity.Id);
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", entity.Id, "Upload", null, created.ToResponse(HttpContext, submission.PublicId, PoeResponseMemberAccess.Full), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
-        await _workflowGovernanceService.CreateWorkflowNotificationsAsync(GetRelevantUserIds(submission), NotificationType.Submission, "IPMS evidence uploaded", $"A POE file was uploaded for IPMS submission '{id}'.", "IpmsSubmission", id);
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(created, user, BuildScope(submission), submission.PublicId)));
     }
 
@@ -739,8 +742,10 @@ public class IpmsSubmissionsController : ControllerBase
         var before = new { evidence.Blob.ScanStatus, evidence.Blob.IsQuarantined, evidence.Blob.ScannerReference };
         var scan = await _malwareScanner.ScanAsync(stored.Content, evidence.FileName, evidence.Blob.ContentType ?? "application/octet-stream", HttpContext.RequestAborted);
         evidence.Blob.ScanStatus = scan.Status; evidence.Blob.IsQuarantined = !scan.IsClean; evidence.Blob.ScannerProvider = scan.Provider; evidence.Blob.ScannerReference = scan.ProviderReference; evidence.Blob.ScanDetail = scan.Detail; evidence.Blob.ScannedAt = DateTime.UtcNow;
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", evidence.Id, "MalwareRescan", before,
+            new { evidence.Blob.ScanStatus, evidence.Blob.IsQuarantined, evidence.Blob.ScannerReference }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), "Malware rescan");
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "MalwareRescan", before, new { evidence.Blob.ScanStatus, evidence.Blob.IsQuarantined, evidence.Blob.ScannerReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), scan.IsClean ? "Evidence released after a clean scan." : "Evidence remains quarantined."));
     }
 
@@ -769,8 +774,10 @@ public class IpmsSubmissionsController : ControllerBase
         if (!policy.Allowed) return BadRequest(new ApiResponse<PoeFileResponse>(false, null, policy.Error));
         var assessment = new PoeEvidenceAssessment { MunicipalityId = submission.MunicipalityId!.Value, PoeFileId = evidence.Id, PoeFile = evidence, Outcome = request.Outcome, Comment = comment, AssessedByUserId = user.Id, AssessedByUser = user, AssessedAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
         evidence.Assessments.Add(assessment);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", evidence.Id, "Assess:" + request.Outcome, null,
+            new { assessment.PublicId, assessment.Outcome, assessment.Comment, assessment.AssessedAt }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), comment ?? $"Evidence assessment: {request.Outcome}");
         await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "Assess:" + request.Outcome, null, new { assessment.PublicId, assessment.Outcome, assessment.Comment, assessment.AssessedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Evidence assessment recorded."));
     }
 
@@ -800,10 +807,13 @@ public class IpmsSubmissionsController : ControllerBase
         var ledger = new PoeEvidenceReplacement { MunicipalityId = submission.MunicipalityId!.Value, SupersededPoeFileId = superseded.Id, SupersededPoeFile = superseded, ReplacementPoeFileId = replacement.Id, ReplacementPoeFile = replacement, Reason = request.Reason.Trim(), ReplacedByUserId = user.Id, ReplacedByUser = user, ReplacedAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
         superseded.IsActive = false; replacement.SupersedesPoeFileId = superseded.Id; superseded.ReplacementsAsOld.Add(ledger); replacement.ReplacementAsNew = ledger;
         _context.PoeEvidenceReplacements.Add(ledger);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", superseded.Id, "Replace",
+            new { superseded.PublicId, superseded.FileName },
+            new { ledger.PublicId, ReplacementPublicId = replacement.PublicId, ledger.Reason, ledger.ReplacedAt }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), ledger.Reason);
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before replacement could be recorded")); }
         catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "One of these evidence records already participates in a replacement")); }
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", superseded.Id, "Replace", new { superseded.PublicId, superseded.FileName }, new { ledger.PublicId, ReplacementPublicId = replacement.PublicId, ledger.Reason, ledger.ReplacedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(superseded, user, BuildScope(submission), submission.PublicId), "Evidence replacement recorded; the prior record remains retained in immutable history."));
     }
 
@@ -829,8 +839,11 @@ public class IpmsSubmissionsController : ControllerBase
         if (evidence.LegalHoldEvents.GroupBy(item => item.HoldId).Any(group => group.First().HoldReference == request.HoldReference.Trim() && group.All(item => item.Action != PoeLegalHoldAction.Released)))
             return Conflict(new ApiResponse<PoeFileResponse>(false, null, "An active legal hold with this reference already exists for the evidence"));
         var hold = new PoeLegalHoldEvent { HoldId = Guid.NewGuid(), MunicipalityId = submission.MunicipalityId!.Value, PoeFileId = evidence.Id, PoeFile = evidence, Action = PoeLegalHoldAction.Placed, HoldReference = request.HoldReference.Trim(), Reason = request.Reason.Trim(), ActorUserId = user.Id, ActorUser = user, OccurredAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
-        evidence.LegalHoldEvents.Add(hold); _context.PoeLegalHoldEvents.Add(hold); await _context.SaveChangesAsync();
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "LegalHoldPlaced", null, new { hold.HoldId, hold.HoldReference, hold.Reason, hold.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        evidence.LegalHoldEvents.Add(hold); _context.PoeLegalHoldEvents.Add(hold);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", evidence.Id, "LegalHoldPlaced", null,
+            new { hold.HoldId, hold.HoldReference, hold.Reason, hold.OccurredAt }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), hold.Reason);
+        await _context.SaveChangesAsync();
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Legal hold placed."));
     }
 
@@ -857,8 +870,10 @@ public class IpmsSubmissionsController : ControllerBase
         if (!PoeLegalHoldPolicy.IsActive(evidence.LegalHoldEvents, holdId)) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Legal hold has already been released"));
         var release = new PoeLegalHoldEvent { HoldId = holdId, MunicipalityId = submission.MunicipalityId!.Value, PoeFileId = evidence.Id, PoeFile = evidence, Action = PoeLegalHoldAction.Released, HoldReference = placed.HoldReference, Reason = request.Reason.Trim(), ActorUserId = user.Id, ActorUser = user, OccurredAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
         evidence.LegalHoldEvents.Add(release); _context.PoeLegalHoldEvents.Add(release);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", evidence.Id, "LegalHoldReleased",
+            new { holdId, placed.HoldReference }, new { release.Reason, release.OccurredAt }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), release.Reason);
         try { await _context.SaveChangesAsync(); } catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Legal hold was released concurrently")); }
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "LegalHoldReleased", new { holdId, placed.HoldReference }, new { release.Reason, release.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Legal hold released."));
     }
 
@@ -883,10 +898,12 @@ public class IpmsSubmissionsController : ControllerBase
         if (!PoeRowVersionMatches(evidence, request.RowVersion)) return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before disposal could be requested"));
         var disposal = new PoeDisposalEvent { DisposalId = Guid.NewGuid(), MunicipalityId = submission.MunicipalityId!.Value, PoeFileId = evidence.Id, PoeFile = evidence, Action = PoeDisposalAction.Requested, ApprovalReference = request.ApprovalReference.Trim(), Reason = request.Reason.Trim(), ActorUserId = user.Id, ActorUser = user, OccurredAt = DateTime.UtcNow, CorrelationId = HttpContext.TraceIdentifier };
         evidence.DisposalEvents.Add(disposal); _context.PoeDisposalEvents.Add(disposal);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmissionAttachment", evidence.Id, "DisposalRequested", null,
+            new { disposal.DisposalId, disposal.ApprovalReference, disposal.Reason, disposal.OccurredAt }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), disposal.Reason);
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "Evidence changed before disposal could be requested")); }
         catch (DbUpdateException) { return Conflict(new ApiResponse<PoeFileResponse>(false, null, "A disposal request was recorded concurrently")); }
-        await _workflowGovernanceService.WriteAuditTrailAsync("IpmsSubmissionAttachment", evidence.Id, "DisposalRequested", null, new { disposal.DisposalId, disposal.ApprovalReference, disposal.Reason, disposal.OccurredAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Accepted(new ApiResponse<PoeFileResponse>(true, await ToAuthorizedPoeResponseAsync(evidence, user, BuildScope(submission), submission.PublicId), "Evidence disposal was queued for controlled storage processing."));
     }
 

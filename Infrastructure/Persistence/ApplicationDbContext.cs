@@ -2173,6 +2173,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
         EnforceOpmsTargetTemplateHistory();
         EnforceIpmsTargetTemplateHistory();
+        EnforceEvidenceLifecycle();
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))
         {
             var row = entry.Entity;
@@ -2960,6 +2961,161 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             || (start.HasValue && currentEnd.HasValue && currentEnd < start)
             || (originalEnd.HasValue && currentEnd.HasValue && currentEnd > originalEnd))
             throw new InvalidOperationException(message);
+    }
+
+    private void EnforceEvidenceLifecycle()
+    {
+        PoeFile? ResolveFile(string id)
+        {
+            var tracked = ChangeTracker.Entries<PoeFile>()
+                .Where(entry => entry.State != EntityState.Deleted && entry.Entity.Id == id)
+                .Select(entry => entry.Entity)
+                .FirstOrDefault();
+            return tracked ?? PoeFiles.IgnoreQueryFilters().AsNoTracking().FirstOrDefault(item => item.Id == id);
+        }
+
+        foreach (var assessment in ChangeTracker.Entries<PoeEvidenceAssessment>().Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity))
+        {
+            var file = ResolveFile(assessment.PoeFileId);
+            if (file?.MunicipalityId != assessment.MunicipalityId)
+                throw new InvalidOperationException("POE assessment evidence must belong to the same municipality as its parent file.");
+        }
+
+        foreach (var hold in ChangeTracker.Entries<PoeLegalHoldEvent>().Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity))
+        {
+            var file = ResolveFile(hold.PoeFileId);
+            if (file?.MunicipalityId != hold.MunicipalityId)
+                throw new InvalidOperationException("POE legal-hold evidence must belong to the same municipality as its parent file.");
+        }
+
+        foreach (var disposal in ChangeTracker.Entries<PoeDisposalEvent>().Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity))
+        {
+            var file = ResolveFile(disposal.PoeFileId);
+            if (file?.MunicipalityId != disposal.MunicipalityId)
+                throw new InvalidOperationException("POE disposal evidence must belong to the same municipality as its parent file.");
+        }
+
+        var addedReplacements = ChangeTracker.Entries<PoeEvidenceReplacement>()
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => entry.Entity)
+            .ToArray();
+        foreach (var ledger in addedReplacements)
+        {
+            var superseded = ResolveFile(ledger.SupersededPoeFileId);
+            var replacement = ResolveFile(ledger.ReplacementPoeFileId);
+            if (superseded == null || replacement == null
+                || superseded.Id == replacement.Id
+                || superseded.MunicipalityId != ledger.MunicipalityId
+                || replacement.MunicipalityId != ledger.MunicipalityId
+                || superseded.SubmissionKind != replacement.SubmissionKind
+                || superseded.SubmissionId != replacement.SubmissionId
+                || superseded.IsActive
+                || !replacement.IsActive
+                || replacement.SupersedesPoeFileId != superseded.Id
+                || string.IsNullOrWhiteSpace(ledger.Reason)
+                || string.IsNullOrWhiteSpace(ledger.ReplacedByUserId)
+                || string.IsNullOrWhiteSpace(ledger.CorrelationId))
+                throw new InvalidOperationException("POE replacement evidence requires same-municipality, same-submission records and exact one-way predecessor lineage.");
+        }
+
+        foreach (var entry in ChangeTracker.Entries<PoeFile>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("POE file associations are governed evidence and cannot be hard deleted.");
+
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name)
+                .Where(property => property != nameof(PoeFile.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            if (changed.SetEquals([nameof(PoeFile.IsActive)]))
+            {
+                var matching = addedReplacements.Where(item => item.SupersededPoeFileId == entry.Entity.Id).ToArray();
+                if (!entry.OriginalValues.GetValue<bool>(nameof(PoeFile.IsActive))
+                    || entry.CurrentValues.GetValue<bool>(nameof(PoeFile.IsActive))
+                    || matching.Length != 1
+                    || matching[0].MunicipalityId != entry.OriginalValues.GetValue<long?>(nameof(PoeFile.MunicipalityId)))
+                    throw new InvalidOperationException("A POE association may be retired only by one append-only replacement record in the same unit of work.");
+                continue;
+            }
+
+            if (changed.SetEquals([nameof(PoeFile.SupersedesPoeFileId)]))
+            {
+                var originalPredecessor = entry.OriginalValues.GetValue<string?>(nameof(PoeFile.SupersedesPoeFileId));
+                var currentPredecessor = entry.CurrentValues.GetValue<string?>(nameof(PoeFile.SupersedesPoeFileId));
+                var matching = addedReplacements.Where(item => item.ReplacementPoeFileId == entry.Entity.Id).ToArray();
+                if (!string.IsNullOrWhiteSpace(originalPredecessor)
+                    || string.IsNullOrWhiteSpace(currentPredecessor)
+                    || !entry.CurrentValues.GetValue<bool>(nameof(PoeFile.IsActive))
+                    || matching.Length != 1
+                    || matching[0].SupersededPoeFileId != currentPredecessor
+                    || matching[0].MunicipalityId != entry.OriginalValues.GetValue<long?>(nameof(PoeFile.MunicipalityId)))
+                    throw new InvalidOperationException("A POE replacement may acquire predecessor lineage only once and with its append-only replacement record.");
+                continue;
+            }
+
+            throw new InvalidOperationException("POE association identity, ownership, submission, file metadata, retention and provenance are immutable.");
+        }
+
+        var scanProperties = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(EvidenceBlob.ScanStatus), nameof(EvidenceBlob.IsQuarantined), nameof(EvidenceBlob.ScannerProvider),
+            nameof(EvidenceBlob.ScannerReference), nameof(EvidenceBlob.ScanDetail), nameof(EvidenceBlob.ScannedAt)
+        };
+        var disposalProperties = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(EvidenceBlob.IsContentDeleted), nameof(EvidenceBlob.ContentDeletedAt)
+        };
+        var completedDisposals = ChangeTracker.Entries<PoeDisposalEvent>()
+            .Where(entry => entry.State == EntityState.Added && entry.Entity.Action == PoeDisposalAction.Completed)
+            .Select(entry => entry.Entity)
+            .ToArray();
+        var trackedFiles = ChangeTracker.Entries<PoeFile>().Select(entry => entry.Entity).ToArray();
+
+        foreach (var entry in ChangeTracker.Entries<EvidenceBlob>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Physical evidence metadata cannot be hard deleted; governed disposal preserves its identity and history.");
+
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name)
+                .Where(property => property != nameof(EvidenceBlob.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            if (changed.IsSubsetOf(scanProperties))
+            {
+                var currentScannedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(EvidenceBlob.ScannedAt));
+                var originalScannedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(EvidenceBlob.ScannedAt));
+                if (entry.OriginalValues.GetValue<bool>(nameof(EvidenceBlob.IsContentDeleted))
+                    || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string>(nameof(EvidenceBlob.ScanStatus)))
+                    || !currentScannedAt.HasValue
+                    || originalScannedAt.HasValue && currentScannedAt < originalScannedAt)
+                    throw new InvalidOperationException("Evidence scan state may only advance for available content with a non-empty status and monotonic scan timestamp.");
+                continue;
+            }
+
+            if (changed.SetEquals(disposalProperties))
+            {
+                var deletedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(EvidenceBlob.ContentDeletedAt));
+                var associatedFileIds = trackedFiles
+                    .Where(file => file.EvidenceBlobId == entry.Entity.Id || ReferenceEquals(file.Blob, entry.Entity))
+                    .Select(file => file.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+                var matching = completedDisposals.Where(item => associatedFileIds.Contains(item.PoeFileId)
+                    && item.MunicipalityId == entry.OriginalValues.GetValue<long?>(nameof(EvidenceBlob.MunicipalityId))).ToArray();
+                if (entry.OriginalValues.GetValue<bool>(nameof(EvidenceBlob.IsContentDeleted))
+                    || !entry.CurrentValues.GetValue<bool>(nameof(EvidenceBlob.IsContentDeleted))
+                    || entry.OriginalValues.GetValue<DateTime?>(nameof(EvidenceBlob.ContentDeletedAt)).HasValue
+                    || !deletedAt.HasValue
+                    || matching.Length != 1)
+                    throw new InvalidOperationException("Evidence content may be marked deleted only once with one completed governed disposal event in the same unit of work.");
+                continue;
+            }
+
+            throw new InvalidOperationException("Evidence identity, tenant, storage location, content metadata, signature and creation evidence are immutable.");
+        }
     }
 
     private static void EnsureOnlyProperties<TEntity>(EntityEntry<TEntity> entry, string[] allowedProperties, string message) where TEntity : class

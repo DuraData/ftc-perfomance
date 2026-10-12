@@ -197,6 +197,12 @@ public sealed class ConfigurableWorkflowTests
         PoeAssessmentPolicy.Validate(evidence, PoeAssessmentOutcome.NeedsClarification, "Provide signed minutes.").Allowed.Should().BeTrue();
 
         await using var context = IdpTestFixture.CreateContext();
+        evidence.MunicipalityId = 7;
+        evidence.SubmissionKind = SubmissionKind.Opms;
+        evidence.SubmissionId = "submission-1";
+        evidence.FileName = "evidence.pdf";
+        evidence.UploadedByUserId = "auditor";
+        context.PoeFiles.Add(evidence);
         var assessment = new PoeEvidenceAssessment { MunicipalityId = 7, PoeFileId = evidence.Id, Outcome = PoeAssessmentOutcome.Accepted, AssessedByUserId = "auditor", CorrelationId = "trace-assessment" };
         context.PoeEvidenceAssessments.Add(assessment);
         await context.SaveChangesAsync();
@@ -216,6 +222,16 @@ public sealed class ConfigurableWorkflowTests
         PoeReplacementPolicy.Validate(oldEvidence, replacement, SubmissionKind.Opms, "submission-1", "Corrected signed version").Allowed.Should().BeFalse();
 
         await using var context = IdpTestFixture.CreateContext();
+        oldEvidence.MunicipalityId = 7;
+        oldEvidence.IsActive = false;
+        oldEvidence.FileName = "old.pdf";
+        oldEvidence.UploadedByUserId = "owner";
+        replacement.MunicipalityId = 7;
+        replacement.SubmissionId = oldEvidence.SubmissionId;
+        replacement.SupersedesPoeFileId = oldEvidence.Id;
+        replacement.FileName = "new.pdf";
+        replacement.UploadedByUserId = "owner";
+        context.PoeFiles.AddRange(oldEvidence, replacement);
         var ledger = new PoeEvidenceReplacement { MunicipalityId = 7, SupersededPoeFileId = "old", ReplacementPoeFileId = "new", Reason = "Corrected signed version", ReplacedByUserId = "owner", CorrelationId = "trace-replacement" };
         context.PoeEvidenceReplacements.Add(ledger);
         await context.SaveChangesAsync();
@@ -235,6 +251,11 @@ public sealed class ConfigurableWorkflowTests
         PoeLegalHoldPolicy.HasAnyActiveHold([placed, released]).Should().BeFalse();
 
         await using var context = IdpTestFixture.CreateContext();
+        context.PoeFiles.Add(new PoeFile
+        {
+            Id = placed.PoeFileId, MunicipalityId = placed.MunicipalityId, SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "submission-1", FileName = "held.pdf", UploadedByUserId = placed.ActorUserId
+        });
         context.PoeLegalHoldEvents.Add(placed);
         await context.SaveChangesAsync();
         placed.Reason = "Mutation attempt";
@@ -263,6 +284,12 @@ public sealed class ConfigurableWorkflowTests
 
         await using var context = IdpTestFixture.CreateContext();
         var disposal = new PoeDisposalEvent { DisposalId = Guid.NewGuid(), MunicipalityId = 7, PoeFileId = evidence.Id, Action = PoeDisposalAction.Requested, ApprovalReference = "COUNCIL-2026-42", Reason = "Retention period completed", ActorUserId = "records-officer", CorrelationId = "trace-disposal" };
+        context.PoeFiles.Add(new PoeFile
+        {
+            Id = disposal.PoeFileId, MunicipalityId = disposal.MunicipalityId, SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "submission-1", FileName = "disposed.pdf", UploadedByUserId = disposal.ActorUserId,
+            IsActive = false, RetainUntil = now.AddDays(-1)
+        });
         context.PoeDisposalEvents.Add(disposal);
         await context.SaveChangesAsync();
         disposal.Reason = "Mutation attempt";
