@@ -120,6 +120,35 @@ public sealed class InternalAuditAssessmentTests
     }
 
     [Fact]
+    public async Task Detailed_model_derives_the_audit_rating_from_recorded_achievement()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context, InternalAuditAssessmentModel.Detailed);
+        seed.Submission.AchievementPercent = 92.5m;
+        var workflow = await context.WorkflowDefinitions.SingleAsync();
+        var scheme = new RatingScheme { MunicipalityId = seed.Municipality.Id, Code = "IA-AUTO", Name = "Automatic IA rating" };
+        scheme.Values.Add(new RatingSchemeValue { MunicipalityId = seed.Municipality.Id, Value = 2, Label = "Below target", MinimumAchievementPercent = 0, MaximumAchievementPercent = 79.9999m, SortOrder = 1 });
+        scheme.Values.Add(new RatingSchemeValue { MunicipalityId = seed.Municipality.Id, Value = 4, Label = "Achieved", MinimumAchievementPercent = 80, MaximumAchievementPercent = 100, SortOrder = 2 });
+        context.WorkflowStageDefinitions.Add(new WorkflowStageDefinition
+        {
+            MunicipalityId = seed.Municipality.Id, WorkflowDefinitionId = workflow.Id, WorkflowDefinition = workflow,
+            Code = "AUDIT", Name = "Internal Audit", Sequence = 1, RequiredActionCode = "OPMS_WORKFLOW.INTERNAL_AUDIT",
+            RequiredPermissionCode = "OPMS_WORKFLOW.INTERNAL_AUDIT", IsTerminal = true, RequiresRating = true, RatingScheme = scheme
+        });
+        await context.SaveChangesAsync();
+
+        var result = await Controller(context, seed, allowed: true).Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
+            new(InternalAuditAssessmentOutcome.Achieved, "The evidence supports the recorded achievement.", null, null, null, null, null, null));
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        (await context.InternalAuditAssessments.SingleAsync()).Score.Should().Be(4);
+        var rating = await context.SubmissionStageRatings.SingleAsync();
+        rating.Value.Should().Be(4);
+        rating.LabelSnapshot.Should().Be("Achieved");
+        rating.AchievementPercent.Should().Be(92.5m);
+    }
+
+    [Fact]
     public async Task Assessment_rows_cannot_be_changed_or_deleted()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

@@ -71,10 +71,19 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         var previousActor = instance.Actions.OrderByDescending(x => x.Sequence).Select(x => x.ActorUserId).FirstOrDefault();
         if (stage.RequireDifferentActorFromPreviousStage && string.Equals(previousActor, actorUserId, StringComparison.OrdinalIgnoreCase))
             return new(false, "Segregation of duties requires a different actor from the previous stage.", instance, null);
-        if (stage.RequiresRating && !rating.HasValue)
-            return new(false, $"Stage '{stage.Code}' requires a configured rating.", instance, null);
+        decimal? achievementPercent = null;
+        if (stage.RequiresRating || rating.HasValue)
+            achievementPercent = await GetAchievementPercentAsync(kind, submissionId);
         RatingSchemeValue? selectedRating = null;
-        if (rating.HasValue)
+        if (stage.RequiresRating && !rating.HasValue)
+        {
+            var automatic = ResolveAchievementRating(stage, achievementPercent);
+            if (automatic.Error != null)
+                return new(false, automatic.Error, instance, null);
+            selectedRating = automatic.Value!;
+            rating = selectedRating.Value;
+        }
+        else if (rating.HasValue)
         {
             if (stage.RatingScheme == null || !stage.RatingScheme.IsActive)
                 return new(false, $"Stage '{stage.Code}' is not assigned an active rating scheme.", instance, null);
@@ -109,6 +118,7 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
                 RatingSchemeValue = selectedRating,
                 Value = selectedRating.Value,
                 LabelSnapshot = selectedRating.Label,
+                AchievementPercent = achievementPercent,
                 Comment = comment?.Trim(),
                 RatedByUserId = actorUserId,
                 RatedAt = action.OccurredAt,
@@ -120,6 +130,39 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         instance.State = completed ? WorkflowInstanceState.Completed : outcome == WorkflowActionOutcome.Reject ? WorkflowInstanceState.Rework : WorkflowInstanceState.Active;
         if (completed) instance.CompletedAt = action.OccurredAt;
         return new(true, completed ? "Workflow completed." : $"Workflow advanced to '{next!.Code}'.", instance, action);
+    }
+
+    private async Task<decimal?> GetAchievementPercentAsync(SubmissionKind kind, string submissionId) => kind switch
+    {
+        SubmissionKind.Opms => await context.OpmsSubmissions.AsNoTracking()
+            .Where(item => item.Id == submissionId)
+            .Select(item => item.AchievementPercent)
+            .SingleOrDefaultAsync(),
+        SubmissionKind.Ipms => await context.IpmsSubmissions.AsNoTracking()
+            .Where(item => item.Id == submissionId)
+            .Select(item => item.AchievementPercent)
+            .SingleOrDefaultAsync(),
+        _ => null
+    };
+
+    internal static (RatingSchemeValue? Value, string? Error) ResolveAchievementRating(WorkflowStageDefinition stage, decimal? achievementPercent)
+    {
+        if (stage.RatingScheme == null || !stage.RatingScheme.IsActive)
+            return (null, $"Stage '{stage.Code}' is not assigned an active rating scheme.");
+        if (!achievementPercent.HasValue)
+            return (null, $"Stage '{stage.Code}' requires a configured rating because the submission has no recorded achievement percentage.");
+
+        var matchingBands = stage.RatingScheme.Values
+            .Where(value => value.MinimumAchievementPercent.HasValue
+                && value.MaximumAchievementPercent.HasValue
+                && achievementPercent.Value >= value.MinimumAchievementPercent.Value
+                && achievementPercent.Value <= value.MaximumAchievementPercent.Value)
+            .ToArray();
+        if (matchingBands.Length == 0)
+            return (null, $"Achievement {achievementPercent.Value:0.####}% does not match a configured band in scheme '{stage.RatingScheme.Code}'.");
+        if (matchingBands.Length > 1)
+            return (null, $"Achievement {achievementPercent.Value:0.####}% matches multiple bands in scheme '{stage.RatingScheme.Code}'. Correct the rating configuration before continuing.");
+        return (matchingBands[0], null);
     }
 
     internal static bool IsActionAllowedAtStage(string requiredActionCode, string actionCode, WorkflowActionOutcome outcome)

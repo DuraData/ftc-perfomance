@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Security.Claims;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
+using FTCERP.Host.Application.Services;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Security;
@@ -222,11 +223,21 @@ public sealed class InternalAuditAssessmentsController(
         if (validation != null) return BadRequest(Fail<InternalAuditAssessmentDto>(validation));
         var auditStage = loaded.Instance.WorkflowDefinition.Stages.FirstOrDefault(item => item.IsActive && (item.Code.Equals("AUDIT", StringComparison.OrdinalIgnoreCase) || item.Code.Contains("INTERNAL_AUDIT", StringComparison.OrdinalIgnoreCase)));
         RatingSchemeValue? ratingValue = null;
+        var effectiveScore = request.Score;
         if (configuration.Model == InternalAuditAssessmentModel.Detailed && auditStage?.RequiresRating == true)
         {
-            if (!request.Score.HasValue) return BadRequest(Fail<InternalAuditAssessmentDto>("The configured Internal Audit stage requires a rating."));
-            ratingValue = auditStage.RatingScheme?.Values.SingleOrDefault(item => item.Value == request.Score.Value);
-            if (ratingValue == null) return BadRequest(Fail<InternalAuditAssessmentDto>("Select a value from the configured Internal Audit rating scheme."));
+            if (request.Score.HasValue)
+            {
+                ratingValue = auditStage.RatingScheme?.Values.SingleOrDefault(item => item.Value == request.Score.Value);
+                if (ratingValue == null) return BadRequest(Fail<InternalAuditAssessmentDto>("Select a value from the configured Internal Audit rating scheme."));
+            }
+            else
+            {
+                var automatic = ConfigurableWorkflowService.ResolveAchievementRating(auditStage, loaded.AchievementPercent);
+                if (automatic.Error != null) return Conflict(Fail<InternalAuditAssessmentDto>(automatic.Error));
+                ratingValue = automatic.Value!;
+                effectiveScore = ratingValue.Value;
+            }
         }
 
         var previous = await context.InternalAuditAssessments
@@ -251,7 +262,7 @@ public sealed class InternalAuditAssessmentsController(
             Comment = Clean(request.Comment),
             Findings = Clean(request.Findings),
             Recommendation = Clean(request.Recommendation),
-            Score = request.Score,
+            Score = effectiveScore,
             AssessedByUserId = user.Id,
             AssessedByUser = user,
             AssessedAt = now,
@@ -278,7 +289,7 @@ public sealed class InternalAuditAssessmentsController(
         }
         context.InternalAuditAssessments.Add(entity);
         var auditAction = NewAction(loaded.Instance, request.Outcome is InternalAuditAssessmentOutcome.Achieved or InternalAuditAssessmentOutcome.Satisfactory ? "AUDIT_ACCEPTED" : "AUDIT_REJECTED", WorkflowActionOutcome.Complete, user.Id, entity.DetailedObservation);
-        auditAction.RatingValue = request.Score;
+        auditAction.RatingValue = effectiveScore;
         context.SubmissionWorkflowActions.Add(auditAction);
         if (ratingValue != null && auditStage?.RatingScheme != null)
             context.SubmissionStageRatings.Add(new SubmissionStageRating
@@ -286,7 +297,7 @@ public sealed class InternalAuditAssessmentsController(
                 MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = loaded.Instance.Id, SubmissionWorkflowInstance = loaded.Instance,
                 SubmissionWorkflowAction = auditAction, WorkflowStageDefinitionId = auditStage.Id, WorkflowStageDefinition = auditStage,
                 RatingSchemeId = auditStage.RatingScheme.Id, RatingScheme = auditStage.RatingScheme, RatingSchemeValueId = ratingValue.Id, RatingSchemeValue = ratingValue,
-                Value = ratingValue.Value, LabelSnapshot = ratingValue.Label, Comment = entity.Comment, RatedByUserId = user.Id, RatedByUser = user,
+                Value = ratingValue.Value, LabelSnapshot = ratingValue.Label, AchievementPercent = loaded.AchievementPercent, Comment = entity.Comment, RatedByUserId = user.Id, RatedByUser = user,
                 RatedAt = now, CorrelationId = HttpContext.TraceIdentifier
             });
         governance.QueueAuditTrail(nameof(InternalAuditAssessment), entity.PublicId.ToString(), previous == null ? "Assess" : "Reassess", null,
@@ -350,24 +361,24 @@ public sealed class InternalAuditAssessmentsController(
 
     private async Task<SubmissionAccess?> LoadSubmission(SubmissionKind kind, string submissionId)
     {
-        int? department; int? unit; string? owner; string? submitter;
+        int? department; int? unit; string? owner; string? submitter; decimal? achievementPercent;
         if (kind == SubmissionKind.Opms)
         {
             var row = await context.OpmsSubmissions.AsNoTracking().Include(item => item.OpmsTarget).SingleOrDefaultAsync(item => item.Id == submissionId);
             if (row == null) return null;
-            department = row.OpmsTarget.DepartmentId; unit = row.OpmsTarget.UnitId; owner = row.OpmsTarget.AssignedUserId; submitter = row.SubmittedByUserId ?? row.CreatedBy;
+            department = row.OpmsTarget.DepartmentId; unit = row.OpmsTarget.UnitId; owner = row.OpmsTarget.AssignedUserId; submitter = row.SubmittedByUserId ?? row.CreatedBy; achievementPercent = row.AchievementPercent;
         }
         else if (kind == SubmissionKind.Ipms)
         {
             var row = await context.IpmsSubmissions.AsNoTracking().Include(item => item.IpmsTarget).SingleOrDefaultAsync(item => item.Id == submissionId);
             if (row == null) return null;
-            department = row.IpmsTarget.DepartmentId; unit = row.IpmsTarget.UnitId; owner = row.IpmsTarget.AssignedUserId; submitter = row.SubmittedByUserId ?? row.CreatedBy;
+            department = row.IpmsTarget.DepartmentId; unit = row.IpmsTarget.UnitId; owner = row.IpmsTarget.AssignedUserId; submitter = row.SubmittedByUserId ?? row.CreatedBy; achievementPercent = row.AchievementPercent;
         }
         else return null;
         var instance = await context.SubmissionWorkflowInstances
             .Include(item => item.WorkflowDefinition).ThenInclude(item => item.Stages).ThenInclude(item => item.RatingScheme).ThenInclude(item => item!.Values)
             .SingleOrDefaultAsync(item => item.SubmissionKind == kind && item.SubmissionId == submissionId);
-        return new(new(department, unit, owner, TargetId: submissionId, MunicipalityId: tenantContext.MunicipalityId), instance,
+        return new(new(department, unit, owner, TargetId: submissionId, MunicipalityId: tenantContext.MunicipalityId), instance, achievementPercent,
             new[] { owner, submitter }.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
@@ -410,7 +421,7 @@ public sealed class InternalAuditAssessmentsController(
         item.AssessedAt, item.PreviousAssessment?.PublicId,
         access.RfiRead ? item.PerformanceRfi?.PublicId : null,
         access.RfiRead ? item.PerformanceRfi?.ResponseDueAt : null);
-    private sealed record SubmissionAccess(AccessScopeContext Scope, SubmissionWorkflowInstance? Instance, string[] Recipients);
+    private sealed record SubmissionAccess(AccessScopeContext Scope, SubmissionWorkflowInstance? Instance, decimal? AchievementPercent, string[] Recipients);
     private sealed record InternalAuditMemberAccess(bool ObservationRead, bool ObservationUpdate, bool CommentRead, bool CommentUpdate,
         bool FindingsRead, bool FindingsUpdate, bool RecommendationRead, bool RecommendationUpdate, bool ScoreRead, bool ScoreUpdate,
         bool AssessedByRead, bool RfiRead);

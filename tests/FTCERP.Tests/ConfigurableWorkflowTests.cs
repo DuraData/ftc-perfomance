@@ -68,6 +68,70 @@ public sealed class ConfigurableWorkflowTests
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>().WithMessage("*append-only*");
     }
 
+    [Theory]
+    [InlineData(SubmissionKind.Opms)]
+    [InlineData(SubmissionKind.Ipms)]
+    public async Task Workflow_DerivesRequiredRatingFromTheRecordedAchievementBand(SubmissionKind kind)
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var year = new MunicipalityFinancialYear { Id = 401, MunicipalityId = 7, FinancialYearId = 1, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var period = new ReportingPeriod { Id = 410, MunicipalityFinancialYearId = year.Id, Code = "Q1-AUTO", Name = "Quarter 1", StartDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) };
+        var scheme = new RatingScheme { Id = 430, MunicipalityId = 7, Code = "AUTO", Name = "Achievement bands" };
+        scheme.Values.Add(new RatingSchemeValue { Id = 431, MunicipalityId = 7, Value = 2, Label = "Below target", MinimumAchievementPercent = 0, MaximumAchievementPercent = 79.9999m, SortOrder = 1 });
+        scheme.Values.Add(new RatingSchemeValue { Id = 432, MunicipalityId = 7, Value = 4, Label = "Achieved", MinimumAchievementPercent = 80, MaximumAchievementPercent = 100, SortOrder = 2 });
+        var prefix = kind == SubmissionKind.Opms ? "OPMS" : "IPMS";
+        var definition = new WorkflowDefinition { Id = 420, MunicipalityId = 7, MunicipalityFinancialYearId = year.Id, SubmissionKind = kind, Code = "AUTO", Name = "Automatic rating", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 421, MunicipalityId = 7, Code = "SUBMIT", Name = "Submit", Sequence = 1, RequiredActionCode = $"{prefix}_SUBMISSION.SUBMIT", RequiredPermissionCode = $"{prefix}_SUBMISSION.SUBMIT", RequireDifferentActorFromSubmitter = false });
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 422, MunicipalityId = 7, Code = "VERIFY", Name = "Verify", Sequence = 2, RequiredActionCode = $"{prefix}_SUBMISSION.VERIFY", RequiredPermissionCode = $"{prefix}_SUBMISSION.VERIFY", RequireDifferentActorFromSubmitter = true, IsTerminal = true, RequiresRating = true, RatingScheme = scheme });
+        object submission = kind == SubmissionKind.Opms
+            ? new OpmsSubmission { Id = "submission-auto-rating", MunicipalityId = 7, AchievementPercent = 87.5m }
+            : new IpmsSubmission { Id = "submission-auto-rating", MunicipalityId = 7, AchievementPercent = 87.5m };
+        context.AddRange(year, period, scheme, definition, submission);
+        await context.SaveChangesAsync();
+        var service = new ConfigurableWorkflowService(context);
+
+        (await service.PrepareActionAsync(kind, "submission-auto-rating", period.Id, "submitter", "submitter", $"{prefix}_SUBMISSION.SUBMIT", WorkflowActionOutcome.Submit, null, null, "trace-auto-submit")).Allowed.Should().BeTrue();
+        await context.SaveChangesAsync();
+        var verified = await service.PrepareActionAsync(kind, "submission-auto-rating", period.Id, "submitter", "verifier", $"{prefix}_SUBMISSION.VERIFY", WorkflowActionOutcome.Approve, "Verified", null, "trace-auto-rating");
+
+        verified.Allowed.Should().BeTrue();
+        verified.Action!.RatingValue.Should().Be(4);
+        await context.SaveChangesAsync();
+        var rating = await context.SubmissionStageRatings.SingleAsync();
+        rating.Value.Should().Be(4);
+        rating.LabelSnapshot.Should().Be("Achieved");
+        rating.AchievementPercent.Should().Be(87.5m);
+        rating.CorrelationId.Should().Be("trace-auto-rating");
+    }
+
+    [Theory]
+    [InlineData(false, "does not match")]
+    [InlineData(true, "multiple bands")]
+    public async Task Workflow_FailsClosedWhenAchievementBandsCannotSelectOneRating(bool overlappingBands, string expectedReason)
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var suffix = overlappingBands ? 500 : 600;
+        var year = new MunicipalityFinancialYear { Id = suffix + 1, MunicipalityId = 7, FinancialYearId = 1, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var period = new ReportingPeriod { Id = suffix + 2, MunicipalityFinancialYearId = year.Id, Code = $"Q1-{suffix}", Name = "Quarter 1", StartDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) };
+        var scheme = new RatingScheme { Id = suffix + 3, MunicipalityId = 7, Code = $"BANDS-{suffix}", Name = "Invalid runtime bands" };
+        scheme.Values.Add(new RatingSchemeValue { Id = suffix + 4, MunicipalityId = 7, Value = 2, Label = "First", MinimumAchievementPercent = overlappingBands ? 60 : 0, MaximumAchievementPercent = overlappingBands ? 90 : 40, SortOrder = 1 });
+        scheme.Values.Add(new RatingSchemeValue { Id = suffix + 5, MunicipalityId = 7, Value = 4, Label = "Second", MinimumAchievementPercent = overlappingBands ? 70 : 90, MaximumAchievementPercent = 100, SortOrder = 2 });
+        var definition = new WorkflowDefinition { Id = suffix + 6, MunicipalityId = 7, MunicipalityFinancialYearId = year.Id, SubmissionKind = SubmissionKind.Opms, Code = $"WF-{suffix}", Name = "Fail closed rating", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        definition.Stages.Add(new WorkflowStageDefinition { Id = suffix + 7, MunicipalityId = 7, Code = "VERIFY", Name = "Verify", Sequence = 1, RequiredActionCode = "OPMS_SUBMISSION.VERIFY", RequiredPermissionCode = "OPMS_SUBMISSION.VERIFY", RequireDifferentActorFromSubmitter = true, IsTerminal = true, RequiresRating = true, RatingScheme = scheme });
+        var submissionId = $"submission-invalid-band-{suffix}";
+        context.AddRange(year, period, scheme, definition, new OpmsSubmission { Id = submissionId, MunicipalityId = 7, AchievementPercent = 75m });
+        await context.SaveChangesAsync();
+
+        var result = await new ConfigurableWorkflowService(context).PrepareActionAsync(
+            SubmissionKind.Opms, submissionId, period.Id, "submitter", "verifier",
+            "OPMS_SUBMISSION.VERIFY", WorkflowActionOutcome.Approve, null, null, $"trace-{suffix}");
+
+        result.Allowed.Should().BeFalse();
+        result.Reason.Should().Contain(expectedReason);
+        context.SubmissionWorkflowActions.Should().BeEmpty();
+        context.SubmissionStageRatings.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ExistingWorkflowInstance_RemainsPinnedToItsOriginalDefinitionVersion()
     {
