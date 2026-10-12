@@ -288,13 +288,15 @@ public class OpmsTargetsController : ControllerBase
 
         _context.OpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, entity.Id, null);
-        await _context.SaveChangesAsync();
-        entity = await FindTargetAsync(entity.PublicId) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "Create", null, entity.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "Create", null,
+            new { entity.PublicId, Request = request }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "OPMS target created.");
         if (!string.IsNullOrWhiteSpace(entity.AssignedUserId))
         {
-            await _workflowGovernanceService.CreateNotificationAsync(entity.AssignedUserId, NotificationType.Submission, "OPMS target assigned", $"You have been assigned OPMS target '{entity.TargetName}'.", "OpmsTarget", entity.Id);
+            _workflowGovernanceService.QueueNotification(entity.AssignedUserId, NotificationType.Submission,
+                "OPMS target assigned", $"You have been assigned OPMS target '{entity.TargetName}'.", "OpmsTarget", entity.Id);
         }
+        await _context.SaveChangesAsync();
+        entity = await FindTargetAsync(entity.PublicId) ?? entity;
 
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, entity)));
     }
@@ -323,6 +325,8 @@ public class OpmsTargetsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
         if (!await CanUpdateSensitiveMembersAsync(user, BuildScope(entity), request)) return Forbid();
+        if (string.IsNullOrWhiteSpace(request.RowVersion) || !TrySetExpectedVersion(entity, request.RowVersion))
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A valid RowVersion is required."));
         var organization = await PerformanceApiSupport.ResolveOrganizationScopeAsync(_context, entity.MunicipalityId, null, null, request.DepartmentPublicId, request.UnitPublicId);
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
@@ -388,10 +392,16 @@ public class OpmsTargetsController : ControllerBase
         _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
         _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
         ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds);
-        await _context.SaveChangesAsync();
+        _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "Edit", before,
+            new { entity.PublicId, Request = request }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "OPMS target updated.");
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            _context.ChangeTracker.Clear();
+            return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The OPMS target changed since it was loaded. Refresh and try again."));
+        }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "Edit", before, after.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
@@ -426,11 +436,17 @@ public class OpmsTargetsController : ControllerBase
         AddOrderRevision(entity, nameof(entity.RevisedOrderNumber), entity.RevisedOrderNumber, request.RevisedOrderNumber, request, user.Id);
         entity.OriginalOrderNumber = request.OriginalOrderNumber;
         entity.RevisedOrderNumber = request.RevisedOrderNumber;
+        _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "ReviseOrdering", before,
+            new { entity.OriginalOrderNumber, entity.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason);
         try { await _context.SaveChangesAsync(); }
-        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI ordering changed since it was loaded. Refresh and try again.")); }
+        catch (DbUpdateConcurrencyException)
+        {
+            _context.ChangeTracker.Clear();
+            return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI ordering changed since it was loaded. Refresh and try again."));
+        }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "ReviseOrdering", before, new { after.OriginalOrderNumber, after.RevisedOrderNumber, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 
@@ -476,11 +492,18 @@ public class OpmsTargetsController : ControllerBase
         entity.IsKpiDescriptionRevised = request.IsKpiDescriptionRevised;
         entity.RevisedKpiDescription = revisedKpi;
         entity.IsRevised = request.IsIndicatorNumberRevised || request.IsTargetNameRevised || request.IsKpiDescriptionRevised;
+        _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "ReviseDefinitionFields",
+            new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi },
+            new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason);
         try { await _context.SaveChangesAsync(); }
-        catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI definition changed since it was loaded. Refresh and try again.")); }
+        catch (DbUpdateConcurrencyException)
+        {
+            _context.ChangeTracker.Clear();
+            return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "The KPI definition changed since it was loaded. Refresh and try again."));
+        }
 
         var after = await FindTargetAsync(id) ?? entity;
-        await _workflowGovernanceService.WriteAuditTrailAsync("OpmsTarget", entity.Id, "ReviseDefinitionFields", new { IndicatorNumber = oldIndicator, TargetName = oldName, KpiDescription = oldKpi }, new { IndicatorNumber = newIndicator, TargetName = newName, KpiDescription = newKpi, request.Reason, request.ApprovalReference, request.EffectiveAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         return Ok(new ApiResponse<OpmsTargetResponse>(true, await ToSecureResponseAsync(user, after)));
     }
 

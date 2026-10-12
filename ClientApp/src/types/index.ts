@@ -2911,6 +2911,7 @@ export interface SaveIpmsTargetTemplatePayload {
 }
 
 export interface SaveOpmsTargetPayload {
+  rowVersion?: string | null;
   sdbipLayerPublicId?: string | null;
   sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
@@ -2960,6 +2961,7 @@ export interface SaveOpmsTargetPayload {
 }
 
 export interface SaveIpmsTargetPayload {
+  rowVersion?: string | null;
   sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetPublicId?: string | null;

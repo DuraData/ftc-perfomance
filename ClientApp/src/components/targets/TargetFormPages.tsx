@@ -1229,7 +1229,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
     }
 
     setValidationErrors([]);
-    const payload = buildOpmsPayload(form, configuration, sensitiveEditAccess);
+    const payload = { ...buildOpmsPayload(form, configuration, sensitiveEditAccess), rowVersion: existingTarget?.rowVersion ?? null };
     const result = targetId
       ? await updateOpmsTarget(targetId, payload)
       : await createOpmsTarget(payload);
@@ -1804,7 +1804,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
     }
 
     setValidationErrors([]);
-    const payload = buildIpmsPayload(form, configuration, sensitiveEditAccess);
+    const payload = { ...buildIpmsPayload(form, configuration, sensitiveEditAccess), rowVersion: existingTarget?.rowVersion ?? null };
     const result = targetId
       ? await updateIpmsTarget(targetId, payload)
       : await createIpmsTarget(payload);

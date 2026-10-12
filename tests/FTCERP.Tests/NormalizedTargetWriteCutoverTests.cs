@@ -220,7 +220,11 @@ public sealed class NormalizedTargetWriteCutoverTests
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
-        var changed = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { PeriodTargets = PeriodTargets("90") };
+        var changed = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            RowVersion = created.RowVersion,
+            PeriodTargets = PeriodTargets("90")
+        };
 
         var result = await controller.UpdateTarget(created.PublicId, changed);
 
@@ -239,7 +243,11 @@ public sealed class NormalizedTargetWriteCutoverTests
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
 
-        var result = await controller.UpdateTarget(created.PublicId, Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with { InternalReference = "Updated metadata" });
+        var result = await controller.UpdateTarget(created.PublicId, Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            RowVersion = created.RowVersion,
+            InternalReference = "Updated metadata"
+        });
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Equal("Updated metadata", response.InternalReference);
@@ -251,6 +259,60 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Equal("Updated metadata", stored.InternalReference);
         Assert.Equal("Normalized target", stored.TargetName);
         Assert.Equal(0m, stored.AnnualTarget);
+    }
+
+    [Fact]
+    public async Task Opms_and_ipms_target_mutations_persist_atomic_audits_and_reject_stale_edits()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var opms = Controller(context, seed.User, seed.Municipality.Id, persistGovernance: true);
+        var ipms = IpmsController(context, seed.User, seed.Municipality.Id, persistGovernance: true);
+
+        var opmsCreated = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.CreateTarget(
+            Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
+        var ipmsCreated = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipms.CreateTarget(
+            IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications))).Result).Value).Data!;
+
+        var opmsEdited = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.UpdateTarget(opmsCreated.PublicId,
+            Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+            { RowVersion = opmsCreated.RowVersion, InternalReference = "Atomic OPMS metadata" })).Result).Value).Data!;
+        var ipmsEdited = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipms.UpdateTarget(ipmsCreated.PublicId,
+            IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with
+            { RowVersion = ipmsCreated.RowVersion, InternalReference = "Atomic IPMS metadata" })).Result).Value).Data!;
+
+        var effectiveAt = new DateTime(2030, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        var opmsOrdered = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.ReviseOrdering(opmsCreated.PublicId,
+            new ReviseKpiOrderingRequest(2, 3, "Approved OPMS ordering", "OPMS-ORDER-1", effectiveAt, opmsEdited.RowVersion))).Result).Value).Data!;
+        var ipmsOrdered = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipms.ReviseOrdering(ipmsCreated.PublicId,
+            new ReviseKpiOrderingRequest(2, 3, "Approved IPMS ordering", "IPMS-ORDER-1", effectiveAt, ipmsEdited.RowVersion))).Result).Value).Data!;
+
+        Assert.IsType<OkObjectResult>((await opms.ReviseDefinitionFields(opmsCreated.PublicId,
+            new ReviseKpiDefinitionRequest(false, null, true, "Governed OPMS target", false, null,
+                "Approved OPMS wording", "OPMS-WORD-1", effectiveAt, opmsOrdered.RowVersion))).Result);
+        Assert.IsType<OkObjectResult>((await ipms.ReviseDefinitionFields(ipmsCreated.PublicId,
+            new ReviseKpiDefinitionRequest(false, null, true, "Governed IPMS target", false, null,
+                "Approved IPMS wording", "IPMS-WORD-1", effectiveAt, ipmsOrdered.RowVersion))).Result);
+
+        var audits = await context.AuditTrails
+            .Where(item => item.EntityName == nameof(OpmsTarget) || item.EntityName == nameof(IpmsTarget))
+            .ToArrayAsync();
+        Assert.Equal(8, audits.Length);
+        Assert.All(new[] { "Create", "Edit", "ReviseOrdering", "ReviseDefinitionFields" },
+            action => Assert.Equal(2, audits.Count(item => item.Action == action)));
+        Assert.All(audits, item =>
+        {
+            Assert.Equal(seed.Municipality.Id, item.MunicipalityId);
+            Assert.False(string.IsNullOrWhiteSpace(item.Reason));
+        });
+        Assert.Contains(audits, item => item.Action == "Edit" && item.NewValue!.Contains("Atomic OPMS metadata"));
+        Assert.Contains(audits, item => item.Action == "Edit" && item.NewValue!.Contains("Atomic IPMS metadata"));
+
+        var stale = await opms.UpdateTarget(opmsCreated.PublicId,
+            Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+            { RowVersion = opmsCreated.RowVersion, InternalReference = "Stale overwrite" });
+        Assert.IsType<ConflictObjectResult>(stale.Result);
+        Assert.Equal(8, await context.AuditTrails.CountAsync(item => item.EntityName == nameof(OpmsTarget) || item.EntityName == nameof(IpmsTarget)));
     }
 
     [Fact]
@@ -275,8 +337,11 @@ public sealed class NormalizedTargetWriteCutoverTests
             "OPMS_KPI.InternalReference.UPDATE", "OPMS_KPI.FmsLink.UPDATE", "OPMS_KPI.BudgetSourceAmounts.UPDATE"
         };
         var controller = Controller(context, seed.User, seed.Municipality.Id, denied);
+        var currentVersion = Convert.ToBase64String((await context.OpmsTargets.AsNoTracking()
+            .SingleAsync(item => item.PublicId == created.PublicId)).RowVersion);
         var request = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
         {
+            RowVersion = currentVersion,
             InternalReference = "HOSTILE-REPLACEMENT",
             FmsLink = "HOSTILE-FMS",
             InternalReferenceSpecified = false,
@@ -321,8 +386,11 @@ public sealed class NormalizedTargetWriteCutoverTests
             "IPMS_KPI.InternalReference.UPDATE", "IPMS_KPI.BudgetSourceAmounts.UPDATE"
         };
         var controller = IpmsController(context, seed.User, seed.Municipality.Id, denied);
+        var currentVersion = Convert.ToBase64String((await context.IpmsTargets.AsNoTracking()
+            .SingleAsync(item => item.PublicId == created.PublicId)).RowVersion);
         var request = IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with
         {
+            RowVersion = currentVersion,
             InternalReference = "HOSTILE-REPLACEMENT",
             InternalReferenceSpecified = false,
             BudgetSourceAmountsSpecified = false,
@@ -475,20 +543,24 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Contains("selected municipality", Assert.IsType<ApiResponse<OpmsTargetResponse>>(foreignWardBadRequest.Value).Message);
     }
 
-    private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId, ISet<string>? deniedPermissions = null)
+    private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId,
+        ISet<string>? deniedPermissions = null, bool persistGovernance = false)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => deniedPermissions?.Contains(code) == true
                 ? new AccessDecisionResult(false, "Denied", [], [code], [])
                 : new AccessDecisionResult(true, "Allowed", [code], [], []));
-        var workflow = new Mock<IWorkflowGovernanceService>();
-        workflow.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
-            .Returns(Task.CompletedTask);
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(item => item.MunicipalityId).Returns(municipalityId);
         tenant.SetupGet(item => item.UserId).Returns(user.Id);
-        return new OpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, workflow.Object, tenant.Object, new PerformanceUnitEngine())
+        var workflow = new Mock<IWorkflowGovernanceService>();
+        workflow.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+        IWorkflowGovernanceService governance = persistGovernance
+            ? new WorkflowGovernanceService(context, tenantContext: tenant.Object)
+            : workflow.Object;
+        return new OpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance, tenant.Object, new PerformanceUnitEngine())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
         };
@@ -506,20 +578,24 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Equal(expectedTemplate, template);
     }
 
-    private static IpmsTargetsController IpmsController(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId, ISet<string>? deniedPermissions = null)
+    private static IpmsTargetsController IpmsController(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId,
+        ISet<string>? deniedPermissions = null, bool persistGovernance = false)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => deniedPermissions?.Contains(code) == true
                 ? new AccessDecisionResult(false, "Denied", [], [code], [])
                 : new AccessDecisionResult(true, "Allowed", [code], [], []));
-        var workflow = new Mock<IWorkflowGovernanceService>();
-        workflow.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
-            .Returns(Task.CompletedTask);
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(item => item.MunicipalityId).Returns(municipalityId);
         tenant.SetupGet(item => item.UserId).Returns(user.Id);
-        return new IpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, workflow.Object, tenant.Object, new PerformanceUnitEngine())
+        var workflow = new Mock<IWorkflowGovernanceService>();
+        workflow.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+        IWorkflowGovernanceService governance = persistGovernance
+            ? new WorkflowGovernanceService(context, tenantContext: tenant.Object)
+            : workflow.Object;
+        return new IpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance, tenant.Object, new PerformanceUnitEngine())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
         };

@@ -122,6 +122,7 @@ public record ArchiveTargetTemplateRequest(string RowVersion);
 
 public sealed record SaveOpmsTargetRequest
 {
+    public string? RowVersion { get; init; }
     public Guid? SourceTemplatePublicId { get; init; }
     public int? SourceTemplateVersion { get; init; }
     public Guid MunicipalityFinancialYearPublicId { get; init; }
@@ -174,6 +175,7 @@ public sealed record SaveKpiBudgetSourceRequest(Guid BudgetSourcePublicId, decim
 
 public sealed record SaveIpmsTargetRequest
 {
+    public string? RowVersion { get; init; }
     public Guid? SourceTemplatePublicId { get; init; }
     public int? SourceTemplateVersion { get; init; }
     public Guid? RelatedOpmsTargetPublicId { get; init; }
