@@ -4222,6 +4222,8 @@ The residual `/tasks` page was a prototype route, not an OPMS V3.9 requirement. 
 
 The generic lazy-loaded route, placeholder component/test and unused synthetic client `Task` contract have therefore been removed. The governed OPMS/IPMS workflow queues and the independently governed IDP plan-task create/completion lifecycle remain unchanged. A client authorization regression explicitly proves that `/tasks` is denied while a registered workflow queue remains available. The visual ledger records the former generic page as not applicable rather than inventing a cross-user service absent from the source requirements. Focused route/authorization verification passes **10/10**, and the complete frontend regression remains **380/380 across 79 files**. TypeScript, ESLint, the 2,113-module production build and the reduced **77-chunk/402.1-KiB** bundle budget pass. This retirement changes no persisted data or rendered V3.9 workflow, so no visual PASS is inferred.
 
+Implementation and assessment commit `a03c6049b1df3240817dfac18fa5cd1306ad9e9e` was pushed directly to both `codex/dev` and `main`. GitHub Actions run `38408958308` verified that exact revision: check-run `115335907812` completed in **6m59s**, all **18/18** quality/security steps passed and exposed no annotations. The branch workflow is intentionally triggered by the `main` push; the synchronized `codex/dev` push created no separate run. No Docker process, cloud infrastructure, paid resource or external service mutation was used.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
