@@ -16,7 +16,10 @@ public sealed class IdpPlanPersistenceGovernanceTests
 
         await using var deleteContext = IdpTestFixture.CreateRelationalContext();
         var (deletable, _) = await SeedPlanAsync(deleteContext);
-        deleteContext.IdpPlans.Remove(deletable);
+        deleteContext.ChangeTracker.Clear();
+        deleteContext.IdpPlans.Remove(await deleteContext.IdpPlans
+            .IgnoreQueryFilters()
+            .SingleAsync(item => item.Id == deletable.Id));
 
         await FluentActions.Invoking(() => deleteContext.SaveChangesAsync())
             .Should().ThrowAsync<InvalidOperationException>()

@@ -1519,7 +1519,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(version => version.IdpPlan)
             .WithMany(plan => plan.Versions)
             .HasForeignKey(version => version.IdpPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpPlanVersion>()
             .HasOne(version => version.CreatedByUser)
@@ -1531,7 +1531,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(changeLog => changeLog.IdpPlanVersion)
             .WithMany(version => version.ChangeLogs)
             .HasForeignKey(changeLog => changeLog.IdpPlanVersionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpChangeLog>()
             .HasOne(changeLog => changeLog.ChangedByUser)
@@ -1550,7 +1550,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(outcome => outcome.IdpPlan)
             .WithMany(plan => plan.StrategicOutcomes)
             .HasForeignKey(outcome => outcome.IdpPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpStrategicObjective>()
             .HasIndex(objective => new { objective.IdpStrategicOutcomeId, objective.Code })
@@ -1562,7 +1562,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(objective => objective.IdpStrategicOutcome)
             .WithMany(outcome => outcome.StrategicObjectives)
             .HasForeignKey(objective => objective.IdpStrategicOutcomeId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpStrategicObjective>()
             .HasOne(objective => objective.ResponsibleDepartment)
@@ -1599,7 +1599,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(priority => priority.IdpStrategicObjective)
             .WithMany(objective => objective.DevelopmentPriorities)
             .HasForeignKey(priority => priority.IdpStrategicObjectiveId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpProgramme>()
             .HasIndex(programme => new { programme.IdpDevelopmentPriorityId, programme.ProgrammeCode })
@@ -1611,7 +1611,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(programme => programme.IdpDevelopmentPriority)
             .WithMany(priority => priority.Programmes)
             .HasForeignKey(programme => programme.IdpDevelopmentPriorityId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpProgramme>()
             .HasOne(programme => programme.ResponsibleDepartment)
@@ -1641,7 +1641,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(project => project.IdpProgramme)
             .WithMany(programme => programme.Projects)
             .HasForeignKey(project => project.IdpProgrammeId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpProject>()
             .HasOne(project => project.Department)
@@ -1664,7 +1664,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(kpi => kpi.IdpProject)
             .WithMany(project => project.Kpis)
             .HasForeignKey(kpi => kpi.IdpProjectId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpKpi>()
             .HasOne(kpi => kpi.ResponsibleDepartment)
@@ -1708,7 +1708,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<IdpImportRow>().Property(row => row.ErrorField).HasMaxLength(120);
         builder.Entity<IdpImportRow>().Property(row => row.SuppliedValue).HasMaxLength(1000);
         builder.Entity<IdpImportRow>().Property(row => row.ErrorMessage).HasMaxLength(2000);
-        builder.Entity<IdpImportRow>().HasOne(row => row.IdpImportBatch).WithMany(batch => batch.Rows).HasForeignKey(row => row.IdpImportBatchId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<IdpImportRow>().HasOne(row => row.IdpImportBatch).WithMany(batch => batch.Rows).HasForeignKey(row => row.IdpImportBatchId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<OpmsImportBatch>().HasIndex(x => x.PublicId).IsUnique();
         builder.Entity<OpmsImportBatch>().HasIndex(x => new { x.MunicipalityId, x.ClientRequestId }).IsUnique();
@@ -1745,7 +1745,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(annualTarget => annualTarget.IdpKpi)
             .WithMany(kpi => kpi.AnnualTargets)
             .HasForeignKey(annualTarget => annualTarget.IdpKpiId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpAnnualTarget>()
             .Property(annualTarget => annualTarget.TargetValue)
@@ -1759,7 +1759,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(link => link.IdpStrategicObjective)
             .WithMany(objective => objective.AlignmentLinks)
             .HasForeignKey(link => link.IdpStrategicObjectiveId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IdpAlignmentLink>().HasIndex(link => link.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<IdpAlignmentLink>().Property(link => link.RowVersion));
 
@@ -1767,7 +1767,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(session => session.IdpPlan)
             .WithMany(plan => plan.CommunitySessions)
             .HasForeignKey(session => session.IdpPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpCommunitySession>()
             .HasOne(session => session.Ward)
@@ -1781,7 +1781,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(need => need.IdpCommunitySession)
             .WithMany(session => session.CommunityNeeds)
             .HasForeignKey(need => need.IdpCommunitySessionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IdpCommunityNeed>().HasIndex(need => need.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<IdpCommunityNeed>().Property(need => need.RowVersion));
 
@@ -1793,7 +1793,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(wardInput => wardInput.IdpPlan)
             .WithMany()
             .HasForeignKey(wardInput => wardInput.IdpPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpWardInput>()
             .HasOne(wardInput => wardInput.Ward)
@@ -1807,7 +1807,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(engagement => engagement.IdpCommunitySession)
             .WithMany(session => session.StakeholderEngagements)
             .HasForeignKey(engagement => engagement.IdpCommunitySessionId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IdpStakeholderEngagement>().HasIndex(engagement => engagement.PublicId).IsUnique();
         ConfigureRowVersion(builder.Entity<IdpStakeholderEngagement>().Property(engagement => engagement.RowVersion));
 
@@ -1882,7 +1882,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(comment => comment.IdpPlan)
             .WithMany()
             .HasForeignKey(comment => comment.IdpPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpCollaborationComment>()
             .HasOne(comment => comment.IdpPlanVersion)
@@ -1901,7 +1901,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(task => task.IdpPlan)
             .WithMany()
             .HasForeignKey(task => task.IdpPlanId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpTaskAssignment>()
             .HasOne(task => task.IdpPlanVersion)

@@ -13992,7 +13992,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpStrategicObjective", "IdpStrategicObjective")
                         .WithMany("AlignmentLinks")
                         .HasForeignKey("IdpStrategicObjectiveId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpStrategicObjective");
@@ -14003,7 +14003,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpKpi", "IdpKpi")
                         .WithMany("AnnualTargets")
                         .HasForeignKey("IdpKpiId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpKpi");
@@ -14037,7 +14037,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlanVersion", "IdpPlanVersion")
                         .WithMany("ChangeLogs")
                         .HasForeignKey("IdpPlanVersionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("ChangedByUser");
@@ -14056,7 +14056,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany()
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlanVersion", "IdpPlanVersion")
@@ -14076,7 +14076,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpCommunitySession", "IdpCommunitySession")
                         .WithMany("CommunityNeeds")
                         .HasForeignKey("IdpCommunitySessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpCommunitySession");
@@ -14087,7 +14087,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany("CommunitySessions")
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Ward", "Ward")
@@ -14105,7 +14105,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpStrategicObjective", "IdpStrategicObjective")
                         .WithMany("DevelopmentPriorities")
                         .HasForeignKey("IdpStrategicObjectiveId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpStrategicObjective");
@@ -14184,7 +14184,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpImportBatch", "IdpImportBatch")
                         .WithMany("Rows")
                         .HasForeignKey("IdpImportBatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpImportBatch");
@@ -14195,7 +14195,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpProject", "IdpProject")
                         .WithMany("Kpis")
                         .HasForeignKey("IdpProjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "ResponsibleDepartment")
@@ -14251,7 +14251,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany("Versions")
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlanVersion", "PredecessorVersion")
@@ -14271,7 +14271,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpDevelopmentPriority", "IdpDevelopmentPriority")
                         .WithMany("Programmes")
                         .HasForeignKey("IdpDevelopmentPriorityId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "ResponsibleDepartment")
@@ -14294,7 +14294,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpProgramme", "IdpProgramme")
                         .WithMany("Projects")
                         .HasForeignKey("IdpProgrammeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Department");
@@ -14331,7 +14331,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpCommunitySession", "IdpCommunitySession")
                         .WithMany("StakeholderEngagements")
                         .HasForeignKey("IdpCommunitySessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpCommunitySession");
@@ -14342,7 +14342,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpStrategicOutcome", "IdpStrategicOutcome")
                         .WithMany("StrategicObjectives")
                         .HasForeignKey("IdpStrategicOutcomeId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Department", "ResponsibleDepartment")
@@ -14367,7 +14367,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany("StrategicOutcomes")
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IdpPlan");
@@ -14390,7 +14390,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany()
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlanVersion", "IdpPlanVersion")
@@ -14412,7 +14412,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IdpPlan", "IdpPlan")
                         .WithMany()
                         .HasForeignKey("IdpPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Ward", "Ward")
