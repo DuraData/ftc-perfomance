@@ -476,6 +476,75 @@ public sealed class NormalizedTargetWriteCutoverTests
         var storedIpms = await context.IpmsTargets.SingleAsync();
         Assert.Equal(ipmsTemplate.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), storedIpms.SourceTemplateId);
         Assert.Equal((await context.OpmsTargets.SingleAsync()).Id, storedIpms.RelatedOpmsTargetId);
+        var link = await context.IpmsTargetOpmsLinks.SingleAsync();
+        Assert.Equal(storedIpms.Id, link.IpmsTargetId);
+        Assert.Equal(storedIpms.RelatedOpmsTargetId, link.OpmsTargetId);
+        Assert.Equal(seed.Municipality.Id, link.MunicipalityId);
+        Assert.Equal(seed.User.Id, link.LinkedByUserId);
+        Assert.True(link.IsActive);
+    }
+
+    [Fact]
+    public async Task Ipms_related_target_changes_require_reason_and_append_preserved_history()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var opms = Controller(context, seed.User, seed.Municipality.Id);
+        var first = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.CreateTarget(
+            Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications))).Result).Value).Data!;
+        var secondRequest = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            IndicatorNumber = "OPMS-2",
+            TargetName = "Replacement related target"
+        };
+        var second = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.CreateTarget(secondRequest)).Result).Value).Data!;
+        var ipmsController = IpmsController(context, seed.User, seed.Municipality.Id);
+        var createRequest = IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with
+        {
+            RelatedOpmsTargetPublicId = first.PublicId
+        };
+        var created = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipmsController.CreateTarget(createRequest)).Result).Value).Data!;
+        Assert.Single(await context.IpmsTargetOpmsLinks.AsNoTracking().ToArrayAsync());
+
+        var replacement = createRequest with
+        {
+            RowVersion = created.RowVersion,
+            RelatedOpmsTargetPublicId = second.PublicId
+        };
+        var missingReason = await ipmsController.UpdateTarget(created.PublicId, replacement);
+        Assert.Contains("change reason", Assert.IsType<ApiResponse<IpmsTargetResponse>>(
+            Assert.IsType<BadRequestObjectResult>(missingReason.Result).Value).Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(await context.IpmsTargetOpmsLinks.AsNoTracking().ToArrayAsync());
+
+        var changed = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipmsController.UpdateTarget(
+            created.PublicId, replacement with { RelatedOpmsTargetChangeReason = "Approved performance alignment" })).Result).Value).Data!;
+        Assert.NotEqual(created.RowVersion, changed.RowVersion);
+        var replacementHistory = await context.IpmsTargetOpmsLinks.AsNoTracking().Include(item => item.OpmsTarget).OrderBy(item => item.LinkedAt).ToArrayAsync();
+        Assert.Equal(2, replacementHistory.Length);
+        Assert.Contains(replacementHistory, item => item.OpmsTarget.PublicId == first.PublicId && !item.IsActive
+            && item.UnlinkReason == "Approved performance alignment" && item.UnlinkedByUserId == seed.User.Id);
+        Assert.Contains(replacementHistory, item => item.OpmsTarget.PublicId == second.PublicId && item.IsActive
+            && item.LinkedByUserId == seed.User.Id);
+
+        var remove = createRequest with { RowVersion = changed.RowVersion, RelatedOpmsTargetPublicId = null };
+        var missingRemovalReason = await ipmsController.UpdateTarget(created.PublicId, remove);
+        Assert.IsType<BadRequestObjectResult>(missingRemovalReason.Result);
+        var removed = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipmsController.UpdateTarget(
+            created.PublicId, remove with { RelatedOpmsTargetChangeReason = "Approved responsibility separation" })).Result).Value).Data!;
+        Assert.Null(removed.RelatedOpmsTargetPublicId);
+        Assert.Equal(2, await context.IpmsTargetOpmsLinks.CountAsync());
+        Assert.Empty(await context.IpmsTargetOpmsLinks.Where(item => item.IsActive).ToArrayAsync());
+
+        var relinked = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipmsController.UpdateTarget(
+            created.PublicId, createRequest with
+            {
+                RowVersion = removed.RowVersion,
+                RelatedOpmsTargetChangeReason = "Approved restoration"
+            })).Result).Value).Data!;
+        Assert.Equal(first.PublicId, relinked.RelatedOpmsTargetPublicId);
+        var finalHistory = await context.IpmsTargetOpmsLinks.AsNoTracking().Include(item => item.OpmsTarget).ToArrayAsync();
+        Assert.Equal(3, finalHistory.Length);
+        Assert.Single(finalHistory, item => item.IsActive && item.OpmsTarget.PublicId == first.PublicId);
     }
 
     [Fact]

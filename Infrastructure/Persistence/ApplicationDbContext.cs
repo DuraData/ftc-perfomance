@@ -168,6 +168,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigurePerformanceTargetStrategicClassifications(builder);
         ConfigureGovernedBudgetClassifications(builder);
         ConfigureGovernedPerformanceClassifications(builder);
+        ConfigureIpmsOpmsTargetLinks(builder);
 
         builder.Entity<Municipality>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<Municipality>().HasIndex(item => item.Code).IsUnique();
@@ -2242,7 +2243,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         var tenantId = _tenantContext.MunicipalityId;
         var protectedTypes = new HashSet<Type>
         {
-            typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(OpmsKpiBudgetSource), typeof(IpmsTarget), typeof(IpmsKpiBudgetSource), typeof(OpmsSubmission), typeof(IpmsSubmission),
+            typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(OpmsKpiBudgetSource), typeof(IpmsTarget), typeof(IpmsTargetOpmsLink), typeof(IpmsKpiBudgetSource), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(DueDateExtension), typeof(ReviewComment), typeof(AuditFinding), typeof(SubmissionScore),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation), typeof(LegacyTenantOwnershipReconciliation)
@@ -2317,6 +2318,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOpmsTargetRelationshipHistory<OpmsTargetVoteNumber>();
         EnforceKpiBudgetSourceHistory<OpmsKpiBudgetSource>(nameof(OpmsKpiBudgetSource.OpmsTargetId));
         EnforceKpiBudgetSourceHistory<IpmsKpiBudgetSource>(nameof(IpmsKpiBudgetSource.IpmsTargetId));
+        EnforceIpmsOpmsTargetLinkHistory();
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3425,6 +3427,95 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || string.IsNullOrWhiteSpace(deactivatedBy)
                 || string.IsNullOrWhiteSpace(reason) || reason.Length > 2000)
                 throw new InvalidOperationException("A KPI budget-source allocation may deactivate exactly once with an ordered timestamp, actor and substantive reason.");
+        }
+    }
+
+    private void EnforceIpmsOpmsTargetLinkHistory()
+    {
+        var linkEntries = ChangeTracker.Entries<IpmsTargetOpmsLink>().ToArray();
+        foreach (var entry in linkEntries)
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                if (row.PublicId == Guid.Empty || row.MunicipalityId <= 0
+                    || string.IsNullOrWhiteSpace(row.IpmsTargetId) || string.IsNullOrWhiteSpace(row.OpmsTargetId)
+                    || string.IsNullOrWhiteSpace(row.LinkedByUserId)
+                    || row.LinkedAt == default || row.LinkedAt > DateTime.UtcNow.AddMinutes(5)
+                    || !row.IsActive || row.UnlinkedAt.HasValue || row.UnlinkedByUserId != null || row.UnlinkReason != null)
+                    throw new InvalidOperationException("An IPMS-to-OPMS target link requires immutable tenant, targets, actor and link-time provenance without fabricated unlink evidence.");
+
+                var addedParentEntry = ChangeTracker.Entries<IpmsTarget>().SingleOrDefault(candidate =>
+                    ReferenceEquals(candidate.Entity, row.IpmsTarget)
+                    || string.Equals(candidate.Entity.Id, row.IpmsTargetId, StringComparison.Ordinal));
+                if (addedParentEntry == null || addedParentEntry.State is not (EntityState.Added or EntityState.Modified)
+                    || !string.Equals(addedParentEntry.Entity.RelatedOpmsTargetId, row.OpmsTargetId, StringComparison.Ordinal))
+                    throw new InvalidOperationException("An IPMS-to-OPMS target link must be appended with the matching parent pointer in the same transaction.");
+                var opmsMunicipalityId = ChangeTracker.Entries<OpmsTarget>()
+                    .FirstOrDefault(candidate => ReferenceEquals(candidate.Entity, row.OpmsTarget)
+                        || string.Equals(candidate.Entity.Id, row.OpmsTargetId, StringComparison.Ordinal))?.Entity.MunicipalityId
+                    ?? OpmsTargets.IgnoreQueryFilters().Where(candidate => candidate.Id == row.OpmsTargetId)
+                        .Select(candidate => candidate.MunicipalityId).SingleOrDefault();
+                if (addedParentEntry.Entity.MunicipalityId != row.MunicipalityId || opmsMunicipalityId != row.MunicipalityId)
+                    throw new UnauthorizedAccessException("IPMS-to-OPMS target links cannot cross municipality boundaries.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("IPMS-to-OPMS target-link history cannot be hard deleted; record a reasoned unlink instead.");
+            if (entry.State != EntityState.Modified) continue;
+
+            EnsureOnlyProperties(entry,
+                [nameof(IpmsTargetOpmsLink.IsActive), nameof(IpmsTargetOpmsLink.UnlinkedAt),
+                    nameof(IpmsTargetOpmsLink.UnlinkedByUserId), nameof(IpmsTargetOpmsLink.UnlinkReason),
+                    nameof(IpmsTargetOpmsLink.RowVersion)],
+                "IPMS-to-OPMS target-link identity, tenant, targets, actor and link-time provenance are immutable.");
+            var unlinkedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IpmsTargetOpmsLink.UnlinkedAt));
+            var unlinkedBy = entry.CurrentValues.GetValue<string?>(nameof(IpmsTargetOpmsLink.UnlinkedByUserId));
+            var reason = entry.CurrentValues.GetValue<string?>(nameof(IpmsTargetOpmsLink.UnlinkReason));
+            if (!entry.OriginalValues.GetValue<bool>(nameof(IpmsTargetOpmsLink.IsActive))
+                || entry.CurrentValues.GetValue<bool>(nameof(IpmsTargetOpmsLink.IsActive))
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(IpmsTargetOpmsLink.UnlinkedAt)).HasValue
+                || entry.OriginalValues.GetValue<string?>(nameof(IpmsTargetOpmsLink.UnlinkedByUserId)) != null
+                || entry.OriginalValues.GetValue<string?>(nameof(IpmsTargetOpmsLink.UnlinkReason)) != null
+                || !unlinkedAt.HasValue
+                || unlinkedAt < entry.OriginalValues.GetValue<DateTime>(nameof(IpmsTargetOpmsLink.LinkedAt))
+                || unlinkedAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(unlinkedBy)
+                || string.IsNullOrWhiteSpace(reason) || reason.Length > 2000)
+                throw new InvalidOperationException("An IPMS-to-OPMS target link may transition exactly once from active to inactive with an ordered timestamp, actor and substantive reason.");
+
+            var unlinkParentEntry = ChangeTracker.Entries<IpmsTarget>().SingleOrDefault(candidate =>
+                ReferenceEquals(candidate.Entity, entry.Entity.IpmsTarget)
+                || string.Equals(candidate.Entity.Id, entry.Entity.IpmsTargetId, StringComparison.Ordinal));
+            if (unlinkParentEntry == null || unlinkParentEntry.State != EntityState.Modified
+                || !unlinkParentEntry.Property(nameof(IpmsTarget.RelatedOpmsTargetId)).IsModified
+                || string.Equals(unlinkParentEntry.Entity.RelatedOpmsTargetId, entry.Entity.OpmsTargetId, StringComparison.Ordinal))
+                throw new InvalidOperationException("An IPMS-to-OPMS target unlink must update the matching parent pointer in the same transaction.");
+        }
+
+        foreach (var targetEntry in ChangeTracker.Entries<IpmsTarget>().Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            var target = targetEntry.Entity;
+            if (target.MunicipalityId is not > 0) continue;
+            var pointer = targetEntry.Property(nameof(IpmsTarget.RelatedOpmsTargetId));
+            var originalId = targetEntry.State == EntityState.Added ? null : (string?)pointer.OriginalValue;
+            var currentId = (string?)pointer.CurrentValue;
+            if (targetEntry.State == EntityState.Modified && !pointer.IsModified) continue;
+            if (string.Equals(originalId, currentId, StringComparison.Ordinal)) continue;
+
+            bool MatchesTarget(IpmsTargetOpmsLink link) => ReferenceEquals(link.IpmsTarget, target)
+                || string.Equals(link.IpmsTargetId, target.Id, StringComparison.Ordinal);
+            if (originalId != null && !linkEntries.Any(entry => entry.State == EntityState.Modified
+                    && MatchesTarget(entry.Entity)
+                    && string.Equals(entry.Entity.OpmsTargetId, originalId, StringComparison.Ordinal)
+                    && !entry.Entity.IsActive))
+                throw new InvalidOperationException("Changing an IPMS target's OPMS pointer requires closing its exact active relationship in the same transaction.");
+            if (currentId != null && !linkEntries.Any(entry => entry.State == EntityState.Added
+                    && MatchesTarget(entry.Entity)
+                    && string.Equals(entry.Entity.OpmsTargetId, currentId, StringComparison.Ordinal)
+                    && entry.Entity.MunicipalityId == target.MunicipalityId))
+                throw new InvalidOperationException("Changing an IPMS target's OPMS pointer requires appending its exact active relationship in the same transaction.");
         }
     }
 

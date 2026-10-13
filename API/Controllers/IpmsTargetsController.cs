@@ -237,7 +237,6 @@ public class IpmsTargetsController : ControllerBase
             MunicipalityId = _tenantContext.MunicipalityId,
             SourceTemplateId = sourceTemplate.InternalId,
             SourceTemplateVersion = request.SourceTemplateVersion,
-            RelatedOpmsTargetId = relatedTarget.InternalId,
             DepartmentId = organization.DepartmentId,
             UnitId = organization.UnitId,
             AssignedUserId = userReferences.AssignedUserId,
@@ -260,6 +259,7 @@ public class IpmsTargetsController : ControllerBase
             IsRevised = false,
             CreatedAt = createdAt
         };
+        ApplyRelatedOpmsTargetChange(entity, relatedTarget.InternalId, user.Id, createdAt, null);
         StrategicClassificationResolver.Apply(entity, strategicClassification);
         BudgetClassificationResolver.Apply(entity, budgetClassification, user.Id, createdAt);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
@@ -287,7 +287,9 @@ public class IpmsTargetsController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<IpmsTargetResponse>(false, null, "User not found"));
 
-        var entity = await _context.IpmsTargets.Include(item => item.GovernedBudgetSources).FirstOrDefaultAsync(item => item.PublicId == id);
+        var entity = await _context.IpmsTargets.Include(item => item.GovernedBudgetSources)
+            .Include(item => item.RelatedOpmsTargetLinks)
+            .FirstOrDefaultAsync(item => item.PublicId == id);
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
 
@@ -341,11 +343,17 @@ public class IpmsTargetsController : ControllerBase
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A budget-classification change reason is required when the Budget Type or Budget Sources change."));
         if (budgetClassificationReason?.Length > 2000)
             return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "The budget-classification change reason cannot exceed 2000 characters."));
+        var relatedTargetChanged = !string.Equals(entity.RelatedOpmsTargetId, relatedTarget.InternalId, StringComparison.Ordinal);
+        var relatedTargetReason = request.RelatedOpmsTargetChangeReason?.Trim();
+        if (relatedTargetChanged && string.IsNullOrWhiteSpace(relatedTargetReason))
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A related OPMS target change reason is required when the association changes."));
+        if (relatedTargetReason?.Length > 2000)
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "The related OPMS target change reason cannot exceed 2000 characters."));
         var updatedAt = DateTime.UtcNow;
 
         entity.SourceTemplateId = sourceTemplate.InternalId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
-        entity.RelatedOpmsTargetId = relatedTarget.InternalId;
+        ApplyRelatedOpmsTargetChange(entity, relatedTarget.InternalId, user.Id, updatedAt, relatedTargetReason);
         entity.DepartmentId = organization.DepartmentId;
         entity.UnitId = organization.UnitId;
         entity.AssignedUserId = userReferences.AssignedUserId;
@@ -749,6 +757,31 @@ public class IpmsTargetsController : ControllerBase
         return targetId == null
             ? (null, "The related OPMS target was not found, is withdrawn, or is outside the selected municipality.", false)
             : (targetId, null, true);
+    }
+
+    private static void ApplyRelatedOpmsTargetChange(IpmsTarget target, string? relatedOpmsTargetId, string actorUserId,
+        DateTime changedAt, string? reason)
+    {
+        if (string.Equals(target.RelatedOpmsTargetId, relatedOpmsTargetId, StringComparison.Ordinal)) return;
+        foreach (var existing in target.RelatedOpmsTargetLinks.Where(item => item.IsActive).ToArray())
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                throw new InvalidOperationException("A related OPMS target change reason is required when an existing association is removed.");
+            existing.IsActive = false;
+            existing.UnlinkedAt = changedAt;
+            existing.UnlinkedByUserId = actorUserId;
+            existing.UnlinkReason = reason.Trim();
+        }
+        target.RelatedOpmsTargetId = relatedOpmsTargetId;
+        if (relatedOpmsTargetId != null)
+            target.RelatedOpmsTargetLinks.Add(new IpmsTargetOpmsLink
+            {
+                MunicipalityId = target.MunicipalityId ?? throw new InvalidOperationException("A municipality is required before linking an OPMS target."),
+                IpmsTargetId = target.Id,
+                OpmsTargetId = relatedOpmsTargetId,
+                LinkedAt = changedAt,
+                LinkedByUserId = actorUserId
+            });
     }
 
     private async Task<IpmsTargetResponse[]> ToResponsesAsync(IReadOnlyCollection<IpmsTarget> targets, ReportingPeriodType? periodType = null)

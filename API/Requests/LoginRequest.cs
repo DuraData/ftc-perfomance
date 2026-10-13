@@ -181,6 +181,7 @@ public sealed record SaveIpmsTargetRequest
     public Guid? SourceTemplatePublicId { get; init; }
     public int? SourceTemplateVersion { get; init; }
     public Guid? RelatedOpmsTargetPublicId { get; init; }
+    public string? RelatedOpmsTargetChangeReason { get; init; }
     public Guid MunicipalityFinancialYearPublicId { get; init; }
     public int OriginalOrderNumber { get; init; } = 1;
     public Guid? DepartmentPublicId { get; init; }

@@ -148,6 +148,7 @@ public partial class OpmsTarget
         public ICollection<OpmsTargetWard> Wards { get; set; } = new List<OpmsTargetWard>();
         public ICollection<OpmsTargetAdditionalAssignee> AdditionalAssignees { get; set; } = new List<OpmsTargetAdditionalAssignee>();
         public ICollection<OpmsTargetVoteNumber> VoteNumbers { get; set; } = new List<OpmsTargetVoteNumber>();
+        public ICollection<IpmsTargetOpmsLink> RelatedIpmsTargetLinks { get; set; } = new List<IpmsTargetOpmsLink>();
         public ICollection<TechnicalIndicatorDescription> TechnicalIndicatorDescriptions { get; set; } = new List<TechnicalIndicatorDescription>();
 }
 
@@ -225,6 +226,27 @@ public class OpmsTargetVoteNumber : IOpmsTargetRelationship
     public Municipality? Municipality { get; set; }
     public OpmsTarget Target { get; set; } = null!;
     public VoteNumber VoteNumber { get; set; } = null!;
+    public ApplicationUser? LinkedByUser { get; set; }
+    public ApplicationUser? UnlinkedByUser { get; set; }
+}
+
+public sealed class IpmsTargetOpmsLink
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public string IpmsTargetId { get; set; } = string.Empty;
+    public string OpmsTargetId { get; set; } = string.Empty;
+    public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public string? LinkedByUserId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime? UnlinkedAt { get; set; }
+    public string? UnlinkedByUserId { get; set; }
+    public string? UnlinkReason { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+    public Municipality Municipality { get; set; } = null!;
+    public IpmsTarget IpmsTarget { get; set; } = null!;
+    public OpmsTarget OpmsTarget { get; set; } = null!;
     public ApplicationUser? LinkedByUser { get; set; }
     public ApplicationUser? UnlinkedByUser { get; set; }
 }
@@ -313,6 +335,7 @@ public partial class IpmsTarget
         public BudgetType? BudgetType { get; set; }
         public UnitOfMeasure? UnitOfMeasure { get; set; }
         public OpmsTarget? RelatedOpmsTarget { get; set; }
+        public ICollection<IpmsTargetOpmsLink> RelatedOpmsTargetLinks { get; set; } = new List<IpmsTargetOpmsLink>();
         public ICollection<IpmsSubmission> Submissions { get; set; } = new List<IpmsSubmission>();
 }
 

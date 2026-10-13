@@ -3052,6 +3052,7 @@ export interface SaveIpmsTargetPayload {
   sourceTemplatePublicId?: string | null;
   sourceTemplateVersion?: number | null;
   relatedOpmsTargetPublicId?: string | null;
+  relatedOpmsTargetChangeReason?: string | null;
   municipalityFinancialYearPublicId: string;
   departmentPublicId?: string | null;
   unitPublicId?: string | null;

@@ -4965,6 +4965,76 @@ namespace FTCERP.Host.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.IpmsTargetOpmsLink", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("IpmsTargetId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OpmsTargetId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("UnlinkReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("UnlinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UnlinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IpmsTargetId")
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
+
+                    b.HasIndex("LinkedByUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("UnlinkedByUserId");
+
+                    b.HasIndex("OpmsTargetId", "IsActive");
+
+                    b.ToTable("IPMS_TargetOpmsLinks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IPMS_TargetOpmsLinks_Lifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkReason] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IpmsTargetTemplate", b =>
                 {
                     b.Property<int>("Id")
@@ -14708,6 +14778,47 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("UnitOfMeasure");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.IpmsTargetOpmsLink", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.IpmsTarget", "IpmsTarget")
+                        .WithMany("RelatedOpmsTargetLinks")
+                        .HasForeignKey("IpmsTargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "LinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.OpmsTarget", "OpmsTarget")
+                        .WithMany("RelatedIpmsTargetLinks")
+                        .HasForeignKey("OpmsTargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "UnlinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("UnlinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("IpmsTarget");
+
+                    b.Navigation("LinkedByUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("OpmsTarget");
+
+                    b.Navigation("UnlinkedByUser");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IpmsTargetTemplateVersion", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.IpmsTargetTemplate", "IpmsTargetTemplate")
@@ -17813,6 +17924,8 @@ namespace FTCERP.Host.Migrations
                 {
                     b.Navigation("GovernedBudgetSources");
 
+                    b.Navigation("RelatedOpmsTargetLinks");
+
                     b.Navigation("Submissions");
                 });
 
@@ -17883,6 +17996,8 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("AdditionalAssignees");
 
                     b.Navigation("GovernedBudgetSources");
+
+                    b.Navigation("RelatedIpmsTargetLinks");
 
                     b.Navigation("Submissions");
 

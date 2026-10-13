@@ -225,6 +225,7 @@ type IpmsFormState = {
   sourceTemplateId: string;
   sourceTemplateVersion: string;
   relatedOPMSTargetId: string;
+  relatedOpmsTargetChangeReason: string;
   periodId: string;
   departmentId: string;
   unitId: string;
@@ -421,6 +422,7 @@ function createDefaultIpmsFormState(): IpmsFormState {
     sourceTemplateId: '',
     sourceTemplateVersion: '',
     relatedOPMSTargetId: '',
+    relatedOpmsTargetChangeReason: '',
     periodId: '',
     departmentId: '',
     unitId: '',
@@ -601,6 +603,7 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     sourceTemplateId: target.sourceTemplatePublicId ?? '',
     sourceTemplateVersion: target.sourceTemplateVersion ? String(target.sourceTemplateVersion) : '',
     relatedOPMSTargetId: target.relatedOpmsTargetPublicId ?? target.relatedOPMSTarget?.publicId ?? '',
+    relatedOpmsTargetChangeReason: '',
     periodId: target.period.id,
     departmentId: target.department.publicId ?? '',
     unitId: target.unit?.publicId ?? '',
@@ -876,6 +879,7 @@ export function buildIpmsPayload(form: IpmsFormState, configuration?: Performanc
     sourceTemplatePublicId: form.sourceTemplateId || null,
     sourceTemplateVersion: form.sourceTemplateVersion ? Number(form.sourceTemplateVersion) : null,
     relatedOpmsTargetPublicId: form.relatedOPMSTargetId || null,
+    relatedOpmsTargetChangeReason: (form.relatedOpmsTargetChangeReason ?? '').trim() || null,
     municipalityFinancialYearPublicId: form.municipalityFinancialYearPublicId,
     departmentPublicId: form.departmentId || null,
     unitPublicId: form.unitId || null,
@@ -1913,6 +1917,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 </Button>
               </div>
               <Input label="Linked OPMS" value={linkedOpmsLabel || (form.relatedOPMSTargetId ? 'Selected above' : 'Not linked')} readOnly />
+              {targetId ? <Textarea label="Related OPMS target change reason" rows={3} maxLength={2000} value={form.relatedOpmsTargetChangeReason} onChange={(event) => setForm(prev => ({ ...prev, relatedOpmsTargetChangeReason: event.target.value }))} helpText="Required when the related OPMS target is linked, replaced, or removed." /> : null}
             </FormRow>
             <FormRow cols={3}>
               <CalendarMasterPicker kind="municipality-financial-year" label="Municipality Financial Year" required value={form.municipalityFinancialYearPublicId} onChange={value => setForm(prev => ({ ...prev, municipalityFinancialYearPublicId: value, nationalKpaPublicId: '', municipalKpaPublicId: '', backToBasicsPillarPublicId: '', strategicGoalPublicId: '', strategicInterventionPublicId: '', strategicObjectivePublicId: '', performanceObjectivePublicId: '', budgetTypePublicId: '', budgetSources: [], kpiTypePublicId: '', kpiType: '', indicatorTypePublicId: '', indicatorType: '', functionalAreaPublicId: '', functionalArea: '', kpiUnitOfMeasurePublicId: '' }))} />

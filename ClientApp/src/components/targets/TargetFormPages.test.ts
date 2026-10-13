@@ -41,12 +41,13 @@ describe('TargetFormPages helpers', () => {
   });
 
   it('serializes IPMS linkage and ownership using public identifiers only', () => {
-    const payload = buildIpmsPayload({ municipalityFinancialYearPublicId: 'year-public-id', sourceTemplateId: 'template-public-id', relatedOPMSTargetId: 'opms-public-id', departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '', additionalAssigneeIds: '', voteNumberIds: '', budgetSources: [], budgetClassificationChangeReason: '  Approved IPMS funding revision  ' } as never);
+    const payload = buildIpmsPayload({ municipalityFinancialYearPublicId: 'year-public-id', sourceTemplateId: 'template-public-id', relatedOPMSTargetId: 'opms-public-id', relatedOpmsTargetChangeReason: '  Approved target realignment  ', departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: '', additionalAssigneeIds: '', voteNumberIds: '', budgetSources: [], budgetClassificationChangeReason: '  Approved IPMS funding revision  ' } as never);
 
     expect(payload).toMatchObject({
       municipalityFinancialYearPublicId: 'year-public-id',
       sourceTemplatePublicId: 'template-public-id',
       relatedOpmsTargetPublicId: 'opms-public-id',
+      relatedOpmsTargetChangeReason: 'Approved target realignment',
       departmentPublicId: 'department-public-id',
       unitPublicId: 'unit-public-id',
       budgetClassificationChangeReason: 'Approved IPMS funding revision',
