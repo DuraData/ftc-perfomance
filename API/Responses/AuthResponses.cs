@@ -597,7 +597,10 @@ public record NotificationResponse(
     string Message,
     string? EntityName,
     bool IsRead,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateTime? ReadAt,
+    Guid? ReadByUserPublicId,
+    string? ReadByUserName);
 
 public sealed record NotificationPageResponse(
     NotificationResponse[] Items,

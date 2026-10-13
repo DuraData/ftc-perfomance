@@ -1128,9 +1128,14 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(notification => notification.User)
             .WithMany()
             .HasForeignKey(notification => notification.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<Notification>().HasIndex(notification => notification.PublicId).IsUnique();
+        builder.Entity<Notification>().HasIndex(notification => new { notification.UserId, notification.IsRead, notification.CreatedAt });
+        builder.Entity<Notification>().ToTable(table => table.HasCheckConstraint("CK_Notifications_ReadLifecycle",
+            "([IsRead] = 0 AND [ReadAt] IS NULL AND [ReadByUserId] IS NULL) OR ([IsRead] = 1 AND [ReadAt] IS NOT NULL)"));
+        ConfigureRowVersion(builder.Entity<Notification>().Property(notification => notification.RowVersion));
         builder.Entity<Notification>().HasOne(notification => notification.Municipality).WithMany().HasForeignKey(notification => notification.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Notification>().HasOne(notification => notification.ReadByUser).WithMany().HasForeignKey(notification => notification.ReadByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<Notification>().HasQueryFilter(notification => TenantFilterBypass || notification.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<AuditTrail>()
@@ -2311,6 +2316,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         EnforceSecurityRegistryHistory();
         EnforcePerformancePeriodTargetHistory();
+        EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
         EnforceRefreshTokenHistory();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetWard>();
@@ -3207,6 +3213,46 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
         _ => value.ToString()
     };
+
+    private void EnforceNotificationHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<Notification>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                var coherentUnread = !row.IsRead && !row.ReadAt.HasValue && row.ReadByUserId == null;
+                var coherentRead = row.IsRead && row.ReadAt.HasValue
+                    && row.ReadAt >= row.CreatedAt && row.ReadAt <= DateTime.UtcNow.AddMinutes(5)
+                    && !string.IsNullOrWhiteSpace(row.ReadByUserId);
+                if (string.IsNullOrWhiteSpace(row.Id) || row.PublicId == Guid.Empty || string.IsNullOrWhiteSpace(row.UserId)
+                    || string.IsNullOrWhiteSpace(row.Title) || string.IsNullOrWhiteSpace(row.Message)
+                    || row.CreatedAt == default || row.CreatedAt > DateTime.UtcNow.AddMinutes(5)
+                    || (!coherentUnread && !coherentRead))
+                    throw new InvalidOperationException("A notification requires immutable recipient, content and creation provenance plus a coherent unread or actor-stamped read lifecycle.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Notification history cannot be hard deleted.");
+            if (entry.State != EntityState.Modified) continue;
+
+            EnsureOnlyProperties(entry,
+                [nameof(Notification.IsRead), nameof(Notification.ReadAt), nameof(Notification.ReadByUserId), nameof(Notification.RowVersion)],
+                "Notification identity, tenant, recipient, content, source and creation evidence are immutable.");
+            var readAt = entry.CurrentValues.GetValue<DateTime?>(nameof(Notification.ReadAt));
+            var readBy = entry.CurrentValues.GetValue<string?>(nameof(Notification.ReadByUserId));
+            if (entry.OriginalValues.GetValue<bool>(nameof(Notification.IsRead))
+                || !entry.CurrentValues.GetValue<bool>(nameof(Notification.IsRead))
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(Notification.ReadAt)).HasValue
+                || entry.OriginalValues.GetValue<string?>(nameof(Notification.ReadByUserId)) != null
+                || !readAt.HasValue
+                || readAt < entry.OriginalValues.GetValue<DateTime>(nameof(Notification.CreatedAt))
+                || readAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(readBy))
+                throw new InvalidOperationException("A notification may transition exactly once from unread to read with an ordered timestamp and actor.");
+        }
+    }
 
     private void EnforceNotificationPreferenceHistory()
     {

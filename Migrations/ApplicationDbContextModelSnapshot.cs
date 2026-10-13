@@ -6242,6 +6242,18 @@ namespace FTCERP.Host.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReadByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -6260,9 +6272,14 @@ namespace FTCERP.Host.Migrations
                     b.HasIndex("PublicId")
                         .IsUnique();
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("ReadByUserId");
 
-                    b.ToTable("Notifications");
+                    b.HasIndex("UserId", "IsRead", "CreatedAt");
+
+                    b.ToTable("Notifications", t =>
+                        {
+                            t.HasCheckConstraint("CK_Notifications_ReadLifecycle", "([IsRead] = 0 AND [ReadAt] IS NULL AND [ReadByUserId] IS NULL) OR ([IsRead] = 1 AND [ReadAt] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.NotificationConfiguration", b =>
@@ -15257,13 +15274,20 @@ namespace FTCERP.Host.Migrations
                         .HasForeignKey("MunicipalityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ReadByUser")
+                        .WithMany()
+                        .HasForeignKey("ReadByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Municipality");
+
+                    b.Navigation("ReadByUser");
 
                     b.Navigation("User");
                 });

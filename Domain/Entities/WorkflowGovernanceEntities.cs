@@ -637,10 +637,14 @@ public class Notification
     public string? EntityName { get; set; }
     public string? EntityId { get; set; }
     public bool IsRead { get; set; }
+    public DateTime? ReadAt { get; set; }
+    public string? ReadByUserId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
 
     public Municipality? Municipality { get; set; }
     public ApplicationUser User { get; set; } = null!;
+    public ApplicationUser? ReadByUser { get; set; }
 }
 
 public class AuditTrail

@@ -43,7 +43,10 @@ public class NotificationsController : ControllerBase
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode);
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<NotificationPageResponse>(false, null, decision.Reason));
 
-        var permittedQuery = _context.Notifications.AsNoTracking().Include(item => item.User).AsQueryable();
+        var permittedQuery = _context.Notifications.AsNoTracking()
+            .Include(item => item.User)
+            .Include(item => item.ReadByUser)
+            .AsQueryable();
         if (!includeAll) permittedQuery = permittedQuery.Where(item => item.UserId == user.Id);
         var unreadCount = await permittedQuery.CountAsync(item => !item.IsRead);
         var query = permittedQuery;
@@ -85,8 +88,18 @@ public class NotificationsController : ControllerBase
             if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<bool>(false, false, decision.Reason));
         }
 
+        if (notification.IsRead) return Ok(new ApiResponse<bool>(true, true));
         notification.IsRead = true;
-        await _context.SaveChangesAsync();
+        notification.ReadAt = DateTime.UtcNow;
+        notification.ReadByUserId = user.Id;
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
+        {
+            _context.ChangeTracker.Clear();
+            var winner = await _context.Notifications.AsNoTracking().SingleOrDefaultAsync(item => item.PublicId == publicId);
+            if (winner?.IsRead == true) return Ok(new ApiResponse<bool>(true, true));
+            return Conflict(new ApiResponse<bool>(false, false, "The notification changed before it could be marked as read. Refresh and try again."));
+        }
         return Ok(new ApiResponse<bool>(true, true));
     }
 

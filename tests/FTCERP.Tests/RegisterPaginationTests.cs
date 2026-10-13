@@ -736,6 +736,10 @@ public sealed class RegisterPaginationTests
         Assert.Equal(3, envelope.Data!.TotalCount);
         Assert.Equal(2, envelope.Data.UnreadCount);
         Assert.Equal(["Alpha", "Beta"], envelope.Data.Items.Select(item => item.Title));
+        var alreadyRead = envelope.Data.Items.Single(item => item.Title == "Alpha");
+        alreadyRead.ReadAt.Should().Be(alpha.CreatedAt);
+        alreadyRead.ReadByUserPublicId.Should().Be(user.PublicId);
+        alreadyRead.ReadByUserName.Should().Be(user.FullName);
         Assert.DoesNotContain(envelope.Data.Items, item => item.PublicId == outside.PublicId);
         envelope.Data.Items.Should().OnlyContain(item => item.RecipientUserPublicId == user.PublicId && item.RecipientName == user.FullName);
         var serialized = System.Text.Json.JsonSerializer.Serialize(envelope.Data.Items);
@@ -743,7 +747,10 @@ public sealed class RegisterPaginationTests
 
         var marked = await controller.MarkRead(beta.PublicId);
         Assert.True(Assert.IsType<ApiResponse<bool>>(Assert.IsType<OkObjectResult>(marked.Result).Value).Data);
-        (await context.Notifications.SingleAsync(item => item.PublicId == beta.PublicId)).IsRead.Should().BeTrue();
+        var persistedRead = await context.Notifications.SingleAsync(item => item.PublicId == beta.PublicId);
+        persistedRead.IsRead.Should().BeTrue();
+        persistedRead.ReadAt.Should().NotBeNull().And.BeOnOrAfter(beta.CreatedAt);
+        persistedRead.ReadByUserId.Should().Be(user.Id);
 
         var denied = Assert.IsType<ObjectResult>((await controller.MarkRead(outside.PublicId)).Result);
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
@@ -805,6 +812,8 @@ public sealed class RegisterPaginationTests
         Title = title,
         Message = $"{title} message",
         IsRead = isRead,
+        ReadAt = isRead ? createdAt : null,
+        ReadByUserId = isRead ? userId : null,
         CreatedAt = createdAt
     };
 

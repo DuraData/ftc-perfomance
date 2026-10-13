@@ -2847,6 +2847,9 @@ export interface NotificationDto {
   entityName?: string | null;
   isRead: boolean;
   createdAt: string;
+  readAt: string | null;
+  readByUserPublicId: string | null;
+  readByUserName: string | null;
 }
 
 export interface PerformanceSuggestionResult {

@@ -650,7 +650,10 @@ public static class PerformanceApiSupport
             notification.Message,
             notification.EntityName,
             notification.IsRead,
-            notification.CreatedAt);
+            notification.CreatedAt,
+            notification.ReadAt,
+            notification.ReadByUser?.PublicId,
+            notification.ReadByUser?.FullName);
 
     public static PoeFileResponse ToResponse(this PoeFile file, HttpContext context, Guid submissionPublicId, PoeResponseMemberAccess? memberAccess = null)
     {
