@@ -19,9 +19,15 @@ public abstract class KpiBudgetSourceBase
     public decimal? Amount { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? AllocatedByUserId { get; set; }
+    public DateTime? DeactivatedAt { get; set; }
+    public string? DeactivatedByUserId { get; set; }
+    public string? DeactivationReason { get; set; }
     public byte[] RowVersion { get; set; } = [];
     public Municipality Municipality { get; set; } = null!;
     public GovernedBudgetSource BudgetSource { get; set; } = null!;
+    public ApplicationUser? AllocatedByUser { get; set; }
+    public ApplicationUser? DeactivatedByUser { get; set; }
 }
 
 public sealed class OpmsKpiBudgetSource : KpiBudgetSourceBase

@@ -240,14 +240,15 @@ public sealed class StrategicPlanningMastersControllerTests
             [new(sourceA.PublicId, 125.50m), new(sourceB.PublicId, null)]);
         Assert.True(resolved.IsValid);
         var target = new OpmsTarget { Id = "OPMS-BUDGET-1", MunicipalityId = fixture.MunicipalityA.Id };
-        BudgetClassificationResolver.Apply(target, resolved);
+        var changedAt = DateTime.UtcNow;
+        BudgetClassificationResolver.Apply(target, resolved, "test-user", changedAt);
         Assert.Equal(budgetType.PublicId, resolved.BudgetType!.PublicId);
         Assert.Equal(2, target.GovernedBudgetSources.Count(item => item.IsActive));
         Assert.Contains(target.GovernedBudgetSources, item => item.BudgetSourceId == resolved.BudgetSources[0].Source.Id && item.Amount == 125.50m);
 
         var changed = await BudgetClassificationResolver.ResolveAsync(context, fixture.Year2026.Id, null,
             [new(sourceA.PublicId, 200m)], resolved.BudgetType!.Id, resolved.BudgetSources.Select(item => item.Source.Id).ToArray());
-        BudgetClassificationResolver.Apply(target, changed);
+        BudgetClassificationResolver.Apply(target, changed, "test-user", changedAt.AddMinutes(1), "Approved allocation revision");
         Assert.Null(target.BudgetTypeMasterId);
         Assert.Single(target.GovernedBudgetSources, item => item.IsActive);
         Assert.Equal(2, target.GovernedBudgetSources.Count(item => !item.IsActive));

@@ -328,7 +328,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var entity = await context.OpmsTargets.SingleAsync(item => item.PublicId == created.PublicId);
         entity.InternalReference = "INTERNAL-SECRET";
         entity.FmsLink = "FMS-SECRET";
-        entity.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 125.50m });
+        entity.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 125.50m, AllocatedByUserId = seed.User.Id });
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -377,7 +377,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         await context.SaveChangesAsync();
         var entity = await context.IpmsTargets.SingleAsync(item => item.PublicId == created.PublicId);
         entity.InternalReference = "EMPLOYEE-SECRET";
-        entity.GovernedBudgetSources.Add(new IpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 75m });
+        entity.GovernedBudgetSources.Add(new IpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 75m, AllocatedByUserId = seed.User.Id });
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -619,6 +619,81 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Equal(3, await context.OpmsTargetWards.CountAsync());
         Assert.Equal(3, await context.OpmsTargetAdditionalAssignees.CountAsync());
         Assert.Equal(3, await context.OpmsTargetVoteNumbers.CountAsync());
+    }
+
+    [Fact]
+    public async Task Opms_and_ipms_budget_changes_require_reason_and_append_preserved_allocations()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        var originalType = new GovernedBudgetType { MunicipalityId = seed.Municipality.Id, Code = "CAPEX", Name = "Capital" };
+        var replacementType = new GovernedBudgetType { MunicipalityId = seed.Municipality.Id, Code = "OPEX", Name = "Operating" };
+        var originalSource = new GovernedBudgetSource { MunicipalityId = seed.Municipality.Id, Code = "MIG", Name = "Infrastructure Grant" };
+        var replacementSource = new GovernedBudgetSource { MunicipalityId = seed.Municipality.Id, Code = "OWN", Name = "Own Revenue" };
+        context.AddRange(originalType, replacementType, originalSource, replacementSource);
+        await context.SaveChangesAsync();
+
+        var opms = Controller(context, seed.User, seed.Municipality.Id);
+        var ipms = IpmsController(context, seed.User, seed.Municipality.Id);
+        var opmsCreate = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            BudgetTypePublicId = originalType.PublicId,
+            BudgetSources = [new(originalSource.PublicId, 100m)]
+        };
+        var ipmsCreate = IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications) with
+        {
+            BudgetTypePublicId = originalType.PublicId,
+            BudgetSources = [new(originalSource.PublicId, 100m)]
+        };
+        var opmsCreated = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.CreateTarget(opmsCreate)).Result).Value).Data!;
+        var ipmsCreated = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipms.CreateTarget(ipmsCreate)).Result).Value).Data!;
+
+        var opmsReplacement = opmsCreate with
+        {
+            RowVersion = opmsCreated.RowVersion,
+            BudgetTypePublicId = replacementType.PublicId,
+            BudgetSources = [new(replacementSource.PublicId, 250m)]
+        };
+        var ipmsReplacement = ipmsCreate with
+        {
+            RowVersion = ipmsCreated.RowVersion,
+            BudgetTypePublicId = replacementType.PublicId,
+            BudgetSources = [new(replacementSource.PublicId, 250m)]
+        };
+        Assert.Contains("budget-classification change reason",
+            Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<BadRequestObjectResult>((await opms.UpdateTarget(opmsCreated.PublicId, opmsReplacement)).Result).Value).Message,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("budget-classification change reason",
+            Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<BadRequestObjectResult>((await ipms.UpdateTarget(ipmsCreated.PublicId, ipmsReplacement)).Result).Value).Message,
+            StringComparison.OrdinalIgnoreCase);
+
+        const string reason = "Approved annual funding reclassification";
+        var opmsChanged = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await opms.UpdateTarget(opmsCreated.PublicId,
+            opmsReplacement with { BudgetClassificationChangeReason = reason })).Result).Value).Data!;
+        var ipmsChanged = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await ipms.UpdateTarget(ipmsCreated.PublicId,
+            ipmsReplacement with { BudgetClassificationChangeReason = reason })).Result).Value).Data!;
+        Assert.NotEqual(opmsCreated.RowVersion, opmsChanged.RowVersion);
+        Assert.NotEqual(ipmsCreated.RowVersion, ipmsChanged.RowVersion);
+
+        context.ChangeTracker.Clear();
+        var opmsHistory = await context.OpmsKpiBudgetSources.OrderBy(item => item.CreatedAt).ToArrayAsync();
+        var ipmsHistory = await context.IpmsKpiBudgetSources.OrderBy(item => item.CreatedAt).ToArrayAsync();
+        Assert.Equal(2, opmsHistory.Length);
+        Assert.Equal(2, ipmsHistory.Length);
+        Assert.All(new KpiBudgetSourceBase[] { opmsHistory[0], ipmsHistory[0] }, item =>
+        {
+            Assert.False(item.IsActive);
+            Assert.Equal(seed.User.Id, item.DeactivatedByUserId);
+            Assert.Equal(reason, item.DeactivationReason);
+            Assert.NotNull(item.DeactivatedAt);
+        });
+        Assert.All(new KpiBudgetSourceBase[] { opmsHistory[1], ipmsHistory[1] }, item =>
+        {
+            Assert.True(item.IsActive);
+            Assert.Equal(seed.User.Id, item.AllocatedByUserId);
+            Assert.Equal(250m, item.Amount);
+        });
+        Assert.NotNull((await context.IpmsTargets.AsNoTracking().SingleAsync(item => item.PublicId == ipmsCreated.PublicId)).UpdatedAt);
     }
 
     private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId,

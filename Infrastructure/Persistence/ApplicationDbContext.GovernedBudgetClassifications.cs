@@ -62,12 +62,17 @@ public partial class ApplicationDbContext
         entity.ToTable(tableName);
         entity.HasIndex(item => item.PublicId).IsUnique();
         entity.Property(item => item.Amount).HasPrecision(18, 2);
+        entity.Property(item => item.DeactivationReason).HasMaxLength(2000);
         entity.ToTable(table => table.HasCheckConstraint($"CK_{tableName}_Amount", "[Amount] IS NULL OR [Amount] >= 0"));
+        entity.ToTable(table => table.HasCheckConstraint($"CK_{tableName}_DeactivationLifecycle",
+            "([IsActive] = 1 AND [DeactivatedAt] IS NULL AND [DeactivatedByUserId] IS NULL AND [DeactivationReason] IS NULL) OR ([IsActive] = 0 AND [DeactivatedAt] IS NOT NULL AND [DeactivationReason] IS NOT NULL)"));
         ConfigureRowVersion(entity.Property(item => item.RowVersion));
         entity.HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         entity.HasOne(item => item.BudgetSource).WithMany()
             .HasForeignKey(item => new { item.BudgetSourceId, item.MunicipalityId })
             .HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne(item => item.AllocatedByUser).WithMany().HasForeignKey(item => item.AllocatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        entity.HasOne(item => item.DeactivatedByUser).WithMany().HasForeignKey(item => item.DeactivatedByUserId).OnDelete(DeleteBehavior.Restrict);
         entity.HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
     }
 }

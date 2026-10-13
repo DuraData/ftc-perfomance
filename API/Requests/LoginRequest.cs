@@ -152,6 +152,7 @@ public sealed record SaveOpmsTargetRequest
     public string? BaselineDescription { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
     public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
+    public string? BudgetClassificationChangeReason { get; init; }
     public Guid? KpiTypePublicId { get; init; }
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }
@@ -202,6 +203,7 @@ public sealed record SaveIpmsTargetRequest
     public decimal Baseline { get; init; }
     public Guid? BudgetTypePublicId { get; init; }
     public SaveKpiBudgetSourceRequest[] BudgetSources { get; init; } = [];
+    public string? BudgetClassificationChangeReason { get; init; }
     public Guid? KpiTypePublicId { get; init; }
     public Guid? IndicatorTypePublicId { get; init; }
     public Guid? FunctionalAreaPublicId { get; init; }

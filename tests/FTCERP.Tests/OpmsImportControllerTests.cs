@@ -185,6 +185,8 @@ public sealed class OpmsImportControllerTests
         target.GovernedBudgetSources.Should().HaveCount(2);
         target.GovernedBudgetSources.Should().Contain(item => item.BudgetSourceId == setup.BudgetSourceA.Id && item.Amount == 125.50m);
         target.GovernedBudgetSources.Should().Contain(item => item.BudgetSourceId == setup.BudgetSourceB.Id && item.Amount == null);
+        target.GovernedBudgetSources.Should().OnlyContain(item => item.AllocatedByUserId == setup.User.Id && item.IsActive
+            && item.DeactivatedAt == null && item.DeactivatedByUserId == null && item.DeactivationReason == null);
     }
 
     [Fact]
@@ -471,7 +473,7 @@ public sealed class OpmsImportControllerTests
             KpiUnitOfMeasureMasterId = setup.KpiUnitOfMeasure.Id,
             KpiType = "Output", IndicatorType = "Quantitative", AnnualTargetDescription = "Annual", Weight = 10
         };
-        target.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = setup.Municipality.Id, BudgetSourceId = setup.BudgetSourceA.Id, Amount = 125.50m });
+        target.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = setup.Municipality.Id, BudgetSourceId = setup.BudgetSourceA.Id, Amount = 125.50m, AllocatedByUserId = setup.User.Id });
         context.Add(target);
         await context.SaveChangesAsync();
         context.PerformancePeriodTargets.Add(new PerformancePeriodTarget

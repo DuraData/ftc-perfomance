@@ -3026,6 +3026,7 @@ export interface SaveOpmsTargetPayload {
   baselineDescription?: string | null;
   budgetTypePublicId?: string | null;
   budgetSources: Array<{ budgetSourcePublicId: string; amount?: number | null }>;
+  budgetClassificationChangeReason?: string | null;
   budgetSourceAmountsSpecified?: boolean;
   kpiUnitOfMeasurePublicId: string;
   weight: number;
@@ -3073,6 +3074,7 @@ export interface SaveIpmsTargetPayload {
   baseline: number;
   budgetTypePublicId?: string | null;
   budgetSources: Array<{ budgetSourcePublicId: string; amount?: number | null }>;
+  budgetClassificationChangeReason?: string | null;
   budgetSourceAmountsSpecified?: boolean;
   kpiUnitOfMeasurePublicId: string;
   weight: number;

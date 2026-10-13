@@ -244,6 +244,7 @@ public sealed class OpmsImportsController(
             foreach (var candidate in fresh.Where(x => x.Status == OpmsImportRowStatus.New))
             {
                 var dto = JsonSerializer.Deserialize<NormalizedRow>(candidate.NormalizedJson!, JsonOptions)!;
+                var createdAt = DateTime.UtcNow;
                 var target = new OpmsTarget
                 {
                     MunicipalityId = batch.MunicipalityId, SdbipLayerId = batch.SdbipLayerId, PeriodId = dto.PeriodId,
@@ -251,7 +252,7 @@ public sealed class OpmsImportsController(
                     OriginalOrderNumber = dto.OrderNumber, RevisedOrderNumber = dto.OrderNumber, TargetName = dto.TargetName,
                     KpiDescription = dto.KpiDescription, Baseline = dto.Baseline, Weight = dto.Weight,
                     KpiType = dto.KpiType, IndicatorType = dto.IndicatorType, FunctionalArea = dto.FunctionalArea,
-                    StandardClassification = dto.StandardClassification, CreatedAt = DateTime.UtcNow
+                    StandardClassification = dto.StandardClassification, CreatedAt = createdAt
                 };
                 var classification = await StrategicClassificationResolver.ResolveAsync(context, batch.SdbipLayer.MunicipalityFinancialYearId,
                     dto.ClassificationSelection);
@@ -260,7 +261,7 @@ public sealed class OpmsImportsController(
                 var budgetClassification = await BudgetClassificationResolver.ResolveAsync(context, batch.SdbipLayer.MunicipalityFinancialYearId,
                     dto.BudgetTypePublicId, dto.BudgetSources);
                 if (!budgetClassification.IsValid) throw new DbUpdateConcurrencyException(budgetClassification.Error ?? "Canonical budget classification validation failed.");
-                BudgetClassificationResolver.Apply(target, budgetClassification);
+                BudgetClassificationResolver.Apply(target, budgetClassification, user.Id, createdAt);
                 var performanceClassification = await PerformanceClassificationResolver.ResolveAsync(context, batch.SdbipLayer.MunicipalityFinancialYearId,
                     dto.KpiTypePublicId, dto.IndicatorTypePublicId, dto.FunctionalAreaPublicId, dto.StandardClassificationPublicId, true);
                 if (!performanceClassification.IsValid) throw new DbUpdateConcurrencyException(performanceClassification.Error ?? "Canonical performance classification validation failed.");

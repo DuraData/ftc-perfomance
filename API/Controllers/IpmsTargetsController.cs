@@ -231,6 +231,7 @@ public class IpmsTargetsController : ControllerBase
         var relatedTarget = await ResolveRelatedOpmsTargetAsync(request.RelatedOpmsTargetPublicId);
         if (!relatedTarget.Succeeded) return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, relatedTarget.Error));
 
+        var createdAt = DateTime.UtcNow;
         var entity = new IpmsTarget
         {
             MunicipalityId = _tenantContext.MunicipalityId,
@@ -257,10 +258,10 @@ public class IpmsTargetsController : ControllerBase
             IdpReference = request.IdpReference,
             InternalReference = request.InternalReferenceSpecified ? request.InternalReference : null,
             IsRevised = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt
         };
         StrategicClassificationResolver.Apply(entity, strategicClassification);
-        BudgetClassificationResolver.Apply(entity, budgetClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification, user.Id, createdAt);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
 
@@ -333,6 +334,15 @@ public class IpmsTargetsController : ControllerBase
             !string.Equals(entity.KpiDescription, request.KpiDescription.Trim(), StringComparison.Ordinal))
             return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "KPI number, target name and KPI wording are governed originals. Record approved changes through the field-revision endpoint."));
 
+        var budgetClassificationChanged = BudgetClassificationResolver.HasClassificationChanges(
+            entity.BudgetTypeMasterId, entity.GovernedBudgetSources, budgetClassification);
+        var budgetClassificationReason = request.BudgetClassificationChangeReason?.Trim();
+        if (budgetClassificationChanged && string.IsNullOrWhiteSpace(budgetClassificationReason))
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "A budget-classification change reason is required when the Budget Type or Budget Sources change."));
+        if (budgetClassificationReason?.Length > 2000)
+            return BadRequest(new ApiResponse<IpmsTargetResponse>(false, null, "The budget-classification change reason cannot exceed 2000 characters."));
+        var updatedAt = DateTime.UtcNow;
+
         entity.SourceTemplateId = sourceTemplate.InternalId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
         entity.RelatedOpmsTargetId = relatedTarget.InternalId;
@@ -351,9 +361,10 @@ public class IpmsTargetsController : ControllerBase
         entity.IdpReference = request.IdpReference;
         if (request.InternalReferenceSpecified) entity.InternalReference = request.InternalReference;
         StrategicClassificationResolver.Apply(entity, strategicClassification);
-        BudgetClassificationResolver.Apply(entity, budgetClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification, user.Id, updatedAt, budgetClassificationReason);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
+        entity.UpdatedAt = updatedAt;
         var beforeResponse = before == null ? null : await ToResponseAsync(before);
         _workflowGovernanceService.QueueAuditTrail("IpmsTarget", entity.Id, "Edit", beforeResponse,
             new { entity.PublicId, Request = request }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "IPMS target updated.");

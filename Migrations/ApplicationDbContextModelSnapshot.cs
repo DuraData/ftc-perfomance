@@ -4283,6 +4283,9 @@ namespace FTCERP.Host.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("AllocatedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<decimal?>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -4292,6 +4295,16 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeactivatedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("IpmsTargetId")
                         .IsRequired()
@@ -4314,6 +4327,10 @@ namespace FTCERP.Host.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AllocatedByUserId");
+
+                    b.HasIndex("DeactivatedByUserId");
+
                     b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PublicId")
@@ -4328,6 +4345,8 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("IPMS_KPIBudgetSources", null, t =>
                         {
                             t.HasCheckConstraint("CK_IPMS_KPIBudgetSources_Amount", "[Amount] IS NULL OR [Amount] >= 0");
+
+                            t.HasCheckConstraint("CK_IPMS_KPIBudgetSources_DeactivationLifecycle", "([IsActive] = 1 AND [DeactivatedAt] IS NULL AND [DeactivatedByUserId] IS NULL AND [DeactivationReason] IS NULL) OR ([IsActive] = 0 AND [DeactivatedAt] IS NOT NULL AND [DeactivationReason] IS NOT NULL)");
                         });
                 });
 
@@ -4867,6 +4886,9 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<int?>("UnitOfMeasureId")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<decimal>("Weight")
                         .HasPrecision(18, 2)
@@ -7207,6 +7229,9 @@ namespace FTCERP.Host.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("AllocatedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<decimal?>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -7216,6 +7241,16 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeactivatedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("DeactivationReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -7238,6 +7273,10 @@ namespace FTCERP.Host.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AllocatedByUserId");
+
+                    b.HasIndex("DeactivatedByUserId");
+
                     b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PublicId")
@@ -7252,6 +7291,8 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("OPMS_KPIBudgetSources", null, t =>
                         {
                             t.HasCheckConstraint("CK_OPMS_KPIBudgetSources_Amount", "[Amount] IS NULL OR [Amount] >= 0");
+
+                            t.HasCheckConstraint("CK_OPMS_KPIBudgetSources_DeactivationLifecycle", "([IsActive] = 1 AND [DeactivatedAt] IS NULL AND [DeactivatedByUserId] IS NULL AND [DeactivationReason] IS NULL) OR ([IsActive] = 0 AND [DeactivatedAt] IS NOT NULL AND [DeactivationReason] IS NOT NULL)");
                         });
                 });
 
@@ -14376,6 +14417,16 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.IpmsKpiBudgetSource", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "AllocatedByUser")
+                        .WithMany()
+                        .HasForeignKey("AllocatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "DeactivatedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeactivatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.IpmsTarget", "IpmsTarget")
                         .WithMany("GovernedBudgetSources")
                         .HasForeignKey("IpmsTargetId")
@@ -14395,7 +14446,11 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("AllocatedByUser");
+
                     b.Navigation("BudgetSource");
+
+                    b.Navigation("DeactivatedByUser");
 
                     b.Navigation("IpmsTarget");
 
@@ -15505,6 +15560,16 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsKpiBudgetSource", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "AllocatedByUser")
+                        .WithMany()
+                        .HasForeignKey("AllocatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "DeactivatedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeactivatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
                         .WithMany()
                         .HasForeignKey("MunicipalityId")
@@ -15524,7 +15589,11 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("AllocatedByUser");
+
                     b.Navigation("BudgetSource");
+
+                    b.Navigation("DeactivatedByUser");
 
                     b.Navigation("Municipality");
 

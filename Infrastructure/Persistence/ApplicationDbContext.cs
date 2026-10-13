@@ -2242,7 +2242,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         var tenantId = _tenantContext.MunicipalityId;
         var protectedTypes = new HashSet<Type>
         {
-            typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
+            typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(OpmsKpiBudgetSource), typeof(IpmsTarget), typeof(IpmsKpiBudgetSource), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(DueDateExtension), typeof(ReviewComment), typeof(AuditFinding), typeof(SubmissionScore),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation), typeof(LegacyTenantOwnershipReconciliation)
@@ -2315,6 +2315,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOpmsTargetRelationshipHistory<OpmsTargetWard>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetAdditionalAssignee>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetVoteNumber>();
+        EnforceKpiBudgetSourceHistory<OpmsKpiBudgetSource>(nameof(OpmsKpiBudgetSource.OpmsTargetId));
+        EnforceKpiBudgetSourceHistory<IpmsKpiBudgetSource>(nameof(IpmsKpiBudgetSource.IpmsTargetId));
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3379,6 +3381,50 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || string.IsNullOrWhiteSpace(currentUnlinkedBy)
                 || string.IsNullOrWhiteSpace(currentReason) || currentReason.Length > 2000)
                 throw new InvalidOperationException("A target relationship may transition exactly once from active to inactive with an ordered timestamp, actor and substantive reason.");
+        }
+    }
+
+    private void EnforceKpiBudgetSourceHistory<TEntity>(string targetPropertyName) where TEntity : KpiBudgetSourceBase
+    {
+        foreach (var entry in ChangeTracker.Entries<TEntity>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                var targetId = entry.Property<string>(targetPropertyName).CurrentValue;
+                if (row.PublicId == Guid.Empty || row.MunicipalityId <= 0 || row.BudgetSourceId <= 0
+                    || string.IsNullOrWhiteSpace(targetId) || row.Amount < 0
+                    || string.IsNullOrWhiteSpace(row.AllocatedByUserId)
+                    || row.CreatedAt == default || row.CreatedAt > DateTime.UtcNow.AddMinutes(5)
+                    || !row.IsActive || row.DeactivatedAt.HasValue
+                    || row.DeactivatedByUserId != null || row.DeactivationReason != null)
+                    throw new InvalidOperationException("A KPI budget-source allocation requires immutable tenant, target, source, amount, actor and allocation-time provenance without fabricated deactivation evidence.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("KPI budget-source allocation history cannot be hard deleted; record a reasoned deactivation instead.");
+            if (entry.State != EntityState.Modified) continue;
+
+            EnsureOnlyProperties(entry,
+                [nameof(KpiBudgetSourceBase.IsActive), nameof(KpiBudgetSourceBase.DeactivatedAt),
+                    nameof(KpiBudgetSourceBase.DeactivatedByUserId), nameof(KpiBudgetSourceBase.DeactivationReason),
+                    nameof(KpiBudgetSourceBase.RowVersion)],
+                "KPI budget-source allocation identity, tenant, target, source, amount, actor and allocation-time provenance are immutable.");
+            var deactivatedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(KpiBudgetSourceBase.DeactivatedAt));
+            var deactivatedBy = entry.CurrentValues.GetValue<string?>(nameof(KpiBudgetSourceBase.DeactivatedByUserId));
+            var reason = entry.CurrentValues.GetValue<string?>(nameof(KpiBudgetSourceBase.DeactivationReason));
+            if (!entry.OriginalValues.GetValue<bool>(nameof(KpiBudgetSourceBase.IsActive))
+                || entry.CurrentValues.GetValue<bool>(nameof(KpiBudgetSourceBase.IsActive))
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(KpiBudgetSourceBase.DeactivatedAt)).HasValue
+                || entry.OriginalValues.GetValue<string?>(nameof(KpiBudgetSourceBase.DeactivatedByUserId)) != null
+                || entry.OriginalValues.GetValue<string?>(nameof(KpiBudgetSourceBase.DeactivationReason)) != null
+                || !deactivatedAt.HasValue
+                || deactivatedAt < entry.OriginalValues.GetValue<DateTime>(nameof(KpiBudgetSourceBase.CreatedAt))
+                || deactivatedAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(deactivatedBy)
+                || string.IsNullOrWhiteSpace(reason) || reason.Length > 2000)
+                throw new InvalidOperationException("A KPI budget-source allocation may deactivate exactly once with an ordered timestamp, actor and substantive reason.");
         }
     }
 

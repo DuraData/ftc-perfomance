@@ -164,6 +164,7 @@ type OpmsFormState = {
   annualTargetDescription: string;
   budgetTypePublicId: string;
   budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>;
+  budgetClassificationChangeReason: string;
   budgetTypeHint: string;
   budgetSourceHint: string;
   kpiTypeHint: string;
@@ -249,6 +250,7 @@ type IpmsFormState = {
   annualTargetDescription: string;
   budgetTypePublicId: string;
   budgetSources: Array<{ budgetSourcePublicId: string; amount: string }>;
+  budgetClassificationChangeReason: string;
   budgetTypeHint: string;
   budgetSourceHint: string;
   kpiTypeHint: string;
@@ -356,6 +358,7 @@ function createDefaultOpmsFormState(): OpmsFormState {
     annualTargetDescription: '',
     budgetTypePublicId: '',
     budgetSources: [],
+    budgetClassificationChangeReason: '',
     budgetTypeHint: '',
     budgetSourceHint: '',
     kpiTypeHint: '',
@@ -443,6 +446,7 @@ function createDefaultIpmsFormState(): IpmsFormState {
     annualTargetDescription: '',
     budgetTypePublicId: '',
     budgetSources: [],
+    budgetClassificationChangeReason: '',
     budgetTypeHint: '',
     budgetSourceHint: '',
     kpiTypeHint: '',
@@ -531,6 +535,7 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     annualTargetDescription: annual?.description ?? '',
     budgetTypePublicId: target.budgetTypePublicId ?? '',
     budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount == null ? '' : String(item.amount) })),
+    budgetClassificationChangeReason: '',
     budgetTypeHint: '',
     budgetSourceHint: '',
     kpiTypeHint: '',
@@ -621,6 +626,7 @@ function ipmsFormFromTarget(target: IPMSTarget): IpmsFormState {
     annualTargetDescription: annual?.description ?? '',
     budgetTypePublicId: target.budgetTypePublicId ?? '',
     budgetSources: (target.budgetSources ?? []).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: item.amount == null ? '' : String(item.amount) })),
+    budgetClassificationChangeReason: '',
     budgetTypeHint: '',
     budgetSourceHint: '',
     kpiTypeHint: '',
@@ -843,6 +849,7 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
     baselineDescription: form.baselineDescription || null,
     budgetTypePublicId: form.budgetTypePublicId || null,
     budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: access.budgetSourceAmounts && item.amount !== '' ? Number(item.amount) : null })),
+    budgetClassificationChangeReason: (form.budgetClassificationChangeReason ?? '').trim() || null,
     budgetSourceAmountsSpecified: access.budgetSourceAmounts,
     kpiUnitOfMeasurePublicId: form.kpiUnitOfMeasurePublicId,
     weight: Number(form.weight || 0),
@@ -890,6 +897,7 @@ export function buildIpmsPayload(form: IpmsFormState, configuration?: Performanc
     baseline: Number(form.baseline || 0),
     budgetTypePublicId: form.budgetTypePublicId || null,
     budgetSources: (form.budgetSources ?? []).filter(item => item.budgetSourcePublicId).map(item => ({ budgetSourcePublicId: item.budgetSourcePublicId, amount: access.budgetSourceAmounts && item.amount !== '' ? Number(item.amount) : null })),
+    budgetClassificationChangeReason: (form.budgetClassificationChangeReason ?? '').trim() || null,
     budgetSourceAmountsSpecified: access.budgetSourceAmounts,
     kpiUnitOfMeasurePublicId: form.kpiUnitOfMeasurePublicId,
     weight: Number(form.weight || 0),
@@ -1517,6 +1525,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
           <FormPanel title="Budget And References" description="Capture budget linkage, identifiers, and external references." icon={<Building2 className="h-5 w-5" />}>
             <StrategicClassificationPicker targetKind="opms" classificationKind="budget-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Budget Type" value={form.budgetTypePublicId} selectedLabel={existingTarget?.budgetTypeName} onChange={value => setForm(prev => ({ ...prev, budgetTypePublicId: value }))} />
             <BudgetSourceEditor targetKind="opms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} canReadAmounts={security.canReadField('OPMS_KPI', 'BudgetSourceAmounts')} canEditAmounts={sensitiveEditAccess.budgetSourceAmounts} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
+            {targetId ? <Textarea label="Budget-classification change reason" rows={3} maxLength={2000} value={form.budgetClassificationChangeReason} onChange={(event) => setForm(prev => ({ ...prev, budgetClassificationChangeReason: event.target.value }))} helpText="Required when the Budget Type, Budget Sources, or allocation amounts change." /> : null}
             <FormRow cols={2}>
               <Input label="IDP Reference" value={form.idpReference} onChange={(event) => setForm(prev => ({ ...prev, idpReference: event.target.value }))} />
               {security.canReadField('OPMS_KPI', 'InternalReference') && <Input label="Internal Reference" value={form.internalReference} readOnly={!sensitiveEditAccess.internalReference} onChange={(event) => setForm(prev => ({ ...prev, internalReference: event.target.value }))} />}
@@ -1977,6 +1986,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <StrategicClassificationPicker targetKind="ipms" classificationKind="budget-types" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Budget Type" value={form.budgetTypePublicId} selectedLabel={existingTarget?.budgetTypeName} onChange={value => setForm(prev => ({ ...prev, budgetTypePublicId: value }))} />
             </FormRow>
             <BudgetSourceEditor targetKind="ipms" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} value={form.budgetSources} selectedLabels={budgetSourceLabels} canReadAmounts={security.canReadField('IPMS_KPI', 'BudgetSourceAmounts')} canEditAmounts={sensitiveEditAccess.budgetSourceAmounts} onChange={budgetSources => setForm(prev => ({ ...prev, budgetSources }))} />
+            {targetId ? <Textarea label="Budget-classification change reason" rows={3} maxLength={2000} value={form.budgetClassificationChangeReason} onChange={(event) => setForm(prev => ({ ...prev, budgetClassificationChangeReason: event.target.value }))} helpText="Required when the Budget Type, Budget Sources, or allocation amounts change." /> : null}
           </FormPanel>
 
           <FormPanel title="References And Review" description="Maintain linkage and quick review context on the same page." icon={<Building2 className="h-5 w-5" />}>

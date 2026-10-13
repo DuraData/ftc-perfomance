@@ -299,6 +299,7 @@ public partial class IpmsTarget
     public decimal? RevisedAnnualTarget { get; set; }
     public decimal? RevisedAnnualBudget { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
     public Municipality? Municipality { get; set; }

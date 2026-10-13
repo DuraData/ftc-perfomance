@@ -51,36 +51,59 @@ internal static class BudgetClassificationResolver
         return new(budgetType, resolved, null);
     }
 
-    public static void Apply(OpmsTarget target, ResolvedBudgetClassification value)
+    public static bool HasClassificationChanges(long? existingBudgetTypeId, IEnumerable<KpiBudgetSourceBase> existingLinks,
+        ResolvedBudgetClassification value)
+    {
+        if (existingBudgetTypeId != value.BudgetType?.Id) return true;
+        var active = existingLinks.Where(item => item.IsActive).ToArray();
+        return active.Length != value.BudgetSources.Length || active.Any(item =>
+            value.BudgetSources.All(desired => desired.Source.Id != item.BudgetSourceId || desired.Amount != item.Amount));
+    }
+
+    public static void Apply(OpmsTarget target, ResolvedBudgetClassification value, string actorUserId, DateTime changedAt, string? reason = null)
     {
         var municipalityId = target.MunicipalityId ?? throw new InvalidOperationException("A municipality is required before applying budget classifications.");
         target.BudgetTypeMasterId = value.BudgetType?.Id;
         target.BudgetTypeId = null;
         target.BudgetSourceId = null;
-        ApplyLinks(target.GovernedBudgetSources, value.BudgetSources,
+        ApplyLinks(target.GovernedBudgetSources, value.BudgetSources, actorUserId, changedAt, reason,
             resolved => new OpmsKpiBudgetSource { MunicipalityId = municipalityId, OpmsTargetId = target.Id, BudgetSourceId = resolved.Source.Id, Amount = resolved.Amount });
     }
 
-    public static void Apply(IpmsTarget target, ResolvedBudgetClassification value)
+    public static void Apply(IpmsTarget target, ResolvedBudgetClassification value, string actorUserId, DateTime changedAt, string? reason = null)
     {
         var municipalityId = target.MunicipalityId ?? throw new InvalidOperationException("A municipality is required before applying budget classifications.");
         target.BudgetTypeMasterId = value.BudgetType?.Id;
         target.BudgetTypeId = null;
         target.BudgetSourceId = null;
-        ApplyLinks(target.GovernedBudgetSources, value.BudgetSources,
+        ApplyLinks(target.GovernedBudgetSources, value.BudgetSources, actorUserId, changedAt, reason,
             resolved => new IpmsKpiBudgetSource { MunicipalityId = municipalityId, IpmsTargetId = target.Id, BudgetSourceId = resolved.Source.Id, Amount = resolved.Amount });
     }
 
-    private static void ApplyLinks<TEntity>(ICollection<TEntity> links, ResolvedBudgetSource[] desired, Func<ResolvedBudgetSource, TEntity> factory)
+    private static void ApplyLinks<TEntity>(ICollection<TEntity> links, ResolvedBudgetSource[] desired, string actorUserId,
+        DateTime changedAt, string? reason, Func<ResolvedBudgetSource, TEntity> factory)
         where TEntity : KpiBudgetSourceBase
     {
         foreach (var existing in links.Where(item => item.IsActive).ToArray())
         {
             var requested = desired.SingleOrDefault(item => item.Source.Id == existing.BudgetSourceId && item.Amount == existing.Amount);
-            if (requested == null) existing.IsActive = false;
+            if (requested == null)
+            {
+                if (string.IsNullOrWhiteSpace(reason))
+                    throw new InvalidOperationException("A budget-classification change reason is required when an allocation is deactivated.");
+                existing.IsActive = false;
+                existing.DeactivatedAt = changedAt;
+                existing.DeactivatedByUserId = actorUserId;
+                existing.DeactivationReason = reason.Trim();
+            }
         }
         foreach (var requested in desired.Where(item => links.All(link => !link.IsActive || link.BudgetSourceId != item.Source.Id || link.Amount != item.Amount)))
-            links.Add(factory(requested));
+        {
+            var added = factory(requested);
+            added.AllocatedByUserId = actorUserId;
+            added.CreatedAt = changedAt;
+            links.Add(added);
+        }
     }
 
     private static IQueryable<TEntity> Query<TEntity>(DbSet<TEntity> set) where TEntity : StrategicPlanningMasterBase =>

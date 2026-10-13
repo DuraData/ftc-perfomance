@@ -251,6 +251,7 @@ public class OpmsTargetsController : ControllerBase
             request.KpiUnitOfMeasurePublicId);
         if (!kpiUnit.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, kpiUnit.Error));
 
+        var createdAt = DateTime.UtcNow;
         var entity = new OpmsTarget
         {
             SdbipLayerId = layer.Entity.Id,
@@ -279,13 +280,12 @@ public class OpmsTargetsController : ControllerBase
             InternalReference = request.InternalReferenceSpecified ? request.InternalReference : null,
             FmsLink = request.FmsLinkSpecified ? request.FmsLink : null,
             IsRevised = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt
         };
         StrategicClassificationResolver.Apply(entity, strategicClassification);
-        BudgetClassificationResolver.Apply(entity, budgetClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification, user.Id, createdAt);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
-        var createdAt = DateTime.UtcNow;
         ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds, user.Id, createdAt);
 
         _context.OpmsTargets.Add(entity);
@@ -368,6 +368,21 @@ public class OpmsTargetsController : ControllerBase
             !string.Equals(entity.KpiDescription, request.KpiDescription.Trim(), StringComparison.Ordinal))
             return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "KPI number, target name and KPI wording are governed originals. Record approved changes through the field-revision endpoint."));
 
+        var budgetClassificationChanged = BudgetClassificationResolver.HasClassificationChanges(
+            entity.BudgetTypeMasterId, entity.GovernedBudgetSources, budgetClassification);
+        var budgetClassificationReason = request.BudgetClassificationChangeReason?.Trim();
+        if (budgetClassificationChanged && string.IsNullOrWhiteSpace(budgetClassificationReason))
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A budget-classification change reason is required when the Budget Type or Budget Sources change."));
+        if (budgetClassificationReason?.Length > 2000)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "The budget-classification change reason cannot exceed 2000 characters."));
+        var mappingChanged = HasMappingChanges(entity, request, mappings, userReferences.AdditionalAssigneeIds);
+        var relationshipReason = request.RelationshipChangeReason?.Trim();
+        if (mappingChanged && string.IsNullOrWhiteSpace(relationshipReason))
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A relationship change reason is required when wards, additional assignees, or vote numbers change."));
+        if (relationshipReason?.Length > 2000)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "The relationship change reason cannot exceed 2000 characters."));
+        var updatedAt = DateTime.UtcNow;
+
         entity.SdbipLayerId = layer.Entity.Id;
         entity.SourceTemplateId = sourceTemplate.InternalId;
         entity.SourceTemplateVersion = request.SourceTemplateVersion;
@@ -388,16 +403,9 @@ public class OpmsTargetsController : ControllerBase
         if (request.InternalReferenceSpecified) entity.InternalReference = request.InternalReference;
         if (request.FmsLinkSpecified) entity.FmsLink = request.FmsLink;
         StrategicClassificationResolver.Apply(entity, strategicClassification);
-        BudgetClassificationResolver.Apply(entity, budgetClassification);
+        BudgetClassificationResolver.Apply(entity, budgetClassification, user.Id, updatedAt, budgetClassificationReason);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
-        var mappingChanged = HasMappingChanges(entity, request, mappings, userReferences.AdditionalAssigneeIds);
-        var relationshipReason = request.RelationshipChangeReason?.Trim();
-        if (mappingChanged && string.IsNullOrWhiteSpace(relationshipReason))
-            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A relationship change reason is required when wards, additional assignees, or vote numbers change."));
-        if (relationshipReason?.Length > 2000)
-            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "The relationship change reason cannot exceed 2000 characters."));
-        var updatedAt = DateTime.UtcNow;
         if (mappingChanged)
             ApplyMappingChanges(entity, request, mappings, userReferences.AdditionalAssigneeIds, user.Id, relationshipReason!, updatedAt);
         entity.UpdatedAt = updatedAt;
