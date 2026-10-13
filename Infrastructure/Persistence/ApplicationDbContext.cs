@@ -202,7 +202,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<AuthenticationPolicy>().ToTable(table => table.HasCheckConstraint("CK_AuthenticationPolicies_Bounds", "[MinimumPasswordLength] BETWEEN 12 AND 128 AND [MaximumFailedAttempts] BETWEEN 1 AND 20 AND [LockoutMinutes] BETWEEN 1 AND 1440 AND [SessionIdleTimeoutMinutes] BETWEEN 5 AND 1440 AND [SessionAbsoluteTimeoutHours] BETWEEN 1 AND 720 AND [MaximumConcurrentSessions] BETWEEN 1 AND 50"));
         ConfigureRowVersion(builder.Entity<AuthenticationPolicy>().Property(item => item.RowVersion));
         builder.Entity<AuthenticationPolicy>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
-        builder.Entity<AuthenticationPolicy>().HasOne(item => item.AuthenticationConfiguration).WithOne(item => item.Policy).HasForeignKey<AuthenticationPolicy>(item => item.AuthenticationConfigurationId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<AuthenticationPolicy>().HasOne(item => item.AuthenticationConfiguration).WithOne(item => item.Policy).HasForeignKey<AuthenticationPolicy>(item => item.AuthenticationConfigurationId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuthenticationPolicy>().HasOne(item => item.ModifiedByUser).WithMany().HasForeignKey(item => item.ModifiedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<AuthenticationPolicy>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
@@ -514,6 +514,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<ApplicationRole>().Property(item => item.RowVersion));
         builder.Entity<ApplicationRole>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>>()
+            .HasOne<ApplicationRole>().WithMany().HasForeignKey(item => item.RoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Microsoft.AspNetCore.Identity.IdentityUserClaim<string>>()
+            .HasOne<ApplicationUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Microsoft.AspNetCore.Identity.IdentityUserLogin<string>>()
+            .HasOne<ApplicationUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Microsoft.AspNetCore.Identity.IdentityUserRole<string>>()
+            .HasOne<ApplicationRole>().WithMany().HasForeignKey(item => item.RoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Microsoft.AspNetCore.Identity.IdentityUserRole<string>>()
+            .HasOne<ApplicationUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<Microsoft.AspNetCore.Identity.IdentityUserToken<string>>()
+            .HasOne<ApplicationUser>().WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+
         builder.Entity<Permission>().HasIndex(item => item.Code).IsUnique();
         builder.Entity<SecurityResource>().HasIndex(item => item.Code).IsUnique();
         builder.Entity<SecurityResource>().HasIndex(item => item.PublicId).IsUnique();
@@ -545,6 +558,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<RefreshToken>().Property(item => item.UserAgent).HasMaxLength(1024);
         builder.Entity<RefreshToken>().Property(item => item.RevokedReason).HasMaxLength(500);
         ConfigureRowVersion(builder.Entity<RefreshToken>().Property(item => item.RowVersion));
+        builder.Entity<RefreshToken>().HasOne(item => item.User).WithMany(item => item.RefreshTokens)
+            .HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
 
         // Configure RolePermission
         builder.Entity<RolePermission>()
@@ -553,11 +568,13 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<RolePermission>()
             .HasOne(rp => rp.Role)
             .WithMany(r => r.RolePermissions)
-            .HasForeignKey(rp => rp.RoleId);
+            .HasForeignKey(rp => rp.RoleId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<RolePermission>()
             .HasOne(rp => rp.Permission)
             .WithMany(p => p.RolePermissions)
-            .HasForeignKey(rp => rp.PermissionId);
+            .HasForeignKey(rp => rp.PermissionId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Configure UserPermissionOverride
         builder.Entity<UserPermissionOverride>()
@@ -565,11 +582,13 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<UserPermissionOverride>()
             .HasOne(upo => upo.User)
             .WithMany(u => u.PermissionOverrides)
-            .HasForeignKey(upo => upo.UserId);
+            .HasForeignKey(upo => upo.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<UserPermissionOverride>()
             .HasOne(upo => upo.Permission)
             .WithMany(p => p.UserPermissionOverrides)
-            .HasForeignKey(upo => upo.PermissionId);
+            .HasForeignKey(upo => upo.PermissionId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<Department>()
             .HasIndex(d => new { d.MunicipalityId, d.Code })
@@ -589,7 +608,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(u => u.Department)
             .WithMany(d => d.Units)
             .HasForeignKey(u => u.DepartmentId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<Position>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<Position>().HasIndex(item => new { item.MunicipalityId, item.Code }).IsUnique();
@@ -620,7 +639,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<UserScope>()
             .HasOne(us => us.User)
             .WithMany(u => u.Scopes)
-            .HasForeignKey(us => us.UserId);
+            .HasForeignKey(us => us.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<UserScope>()
             .HasOne(us => us.Municipality)
@@ -646,7 +666,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<UserAssignment>()
             .HasOne(ua => ua.User)
             .WithMany(u => u.Assignments)
-            .HasForeignKey(ua => ua.UserId);
+            .HasForeignKey(ua => ua.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<UserAssignment>()
             .HasOne<ApplicationUser>()
@@ -1305,7 +1326,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(so => so.StrategicGoal)
             .WithMany()
             .HasForeignKey(so => so.StrategicGoalId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<BudgetSource>()
             .HasIndex(bs => bs.Code)
@@ -1733,7 +1754,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<OpmsImportRow>().Property(x => x.ErrorField).HasMaxLength(120);
         builder.Entity<OpmsImportRow>().Property(x => x.SuppliedValue).HasMaxLength(1000);
         builder.Entity<OpmsImportRow>().Property(x => x.ErrorMessage).HasMaxLength(2000);
-        builder.Entity<OpmsImportRow>().HasOne(x => x.OpmsImportBatch).WithMany(x => x.Rows).HasForeignKey(x => x.OpmsImportBatchId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<OpmsImportRow>().HasOne(x => x.OpmsImportBatch).WithMany(x => x.Rows).HasForeignKey(x => x.OpmsImportBatchId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IdpAnnualTarget>()
             .HasIndex(annualTarget => new { annualTarget.IdpKpiId, annualTarget.FinancialYear })
