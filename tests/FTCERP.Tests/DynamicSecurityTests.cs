@@ -475,6 +475,135 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task DepartmentSubmitterAdministrationLifecycle_EnforcesDynamicCrudMembersScopeAndAssignmentConcurrency()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Id = 7, Code = "SCOPE", Name = "Scope Municipality" };
+        var foreignMunicipality = new Municipality { Id = 8, Code = "FOREIGN", Name = "Foreign Municipality" };
+        var finance = new Department { Id = 10, MunicipalityId = 7, Municipality = municipality, Code = "FIN", Name = "Finance", IsActive = true };
+        var roads = new Department { Id = 11, MunicipalityId = 7, Municipality = municipality, Code = "ROADS", Name = "Roads", IsActive = true };
+        var foreignDepartment = new Department { Id = 12, MunicipalityId = 8, Municipality = foreignMunicipality, Code = "FOREIGN", Name = "Foreign Department", IsActive = true };
+        var actor = IdpTestFixture.CreateUser("department-security-admin", "Department", "Administrator");
+        var submitter = IdpTestFixture.CreateUser("department-submitter-user", "Department", "Submitter");
+        var administratorRole = Role("department-security-administrator", "DEPARTMENT_SECURITY_ADMIN");
+        var permissionDefinitions = new[]
+        {
+            new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.MANAGE_ROLES", Module = "Security", Feature = "Role", Action = "Manage", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.MANAGE_PERMISSIONS", Module = "Security", Feature = "Permission", Action = "Manage", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.ASSIGN_ROLES", Module = "Security", Feature = "Assignment", Action = "Manage", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "OPMS_KPI.READ", Module = "Resource", Feature = "OPMS_KPI", Action = "Read", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Read, IsActive = true },
+            new Permission { Code = "OPMS_KPI.UPDATE", Module = "Resource", Feature = "OPMS_KPI", Action = "Update", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Update, IsActive = true },
+            new Permission { Code = "OPMS_KPI.TargetValue.READ", Module = "Member", Feature = "OPMS_KPI", Action = "Read", Kind = SecurityPermissionKind.Member, ResourceCode = "OPMS_KPI", MemberCode = "TargetValue", Operation = SecurityOperation.Read, IsActive = true },
+            new Permission { Code = "OPMS_KPI.TargetValue.UPDATE", Module = "Member", Feature = "OPMS_KPI", Action = "Update", Kind = SecurityPermissionKind.Member, ResourceCode = "OPMS_KPI", MemberCode = "TargetValue", Operation = SecurityOperation.Update, IsActive = true },
+            new Permission { Code = "NAV.SDBIP", Module = "Navigation", Feature = "SDBIP", Action = "View", Kind = SecurityPermissionKind.Navigation, NavigationCode = "NAV.SDBIP", IsActive = true }
+        };
+        context.AddRange(municipality, foreignMunicipality, finance, roads, foreignDepartment, actor, submitter, administratorRole);
+        context.Permissions.AddRange(permissionDefinitions);
+        await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(actor, administratorRole));
+        context.RolePermissions.AddRange(permissionDefinitions.Select(permission => new RolePermission
+        {
+            RoleId = administratorRole.Id,
+            PermissionId = permission.Id,
+            IsAllowed = true,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        }));
+        context.SecurityNavigationItems.Add(new SecurityNavigationItem
+        {
+            Code = "NAV.SDBIP.ITEM", Name = "SDBIP", Route = "/opms/dashboard",
+            RequiredPermissionCode = "NAV.SDBIP", DisplayOrder = 1, IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(7);
+        tenant.SetupGet(item => item.IsSystem).Returns(true);
+        var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor, [submitter.Id] = submitter };
+        var controller = new SecurityAdministrationController(
+            context,
+            CreateService(context, actor, tenant.Object),
+            IdpTestFixture.CreateUserManagerMock(actor, users).Object,
+            tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var roleResult = await controller.CreateRole(new CreateSecurityRoleRequest(
+            "VISUAL_DEPARTMENT_SUBMITTER", "Visual Department Submitter", "Department-scoped KPI capture verification role", null, null));
+        var role = roleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Subject.Data!;
+        (await controller.PutRolePermissions(role.PublicId, new UpdateRoleSecurityRequest(role.RowVersion,
+        [
+            new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.DepartmentScope)),
+            new("OPMS_KPI.UPDATE", "ALLOW", nameof(ScopeType.DepartmentScope)),
+            new("OPMS_KPI.TargetValue.READ", "ALLOW", nameof(ScopeType.DepartmentScope)),
+            new("OPMS_KPI.TargetValue.UPDATE", "ALLOW", nameof(ScopeType.DepartmentScope)),
+            new("NAV.SDBIP", "ALLOW", null)
+        ]))).Result.Should().BeOfType<OkObjectResult>();
+        (await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest([], [
+            new(role.PublicId, municipality.PublicId, finance.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)
+        ]))).Result.Should().BeOfType<OkObjectResult>();
+
+        var submitterSecurity = CreateService(context, submitter, tenant.Object);
+        var financeScope = new AccessScopeContext(DepartmentId: finance.Id, MunicipalityId: municipality.Id);
+        var roadsScope = new AccessScopeContext(DepartmentId: roads.Id, MunicipalityId: municipality.Id);
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", financeScope)).Allowed.Should().BeTrue();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.UPDATE", financeScope)).Allowed.Should().BeTrue();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.TargetValue.READ", financeScope)).Allowed.Should().BeTrue();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.TargetValue.UPDATE", financeScope)).Allowed.Should().BeTrue();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.UPDATE", roadsScope)).Allowed.Should().BeFalse();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.TargetValue.READ", roadsScope)).Allowed.Should().BeFalse();
+        var financeQueryScope = await submitterSecurity.GetQueryScopeAsync(submitter, "OPMS_KPI.READ");
+        financeQueryScope.Unrestricted.Should().BeFalse();
+        financeQueryScope.DepartmentIds.Should().Equal(finance.Id);
+        (await submitterSecurity.GetAuthorizedNavigationAsync(submitter)).Should().ContainSingle(item => item.Path == "/opms/dashboard");
+
+        var foreignTenant = new Mock<ITenantContext>();
+        foreignTenant.SetupGet(item => item.MunicipalityId).Returns(8);
+        var foreignView = CreateService(context, submitter, foreignTenant.Object);
+        (await foreignView.CheckPermissionAsync(submitter, "OPMS_KPI.READ",
+            new AccessScopeContext(DepartmentId: foreignDepartment.Id, MunicipalityId: foreignMunicipality.Id))).Allowed.Should().BeFalse();
+        (await foreignView.GetAuthorizedNavigationAsync(submitter)).Should().BeEmpty();
+
+        var financeAssignmentResult = await controller.GetUserRoles(submitter.PublicId);
+        var financeAssignment = financeAssignmentResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!.Assignments.Should().ContainSingle().Subject;
+        (await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest(
+            [new(financeAssignment.PublicId, financeAssignment.RowVersion)],
+            [new(role.PublicId, municipality.PublicId, roads.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)])))
+            .Result.Should().BeOfType<OkObjectResult>();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", financeScope)).Allowed.Should().BeFalse();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", roadsScope)).Allowed.Should().BeTrue();
+        (await submitterSecurity.GetQueryScopeAsync(submitter, "OPMS_KPI.READ")).DepartmentIds.Should().Equal(roads.Id);
+
+        var currentRoleResult = await controller.GetRolePermissions(role.PublicId);
+        var currentRole = currentRoleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<RoleSecurityConfigurationDto>>().Subject.Data!;
+        (await controller.PutRolePermissions(role.PublicId, new UpdateRoleSecurityRequest(currentRole.RoleRowVersion,
+        [
+            new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.DepartmentScope)),
+            new("NAV.SDBIP", "ALLOW", null)
+        ]))).Result.Should().BeOfType<OkObjectResult>();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", roadsScope)).Allowed.Should().BeTrue();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.UPDATE", roadsScope)).Allowed.Should().BeFalse();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.TargetValue.READ", roadsScope)).Allowed.Should().BeFalse();
+        (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.TargetValue.UPDATE", roadsScope)).Allowed.Should().BeFalse();
+
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRole" && item.Action == "Create")).Should().Be(1);
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRolePermissions" && item.Action == "ReplacePermissions")).Should().Be(2);
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityUserRoleAssignment" && item.Action == "ReplaceRoleAssignments")).Should().Be(2);
+        (await context.SecurityUserRoleAssignments.CountAsync(item => item.UserId == submitter.Id)).Should().Be(2);
+        (await context.SecurityUserRoleAssignments.CountAsync(item => item.UserId == submitter.Id && item.IsActive)).Should().Be(1);
+
+        var staleAssignment = await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest(
+            [new(financeAssignment.PublicId, financeAssignment.RowVersion)],
+            [new(role.PublicId, municipality.PublicId, finance.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)]));
+        staleAssignment.Result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
     public async Task NoApplicablePermission_IsDeniedByDefault()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
