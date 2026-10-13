@@ -133,3 +133,25 @@ public sealed class LegacySubmissionPeriodReconciliation
     public ReportingPeriod ReportingPeriod { get; set; } = null!;
     public ApplicationUser ReconciledByUser { get; set; } = null!;
 }
+
+/// <summary>
+/// Immutable evidence that a legacy operational record with no tenant root was attached to
+/// the one municipality proven by its existing authoritative relationships. The operational
+/// record keeps its original public identity; this ledger is the cutover provenance.
+/// </summary>
+public sealed class LegacyTenantOwnershipReconciliation
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public string EntityType { get; set; } = string.Empty;
+    public Guid EntityPublicId { get; set; }
+    public string SourceEvidence { get; set; } = string.Empty;
+    public string ReconciledByUserId { get; set; } = string.Empty;
+    public DateTime ReconciledAt { get; set; } = DateTime.UtcNow;
+    public string Reason { get; set; } = string.Empty;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public ApplicationUser ReconciledByUser { get; set; } = null!;
+}

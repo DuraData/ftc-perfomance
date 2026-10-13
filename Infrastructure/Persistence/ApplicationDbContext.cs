@@ -10,6 +10,7 @@ namespace FTCERP.Host.Infrastructure.Persistence;
 public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, string>
 {
     private readonly ITenantContext? _tenantContext;
+    private bool _tenantOwnershipReconciliationActive;
     private bool TenantFilterBypass => _tenantContext == null || (_tenantContext.IsSystem && !_tenantContext.MunicipalityId.HasValue);
     private long? CurrentMunicipalityId => _tenantContext?.MunicipalityId;
     private long CurrentMunicipalityIdOrSentinel => CurrentMunicipalityId ?? long.MinValue;
@@ -107,6 +108,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<KpiFieldRevision> KpiFieldRevisions { get; set; } = null!;
     public DbSet<LegacySubmissionValueArchive> LegacySubmissionValueArchives { get; set; } = null!;
     public DbSet<LegacySubmissionPeriodReconciliation> LegacySubmissionPeriodReconciliations { get; set; } = null!;
+    public DbSet<LegacyTenantOwnershipReconciliation> LegacyTenantOwnershipReconciliations { get; set; } = null!;
     public DbSet<WorkflowDefinition> WorkflowDefinitions { get; set; } = null!;
     public DbSet<WorkflowStageDefinition> WorkflowStageDefinitions { get; set; } = null!;
     public DbSet<SubmissionWorkflowInstance> SubmissionWorkflowInstances { get; set; } = null!;
@@ -355,6 +357,15 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.ReconciledByUser).WithMany().HasForeignKey(item => item.ReconciledByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<LegacySubmissionPeriodReconciliation>().ToTable(table => table.HasCheckConstraint("CK_LegacySubmissionPeriodReconciliations_OneSubmission", "CASE WHEN [OpmsSubmissionId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsSubmissionId] IS NULL THEN 0 ELSE 1 END = 1"));
+        builder.Entity<LegacyTenantOwnershipReconciliation>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<LegacyTenantOwnershipReconciliation>().HasIndex(item => new { item.EntityType, item.EntityPublicId }).IsUnique();
+        builder.Entity<LegacyTenantOwnershipReconciliation>().HasIndex(item => new { item.MunicipalityId, item.ReconciledAt });
+        builder.Entity<LegacyTenantOwnershipReconciliation>().Property(item => item.EntityType).HasMaxLength(80);
+        builder.Entity<LegacyTenantOwnershipReconciliation>().Property(item => item.SourceEvidence).HasMaxLength(2000);
+        builder.Entity<LegacyTenantOwnershipReconciliation>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<LegacyTenantOwnershipReconciliation>().Property(item => item.CorrelationId).HasMaxLength(100);
+        builder.Entity<LegacyTenantOwnershipReconciliation>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacyTenantOwnershipReconciliation>().HasOne(item => item.ReconciledByUser).WithMany().HasForeignKey(item => item.ReconciledByUserId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<WorkflowDefinition>().HasIndex(x => x.PublicId).IsUnique();
         builder.Entity<WorkflowDefinition>().HasIndex(x => new { x.MunicipalityId, x.MunicipalityFinancialYearId, x.SubmissionKind, x.Code, x.Version }).IsUnique();
@@ -480,6 +491,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<KpiFieldRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<LegacySubmissionValueArchive>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<LegacySubmissionPeriodReconciliation>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<LegacyTenantOwnershipReconciliation>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<WorkflowDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<WorkflowStageDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<SubmissionWorkflowInstance>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -2162,7 +2174,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(DueDateExtension), typeof(ReviewComment), typeof(AuditFinding), typeof(SubmissionScore),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
-            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation)
+            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation), typeof(LegacyTenantOwnershipReconciliation)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating), typeof(LegacySubmissionRatingReconciliation)
@@ -2183,6 +2195,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             var property = entry.Property("MunicipalityId");
             var current = property.CurrentValue == null ? (long?)null : Convert.ToInt64(property.CurrentValue);
             var original = property.OriginalValue == null ? (long?)null : Convert.ToInt64(property.OriginalValue);
+            if (_tenantOwnershipReconciliationActive && entry.State == EntityState.Modified && !original.HasValue && current == tenantId
+                && TenantOwnershipReconciliationTypes.Contains(entry.Entity.GetType())
+                && entry.Properties.Where(item => item.IsModified).All(item => item.Metadata.Name == "MunicipalityId" || item.Metadata.IsConcurrencyToken))
+                continue;
             if (entry.State == EntityState.Added && (!current.HasValue || current.Value == 0))
             {
                 property.CurrentValue = tenantId.Value;
@@ -2190,6 +2206,32 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             }
             if (current != tenantId || (entry.State != EntityState.Added && original != tenantId))
                 throw new UnauthorizedAccessException("Cross-municipality writes are not permitted.");
+        }
+    }
+
+    private static readonly HashSet<Type> TenantOwnershipReconciliationTypes =
+    [
+        typeof(Department), typeof(Unit), typeof(OpmsTarget), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission)
+    ];
+
+    public IDisposable BeginTenantOwnershipReconciliation()
+    {
+        if (_tenantContext is not { IsSystem: true, MunicipalityId: > 0 })
+            throw new UnauthorizedAccessException("System scope and a selected municipality are required for tenant-ownership reconciliation.");
+        if (_tenantOwnershipReconciliationActive)
+            throw new InvalidOperationException("A tenant-ownership reconciliation scope is already active.");
+        _tenantOwnershipReconciliationActive = true;
+        return new ReconciliationScope(this);
+    }
+
+    private sealed class ReconciliationScope(ApplicationDbContext context) : IDisposable
+    {
+        private ApplicationDbContext? _context = context;
+        public void Dispose()
+        {
+            if (_context == null) return;
+            _context._tenantOwnershipReconciliationActive = false;
+            _context = null;
         }
     }
 
@@ -2532,6 +2574,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Legacy submission rating reconciliation evidence is append-only.");
         if (ChangeTracker.Entries<LegacySubmissionPeriodReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Legacy submission period reconciliation evidence is append-only.");
+        if (ChangeTracker.Entries<LegacyTenantOwnershipReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Legacy tenant-ownership reconciliation evidence is append-only.");
         if (ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Internal Audit assessment history is append-only.");
         foreach (var entry in ChangeTracker.Entries<InternalAuditAssessmentConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))

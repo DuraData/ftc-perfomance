@@ -166,6 +166,9 @@ import type {
   LegacyRatingReconciliationResultDto,
   LegacySubmissionPeriodPreviewDto,
   LegacySubmissionPeriodResultDto,
+  LegacyTenantEntityType,
+  LegacyTenantOwnershipPreviewDto,
+  LegacyTenantOwnershipResultDto,
   PerformanceDashboardDto,
   WorkflowQueueDto,
   WorkflowQueueName,
@@ -1600,6 +1603,23 @@ export async function executeLegacySubmissionPeriodReconciliation(payload: {
   rowVersion: string;
 }): Promise<ApiResponse<LegacySubmissionPeriodResultDto>> {
   return post<LegacySubmissionPeriodResultDto>('/v1/workflow/period-reconciliation/execute', payload);
+}
+
+export async function getLegacyTenantOwnershipPreview(
+  entityType: LegacyTenantEntityType,
+  page = 1,
+  pageSize = 25,
+): Promise<ApiResponse<PagedResult<LegacyTenantOwnershipPreviewDto>>> {
+  return get<PagedResult<LegacyTenantOwnershipPreviewDto>>(`/v1/security/tenant-ownership-reconciliation/preview?entityType=${entityType}&page=${page}&pageSize=${pageSize}`);
+}
+
+export async function executeLegacyTenantOwnershipReconciliation(payload: {
+  entityType: LegacyTenantEntityType;
+  entityPublicId: string;
+  rowVersion: string;
+  reason: string;
+}): Promise<ApiResponse<LegacyTenantOwnershipResultDto>> {
+  return post<LegacyTenantOwnershipResultDto>('/v1/security/tenant-ownership-reconciliation/execute', payload);
 }
 
 export async function getPerformanceTargetRevisionsPage(publicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceTargetRevisionDto>>> {

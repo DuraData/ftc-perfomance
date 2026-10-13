@@ -102,6 +102,7 @@ public static class SecurityRegistrySeeder
             Action("SECURITY.ASSIGN_ROLES", "Assign Roles", "ROLE"), Action("SECURITY.MANAGE_PERMISSIONS", "Manage Permissions", "ROLE"),
             Action("SECURITY.MANAGE_NAVIGATION", "Manage Navigation", "ROLE"), Action("SECURITY.VIEW_EFFECTIVE", "View Effective Permissions", "ROLE"),
             Action("SECURITY.SYSTEM_SCOPE", "Administer System Scope", "ROLE"),
+            Action("SECURITY.RECONCILE_TENANT_OWNERSHIP", "Reconcile Legacy Tenant Ownership", "ROLE"),
             Action("AUTHENTICATION.CONFIGURE", "Configure Authentication", "AUTHENTICATION"),
             Action("AUTHENTICATION.LINK_IDENTITIES", "Link Enterprise Identities", "AUTHENTICATION"),
             Action("AUTHENTICATION.VIEW_EVENTS", "View Authentication Events", "AUTHENTICATION"),
@@ -711,6 +712,7 @@ public static class SecurityRegistrySeeder
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
             "WORKFLOW.RECONCILE_LEGACY_RATINGS",
             "WORKFLOW.RECONCILE_LEGACY_PERIODS",
+            "SECURITY.RECONCILE_TENANT_OWNERSHIP",
             "STRATEGIC_DOCUMENT.ApprovalReference.READ", "STRATEGIC_DOCUMENT.ApprovalReference.UPDATE",
             "STRATEGIC_DOCUMENT.EventReason.UPDATE"];
         mappings["IDP.Participation.Manage"] = [.. mappings["IDP.Participation.Manage"],

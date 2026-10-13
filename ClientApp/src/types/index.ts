@@ -1452,6 +1452,24 @@ export interface LegacySubmissionPeriodResultDto {
   reportingPeriodCode: string;
 }
 
+export type LegacyTenantEntityType = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface LegacyTenantOwnershipPreviewDto {
+  entityType: LegacyTenantEntityType;
+  entityPublicId: string;
+  label: string;
+  status: 'Blocked' | 'Ambiguous' | 'DifferentMunicipality' | 'Ready';
+  message: string;
+  sourceEvidence: string;
+  rowVersion: string;
+}
+
+export interface LegacyTenantOwnershipResultDto {
+  reconciliationPublicId: string;
+  entityType: LegacyTenantEntityType;
+  entityPublicId: string;
+}
+
 export interface LoginRequest {
   email?: string | null;
   password: string;

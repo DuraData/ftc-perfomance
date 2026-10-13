@@ -5412,6 +5412,65 @@ namespace FTCERP.Host.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacyTenantOwnershipReconciliation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("EntityPublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ReconciledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReconciledByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SourceEvidence")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReconciledByUserId");
+
+                    b.HasIndex("EntityType", "EntityPublicId")
+                        .IsUnique();
+
+                    b.HasIndex("MunicipalityId", "ReconciledAt");
+
+                    b.ToTable("LegacyTenantOwnershipReconciliations");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LoginAuditLog", b =>
                 {
                     b.Property<int>("Id")
@@ -14460,6 +14519,25 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("Municipality");
 
                     b.Navigation("OpmsSubmission");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacyTenantOwnershipReconciliation", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ReconciledByUser")
+                        .WithMany()
+                        .HasForeignKey("ReconciledByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("ReconciledByUser");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LoginAuditLog", b =>
