@@ -259,6 +259,9 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (actor == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
         if (!await CanAdministerUserAsync(actor, user.Id)) return Forbid();
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length is < 5 or > 500)
+            return BadRequest(new ApiResponse<bool>(false, false, "Reason must contain between 5 and 500 characters."));
         if (request.Assignments.Select(item => item.RolePublicId).Distinct().Count() != request.Assignments.Length)
             return BadRequest(new ApiResponse<bool>(false, false, "A role may be assigned only once in the active configuration"));
 
@@ -369,7 +372,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             item.EffectiveFrom,
             item.EffectiveTo
         }).ToArray();
-        _context.AuditTrails.Add(new AuditTrail { EntityName = "SecurityUserRoleAssignment", EntityId = user.PublicId.ToString(), Action = "ReplaceRoleAssignments", OldValue = JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(newValue), ChangedBy = actor.Id, ChangedAt = now, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
+        _context.AuditTrails.Add(new AuditTrail { EntityName = "SecurityUserRoleAssignment", EntityId = user.PublicId.ToString(), Action = "ReplaceRoleAssignments", OldValue = JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(newValue), ChangedBy = actor.Id, ChangedAt = now, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), Reason = reason });
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<bool>(false, false, "Role assignments changed since they were loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<bool>(true, true));
@@ -1115,7 +1118,7 @@ public sealed record UserRoleAssignmentDto(Guid PublicId, Guid RolePublicId, str
 public sealed record UserRoleSecurityConfigurationDto(Guid UserPublicId, string UserName, UserRoleAssignmentDto[] Assignments);
 public sealed record ExpectedUserRoleAssignment(Guid AssignmentPublicId, string RowVersion);
 public sealed record UpdateUserRoleAssignment(Guid RolePublicId, Guid? MunicipalityPublicId, Guid? DepartmentPublicId, Guid? UnitPublicId, DateTime? EffectiveFrom, DateTime? EffectiveTo);
-public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments);
+public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments, string Reason);
 public sealed record SecurityActionDto(Guid PublicId, string Code, string Name, string ResourceCode, string? Description, bool IsActive, string RowVersion);
 public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string? ParentCode = null, string? ParentName = null);
 public sealed record SecurityMemberDto(Guid PublicId, string ResourceCode, string MemberCode, string DisplayName, bool IsSensitive, bool IsSystemManaged, bool IsActive, string RowVersion);

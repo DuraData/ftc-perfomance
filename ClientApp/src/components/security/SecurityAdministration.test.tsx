@@ -39,9 +39,10 @@ describe('SecurityAdministrationPage role assignments', () => {
     fireEvent.change(screen.getByLabelText('Department Reviewer unit'), { target: { value: 'unit-1' } });
     fireEvent.change(screen.getByLabelText('Department Reviewer effective from'), { target: { value: '2026-10-01T08:00' } });
     fireEvent.change(screen.getByLabelText('Department Reviewer effective to'), { target: { value: '2026-12-31T17:00' } });
+    fireEvent.change(screen.getByLabelText('Role assignment governance reason'), { target: { value: 'Approved temporary reviewer assignment' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save user roles' }));
 
-    await waitFor(() => expect(api.saveSecurityUserRoles).toHaveBeenCalledWith('user-public', expect.anything(), [expect.objectContaining({ rolePublicId: 'role-public', municipalityPublicId: 'municipality-public', departmentPublicId: 'dep-1', unitPublicId: 'unit-1', effectiveFrom: expect.any(String), effectiveTo: expect.any(String) })]));
+    await waitFor(() => expect(api.saveSecurityUserRoles).toHaveBeenCalledWith('user-public', expect.anything(), [expect.objectContaining({ rolePublicId: 'role-public', municipalityPublicId: 'municipality-public', departmentPublicId: 'dep-1', unitPublicId: 'unit-1', effectiveFrom: expect.any(String), effectiveTo: expect.any(String) })], 'Approved temporary reviewer assignment'));
   });
 
   it('preserves role rules while permission-definition pages change', async () => {

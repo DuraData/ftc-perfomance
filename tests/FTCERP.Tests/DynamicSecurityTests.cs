@@ -411,7 +411,7 @@ public class DynamicSecurityTests
         ]))).Result.Should().BeOfType<OkObjectResult>();
         (await controller.PutUserRoles(viewer.PublicId, new UpdateUserRoleSecurityRequest([], [
             new(viewerRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null)
-        ]))).Result.Should().BeOfType<OkObjectResult>();
+        ], "Assign KPI viewer role"))).Result.Should().BeOfType<OkObjectResult>();
 
         var viewerSecurity = CreateService(context, viewer, tenant.Object);
         (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeTrue();
@@ -442,7 +442,7 @@ public class DynamicSecurityTests
             [
                 new(viewerRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null),
                 new(restrictionRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null)
-            ]))).Result.Should().BeOfType<OkObjectResult>();
+            ], "Add explicit deny role"))).Result.Should().BeOfType<OkObjectResult>();
         (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeFalse();
         (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Select(item => item.Path)
             .Should().BeEquivalentTo(["/dashboard", "/opms/dashboard"], "navigation remains independently governed by its own grants");
@@ -459,7 +459,8 @@ public class DynamicSecurityTests
         var currentAssignments = currentAssignmentsResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!;
         (await controller.PutUserRoles(viewer.PublicId, new UpdateUserRoleSecurityRequest(
-            currentAssignments.Assignments.Select(item => new ExpectedUserRoleAssignment(item.PublicId, item.RowVersion)).ToArray(), [])))
+            currentAssignments.Assignments.Select(item => new ExpectedUserRoleAssignment(item.PublicId, item.RowVersion)).ToArray(), [],
+            "Revoke all viewer roles")))
             .Result.Should().BeOfType<OkObjectResult>();
         (await viewerSecurity.GetEffectiveAccessAsync(viewer)).Roles.Should().BeEmpty();
 
@@ -544,7 +545,7 @@ public class DynamicSecurityTests
         ]))).Result.Should().BeOfType<OkObjectResult>();
         (await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest([], [
             new(role.PublicId, municipality.PublicId, finance.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)
-        ]))).Result.Should().BeOfType<OkObjectResult>();
+        ], "Assign Finance submitter role"))).Result.Should().BeOfType<OkObjectResult>();
 
         var submitterSecurity = CreateService(context, submitter, tenant.Object);
         var financeScope = new AccessScopeContext(DepartmentId: finance.Id, MunicipalityId: municipality.Id);
@@ -572,7 +573,8 @@ public class DynamicSecurityTests
             .Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!.Assignments.Should().ContainSingle().Subject;
         (await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest(
             [new(financeAssignment.PublicId, financeAssignment.RowVersion)],
-            [new(role.PublicId, municipality.PublicId, roads.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)])))
+            [new(role.PublicId, municipality.PublicId, roads.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)],
+            "Move submitter scope to Roads")))
             .Result.Should().BeOfType<OkObjectResult>();
         (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", financeScope)).Allowed.Should().BeFalse();
         (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", roadsScope)).Allowed.Should().BeTrue();
@@ -599,7 +601,8 @@ public class DynamicSecurityTests
 
         var staleAssignment = await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest(
             [new(financeAssignment.PublicId, financeAssignment.RowVersion)],
-            [new(role.PublicId, municipality.PublicId, finance.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)]));
+            [new(role.PublicId, municipality.PublicId, finance.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)],
+            "Attempt stale Finance reassignment"));
         staleAssignment.Result.Should().BeOfType<ConflictObjectResult>();
     }
 
@@ -1002,7 +1005,7 @@ public class DynamicSecurityTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
         };
 
-        var result = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [new UpdateUserRoleAssignment(tenantRole.PublicId, null, department.PublicId, unit.PublicId, DateTime.UtcNow, null)]));
+        var result = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [new UpdateUserRoleAssignment(tenantRole.PublicId, null, department.PublicId, unit.PublicId, DateTime.UtcNow, null)], "Reject missing municipality scope"));
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         context.SecurityUserRoleAssignments.Should().ContainSingle(item => item.UserId == actor.Id);
@@ -1036,12 +1039,12 @@ public class DynamicSecurityTests
 
         var foreignResult = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [
             new UpdateUserRoleAssignment(tenantRole.PublicId, foreignMunicipality.PublicId, department.PublicId, unit.PublicId, DateTime.UtcNow.AddMinutes(-1), null)
-        ]));
+        ], "Reject foreign municipality scope"));
         foreignResult.Result.Should().BeOfType<BadRequestObjectResult>();
 
         var savedResult = await controller.PutUserRoles(target.PublicId, new UpdateUserRoleSecurityRequest([], [
             new UpdateUserRoleAssignment(tenantRole.PublicId, municipality.PublicId, department.PublicId, unit.PublicId, DateTime.UtcNow.AddMinutes(-1), null)
-        ]));
+        ], "Assign tenant organization scope"));
 
         savedResult.Result.Should().BeOfType<OkObjectResult>();
         var stored = await context.SecurityUserRoleAssignments.SingleAsync(item => item.UserId == target.Id && item.IsActive);

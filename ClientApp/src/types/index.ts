@@ -1486,6 +1486,7 @@ export interface AdminRole {
 
 export interface AdminUser {
   publicId: string;
+  rowVersion: string;
   userName: string;
   firstName: string;
   lastName: string;

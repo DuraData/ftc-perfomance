@@ -17,11 +17,13 @@ public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 public record UpdateMyProfileRequest(string FirstName, string LastName, string? PhoneNumber);
 
-public record CreateUserRequest(string FirstName, string LastName, string Email, string Password, string? PhoneNumber);
+public record CreateUserRequest(string FirstName, string LastName, string Email, string Password, string? PhoneNumber, string Reason);
 
-public record UpdateUserRequest(string FirstName, string LastName, string? PhoneNumber, bool IsActive);
+public record UpdateUserRequest(string FirstName, string LastName, string? PhoneNumber, bool IsActive, string RowVersion, string Reason);
 
-public record AssignUserRolesRequest(Guid[] RolePublicIds);
+public record UserLifecycleRequest(string RowVersion, string Reason);
+
+public record AssignUserRolesRequest(Guid[] RolePublicIds, string RowVersion, string Reason);
 
 public record UserScopeItemRequest(
     string ScopeType,

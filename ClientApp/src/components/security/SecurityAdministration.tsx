@@ -55,6 +55,7 @@ export function SecurityAdministrationPage() {
   const [preview, setPreview] = useState<EffectiveSecurityPreview | null>(null);
   const [userRoles, setUserRoles] = useState<SecurityUserRoleConfiguration | null>(null);
   const [assignmentDrafts, setAssignmentDrafts] = useState<AssignmentDraft[]>([]);
+  const [assignmentReason, setAssignmentReason] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [newRoleCode, setNewRoleCode] = useState('');
@@ -185,6 +186,7 @@ export function SecurityAdministrationPage() {
   const loadUserRoles = async (userPublicId: string) => {
     setPreviewUserId(userPublicId);
     setPreview(null);
+    setAssignmentReason('');
     if (!userPublicId) { setUserRoles(null); setAssignmentDrafts([]); return; }
     const result = await getSecurityUserRoles(userPublicId);
     setUserRoles(result.data ?? null);
@@ -194,9 +196,10 @@ export function SecurityAdministrationPage() {
   const saveUserRoles = async () => {
     if (!userRoles) return;
     setBusy(true);
+    if (assignmentReason.trim().length < 5) { setMessage('A governance reason of at least 5 characters is required.'); setBusy(false); return; }
     const invalid = assignmentDrafts.find(item => item.effectiveTo && new Date(item.effectiveTo) <= new Date(item.effectiveFrom));
     if (invalid) { setMessage('Every assignment end must be later than its start.'); setBusy(false); return; }
-    const result = await saveSecurityUserRoles(userRoles.userPublicId, userRoles, assignmentDrafts.map(item => ({ ...item, effectiveFrom: new Date(item.effectiveFrom).toISOString(), effectiveTo: item.effectiveTo ? new Date(item.effectiveTo).toISOString() : undefined })));
+    const result = await saveSecurityUserRoles(userRoles.userPublicId, userRoles, assignmentDrafts.map(item => ({ ...item, effectiveFrom: new Date(item.effectiveFrom).toISOString(), effectiveTo: item.effectiveTo ? new Date(item.effectiveTo).toISOString() : undefined })), assignmentReason.trim());
     setMessage(result.success ? 'User role assignments saved, effective immediately, and audited.' : result.message ?? 'Role assignments could not be saved.');
     if (result.success) await loadUserRoles(userRoles.userPublicId);
     setBusy(false);
@@ -304,7 +307,8 @@ export function SecurityAdministrationPage() {
               <label className="text-xs text-gray-600">Effective to<input aria-label={`${role?.name} effective to`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveTo)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveTo: event.target.value || undefined } : item))} /></label>
             </div>;
           })}</div>
-          <button type="button" disabled={busy} onClick={() => void saveUserRoles()} className="mt-3 rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save user roles</button>
+          <label className="mt-3 block text-xs text-gray-600">Governance reason<textarea aria-label="Role assignment governance reason" className="mt-1 min-h-20 w-full rounded border border-gray-300 p-2 text-sm" value={assignmentReason} onChange={event => setAssignmentReason(event.target.value)} /></label>
+          <button type="button" disabled={busy || assignmentReason.trim().length < 5} onClick={() => void saveUserRoles()} className="mt-3 rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save user roles</button>
         </div>}
         {preview && <div className="mt-4 grid gap-4 md:grid-cols-3"><PreviewList title="Roles" values={preview.roles}/><PreviewList title="Scopes" values={preview.scopes}/><PreviewList title="Effective permissions" values={preview.permissions}/></div>}
       </section>

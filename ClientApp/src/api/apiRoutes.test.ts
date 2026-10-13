@@ -32,17 +32,26 @@ describe('versioned API routes', () => {
 
     await getUsersPage({ page: 2, pageSize: 25, search: 'reviewer' });
     await getUser(userId);
-    await createUser({ firstName: 'New', lastName: 'User', email: 'new@example.test', password: 'Local-Test-Only-9!' });
-    await updateUser({ publicId: userId, firstName: 'Updated', lastName: 'User', isActive: true });
-    await activateUser(userId);
-    await deactivateUser(userId);
-    await deleteUser(userId);
-    await setUserRoles(userId, []);
+    await createUser({ firstName: 'New', lastName: 'User', email: 'new@example.test', password: 'Local-Test-Only-9!', reason: 'Approved account creation' });
+    await updateUser({ publicId: userId, firstName: 'Updated', lastName: 'User', isActive: true, rowVersion: 'AQID', reason: 'Approved profile update' });
+    await activateUser(userId, 'AQID', 'Approved account activation');
+    await deactivateUser(userId, 'AQID', 'Approved account suspension');
+    await deleteUser(userId, 'AQID', 'Approved account retirement');
+    await setUserRoles(userId, [], 'AQID', 'Approved empty role assignment');
     await getUserPermissions(userId);
     await setUserPermissionOverrides(userId, []);
 
     expect(fetchMock).toHaveBeenCalledTimes(10);
     for (const [url] of fetchMock.mock.calls) expect(String(url)).toContain('/api/v1/users');
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.any(String), expect.objectContaining({
+      method: 'POST', body: expect.stringContaining('Approved account creation'),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.any(String), expect.objectContaining({
+      method: 'PUT', body: JSON.stringify({ firstName: 'Updated', lastName: 'User', phoneNumber: null, isActive: true, rowVersion: 'AQID', reason: 'Approved profile update' }),
+    }));
+    for (const callNumber of [5, 6, 7]) {
+      expect(fetchMock).toHaveBeenNthCalledWith(callNumber, expect.any(String), expect.objectContaining({ body: expect.stringContaining('"rowVersion":"AQID"') }));
+    }
   });
 
   it('uses only the versioned local-authentication profile and logout routes', async () => {
@@ -118,13 +127,14 @@ describe('versioned API routes', () => {
         publicId: 'assignment-public-id', rolePublicId: 'role-1', roleName: 'Reviewer', municipalityPublicId: 'municipality-public-id',
         effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==',
       }],
-    }, [{ rolePublicId: 'role-1', municipalityPublicId: 'municipality-public-id' }]);
+    }, [{ rolePublicId: 'role-1', municipalityPublicId: 'municipality-public-id' }], 'Approved reviewer assignment');
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/security/users/user-1/roles'), expect.objectContaining({
       method: 'PUT',
       body: JSON.stringify({
         expectedAssignments: [{ assignmentPublicId: 'assignment-public-id', rowVersion: 'AQ==' }],
         assignments: [{ rolePublicId: 'role-1', municipalityPublicId: 'municipality-public-id' }],
+        reason: 'Approved reviewer assignment',
       }),
     }));
   });

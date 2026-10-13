@@ -22,14 +22,15 @@ import {
   getRolePermissions,
   getRoles,
   getSecurityRolesPage,
+  getSecurityUserRoles,
   getUsersPage,
   setRolePermissions,
-  setUserRoles,
+  saveSecurityUserRoles,
   updatePermission,
   updateRole,
   updateUser,
 } from '../../api/api';
-import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, AuditTrailEntryDto, EffectiveSecurityPreview, LoginAuditLog } from '../../types';
+import type { AdminPermission, AdminPermissionGroup, AdminRole, AdminUserDetail, AuditTrailEntryDto, EffectiveSecurityPreview, LoginAuditLog, SecurityUserRoleConfiguration } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 
@@ -67,8 +68,10 @@ export function AdminUsersPage() {
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [editing, setEditing] = useState<AdminUserDetail | null>(null);
   const [selectedUserForRoles, setSelectedUserForRoles] = useState<AdminUserDetail | null>(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<AdminUserDetail | null>(null);
+  const [currentRoleConfiguration, setCurrentRoleConfiguration] = useState<SecurityUserRoleConfiguration | null>(null);
+  const [roleReason, setRoleReason] = useState('');
+  const [lifecycleAction, setLifecycleAction] = useState<{ kind: 'activate' | 'deactivate' | 'delete'; user: AdminUserDetail } | null>(null);
+  const [lifecycleReason, setLifecycleReason] = useState('');
 
   const [permissionModalOpen, setPermissionModalOpen] = useState(false);
   const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<AdminUserDetail | null>(null);
@@ -81,6 +84,7 @@ export function AdminUsersPage() {
     phoneNumber: '',
     password: '',
     isActive: true,
+    reason: '',
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -106,7 +110,7 @@ export function AdminUsersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ firstName: '', lastName: '', email: '', phoneNumber: '', password: '', isActive: true });
+    setForm({ firstName: '', lastName: '', email: '', phoneNumber: '', password: '', isActive: true, reason: '' });
     setFormErrors({});
     setModalOpen(true);
   };
@@ -120,6 +124,7 @@ export function AdminUsersPage() {
       phoneNumber: u.user.phoneNumber ?? '',
       password: '',
       isActive: u.user.isActive,
+      reason: '',
     });
     setFormErrors({});
     setModalOpen(true);
@@ -136,6 +141,7 @@ export function AdminUsersPage() {
     if (!editing && !form.email.trim()) nextErrors.email = 'Email is required';
     if (!editing && !form.password.trim()) nextErrors.password = 'Password is required';
     if (!editing && form.password.trim().length < 8) nextErrors.password = 'Password must be at least 8 characters';
+    if (form.reason.trim().length < 5) nextErrors.reason = 'A reason of at least 5 characters is required';
     if (Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors);
       return;
@@ -148,6 +154,8 @@ export function AdminUsersPage() {
         lastName: form.lastName,
         phoneNumber: canEditPhone ? form.phoneNumber || undefined : editing.user.phoneNumber,
         isActive: form.isActive,
+        rowVersion: editing.user.rowVersion,
+        reason: form.reason.trim(),
       });
       if (!res.success || !res.data) {
         setError(res.message ?? 'Failed to update user');
@@ -161,6 +169,7 @@ export function AdminUsersPage() {
         email: form.email,
         phoneNumber: canEditPhone ? form.phoneNumber || undefined : undefined,
         password: form.password,
+        reason: form.reason.trim(),
       });
       if (!res.success) {
         setError(res.message ?? 'Failed to create user');
@@ -173,53 +182,74 @@ export function AdminUsersPage() {
     setModalOpen(false);
   };
 
-  const toggleActive = async (u: AdminUserDetail) => {
+  const toggleActive = (u: AdminUserDetail) => {
     if (!(u.user.isActive ? canExecute('USER.DISABLE') : canExecute('USER.ENABLE'))) return;
-    const res = u.user.isActive ? await deactivateUser(u.user.publicId) : await activateUser(u.user.publicId);
+    setLifecycleReason('');
+    setLifecycleAction({ kind: u.user.isActive ? 'deactivate' : 'activate', user: u });
+  };
+
+  const confirmLifecycle = async () => {
+    if (!lifecycleAction || lifecycleReason.trim().length < 5) return;
+    const { kind, user } = lifecycleAction;
+    const res = kind === 'activate'
+      ? await activateUser(user.user.publicId, user.user.rowVersion, lifecycleReason.trim())
+      : kind === 'deactivate'
+        ? await deactivateUser(user.user.publicId, user.user.rowVersion, lifecycleReason.trim())
+        : await deleteUser(user.user.publicId, user.user.rowVersion, lifecycleReason.trim());
     if (!res.success) {
       setError(res.message ?? 'Failed to update status');
       return;
     }
-    await loadUsers();
-    pushToast('success', u.user.isActive ? 'User deactivated' : 'User activated');
+    if (kind === 'delete' && rows.length === 1 && page > 1) setPage(value => value - 1);
+    else await loadUsers();
+    setLifecycleAction(null);
+    setLifecycleReason('');
+    pushToast('success', kind === 'activate' ? 'User activated' : kind === 'deactivate' ? 'User deactivated' : 'User disabled');
   };
 
   const requestDelete = (u: AdminUserDetail) => {
-    setUserToDelete(u);
-    setDeleteConfirmOpen(true);
+    setLifecycleReason('');
+    setLifecycleAction({ kind: 'delete', user: u });
   };
 
-  const confirmDelete = async () => {
-    if (!canDeleteUser || !userToDelete) return;
-    const res = await deleteUser(userToDelete.user.publicId);
-    if (!res.success) {
-      setError(res.message ?? 'Failed to delete user');
-      return;
-    }
-    if (rows.length === 1 && page > 1) setPage(value => value - 1);
-    else await loadUsers();
-    setDeleteConfirmOpen(false);
-    setUserToDelete(null);
-    pushToast('success', 'User deleted');
+  const closeLifecycle = () => {
+    setLifecycleAction(null);
+    setLifecycleReason('');
   };
 
-  const openRoles = (u: AdminUserDetail) => {
+  const openRoles = async (u: AdminUserDetail) => {
+    setError(null);
     setSelectedUserForRoles(u);
     setRolePage(1);
     setRoleSearch('');
+    setRoleReason('');
+    const current = await getSecurityUserRoles(u.user.publicId);
+    if (!current.success || !current.data) {
+      setSelectedUserForRoles(null);
+      setError(current.message ?? 'Failed to load current role assignments');
+      return;
+    }
+    setCurrentRoleConfiguration(current.data);
+    setSelectedRoleIds(current.data.assignments.map(item => item.rolePublicId));
     setRoleModalOpen(true);
   };
 
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
-  useEffect(() => {
-    if (selectedUserForRoles) {
-      setSelectedRoleIds(selectedUserForRoles.roles.map(r => r.publicId));
-    }
-  }, [selectedUserForRoles]);
 
   const saveRoles = async () => {
-    if (!selectedUserForRoles) return;
-    const res = await setUserRoles(selectedUserForRoles.user.publicId, selectedRoleIds);
+    if (!selectedUserForRoles || !currentRoleConfiguration || roleReason.trim().length < 5) return;
+    const assignments = selectedRoleIds.map(rolePublicId => {
+      const existing = currentRoleConfiguration.assignments.find(item => item.rolePublicId === rolePublicId);
+      return existing ? {
+        rolePublicId,
+        municipalityPublicId: existing.municipalityPublicId,
+        departmentPublicId: existing.departmentPublicId,
+        unitPublicId: existing.unitPublicId,
+        effectiveFrom: existing.effectiveFrom,
+        effectiveTo: existing.effectiveTo,
+      } : { rolePublicId };
+    });
+    const res = await saveSecurityUserRoles(selectedUserForRoles.user.publicId, currentRoleConfiguration, assignments, roleReason.trim());
     if (!res.success) {
       setError(res.message ?? 'Failed to update roles');
       return;
@@ -227,6 +257,8 @@ export function AdminUsersPage() {
     await loadUsers();
     setRoleModalOpen(false);
     setSelectedUserForRoles(null);
+    setCurrentRoleConfiguration(null);
+    setRoleReason('');
     pushToast('success', 'Roles updated');
   };
 
@@ -273,7 +305,7 @@ export function AdminUsersPage() {
       {canUpdateUser && <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)} aria-label="Edit user">
         <Edit2 className="w-4 h-4 text-secondary-400" />
       </button>}
-      {canAssignRoles && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openRoles(r)}>
+      {canAssignRoles && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => void openRoles(r)}>
         Roles
       </button>}
       {canViewEffective && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
@@ -371,6 +403,7 @@ export function AdminUsersPage() {
                 )}
               </FormPanel>
             </div>
+            <Textarea label="Governance reason" value={form.reason} error={formErrors.reason} onChange={(event) => setForm(previous => ({ ...previous, reason: event.target.value }))} required />
           </div>
           <div className="mt-6 flex justify-end gap-2 border-t border-secondary-200 pt-4 dark:border-secondary-700">
             <Button variant="ghost" size="sm" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -405,10 +438,11 @@ export function AdminUsersPage() {
               <Button variant="ghost" size="sm" onClick={() => setRolePage(value => value + 1)} disabled={rolePage >= roleTotalPages}>Next</Button>
             </div>}
             <p className="text-xs text-secondary-500">Selections are preserved while searching or moving between role pages.</p>
+            <Textarea label="Governance reason" value={roleReason} onChange={(event) => setRoleReason(event.target.value)} required />
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="ghost" size="sm" onClick={() => setRoleModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={saveRoles} disabled={!canAssignRoles}>Save</Button>
+            <Button variant="primary" size="sm" onClick={saveRoles} disabled={!canAssignRoles || !currentRoleConfiguration || roleReason.trim().length < 5}>Save</Button>
           </div>
         </Modal>
 
@@ -445,15 +479,22 @@ export function AdminUsersPage() {
           </div>
         </Modal>
 
-        <ConfirmDialog
-          isOpen={deleteConfirmOpen}
-          onClose={() => { setDeleteConfirmOpen(false); setUserToDelete(null); }}
-          onConfirm={confirmDelete}
-          title="Delete user"
-          message={`Are you sure you want to delete "${userToDelete?.user.email}"? This action cannot be undone.`}
-          confirmLabel="Delete"
-          variant="danger"
-        />
+        <Modal isOpen={!!lifecycleAction} onClose={closeLifecycle} title={`${lifecycleAction?.kind === 'activate' ? 'Activate' : 'Disable'} user`} size="sm">
+          <div className="space-y-4">
+            <p className="text-sm text-secondary-600 dark:text-secondary-300">
+              {lifecycleAction?.kind === 'activate'
+                ? `Restore sign-in access for ${lifecycleAction.user.user.fullName}.`
+                : `Disable sign-in access for ${lifecycleAction?.user.user.fullName}. The account and its audit history will be retained.`}
+            </p>
+            <Textarea label="Governance reason" value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} required />
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={closeLifecycle}>Cancel</Button>
+              <Button variant={lifecycleAction?.kind === 'activate' ? 'primary' : 'error'} size="sm" onClick={() => void confirmLifecycle()} disabled={lifecycleReason.trim().length < 5 || (lifecycleAction?.kind === 'delete' && !canDeleteUser)}>
+                {lifecycleAction?.kind === 'activate' ? 'Activate' : 'Disable'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </AppShell>
   );

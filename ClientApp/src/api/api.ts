@@ -1165,8 +1165,8 @@ async function patch<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T
   return fetchApi<T>(endpoint, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
-async function del<T>(endpoint: string): Promise<ApiResponse<T>> {
-  return fetchApi<T>(endpoint, { method: 'DELETE' });
+async function del<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+  return fetchApi<T>(endpoint, { method: 'DELETE', body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
 async function postForm<T>(endpoint: string, body: FormData): Promise<ApiResponse<T>> {
@@ -1956,33 +1956,35 @@ export async function getUser(publicId: string): Promise<ApiResponse<AdminUserDe
   return get<AdminUserDetail>(`/v1/users/${publicId}`);
 }
 
-export async function createUser(payload: { firstName: string; lastName: string; email: string; password: string; phoneNumber?: string }): Promise<ApiResponse<AdminUserDetail>> {
+export async function createUser(payload: { firstName: string; lastName: string; email: string; password: string; phoneNumber?: string; reason: string }): Promise<ApiResponse<AdminUserDetail>> {
   return post<AdminUserDetail>('/v1/users', payload);
 }
 
-export async function updateUser(payload: { publicId: string; firstName: string; lastName: string; phoneNumber?: string; isActive: boolean }): Promise<ApiResponse<AdminUserDetail>> {
+export async function updateUser(payload: { publicId: string; firstName: string; lastName: string; phoneNumber?: string; isActive: boolean; rowVersion: string; reason: string }): Promise<ApiResponse<AdminUserDetail>> {
   return put<AdminUserDetail>(`/v1/users/${payload.publicId}`, {
     firstName: payload.firstName,
     lastName: payload.lastName,
     phoneNumber: payload.phoneNumber ?? null,
     isActive: payload.isActive,
+    rowVersion: payload.rowVersion,
+    reason: payload.reason,
   });
 }
 
-export async function activateUser(publicId: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/v1/users/${publicId}/activate`);
+export async function activateUser(publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<boolean>> {
+  return patch<boolean>(`/v1/users/${publicId}/activate`, { rowVersion, reason });
 }
 
-export async function deactivateUser(publicId: string): Promise<ApiResponse<boolean>> {
-  return patch<boolean>(`/v1/users/${publicId}/deactivate`);
+export async function deactivateUser(publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<boolean>> {
+  return patch<boolean>(`/v1/users/${publicId}/deactivate`, { rowVersion, reason });
 }
 
-export async function deleteUser(publicId: string): Promise<ApiResponse<boolean>> {
-  return del<boolean>(`/v1/users/${publicId}`);
+export async function deleteUser(publicId: string, rowVersion: string, reason: string): Promise<ApiResponse<boolean>> {
+  return del<boolean>(`/v1/users/${publicId}`, { rowVersion, reason });
 }
 
-export async function setUserRoles(userPublicId: string, rolePublicIds: string[]): Promise<ApiResponse<boolean>> {
-  return post<boolean>(`/v1/users/${userPublicId}/roles`, { rolePublicIds });
+export async function setUserRoles(userPublicId: string, rolePublicIds: string[], rowVersion: string, reason: string): Promise<ApiResponse<boolean>> {
+  return post<boolean>(`/v1/users/${userPublicId}/roles`, { rolePublicIds, rowVersion, reason });
 }
 
 export async function getUserPermissions(userPublicId: string): Promise<ApiResponse<UserPermissions>> {
@@ -2102,10 +2104,11 @@ export async function getSecurityUserRoles(userPublicId: string): Promise<ApiRes
   return get<SecurityUserRoleConfiguration>(`/v1/security/users/${userPublicId}/roles`);
 }
 
-export async function saveSecurityUserRoles(userPublicId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ rolePublicId: string; municipalityPublicId?: string; departmentPublicId?: string; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>): Promise<ApiResponse<boolean>> {
+export async function saveSecurityUserRoles(userPublicId: string, current: SecurityUserRoleConfiguration, assignments: Array<{ rolePublicId: string; municipalityPublicId?: string; departmentPublicId?: string; unitPublicId?: string; effectiveFrom?: string; effectiveTo?: string }>, reason: string): Promise<ApiResponse<boolean>> {
   return put<boolean>(`/v1/security/users/${userPublicId}/roles`, {
     expectedAssignments: current.assignments.map(item => ({ assignmentPublicId: item.publicId, rowVersion: item.rowVersion })),
     assignments,
+    reason,
   });
 }
 

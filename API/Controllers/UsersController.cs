@@ -105,8 +105,14 @@ public class UsersController : ControllerBase
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(Fail<UserDetailResponse>("Select a municipality context before creating a user"));
         if (!await IsAllowedAsync(actor, "USER.CREATE") || !await IsAllowedAsync(actor, "USER.Email.UPDATE")) return Forbid();
         if (!string.IsNullOrWhiteSpace(request.PhoneNumber) && !await IsAllowedAsync(actor, "USER.PhoneNumber.UPDATE")) return Forbid();
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<UserDetailResponse>(GovernanceReasonError));
         var existing = await _userManager.FindByEmailAsync(request.Email);
         if (existing != null) return Conflict(new ApiResponse<UserDetailResponse>(false, null, "Email already exists"));
+
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync()
+            : null;
 
         var user = new ApplicationUser
         {
@@ -128,8 +134,9 @@ public class UsersController : ControllerBase
             return BadRequest(new ApiResponse<UserDetailResponse>(false, null, "Failed to create user", result.Errors.Select(e => e.Description).ToArray()));
         }
 
-        QueueAudit(user, "Create", null, new { user.FirstName, user.LastName, user.Email, user.PhoneNumber, user.IsActive }, actor.Id);
+        QueueAudit(user, "Create", null, new { user.FirstName, user.LastName, user.Email, user.PhoneNumber, user.IsActive }, actor.Id, reason);
         await _context.SaveChangesAsync();
+        if (transaction != null) await transaction.CommitAsync();
         var userResponse = ToResponse(user, await IsAllowedAsync(actor, "USER.Email.READ"), await IsAllowedAsync(actor, "USER.PhoneNumber.READ"));
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, Array.Empty<RoleResponse>())));
     }
@@ -143,34 +150,37 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "USER.UPDATE")) return Forbid();
         var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<UserDetailResponse>(false, null, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion))
+            return BadRequest(Fail<UserDetailResponse>(ConcurrencyTokenError));
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<UserDetailResponse>(GovernanceReasonError));
         if (!string.Equals(user.PhoneNumber?.Trim(), request.PhoneNumber?.Trim(), StringComparison.Ordinal)
             && !await IsAllowedAsync(actor, "USER.PhoneNumber.UPDATE")) return Forbid();
 
         var before = new { user.FirstName, user.LastName, user.PhoneNumber, user.IsActive };
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
         user.FirstName = request.FirstName;
         user.LastName = request.LastName;
         user.PhoneNumber = request.PhoneNumber;
         user.IsActive = request.IsActive;
         user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedBy = actor.Id;
 
-        var result = await _userManager.UpdateAsync(user);
-        if (!result.Succeeded)
+        QueueAudit(user, "Update", before, new { user.FirstName, user.LastName, user.PhoneNumber, user.IsActive }, actor.Id, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException)
         {
-            return BadRequest(new ApiResponse<UserDetailResponse>(false, null, "Failed to update user", result.Errors.Select(e => e.Description).ToArray()));
+            return Conflict(Fail<UserDetailResponse>("The user changed since it was loaded. Refresh and try again."));
         }
-
-        var roles = await _userManager.GetRolesAsync(user);
-        var roleEntities = await _context.Roles.AsNoTracking().Where(r => roles.Contains(r.Name!)).ToListAsync();
+        var roleIds = await _context.UserRoles.AsNoTracking().Where(item => item.UserId == user.Id).Select(item => item.RoleId).ToArrayAsync();
+        var roleEntities = await _context.Roles.AsNoTracking().Where(item => roleIds.Contains(item.Id)).ToListAsync();
         var roleResponses = roleEntities.Select(r => new RoleResponse(r.PublicId, r.Name!, r.Description, r.IsSystemRole, r.IsActive)).ToArray();
-
-        QueueAudit(user, "Update", before, new { user.FirstName, user.LastName, user.PhoneNumber, user.IsActive }, actor.Id);
-        await _context.SaveChangesAsync();
         var userResponse = ToResponse(user, await IsAllowedAsync(actor, "USER.Email.READ"), await IsAllowedAsync(actor, "USER.PhoneNumber.READ"));
         return Ok(new ApiResponse<UserDetailResponse>(true, new UserDetailResponse(userResponse, roleResponses)));
     }
 
     [HttpPatch("{publicId:guid}/activate")]
-    public async Task<ActionResult<ApiResponse<bool>>> Activate(Guid publicId)
+    public async Task<ActionResult<ApiResponse<bool>>> Activate(Guid publicId, [FromBody] UserLifecycleRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
@@ -178,18 +188,23 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "USER.ENABLE")) return Forbid();
         var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion)) return BadRequest(Fail<bool>(ConcurrencyTokenError));
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<bool>(GovernanceReasonError));
 
         var before = new { user.IsActive };
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
         user.IsActive = true;
         user.UpdatedAt = DateTime.UtcNow;
-        await _userManager.UpdateAsync(user);
-        QueueAudit(user, "Enable", before, new { user.IsActive }, actor.Id);
-        await _context.SaveChangesAsync();
+        user.UpdatedBy = actor.Id;
+        QueueAudit(user, "Enable", before, new { user.IsActive }, actor.Id, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<bool>("The user changed since it was loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<bool>(true, true));
     }
 
     [HttpPatch("{publicId:guid}/deactivate")]
-    public async Task<ActionResult<ApiResponse<bool>>> Deactivate(Guid publicId)
+    public async Task<ActionResult<ApiResponse<bool>>> Deactivate(Guid publicId, [FromBody] UserLifecycleRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
@@ -197,18 +212,23 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "USER.DISABLE")) return Forbid();
         var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion)) return BadRequest(Fail<bool>(ConcurrencyTokenError));
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<bool>(GovernanceReasonError));
 
         var before = new { user.IsActive };
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
         user.IsActive = false;
         user.UpdatedAt = DateTime.UtcNow;
-        await _userManager.UpdateAsync(user);
-        QueueAudit(user, "Disable", before, new { user.IsActive }, actor.Id);
-        await _context.SaveChangesAsync();
+        user.UpdatedBy = actor.Id;
+        QueueAudit(user, "Disable", before, new { user.IsActive }, actor.Id, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<bool>("The user changed since it was loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<bool>(true, true));
     }
 
     [HttpDelete("{publicId:guid}")]
-    public async Task<ActionResult<ApiResponse<bool>>> DeleteUser(Guid publicId)
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteUser(Guid publicId, [FromBody] UserLifecycleRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
@@ -216,18 +236,18 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "USER.DELETE")) return Forbid();
         var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion)) return BadRequest(Fail<bool>(ConcurrencyTokenError));
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<bool>(GovernanceReasonError));
 
         var before = new { user.IsActive };
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
         user.IsActive = false;
         user.UpdatedAt = DateTime.UtcNow;
-        var result = await _userManager.UpdateAsync(user);
-        if (!result.Succeeded)
-        {
-            return BadRequest(new ApiResponse<bool>(false, false, "Failed to disable user", result.Errors.Select(e => e.Description).ToArray()));
-        }
-
-        QueueAudit(user, "Delete", before, new { user.IsActive }, actor.Id);
-        await _context.SaveChangesAsync();
+        user.UpdatedBy = actor.Id;
+        QueueAudit(user, "Delete", before, new { user.IsActive }, actor.Id, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<bool>("The user changed since it was loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -240,23 +260,25 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "ROLE.ASSIGN")) return Forbid();
         var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion)) return BadRequest(Fail<bool>(ConcurrencyTokenError));
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<bool>(GovernanceReasonError));
 
         var requestedRolePublicIds = request.RolePublicIds.Distinct().ToArray();
         var roles = await _context.Roles.Where(r => requestedRolePublicIds.Contains(r.PublicId) && r.MunicipalityId == _tenantContext.MunicipalityId).ToListAsync();
         if (roles.Count != requestedRolePublicIds.Length) return Forbid();
         var requestedRoleIds = roles.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var roleNames = roles.Select(r => r.Name!).ToArray();
-
-        var existingRoleNames = await _userManager.GetRolesAsync(user);
-        var tenantRoleNames = await _context.Roles.AsNoTracking()
-            .Where(item => item.MunicipalityId == _tenantContext.MunicipalityId && item.Name != null)
-            .Select(item => item.Name!)
+        var tenantRoleIds = await _context.Roles.AsNoTracking()
+            .Where(item => item.MunicipalityId == _tenantContext.MunicipalityId)
+            .Select(item => item.Id)
             .ToArrayAsync();
-        var remove = existingRoleNames.Intersect(tenantRoleNames, StringComparer.OrdinalIgnoreCase).Except(roleNames, StringComparer.OrdinalIgnoreCase).ToArray();
-        var add = roleNames.Except(existingRoleNames, StringComparer.OrdinalIgnoreCase).ToArray();
-
-        if (remove.Length > 0) await _userManager.RemoveFromRolesAsync(user, remove);
-        if (add.Length > 0) await _userManager.AddToRolesAsync(user, add);
+        var identityLinks = await _context.UserRoles
+            .Where(item => item.UserId == user.Id && tenantRoleIds.Contains(item.RoleId))
+            .ToArrayAsync();
+        _context.UserRoles.RemoveRange(identityLinks.Where(item => !requestedRoleIds.Contains(item.RoleId)));
+        var linkedRoleIds = identityLinks.Select(item => item.RoleId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _context.UserRoles.AddRange(requestedRoleIds.Where(roleId => !linkedRoleIds.Contains(roleId))
+            .Select(roleId => new IdentityUserRole<string> { UserId = user.Id, RoleId = roleId }));
 
         var now = DateTime.UtcNow;
         var actorId = actor.Id;
@@ -289,16 +311,20 @@ public class UsersController : ControllerBase
                 IsActive = true
             });
         }
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
+        user.UpdatedAt = now;
+        user.UpdatedBy = actorId;
         QueueAudit(user, "AssignRoles",
             new { RolePublicIds = currentRolePublicIds },
-            new { RolePublicIds = requestedRolePublicIds }, actorId);
-        await _context.SaveChangesAsync();
+            new { RolePublicIds = requestedRolePublicIds }, actorId, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<bool>("The user or role assignments changed since they were loaded. Refresh and try again.")); }
 
         return Ok(new ApiResponse<bool>(true, true));
     }
 
     [HttpDelete("{publicId:guid}/roles/{rolePublicId:guid}")]
-    public async Task<ActionResult<ApiResponse<bool>>> RemoveUserRole(Guid publicId, Guid rolePublicId)
+    public async Task<ActionResult<ApiResponse<bool>>> RemoveUserRole(Guid publicId, Guid rolePublicId, [FromBody] UserLifecycleRequest request)
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<bool>("User not found"));
@@ -306,14 +332,18 @@ public class UsersController : ControllerBase
         if (!await IsAllowedAsync(actor, "ROLE.ASSIGN")) return Forbid();
         var user = await TenantUsers().SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (user == null) return NotFound(new ApiResponse<bool>(false, false, "User not found"));
+        if (!TryDecodeRowVersion(request.RowVersion, out var expectedVersion)) return BadRequest(Fail<bool>(ConcurrencyTokenError));
+        var reason = NormalizeReason(request.Reason);
+        if (reason == null) return BadRequest(Fail<bool>(GovernanceReasonError));
 
         var role = await _context.Roles.SingleOrDefaultAsync(item => item.PublicId == rolePublicId);
         if (role == null) return NotFound(new ApiResponse<bool>(false, false, "Role not found"));
         if (!(_tenantContext.IsSystem && !_tenantContext.MunicipalityId.HasValue) && role.MunicipalityId != _tenantContext.MunicipalityId) return Forbid();
 
-        await _userManager.RemoveFromRoleAsync(user, role.Name!);
         var now = DateTime.UtcNow;
         var actorId = actor.Id;
+        var identityLinks = await _context.UserRoles.Where(item => item.UserId == user.Id && item.RoleId == role.Id).ToArrayAsync();
+        _context.UserRoles.RemoveRange(identityLinks);
         var assignments = await _context.SecurityUserRoleAssignments.Where(item => item.UserId == user.Id && item.RoleId == role.Id
             && item.MunicipalityId == _tenantContext.MunicipalityId && item.IsActive).ToListAsync();
         foreach (var assignment in assignments)
@@ -323,8 +353,12 @@ public class UsersController : ControllerBase
             assignment.RevokedAt = now;
             assignment.RevokedBy = actorId;
         }
-        QueueAudit(user, "RemoveRole", new { RolePublicId = role.PublicId }, new { Removed = true }, actorId);
-        await _context.SaveChangesAsync();
+        _context.Entry(user).Property(item => item.RowVersion).OriginalValue = expectedVersion;
+        user.UpdatedAt = now;
+        user.UpdatedBy = actorId;
+        QueueAudit(user, "RemoveRole", new { RolePublicId = role.PublicId }, new { Removed = true }, actorId, reason);
+        try { await _context.SaveChangesAsync(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(Fail<bool>("The user or role assignments changed since they were loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<bool>(true, true));
     }
 
@@ -817,6 +851,15 @@ public class UsersController : ControllerBase
             return rowVersion.Length > 0;
         }
         catch (FormatException) { return false; }
+    }
+
+    private const string ConcurrencyTokenError = "RowVersion must be a valid non-empty base64 concurrency token.";
+    private const string GovernanceReasonError = "Reason must contain between 5 and 500 characters.";
+
+    private static string? NormalizeReason(string? reason)
+    {
+        var normalized = reason?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) || normalized.Length is < 5 or > 500 ? null : normalized;
     }
 
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);

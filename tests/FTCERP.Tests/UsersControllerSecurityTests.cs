@@ -455,10 +455,125 @@ public sealed class UsersControllerSecurityTests
             [target.Id] = target
         }, access.Object);
 
-        var response = await controller.UpdateUser(target.PublicId, new UpdateUserRequest("Changed", "Name", "0999999999", true));
+        var response = await controller.UpdateUser(target.PublicId, new UpdateUserRequest(
+            "Changed", "Name", "0999999999", true, Convert.ToBase64String(target.RowVersion), "Approved contact update"));
 
         Assert.IsType<ForbidResult>(response.Result);
         Assert.Equal("0222222222", (await context.Users.SingleAsync(item => item.Id == target.Id)).PhoneNumber);
+    }
+
+    [Fact]
+    public async Task User_lifecycle_is_tenant_scoped_reasoned_audited_and_concurrency_protected()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new FixedTenantContext(251, "actor");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        context.AddRange(
+            new Municipality { Id = 251, Code = "M251", Name = "Municipality 251" },
+            new Municipality { Id = 252, Code = "M252", Name = "Municipality 252" });
+        var actor = User("actor", 251, "actor@example.test", "0111111111");
+        var foreign = User("foreign", 252, "foreign@example.test", "0333333333");
+        context.AddRange(actor, foreign);
+        await context.SaveChangesAsync();
+
+        var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor, [foreign.Id] = foreign };
+        var store = new Mock<IUserStore<ApplicationUser>>();
+        var userManager = new Mock<UserManager<ApplicationUser>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
+        userManager.Setup(item => item.FindByIdAsync(actor.Id)).ReturnsAsync(actor);
+        userManager.Setup(item => item.FindByEmailAsync(It.IsAny<string>()))
+            .ReturnsAsync((string email) => context.Users.IgnoreQueryFilters().SingleOrDefault(item => item.Email == email));
+        userManager.Setup(item => item.CreateAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()))
+            .Returns(async (ApplicationUser user, string _) =>
+            {
+                user.Id = $"created-{Guid.NewGuid():N}";
+                user.SecurityStamp = Guid.NewGuid().ToString("N");
+                user.ConcurrencyStamp = Guid.NewGuid().ToString("N");
+                context.Users.Add(user);
+                await context.SaveChangesAsync();
+                users[user.Id] = user;
+                return IdentityResult.Success;
+            });
+        var roleStore = new Mock<IRoleStore<ApplicationRole>>();
+        var roleManager = new Mock<RoleManager<ApplicationRole>>(roleStore.Object, Array.Empty<IRoleValidator<ApplicationRole>>(), null!, null!, null!);
+        var access = Access(actor, "USER.CREATE", "USER.READ", "USER.UPDATE", "USER.DELETE", "USER.ENABLE", "USER.DISABLE",
+            "USER.Email.READ", "USER.Email.UPDATE", "USER.PhoneNumber.READ", "USER.PhoneNumber.UPDATE");
+        var controller = new UsersController(context, userManager.Object, roleManager.Object, access.Object, tenant)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, actor.Id)], "test")),
+                    TraceIdentifier = "user-lifecycle-correlation"
+                }
+            }
+        };
+
+        var createdResult = await controller.CreateUser(new CreateUserRequest(
+            "Lifecycle", "User", "lifecycle@example.test", "Local-Test-Only-9!", "0222222222", "Approved account creation"));
+        var created = Assert.IsType<ApiResponse<UserDetailResponse>>(Assert.IsType<OkObjectResult>(createdResult.Result).Value).Data!.User;
+        Assert.NotEqual(Guid.Empty, created.PublicId);
+        Assert.False(string.IsNullOrWhiteSpace(created.RowVersion));
+        Assert.Equal("lifecycle@example.test", created.Email);
+
+        var invalidReason = await controller.UpdateUser(created.PublicId, new UpdateUserRequest(
+            "Lifecycle", "Updated", "0222222222", true, created.RowVersion, "bad"));
+        Assert.IsType<BadRequestObjectResult>(invalidReason.Result);
+
+        var updatedResult = await controller.UpdateUser(created.PublicId, new UpdateUserRequest(
+            "Lifecycle", "Updated", "0444444444", true, created.RowVersion, "Approved profile and contact update"));
+        var updated = Assert.IsType<ApiResponse<UserDetailResponse>>(Assert.IsType<OkObjectResult>(updatedResult.Result).Value).Data!.User;
+        Assert.Equal("Lifecycle Updated", updated.FullName);
+        Assert.Equal("0444444444", updated.PhoneNumber);
+        Assert.NotEqual(created.RowVersion, updated.RowVersion);
+
+        context.ChangeTracker.Clear();
+        var staleController = Controller(context, tenant, actor, users, access.Object);
+        var stale = await staleController.UpdateUser(created.PublicId, new UpdateUserRequest(
+            "Stale", "Overwrite", "0555555555", true, created.RowVersion, "Attempt stale profile overwrite"));
+        Assert.IsType<ConflictObjectResult>(stale.Result);
+
+        context.ChangeTracker.Clear();
+        var current = await context.Users.SingleAsync(item => item.PublicId == created.PublicId);
+        var crossTenant = await Controller(context, tenant, actor, users, access.Object).UpdateUser(foreign.PublicId, new UpdateUserRequest(
+            "Foreign", "Changed", "0666666666", true, Convert.ToBase64String(foreign.RowVersion), "Attempt cross tenant profile update"));
+        Assert.IsType<NotFoundObjectResult>(crossTenant.Result);
+
+        var deactivated = await Controller(context, tenant, actor, users, access.Object).Deactivate(created.PublicId,
+            new UserLifecycleRequest(Convert.ToBase64String(current.RowVersion), "Approved temporary account suspension"));
+        Assert.IsType<OkObjectResult>(deactivated.Result);
+
+        context.ChangeTracker.Clear();
+        current = await context.Users.SingleAsync(item => item.PublicId == created.PublicId);
+        Assert.False(current.IsActive);
+        var activated = await Controller(context, tenant, actor, users, access.Object).Activate(created.PublicId,
+            new UserLifecycleRequest(Convert.ToBase64String(current.RowVersion), "Approved account reactivation"));
+        Assert.IsType<OkObjectResult>(activated.Result);
+
+        context.ChangeTracker.Clear();
+        current = await context.Users.SingleAsync(item => item.PublicId == created.PublicId);
+        Assert.True(current.IsActive);
+        var retired = await Controller(context, tenant, actor, users, access.Object).DeleteUser(created.PublicId,
+            new UserLifecycleRequest(Convert.ToBase64String(current.RowVersion), "Approved account retirement"));
+        Assert.IsType<OkObjectResult>(retired.Result);
+
+        context.ChangeTracker.Clear();
+        var persisted = await context.Users.SingleAsync(item => item.PublicId == created.PublicId);
+        Assert.False(persisted.IsActive);
+        Assert.Equal(actor.Id, persisted.UpdatedBy);
+        var audits = await context.AuditTrails.Where(item => item.EntityId == created.PublicId.ToString()).OrderBy(item => item.Id).ToArrayAsync();
+        Assert.Equal(["Create", "Update", "Disable", "Enable", "Delete"], audits.Select(item => item.Action).ToArray());
+        audits.Select(item => item.Reason).Should().Equal(
+            "Approved account creation",
+            "Approved profile and contact update",
+            "Approved temporary account suspension",
+            "Approved account reactivation",
+            "Approved account retirement");
+        Assert.All(audits, item => Assert.Equal(251, item.MunicipalityId));
+        Assert.Equal("foreign User", (await context.Users.IgnoreQueryFilters().SingleAsync(item => item.Id == foreign.Id)).FullName);
     }
 
     [Fact]
