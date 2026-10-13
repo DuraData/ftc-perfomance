@@ -94,6 +94,56 @@ public class IdpImportControllerTests
         var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(IdpImportBatch)).OrderBy(item => item.Id).ToListAsync();
         audits.Select(item => item.Action).Should().Equal("Stage", "Commit");
         audits[1].Reason.Should().Be("Council-approved KPI reconciliation");
+        var changedKpiPublicId = kpis.Single(kpi => kpi.KpiCode == "CHANGE-1").PublicId.ToString();
+        var definitionAudit = await context.AuditTrails.SingleAsync(item => item.EntityName == nameof(IdpKpi)
+            && item.EntityId == changedKpiPublicId);
+        definitionAudit.Action.Should().Be("ImportUpdate");
+        definitionAudit.Reason.Should().Be("Council-approved KPI reconciliation");
+        definitionAudit.OldValue.Should().NotBeNull();
+        definitionAudit.NewValue.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Hierarchy_import_update_persists_exact_per_record_audit_evidence()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedPlanAsync(context);
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>());
+        var initial = Payload(await controller.StageHierarchy(setup.Plan.PublicId,
+            new StageIdpHierarchyImportRequest(Guid.NewGuid(), "hierarchy-initial.csv",
+                [HierarchyRow(2, "PROJECT-AUDITED", "Original governed project")])));
+        Payload(await controller.CommitHierarchy(initial.PublicId,
+            new CommitIdpImportRequest(initial.RowVersion, "Initial hierarchy import")));
+        var project = await context.IdpProjects.SingleAsync(item => item.ProjectCode == "PROJECT-AUDITED");
+
+        var updateRow = HierarchyRow(2, "PROJECT-AUDITED", "Updated governed project") with
+        {
+            OutcomeName = "Updated outcome",
+            ObjectiveName = "Updated objective",
+            ObjectiveBudget = 1000001,
+            PriorityName = "Updated priority",
+            ProgrammeName = "Updated programme",
+            ProgrammePlannedBudget = 900001
+        };
+        var staged = Payload(await controller.StageHierarchy(setup.Plan.PublicId,
+            new StageIdpHierarchyImportRequest(Guid.NewGuid(), "hierarchy-update.csv",
+                [updateRow])));
+        staged.ChangedRows.Should().Be(1);
+        context.ChangeTracker.Clear();
+
+        var commitAction = await controller.CommitHierarchy(staged.PublicId,
+            new CommitIdpImportRequest(staged.RowVersion, "Council-approved hierarchy update"));
+        commitAction.Result.Should().BeOfType<OkObjectResult>();
+        Payload(commitAction).Status.Should().Be(IdpImportBatchStatus.Committed.ToString());
+
+        (await context.IdpProjects.SingleAsync(item => item.Id == project.Id)).ProjectName.Should().Be("Updated governed project");
+        var definitionAudits = await context.AuditTrails
+            .Where(item => item.Action == "ImportUpdate" && item.Reason == "Council-approved hierarchy update")
+            .ToArrayAsync();
+        definitionAudits.Select(item => item.EntityName).Should().BeEquivalentTo(
+            nameof(IdpStrategicOutcome), nameof(IdpStrategicObjective), nameof(IdpDevelopmentPriority),
+            nameof(IdpProgramme), nameof(IdpProject));
+        definitionAudits.Should().OnlyContain(item => item.OldValue != null && item.NewValue != null);
     }
 
     [Fact]
@@ -107,8 +157,9 @@ public class IdpImportControllerTests
             [Row(2, setup.Project.ProjectCode, "NEW-3", "Should not be inserted"), Row(3, setup.Project.ProjectCode, "CHANGE-1", "Preview change", annualTarget: 88)])));
 
         var existing = await context.IdpKpis.SingleAsync(item => item.KpiCode == "CHANGE-1");
-        existing.AnnualTarget = 66;
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE IdpKpis SET AnnualTarget = {66m}, RowVersion = {Guid.NewGuid().ToByteArray()} WHERE Id = {existing.Id}");
+        context.ChangeTracker.Clear();
 
         var commit = await controller.Commit(staged.PublicId, new CommitIdpImportRequest(staged.RowVersion, "Stale preview"));
         commit.Result.Should().BeOfType<ConflictObjectResult>();
@@ -529,8 +580,9 @@ public class IdpImportControllerTests
         unchanged.UnchangedRows.Should().Be(1);
 
         var project = await context.IdpProjects.SingleAsync(item => item.ProjectCode == "PROJECT-C");
-        project.Budget = 999999;
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE IdpProjects SET Budget = {999999m}, RowVersion = {Guid.NewGuid().ToByteArray()} WHERE Id = {project.Id}");
+        context.ChangeTracker.Clear();
 
         var staleCommit = await controller.CommitHierarchy(unchanged.PublicId, new CommitIdpImportRequest(unchanged.RowVersion, "Stale preview"));
         staleCommit.Result.Should().BeOfType<ConflictObjectResult>();

@@ -2307,6 +2307,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceEvidenceLifecycle();
         EnforceIdpPlanHistory();
         EnforceImportBatchHistory();
+        EnforceIdpDefinitionHistory();
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State == EntityState.Added))
         {
             var row = entry.Entity;
@@ -3284,6 +3285,99 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 : "Commit";
             RequireGovernanceAudit(nameof(IdpImportBatch), entry.Entity.PublicId, entry.Entity.MunicipalityId, action);
         }
+    }
+
+    private void EnforceIdpDefinitionHistory()
+    {
+        if (ChangeTracker.Entries<IdpStrategicOutcome>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IdpStrategicObjective>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IdpDevelopmentPriority>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IdpProgramme>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IdpProject>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IdpKpi>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("IDP hierarchy and KPI definition history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<IdpStrategicOutcome>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpStrategicOutcome.Code), nameof(IdpStrategicOutcome.Name), nameof(IdpStrategicOutcome.Description),
+                    nameof(IdpStrategicOutcome.SortOrder), nameof(IdpStrategicOutcome.RowVersion)],
+                "IDP outcome identity and plan association are immutable.");
+            RequireIdpImportUpdateAudit(nameof(IdpStrategicOutcome), entry.Entity.PublicId, entry.Entity.IdpPlanId, "HIERARCHY");
+        }
+        foreach (var entry in ChangeTracker.Entries<IdpStrategicObjective>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpStrategicObjective.Code), nameof(IdpStrategicObjective.Name), nameof(IdpStrategicObjective.Description),
+                    nameof(IdpStrategicObjective.BaselineValue), nameof(IdpStrategicObjective.TargetValue),
+                    nameof(IdpStrategicObjective.ResponsibleDepartmentId), nameof(IdpStrategicObjective.StartDate),
+                    nameof(IdpStrategicObjective.EndDate), nameof(IdpStrategicObjective.BudgetAllocation),
+                    nameof(IdpStrategicObjective.SortOrder), nameof(IdpStrategicObjective.RowVersion)],
+                "IDP objective identity, outcome association and strategic-owner evidence are immutable.");
+            RequireIdpImportUpdateAudit(nameof(IdpStrategicObjective), entry.Entity.PublicId,
+                entry.Entity.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue, "HIERARCHY");
+        }
+        foreach (var entry in ChangeTracker.Entries<IdpDevelopmentPriority>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpDevelopmentPriority.PriorityCode), nameof(IdpDevelopmentPriority.Name),
+                    nameof(IdpDevelopmentPriority.Description), nameof(IdpDevelopmentPriority.SortOrder),
+                    nameof(IdpDevelopmentPriority.RowVersion)],
+                "IDP development-priority identity and objective association are immutable.");
+            RequireIdpImportUpdateAudit(nameof(IdpDevelopmentPriority), entry.Entity.PublicId,
+                entry.Entity.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue, "HIERARCHY");
+        }
+        foreach (var entry in ChangeTracker.Entries<IdpProgramme>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpProgramme.ProgrammeCode), nameof(IdpProgramme.Name), nameof(IdpProgramme.Description),
+                    nameof(IdpProgramme.ResponsibleDepartmentId), nameof(IdpProgramme.PlannedBudget),
+                    nameof(IdpProgramme.ApprovedBudget), nameof(IdpProgramme.ActualExpenditure), nameof(IdpProgramme.RowVersion)],
+                "IDP programme identity and development-priority association are immutable.");
+            RequireIdpImportUpdateAudit(nameof(IdpProgramme), entry.Entity.PublicId,
+                entry.Entity.IdpDevelopmentPriority?.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue,
+                "HIERARCHY");
+        }
+        foreach (var entry in ChangeTracker.Entries<IdpProject>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpProject.ProjectCode), nameof(IdpProject.ProjectName), nameof(IdpProject.Description),
+                    nameof(IdpProject.Category), nameof(IdpProject.DepartmentId), nameof(IdpProject.Budget),
+                    nameof(IdpProject.FundingSource), nameof(IdpProject.StartDate), nameof(IdpProject.EndDate),
+                    nameof(IdpProject.Status), nameof(IdpProject.CommunityNeedReference), nameof(IdpProject.RowVersion)],
+                "IDP project identity and programme association are immutable.");
+            RequireIdpImportUpdateAudit(nameof(IdpProject), entry.Entity.PublicId,
+                entry.Entity.IdpProgramme?.IdpDevelopmentPriority?.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue,
+                "HIERARCHY");
+        }
+        foreach (var entry in ChangeTracker.Entries<IdpKpi>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(IdpKpi.KpiCode), nameof(IdpKpi.KpiName), nameof(IdpKpi.Description), nameof(IdpKpi.Formula),
+                    nameof(IdpKpi.Baseline), nameof(IdpKpi.AnnualTarget), nameof(IdpKpi.FiveYearTarget),
+                    nameof(IdpKpi.ResponsibleDepartmentId), nameof(IdpKpi.DataSource), nameof(IdpKpi.ReportingFrequency),
+                    nameof(IdpKpi.IndicatorType), nameof(IdpKpi.Circular88Linked), nameof(IdpKpi.TreasuryTidLinked),
+                    nameof(IdpKpi.RowVersion)],
+                "IDP KPI identity and project association are immutable.");
+            RequireIdpImportUpdateAudit(nameof(IdpKpi), entry.Entity.PublicId,
+                entry.Entity.IdpProject?.IdpProgramme?.IdpDevelopmentPriority?.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue,
+                "KPI");
+        }
+    }
+
+    private void RequireIdpImportUpdateAudit(string entityName, Guid publicId, int planId, string importType)
+    {
+        var committedBatches = ChangeTracker.Entries<IdpImportBatch>()
+            .Where(entry => entry.State == EntityState.Modified
+                && entry.OriginalValues.GetValue<IdpImportBatchStatus>(nameof(IdpImportBatch.Status)) == IdpImportBatchStatus.Staged
+                && entry.CurrentValues.GetValue<IdpImportBatchStatus>(nameof(IdpImportBatch.Status)) == IdpImportBatchStatus.Committed
+                && entry.Entity.IdpPlanId == planId
+                && string.Equals(entry.Entity.ImportType, importType, StringComparison.OrdinalIgnoreCase))
+            .Select(entry => entry.Entity)
+            .ToArray();
+        if (committedBatches.Length != 1)
+            throw new InvalidOperationException("IDP hierarchy and KPI definitions may be rewritten only by one governed import commit.");
+        RequireGovernanceAudit(entityName, publicId, committedBatches[0].MunicipalityId, "ImportUpdate");
     }
 
     private void EnforceEvidenceLifecycle()

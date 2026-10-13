@@ -343,8 +343,12 @@ public class IdpImportsController(
                 var entity = candidate.Existing ?? new IdpKpi();
                 if (candidate.Existing != null && candidate.Row.ExpectedEntityRowVersion != null)
                     context.Entry(candidate.Existing).Property(item => item.RowVersion).OriginalValue = candidate.Row.ExpectedEntityRowVersion;
+                var before = candidate.Existing == null ? null : Snapshot(entity);
                 IdpKpiDefinitionPolicy.Apply(entity, candidate.Definition!);
                 if (candidate.Existing == null) context.IdpKpis.Add(entity);
+                else workflowGovernanceService.QueueAuditTrail(
+                    nameof(IdpKpi), entity.PublicId.ToString(), "ImportUpdate", before, Snapshot(entity), user.Id,
+                    PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
             }
 
             batch.Status = IdpImportBatchStatus.Committed;
@@ -438,7 +442,7 @@ public class IdpImportsController(
             await ApplyHierarchyDefinitionsAsync(batch.IdpPlanId, current
                 .Where(item => item.Row.Status is IdpImportRowStatus.New or IdpImportRowStatus.Changed)
                 .Select(item => item.Definition!)
-                .ToArray());
+                .ToArray(), user.Id, request.Reason.Trim());
             batch.Status = IdpImportBatchStatus.Committed;
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
@@ -578,7 +582,11 @@ public class IdpImportsController(
         return candidates;
     }
 
-    private async Task ApplyHierarchyDefinitionsAsync(int planId, IReadOnlyCollection<HierarchyDefinition> definitions)
+    private async Task ApplyHierarchyDefinitionsAsync(
+        int planId,
+        IReadOnlyCollection<HierarchyDefinition> definitions,
+        string userId,
+        string reason)
     {
         var outcomes = await context.IdpStrategicOutcomes
             .Include(item => item.StrategicObjectives)
@@ -597,7 +605,9 @@ public class IdpImportsController(
                 outcomes.Add(outcome);
                 context.IdpStrategicOutcomes.Add(outcome);
             }
+            var outcomeBefore = outcome.Id == 0 ? null : OutcomeDefinition.From(outcome);
             definition.Outcome.Apply(outcome);
+            QueueDefinitionAudit(outcome, outcomeBefore, definition.Outcome, userId, reason);
 
             var objective = outcome.StrategicObjectives.SingleOrDefault(item => CodeEquals(item.Code, definition.Objective.Code));
             if (objective == null)
@@ -606,7 +616,9 @@ public class IdpImportsController(
                 outcome.StrategicObjectives.Add(objective);
                 context.IdpStrategicObjectives.Add(objective);
             }
+            var objectiveBefore = objective.Id == 0 ? null : ObjectiveDefinition.From(objective);
             definition.Objective.Apply(objective);
+            QueueDefinitionAudit(objective, objectiveBefore, definition.Objective, userId, reason);
 
             var priority = objective.DevelopmentPriorities.SingleOrDefault(item => CodeEquals(item.PriorityCode, definition.Priority.Code));
             if (priority == null)
@@ -615,7 +627,9 @@ public class IdpImportsController(
                 objective.DevelopmentPriorities.Add(priority);
                 context.IdpDevelopmentPriorities.Add(priority);
             }
+            var priorityBefore = priority.Id == 0 ? null : PriorityDefinition.From(priority);
             definition.Priority.Apply(priority);
+            QueueDefinitionAudit(priority, priorityBefore, definition.Priority, userId, reason);
 
             var programme = priority.Programmes.SingleOrDefault(item => CodeEquals(item.ProgrammeCode, definition.Programme.Code));
             if (programme == null)
@@ -624,7 +638,9 @@ public class IdpImportsController(
                 priority.Programmes.Add(programme);
                 context.IdpProgrammes.Add(programme);
             }
+            var programmeBefore = programme.Id == 0 ? null : ProgrammeDefinition.From(programme);
             definition.Programme.Apply(programme);
+            QueueDefinitionAudit(programme, programmeBefore, definition.Programme, userId, reason);
 
             var project = programme.Projects.SingleOrDefault(item => CodeEquals(item.ProjectCode, definition.Project.Code));
             if (project == null)
@@ -633,8 +649,26 @@ public class IdpImportsController(
                 programme.Projects.Add(project);
                 context.IdpProjects.Add(project);
             }
+            var projectBefore = project.Id == 0 ? null : ProjectDefinition.From(project);
             definition.Project.Apply(project);
+            QueueDefinitionAudit(project, projectBefore, definition.Project, userId, reason);
         }
+    }
+
+    private void QueueDefinitionAudit<TEntity, TDefinition>(
+        TEntity entity,
+        TDefinition? before,
+        TDefinition after,
+        string userId,
+        string reason)
+        where TEntity : class
+        where TDefinition : class
+    {
+        if (before == null || EqualityComparer<TDefinition>.Default.Equals(before, after)) return;
+        var publicId = (Guid)context.Entry(entity).Property(nameof(IdpStrategicOutcome.PublicId)).CurrentValue!;
+        workflowGovernanceService.QueueAuditTrail(
+            typeof(TEntity).Name, publicId.ToString(), "ImportUpdate", before, after, userId,
+            PerformanceApiSupport.GetIpAddress(HttpContext), reason);
     }
 
     private async Task<List<ImportCandidate>> BuildCandidatesAsync(
@@ -643,6 +677,10 @@ public class IdpImportsController(
         bool trackExisting)
     {
         IQueryable<IdpProject> projectQuery = context.IdpProjects
+            .Include(item => item.IdpProgramme)
+                .ThenInclude(item => item.IdpDevelopmentPriority)
+                    .ThenInclude(item => item.IdpStrategicObjective)
+                        .ThenInclude(item => item.IdpStrategicOutcome)
             .Include(item => item.Kpis)
             .Where(item => item.IdpProgramme.IdpDevelopmentPriority.IdpStrategicObjective.IdpStrategicOutcome.IdpPlanId == planId);
         IQueryable<Department> departmentQuery = context.Departments.Where(item => item.IsActive);

@@ -74,6 +74,16 @@ public class IdpSecondaryGovernanceTests
         new IdpRiskLink()
     };
 
+    public static TheoryData<object> CoreDefinitionRecords => new()
+    {
+        new IdpStrategicOutcome(),
+        new IdpStrategicObjective(),
+        new IdpDevelopmentPriority(),
+        new IdpProgramme(),
+        new IdpProject(),
+        new IdpKpi()
+    };
+
     [Theory]
     [MemberData(nameof(AppendOnlyRecords))]
     public async Task Idp_history_records_cannot_be_rewritten(object entity)
@@ -119,6 +129,39 @@ public class IdpSecondaryGovernanceTests
         await FluentActions.Invoking(() => context.SaveChangesAsync())
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*IDP annual-target, alignment, participation, stakeholder, and risk-link records are append-only*");
+    }
+
+    [Theory]
+    [MemberData(nameof(CoreDefinitionRecords))]
+    public async Task Idp_core_definition_records_cannot_be_hard_deleted(object entity)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(entity).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*IDP hierarchy and KPI definition history cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Idp_core_definition_rewrite_requires_one_governed_import_commit()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var project = new IdpProject
+        {
+            Id = 991,
+            PublicId = Guid.NewGuid(),
+            IdpProgrammeId = 881,
+            ProjectCode = "GOVERNED-PROJECT",
+            ProjectName = "Governed project"
+        };
+        context.Attach(project);
+        project.Budget = 125000;
+        context.Entry(project).Property(item => item.Budget).IsModified = true;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*may be rewritten only by one governed import commit*");
     }
 
     [Fact]
