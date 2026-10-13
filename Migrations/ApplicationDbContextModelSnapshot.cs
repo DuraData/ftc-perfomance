@@ -14557,7 +14557,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IpmsTarget", "IpmsTarget")
                         .WithMany("Submissions")
                         .HasForeignKey("IpmsTargetId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
@@ -15795,7 +15795,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.OpmsTarget", "OpmsTarget")
                         .WithMany("Submissions")
                         .HasForeignKey("OpmsTargetId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "PmsOfficerUser")

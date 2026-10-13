@@ -987,7 +987,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(submission => submission.OpmsTarget)
             .WithMany(target => target.Submissions)
             .HasForeignKey(submission => submission.OpmsTargetId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<OpmsSubmission>()
             .HasOne(submission => submission.SubmittedByUser)
@@ -1027,7 +1027,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(submission => submission.IpmsTarget)
             .WithMany(target => target.Submissions)
             .HasForeignKey(submission => submission.IpmsTargetId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IpmsSubmission>()
             .HasOne(submission => submission.SubmittedByUser)
@@ -2325,6 +2325,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceKpiBudgetSourceHistory<OpmsKpiBudgetSource>(nameof(OpmsKpiBudgetSource.OpmsTargetId));
         EnforceKpiBudgetSourceHistory<IpmsKpiBudgetSource>(nameof(IpmsKpiBudgetSource.IpmsTargetId));
         EnforceIpmsOpmsTargetLinkHistory();
+        if (ChangeTracker.Entries<OpmsTarget>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<IpmsTarget>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Performance-target history cannot be hard deleted; withdraw or deactivate the target through its governed lifecycle instead.");
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
