@@ -2296,6 +2296,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceSecurityRegistryHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationPreferenceHistory();
+        EnforceRefreshTokenHistory();
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3253,6 +3254,69 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         if (ChangeTracker.Entries<TEntity>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException(message);
+    }
+
+    private void EnforceRefreshTokenHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<RefreshToken>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                if (row.PublicId == Guid.Empty || row.SessionId == Guid.Empty || string.IsNullOrWhiteSpace(row.UserId)
+                    || row.Token.Length != 64 || row.Token.Any(character => !Uri.IsHexDigit(character))
+                    || string.IsNullOrWhiteSpace(row.SecurityStamp) || string.IsNullOrWhiteSpace(row.AuthenticationMethod)
+                    || row.ExpiresAt <= row.CreatedAt || row.ExpiresAt > row.AbsoluteExpiresAt
+                    || row.LastUsedAt < row.CreatedAt || row.LastUsedAt > row.ExpiresAt
+                    || row.RevokedAt.HasValue || row.RevokedByIp != null || row.RevokedReason != null)
+                    throw new InvalidOperationException("Refresh-session creation requires a valid immutable identity, digest, security context and bounded lifetime without fabricated revocation evidence.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Refresh-session history cannot be hard deleted.");
+            if (entry.State != EntityState.Modified) continue;
+
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name)
+                .Where(property => property != nameof(RefreshToken.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            var activityProperties = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(RefreshToken.LastUsedAt), nameof(RefreshToken.LastUsedByIp)
+            };
+            if (changed.IsSubsetOf(activityProperties) && changed.Contains(nameof(RefreshToken.LastUsedAt)))
+            {
+                if (entry.OriginalValues.GetValue<DateTime?>(nameof(RefreshToken.RevokedAt)).HasValue
+                    || entry.CurrentValues.GetValue<DateTime>(nameof(RefreshToken.LastUsedAt))
+                        <= entry.OriginalValues.GetValue<DateTime>(nameof(RefreshToken.LastUsedAt))
+                    || entry.CurrentValues.GetValue<DateTime>(nameof(RefreshToken.LastUsedAt))
+                        > entry.OriginalValues.GetValue<DateTime>(nameof(RefreshToken.ExpiresAt)))
+                    throw new InvalidOperationException("Refresh-session activity may only advance monotonically for an unrevoked, unexpired token row.");
+                continue;
+            }
+
+            var revocationProperties = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(RefreshToken.RevokedAt), nameof(RefreshToken.RevokedByIp), nameof(RefreshToken.RevokedReason)
+            };
+            if (changed.IsSubsetOf(revocationProperties)
+                && changed.Contains(nameof(RefreshToken.RevokedAt))
+                && changed.Contains(nameof(RefreshToken.RevokedReason)))
+            {
+                var revokedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(RefreshToken.RevokedAt));
+                if (entry.OriginalValues.GetValue<DateTime?>(nameof(RefreshToken.RevokedAt)).HasValue
+                    || !revokedAt.HasValue
+                    || revokedAt < entry.OriginalValues.GetValue<DateTime>(nameof(RefreshToken.CreatedAt))
+                    || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(RefreshToken.RevokedReason))))
+                    throw new InvalidOperationException("Refresh-session revocation is an irreversible actor-context transition with a timestamp and reason.");
+                continue;
+            }
+
+            throw new InvalidOperationException("Refresh-session identity, token digest, user, session, expiry, security stamp, authentication method and creation evidence are immutable.");
+        }
     }
 
     private void EnforceOpmsTargetTemplateHistory()

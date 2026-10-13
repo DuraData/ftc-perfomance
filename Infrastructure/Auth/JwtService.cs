@@ -161,7 +161,7 @@ public class JwtService : IJwtService
     {
         var digest = HashRefreshToken(token);
         var refreshToken = await _context.RefreshTokens.FirstOrDefaultAsync(rt => rt.Token == digest);
-        if (refreshToken != null)
+        if (refreshToken != null && !refreshToken.RevokedAt.HasValue)
         {
             refreshToken.RevokedAt = DateTime.UtcNow;
             refreshToken.RevokedByIp = ipAddress;

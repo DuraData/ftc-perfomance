@@ -164,9 +164,9 @@ public sealed class AuthSessionTests
         await context.Database.EnsureCreatedAsync();
         var user = User("sqlite-user"); context.Users.Add(user); await context.SaveChangesAsync();
         var now = DateTime.UtcNow;
-        context.RefreshTokens.Add(new RefreshToken { UserId = user.Id, Token = new string('A', 64), SessionId = Guid.NewGuid(), ExpiresAt = now.AddHours(1), AbsoluteExpiresAt = now.AddHours(2), LastUsedAt = now, SecurityStamp = user.SecurityStamp!, RowVersion = [1] });
+        context.RefreshTokens.Add(new RefreshToken { UserId = user.Id, Token = new string('A', 64), SessionId = Guid.NewGuid(), CreatedAt = now, ExpiresAt = now.AddHours(1), AbsoluteExpiresAt = now.AddHours(2), LastUsedAt = now, SecurityStamp = user.SecurityStamp!, RowVersion = [1] });
         await context.SaveChangesAsync();
-        context.RefreshTokens.Add(new RefreshToken { UserId = user.Id, Token = new string('A', 64), SessionId = Guid.NewGuid(), ExpiresAt = now.AddHours(1), AbsoluteExpiresAt = now.AddHours(2), LastUsedAt = now, SecurityStamp = user.SecurityStamp!, RowVersion = [1] });
+        context.RefreshTokens.Add(new RefreshToken { UserId = user.Id, Token = new string('A', 64), SessionId = Guid.NewGuid(), CreatedAt = now, ExpiresAt = now.AddHours(1), AbsoluteExpiresAt = now.AddHours(2), LastUsedAt = now, SecurityStamp = user.SecurityStamp!, RowVersion = [1] });
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
     }
 
@@ -224,9 +224,20 @@ public sealed class AuthSessionTests
                 await seed.Database.EnsureCreatedAsync();
                 seed.Users.Add(user);
                 await seed.SaveChangesAsync();
-                await CreateService(seed, user).GenerateTokensAsync(user);
-                var session = await seed.RefreshTokens.SingleAsync();
-                session.LastUsedAt = DateTime.UtcNow.AddMinutes(-2);
+                var now = DateTime.UtcNow;
+                var session = new RefreshToken
+                {
+                    UserId = user.Id,
+                    Token = new string('B', 64),
+                    SessionId = Guid.NewGuid(),
+                    CreatedAt = now.AddMinutes(-3),
+                    LastUsedAt = now.AddMinutes(-2),
+                    ExpiresAt = now.AddHours(1),
+                    AbsoluteExpiresAt = now.AddHours(2),
+                    SecurityStamp = user.SecurityStamp!,
+                    AuthenticationMethod = "LOCAL"
+                };
+                seed.RefreshTokens.Add(session);
                 await seed.SaveChangesAsync();
                 sessionId = session.SessionId;
             }
