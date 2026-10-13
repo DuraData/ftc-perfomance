@@ -4048,6 +4048,8 @@ The existing OPMS/IPMS wide-target cutover accepted only target PublicIds, so a 
 
 The production Data Cutover client retains the preview RowVersion with each selected row and submits the exact versioned selection; its component regression proves the transport contract. Focused backend verification passes **4/4**, including ready reconciliation, revised-value blocking, substantive-reason enforcement and stale-write rollback. Complete Release regression passes **737 backend tests with 1 explicit SQL Server-only skip and 0 failures** and **375/375 frontend tests across 79 files**. TypeScript, ESLint and accessibility **2/2** pass; the 2,113-module production build and enforced **78-chunk/402.1-KiB** budget pass, and both dependency audits report no vulnerabilities. This provider-neutral hardening introduces no migration, Docker process, cloud resource or paid resource. R-16 through R-18 remain partial only for production-shaped execution, exception sign-off and physical retirement of preserved compatibility columns; no fresh visual PASS is inferred because localhost browser control remains blocked.
 
+Implementation commit `ecd7c879c21bfe58076ef69bbea6c7031c3f316d` was pushed directly to both `codex/dev` and `main`. GitHub Actions run `38339960829` verified that exact revision: the `verify` job completed successfully in **5m08s**, all **18/18** quality/security steps passed, and check-run `115108494725` exposed no annotations.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
