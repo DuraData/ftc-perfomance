@@ -1379,6 +1379,7 @@ export interface TargetNormalizationPreviewDto {
   status: 'Blocked' | 'Ready' | 'Normalized';
   missingPeriodTargets: number;
   error?: string | null;
+  rowVersion: string;
 }
 
 export interface TargetNormalizationResultDto {

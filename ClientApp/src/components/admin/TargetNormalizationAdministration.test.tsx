@@ -10,9 +10,9 @@ describe('TargetNormalizationAdministration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { page: 1, pageSize: 50, totalCount: 3, totalPages: 1, items: [
-      { targetPublicId: 'ready-1', indicatorNumber: 'KPI-1', targetName: 'Ready target', status: 'Ready', missingPeriodTargets: 2 },
-      { targetPublicId: 'blocked-1', indicatorNumber: 'KPI-2', targetName: 'Blocked target', status: 'Blocked', missingPeriodTargets: 0, error: 'Legacy revision requires governance evidence.' },
-      { targetPublicId: 'done-1', indicatorNumber: 'KPI-3', targetName: 'Normalized target', status: 'Normalized', missingPeriodTargets: 0 },
+      { targetPublicId: 'ready-1', indicatorNumber: 'KPI-1', targetName: 'Ready target', status: 'Ready', missingPeriodTargets: 2, rowVersion: 'AQ==' },
+      { targetPublicId: 'blocked-1', indicatorNumber: 'KPI-2', targetName: 'Blocked target', status: 'Blocked', missingPeriodTargets: 0, error: 'Legacy revision requires governance evidence.', rowVersion: 'Ag==' },
+      { targetPublicId: 'done-1', indicatorNumber: 'KPI-3', targetName: 'Normalized target', status: 'Normalized', missingPeriodTargets: 0, rowVersion: 'Aw==' },
     ] } });
     api.executeTargetNormalization.mockResolvedValue({ success: true, data: { selectedTargets: 1, addedPeriodTargets: 2, alreadyNormalizedTargets: 0 } });
   });
@@ -27,7 +27,7 @@ describe('TargetNormalizationAdministration', () => {
     fireEvent.change(screen.getByLabelText('Reconciliation reason'), { target: { value: 'Approved migration rehearsal CR-42' } });
     fireEvent.click(screen.getByRole('button', { name: 'Reconcile selected (1)' }));
 
-    await waitFor(() => expect(api.executeTargetNormalization).toHaveBeenCalledWith({ targetKind: 1, targetPublicIds: ['ready-1'], reason: 'Approved migration rehearsal CR-42' }));
+    await waitFor(() => expect(api.executeTargetNormalization).toHaveBeenCalledWith({ targetKind: 1, targets: [{ targetPublicId: 'ready-1', rowVersion: 'AQ==' }], reason: 'Approved migration rehearsal CR-42' }));
     expect(pushToast).toHaveBeenCalledWith('success', '2 normalized period targets created');
   });
 

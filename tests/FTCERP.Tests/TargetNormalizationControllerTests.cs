@@ -17,9 +17,8 @@ public sealed class TargetNormalizationControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var (municipality, user, target) = await SeedAsync(context);
         var audit = new Mock<IWorkflowGovernanceService>();
-        audit.Setup(service => service.WriteAuditTrailAsync(
-                "OpmsTarget", target.Id, "NormalizeLegacyPeriodTargets", null, It.IsAny<object>(), user.Id, It.IsAny<string?>()))
-            .Returns(Task.CompletedTask);
+        audit.Setup(service => service.QueueAuditTrail(
+                "OpmsTarget", target.PublicId.ToString(), "NormalizeLegacyPeriodTargets", null, It.IsAny<object>(), user.Id, It.IsAny<string?>(), "Approved legacy cutover"));
         var controller = Controller(context, municipality.Id, user, audit.Object);
 
         var previewResult = await controller.Preview(SubmissionKind.Opms);
@@ -28,7 +27,7 @@ public sealed class TargetNormalizationControllerTests
         Assert.Equal("Ready", Assert.Single(preview.Items).Status);
         Assert.Equal(2, preview.Items[0].MissingPeriodTargets);
 
-        var executeResult = await controller.Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [target.PublicId], "Approved legacy cutover"));
+        var executeResult = await controller.Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [new TargetNormalizationSelection(target.PublicId, preview.Items[0].RowVersion)], "Approved legacy cutover"));
         var executed = Assert.IsType<ApiResponse<TargetNormalizationResultDto>>(Assert.IsType<OkObjectResult>(executeResult.Result).Value).Data!;
         Assert.Equal(2, executed.AddedPeriodTargets);
         Assert.All(await context.PerformancePeriodTargets.ToArrayAsync(), item => Assert.Equal(user.Id, item.CreatedByUserId));
@@ -49,7 +48,7 @@ public sealed class TargetNormalizationControllerTests
         await context.SaveChangesAsync();
 
         var result = await Controller(context, municipality.Id, user, Mock.Of<IWorkflowGovernanceService>())
-            .Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [target.PublicId], "Attempted cutover"));
+            .Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [new TargetNormalizationSelection(target.PublicId, Convert.ToBase64String(target.RowVersion))], "Attempted cutover"));
 
         var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
         Assert.Contains("revision endpoint", Assert.IsType<ApiResponse<TargetNormalizationResultDto>>(conflict.Value).Message);
@@ -63,10 +62,26 @@ public sealed class TargetNormalizationControllerTests
         var (municipality, user, target) = await SeedAsync(context);
 
         var result = await Controller(context, municipality.Id, user, Mock.Of<IWorkflowGovernanceService>())
-            .Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [target.PublicId], "short"));
+            .Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [new TargetNormalizationSelection(target.PublicId, Convert.ToBase64String(target.RowVersion))], "short"));
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Empty(await context.PerformancePeriodTargets.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Execute_rejects_a_stale_preview_without_creating_period_rows_or_audit()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (municipality, user, target) = await SeedAsync(context);
+        var workflow = new WorkflowGovernanceService(context, tenantContext: new TestTenant(municipality.Id, user.Id));
+        var result = await Controller(context, municipality.Id, user, workflow).Execute(new TargetNormalizationRequest(
+            SubmissionKind.Opms,
+            [new TargetNormalizationSelection(target.PublicId, Convert.ToBase64String(Guid.NewGuid().ToByteArray()))],
+            "Reject deliberately stale normalization preview."));
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Empty(await context.PerformancePeriodTargets.ToArrayAsync());
+        Assert.Empty(await context.AuditTrails.ToArrayAsync());
     }
 
     private static TargetNormalizationController Controller(
@@ -119,5 +134,10 @@ public sealed class TargetNormalizationControllerTests
         context.OpmsTargets.Add(target);
         await context.SaveChangesAsync();
         return (municipality, user, target);
+    }
+
+    private sealed record TestTenant(long? MunicipalityId, string? UserId) : ITenantContext
+    {
+        public bool IsSystem => false;
     }
 }

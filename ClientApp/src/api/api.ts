@@ -1564,7 +1564,7 @@ export async function getTargetNormalizationPreview(targetKind: 1 | 2, page = 1,
   return get<PagedResult<TargetNormalizationPreviewDto>>(`/v1/target-normalization?targetKind=${targetKind}&page=${page}&pageSize=${pageSize}`);
 }
 
-export async function executeTargetNormalization(payload: { targetKind: 1 | 2; targetPublicIds: string[]; reason: string }): Promise<ApiResponse<TargetNormalizationResultDto>> {
+export async function executeTargetNormalization(payload: { targetKind: 1 | 2; targets: Array<{ targetPublicId: string; rowVersion: string }>; reason: string }): Promise<ApiResponse<TargetNormalizationResultDto>> {
   return post<TargetNormalizationResultDto>('/v1/target-normalization/execute', payload);
 }
 

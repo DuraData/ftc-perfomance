@@ -46,7 +46,7 @@ export function TargetNormalizationAdministration() {
     if (!selected.length || normalizedReason.length < 10) { setError('Select at least one ready target and enter a governance reason of at least 10 characters.'); return; }
     setBusy(true);
     setError(null);
-    const response = await executeTargetNormalization({ targetKind: kind, targetPublicIds: selected, reason: normalizedReason });
+    const response = await executeTargetNormalization({ targetKind: kind, targets: selected.map(targetPublicId => ({ targetPublicId, rowVersion: result.items.find(item => item.targetPublicId === targetPublicId)!.rowVersion })), reason: normalizedReason });
     if (!response.success || !response.data) setError(response.message ?? 'Target reconciliation failed.');
     else {
       pushToast('success', `${response.data.addedPeriodTargets} normalized period target${response.data.addedPeriodTargets === 1 ? '' : 's'} created`);
