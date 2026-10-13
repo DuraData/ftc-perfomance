@@ -537,7 +537,9 @@ public sealed class OfficialReportsController(
                 item.OpmsTarget!.Department != null ? item.OpmsTarget.Department.Name : "", item.OpmsTarget.Unit != null ? item.OpmsTarget.Unit.Name : "",
                 useRevised && item.IsTargetRevised && item.RevisedTargetValue != null ? item.RevisedTargetValue : item.TargetValue,
                 item.OpmsTarget.IsWithdrawn)).ToArrayAsync();
-            var submissions = await submissionQuery.Select(item => new SubmissionProjection(item.OpmsTargetId, item.ActualPerformance, item.Variance, item.AchievementPercent, item.TargetAchieved, item.Status)).ToArrayAsync();
+            var submissions = await PerformanceApiSupport.ProjectCanonicalStatuses(context, submissionQuery)
+                .Select(item => new SubmissionProjection(item.Submission.OpmsTargetId, item.Submission.ActualPerformance, item.Submission.Variance, item.Submission.AchievementPercent, item.Submission.TargetAchieved, item.Status))
+                .ToArrayAsync();
             return Merge(targets, submissions, period);
         }
         var ipmsTargets = ApplyScope(context.PerformancePeriodTargets.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id && item.IpmsTargetId != null), scope, false);
@@ -550,7 +552,9 @@ public sealed class OfficialReportsController(
             item.IpmsTarget!.Department != null ? item.IpmsTarget.Department.Name : "", item.IpmsTarget.Unit != null ? item.IpmsTarget.Unit.Name : "",
             useRevised && item.IsTargetRevised && item.RevisedTargetValue != null ? item.RevisedTargetValue : item.TargetValue,
             item.IpmsTarget.IsWithdrawn)).ToArrayAsync();
-        var submissionRows = await ipmsSubmissions.Select(item => new SubmissionProjection(item.IpmsTargetId, item.ActualPerformance, item.Variance, item.AchievementPercent, item.TargetAchieved, item.Status)).ToArrayAsync();
+        var submissionRows = await PerformanceApiSupport.ProjectCanonicalStatuses(context, ipmsSubmissions)
+            .Select(item => new SubmissionProjection(item.Submission.IpmsTargetId, item.Submission.ActualPerformance, item.Submission.Variance, item.Submission.AchievementPercent, item.Submission.TargetAchieved, item.Status))
+            .ToArrayAsync();
         return Merge(targetRows, submissionRows, period);
     }
 
@@ -576,28 +580,30 @@ public sealed class OfficialReportsController(
             var query = ApplyScope(context.OpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
             if (departmentId.HasValue) query = query.Where(item => item.OpmsTarget.DepartmentId == departmentId);
             if (unitId.HasValue) query = query.Where(item => item.OpmsTarget.UnitId == unitId);
-            return await query.OrderBy(item => item.OpmsTarget.OriginalOrderNumber).ThenBy(item => item.PublicId).Select(item => new SubmissionSubject(
-                item.Id, item.OpmsTargetId,
-                useRevised && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber,
-                useRevised && item.OpmsTarget.IsTargetNameRevised && item.OpmsTarget.RevisedTargetName != null ? item.OpmsTarget.RevisedTargetName : item.OpmsTarget.TargetName,
-                item.OpmsTarget.DepartmentId, item.OpmsTarget.Department != null ? item.OpmsTarget.Department.Name : string.Empty,
-                item.OpmsTarget.UnitId, item.OpmsTarget.Unit != null ? item.OpmsTarget.Unit.Name : string.Empty, period.Code,
-                item.ActualPerformance, item.AchievementPercent, item.TargetAchieved, item.Status,
-                item.SubmittedByUser != null ? (item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName).Trim() : string.Empty,
-                item.SubmittedAt)).ToArrayAsync();
+            return await PerformanceApiSupport.ProjectCanonicalStatuses(context, query)
+                .OrderBy(item => item.Submission.OpmsTarget.OriginalOrderNumber).ThenBy(item => item.Submission.PublicId).Select(item => new SubmissionSubject(
+                item.Submission.Id, item.Submission.OpmsTargetId,
+                useRevised && item.Submission.OpmsTarget.IsIndicatorNumberRevised && item.Submission.OpmsTarget.RevisedIndicatorNumber != null ? item.Submission.OpmsTarget.RevisedIndicatorNumber : item.Submission.OpmsTarget.IndicatorNumber,
+                useRevised && item.Submission.OpmsTarget.IsTargetNameRevised && item.Submission.OpmsTarget.RevisedTargetName != null ? item.Submission.OpmsTarget.RevisedTargetName : item.Submission.OpmsTarget.TargetName,
+                item.Submission.OpmsTarget.DepartmentId, item.Submission.OpmsTarget.Department != null ? item.Submission.OpmsTarget.Department.Name : string.Empty,
+                item.Submission.OpmsTarget.UnitId, item.Submission.OpmsTarget.Unit != null ? item.Submission.OpmsTarget.Unit.Name : string.Empty, period.Code,
+                item.Submission.ActualPerformance, item.Submission.AchievementPercent, item.Submission.TargetAchieved, item.Status,
+                item.Submission.SubmittedByUser != null ? (item.Submission.SubmittedByUser.FirstName + " " + item.Submission.SubmittedByUser.LastName).Trim() : string.Empty,
+                item.Submission.SubmittedAt)).ToArrayAsync();
         }
         var ipms = ApplyScope(context.IpmsSubmissions.AsNoTracking().Where(item => item.ReportingPeriodId == period.Id), scope);
         if (departmentId.HasValue) ipms = ipms.Where(item => item.IpmsTarget.DepartmentId == departmentId);
         if (unitId.HasValue) ipms = ipms.Where(item => item.IpmsTarget.UnitId == unitId);
-        return await ipms.OrderBy(item => item.IpmsTarget.OriginalOrderNumber).ThenBy(item => item.PublicId).Select(item => new SubmissionSubject(
-            item.Id, item.IpmsTargetId,
-            useRevised && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber,
-            useRevised && item.IpmsTarget.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null ? item.IpmsTarget.RevisedTargetName : item.IpmsTarget.TargetName,
-            item.IpmsTarget.DepartmentId, item.IpmsTarget.Department != null ? item.IpmsTarget.Department.Name : string.Empty,
-            item.IpmsTarget.UnitId, item.IpmsTarget.Unit != null ? item.IpmsTarget.Unit.Name : string.Empty, period.Code,
-            item.ActualPerformance, item.AchievementPercent, item.TargetAchieved, item.Status,
-            item.SubmittedByUser != null ? (item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName).Trim() : string.Empty,
-            item.SubmittedAt)).ToArrayAsync();
+        return await PerformanceApiSupport.ProjectCanonicalStatuses(context, ipms)
+            .OrderBy(item => item.Submission.IpmsTarget.OriginalOrderNumber).ThenBy(item => item.Submission.PublicId).Select(item => new SubmissionSubject(
+            item.Submission.Id, item.Submission.IpmsTargetId,
+            useRevised && item.Submission.IpmsTarget.IsIndicatorNumberRevised && item.Submission.IpmsTarget.RevisedIndicatorNumber != null ? item.Submission.IpmsTarget.RevisedIndicatorNumber : item.Submission.IpmsTarget.IndicatorNumber,
+            useRevised && item.Submission.IpmsTarget.IsTargetNameRevised && item.Submission.IpmsTarget.RevisedTargetName != null ? item.Submission.IpmsTarget.RevisedTargetName : item.Submission.IpmsTarget.TargetName,
+            item.Submission.IpmsTarget.DepartmentId, item.Submission.IpmsTarget.Department != null ? item.Submission.IpmsTarget.Department.Name : string.Empty,
+            item.Submission.IpmsTarget.UnitId, item.Submission.IpmsTarget.Unit != null ? item.Submission.IpmsTarget.Unit.Name : string.Empty, period.Code,
+            item.Submission.ActualPerformance, item.Submission.AchievementPercent, item.Submission.TargetAchieved, item.Status,
+            item.Submission.SubmittedByUser != null ? (item.Submission.SubmittedByUser.FirstName + " " + item.Submission.SubmittedByUser.LastName).Trim() : string.Empty,
+            item.Submission.SubmittedAt)).ToArrayAsync();
     }
 
     private static OfficialReportDataRow PerformanceRow(OfficialPerformanceReportRow item) => Row(

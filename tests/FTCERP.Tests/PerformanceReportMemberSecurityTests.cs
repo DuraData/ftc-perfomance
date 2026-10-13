@@ -87,6 +87,73 @@ public sealed class PerformanceReportMemberSecurityTests
         csv.Should().NotContain("HIDDEN-INDICATOR").And.NotContain("HIDDEN-ACTUAL");
     }
 
+    [Fact]
+    public async Task Live_exports_render_canonical_workflow_status_for_opms_and_ipms()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "REPORT-STATUS", Name = "Canonical report municipality" };
+        var user = IdpTestFixture.CreateUser("canonical-report-user");
+        var year = new FinancialYear { Code = "2037/38", Name = "2037/2038", StartDate = new(2037, 7, 1), EndDate = new(2038, 6, 30) };
+        context.AddRange(municipality, user, year);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipality.Id, FinancialYearId = year.Id, EffectiveFrom = year.StartDate
+        };
+        var department = new Department { MunicipalityId = municipality.Id, Code = "STATUS", Name = "Status department" };
+        context.AddRange(municipalityYear, department);
+        await context.SaveChangesAsync();
+        var opmsTarget = Target("canonical-opms-report-target", municipality.Id, department.Id, "CANONICAL-OPMS");
+        var ipmsTarget = new IpmsTarget
+        {
+            Id = "canonical-ipms-report-target", MunicipalityId = municipality.Id, DepartmentId = department.Id,
+            IndicatorNumber = "CANONICAL-IPMS", TargetName = "Canonical IPMS", KpiDescription = "Canonical IPMS",
+            AnnualTargetDescription = "Canonical IPMS", OriginalOrderNumber = 1, RevisedOrderNumber = 1
+        };
+        context.AddRange(opmsTarget, ipmsTarget);
+        await context.SaveChangesAsync();
+        context.AddRange(
+            new OpmsSubmission
+            {
+                Id = "canonical-opms-report-submission", MunicipalityId = municipality.Id, OpmsTargetId = opmsTarget.Id,
+                Quarter = "Q1", BaseState = SubmissionBaseStates.Submitted, Status = "draft", ActualPerformance = "90"
+            },
+            new IpmsSubmission
+            {
+                Id = "canonical-ipms-report-submission", MunicipalityId = municipality.Id, IpmsTargetId = ipmsTarget.Id,
+                Quarter = "Q1", BaseState = SubmissionBaseStates.Submitted, Status = "draft", ActualPerformance = "90"
+            });
+        var opmsWorkflow = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, SubmissionKind = SubmissionKind.Opms,
+            Code = "OPMS-REPORT-STATUS", Name = "OPMS report status", EffectiveFrom = year.StartDate
+        };
+        var ipmsWorkflow = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, SubmissionKind = SubmissionKind.Ipms,
+            Code = "IPMS-REPORT-STATUS", Name = "IPMS report status", EffectiveFrom = year.StartDate
+        };
+        context.AddRange(opmsWorkflow, ipmsWorkflow,
+            new SubmissionWorkflowInstance
+            {
+                MunicipalityId = municipality.Id, WorkflowDefinition = opmsWorkflow, SubmissionKind = SubmissionKind.Opms,
+                SubmissionId = "canonical-opms-report-submission", State = WorkflowInstanceState.Completed, CompletedAt = DateTime.UtcNow
+            },
+            new SubmissionWorkflowInstance
+            {
+                MunicipalityId = municipality.Id, WorkflowDefinition = ipmsWorkflow, SubmissionKind = SubmissionKind.Ipms,
+                SubmissionId = "canonical-ipms-report-submission", State = WorkflowInstanceState.Completed, CompletedAt = DateTime.UtcNow
+            });
+        await context.SaveChangesAsync();
+        var controller = Controller(context, user, _ => Granted, municipality.Id);
+
+        var opmsCsv = Encoding.UTF8.GetString(Assert.IsType<FileContentResult>(await controller.ExportCsv(SubmissionKind.Opms)).FileContents);
+        var ipmsCsv = Encoding.UTF8.GetString(Assert.IsType<FileContentResult>(await controller.ExportCsv(SubmissionKind.Ipms)).FileContents);
+
+        opmsCsv.Should().Contain("CANONICAL-OPMS").And.Contain("\"completed\"").And.NotContain("\"draft\"");
+        ipmsCsv.Should().Contain("CANONICAL-IPMS").And.Contain("\"completed\"").And.NotContain("\"draft\"");
+    }
+
     private static PerformanceReportsController Controller(
         ApplicationDbContext context,
         ApplicationUser user,

@@ -478,6 +478,106 @@ public sealed class OfficialReportGenerationTests
     }
 
     [Fact]
+    public async Task Official_performance_and_submission_reports_render_canonical_workflow_status()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "OFFICIAL-STATUS", Name = "Official status municipality" };
+        var user = IdpTestFixture.CreateUser("official-status-user");
+        var financialYear = new FinancialYear { Code = "2026/27", Name = "2026/2027", StartDate = new(2026, 7, 1), EndDate = new(2027, 6, 30) };
+        context.AddRange(municipality, user, financialYear);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, EffectiveFrom = financialYear.StartDate
+        };
+        context.Add(municipalityYear);
+        await context.SaveChangesAsync();
+        var period = new ReportingPeriod
+        {
+            MunicipalityFinancialYearId = municipalityYear.Id, Code = "Q1", Name = "Quarter 1",
+            PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = financialYear.StartDate, EndDate = new(2026, 9, 30)
+        };
+        var target = new OpmsTarget
+        {
+            Id = "official-status-target", MunicipalityId = municipality.Id, IndicatorNumber = "OFFICIAL-CANONICAL",
+            TargetName = "Official canonical target", KpiDescription = "Official canonical target",
+            AnnualTargetDescription = "Official canonical target", OriginalOrderNumber = 1, RevisedOrderNumber = 1
+        };
+        var performanceTemplate = new OfficialReportTemplate
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.QuarterlyPerformance, Code = "CANONICAL-PERFORMANCE", Name = "Canonical performance",
+            Format = OfficialReportFormat.Csv, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ApprovalReference = "Council",
+            Reason = "Approved", CreatedByUserId = user.Id,
+            ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.QuarterlyPerformance)
+        };
+        var submissionTemplate = new OfficialReportTemplate
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, SubmissionKind = SubmissionKind.Opms,
+            ReportType = OfficialReportType.SubmissionRegister, Code = "CANONICAL-SUBMISSION", Name = "Canonical submission",
+            Format = OfficialReportFormat.Csv, EffectiveFrom = DateTime.UtcNow.AddDays(-1), ApprovalReference = "Council",
+            Reason = "Approved", CreatedByUserId = user.Id,
+            ColumnConfigurationJson = OfficialReportCatalog.DefaultColumnsJson(OfficialReportType.SubmissionRegister)
+        };
+        context.AddRange(period, target, performanceTemplate, submissionTemplate);
+        await context.SaveChangesAsync();
+        context.AddRange(
+            new PerformancePeriodTarget
+            {
+                MunicipalityId = municipality.Id, ReportingPeriodId = period.Id, OpmsTargetId = target.Id,
+                TargetValue = "100", CreatedByUserId = user.Id
+            },
+            new OpmsSubmission
+            {
+                Id = "official-status-submission", MunicipalityId = municipality.Id, OpmsTargetId = target.Id,
+                ReportingPeriodId = period.Id, Quarter = "Q1", BaseState = SubmissionBaseStates.Submitted,
+                Status = "draft", ActualPerformance = "90", SubmittedByUserId = user.Id, SubmittedAt = DateTime.UtcNow
+            });
+        var workflow = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id, SubmissionKind = SubmissionKind.Opms,
+            Code = "OFFICIAL-STATUS-WORKFLOW", Name = "Official status workflow", EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        };
+        context.AddRange(workflow, new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "official-status-submission", State = WorkflowInstanceState.Completed, CompletedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var granted = new AccessQueryScopeResult(true, true, [], [], [], [], [], []);
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, It.IsAny<string>())).ReturnsAsync(granted);
+        var rendered = new List<byte[]>();
+        var storage = new Mock<IEvidenceBlobStorage>();
+        storage.Setup(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            .Callback((string storageKey, ReadOnlyMemory<byte> content, CancellationToken cancellationToken) =>
+            {
+                _ = storageKey;
+                _ = cancellationToken;
+                rendered.Add(content.ToArray());
+            })
+            .ReturnsAsync(new EvidenceStorageOperationResult(true, "stored"));
+        var controller = new OfficialReportsController(context, IdpTestFixture.CreateUserManagerMock(user).Object,
+            access.Object, new FixedTenantContext(municipality.Id), Mock.Of<IWorkflowGovernanceService>(), storage.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, user.Id)], "test")) }
+            }
+        };
+
+        (await controller.Generate(new GenerateOfficialReportRequest(performanceTemplate.PublicId, municipalityYear.PublicId, period.PublicId, null))).Result
+            .Should().BeOfType<OkObjectResult>();
+        (await controller.Generate(new GenerateOfficialReportRequest(submissionTemplate.PublicId, municipalityYear.PublicId, period.PublicId, null))).Result
+            .Should().BeOfType<OkObjectResult>();
+
+        rendered.Should().HaveCount(2);
+        rendered.Select(content => System.Text.Encoding.UTF8.GetString(content)).Should().OnlyContain(content =>
+            content.Contains("completed", StringComparison.Ordinal) && !content.Contains("draft", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GenerationsPage_AppliesNormalizedStoredScopeBeforeCountAndPaging()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
