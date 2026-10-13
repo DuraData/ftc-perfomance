@@ -13,6 +13,7 @@ export const submissionStatusLabels: Record<SubmissionStatus, string> = {
   returned_for_info: 'Returned for Information',
   audited: 'Audited',
   completed: 'Completed',
+  cancelled: 'Cancelled',
 };
 
 export const submissionStatusColors: Record<SubmissionStatus, string> = {
@@ -28,4 +29,5 @@ export const submissionStatusColors: Record<SubmissionStatus, string> = {
   returned_for_info: 'bg-yellow-100 text-yellow-800',
   audited: 'bg-violet-100 text-violet-800',
   completed: 'bg-emerald-100 text-emerald-800',
+  cancelled: 'bg-slate-200 text-slate-800',
 };

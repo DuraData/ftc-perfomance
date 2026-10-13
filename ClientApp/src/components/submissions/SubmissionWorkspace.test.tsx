@@ -162,6 +162,23 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.getByLabelText('Extension Reason')).toBeInTheDocument();
   });
 
+  it('keeps due-date extension controls closed for a canonically cancelled workflow', () => {
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.EXTEND_DUE_DATE');
+    security.canEditField.mockImplementation((_resource: string, member: string) =>
+      member === 'DueDate' || member === 'DueDateExtensionReason');
+
+    render(
+      <SubmissionWorkspace
+        submission={{ ...submission, status: 'cancelled' } as OPMSSubmission}
+        submissionType="OPMS"
+        onExtendDueDate={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Extend Due Date' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Extension Reason')).not.toBeInTheDocument();
+  });
+
   it('loads bounded due-date extension history and renders only independently readable members', async () => {
     security.canReadField.mockImplementation((_resource: string, member: string) =>
       ['DueDate', 'DueDateExtensionReason', 'DueDateExtensionActor'].includes(member));

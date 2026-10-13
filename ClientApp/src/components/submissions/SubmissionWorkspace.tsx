@@ -123,6 +123,7 @@ const statusStepMap: Record<SubmissionStatus, number> = {
   returned_for_info: 1,
   audited: 5,
   completed: 6,
+  cancelled: 6,
 };
 
 function isOPMSSubmission(submission: SubmissionRecord): submission is OPMSSubmission {
@@ -230,7 +231,7 @@ function getStatusBadgeVariant(status: SubmissionStatus) {
   if (status === 'approved' || status === 'completed') return 'success' as const;
   if (status === 'pending_verification' || status === 'pending_approval') return 'warning' as const;
   if (status === 'verified' || status === 'audited') return 'info' as const;
-  if (status === 'rejected' || status === 'returned_for_info') return 'error' as const;
+  if (status === 'rejected' || status === 'returned_for_info' || status === 'cancelled') return 'error' as const;
   return 'default' as const;
 }
 
@@ -640,7 +641,7 @@ export function SubmissionWorkspace({
     && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`);
   const canAudit = currentSubmission.status === 'reviewed'
     && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
-  const canExtendDueDate = currentSubmission.status !== 'completed'
+  const canExtendDueDate = !['completed', 'cancelled'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)
     && security.canEditField(resourceCode, 'DueDate')
     && security.canEditField(resourceCode, 'DueDateExtensionReason');

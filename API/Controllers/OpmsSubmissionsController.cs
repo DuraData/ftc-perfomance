@@ -1001,10 +1001,11 @@ public class OpmsSubmissionsController : ControllerBase
         if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "The OPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "A withdrawn OPMS submission cannot receive a due-date extension."));
 
-        var currentStatus = NormalizeStatus(entity.Status);
-        if (string.Equals(currentStatus, "audited", StringComparison.OrdinalIgnoreCase))
+        if (await PerformanceApiSupport.IsDueDateExtensionClosedAsync(
+                _context, SubmissionKind.Opms, entity.Id, entity.AuditedAt))
         {
-            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Due date cannot be extended after audit has been completed."));
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null,
+                "Due date cannot be extended after workflow completion, cancellation, or Internal Audit assessment."));
         }
 
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.EXTEND_DUE_DATE", BuildScope(entity));
@@ -1234,13 +1235,6 @@ public class OpmsSubmissionsController : ControllerBase
                 && string.Equals(submittedByUserId, actorUserId, StringComparison.OrdinalIgnoreCase))
             || (!string.IsNullOrWhiteSpace(assignedUserId)
                 && string.Equals(assignedUserId, actorUserId, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string NormalizeStatus(string? status)
-    {
-        return string.IsNullOrWhiteSpace(status)
-            ? "draft"
-            : status.Trim().ToLowerInvariant();
     }
 
     private Task<ApplicationUser?> GetCurrentUserAsync()

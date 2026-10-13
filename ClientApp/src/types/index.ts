@@ -23,7 +23,8 @@ export type SubmissionStatus =
   | 'reviewed'
   | 'returned_for_info'
   | 'audited'
-  | 'completed';
+  | 'completed'
+  | 'cancelled';
 
 export type TargetUnitType =
   | 'percentage'

@@ -50,6 +50,24 @@ public static class PerformanceApiSupport
                 .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted")
         });
 
+    internal static async Task<bool> IsDueDateExtensionClosedAsync(
+        ApplicationDbContext context,
+        SubmissionKind submissionKind,
+        string submissionId,
+        DateTime? auditedAt)
+    {
+        if (auditedAt.HasValue) return true;
+
+        return await context.SubmissionWorkflowInstances
+                   .AnyAsync(instance => instance.SubmissionKind == submissionKind
+                       && instance.SubmissionId == submissionId
+                       && (instance.State == WorkflowInstanceState.Completed
+                           || instance.State == WorkflowInstanceState.Cancelled))
+               || await context.InternalAuditAssessments
+                   .AnyAsync(assessment => assessment.SubmissionWorkflowInstance.SubmissionKind == submissionKind
+                       && assessment.SubmissionWorkflowInstance.SubmissionId == submissionId);
+    }
+
     internal sealed class OpmsSubmissionStatusProjection
     {
         public required OpmsSubmission Submission { get; init; }

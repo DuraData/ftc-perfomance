@@ -127,6 +127,104 @@ public sealed class GovernedWithdrawalTests
     }
 
     [Fact]
+    public async Task Due_date_extension_uses_canonical_workflow_and_audit_evidence_instead_of_legacy_status()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "DUE-CANONICAL", Name = "Canonical due-date municipality" };
+        var user = IdpTestFixture.CreateUser("canonical-due-date-user");
+        var financialYear = new FinancialYear
+        {
+            Code = "2039/40", Name = "2039/2040", StartDate = new(2039, 7, 1), EndDate = new(2040, 6, 30)
+        };
+        context.AddRange(municipality, user, financialYear);
+        await context.SaveChangesAsync();
+        user.MunicipalityId = municipality.Id;
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, EffectiveFrom = financialYear.StartDate
+        };
+        var opmsTarget = new OpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-CANONICAL-OPMS",
+            TargetName = "Canonical OPMS due date", KpiDescription = "Canonical OPMS due date", AnnualTargetDescription = "One"
+        };
+        var ipmsTarget = new IpmsTarget
+        {
+            MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-CANONICAL-IPMS",
+            TargetName = "Canonical IPMS due date", KpiDescription = "Canonical IPMS due date", AnnualTargetDescription = "One"
+        };
+        context.AddRange(municipalityYear, opmsTarget, ipmsTarget);
+        await context.SaveChangesAsync();
+        var dueDate = DateTime.UtcNow.Date.AddDays(5);
+        var opmsSubmission = new OpmsSubmission
+        {
+            MunicipalityId = municipality.Id, OpmsTargetId = opmsTarget.Id, Quarter = "Q1", DueDate = dueDate,
+            BaseState = SubmissionBaseStates.Submitted, Status = "draft", CreatedBy = user.Id
+        };
+        var ipmsSubmission = new IpmsSubmission
+        {
+            MunicipalityId = municipality.Id, IpmsTargetId = ipmsTarget.Id, Quarter = "Q1", DueDate = dueDate,
+            BaseState = SubmissionBaseStates.Submitted, Status = "draft", CreatedBy = user.Id
+        };
+        var opmsWorkflow = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id,
+            SubmissionKind = SubmissionKind.Opms, Code = "DUE-CANONICAL-OPMS", Name = "Canonical OPMS workflow",
+            EffectiveFrom = financialYear.StartDate
+        };
+        var ipmsWorkflow = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id,
+            SubmissionKind = SubmissionKind.Ipms, Code = "DUE-CANONICAL-IPMS", Name = "Canonical IPMS workflow",
+            EffectiveFrom = financialYear.StartDate
+        };
+        var auditConfiguration = new InternalAuditAssessmentConfiguration
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id,
+            Model = InternalAuditAssessmentModel.Detailed, EffectiveFrom = financialYear.StartDate,
+            Reason = "Approved canonical audit configuration", CreatedByUserId = user.Id
+        };
+        context.AddRange(opmsSubmission, ipmsSubmission, opmsWorkflow, ipmsWorkflow, auditConfiguration);
+        await context.SaveChangesAsync();
+        var opmsInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinitionId = opmsWorkflow.Id,
+            SubmissionKind = SubmissionKind.Opms, SubmissionId = opmsSubmission.Id,
+            State = WorkflowInstanceState.Completed, CompletedAt = DateTime.UtcNow
+        };
+        var ipmsInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinitionId = ipmsWorkflow.Id,
+            SubmissionKind = SubmissionKind.Ipms, SubmissionId = ipmsSubmission.Id,
+            State = WorkflowInstanceState.Active
+        };
+        context.AddRange(opmsInstance, ipmsInstance);
+        await context.SaveChangesAsync();
+        context.Add(new InternalAuditAssessment
+        {
+            MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = ipmsInstance.Id,
+            ConfigurationId = auditConfiguration.Id, Outcome = InternalAuditAssessmentOutcome.Achieved,
+            DetailedObservation = "Internal Audit completed", AssessedByUserId = user.Id,
+            CorrelationId = "canonical-due-date-audit"
+        });
+        await context.SaveChangesAsync();
+
+        var access = Mock.Of<IAccessControlService>();
+        var governance = new WorkflowGovernanceService(context,
+            tenantContext: new TenantContext(municipality.Id, user.Id));
+        var opms = SubmissionController(context, user, access, governance);
+        var ipms = IpmsSubmissionController(context, user, access, governance);
+
+        (await opms.ExtendDueDate(opmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(dueDate.AddDays(2), "Must remain closed", Convert.ToBase64String(opmsSubmission.RowVersion)))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        (await ipms.ExtendDueDate(ipmsSubmission.PublicId.ToString(),
+                new DueDateExtensionRequest(dueDate.AddDays(2), "Must remain closed", Convert.ToBase64String(ipmsSubmission.RowVersion)))).Result
+            .Should().BeOfType<BadRequestObjectResult>();
+        (await context.DueDateExtensions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Due_date_extension_history_is_bounded_kind_scoped_and_masks_searches_sorts_and_fields_by_member_access()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

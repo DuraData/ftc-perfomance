@@ -285,6 +285,7 @@ function coerceSubmissionStatus(value?: string | null): SubmissionStatus {
     'returned_for_info',
     'audited',
     'completed',
+    'cancelled',
   ];
 
   return knownStatuses.includes(normalized) ? normalized : 'draft';
