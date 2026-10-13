@@ -17,6 +17,7 @@ import {
   assessOpmsSubmissionAttachment,
   createIpmsSubmission,
   createOpmsSubmission,
+  downloadPerformanceReportCsv,
   withdrawIpmsSubmission,
   withdrawOpmsSubmission,
   extendIpmsSubmissionDueDate,
@@ -141,7 +142,7 @@ function readDashboardSubmissionScope(): Pick<RegisterPageQuery, 'municipalityFi
 }
 
 export function OPMSSubmissionsList() {
-  const { pushToast } = useApp();
+  const { permissions = [], pushToast } = useApp();
   const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -153,6 +154,7 @@ export function OPMSSubmissionsList() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [formErrors, setFormErrors] = useState<SubmissionSetupErrors>({});
   const [form, setForm] = useState({
@@ -162,6 +164,16 @@ export function OPMSSubmissionsList() {
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
+  const canExport = useMemo(() => {
+    const permissionSet = new Set(permissions.map(permission => permission.toUpperCase()));
+    return [
+      'OPMS_REPORT.EXPORT',
+      'OPMS_KPI.READ',
+      'OPMS_SUBMISSION.READ',
+      'OPMS_SUBMISSION.ACTUALPERFORMANCE.READ',
+      'OPMS_SUBMISSION.VARIANCE.READ',
+    ].every(permission => permissionSet.has(permission));
+  }, [permissions]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -240,6 +252,17 @@ export function OPMSSubmissionsList() {
     pushToast('success', 'Submission created');
     setShowCreateModal(false);
     await openSubmission(result.data);
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    const result = await downloadPerformanceReportCsv(1, dashboardScope.reportingPeriodPublicId);
+    setIsExporting(false);
+    if (!result.success) {
+      pushToast('error', result.message ?? 'OPMS performance CSV export failed');
+      return;
+    }
+    pushToast('success', 'OPMS performance CSV downloaded');
   };
 
   const persistSubmission = async (submission: OPMSSubmission) => {
@@ -399,7 +422,7 @@ export function OPMSSubmissionsList() {
               }}>Clear dashboard filter</Button> : null}
             </div>
             <div className="flex gap-1">
-              <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
+              {canExport ? <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />} loading={isExporting} onClick={() => { void handleExport(); }}>Export</Button> : null}
               <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
             </div>
           </div>
@@ -469,7 +492,7 @@ export function OPMSSubmissionsList() {
 }
 
 export function IPMSSubmissionsList() {
-  const { pushToast } = useApp();
+  const { permissions = [], pushToast } = useApp();
   const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -481,6 +504,7 @@ export function IPMSSubmissionsList() {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [formErrors, setFormErrors] = useState<SubmissionSetupErrors>({});
   const [form, setForm] = useState({
@@ -490,6 +514,16 @@ export function IPMSSubmissionsList() {
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
+  const canExport = useMemo(() => {
+    const permissionSet = new Set(permissions.map(permission => permission.toUpperCase()));
+    return [
+      'IPMS_REPORT.EXPORT',
+      'IPMS_KPI.READ',
+      'IPMS_SUBMISSION.READ',
+      'IPMS_SUBMISSION.ACTUALPERFORMANCE.READ',
+      'IPMS_SUBMISSION.VARIANCE.READ',
+    ].every(permission => permissionSet.has(permission));
+  }, [permissions]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -568,6 +602,17 @@ export function IPMSSubmissionsList() {
     pushToast('success', 'Submission created');
     setShowCreateModal(false);
     await openSubmission(result.data);
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    const result = await downloadPerformanceReportCsv(2, dashboardScope.reportingPeriodPublicId);
+    setIsExporting(false);
+    if (!result.success) {
+      pushToast('error', result.message ?? 'IPMS performance CSV export failed');
+      return;
+    }
+    pushToast('success', 'IPMS performance CSV downloaded');
   };
 
   const persistSubmission = async (submission: IPMSSubmission) => {
@@ -727,7 +772,7 @@ export function IPMSSubmissionsList() {
               }}>Clear dashboard filter</Button> : null}
             </div>
             <div className="flex gap-1">
-              <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
+              {canExport ? <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />} loading={isExporting} onClick={() => { void handleExport(); }}>Export</Button> : null}
               <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
             </div>
           </div>
@@ -792,83 +837,6 @@ export function IPMSSubmissionsList() {
           </Modal>
         </div>
       )}
-    </AppShell>
-  );
-}
-
-export function VoteNumbersPage() {
-  const [voteNumbers, setVoteNumbers] = useState([
-    { id: '1', number: 'V001', name: 'Roads Infrastructure', amount: 25000000, department: 'Infrastructure', isActive: true },
-    { id: '2', number: 'V002', name: 'Water Infrastructure', amount: 35000000, department: 'Infrastructure', isActive: true },
-    { id: '3', number: 'V003', name: 'Electricity Infrastructure', amount: 45000000, department: 'Infrastructure', isActive: true },
-  ]);
-
-  const [selectedVote, setSelectedVote] = useState<typeof voteNumbers[0] | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-
-  const columns = [
-    { id: 'number', header: 'Vote #', accessor: (row: typeof voteNumbers[0]) => <span className="font-mono">{row.number}</span> },
-    { id: 'name', header: 'Name', accessor: (row: typeof voteNumbers[0]) => row.name },
-    { id: 'department', header: 'Department', accessor: (row: typeof voteNumbers[0]) => row.department },
-    { id: 'amount', header: 'Amount', accessor: (row: typeof voteNumbers[0]) => `R ${(row.amount / 1000000).toFixed(1)}M` },
-    { id: 'status', header: 'Status', accessor: () => <Badge size="sm" variant="success">Active</Badge> },
-  ];
-
-  const handleDelete = (id: string) => {
-    setVoteNumbers(voteNumbers.filter(v => v.id !== id));
-  };
-
-  return (
-    <AppShell title="Vote Numbers" subtitle="Budget vote numbers">
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Badge variant="primary">{voteNumbers.length} votes</Badge>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />}>Export</Button>
-            <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => {
-              setSelectedVote(null);
-              setIsEditing(true);
-              setShowCreateModal(true);
-            }}>Add</Button>
-          </div>
-        </div>
-        <Card>
-          <DataTable data={voteNumbers} columns={columns} onRowClick={(row) => { setSelectedVote(row); setIsEditing(false); setShowCreateModal(true); }} getRowId={(row) => row.id} />
-        </Card>
-
-        <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setSelectedVote(null); setIsEditing(false); }} title={selectedVote ? (isEditing ? "Edit Vote Number" : selectedVote.name) : "New Vote Number"} size="md">
-          {selectedVote && !isEditing ? (
-            <div className="space-y-2">
-              <div><p className="text-[10px] text-secondary-500">Vote Number</p><p className="text-sm font-mono">{selectedVote.number}</p></div>
-              <div><p className="text-[10px] text-secondary-500">Department</p><p className="text-sm">{selectedVote.department}</p></div>
-              <div><p className="text-[10px] text-secondary-500">Budget Amount</p><p className="text-sm font-bold">R {selectedVote.amount.toLocaleString()}</p></div>
-              <div className="flex justify-between gap-2 pt-2 border-t">
-                <Button variant="ghost" size="sm" className="text-red-500" onClick={() => { handleDelete(selectedVote.id); setShowCreateModal(false); setSelectedVote(null); }}>Delete</Button>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => { setShowCreateModal(false); setSelectedVote(null); }}>Close</Button>
-                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <FormRow cols={2}>
-                <Input label="Vote Number" placeholder="e.g., V001" required defaultValue={selectedVote?.number} />
-                <Input label="Name" placeholder="Vote name" required defaultValue={selectedVote?.name} />
-              </FormRow>
-              <FormRow cols={2}>
-                <Input label="Amount (R)" type="number" placeholder="Budget amount" defaultValue={selectedVote?.amount} />
-                <Select label="Department" options={[{ value: 'infra', label: 'Infrastructure' }, { value: 'comm', label: 'Community' }]} placeholder="Select" />
-              </FormRow>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="ghost" size="sm" onClick={() => { setShowCreateModal(false); setSelectedVote(null); setIsEditing(false); }}>Cancel</Button>
-                <Button variant="primary" size="sm">{selectedVote ? "Save Changes" : "Create"}</Button>
-              </div>
-            </div>
-          )}
-        </Modal>
-      </div>
     </AppShell>
   );
 }
